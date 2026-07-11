@@ -51,6 +51,20 @@ public class EmailService {
     @Value("${app.ses.sender.email}")
     private String from;
 
+    // Dedicated SES SMTP credentials used to send from institute-verified custom senders.
+    // A verified sender stores placeholder SMTP creds (SMTP_USERNAME/SMTP_PASSWORD); rather than
+    // baking real credentials into each institute's settings (which the settings API would expose),
+    // the send is routed through THIS account — the same AWS account/region where custom identities
+    // are verified. Sourced from env only. Empty username => feature off, behaviour unchanged.
+    @Value("${app.ses.sender.smtp.host:${spring.mail.host:}}")
+    private String verifiedSenderSmtpHost;
+    @Value("${app.ses.sender.smtp.port:${spring.mail.port:2587}}")
+    private int verifiedSenderSmtpPort;
+    @Value("${app.ses.sender.smtp.username:}")
+    private String verifiedSenderSmtpUsername;
+    @Value("${app.ses.sender.smtp.password:}")
+    private String verifiedSenderSmtpPassword;
+
     @Value("${ses.configuration.set}")
     private String sesConfigurationSet;
 
@@ -170,6 +184,33 @@ public class EmailService {
         return s.toLowerCase();
     }
 
+    /**
+     * Builds a mail sender from the dedicated verified-sender SES SMTP credentials (env-provided).
+     * Lets an institute send from its SES-verified custom address without storing SMTP credentials
+     * in that institute's settings. Mirrors the TLS/timeout properties of {@link #createCustomMailSender}.
+     */
+    private JavaMailSenderImpl createVerifiedSenderMailSender() {
+        JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
+        mailSender.setHost(verifiedSenderSmtpHost);
+        mailSender.setPort(verifiedSenderSmtpPort);
+        mailSender.setUsername(verifiedSenderSmtpUsername);
+        mailSender.setPassword(verifiedSenderSmtpPassword);
+
+        Properties props = mailSender.getJavaMailProperties();
+        props.put("mail.transport.protocol", "smtp");
+        props.put("mail.smtp.auth", "true");
+        props.put("mail.smtp.starttls.enable", "true");
+        props.put("mail.smtp.starttls.required", "true");
+        props.put("mail.debug", "false");
+        props.put("mail.smtp.connectiontimeout", "10000");
+        props.put("mail.smtp.timeout", "10000");
+        props.put("mail.smtp.writetimeout", "10000");
+        props.put("mail.smtp.ssl.checkserveridentity", "true");
+        props.put("mail.smtp.quitwait", "false");
+        mailSender.setJavaMailProperties(props);
+        return mailSender;
+    }
+
     private JavaMailSenderImpl createCustomMailSender(JsonNode emailSettings) {
         JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
         mailSender.setHost(emailSettings.path(NotificationConstants.HOST).asText());
@@ -248,10 +289,21 @@ public class EmailService {
                         boolean isDummyCredentials = isDummySMTPCredentials(username, password);
 
                         if (isDummyCredentials) {
-                            logger.info("Dummy SMTP credentials detected in {}, using default SMTP from environment",
-                                    emailTypeToUse);
-                            // Use default mail sender from Spring but override 'from' address from JSON
-                            mailSenderToUse = mailSender;
+                            boolean isVerifiedSender = verifiedNode.isBoolean() && verifiedNode.asBoolean();
+                            if (isVerifiedSender && StringUtils.hasText(verifiedSenderSmtpUsername)) {
+                                // SES-verified custom sender with placeholder creds: authenticate through
+                                // the dedicated SES account (env-provided) where this identity is verified,
+                                // instead of the platform default sender which may be a different account
+                                // that can't send from the custom address (and would fall back to support@).
+                                logger.info("Routing verified sender for type {} via dedicated SES SMTP account",
+                                        emailTypeToUse);
+                                mailSenderToUse = createVerifiedSenderMailSender();
+                            } else {
+                                logger.info("Dummy SMTP credentials detected in {}, using default SMTP from environment",
+                                        emailTypeToUse);
+                                // Use default mail sender from Spring but override 'from' address from JSON
+                                mailSenderToUse = mailSender;
+                            }
                         } else {
                             logger.info("Real SMTP credentials found in {}, using custom SMTP configuration",
                                     emailTypeToUse);

@@ -47,6 +47,21 @@ async def is_completed(pdf_id: str) -> bool:
         return (resp.json().get("status") or "").lower() == "completed"
 
 
+async def get_num_pages(pdf_id: str) -> Optional[int]:
+    """Best-effort page count for a converted PDF (MathPix status → num_pages).
+    Used for the per-page billing surcharge. Returns None if unavailable."""
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(f"{_API_PDF}{pdf_id}", headers=_headers())
+            if resp.status_code != 200:
+                return None
+            n = resp.json().get("num_pages")
+            return int(n) if n is not None else None
+    except Exception as e:  # noqa: BLE001
+        logger.warning("MathPix num_pages fetch failed for pdf_id=%s: %s", pdf_id, e)
+        return None
+
+
 async def fetch_markdown(pdf_id: str) -> Optional[str]:
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.get(f"{_API_PDF}{pdf_id}.md", headers=_headers())

@@ -60,6 +60,7 @@ class DocumentFigure:
 class IngestResult:
     grounding_text: str = ""
     figures: List[DocumentFigure] = field(default_factory=list)
+    page_count: int = 0   # total PDF pages ingested (for per-page billing)
 
     @property
     def has_content(self) -> bool:
@@ -145,22 +146,24 @@ async def _rehost_figure(url: str) -> str:
         return url
 
 
-async def _ingest_one(file_id: str) -> Optional[str]:
-    """Return the cached/converted HTML for one media fileId, or None.
+async def _ingest_one(file_id: str) -> tuple[Optional[str], Optional[str]]:
+    """Return (html, pdf_id) for one media fileId — pdf_id is the vendor pdfId
+    (used for the per-page billing lookup), available on both the cached and
+    freshly-converted paths. Either may be None on failure.
 
     Dedupe ladder (cheapest first): reuse a completed conversion → re-poll a
     FRESH in-flight one by its vendor pdfId → submit fresh. This keeps a second
     pass (content step, or a retried outline) from paying for another MathPix
     job, without getting stuck re-polling a long-dead pdfId."""
     if not file_id:
-        return None
+        return (None, None)
     try:
         def _lookup() -> tuple:
             with db_session() as db:
                 repo = FileConversionRepository(db)
                 done = repo.find_success_by_source_file_id(file_id)
                 if done:
-                    return (done.html_text, None)
+                    return (done.html_text, done.vendor_file_id)
                 latest = repo.find_latest_by_source_file_id(file_id)
                 if latest and latest.vendor_file_id and latest.created_at:
                     created = latest.created_at
@@ -172,13 +175,14 @@ async def _ingest_one(file_id: str) -> Optional[str]:
 
         cached_html, existing_pdf_id = await asyncio.to_thread(_lookup)
         if cached_html:
-            return cached_html
+            return (cached_html, existing_pdf_id)
 
         pdf_id = existing_pdf_id or await pdf_questions_service.start_from_file_id(file_id)
-        return await pdf_questions_service.fetch_or_convert_html(pdf_id, allow_poll=True)
+        html = await pdf_questions_service.fetch_or_convert_html(pdf_id, allow_poll=True)
+        return (html, pdf_id)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Course document ingest failed for fileId=%s: %s", file_id, exc)
-        return None
+        return (None, None)
 
 
 async def ingest_documents(
@@ -199,10 +203,20 @@ async def ingest_documents(
 
     texts: List[str] = []
     for file_id in file_ids:
-        html = await _ingest_one(file_id)
+        html, pdf_id = await _ingest_one(file_id)
         if not html:
             continue
         texts.append(_html_to_text(html))
+        # Real page count (MathPix) for the per-page billing surcharge —
+        # best-effort, never blocks ingestion.
+        if pdf_id:
+            try:
+                from .mathpix_pdf_service import get_num_pages
+                pages = await get_num_pages(pdf_id)
+                if pages:
+                    result.page_count += pages
+            except Exception:  # noqa: BLE001
+                pass
         for fig in _parse_figures(html):
             fig.fig_id = f"fig{len(result.figures) + 1}"
             result.figures.append(fig)

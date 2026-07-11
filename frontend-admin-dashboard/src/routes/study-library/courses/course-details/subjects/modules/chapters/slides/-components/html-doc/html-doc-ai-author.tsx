@@ -274,12 +274,21 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                             </MyButton>
                             {isUploading && <Spinner className="size-4 animate-spin text-primary-500" />}
                         </div>
+                        {pdf && (
+                            <p className="text-caption text-neutral-400">
+                                Grounding in a PDF adds a per-page conversion charge on top of the
+                                generation cost.
+                            </p>
+                        )}
 
                         {/* Uploaded material chips */}
                         {(images.length > 0 || pdf) && (
                             <div className="flex flex-wrap gap-2">
                                 {pdf && (
-                                    <span className="flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-caption text-neutral-600">
+                                    <span
+                                        className="flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-caption text-neutral-600"
+                                        title="Grounding in a PDF adds a per-page conversion charge"
+                                    >
                                         <FilePdf className="size-3.5 text-danger-500" />
                                         {pdf.name}
                                         <button type="button" onClick={() => setPdf(null)}>

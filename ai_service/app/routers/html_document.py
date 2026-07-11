@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+from decimal import Decimal
 from typing import Optional
 
 import httpx
@@ -37,6 +38,9 @@ router = APIRouter(prefix="/html-doc", tags=["html-document"])
 _DEFAULT_MODEL = "anthropic/claude-sonnet-5"
 # HTML documents can be long (inline CSS + markup + a little JS).
 _MAX_TOKENS = 32000
+# Usage is charged as max(flat, actual_token_cost × markup). The markup deters
+# misuse (very large PDFs / huge pages) — heavy generations pay above raw cost.
+_USAGE_MARKUP = Decimal("2")
 
 _FENCE_RE = re.compile(r"^\s*```(?:html)?\s*\n([\s\S]*?)\n?```\s*$")
 _DOC_START_RE = re.compile(r"<!doctype html|<html", re.IGNORECASE)
@@ -262,7 +266,7 @@ def _strip_fence(text: str) -> str:
     return text[start.start():].strip() if start else text.strip()
 
 
-async def _call_openrouter(prompt: str, api_key: str, base_url: str, model: str) -> str:
+async def _call_openrouter(prompt: str, api_key: str, base_url: str, model: str) -> tuple[str, dict]:
     async with httpx.AsyncClient(timeout=180.0) as client:
         resp = await client.post(
             base_url,
@@ -287,7 +291,7 @@ async def _call_openrouter(prompt: str, api_key: str, base_url: str, model: str)
     content = (choices[0].get("message") or {}).get("content") or ""
     if not content.strip():
         raise RuntimeError(f"OpenRouter returned empty content: {str(data)[:300]}")
-    return content
+    return content, (data.get("usage") or {})
 
 
 async def _prepare(body: GenerateHtmlRequest, current_user, db: Session) -> dict:
@@ -350,7 +354,7 @@ async def _prepare(body: GenerateHtmlRequest, current_user, db: Session) -> dict
     # Ground in an uploaded PDF (real text + reusable figures) — reuses the same
     # MathPix ingestion the course flow uses. Bounded so a slow/failed
     # conversion never hangs; generation proceeds without it.
-    grounding_text, figures = "", []
+    grounding_text, figures, pdf_page_count = "", [], 0
     if body.reference_file_ids:
         try:
             from ..services.course_document_ingest import ingest_documents
@@ -360,6 +364,10 @@ async def _prepare(body: GenerateHtmlRequest, current_user, db: Session) -> dict
                 ingest_documents(body.reference_file_ids, rehost_figures=True), timeout=150
             )
             grounding_text, figures = ingest.grounding_text, ingest.figures
+            # Per-page surcharge is billed on CREATE only — an edit re-grounding
+            # the same PDF must not re-charge for its pages.
+            if not body.current_html:
+                pdf_page_count = ingest.page_count
         except Exception as e:  # noqa: BLE001
             logger.warning("[html-doc] PDF ingest skipped: %s", e)
 
@@ -372,25 +380,50 @@ async def _prepare(body: GenerateHtmlRequest, current_user, db: Session) -> dict
         "actor_user_id": actor_user_id,
         "actor_role": actor_role,
         "tool_key": tool_key,
+        "pdf_page_count": pdf_page_count,
     }
 
 
-def _bill(ctx: dict, body: GenerateHtmlRequest) -> None:
-    """Charge credits, best-effort — the doc is already generated; a billing
-    hiccup must never fail the request. Idempotency key dedups retries."""
+def _bill(ctx: dict, body: GenerateHtmlRequest, usage: Optional[dict] = None) -> None:
+    """Charge credits = max(flat, actual_token_cost × 2× markup), best-effort —
+    the doc is already generated; a billing hiccup must never fail the request.
+    Usage-based so heavy generations (big PDFs / large pages) pay above the flat
+    floor. Idempotency key dedups retries."""
+    usage = usage or {}
     try:
         record_tool_billing(
             tool_key=ctx["tool_key"],
             tool_params={"is_edit": bool(body.current_html)},
             request_type=RequestType.CONTENT,
             model=ctx["model"],
+            prompt_tokens=int(usage.get("prompt_tokens") or 0),
+            completion_tokens=int(usage.get("completion_tokens") or 0),
             institute_id=ctx["institute_id"],
             user_id=ctx["actor_user_id"],
             user_role=ctx["actor_role"] if ctx["actor_user_id"] else None,
             idempotency_key=body.idempotency_key,
+            usage_markup=_USAGE_MARKUP,
         )
     except Exception as e:  # noqa: BLE001
         logger.warning("[html-doc] billing skipped: %s", e)
+
+    # Separate, transparent per-page surcharge for the grounding PDF (MathPix
+    # conversion cost). Billed on create only (see _prepare).
+    pages = int(ctx.get("pdf_page_count") or 0)
+    if pages > 0:
+        try:
+            record_tool_billing(
+                tool_key="html_document_pdf",
+                tool_params={"num_pages": pages},
+                request_type=RequestType.CONTENT,
+                model=ctx["model"],
+                institute_id=ctx["institute_id"],
+                user_id=ctx["actor_user_id"],
+                user_role=ctx["actor_role"] if ctx["actor_user_id"] else None,
+                idempotency_key=(f"{body.idempotency_key}:pdf" if body.idempotency_key else None),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[html-doc] pdf page billing skipped: %s", e)
 
 
 @router.post("/v1/generate", response_model=GenerateHtmlResponse)
@@ -401,7 +434,7 @@ async def generate_html_document(
 ) -> GenerateHtmlResponse:
     ctx = await _prepare(body, current_user, db)
     try:
-        raw = await _call_openrouter(
+        raw, usage = await _call_openrouter(
             ctx["prompt"], ctx["openrouter_key"], ctx["openrouter_url"], ctx["model"]
         )
     except Exception as e:  # noqa: BLE001
@@ -411,7 +444,7 @@ async def generate_html_document(
     html_out = _strip_fence(raw)
     if not html_out:
         raise HTTPException(status_code=502, detail="Model returned empty HTML.")
-    _bill(ctx, body)
+    _bill(ctx, body, usage)
     return GenerateHtmlResponse(html=html_out, model=ctx["model"])
 
 
@@ -433,6 +466,7 @@ async def generate_html_document_stream(
 
     async def event_gen():
         collected: list[str] = []
+        usage: dict = {}
         try:
             payload = {
                 "model": ctx["model"],
@@ -440,6 +474,9 @@ async def generate_html_document_stream(
                 "temperature": 0.7,
                 "max_tokens": _MAX_TOKENS,
                 "stream": True,
+                # Ask OpenRouter to emit a final usage chunk so we can bill on
+                # actual tokens (× markup), not just the flat floor.
+                "stream_options": {"include_usage": True},
             }
             headers = {
                 "Authorization": f"Bearer {ctx['openrouter_key']}",
@@ -463,6 +500,8 @@ async def generate_html_document_stream(
                             chunk = json.loads(chunk_str)
                         except Exception:  # noqa: BLE001
                             continue
+                        if chunk.get("usage"):
+                            usage = chunk["usage"]
                         choices = chunk.get("choices") or []
                         delta = (choices[0].get("delta") or {}).get("content") if choices else None
                         if delta:
@@ -473,7 +512,7 @@ async def generate_html_document_stream(
             if not html_out:
                 yield _sse({"error": "Model returned empty HTML."})
                 return
-            _bill(ctx, body)
+            _bill(ctx, body, usage)
             yield _sse({"done": True, "html": html_out, "model": ctx["model"]})
         except Exception as e:  # noqa: BLE001
             logger.warning("[html-doc] stream failed: %s", e)

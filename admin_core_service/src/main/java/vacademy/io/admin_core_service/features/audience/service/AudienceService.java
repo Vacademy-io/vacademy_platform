@@ -2885,6 +2885,23 @@ public class AudienceService {
     }
 
     /**
+     * The lead's captured form/custom fields as {label -> value} for a response —
+     * read-only, reused by the AI voice bot to personalise the call (so the agent can
+     * reference the lead's company/role/etc. instead of asking again). Empty (never null)
+     * when the response has no fields or the id is blank; never throws.
+     */
+    public Map<String, String> getLeadCustomFields(String responseId) {
+        if (!StringUtils.hasText(responseId)) return Collections.emptyMap();
+        try {
+            Map<String, String> m = buildCustomFieldMapForEmail(responseId);
+            return m == null ? Collections.emptyMap() : m;
+        } catch (Exception e) {
+            logger.warn("getLeadCustomFields failed for {}: {}", responseId, e.getMessage());
+            return Collections.emptyMap();
+        }
+    }
+
+    /**
      * Build a map of custom field names to values for email template
      * Format: {field_name -> value}
      * Example: {"Phone Number" -> "1234567890", "Company Name" -> "Acme Corp"}

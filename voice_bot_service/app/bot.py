@@ -240,6 +240,21 @@ def _voice_gender(voice) -> str:
     return "male" if (voice or "priya").strip().lower() in _MALE_VOICES else "female"
 
 
+def _lead_fields_line(context: Dict[str, Any]) -> str:
+    """One prompt line listing the lead's captured form/custom fields, so the agent uses
+    what it already knows (company, role, …) instead of re-asking. Capped so a lead with
+    many fields can't blow up the prompt. Empty for unknown callers."""
+    fields = context.get("leadFields") or {}
+    if not isinstance(fields, dict) or not fields:
+        return ""
+    pairs = [f"{k}: {v}" for k, v in fields.items() if v and str(v).strip()][:15]
+    if not pairs:
+        return ""
+    return ("What you ALREADY KNOW about this person (from the form they filled — use it to "
+            "personalise, and do NOT ask again for anything already listed here): "
+            + "; ".join(pairs) + ".")
+
+
 def build_system_prompt(context: Dict[str, Any]) -> str:
     agent = context.get("agent") or {}
     lead_name = context.get("leadName")
@@ -343,6 +358,7 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         addressee_line,
         intent_line,
         f"The caller's name is {lead_name}." if lead_name else "",
+        _lead_fields_line(context),
         ("During the conversation, naturally find out: " + "; ".join(extraction))
         if extraction else "",
         "Rules:",

@@ -2700,11 +2700,13 @@ const EnrollByInvite = ({
             amount={
               paymentType === "CPO"
                 ? cpoPayAmount
-                : Math.max(
-                    0,
-                    getSelectedPaymentPrice(enrollmentData.selectedPayment) -
-                      (appliedCouponCode ? couponDiscount : 0),
-                  )
+                : isAutopay && autopayConfig?.TRIAL_DAYS
+                  ? 1 // free trial: only the ₹1 mandate authorization is charged now
+                  : Math.max(
+                      0,
+                      getSelectedPaymentPrice(enrollmentData.selectedPayment) -
+                        (appliedCouponCode ? couponDiscount : 0),
+                    )
             }
             currency={
               paymentType === "CPO"

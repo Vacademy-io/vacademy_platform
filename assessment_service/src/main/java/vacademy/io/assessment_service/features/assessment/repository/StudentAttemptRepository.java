@@ -628,17 +628,22 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             JOIN public.student_attempt sa
                 ON sa.registration_id = aur.id
                 AND sa.id = (
+                    -- Latest ENDED attempt *WITHIN THE REPORT WINDOW*. The window must be applied
+                    -- here, not only in the outer WHERE: this subselect used to pick the learner's
+                    -- latest ENDED attempt across ALL TIME, which the outer date predicate then
+                    -- rejected — so an assessment sat inside the window vanished from the report
+                    -- entirely just because it was retaken after the window closed.
                     SELECT sa_inner.id
                     FROM public.student_attempt sa_inner
                     WHERE sa_inner.registration_id = aur.id
                       AND sa_inner.status = 'ENDED'
+                      AND (CAST(:startDate AS timestamp) IS NULL OR sa_inner.created_at >= CAST(:startDate AS timestamp))
+                      AND (CAST(:endDate   AS timestamp) IS NULL OR sa_inner.created_at <= CAST(:endDate AS timestamp))
                     ORDER BY sa_inner.created_at DESC
                     LIMIT 1
                 )
             WHERE a.status = 'PUBLISHED'
               AND sa.status = 'ENDED'
-              AND (CAST(:startDate AS timestamp) IS NULL OR sa.created_at >= CAST(:startDate AS timestamp))
-              AND (CAST(:endDate   AS timestamp) IS NULL OR sa.created_at <= CAST(:endDate AS timestamp))
             ORDER BY sa.created_at DESC
             """, nativeQuery = true)
     List<StudentAttemptHistoryProjection> findAssessmentHistoryForUserInDateRange(

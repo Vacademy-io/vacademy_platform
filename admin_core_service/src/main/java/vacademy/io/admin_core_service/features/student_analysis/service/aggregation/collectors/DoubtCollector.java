@@ -25,10 +25,18 @@ public class DoubtCollector {
 
     private final DoubtsRepository doubtsRepository;
 
+    /** Upper bound on doubts fetched per report. Exceeding it is logged, never silently swallowed. */
+    private static final int DOUBT_FETCH_CAP = 1000;
+
     public DoubtsAndEngagementSection collect(String userId, String instituteId, LocalDate startDate, LocalDate endDate) {
         try {
-            Date start = java.sql.Date.valueOf(startDate);
-            Date end = java.sql.Date.valueOf(endDate);
+            // doubts.raised_time is a timestamptz, and the query does `raised_time BETWEEN :start AND :end`.
+            // Binding java.sql.Date.valueOf(endDate) sent midnight, so the upper bound was
+            // `endDate 00:00:00` and EVERY doubt raised on the final day of the window was dropped
+            // (for a single-day report, that's all of them). Bind the last instant of the day instead.
+            // java.sql.Timestamp is a java.util.Date, so the shared repository signature is unchanged.
+            Date start = java.sql.Timestamp.valueOf(startDate.atStartOfDay());
+            Date end = java.sql.Timestamp.valueOf(endDate.atTime(23, 59, 59, 999_000_000));
 
             Page<Doubts> page = doubtsRepository.findDoubtsWithFilter(
                     null, null, null, null, null,
@@ -37,9 +45,16 @@ public class DoubtCollector {
                     instituteId,
                     List.of(), false,
                     start, end,
-                    PageRequest.of(0, 1000));
+                    PageRequest.of(0, DOUBT_FETCH_CAP));
 
             List<Doubts> doubts = page.getContent();
+
+            // The query has no ORDER BY, so if the learner ever exceeds the cap we would keep an
+            // arbitrary subset and report it as the whole truth. Say so rather than under-count silently.
+            if (page.getTotalElements() > doubts.size()) {
+                log.warn("[DoubtCollector] userId={} has {} doubts in [{} .. {}] but the fetch cap is {} "
+                        + "— counts are truncated.", userId, page.getTotalElements(), startDate, endDate, DOUBT_FETCH_CAP);
+            }
 
             int questionsAsked = doubts.size();
             int resolved = 0;
@@ -59,9 +74,11 @@ public class DoubtCollector {
                 }
             }
 
-            double avgHours = resolvedWithTime > 0
+            // null, not 0.0, when nothing was resolved with a measurable turnaround — "0 hours"
+            // reads as instant resolution, which is the opposite of "we have no resolution times".
+            Double avgHours = resolvedWithTime > 0
                     ? Math.round((totalResolutionMillis / (double) resolvedWithTime / 3_600_000.0) * 100.0) / 100.0
-                    : 0.0;
+                    : null;
 
             return DoubtsAndEngagementSection.builder()
                     .available(true)

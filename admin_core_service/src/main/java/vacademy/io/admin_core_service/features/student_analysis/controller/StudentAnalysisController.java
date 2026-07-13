@@ -58,6 +58,22 @@ public class StudentAnalysisController {
                                 request.getStartDateIso(), request.getEndDateIso());
 
                 try {
+                        // Reject an inverted/invalid window BEFORE any work starts. Every collector feeds
+                        // these dates straight into `meeting_date BETWEEN :start AND :end`; when start > end
+                        // that predicate is unsatisfiable, so every module finds zero rows and the report
+                        // silently publishes 0% attendance / 0% progress / "At Risk" for a learner whose
+                        // real numbers are fine. Fail loudly instead of producing a confidently wrong report.
+                        String dateError = validateWindow(request.getStartDateIso(), request.getEndDateIso());
+                        if (dateError != null) {
+                                log.warn("[Student-Analysis-API] Rejecting initiate for user {}: {}",
+                                                request.getUserId(), dateError);
+                                return ResponseEntity.badRequest()
+                                                .body(StudentAnalysisInitiateResponse.builder()
+                                                                .status("ERROR")
+                                                                .message(dateError)
+                                                                .build());
+                        }
+
                         // Create process record
                         StudentAnalysisProcess process = new StudentAnalysisProcess(
                                         request.getUserId(),
@@ -106,6 +122,21 @@ public class StudentAnalysisController {
                                                         .message("Failed to initiate analysis: " + e.getMessage())
                                                         .build());
                 }
+        }
+
+        /**
+         * Validates the report window. Returns null when valid, else a human-readable reason.
+         * Both dates are required and must parse as ISO yyyy-MM-dd, and start must not be after end.
+         */
+        private String validateWindow(java.time.LocalDate start, java.time.LocalDate end) {
+                if (start == null || end == null) {
+                        return "Both start_date_iso and end_date_iso are required (ISO yyyy-MM-dd).";
+                }
+                if (start.isAfter(end)) {
+                        return "start_date_iso (" + start + ") is after end_date_iso (" + end
+                                        + "). The report window is empty — no data can be collected for it.";
+                }
+                return null;
         }
 
         @GetMapping("/report/{processId}")

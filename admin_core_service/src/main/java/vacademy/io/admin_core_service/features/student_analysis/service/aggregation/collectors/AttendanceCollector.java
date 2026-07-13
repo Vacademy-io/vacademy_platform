@@ -31,11 +31,29 @@ public class AttendanceCollector {
     public AttendanceSection collect(String userId, String batchId, LocalDate startDate, LocalDate endDate) {
         try {
             List<ScheduleAttendanceProjection> records =
-                    participantRepository.findAttendanceForUser(userId, batchId, startDate, endDate);
+                    participantRepository.findAttendanceForUserAcrossBatches(userId, batchId, startDate, endDate);
 
+            // The report's batchId is whatever batch the admin happened to open the learner from.
+            // Sessions are frequently attached to a *different* package session the learner is also
+            // enrolled in, in which case scoping to that one batch finds nothing and we would report
+            // a flat 0% for a learner who actually attended. Widen to all of the learner's active
+            // batches rather than publish a wrong number.
+            if ((records == null || records.isEmpty()) && batchId != null) {
+                records = participantRepository.findAttendanceForUserAcrossBatches(userId, null, startDate, endDate);
+                if (records != null && !records.isEmpty()) {
+                    log.warn("[AttendanceCollector] userId={} had no sessions under batchId={} but {} across all "
+                            + "active batches — reporting across all batches.", userId, batchId, records.size());
+                }
+            }
+
+            // No sessions found ≠ the learner attended none of them. Reporting 0% here would be a
+            // fabricated measurement: it is indistinguishable from a real 0% and it drags
+            // OverviewBuilder's status down to "At Risk". Mark the section unavailable so the card
+            // renders "No sessions in this period" and the overview simply omits attendance.
             if (records == null || records.isEmpty()) {
-                return AttendanceSection.builder().available(true)
-                        .overallPercentage(0.0).present(0).absent(0).late(0).unmarked(0)
+                log.info("[AttendanceCollector] No sessions found for userId={} batchId={} in [{} .. {}] "
+                        + "— reporting as unavailable rather than 0%.", userId, batchId, startDate, endDate);
+                return AttendanceSection.builder().available(false)
                         .totalSessions(0)
                         .sessions(List.of())
                         .weekly(List.of())

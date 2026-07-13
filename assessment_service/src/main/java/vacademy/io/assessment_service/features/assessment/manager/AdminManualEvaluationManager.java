@@ -373,7 +373,7 @@ public class AdminManualEvaluationManager {
         }
     }
 
-    public ResponseEntity<String> getAttemptData(CustomUserDetails userDetails, String attemptId) {
+    public ResponseEntity<String> getAttemptData(CustomUserDetails userDetails, String attemptId, boolean markEvaluating) {
         try {
             Optional<StudentAttempt> attemptOptional = studentAttemptService.getStudentAttemptById(attemptId);
             if (attemptOptional.isEmpty()) throw new VacademyException("Attempt Not Found");
@@ -390,13 +390,25 @@ public class AdminManualEvaluationManager {
             Map<String, Object> jsonMap = objectMapper.readValue(attemptOptional.get().getAttemptData(), Map.class);
             String fileId = (String) jsonMap.get("fileId");
 
-            attemptOptional.get().setResultStatus(AttemptResultStatusEnum.EVALUATING.name());
-            studentAttemptService.updateStudentAttempt(attemptOptional.get());
+            // This endpoint is also used by view-only screens (submissions tab,
+            // activity log) just to fetch the answer file id, so the EVALUATING
+            // transition must be opted into by the evaluator flow — and it never
+            // downgrades an attempt that has already been evaluated.
+            if (markEvaluating && isAwaitingEvaluation(attemptOptional.get().getResultStatus())) {
+                attemptOptional.get().setResultStatus(AttemptResultStatusEnum.EVALUATING.name());
+                studentAttemptService.updateStudentAttempt(attemptOptional.get());
+            }
 
             return ResponseEntity.ok(fileId);
         } catch (Exception e) {
             throw new VacademyException("Failed to get Attempt: " + e.getMessage());
         }
+    }
+
+    private boolean isAwaitingEvaluation(String resultStatus) {
+        return Objects.isNull(resultStatus)
+                || AttemptResultStatusEnum.PENDING.name().equals(resultStatus)
+                || AttemptResultStatusEnum.EVALUATING.name().equals(resultStatus);
     }
 
     public ResponseEntity<ManualAttemptResponse> getAssignedAttempt(CustomUserDetails userDetails, ManualAttemptFilter filter, String assessmentId, String instituteId, int pageNo, int pageSize) {

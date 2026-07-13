@@ -23,6 +23,7 @@ import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { INSTITUTE_DETAIL, SELECT_INSTITUTE_SESSION } from "@/constants/urls";
 import { SessionLimitDialog } from "@/components/common/auth/login/components/SessionLimitDialog";
+import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
 import axios from "axios";
 
 import {
@@ -189,8 +190,8 @@ export function InstituteSelection() {
                 }
                 return;
             }
-            // Skip session selection and go directly to dashboard
-            navigate({ to: "/dashboard" });
+            // Skip session selection and go straight to the institute's landing route
+            await navigateAfterLogin(navigate);
         } catch (error) {
             toast.error("Submission failed");
         } finally {

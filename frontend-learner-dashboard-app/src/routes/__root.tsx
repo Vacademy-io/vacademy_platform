@@ -32,6 +32,7 @@ import { TokenKey } from "@/constants/auth/tokens";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { getSubdomain } from "@/helpers/helper";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import { resolvePostLoginRoute } from "@/lib/auth/post-login-redirect";
 import type { StudentUIType } from "@/types/student-display-settings";
 import {
   resolveDomainRouting,
@@ -726,13 +727,20 @@ export const Route = createRootRouteWithContext<{
             instituteId,
           );
 
-          // Honor redirect param (e.g. ?redirect=%2Fdashboard -> /dashboard); default to /dashboard
-          const targetPath =
-            redirectPath &&
+          // Honor redirect param (e.g. ?redirect=%2Fdashboard -> /dashboard);
+          // otherwise land on the institute's configured post-login route.
+          const isSafeRedirectParam =
+            !!redirectPath &&
             redirectPath.startsWith("/") &&
-            !redirectPath.startsWith("//")
-              ? redirectPath
-              : "/dashboard";
+            !redirectPath.startsWith("//");
+          const resolvedPath = await resolvePostLoginRoute({
+            explicitRedirect: isSafeRedirectParam ? redirectPath : null,
+          });
+          // Can't external-redirect from beforeLoad (same rule as the '/' handler
+          // below), so an absolute landing URL falls back to the internal default.
+          const targetPath = /^https?:\/\//.test(resolvedPath)
+            ? "/dashboard"
+            : resolvedPath;
 
           console.log(
             "[__root] Auto-login complete, redirecting to:",
@@ -845,23 +853,10 @@ export const Route = createRootRouteWithContext<{
       throw redirect({ to: "/login" });
     }
 
-    // If authenticated and directly on /dashboard, honor settings route
-    try {
-      const authenticated = await isAuthenticated();
-      if (authenticated && location.pathname === "/dashboard") {
-        const settings = await getStudentDisplaySettings(false);
-        await getChatbotSettings(true);
-        const route = settings?.postLoginRedirectRoute || "/dashboard";
-        // On '/dashboard'. Settings route: ${route}
-        if (route !== "/dashboard" && !/^https?:\/\//.test(route)) {
-          throw redirect({ to: route as never });
-        }
-      }
-    } catch (error) {
-      // Re-throw redirects so the router can handle them
-      if (error instanceof Response) throw error;
-      // ignore other errors
-    }
+    // NOTE: postLoginRedirectRoute is a *landing* route, applied when a learner
+    // logs in (see the login forms and the '/' redirect above). It must not be
+    // enforced as a standing guard on /dashboard — that made the Dashboard nav
+    // item permanently unreachable for any institute that changed the setting.
 
     // Check authentication for all other routes
     const authenticated = await isAuthenticated();

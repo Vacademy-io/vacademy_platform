@@ -26,6 +26,7 @@ import { useTheme } from "@/providers/theme/theme-provider";
 import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
 type FormValues = z.infer<typeof loginSchema>;
 
 interface UsernameLoginProps {
@@ -226,35 +227,17 @@ export function UsernameLogin({
               return;
             }
 
-            // Determine redirect URL based on type and courseId
-            let redirectUrl = "/dashboard";
-
+            // A learner who logged in from a course page returns to that course;
+            // everyone else lands on the institute's configured landing route.
             if (type === "courseDetailsPage" && courseId) {
-              redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
-            } else if (type === "courseDetailsPage") {
-              redirectUrl = "/study-library/courses";
-            }
-
-            // Redirect in same tab if login originated from course-related pages or if type is courseDetailsPage
-            if (
-              type === "courseDetailsPage" ||
-              (type && type !== "mainLogin")
-            ) {
-              // For course-related pages, redirect to the appropriate study library page
-              if (redirectUrl !== "/dashboard") {
-                navigate({
-                  to: redirectUrl as never,
-                });
-              } else {
-                navigate({
-                  to: "/dashboard",
-                });
-              }
-            } else {
-              // Always navigate to dashboard for page login
               navigate({
-                to: "/dashboard",
+                to: "/study-library/courses/course-details",
+                search: { courseId, selectedTab: "ALL" },
               });
+            } else if (type === "courseDetailsPage") {
+              navigate({ to: "/study-library/courses" });
+            } else {
+              await navigateAfterLogin(navigate);
             }
           }
         } catch (error) {

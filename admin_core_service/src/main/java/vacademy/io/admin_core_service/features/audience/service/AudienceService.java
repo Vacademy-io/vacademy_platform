@@ -524,7 +524,7 @@ public class AudienceService {
                 .sourceId(sourceId)
                 .userId(userId)
                 .parentEmail(dto.getEmail())
-                .parentMobile(dto.getMobileNumber())
+                .parentMobile(truncateForParentMobileColumn(dto.getMobileNumber()))
                 .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
                 .initialScore(audience.getDefaultInitialScore())
                 .build());
@@ -791,7 +791,7 @@ public class AudienceService {
                         .userId(userId) // Set user_id if created successfully
                         .leadStatusId(resolvedLeadStatusId)
                         .parentEmail(userDTO.getEmail())
-                        .parentMobile(userDTO.getMobileNumber())
+                        .parentMobile(truncateForParentMobileColumn(userDTO.getMobileNumber()))
                         .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
                         .initialScore(audience.getDefaultInitialScore())
                         .build();
@@ -1240,7 +1240,7 @@ public class AudienceService {
                         .sourceId(requestDTO.getSourceId())
                         .userId(userId)
                         .parentEmail(userDTO.getEmail())
-                        .parentMobile(userDTO.getMobileNumber())
+                        .parentMobile(truncateForParentMobileColumn(userDTO.getMobileNumber()))
                         .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
                         .initialScore(audience.getDefaultInitialScore())
                         .build();
@@ -3478,7 +3478,7 @@ public class AudienceService {
                 .sourceId(formProvider + "_WEBHOOK")
                 .userId(userId)
                 .parentEmail(processedData.getEmail())
-                .parentMobile(processedData.getPhone())
+                .parentMobile(truncateForParentMobileColumn(processedData.getPhone()))
                 .workflowActivateDayAt(workflowActivateDayAt)
                 .initialScore(audience.getDefaultInitialScore())
                 .build();
@@ -4272,6 +4272,16 @@ public class AudienceService {
                 .isParent(existing.getIsParent())
                 .linkedParentId(existing.getLinkedParentId())
                 .build();
+    }
+
+    /**
+     * audience_response.parent_mobile is VARCHAR(20) — a raw, un-normalized phone
+     * string (extra formatting/text from a form/CSV) could exceed that and fail the
+     * insert. Truncate defensively rather than let a malformed value drop the lead.
+     */
+    private String truncateForParentMobileColumn(String mobile) {
+        if (mobile == null) return null;
+        return mobile.length() > 20 ? mobile.substring(0, 20) : mobile;
     }
 
     /**

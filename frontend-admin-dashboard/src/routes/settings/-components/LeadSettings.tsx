@@ -71,7 +71,9 @@ const fetchLeadSettings = async (): Promise<LeadSettingsData> => {
         url: GET_INSITITUTE_SETTINGS,
         params: { instituteId, settingKey: SETTING_KEY },
     });
-    const saved = response.data?.data?.[SETTING_KEY]?.data as Partial<LeadSettingsData> | undefined;
+    // GET returns the SettingDto itself ({key, name, data}) — response.data IS
+    // the SettingDto, so its content is one level down at response.data.data.
+    const saved = response.data?.data as Partial<LeadSettingsData> | undefined;
     if (!saved) return DEFAULT_LEAD_SETTINGS;
     return {
         ...DEFAULT_LEAD_SETTINGS,

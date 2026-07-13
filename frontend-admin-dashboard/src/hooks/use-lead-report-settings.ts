@@ -86,7 +86,13 @@ export async function fetchLeadSettingRawData(): Promise<Record<string, unknown>
     const response = await authenticatedAxiosInstance.get(GET_INSITITUTE_SETTINGS, {
         params: { instituteId, settingKey: SETTING_KEY },
     });
-    return (response.data?.data?.[SETTING_KEY]?.data ?? {}) as Record<string, unknown>;
+    // GET returns the SettingDto itself ({key, name, data}), NOT a map keyed by
+    // settingKey — response.data IS the SettingDto, so its content is one level
+    // down at response.data.data (matches the working precedent in
+    // services/user-identifier-setting.ts: `response.data?.data`). An extra
+    // `?.[SETTING_KEY]` here always resolved to undefined, so every read
+    // silently fell back to {} regardless of what was actually saved.
+    return (response.data?.data ?? {}) as Record<string, unknown>;
 }
 
 function withDefaults(subtree: LeadReportSettingsSubtree | undefined): LeadReportSettings {

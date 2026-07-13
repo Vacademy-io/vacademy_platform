@@ -10,6 +10,9 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Per-institute lead deduplication settings, read from the {@code LEAD_SETTING}
@@ -19,7 +22,8 @@ import java.time.Duration;
  * institute.setting → setting → LEAD_SETTING → data → dedup → {
  *   "enabled": false,
  *   "field": "EMAIL" | "PHONE",
- *   "scope": "CAMPAIGN" | "INSTITUTE"
+ *   "scope": "CAMPAIGN" | "SELECTED" | "INSTITUTE",
+ *   "audienceIds": ["..."]   // only meaningful when scope = SELECTED
  * }
  * </pre>
  *
@@ -35,12 +39,18 @@ public class LeadDedupSettingService {
 
     public enum DedupField { EMAIL, PHONE }
 
-    public enum DedupScope { CAMPAIGN, INSTITUTE }
+    /**
+     * CAMPAIGN — only the lead list being submitted to.
+     * SELECTED — a specific admin-chosen set of lead lists ({@code audienceIds}).
+     * INSTITUTE — every lead list in the institute.
+     */
+    public enum DedupScope { CAMPAIGN, SELECTED, INSTITUTE }
 
-    public record DedupSettings(boolean enabled, DedupField field, DedupScope scope) {
+    public record DedupSettings(boolean enabled, DedupField field, DedupScope scope, List<String> audienceIds) {
     }
 
-    public static final DedupSettings DEFAULTS = new DedupSettings(false, DedupField.EMAIL, DedupScope.CAMPAIGN);
+    public static final DedupSettings DEFAULTS = new DedupSettings(
+            false, DedupField.EMAIL, DedupScope.CAMPAIGN, Collections.emptyList());
 
     private final InstituteRepository instituteRepository;
     private final ObjectMapper objectMapper;
@@ -70,8 +80,9 @@ public class LeadDedupSettingService {
             boolean enabled = dedup.path("enabled").asBoolean(false);
             DedupField field = parseField(dedup.path("field"), instituteId);
             DedupScope scope = parseScope(dedup.path("scope"), instituteId);
+            List<String> audienceIds = parseAudienceIds(dedup.path("audienceIds"));
 
-            return new DedupSettings(enabled, field, scope);
+            return new DedupSettings(enabled, field, scope, audienceIds);
         } catch (Exception e) {
             log.warn("Failed to read lead dedup settings for institute {} — using defaults: {}",
                     instituteId, e.getMessage());
@@ -99,5 +110,16 @@ public class LeadDedupSettingService {
                     node.asText(), instituteId, DEFAULTS.scope());
             return DEFAULTS.scope();
         }
+    }
+
+    private List<String> parseAudienceIds(JsonNode node) {
+        if (!node.isArray()) return Collections.emptyList();
+        List<String> ids = new ArrayList<>();
+        for (JsonNode item : node) {
+            if (item.isTextual() && !item.asText().isBlank()) {
+                ids.add(item.asText().trim());
+            }
+        }
+        return ids;
     }
 }

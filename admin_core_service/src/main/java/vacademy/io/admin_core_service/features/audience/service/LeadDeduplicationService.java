@@ -30,6 +30,9 @@ public class LeadDeduplicationService {
     @Autowired
     private TimelineEventService timelineEventService;
 
+    @Autowired
+    private LeadDedupSettingService leadDedupSettingService;
+
     /**
      * Generate a dedupe key from email and phone.
      * Normalizes: lowercase email, strip non-digit chars from phone.
@@ -94,6 +97,54 @@ public class LeadDeduplicationService {
 
         logger.info("Marked response as duplicate of primary={}, source={}",
                 primaryResponse.getId(), sourceType);
+    }
+
+    /**
+     * Institute-configurable hard-reject dedup check (LEAD_SETTING.data.dedup).
+     * Independent of {@link #generateDedupeKey} / {@link #findDuplicate} / {@link #markDuplicate},
+     * which remain the enquiry flow's soft-merge mechanism used when this setting is disabled.
+     *
+     * @return a user-facing rejection message if a matching, non-duplicate, non-opted-out
+     *         lead already exists per the institute's configured field+scope; empty if the
+     *         setting is disabled, the relevant field is blank, or no match was found.
+     */
+    public Optional<String> checkForRejection(String instituteId, String audienceId, String email, String phone) {
+        LeadDedupSettingService.DedupSettings settings = leadDedupSettingService.get(instituteId);
+        if (!settings.enabled()) return Optional.empty();
+
+        boolean instituteWide = settings.scope() == LeadDedupSettingService.DedupScope.INSTITUTE;
+        String scopeLabel = instituteWide ? "in this institute" : "in this lead list";
+
+        if (settings.field() == LeadDedupSettingService.DedupField.PHONE) {
+            String last10 = lastNDigits(phone, 10);
+            if (last10 == null) return Optional.empty();
+            boolean exists = instituteWide
+                    ? audienceResponseRepository.existsByInstituteIdAndPhoneLast10(instituteId, last10)
+                    : audienceResponseRepository.existsByAudienceIdAndPhoneLast10(audienceId, last10);
+            return exists
+                    ? Optional.of("A lead with this phone number already exists " + scopeLabel + ".")
+                    : Optional.empty();
+        }
+
+        String normalizedEmail = (email != null) ? email.trim() : "";
+        if (normalizedEmail.isEmpty()) return Optional.empty();
+        boolean exists = instituteWide
+                ? audienceResponseRepository.existsByInstituteIdAndParentEmailIgnoreCase(instituteId, normalizedEmail)
+                : audienceResponseRepository.existsByAudienceIdAndParentEmailIgnoreCase(audienceId, normalizedEmail);
+        return exists
+                ? Optional.of("A lead with this email already exists " + scopeLabel + ".")
+                : Optional.empty();
+    }
+
+    /**
+     * Strip non-digits and return the last n digits (tolerates country-code prefixes),
+     * or null if there aren't enough digits to compare.
+     */
+    private String lastNDigits(String phone, int n) {
+        if (phone == null) return null;
+        String digits = phone.replaceAll("[^0-9]", "");
+        if (digits.length() < n) return null;
+        return digits.substring(digits.length() - n);
     }
 
     /**

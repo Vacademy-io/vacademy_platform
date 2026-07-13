@@ -2654,13 +2654,32 @@ const EnrollByInvite = ({
                 onChange={(e) => setAutopayConsent(e.target.checked)}
               />
               <span>
-                I agree to auto-renewal:{" "}
-                <span className="font-semibold">
-                  {enrollmentData.selectedPayment?.currency || "INR"}{" "}
-                  {getSelectedPaymentPrice(enrollmentData.selectedPayment)}
-                </span>{" "}
-                will be charged to my saved payment method each billing period. I
-                can cancel anytime from my profile.
+                {autopayConfig?.TRIAL_DAYS ? (
+                  <>
+                    I agree: a <span className="font-semibold">₹1</span>{" "}
+                    authorization today starts my{" "}
+                    <span className="font-semibold">
+                      {autopayConfig.TRIAL_DAYS}-day free trial
+                    </span>
+                    , then{" "}
+                    <span className="font-semibold">
+                      {enrollmentData.selectedPayment?.currency || "INR"}{" "}
+                      {getSelectedPaymentPrice(enrollmentData.selectedPayment)}
+                    </span>{" "}
+                    will be charged to my saved payment method each billing
+                    period. I can cancel anytime from my profile.
+                  </>
+                ) : (
+                  <>
+                    I agree to auto-renewal:{" "}
+                    <span className="font-semibold">
+                      {enrollmentData.selectedPayment?.currency || "INR"}{" "}
+                      {getSelectedPaymentPrice(enrollmentData.selectedPayment)}
+                    </span>{" "}
+                    will be charged to my saved payment method each billing
+                    period. I can cancel anytime from my profile.
+                  </>
+                )}
               </span>
             </label>
           )}
@@ -2681,11 +2700,13 @@ const EnrollByInvite = ({
             amount={
               paymentType === "CPO"
                 ? cpoPayAmount
-                : Math.max(
-                    0,
-                    getSelectedPaymentPrice(enrollmentData.selectedPayment) -
-                      (appliedCouponCode ? couponDiscount : 0),
-                  )
+                : isAutopay && autopayConfig?.TRIAL_DAYS
+                  ? 1 // free trial: only the ₹1 mandate authorization is charged now
+                  : Math.max(
+                      0,
+                      getSelectedPaymentPrice(enrollmentData.selectedPayment) -
+                        (appliedCouponCode ? couponDiscount : 0),
+                    )
             }
             currency={
               paymentType === "CPO"

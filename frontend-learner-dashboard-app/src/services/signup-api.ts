@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Preferences } from "@capacitor/preferences";
 import { getTokenDecodedData } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
+import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
 // import type { NavigateFunction } from "@tanstack/react-router";
 type NavigateFunction = (options: { to: string }) => void;
 
@@ -108,8 +109,8 @@ export const handlePostSignupAuth = async (
     const instituteDetails = await getInstituteDetails(instituteId);
     localStorage.setItem("InstituteDetails", JSON.stringify(instituteDetails));
 
-    // Navigate to dashboard
-    navigate({ to: "/dashboard" });
+    // Land on the institute's configured post-login route
+    await navigateAfterLogin(navigate);
   } catch (error) {
     // Fallback: redirect to login page
     navigate({ to: "/login" });

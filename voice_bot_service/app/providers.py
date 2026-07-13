@@ -14,16 +14,18 @@ from pipecat.services.sarvam.tts import SarvamTTSService
 from .config import get_settings
 
 
-def build_stt(sample_rate: int):
+def build_stt(sample_rate: int, language: str | None = None):
     s = get_settings()
-    # Optional language pin (SARVAM_STT_LANGUAGE, e.g. "hi-IN"); blank ⇒ auto-detect,
-    # which handles code-switched Hindi+English best. Guarded so a bad value can't crash
-    # startup — it just falls back to auto.
+    # Pin STT to the agent's configured language (BCP-47, e.g. "hi-IN"), falling back to
+    # the SARVAM_STT_LANGUAGE env default. A pin matters: auto-detect drifts a Hindi/
+    # Hinglish caller into a neighbouring Indic language (Punjabi/Marathi) and the call
+    # follows it. Guarded so a bad value can't crash startup — it just falls back to auto.
+    tag = language or s.sarvam_stt_language
     params = None
-    if s.sarvam_stt_language:
+    if tag:
         try:
             from pipecat.transcriptions.language import Language
-            params = SarvamSTTService.InputParams(language=Language(s.sarvam_stt_language))
+            params = SarvamSTTService.InputParams(language=Language(tag))
         except Exception:
             params = None
     return SarvamSTTService(

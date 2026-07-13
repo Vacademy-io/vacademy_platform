@@ -226,24 +226,6 @@ export function DashboardComponent() {
     return `Good ${period}, ${firstName.charAt(0).toUpperCase()}${firstName.slice(1)}`;
   }, [username]);
 
-  // If settings specify a different post-login route, redirect away from dashboard
-  useEffect(() => {
-    getStudentDisplaySettings(false)
-      .then((s) => {
-        const route = s?.postLoginRedirectRoute || "/dashboard";
-        if (
-          route !== "/dashboard" &&
-          !/^https?:\/\//.test(route) &&
-          route !== window.location.pathname
-        ) {
-          // prevent redirect loop and ignore external URLs
-          navigate({ to: route as never, replace: true });
-        }
-      })
-      .catch(() => { });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // Update Zustand store when React Query data changes
   useEffect(() => {
     if (studyLibraryData) {

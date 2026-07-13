@@ -38,6 +38,7 @@ import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { ENABLE_OTP_FOR_LOGIN_SIGNUP } from "@/constants/feature-flags";
 import { SessionLimitDialog } from "@/components/common/auth/login/components/SessionLimitDialog";
+import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
 
 const emailSchema = z.object({
   email: z.string().email({ message: "Invalid email address" }),
@@ -286,35 +287,17 @@ export function EmailLogin({
                   return;
                 }
 
-                // Determine redirect URL based on type and courseId
-                let redirectUrl = "/dashboard";
-
+                // A learner who logged in from a course page returns to that
+                // course; everyone else lands on the configured landing route.
                 if (type === "courseDetailsPage" && courseId) {
-                  redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
-                } else if (type === "courseDetailsPage") {
-                  redirectUrl = "/study-library/courses";
-                }
-
-                // Redirect in same tab if login originated from course-related pages or if type is courseDetailsPage
-                if (
-                  type === "courseDetailsPage" ||
-                  (type && type !== "mainLogin")
-                ) {
-                  // For course-related pages, redirect to the appropriate study library page
-                  if (redirectUrl !== "/dashboard") {
-                    navigate({
-                      to: redirectUrl as never,
-                    });
-                  } else {
-                    navigate({
-                      to: "/dashboard",
-                    });
-                  }
-                } else {
-                  // Always navigate to dashboard for page login
                   navigate({
-                    to: "/dashboard",
+                    to: "/study-library/courses/course-details",
+                    search: { courseId, selectedTab: "ALL" },
                   });
+                } else if (type === "courseDetailsPage") {
+                  navigate({ to: "/study-library/courses" });
+                } else {
+                  await navigateAfterLogin(navigate);
                 }
               } else {
                 // Unexpected login status

@@ -20,7 +20,7 @@ import { Preferences } from "@capacitor/preferences";
 import { UPDATE_USER_DETAILS } from "@/constants/urls";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { removeTokensAndLogout } from "@/lib/auth/sessionUtility";
-import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
 
 // Validation schemas
 const accountDetailsSchema = z
@@ -109,12 +109,11 @@ export default function AccountDetailsEdit({
 
   const handleClose = async () => {
     setRedirecting(true);
-    const settings = await getStudentDisplaySettings(true);
-    const redirectRoute = settings?.postLoginRedirectRoute || "/dashboard";
     if (onClose) {
       onClose();
     } else {
-      navigate({ to: redirectRoute });
+      // Standalone (post-login) screen: send the learner on to the landing route.
+      await navigateAfterLogin(navigate);
     }
     setRedirecting(false);
   };

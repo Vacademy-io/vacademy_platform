@@ -92,8 +92,12 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
     const html = (versionIndex >= 0 ? versions[versionIndex] : '') ?? '';
     const hasContent = !!html.trim();
 
-    // Flat per-generation credit cost (read from the cached tool-pricing rates).
-    const { credits: costCredits } = useToolCostPreview('html_document', {});
+    // Per-generation credit cost (read live from cached tool-pricing rates).
+    // Create and edit are priced differently.
+    const { credits: costCredits } = useToolCostPreview(
+        hasContent ? 'html_document_edit' : 'html_document',
+        {}
+    );
 
     const commit = (next: string) => onHtmlChange(slideIdRef.current, next);
 
@@ -270,12 +274,21 @@ export function HtmlDocAiAuthor({ slide, isLearnerView = false, onHtmlChange }: 
                             </MyButton>
                             {isUploading && <Spinner className="size-4 animate-spin text-primary-500" />}
                         </div>
+                        {pdf && (
+                            <p className="text-caption text-neutral-400">
+                                Grounding in a PDF adds a per-page conversion charge on top of the
+                                generation cost.
+                            </p>
+                        )}
 
                         {/* Uploaded material chips */}
                         {(images.length > 0 || pdf) && (
                             <div className="flex flex-wrap gap-2">
                                 {pdf && (
-                                    <span className="flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-caption text-neutral-600">
+                                    <span
+                                        className="flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-caption text-neutral-600"
+                                        title="Grounding in a PDF adds a per-page conversion charge"
+                                    >
                                         <FilePdf className="size-3.5 text-danger-500" />
                                         {pdf.name}
                                         <button type="button" onClick={() => setPdf(null)}>

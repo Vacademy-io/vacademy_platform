@@ -120,10 +120,10 @@ export const AssessmentCard = ({
   };
 
   const handleAction = async () => {
-    // If attempting to resume
-    if (
-      ["LIVE", "PREVIEW"].includes(assessmentInfo?.recent_attempt_status ?? "")
-    ) {
+    // If attempting to resume. A PREVIEW attempt was never actually started
+    // (start was never called), so the backend's restart endpoint rejects it —
+    // only a LIVE attempt is resumable.
+    if (assessmentInfo?.recent_attempt_status === "LIVE") {
       setShowRestartDialog(true);
       return;
     }
@@ -199,9 +199,7 @@ export const AssessmentCard = ({
     }
   };
 
-  const isResume = ["LIVE", "PREVIEW"].includes(
-    assessmentInfo?.recent_attempt_status ?? "",
-  );
+  const isResume = assessmentInfo?.recent_attempt_status === "LIVE";
 
   const attemptsExhausted = (() => {
     if (isResume) return false;

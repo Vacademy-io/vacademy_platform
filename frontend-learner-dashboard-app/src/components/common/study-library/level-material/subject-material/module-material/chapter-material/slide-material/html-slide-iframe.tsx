@@ -28,6 +28,24 @@ const RESIZE_SCRIPT = `<script>(function(){
     var a=e.target&&e.target.closest?e.target.closest('a[href]'):null;
     if(a){a.setAttribute('target','_blank');a.setAttribute('rel','noopener');}
   },true);
+  // Full-height render with NO internal scroll → scroll-reveal entrance
+  // animations (opacity:0 revealed on scroll) never fire and their content
+  // stays invisible. Snap any faded-in-place element to visible; leaves
+  // display:none / visibility:hidden content (quiz answers, tabs) alone.
+  function revealAll(){try{
+    var els=document.querySelectorAll('body *');
+    for(var i=0;i<els.length;i++){var el=els[i];
+      if(el.offsetParent===null)continue;
+      var cs=getComputedStyle(el);
+      if(cs.visibility==='hidden')continue;
+      if(parseFloat(cs.opacity)<0.05 && cs.transition && cs.transition.indexOf('opacity')>-1){
+        el.style.setProperty('opacity','1','important');
+        el.style.setProperty('transform','none','important');
+      }
+    }
+    post();
+  }catch(e){}}
+  setTimeout(revealAll,700);setTimeout(revealAll,1800);
 })();</script>`;
 
 function withResizeScript(html: string): string {

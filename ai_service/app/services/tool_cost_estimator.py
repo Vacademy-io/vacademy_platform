@@ -119,14 +119,32 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
-    # One HTML Document slide generation OR conversational edit = one large
-    # creative-HTML LLM call (pro model, up to ~32k output tokens). Flat per
-    # call; charged as max(flat, actual token cost). Owner chose flat pricing.
-    "html_document": {
+    # HTML Document slide AI authoring — one large creative-HTML LLM call
+    # (claude-sonnet-5, up to ~32k output tokens), flat per call, charged as
+    # max(flat, actual). A full CREATE costs more than a conversational EDIT
+    # (which reuses the existing page), so they are priced separately.
+    "html_document": {          # first generation (create)
+        "request_type": "content",
+        "flat_base_credits": Decimal("15"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    "html_document_edit": {     # conversational edit of an existing page
         "request_type": "content",
         "flat_base_credits": Decimal("3"),
         "per_unit_credits": Decimal("0"),
         "unit_field": "flat",
+        "params": {},
+    },
+    # Per-page surcharge for grounding an HTML doc in an uploaded PDF (MathPix
+    # conversion cost). Charged as num_pages × per_unit, on top of the
+    # generation charge — deters dumping very large PDFs.
+    "html_document_pdf": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("0.5"),
+        "unit_field": "pages",
         "params": {},
     },
 }
@@ -281,6 +299,16 @@ class ToolCostEstimator:
                 "component": "length",
                 "detail": f"{chars} chars → {units} unit(s) × {per_unit}",
                 "credits": float(char_credits),
+            })
+
+        elif unit_field == "pages":
+            pages = max(0, int(params.get("num_pages") or 0))
+            page_credits = Decimal(pages) * per_unit
+            total += page_credits
+            breakdown.append({
+                "component": "pdf_pages",
+                "detail": f"{pages} page(s) × {per_unit}",
+                "credits": float(page_credits),
             })
 
         elif unit_field == "flat":

@@ -33,6 +33,7 @@ import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { SessionLimitDialog } from "@/components/common/auth/login/components/SessionLimitDialog";
 import { phoneSchema as phoneValidationSchema } from "@/lib/phone-validation";
+import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
 
 const phoneSchema = z.object({
     phone: phoneValidationSchema({ required: true, label: "Phone number" }),
@@ -224,24 +225,18 @@ export function PhoneLoginForm({
                                 return;
                             }
 
-                            let redirectUrl = "/dashboard";
+                            // A learner who logged in from a course page returns
+                            // to that course; everyone else lands on the
+                            // institute's configured landing route.
                             if (type === "courseDetailsPage" && courseId) {
-                                redirectUrl = `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`;
+                                navigate({
+                                    to: "/study-library/courses/course-details",
+                                    search: { courseId, selectedTab: "ALL" },
+                                });
                             } else if (type === "courseDetailsPage") {
-                                redirectUrl = "/study-library/courses";
-                            }
-
-                            if (
-                                type === "courseDetailsPage" ||
-                                (type && type !== "mainLogin")
-                            ) {
-                                if (redirectUrl !== "/dashboard") {
-                                    navigate({ to: redirectUrl as never });
-                                } else {
-                                    navigate({ to: "/dashboard" });
-                                }
+                                navigate({ to: "/study-library/courses" });
                             } else {
-                                navigate({ to: "/dashboard" });
+                                await navigateAfterLogin(navigate);
                             }
                         } catch {
                             toast.error("Failed to fetch details");

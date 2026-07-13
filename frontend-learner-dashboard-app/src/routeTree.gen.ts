@@ -40,6 +40,7 @@ import { Route as AuthTransferIndexRouteImport } from './routes/auth-transfer/in
 import { Route as AudienceResponseIndexRouteImport } from './routes/audience-response/index'
 import { Route as AssessmentIndexRouteImport } from './routes/assessment/index'
 import { Route as AiSettingsIndexRouteImport } from './routes/ai-settings/index'
+import { Route as AccountDeletionIndexRouteImport } from './routes/account-deletion/index'
 import { Route as TagNameIndexRouteImport } from './routes/$tagName/index'
 import { Route as SubOrgRegistrationPaymentResultRouteImport } from './routes/sub-org-registration/payment-result'
 import { Route as ParentDocumentsRouteImport } from './routes/parent/documents'
@@ -252,6 +253,11 @@ const AssessmentIndexRoute = AssessmentIndexRouteImport.update({
 const AiSettingsIndexRoute = AiSettingsIndexRouteImport.update({
   id: '/ai-settings/',
   path: '/ai-settings/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountDeletionIndexRoute = AccountDeletionIndexRouteImport.update({
+  id: '/account-deletion/',
+  path: '/account-deletion/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TagNameIndexRoute = TagNameIndexRouteImport.update({
@@ -584,6 +590,7 @@ export interface FileRoutesByFullPath {
   '/parent/documents': typeof ParentDocumentsRouteWithChildren
   '/sub-org-registration/payment-result': typeof SubOrgRegistrationPaymentResultRoute
   '/$tagName': typeof TagNameIndexRoute
+  '/account-deletion': typeof AccountDeletionIndexRoute
   '/ai-settings': typeof AiSettingsIndexRoute
   '/assessment': typeof AssessmentIndexRoute
   '/audience-response': typeof AudienceResponseIndexRoute
@@ -673,6 +680,7 @@ export interface FileRoutesByTo {
   '/assignment/$slideId': typeof AssignmentSlideIdRoute
   '/sub-org-registration/payment-result': typeof SubOrgRegistrationPaymentResultRoute
   '/$tagName': typeof TagNameIndexRoute
+  '/account-deletion': typeof AccountDeletionIndexRoute
   '/ai-settings': typeof AiSettingsIndexRoute
   '/assessment': typeof AssessmentIndexRoute
   '/audience-response': typeof AudienceResponseIndexRoute
@@ -764,6 +772,7 @@ export interface FileRoutesById {
   '/parent/documents': typeof ParentDocumentsRouteWithChildren
   '/sub-org-registration/payment-result': typeof SubOrgRegistrationPaymentResultRoute
   '/$tagName/': typeof TagNameIndexRoute
+  '/account-deletion/': typeof AccountDeletionIndexRoute
   '/ai-settings/': typeof AiSettingsIndexRoute
   '/assessment/': typeof AssessmentIndexRoute
   '/audience-response/': typeof AudienceResponseIndexRoute
@@ -856,6 +865,7 @@ export interface FileRouteTypes {
     | '/parent/documents'
     | '/sub-org-registration/payment-result'
     | '/$tagName'
+    | '/account-deletion'
     | '/ai-settings'
     | '/assessment'
     | '/audience-response'
@@ -945,6 +955,7 @@ export interface FileRouteTypes {
     | '/assignment/$slideId'
     | '/sub-org-registration/payment-result'
     | '/$tagName'
+    | '/account-deletion'
     | '/ai-settings'
     | '/assessment'
     | '/audience-response'
@@ -1035,6 +1046,7 @@ export interface FileRouteTypes {
     | '/parent/documents'
     | '/sub-org-registration/payment-result'
     | '/$tagName/'
+    | '/account-deletion/'
     | '/ai-settings/'
     | '/assessment/'
     | '/audience-response/'
@@ -1126,6 +1138,7 @@ export interface RootRouteChildren {
   ParentDocumentsRoute: typeof ParentDocumentsRouteWithChildren
   SubOrgRegistrationPaymentResultRoute: typeof SubOrgRegistrationPaymentResultRoute
   TagNameIndexRoute: typeof TagNameIndexRoute
+  AccountDeletionIndexRoute: typeof AccountDeletionIndexRoute
   AiSettingsIndexRoute: typeof AiSettingsIndexRoute
   AssessmentIndexRoute: typeof AssessmentIndexRoute
   AudienceResponseIndexRoute: typeof AudienceResponseIndexRoute
@@ -1427,6 +1440,13 @@ declare module '@tanstack/react-router' {
       path: '/ai-settings'
       fullPath: '/ai-settings'
       preLoaderRoute: typeof AiSettingsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account-deletion/': {
+      id: '/account-deletion/'
+      path: '/account-deletion'
+      fullPath: '/account-deletion'
+      preLoaderRoute: typeof AccountDeletionIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$tagName/': {
@@ -1849,6 +1869,7 @@ const rootRouteChildren: RootRouteChildren = {
   ParentDocumentsRoute: ParentDocumentsRouteWithChildren,
   SubOrgRegistrationPaymentResultRoute: SubOrgRegistrationPaymentResultRoute,
   TagNameIndexRoute: TagNameIndexRoute,
+  AccountDeletionIndexRoute: AccountDeletionIndexRoute,
   AiSettingsIndexRoute: AiSettingsIndexRoute,
   AssessmentIndexRoute: AssessmentIndexRoute,
   AudienceResponseIndexRoute: AudienceResponseIndexRoute,

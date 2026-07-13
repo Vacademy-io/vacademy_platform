@@ -28,6 +28,7 @@ import {
 import { LOGIN_OTP, REQUEST_OTP } from "@/constants/urls";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
+import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
 
 const emailSchema = z.object({
     email: z.string().email({ message: "Invalid email address" }),
@@ -253,11 +254,9 @@ export function ModalEmailLogin({
                                     }
                                 }
                             } else {
-                                // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                                // Only navigate away if this is NOT a modal login (i.e., main login page)
                                 if (!type || type === "mainLogin") {
-                                    navigate({
-                                        to: "/dashboard",
-                                    });
+                                    await navigateAfterLogin(navigate);
                                 } else {
                                     // Call onLoginSuccess callback for modal login
                                     if (onLoginSuccess) {
@@ -315,11 +314,9 @@ export function ModalEmailLogin({
                                     }
                                 }
                             } else {
-                                // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                                // Only navigate away if this is NOT a modal login (i.e., main login page)
                                 if (!type || type === "mainLogin") {
-                                    navigate({
-                                        to: "/dashboard",
-                                    });
+                                    await navigateAfterLogin(navigate);
                                 } else {
                                     // Call onLoginSuccess callback for modal login
                                     if (onLoginSuccess) {
@@ -378,11 +375,9 @@ export function ModalEmailLogin({
                                         }
                                     }
                                 } else {
-                                    // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                                    // Only navigate away if this is NOT a modal login (i.e., main login page)
                                     if (!type || type === "mainLogin") {
-                                        navigate({
-                                            to: "/dashboard",
-                                        });
+                                        await navigateAfterLogin(navigate);
                                     } else {
                                         // Call onLoginSuccess callback for modal login
                                         if (onLoginSuccess) {

@@ -129,6 +129,14 @@ android {
 			resValue "string", "app_name", "Elevate Education"
 			manifestPlaceholders.DEEP_LINK_HOST = "student.elevateeducation.in"
 		}
+		hcca {
+			dimension "client"
+			applicationId "com.hcca.app"
+			versionCode 1
+			versionName "1.0.0"
+			resValue "string", "app_name", "HCCA Learning"
+			manifestPlaceholders.DEEP_LINK_HOST = "learn.hcca.in"
+		}
 	}
 }
 

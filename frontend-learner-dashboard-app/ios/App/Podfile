@@ -51,11 +51,19 @@ target 'Shiksha Nation' do
   capacitor_pods
 end
 
-target 'Chanakaya IAS Academy' do
+target 'Chanakya IAS Academy' do
   capacitor_pods
 end
 
 target 'Edzumo' do
+  capacitor_pods
+end
+
+target 'Sadbhavana' do
+  capacitor_pods
+end
+
+target 'HCCA Learning' do
   capacitor_pods
 end
 

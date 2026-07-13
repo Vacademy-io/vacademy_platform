@@ -4,12 +4,33 @@
 <dict>
 	<key>API_KEY</key>
 	<string>AIzaSyDi599yoVEAeklFdYG21ZteLa00csKRXKU</string>
+	<key>GCM_SENDER_ID</key>
+	<string>117550803134</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>io.shikshanation.learner</string>
+	<string>io.hcca.app</string>
+	<key>PROJECT_ID</key>
+	<string>vacademy-app</string>
+	<key>STORAGE_BUCKET</key>
+	<string>vacademy-app.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:117550803134:ios:7d0fe731eebbb6f4bdd6ef</string>
+	<!-- App Info.plist keys -->
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>Shiksha Nation</string>
+	<string>HCCA Learning</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -24,20 +45,6 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>GCM_SENDER_ID</key>
-	<string>117550803134</string>
-	<key>GOOGLE_APP_ID</key>
-	<string>1:117550803134:ios:c717ee222b3e9ad0bdd6ef</string>
-	<key>IS_ADS_ENABLED</key>
-	<false/>
-	<key>IS_ANALYTICS_ENABLED</key>
-	<false/>
-	<key>IS_APPINVITE_ENABLED</key>
-	<true/>
-	<key>IS_GCM_ENABLED</key>
-	<true/>
-	<key>IS_SIGNIN_ENABLED</key>
-	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
@@ -50,18 +57,12 @@
 	<string>We need access to add photos to your library so you can save course content and assignment materials.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>We need access to your photos so you can select and upload images for your profile and course assignments.</string>
-	<key>PLIST_VERSION</key>
-	<string>1</string>
-	<key>PROJECT_ID</key>
-	<string>vacademy-app</string>
-	<key>STORAGE_BUCKET</key>
-	<string>vacademy-app.firebasestorage.app</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
-	<string>LaunchScreenSN</string>
+	<string>LaunchScreenHCCA</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>

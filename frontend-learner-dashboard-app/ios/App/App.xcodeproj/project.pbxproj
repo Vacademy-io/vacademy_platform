@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00811935E04FA62B1E99A99D /* LaunchScreenSadbhavana.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 8F29AA281E525DB1CE0EA129 /* LaunchScreenSadbhavana.storyboard */; };
 		0E0D4AE92FC2BDC200E29BEC /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		0E0D4AEE2FC2BDC200E29BEC /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		0E0D4AEF2FC2BDC200E29BEC /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
@@ -59,6 +60,9 @@
 		0EFC07AD2F0BAA7600B3FC57 /* ithinkersByFiveSep-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */; };
 		0EFC07AF2F0BAAB200B3FC57 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0E5CB2502F0ABC0800089DAC /* GoogleService-Info.plist */; };
 		0FE74A35E7EAE82DDF3B8419 /* Pods_SSDC_Horizon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */; };
+		14E8D273FC7A03FCCF0B9EEE /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		159478D4A77785769B1BB798 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
+		193FC5F69363BA2D76BD043E /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		1AAA00012F25A00000000001 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		1AAA00022F25A00000000002 /* EnarkGoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 1AAA00102F25A00000000010 /* EnarkGoogleService-Info.plist */; };
 		1AAA00032F25A00000000003 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
@@ -70,37 +74,53 @@
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		46A7B0ECA8980A28B0BD1018 /* Pods_Uplift_Teacher_Training.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 885807F2BC651D65FD08FA0D /* Pods_Uplift_Teacher_Training.framework */; };
 		475FB3FCE38A042F08A9CFB1 /* Pods_Uplift_Teacher_Training.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 885807F2BC651D65FD08FA0D /* Pods_Uplift_Teacher_Training.framework */; };
+		49FAB1FA9EFE4D4829783A68 /* LaunchScreenSN.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = E6AE65E0752EB1ABEE21DC84 /* LaunchScreenSN.storyboard */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		504EC30D1FED79650016851F /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
+		506C1B40C8D810C9A093A73F /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		5F9B7DDE407A109105FCE883 /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		661F44D6FD6CD47A777FAC1F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
+		6A06DF9587F957C47E506E6C /* LaunchScreenHCCA.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 295730AF6E1F92AA71294330 /* LaunchScreenHCCA.storyboard */; };
+		6C4154AC2C76E90C80F8FAF0 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 739E6FC927EA6F6AAB2B0BAF /* GoogleService-Info.plist */; };
 		7411584DD8EBBB621F299383 /* Pods_the7cs.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D5F8D10E430BC0B8C80AED5B /* Pods_the7cs.framework */; };
+		74B8DD78D6B5433D776E4F60 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		9221A480A10AE5F026CF4EE7 /* Pods_Five_Sep.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = FF80D54945E534E81704718B /* Pods_Five_Sep.framework */; };
 		92CF6E9FD15192700D5BAD2F /* Pods_Edzumo.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 89D4AC3DF798C5FEBCADB42D /* Pods_Edzumo.framework */; };
-		9D98847954ECC674F23A1336 /* Pods_Chanakaya_IAS_Academy.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B827FA512E3A9337994B1F7D /* Pods_Chanakaya_IAS_Academy.framework */; };
-		9DC19BA1DC8A586B110A7BD1 /* (null) in Frameworks */ = {isa = PBXBuildFile; };
+		974474857A30479F153356F6 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
+		9DC19BA1DC8A586B110A7BD1 /* BuildFile in Frameworks */ = {isa = PBXBuildFile; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
+		AB74E2C5E5FB1BA34C8B492A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		B6EF8EEE4CC97793718ECA52 /* Pods_SSDC_Horizon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */; };
 		C0A3B7F3498147EF92F90117 /* Pods_Shiksha_Nation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 68002074D329318EAAA42C0D /* Pods_Shiksha_Nation.framework */; };
+		C27B4B808CE5938482E862F9 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 6AFDECE0F575C81EBF1DBA17 /* GoogleService-Info.plist */; };
 		C314EA5A6665CB1D512B6D35 /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
+		C709BBC5AB4FC0E8400F5DBB /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
+		C83D4A360236AA28C273203D /* Pods_Sadbhavana.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 302C71E0E2D60BCD45FA6757 /* Pods_Sadbhavana.framework */; };
+		CC0B89605B25954C71E0747C /* Pods_HCCA_Learning.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4A49509D6AA848E4DB47FE4B /* Pods_HCCA_Learning.framework */; };
+		D1DA697911CA1F9685933BB9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
+		D3A395F821157DE968E622E5 /* Pods_Chanakya_IAS_Academy.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 920B2CD1F603B3CC23BAE8D8 /* Pods_Chanakya_IAS_Academy.framework */; };
+		DB56E8ECB474A33AF1A60E38 /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
+		EF2B3D2F01CFC3B47C9035DB /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30B1FED79650016851F /* Main.storyboard */; };
+		F2FBE634AA6F2F363A7A133A /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		043931A970C72A57050EDC91 /* Pods-the7cs.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-the7cs.release.xcconfig"; path = "Pods/Target Support Files/Pods-the7cs/Pods-the7cs.release.xcconfig"; sourceTree = "<group>"; };
 		06A9C7727BA813EC43D26305 /* Pods-Edzumo.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Edzumo.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Edzumo/Pods-Edzumo.debug.xcconfig"; sourceTree = "<group>"; };
 		07F30C5C54EA4686AD3DA612 /* Pods-Chanakaya IAS Academy.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Chanakaya IAS Academy.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Chanakaya IAS Academy/Pods-Chanakaya IAS Academy.debug.xcconfig"; sourceTree = "<group>"; };
-		0E0D4AF82FC2BDC200E29BEC /* Chanakaya IAS Academy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Chanakaya IAS Academy.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		0E0D4AF92FC2BDC300E29BEC /* Uplift Teacher Training copy-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "Uplift Teacher Training copy-Info.plist"; path = "/Users/neerajhariyale/development/vacademy_platform/frontend-learner-dashboard-app/ios/App/Uplift Teacher Training copy-Info.plist"; sourceTree = "<absolute>"; };
+		0E0D4AF82FC2BDC200E29BEC /* Chanakya IAS Academy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Chanakya IAS Academy.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		0E0D4AFA2FC2BE6E00E29BEC /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/Chanakaya-IAS/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		0E0D4B0E2FC2CB0100E29BEC /* Edzumo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Edzumo.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		0E0D4B0F2FC2CB0100E29BEC /* Chanakaya IAS Academy copy-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "Chanakaya IAS Academy copy-Info.plist"; path = "/Users/neerajhariyale/development/vacademy_platform/frontend-learner-dashboard-app/ios/App/Chanakaya IAS Academy copy-Info.plist"; sourceTree = "<absolute>"; };
 		0E0D4B102FC2CB3C00E29BEC /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/Edzumo/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		0E3507992F1C931700F1F9F9 /* the7cs.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = the7cs.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0E35079A2F1C931700F1F9F9 /* the7cs-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "the7cs-Info.plist"; path = "/Users/neerajhariyale/development/frontend-learner-dashboard-app/ios/App/the7cs-Info.plist"; sourceTree = "<absolute>"; };
 		0E3507AE2F1C931F00F1F9F9 /* SSDC Horizon.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "SSDC Horizon.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		0E3507AF2F1C932000F1F9F9 /* SSDC-HORIZON-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "SSDC-HORIZON-Info.plist"; path = "/Users/neerajhariyale/development/frontend-learner-dashboard-app/ios/App/SSDC-HORIZON-Info.plist"; sourceTree = "<absolute>"; };
+		0E5500B22FF3CF68009D921D /* Shiksha Nation copy-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "Shiksha Nation copy-Info.plist"; path = "/Users/neerajhariyale/development/vacademy_platform/frontend-learner-dashboard-app/ios/App/Shiksha Nation copy-Info.plist"; sourceTree = "<absolute>"; };
 		0E5CB2442F0ABC0800089DAC /* Five Sep.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Five Sep.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		0E5CB2452F0ABC0900089DAC /* ithinkersByFiveSep-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "ithinkersByFiveSep-Info.plist"; sourceTree = "<group>"; };
 		0E5CB2502F0ABC0800089DAC /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/Five-Sep/GoogleService-Info.plist"; sourceTree = "<group>"; };
@@ -110,10 +130,17 @@
 		1AAA00092F25A00000000009 /* Uplift Teacher Training.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Uplift Teacher Training.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		1AAA000A2F25A0000000000A /* Enark-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Enark-Info.plist"; sourceTree = "<group>"; };
 		1AAA00102F25A00000000010 /* EnarkGoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "EnarkGoogleService-Info.plist"; sourceTree = "<group>"; };
+		21216D9D311F8C984BCE098F /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		25A963DCA873DEB99161804B /* Pods-the7cs.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-the7cs.debug.xcconfig"; path = "Pods/Target Support Files/Pods-the7cs/Pods-the7cs.debug.xcconfig"; sourceTree = "<group>"; };
+		2766B7B5D3F8CA099558461B /* Pods-HCCA Learning.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HCCA Learning.debug.xcconfig"; path = "Pods/Target Support Files/Pods-HCCA Learning/Pods-HCCA Learning.debug.xcconfig"; sourceTree = "<group>"; };
 		287CCFB97247580E305FA222 /* Pods-SSDC Horizon.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SSDC Horizon.debug.xcconfig"; path = "Pods/Target Support Files/Pods-SSDC Horizon/Pods-SSDC Horizon.debug.xcconfig"; sourceTree = "<group>"; };
+		295730AF6E1F92AA71294330 /* LaunchScreenHCCA.storyboard */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = file.storyboard; name = LaunchScreenHCCA.storyboard; path = App/Base.lproj/LaunchScreenHCCA.storyboard; sourceTree = "<group>"; };
+		2AD8C058D1A8D73C46386616 /* Sadbhavana.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Sadbhavana.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
+		302C71E0E2D60BCD45FA6757 /* Pods_Sadbhavana.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Sadbhavana.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		33EFFB28CF0D60C91479D913 /* Pods-Shiksha Nation.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Shiksha Nation.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Shiksha Nation/Pods-Shiksha Nation.debug.xcconfig"; sourceTree = "<group>"; };
+		4A49509D6AA848E4DB47FE4B /* Pods_HCCA_Learning.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_HCCA_Learning.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		4E4BC21D4BDE198DA2C44057 /* Pods-HCCA Learning.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HCCA Learning.release.xcconfig"; path = "Pods/Target Support Files/Pods-HCCA Learning/Pods-HCCA Learning.release.xcconfig"; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -124,20 +151,29 @@
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		54FDC0D1DF0A5F5687F4CCC5 /* Pods-Five Sep.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Five Sep.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Five Sep/Pods-Five Sep.debug.xcconfig"; sourceTree = "<group>"; };
 		68002074D329318EAAA42C0D /* Pods_Shiksha_Nation.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Shiksha_Nation.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		6AFDECE0F575C81EBF1DBA17 /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/HCCA/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		6D00BA17496ED7B5FE48F90F /* Pods-Uplift Teacher Training.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Uplift Teacher Training.release.xcconfig"; path = "Pods/Target Support Files/Pods-Uplift Teacher Training/Pods-Uplift Teacher Training.release.xcconfig"; sourceTree = "<group>"; };
+		739E6FC927EA6F6AAB2B0BAF /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "GoogleServiceConfigs/Sadbhavana/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		7A0502371AED7FB67D47AB98 /* Pods_SSDC_Horizon.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_SSDC_Horizon.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		885807F2BC651D65FD08FA0D /* Pods_Uplift_Teacher_Training.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Uplift_Teacher_Training.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		89D4AC3DF798C5FEBCADB42D /* Pods_Edzumo.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Edzumo.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		8B279DBAA24BE3BC1F188689 /* Pods-Five Sep.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Five Sep.release.xcconfig"; path = "Pods/Target Support Files/Pods-Five Sep/Pods-Five Sep.release.xcconfig"; sourceTree = "<group>"; };
+		8F29AA281E525DB1CE0EA129 /* LaunchScreenSadbhavana.storyboard */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = file.storyboard; name = LaunchScreenSadbhavana.storyboard; path = App/Base.lproj/LaunchScreenSadbhavana.storyboard; sourceTree = "<group>"; };
 		918C8D739E4A0EF5E5B1D60D /* Pods-Shiksha Nation.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Shiksha Nation.release.xcconfig"; path = "Pods/Target Support Files/Pods-Shiksha Nation/Pods-Shiksha Nation.release.xcconfig"; sourceTree = "<group>"; };
+		920B2CD1F603B3CC23BAE8D8 /* Pods_Chanakya_IAS_Academy.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Chanakya_IAS_Academy.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		9BF657DED25A2F36B05C0907 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
 		A9350ABD4CDFBB507639AA28 /* Pods-Chanakaya IAS Academy.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Chanakaya IAS Academy.release.xcconfig"; path = "Pods/Target Support Files/Pods-Chanakaya IAS Academy/Pods-Chanakaya IAS Academy.release.xcconfig"; sourceTree = "<group>"; };
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		B313585718531D2F9A4F2BE7 /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
-		B827FA512E3A9337994B1F7D /* Pods_Chanakaya_IAS_Academy.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Chanakaya_IAS_Academy.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		B86C3C9D0C4F19ED8471DCAF /* HCCA Learning.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "HCCA Learning.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C38F19A8C0EA2DDFC93902C6 /* Pods-Chanakya IAS Academy.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Chanakya IAS Academy.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Chanakya IAS Academy/Pods-Chanakya IAS Academy.debug.xcconfig"; sourceTree = "<group>"; };
+		CBF05519B2BE423C307EA63B /* Pods-Sadbhavana.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Sadbhavana.release.xcconfig"; path = "Pods/Target Support Files/Pods-Sadbhavana/Pods-Sadbhavana.release.xcconfig"; sourceTree = "<group>"; };
+		CC4F4A08331896C84D488EFF /* Pods-Chanakya IAS Academy.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Chanakya IAS Academy.release.xcconfig"; path = "Pods/Target Support Files/Pods-Chanakya IAS Academy/Pods-Chanakya IAS Academy.release.xcconfig"; sourceTree = "<group>"; };
+		D35753CB6D9F8BC8951462E0 /* Pods-Sadbhavana.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Sadbhavana.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Sadbhavana/Pods-Sadbhavana.debug.xcconfig"; sourceTree = "<group>"; };
 		D5F8D10E430BC0B8C80AED5B /* Pods_the7cs.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_the7cs.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		D7AB920C24733C910B2A7F0C /* Pods-Edzumo.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Edzumo.release.xcconfig"; path = "Pods/Target Support Files/Pods-Edzumo/Pods-Edzumo.release.xcconfig"; sourceTree = "<group>"; };
 		E6072116DBFDAD2CA617E513 /* Pods-SSDC Horizon.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SSDC Horizon.release.xcconfig"; path = "Pods/Target Support Files/Pods-SSDC Horizon/Pods-SSDC Horizon.release.xcconfig"; sourceTree = "<group>"; };
+		E6AE65E0752EB1ABEE21DC84 /* LaunchScreenSN.storyboard */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = file.storyboard; name = LaunchScreenSN.storyboard; path = App/Base.lproj/LaunchScreenSN.storyboard; sourceTree = "<group>"; };
 		F31D50D520F6C4986A9BDAEE /* Pods-Uplift Teacher Training.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Uplift Teacher Training.debug.xcconfig"; path = "Pods/Target Support Files/Pods-Uplift Teacher Training/Pods-Uplift Teacher Training.debug.xcconfig"; sourceTree = "<group>"; };
 		FF80D54945E534E81704718B /* Pods_Five_Sep.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Five_Sep.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -147,7 +183,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9D98847954ECC674F23A1336 /* Pods_Chanakaya_IAS_Academy.framework in Frameworks */,
+				D3A395F821157DE968E622E5 /* Pods_Chanakya_IAS_Academy.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -180,7 +216,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9DC19BA1DC8A586B110A7BD1 /* (null) in Frameworks */,
+				9DC19BA1DC8A586B110A7BD1 /* BuildFile in Frameworks */,
 				9221A480A10AE5F026CF4EE7 /* Pods_Five_Sep.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -211,6 +247,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DC2682EE259919EB083044F2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C83D4A360236AA28C273203D /* Pods_Sadbhavana.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E38C48BB31459335679C3AC4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC0B89605B25954C71E0747C /* Pods_HCCA_Learning.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -222,6 +274,14 @@
 			name = "Recovered References";
 			sourceTree = "<group>";
 		};
+		126B41249BAB1AFC0A93D6EA /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				21216D9D311F8C984BCE098F /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
 		27E2DDA53C4D2A4D1A88CE4A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -231,8 +291,11 @@
 				FF80D54945E534E81704718B /* Pods_Five_Sep.framework */,
 				885807F2BC651D65FD08FA0D /* Pods_Uplift_Teacher_Training.framework */,
 				68002074D329318EAAA42C0D /* Pods_Shiksha_Nation.framework */,
-				B827FA512E3A9337994B1F7D /* Pods_Chanakaya_IAS_Academy.framework */,
 				89D4AC3DF798C5FEBCADB42D /* Pods_Edzumo.framework */,
+				126B41249BAB1AFC0A93D6EA /* iOS */,
+				302C71E0E2D60BCD45FA6757 /* Pods_Sadbhavana.framework */,
+				920B2CD1F603B3CC23BAE8D8 /* Pods_Chanakya_IAS_Academy.framework */,
+				4A49509D6AA848E4DB47FE4B /* Pods_HCCA_Learning.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -253,9 +316,13 @@
 				0E3507AF2F1C932000F1F9F9 /* SSDC-HORIZON-Info.plist */,
 				1AAA000A2F25A0000000000A /* Enark-Info.plist */,
 				1AAA00102F25A00000000010 /* EnarkGoogleService-Info.plist */,
-				0E0D4AF92FC2BDC300E29BEC /* Uplift Teacher Training copy-Info.plist */,
-				0E0D4B0F2FC2CB0100E29BEC /* Chanakaya IAS Academy copy-Info.plist */,
 				0E4D7B3E2FCC62810085C077 /* Recovered References */,
+				739E6FC927EA6F6AAB2B0BAF /* GoogleService-Info.plist */,
+				8F29AA281E525DB1CE0EA129 /* LaunchScreenSadbhavana.storyboard */,
+				0E5500B22FF3CF68009D921D /* Shiksha Nation copy-Info.plist */,
+				F7EDAE46632198A5419A6D84 /* GoogleServiceConfigs */,
+				295730AF6E1F92AA71294330 /* LaunchScreenHCCA.storyboard */,
+				E6AE65E0752EB1ABEE21DC84 /* LaunchScreenSN.storyboard */,
 			);
 			sourceTree = "<group>";
 		};
@@ -268,8 +335,10 @@
 				0E3507AE2F1C931F00F1F9F9 /* SSDC Horizon.app */,
 				0EB0C0F82F73B79D003DA394 /* Shiksha Nation.app */,
 				1AAA00092F25A00000000009 /* Uplift Teacher Training.app */,
-				0E0D4AF82FC2BDC200E29BEC /* Chanakaya IAS Academy.app */,
+				0E0D4AF82FC2BDC200E29BEC /* Chanakya IAS Academy.app */,
 				0E0D4B0E2FC2CB0100E29BEC /* Edzumo.app */,
+				2AD8C058D1A8D73C46386616 /* Sadbhavana.app */,
+				B86C3C9D0C4F19ED8471DCAF /* HCCA Learning.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -288,6 +357,14 @@
 			);
 			path = App;
 			sourceTree = "<group>";
+		};
+		71A3D620F457F0F49DA0FE58 /* HCCA */ = {
+			isa = PBXGroup;
+			children = (
+				6AFDECE0F575C81EBF1DBA17 /* GoogleService-Info.plist */,
+			);
+			name = HCCA;
+			sourceTree = SOURCE_ROOT;
 		};
 		7F8756D8B27F46E3366F6CEA /* Pods */ = {
 			isa = PBXGroup;
@@ -308,16 +385,30 @@
 				A9350ABD4CDFBB507639AA28 /* Pods-Chanakaya IAS Academy.release.xcconfig */,
 				06A9C7727BA813EC43D26305 /* Pods-Edzumo.debug.xcconfig */,
 				D7AB920C24733C910B2A7F0C /* Pods-Edzumo.release.xcconfig */,
+				CBF05519B2BE423C307EA63B /* Pods-Sadbhavana.release.xcconfig */,
+				D35753CB6D9F8BC8951462E0 /* Pods-Sadbhavana.debug.xcconfig */,
+				C38F19A8C0EA2DDFC93902C6 /* Pods-Chanakya IAS Academy.debug.xcconfig */,
+				CC4F4A08331896C84D488EFF /* Pods-Chanakya IAS Academy.release.xcconfig */,
+				4E4BC21D4BDE198DA2C44057 /* Pods-HCCA Learning.release.xcconfig */,
+				2766B7B5D3F8CA099558461B /* Pods-HCCA Learning.debug.xcconfig */,
 			);
 			name = Pods;
+			sourceTree = "<group>";
+		};
+		F7EDAE46632198A5419A6D84 /* GoogleServiceConfigs */ = {
+			isa = PBXGroup;
+			children = (
+				71A3D620F457F0F49DA0FE58 /* HCCA */,
+			);
+			name = GoogleServiceConfigs;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		0E0D4AE62FC2BDC200E29BEC /* Chanakaya IAS Academy */ = {
+		0E0D4AE62FC2BDC200E29BEC /* Chanakya IAS Academy */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 0E0D4AF52FC2BDC200E29BEC /* Build configuration list for PBXNativeTarget "Chanakaya IAS Academy" */;
+			buildConfigurationList = 0E0D4AF52FC2BDC200E29BEC /* Build configuration list for PBXNativeTarget "Chanakya IAS Academy" */;
 			buildPhases = (
 				2704FC21AA323503C3B50D6B /* [CP] Check Pods Manifest.lock */,
 				0E0D4AE82FC2BDC200E29BEC /* Sources */,
@@ -329,9 +420,9 @@
 			);
 			dependencies = (
 			);
-			name = "Chanakaya IAS Academy";
+			name = "Chanakya IAS Academy";
 			productName = App;
-			productReference = 0E0D4AF82FC2BDC200E29BEC /* Chanakaya IAS Academy.app */;
+			productReference = 0E0D4AF82FC2BDC200E29BEC /* Chanakya IAS Academy.app */;
 			productType = "com.apple.product-type.application";
 		};
 		0E0D4AFC2FC2CB0100E29BEC /* Edzumo */ = {
@@ -467,6 +558,44 @@
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
 		};
+		9E04A32BBEABFC7C87A4B817 /* HCCA Learning */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E01B5525935B4796C7568103 /* Build configuration list for PBXNativeTarget "HCCA Learning" */;
+			buildPhases = (
+				1890E8ED9FE7491F72014B1A /* [CP] Check Pods Manifest.lock */,
+				355BAB5FEAA24A5BC4C43B23 /* Sources */,
+				E38C48BB31459335679C3AC4 /* Frameworks */,
+				F8DDAA6B6F509FFDD7ADCF15 /* Resources */,
+				108B3CAE1B9A41C1C2827C9C /* [CP] Embed Pods Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "HCCA Learning";
+			productName = "HCCA Learning";
+			productReference = B86C3C9D0C4F19ED8471DCAF /* HCCA Learning.app */;
+			productType = "com.apple.product-type.application";
+		};
+		CC8C5DDFADE1C48862D95C96 /* Sadbhavana */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5EC87203A48B77344CA373B3 /* Build configuration list for PBXNativeTarget "Sadbhavana" */;
+			buildPhases = (
+				C2C003ED2529D29ACBC92940 /* [CP] Check Pods Manifest.lock */,
+				32A0CB699CC7B07FB8B814C3 /* Sources */,
+				DC2682EE259919EB083044F2 /* Frameworks */,
+				BEE86684DC00C02F45D61998 /* Resources */,
+				9473481F56F9EE5800E95381 /* [CP] Embed Pods Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Sadbhavana;
+			productName = Sadbhavana;
+			productReference = 2AD8C058D1A8D73C46386616 /* Sadbhavana.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -502,6 +631,9 @@
 						LastSwiftMigration = 1100;
 						ProvisioningStyle = Automatic;
 					};
+					CC8C5DDFADE1C48862D95C96 = {
+						ProvisioningStyle = Automatic;
+					};
 				};
 			};
 			buildConfigurationList = 504EC2FF1FED79650016851F /* Build configuration list for PBXProject "App" */;
@@ -523,8 +655,10 @@
 				0E35079B2F1C931F00F1F9F9 /* SSDC Horizon */,
 				0EB0C0E52F73B79D003DA394 /* Shiksha Nation */,
 				1AAA000C2F25A0000000000C /* Uplift Teacher Training */,
-				0E0D4AE62FC2BDC200E29BEC /* Chanakaya IAS Academy */,
+				0E0D4AE62FC2BDC200E29BEC /* Chanakya IAS Academy */,
 				0E0D4AFC2FC2CB0100E29BEC /* Edzumo */,
+				CC8C5DDFADE1C48862D95C96 /* Sadbhavana */,
+				9E04A32BBEABFC7C87A4B817 /* HCCA Learning */,
 			);
 		};
 /* End PBXProject section */
@@ -614,6 +748,7 @@
 				0EB0C0F12F73B79D003DA394 /* capacitor.config.json in Resources */,
 				0EB0C0F22F73B79D003DA394 /* Main.storyboard in Resources */,
 				0EB0C0F32F73B79D003DA394 /* config.xml in Resources */,
+				49FAB1FA9EFE4D4829783A68 /* LaunchScreenSN.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -641,6 +776,36 @@
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BEE86684DC00C02F45D61998 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6C4154AC2C76E90C80F8FAF0 /* GoogleService-Info.plist in Resources */,
+				193FC5F69363BA2D76BD043E /* LaunchScreen.storyboard in Resources */,
+				5F9B7DDE407A109105FCE883 /* public in Resources */,
+				AB74E2C5E5FB1BA34C8B492A /* Assets.xcassets in Resources */,
+				DB56E8ECB474A33AF1A60E38 /* capacitor.config.json in Resources */,
+				EF2B3D2F01CFC3B47C9035DB /* Main.storyboard in Resources */,
+				74B8DD78D6B5433D776E4F60 /* config.xml in Resources */,
+				00811935E04FA62B1E99A99D /* LaunchScreenSadbhavana.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F8DDAA6B6F509FFDD7ADCF15 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				661F44D6FD6CD47A777FAC1F /* LaunchScreen.storyboard in Resources */,
+				14E8D273FC7A03FCCF0B9EEE /* public in Resources */,
+				159478D4A77785769B1BB798 /* Assets.xcassets in Resources */,
+				F2FBE634AA6F2F363A7A133A /* capacitor.config.json in Resources */,
+				C709BBC5AB4FC0E8400F5DBB /* Main.storyboard in Resources */,
+				506C1B40C8D810C9A093A73F /* config.xml in Resources */,
+				C27B4B808CE5938482E862F9 /* GoogleService-Info.plist in Resources */,
+				6A06DF9587F957C47E506E6C /* LaunchScreenHCCA.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -721,6 +886,43 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-SSDC Horizon/Pods-SSDC Horizon-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		108B3CAE1B9A41C1C2827C9C /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-HCCA Learning/Pods-HCCA Learning-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		1890E8ED9FE7491F72014B1A /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-HCCA Learning-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
 		1A9937FDA3B8A7B695CBD6A4 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -733,7 +935,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Chanakaya IAS Academy/Pods-Chanakaya IAS Academy-frameworks.sh\"\n";
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Chanakya IAS Academy/Pods-Chanakya IAS Academy-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 		2704FC21AA323503C3B50D6B /* [CP] Check Pods Manifest.lock */ = {
@@ -751,7 +953,7 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-Chanakaya IAS Academy-checkManifestLockResult.txt",
+				"$(DERIVED_FILE_DIR)/Pods-Chanakya IAS Academy-checkManifestLockResult.txt",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -828,6 +1030,21 @@
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
+		9473481F56F9EE5800E95381 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Sadbhavana/Pods-Sadbhavana-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 		9592DBEFFC6D2A0C8D5DEB22 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -859,6 +1076,28 @@
 			);
 			outputPaths = (
 				"$(DERIVED_FILE_DIR)/Pods-Edzumo-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		C2C003ED2529D29ACBC92940 /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-Sadbhavana-checkManifestLockResult.txt",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -998,6 +1237,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		32A0CB699CC7B07FB8B814C3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D1DA697911CA1F9685933BB9 /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		355BAB5FEAA24A5BC4C43B23 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				974474857A30479F153356F6 /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		504EC3001FED79650016851F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1030,19 +1285,19 @@
 /* Begin XCBuildConfiguration section */
 		0E0D4AF62FC2BDC200E29BEC /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 07F30C5C54EA4686AD3DA612 /* Pods-Chanakaya IAS Academy.debug.xcconfig */;
+			baseConfigurationReference = C38F19A8C0EA2DDFC93902C6 /* Pods-Chanakya IAS Academy.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = ChanakayaIASAcademyIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Chanakaya-IAS/GoogleService-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = SADBHAVANA;
+				INFOPLIST_KEY_CFBundleDisplayName = "Chanakya IAS Academy";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.6;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.chanakayaiasacademy.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1054,19 +1309,19 @@
 		};
 		0E0D4AF72FC2BDC200E29BEC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = A9350ABD4CDFBB507639AA28 /* Pods-Chanakaya IAS Academy.release.xcconfig */;
+			baseConfigurationReference = CC4F4A08331896C84D488EFF /* Pods-Chanakya IAS Academy.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = ChanakayaIASAcademyIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Chanakaya-IAS/GoogleService-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = SADBHAVANA;
+				INFOPLIST_KEY_CFBundleDisplayName = "Chanakya IAS Academy";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.6;
 				PRODUCT_BUNDLE_IDENTIFIER = io.chanakayaiasacademy.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -1129,13 +1384,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = the7csIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/the7cs/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = the7cs;
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.3;
+				MARKETING_VERSION = 1.0.4;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = com.sevencs.learner;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1152,13 +1407,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = the7csIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/the7cs/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = the7cs;
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.3;
+				MARKETING_VERSION = 1.0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = com.sevencs.learner;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -1174,13 +1429,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = SSDCicon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
-				DEVELOPMENT_TEAM = 7XKD5M7288;
+				CURRENT_PROJECT_VERSION = 5;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/SSDC-Horizon/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "SSDC Horizon";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.1.6;
+				MARKETING_VERSION = 1.1.9;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.ssdc.student.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1197,13 +1452,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = SSDCicon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
-				DEVELOPMENT_TEAM = 7XKD5M7288;
+				CURRENT_PROJECT_VERSION = 5;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/SSDC-Horizon/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "SSDC Horizon";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.1.6;
+				MARKETING_VERSION = 1.1.9;
 				PRODUCT_BUNDLE_IDENTIFIER = io.ssdc.student.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -1219,13 +1474,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = FiveSepIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Five-Sep/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "iThinkers by Fivesep";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.3;
+				MARKETING_VERSION = 1.0.4;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = io.fivesep.student.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -1242,13 +1497,13 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = FiveSepIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Five-Sep/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "iThinkers by Fivesep";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.3;
+				MARKETING_VERSION = 1.0.4;
 				PRODUCT_BUNDLE_IDENTIFIER = io.fivesep.student.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -1264,16 +1519,16 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = SNIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
-				DEVELOPMENT_TEAM = 7XKD5M7288;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Shiksha-Nation/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Shiksha Nation";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.4;
+				MARKETING_VERSION = 1.0.0;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
-				PRODUCT_BUNDLE_IDENTIFIER = io.shikshanation.app;
+				PRODUCT_BUNDLE_IDENTIFIER = io.shikshanation.learner;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_VERSION = 5.0;
@@ -1288,15 +1543,15 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = SNIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 6;
-				DEVELOPMENT_TEAM = 7XKD5M7288;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
 				INFOPLIST_FILE = "GoogleServiceConfigs/Shiksha-Nation/GoogleService-Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = "Shiksha Nation";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
-				MARKETING_VERSION = 1.0.4;
-				PRODUCT_BUNDLE_IDENTIFIER = io.shikshanation.app;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.shikshanation.learner;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
 				SWIFT_VERSION = 5.0;
@@ -1501,10 +1756,106 @@
 			};
 			name = Release;
 		};
+		7784D1BFB2DC2DE146ED3068 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 2766B7B5D3F8CA099558461B /* Pods-HCCA Learning.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = HCCAIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
+				INFOPLIST_FILE = "GoogleServiceConfigs/HCCA/GoogleService-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "HCCA Learning";
+				INFOPLIST_KEY_CFBundleName = "HCCA Learning";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.0;
+				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
+				PRODUCT_BUNDLE_IDENTIFIER = io.hcca.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		88223AC5F01A0FE52196297F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = D35753CB6D9F8BC8951462E0 /* Pods-Sadbhavana.debug.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = SadbhavanaIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
+				INFOPLIST_FILE = "GoogleServiceConfigs/Sadbhavana/GoogleService-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Sadbhavana;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.1;
+				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
+				PRODUCT_BUNDLE_IDENTIFIER = io.sadbhavana.com;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		8FAD3E6D9F474C2A34E5D8CD /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = CBF05519B2BE423C307EA63B /* Pods-Sadbhavana.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = SadbhavanaIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
+				INFOPLIST_FILE = "GoogleServiceConfigs/Sadbhavana/GoogleService-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Sadbhavana;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = io.sadbhavana.com;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		A36ED5450843C006D2038DC1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 4E4BC21D4BDE198DA2C44057 /* Pods-HCCA Learning.release.xcconfig */;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = HCCAIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 35NLZB49QN;
+				INFOPLIST_FILE = "GoogleServiceConfigs/HCCA/GoogleService-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "HCCA Learning";
+				INFOPLIST_KEY_CFBundleName = "HCCA Learning";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.hcca.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		0E0D4AF52FC2BDC200E29BEC /* Build configuration list for PBXNativeTarget "Chanakaya IAS Academy" */ = {
+		0E0D4AF52FC2BDC200E29BEC /* Build configuration list for PBXNativeTarget "Chanakya IAS Academy" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				0E0D4AF62FC2BDC200E29BEC /* Debug */,
@@ -1581,6 +1932,24 @@
 			buildConfigurations = (
 				504EC3171FED79650016851F /* Debug */,
 				504EC3181FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5EC87203A48B77344CA373B3 /* Build configuration list for PBXNativeTarget "Sadbhavana" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8FAD3E6D9F474C2A34E5D8CD /* Release */,
+				88223AC5F01A0FE52196297F /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E01B5525935B4796C7568103 /* Build configuration list for PBXNativeTarget "HCCA Learning" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A36ED5450843C006D2038DC1 /* Release */,
+				7784D1BFB2DC2DE146ED3068 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

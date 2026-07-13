@@ -228,16 +228,16 @@ export function PhoneLoginForm({
                             // A learner who logged in from a course page returns
                             // to that course; everyone else lands on the
                             // institute's configured landing route.
-                            const courseRoute =
-                                type === "courseDetailsPage"
-                                    ? courseId
-                                        ? `/study-library/courses/course-details?courseId=${courseId}&selectedTab=ALL`
-                                        : "/study-library/courses"
-                                    : null;
-
-                            await navigateAfterLogin(navigate, {
-                                preferredRoute: courseRoute,
-                            });
+                            if (type === "courseDetailsPage" && courseId) {
+                                navigate({
+                                    to: "/study-library/courses/course-details",
+                                    search: { courseId, selectedTab: "ALL" },
+                                });
+                            } else if (type === "courseDetailsPage") {
+                                navigate({ to: "/study-library/courses" });
+                            } else {
+                                await navigateAfterLogin(navigate);
+                            }
                         } catch {
                             toast.error("Failed to fetch details");
                         }

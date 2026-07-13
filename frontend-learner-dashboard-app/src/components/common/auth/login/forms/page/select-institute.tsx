@@ -23,6 +23,7 @@ import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { INSTITUTE_DETAIL, SELECT_INSTITUTE_SESSION } from "@/constants/urls";
 import { SessionLimitDialog } from "@/components/common/auth/login/components/SessionLimitDialog";
+import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
 import axios from "axios";
 
 import {

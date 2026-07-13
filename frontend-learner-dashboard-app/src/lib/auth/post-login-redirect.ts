@@ -22,20 +22,15 @@ const needsFullPageLoad = (route: string) =>
  * The institute's configured landing route (STUDENT_DISPLAY_SETTINGS →
  * postLoginRedirectRoute), applied only at the moment a learner logs in.
  *
- * Priority: explicit deep-link redirect → the caller's own target (e.g. the
- * course a learner logged in from) → institute landing route → /dashboard.
+ * An explicit deep-link redirect wins over the institute's landing route.
  */
 export async function resolvePostLoginRoute(opts?: {
   explicitRedirect?: string | null;
-  preferredRoute?: string | null;
 }): Promise<string> {
   const explicit = opts?.explicitRedirect?.trim();
   if (explicit && explicit !== "/login/" && explicit !== "/login") {
     return explicit;
   }
-
-  const preferred = opts?.preferredRoute?.trim();
-  if (preferred) return preferred;
 
   try {
     // Force-refresh: the institute was only just resolved, and a cached value
@@ -54,7 +49,6 @@ export async function navigateAfterLogin(
   navigate: PostLoginNavigate,
   opts?: {
     explicitRedirect?: string | null;
-    preferredRoute?: string | null;
     replace?: boolean;
   },
 ): Promise<void> {

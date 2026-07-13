@@ -453,7 +453,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
        AND m.user_id = :userId
        -- Enrolment status is deliberately NOT restricted to ACTIVE. A report for a past term is
        -- generated after the mapping has flipped to EXPIRED/INACTIVE (or the learner moved to the
-       -- next year's batch) — requiring ACTIVE returned ZERO sessions for a learner with a full
+       -- next years batch) -- requiring ACTIVE returned ZERO sessions for a learner with a full
        -- attendance history. They *were* enrolled when those sessions ran, which is what matters.
        -- INVITED (never enrolled) and DELETED are still excluded.
        AND m.status NOT IN ('INVITED', 'DELETED')

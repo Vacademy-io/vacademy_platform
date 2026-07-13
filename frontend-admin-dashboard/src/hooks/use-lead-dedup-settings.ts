@@ -48,11 +48,12 @@ function withDefaults(subtree: LeadDedupSettingsSubtree | undefined): LeadDedupS
         subtree?.scope === 'INSTITUTE' || subtree?.scope === 'SELECTED'
             ? subtree.scope
             : LEAD_DEDUP_SETTINGS_DEFAULTS.scope;
+    const audienceIds = subtree?.audienceIds;
     return {
         enabled: subtree?.enabled ?? LEAD_DEDUP_SETTINGS_DEFAULTS.enabled,
         field: subtree?.field === 'PHONE' ? 'PHONE' : LEAD_DEDUP_SETTINGS_DEFAULTS.field,
         scope,
-        audienceIds: Array.isArray(subtree?.audienceIds) ? subtree.audienceIds : [],
+        audienceIds: Array.isArray(audienceIds) ? audienceIds : [],
     };
 }
 

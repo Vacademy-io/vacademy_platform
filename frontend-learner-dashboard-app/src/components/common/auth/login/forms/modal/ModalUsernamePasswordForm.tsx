@@ -23,6 +23,7 @@ import { loginUser } from "@/components/common/auth/login/hooks/login-button";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
 
 const loginSchema = z.object({
     username: z.string().min(1, "Username is required"),
@@ -112,11 +113,9 @@ export function ModalUsernameLogin({
                             if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
                                 window.open(redirectUrl, '_blank');
                             }
-                            // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                            // Only navigate away if this is NOT a modal login (i.e., main login page)
                             if (!type || type === "mainLogin") {
-                                navigate({
-                                    to: "/dashboard",
-                                });
+                                await navigateAfterLogin(navigate);
                             } else {
                                 // Call onLoginSuccess callback for modal login
                                 if (onLoginSuccess) {
@@ -169,11 +168,9 @@ export function ModalUsernameLogin({
                                     }
                                 }
                             } else {
-                                // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                                // Only navigate away if this is NOT a modal login (i.e., main login page)
                                 if (!type || type === "mainLogin") {
-                                    navigate({
-                                        to: "/dashboard",
-                                    });
+                                    await navigateAfterLogin(navigate);
                                 } else {
                                     // Call onLoginSuccess callback for modal login
                                     if (onLoginSuccess) {
@@ -221,11 +218,9 @@ export function ModalUsernameLogin({
                                     }
                                 }
                             } else {
-                                // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                                // Only navigate away if this is NOT a modal login (i.e., main login page)
                                 if (!type || type === "mainLogin") {
-                                    navigate({
-                                        to: "/dashboard",
-                                    });
+                                    await navigateAfterLogin(navigate);
                                 } else {
                                     // Call onLoginSuccess callback for modal login
                                     if (onLoginSuccess) {

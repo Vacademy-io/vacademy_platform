@@ -470,6 +470,17 @@ export const CourseStructureDetails = ({
         return TabType.OUTLINE;
     });
 
+    // Chat-enabled gate for the Discussion tab. Declared here (rather than next to the
+    // tab strip) because the visibility effect below has to know whether Discussion is
+    // actually on offer before it can fall back to it.
+    const notificationSettingsQuery = useQuery({
+        queryKey: ['notification-settings'],
+        queryFn: getNotificationSettings,
+        refetchOnWindowFocus: false,
+    });
+    // Chat is OFF by default — only show the Discussion tab when an institute has explicitly enabled it.
+    const isChatEnabled = notificationSettingsQuery.data?.settings?.chat?.enabled === true;
+
     // Ensure selected tab is visible per role display settings; otherwise, switch to default/first visible
     useEffect(() => {
         if (!roleDisplay?.courseDetails?.tabs) return;
@@ -488,13 +499,27 @@ export const CourseStructureDetails = ({
         if (isCurrentVisible === false) {
             const preferred = mapDisplayIdToUiValue(details.defaultTab as CourseDetailsTabId);
             const preferredVisible = visibilityMap.get(preferred) !== false;
-            const firstVisible = tabs.find((t) => visibilityMap.get(t.value) !== false)?.value;
-            const next = preferredVisible ? preferred : firstVisible || 'OUTLINE';
-            setSelectedTab(next);
-            localStorage.setItem(getStorageKey(), next);
+            // Discussion is not part of CourseDetailsTabId, so it is always absent from
+            // visibilityMap and therefore reads as "visible" here. It is also the last
+            // entry in `tabs`, so it wins this scan whenever a role hides every real tab.
+            // Only fall back to it when chat is actually enabled — otherwise the
+            // chat-enabled effect below bounces straight off it and the two effects flip
+            // selectedTab forever.
+            const firstVisible = tabs.find(
+                (t) =>
+                    (t.value !== TabType.DISCUSSION || isChatEnabled) &&
+                    visibilityMap.get(t.value) !== false
+            )?.value;
+            const next = preferredVisible ? preferred : firstVisible || TabType.OUTLINE;
+            // With every real tab hidden and chat off, `next` lands back on the tab we are
+            // already showing. Re-setting it would re-run this effect and spin.
+            if (next !== selectedTab) {
+                setSelectedTab(next);
+                localStorage.setItem(getStorageKey(), next);
+            }
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [roleDisplay, selectedTab]);
+    }, [roleDisplay, selectedTab, isChatEnabled]);
 
     // Effect to update tab selection when settings load
     useEffect(() => {
@@ -4733,18 +4758,6 @@ export const CourseStructureDetails = ({
         updateSubjectOrderMutation.isPending ||
         updateModuleMutation.isPending ||
         updateChapterMutation.isPending;
-
-    // Chat-enabled gate for the Discussion tab. Defaults to showing the tab while
-    // loading or on error — the BatchChatPanel's CHAT_DISABLED empty-state is the
-    // backstop if chat is actually off.
-    const notificationSettingsQuery = useQuery({
-        queryKey: ['notification-settings'],
-        queryFn: getNotificationSettings,
-        refetchOnWindowFocus: false,
-    });
-    // Chat is OFF by default — only show the Discussion tab when an institute has explicitly enabled it.
-    const isChatEnabled =
-        notificationSettingsQuery.data?.settings?.chat?.enabled === true;
 
     // If chat gets disabled while the Discussion tab is open, move off it so we don't leave an
     // orphaned panel whose trigger has vanished from the tab strip.

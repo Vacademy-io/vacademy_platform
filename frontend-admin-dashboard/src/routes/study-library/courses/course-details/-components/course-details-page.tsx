@@ -676,21 +676,20 @@ export const CourseDetailsPage = () => {
             });
     }, [batches, selectedSession, selectedLevel]);
 
-    // If dropdown is hidden (no real subgroups), clear any previously selected batch
-    // so session+level fallback mapping is used consistently.
-    useEffect(() => {
-        if (!shouldShowBatchDropdown && selectedBatchId) {
-            setSelectedBatchId('');
-        }
-    }, [shouldShowBatchDropdown, selectedBatchId]);
-
     const handleBatchChange = (batchId: string) => {
         setSelectedBatchId(batchId);
     };
 
-    // Initial/default batch selection and when session/level changes
+    // Keep the Batch/Subgroup selection in sync with the options that are actually
+    // offered. When the dropdown is hidden (no real subgroups) there is nothing to
+    // pick, so the selection stays empty and the session+level fallback mapping is
+    // used instead.
+    //
+    // This must remain a single effect: splitting "clear when hidden" and "default
+    // when empty" into two effects makes them overwrite each other's writes on every
+    // render, which re-renders the page forever.
     useEffect(() => {
-        if (!batchOptions.length) {
+        if (!shouldShowBatchDropdown || !batchOptions.length) {
             setSelectedBatchId('');
             return;
         }
@@ -708,7 +707,7 @@ export const CourseDetailsPage = () => {
         });
 
         setSelectedBatchId(preferredParent?.id ?? batchOptions[0]?.id ?? '');
-    }, [batchOptions, batches, selectedBatchId]);
+    }, [shouldShowBatchDropdown, batchOptions, batches, selectedBatchId]);
 
     // Load drip conditions and permissions from course settings
     useEffect(() => {

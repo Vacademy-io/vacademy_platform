@@ -972,6 +972,59 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                 return findFirstByAudienceIdAndDedupeKeyAndIsDuplicateFalse(audienceId, dedupeKey);
         }
 
+        /**
+         * Institute-level lead-uniqueness setting support (LEAD_SETTING.data.dedup).
+         * All four exclude opted-out and already-flagged-duplicate rows so a lead
+         * that opted out can re-enter, and duplicates don't chain-match.
+         */
+        @Query("""
+                            SELECT COUNT(ar) > 0 FROM AudienceResponse ar
+                            WHERE ar.audienceId = :audienceId
+                            AND LOWER(TRIM(ar.parentEmail)) = LOWER(TRIM(:email))
+                            AND (ar.isDuplicate IS NULL OR ar.isDuplicate = false)
+                            AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                        """)
+        boolean existsByAudienceIdAndParentEmailIgnoreCase(
+                        @Param("audienceId") String audienceId,
+                        @Param("email") String email);
+
+        @Query("""
+                            SELECT COUNT(ar) > 0 FROM AudienceResponse ar
+                            JOIN Audience a ON a.id = ar.audienceId
+                            WHERE a.instituteId = :instituteId
+                            AND LOWER(TRIM(ar.parentEmail)) = LOWER(TRIM(:email))
+                            AND (ar.isDuplicate IS NULL OR ar.isDuplicate = false)
+                            AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                        """)
+        boolean existsByInstituteIdAndParentEmailIgnoreCase(
+                        @Param("instituteId") String instituteId,
+                        @Param("email") String email);
+
+        @Query(value = """
+                            SELECT COUNT(*) > 0 FROM audience_response ar
+                            WHERE ar.audience_id = :audienceId
+                            AND ar.parent_mobile IS NOT NULL
+                            AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                        """, nativeQuery = true)
+        boolean existsByAudienceIdAndPhoneLast10(
+                        @Param("audienceId") String audienceId,
+                        @Param("last10") String last10);
+
+        @Query(value = """
+                            SELECT COUNT(*) > 0 FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            WHERE a.institute_id = :instituteId
+                            AND ar.parent_mobile IS NOT NULL
+                            AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                        """, nativeQuery = true)
+        boolean existsByInstituteIdAndPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("last10") String last10);
+
         // ── TAT / Follow-up SLA scan (emit-only scheduler) ────────────────────────
 
         /**

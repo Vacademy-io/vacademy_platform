@@ -87,6 +87,7 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
     applicationTab: false,
     leadTab: false,
     fullHistoryTab: false,
+    parentTab: false,
 };
 
 const STUDENT_SIDE_VIEW_OPTIONS: Array<{
@@ -170,6 +171,11 @@ const STUDENT_SIDE_VIEW_OPTIONS: Array<{
         key: 'fullHistoryTab',
         label: 'Full History Tab',
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.fullHistoryTab ?? false,
+    },
+    {
+        key: 'parentTab',
+        label: 'Guardian Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.parentTab ?? false,
     },
 ];
 

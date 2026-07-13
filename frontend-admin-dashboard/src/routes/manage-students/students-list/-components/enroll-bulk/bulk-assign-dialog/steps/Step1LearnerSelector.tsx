@@ -8,19 +8,27 @@ import {
     AutosuggestUser,
     LearnerSourceMode,
     NewUserRow,
+    ParentLinkChoice,
     SelectedLearner,
 } from '../../../../-types/bulk-assign-types';
 import { CsvUserImporter, CsvPaymentInfo } from '../../components/CsvUserImporter';
 import { ManualUserEntry } from '../../components/ManualUserEntry';
 import { FromCourseSelector } from '../../components/FromCourseSelector';
+import { LearnerGuardianControls } from '../../components/LearnerGuardianControls';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { useParentSettings } from '@/hooks/use-parent-settings';
+import { cn } from '@/lib/utils';
 
 interface Props {
     instituteId: string;
     selectedLearners: SelectedLearner[];
     onSelectedLearnersChange: (learners: SelectedLearner[]) => void;
     onPaymentInfoDetected?: (info: CsvPaymentInfo) => void;
+    /** Inline errors from a failed guardian-link resolution, keyed by learner index (see BulkAssignDialog). */
+    guardianLinkErrors?: Record<number, string>;
+    /** Clears a chip's guardian-link error once the admin edits its sub-form again. */
+    onClearGuardianLinkError?: (index: number) => void;
 }
 
 export const Step1LearnerSelector = ({
@@ -28,7 +36,11 @@ export const Step1LearnerSelector = ({
     selectedLearners,
     onSelectedLearnersChange,
     onPaymentInfoDetected,
+    guardianLinkErrors,
+    onClearGuardianLinkError,
 }: Props) => {
+    const { enabled: guardianLinkingEnabled, isLoading: guardianSettingsLoading } = useParentSettings();
+    const showGuardianControls = guardianLinkingEnabled && !guardianSettingsLoading;
     const [searchQuery, setSearchQuery] = useState('');
     const [mode, setMode] = useState<LearnerSourceMode>('manual');
     const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -92,6 +104,13 @@ export const Step1LearnerSelector = ({
     const getLearnerSub = (l: SelectedLearner) =>
         l.type === 'existing' ? l.email : '(new user)';
 
+    const updateParentLink = (index: number, next: ParentLinkChoice) => {
+        const nextLearners = [...selectedLearners];
+        nextLearners[index] = { ...nextLearners[index], parentLink: next } as SelectedLearner;
+        onSelectedLearnersChange(nextLearners);
+        onClearGuardianLinkError?.(index);
+    };
+
     return (
         <div className="flex h-full flex-col gap-4 px-4 py-4 sm:px-6 sm:py-5">
             {/* Selected learners chip list */}
@@ -100,17 +119,16 @@ export const Step1LearnerSelector = ({
                     <p className="mb-2 text-xs font-semibold text-neutral-500 uppercase tracking-wide">
                         {selectedLearners.length} learner{selectedLearners.length !== 1 ? 's' : ''} selected
                     </p>
-                    <div className="flex flex-wrap gap-2">
+                    <div className={cn(showGuardianControls ? 'flex flex-col gap-2' : 'flex flex-wrap gap-2')}>
                         {selectedLearners.map((l, idx) => {
                             const isBeingEdited = editingIndex === idx;
-                            return (
+                            const chipHeader = (
                                 <div
-                                    key={idx}
                                     className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${
                                         isBeingEdited
                                             ? 'border-warning-400 bg-warning-50 text-warning-700'
                                             : 'border-primary-200 bg-primary-50 text-primary-700'
-                                    }`}
+                                    } ${showGuardianControls ? 'w-fit' : ''}`}
                                 >
                                     <div>
                                         <span className="font-medium">{getLearnerLabel(l)}</span>
@@ -141,6 +159,23 @@ export const Step1LearnerSelector = ({
                                     >
                                         <X size={12} weight="bold" />
                                     </button>
+                                </div>
+                            );
+
+                            if (!showGuardianControls) {
+                                return <div key={idx}>{chipHeader}</div>;
+                            }
+
+                            return (
+                                <div key={idx} className="rounded-lg border border-neutral-200 bg-white p-2">
+                                    {chipHeader}
+                                    <LearnerGuardianControls
+                                        learner={l}
+                                        index={idx}
+                                        instituteId={instituteId}
+                                        onChange={(next) => updateParentLink(idx, next)}
+                                        error={guardianLinkErrors?.[idx]}
+                                    />
                                 </div>
                             );
                         })}

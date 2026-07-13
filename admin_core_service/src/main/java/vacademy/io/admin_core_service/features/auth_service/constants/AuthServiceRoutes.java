@@ -78,4 +78,9 @@ public class AuthServiceRoutes {
     public static final String ORG_TEAM_ANCESTORS = "/auth-service/internal/organization-team/{teamId}/members/{mappingId}/ancestors";
     public static final String ORG_TEAM_DESCENDANTS = "/auth-service/internal/organization-team/{teamId}/members/{mappingId}/descendants";
     public static final String ORG_TEAM_USER_MEMBERSHIPS = "/auth-service/internal/organization-team/members/by-user/{userId}";
+
+    // ── Guardian (parent-student) linking ───────────────────────────────
+    public static final String LINK_PARENT_CHILD = "/auth-service/v1/user/internal/link-parent-child";
+    public static final String CHILDREN_OF_PARENT = "/auth-service/v1/user/internal/children-of-parent";
+    public static final String BACKFILL_PARENTS = "/auth-service/v1/user/internal/backfill-parents";
 }

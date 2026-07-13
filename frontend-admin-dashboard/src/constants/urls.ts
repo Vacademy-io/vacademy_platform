@@ -282,6 +282,9 @@ export const GET_LATEST_NOTES_BATCH = `${BASE_URL}/admin-core-service/timeline/v
 // dispositions) per lead, for CSV export.
 export const GET_LEAD_JOURNEY_BATCH = `${BASE_URL}/admin-core-service/timeline/v1/student/journey-batch`;
 export const CREATE_TIMELINE_EVENT = `${BASE_URL}/admin-core-service/timeline/v1/event`;
+// Guardian-student linking — student side-view "Guardian" tab.
+export const GET_PARENT_LINK_PARENT = `${BASE_URL}/admin-core-service/parent-link/v1/parent`;
+export const GET_PARENT_LINK_CHILDREN = `${BASE_URL}/admin-core-service/parent-link/v1/children`;
 export const GET_LEAD_JOURNEY = `${BASE_URL}/admin-core-service/timeline/v1/journey`;
 export const GET_ALL_LEAD_EVENTS = (studentUserId: string) =>
     `${BASE_URL}/admin-core-service/timeline/v1/student/${studentUserId}/all`;
@@ -590,6 +593,8 @@ export const GET_LEARNER_PACKAGES_BY_USER_ID = `${BASE_URL}/admin-core-service/l
 
 export const BULK_ASSIGN_LEARNERS = `${BASE_URL}/admin-core-service/v3/learner-management/assign`;
 export const BULK_DEASSIGN_LEARNERS = `${BASE_URL}/admin-core-service/v3/learner-management/deassign`;
+export const PARENT_LINK = `${BASE_URL}/admin-core-service/parent-link/v1/link`;
+export const PARENT_LINK_NEW_GUARDIAN = `${BASE_URL}/admin-core-service/parent-link/v1/link-new-guardian`;
 export const GET_DEFAULT_INVITE = (instituteId: string, packageSessionId: string) =>
     `${BASE_URL}/admin-core-service/v1/enroll-invite/default/${instituteId}/${packageSessionId}`;
 

@@ -47,10 +47,21 @@ export const GuardianLinkPanel = ({ instituteId, personLabel, searchRoles, value
     });
 
     const emitCreateNew = <K extends keyof CreateNewFormValues>(field: K, fieldValue: string) => {
-        // react-hook-form's setValue overload can't verify a generic `string`
-        // matches PathValueImpl<K> for an arbitrary K — every field on this
-        // form is in fact a plain string, so the cast is safe.
-        form.setValue(field, fieldValue as CreateNewFormValues[K], { shouldValidate: true });
+        // react-hook-form's setValue overload resolves PathValueImpl<K> from a
+        // literal key — it can't be satisfied through a generic K (no `as`
+        // cast survives it either), so dispatch to a literal call per field
+        // instead of a single generic call.
+        switch (field) {
+            case 'fullName':
+                form.setValue('fullName', fieldValue, { shouldValidate: true });
+                break;
+            case 'email':
+                form.setValue('email', fieldValue, { shouldValidate: true });
+                break;
+            case 'mobileNumber':
+                form.setValue('mobileNumber', fieldValue, { shouldValidate: true });
+                break;
+        }
         const next = { ...form.getValues(), [field]: fieldValue };
         onChange({
             kind: 'create_new',

@@ -240,6 +240,41 @@ def _voice_gender(voice) -> str:
     return "male" if (voice or "priya").strip().lower() in _MALE_VOICES else "female"
 
 
+# The agent's configured "language" (a UI value like "hinglish") → a Sarvam STT
+# BCP-47 tag to PIN transcription, plus a human label for the prompt. Pinning matters:
+# auto-detect drifts a Hindi/Hinglish caller into a neighbouring Indic language
+# (Punjabi/Marathi), and once a turn is transcribed as that, the LLM replies and the
+# TTS speaks it for the rest of the call. Hinglish pins to hi-IN — saarika still
+# transcribes the English words in a Hinglish sentence, it just never leaves Hindi.
+_STT_LANGS = {
+    "hinglish": ("hi-IN", "Hindi or Hinglish"),
+    "hindi": ("hi-IN", "Hindi"),
+    "english": ("en-IN", "English"),
+    "punjabi": ("pa-IN", "Punjabi"),
+    "marathi": ("mr-IN", "Marathi"),
+    "gujarati": ("gu-IN", "Gujarati"),
+    "bengali": ("bn-IN", "Bengali"),
+    "tamil": ("ta-IN", "Tamil"),
+    "telugu": ("te-IN", "Telugu"),
+    "kannada": ("kn-IN", "Kannada"),
+    "malayalam": ("ml-IN", "Malayalam"),
+    "odia": ("od-IN", "Odia"),
+}
+
+
+def _agent_language(agent) -> tuple[str | None, str]:
+    """(BCP-47 STT tag or None, human label). None ⇒ let build_stt use its env default."""
+    raw = (agent.get("language") or "").strip().lower()
+    if not raw:
+        return None, "Hindi or Hinglish"
+    if raw in _STT_LANGS:
+        return _STT_LANGS[raw]
+    if "-" in raw and len(raw) <= 6:  # already a tag like "hi-in"
+        parts = raw.split("-")
+        return f"{parts[0]}-{parts[1].upper()}", agent.get("language")
+    return None, agent.get("language")
+
+
 def _lead_fields_line(context: Dict[str, Any]) -> str:
     """One prompt line listing the lead's captured form/custom fields, so the agent uses
     what it already knows (company, role, …) instead of re-asking. Capped so a lead with
@@ -262,6 +297,7 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
     extraction = agent.get("extractionQuestions") or []
     dispositions = agent.get("dispositions") or []
     name = agent.get("name") or "the assistant"
+    _, lang_label = _agent_language(agent)
     gender = _voice_gender(agent.get("voice"))
     direction = str(context.get("direction") or agent.get("direction") or "OUTBOUND").upper()
 
@@ -347,8 +383,10 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         "4) If the conversation stops making sense, or they seem to answer a different question than "
         "you asked, assume you MIS-HEARD: say 'Sorry, aapki awaaz thodi clear nahi aayi, ek baar phir "
         "boliye?' — do NOT plough ahead with your script.\n"
-        "5) Speak the caller's language and STAY in it for the whole call. A single English word from "
-        "them is NOT a reason to switch languages; never switch language in the middle of an answer."
+        f"5) Speak {lang_label} and STAY in it for the whole call. NEVER drift into a different "
+        f"language — if a transcript looks like another language, treat it as a mis-heard "
+        f"{lang_label} line, not a cue to switch. A single English word from them is NOT a reason "
+        f"to switch; never switch language mid-answer."
     )
 
     lines = [
@@ -402,7 +440,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     def set_bot_speaking(speaking: bool):
         flags["bot_speaking"] = speaking
 
-    stt = build_stt(settings.sample_rate)
+    stt_lang, _ = _agent_language(agent)
+    stt = build_stt(settings.sample_rate, language=stt_lang)
     llm = build_llm()
     tts = build_tts(settings.sample_rate, voice=agent.get("voice"),
                     aiohttp_session=aiohttp_session)

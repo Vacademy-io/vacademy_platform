@@ -43,9 +43,15 @@ class Settings:
     # deflects/loops. Transcription, not translation, is what a native-language voice bot
     # needs. Overridable via SARVAM_STT_MODEL to roll back or try another model.
     sarvam_stt_model: str = field(default_factory=lambda: _env("SARVAM_STT_MODEL", "saarika:v2.5"))
-    # Optional: pin STT to one language (e.g. "hi-IN") instead of auto-detect. Blank =
-    # auto (best for mixed Hindi+English). Consumed in providers.build_stt.
-    sarvam_stt_language: str = field(default_factory=lambda: _env("SARVAM_STT_LANGUAGE", ""))
+    # Pin STT to one language instead of auto-detect. Default "hi-IN": auto-detect
+    # drifts a Hindi/Hinglish caller into a NEIGHBOURING Indic language — Punjabi or
+    # Marathi (Marathi shares Devanagari, Punjabi is phonetically close) — and once one
+    # turn is transcribed as Punjabi/Marathi the "speak the caller's language and stay
+    # in it" rule makes the LLM reply, and the TTS speak, that language for the rest of
+    # the call. Pinning hi-IN still transcribes the English words in a Hinglish sentence
+    # (saarika is code-mixed aware) but never leaves Hindi. Set "" for auto-detect or
+    # another BCP-47 tag (e.g. "en-IN") for an English-first agent. Read in build_stt.
+    sarvam_stt_language: str = field(default_factory=lambda: _env("SARVAM_STT_LANGUAGE", "hi-IN"))
     sarvam_llm_model: str = field(default_factory=lambda: _env("SARVAM_LLM_MODEL", "sarvam-105b"))
     sarvam_llm_base_url: str = field(
         default_factory=lambda: _env("SARVAM_LLM_BASE_URL", "https://api.sarvam.ai/v1")

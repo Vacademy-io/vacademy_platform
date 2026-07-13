@@ -3,10 +3,23 @@ import { defineConfig } from "vite";
 import viteReact from "@vitejs/plugin-react";
 import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
 import path from "path";
+import { readFileSync } from "fs";
 import svgr from "vite-plugin-svgr";
+
+// Embedded JS bundle version, read from package.json at build time. The OTA
+// check uses this as the "current bundle version" on a fresh install (before
+// any OTA bundle is applied), so it compares JS-to-JS instead of falling back
+// to the native app version — whose numbering space (1.0.x) differs from the
+// OTA bundle scheme (2.2.x) and would make every published bundle look newer.
+const pkgVersion: string = JSON.parse(
+    readFileSync(path.resolve(__dirname, "package.json"), "utf-8"),
+).version;
 
 // https://vitejs.dev/config/
 export default defineConfig({
+    define: {
+        __APP_VERSION__: JSON.stringify(pkgVersion),
+    },
     plugins: [
         TanStackRouterVite(),
         viteReact(),

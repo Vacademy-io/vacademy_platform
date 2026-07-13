@@ -13,15 +13,13 @@ import {
 } from "@capawesome/capacitor-app-update";
 
 import { Capacitor } from "@capacitor/core";
-import { App } from "@/utils/app-plugin";
+import { App } from "@capacitor/app";
 import { toast } from "sonner";
 import { useUpdate } from "@/stores/useUpdate";
 import { useOtaUpdate } from "@/stores/useOtaUpdate";
 import {
   checkForOtaUpdate,
   downloadAndApplyUpdate,
-  downloadAndStageUpdate,
-  isSilentOtaApp,
   notifyUpdateSuccess,
 } from "@/services/ota-update";
 import { Preferences } from "@capacitor/preferences";
@@ -57,7 +55,6 @@ const PUBLIC_ROUTES = [
   "/signup/oauth",
   "/privacy-policy",
   "/terms-and-conditions",
-  "/account-deletion", // Play-required public account-deletion instructions
   "/referral",
   "/planning/planning-logs",
   "/planning/activity-logs",
@@ -295,22 +292,6 @@ const RootComponent = () => {
       try {
         const result = await checkForOtaUpdate();
         if (result.update_available && result.bundle_download_url) {
-          // Silent-OTA apps (e.g. Shiksha Nation): download in the background and
-          // stage the bundle for the next restart/resume. No banner, no toast, no
-          // mid-session reload (which would wipe an in-progress exam attempt).
-          if (await isSilentOtaApp()) {
-            try {
-              await downloadAndStageUpdate(
-                result.bundle_download_url,
-                result.version!,
-                result.checksum!,
-              );
-            } catch (stageErr) {
-              console.error("OTA silent stage failed:", stageErr);
-            }
-            return;
-          }
-
           setOtaUpdate({
             otaUpdateAvailable: true,
             otaVersion: result.version ?? null,

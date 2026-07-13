@@ -248,7 +248,8 @@ public class PipelineReportService {
     /**
      * Leads assigned to each counsellor that have never had a status change recorded — i.e.
      * zero rows in lead_status_history across any of their audience_responses in this institute.
-     * No date window: "pending" means never touched, not just untouched in the report period.
+     * Scoped to the report window via ar2.submitted_at, matching Recent Leads and the other
+     * disposition metrics — a lead only counts as "pending" here if it was submitted in-window.
      * audienceId filter is honoured so the count scopes to a single campaign when selected.
      */
     private static final String PENDING_LEADS_SQL = """
@@ -258,11 +259,12 @@ public class PipelineReportService {
             WHERE ulp.institute_id = :instituteId
               AND ulp.assigned_counselor_id IS NOT NULL
               AND (:scopeCsv IS NULL OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
-              AND (:audienceId IS NULL OR EXISTS (
+              AND EXISTS (
                   SELECT 1 FROM audience_response ar2
                   WHERE (ar2.user_id = ulp.user_id OR ar2.student_user_id = ulp.user_id)
-                    AND ar2.audience_id = :audienceId
-              ))
+                    AND ar2.submitted_at >= :fromTs AND ar2.submitted_at < :toTs
+                    AND (:audienceId IS NULL OR ar2.audience_id = :audienceId)
+              )
               AND NOT EXISTS (
                   SELECT 1
                   FROM audience_response ar

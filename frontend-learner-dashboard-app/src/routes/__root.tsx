@@ -20,6 +20,8 @@ import { useOtaUpdate } from "@/stores/useOtaUpdate";
 import {
   checkForOtaUpdate,
   downloadAndApplyUpdate,
+  downloadAndStageUpdate,
+  isSilentOtaApp,
   notifyUpdateSuccess,
 } from "@/services/ota-update";
 import { Preferences } from "@capacitor/preferences";
@@ -292,6 +294,22 @@ const RootComponent = () => {
       try {
         const result = await checkForOtaUpdate();
         if (result.update_available && result.bundle_download_url) {
+          // Native apps update silently: download in the background and stage the
+          // bundle for the next restart/resume. No banner, no toast, no mid-session
+          // reload — a reload here would wipe a learner's in-progress attempt.
+          if (await isSilentOtaApp()) {
+            try {
+              await downloadAndStageUpdate(
+                result.bundle_download_url,
+                result.version!,
+                result.checksum!,
+              );
+            } catch (stageErr) {
+              console.error("OTA silent stage failed:", stageErr);
+            }
+            return;
+          }
+
           setOtaUpdate({
             otaUpdateAvailable: true,
             otaVersion: result.version ?? null,

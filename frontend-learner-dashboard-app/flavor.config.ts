@@ -33,7 +33,7 @@ export const flavorConfig: FlavorConfigs = {
     subdomain: "practice",
   },
 
-    // Enark Uplift Teacher Training Android app
+  // Enark Uplift Teacher Training Android app
   "io.enarkuplift.app": {
     appName: "Uplift Teacher Training",
     domain: "enarkuplift.in",
@@ -57,8 +57,17 @@ export const flavorConfig: FlavorConfigs = {
     subdomain: "fivesep",
   },
 
-  // Shiksha Nation iOS app
-  "io.shikshanation.app": {
+  // Shiksha Nation iOS app (Shreyash Jain account, team 35NLZB49QN)
+  "io.shikshanation.learner": {
+    appName: "Shiksha Nation",
+    domain: "shikshanation.com",
+    subdomain: "learner",
+  },
+
+  // Shiksha Nation iOS app — RETIRED bundle id (old Apple account 7XKD5M7288).
+  // Kept on purpose: installs of the old app still pull OTA bundles built from
+  // this source, and dropping the entry would strand them on the generic login.
+  "io.shikshanationapp.com": {
     appName: "Shiksha Nation",
     domain: "shikshanation.com",
     subdomain: "learner",
@@ -67,18 +76,18 @@ export const flavorConfig: FlavorConfigs = {
   // Shiksha Nation Android & Electron app
   "com.shikshanation.new.app": {
     appName: "Shiksha Nation",
-    domain: "vacademy.io",
-    subdomain: "shiksha-nation",
+    domain: "shikshanation.com",
+    subdomain: "learner",
   },
 
   //SSDC Android App
-   "io.vacademy.student.app": {
+  "io.vacademy.student.app": {
     appName: "SSDC Horizon",
     domain: "vacademy.io",
     subdomain: "ssdc",
   },
 
-   // Enark Uplift Teacher Training Android app
+  // Enark Uplift Teacher Training Android app
   "com.enarkuplift.app": {
     appName: "Uplift Teacher Training",
     domain: "enarkuplift.in",
@@ -146,5 +155,19 @@ export const flavorConfig: FlavorConfigs = {
     appName: "Elevate Education",
     domain: "elevateeducation.in",
     subdomain: "student",
+  },
+
+  // HCCA Learning iOS app
+  "io.hcca.app": {
+    appName: "HCCA Learning",
+    domain: "hcca.in",
+    subdomain: "learn",
+  },
+
+  // HCCA Learning Android app
+  "com.hcca.app": {
+    appName: "HCCA Learning",
+    domain: "hcca.in",
+    subdomain: "learn",
   },
 };

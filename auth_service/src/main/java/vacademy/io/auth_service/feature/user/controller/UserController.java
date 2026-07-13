@@ -187,4 +187,36 @@ public class UserController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    // Links two EXISTING users as parent/child (guardian-linking feature).
+    @PostMapping("/internal/link-parent-child")
+    @Transactional
+    public ResponseEntity<String> linkParentChild(@RequestBody ParentChildLinkRequestDTO request) {
+        try {
+            authService.linkParentChild(request.getParentUserId(), request.getStudentUserId());
+            return ResponseEntity.ok("Linked");
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
+    // All children linked to a single parent (multi-child aware).
+    @GetMapping("/internal/children-of-parent")
+    public ResponseEntity<List<UserDTO>> getChildrenOfParent(@RequestParam("parentUserId") String parentUserId) {
+        return ResponseEntity.ok(authService.getChildrenOfParent(parentUserId));
+    }
+
+    // Institute-wide guardian backfill: creates a synthetic parent for each
+    // child that does not already have one linked.
+    @PostMapping("/internal/backfill-parents")
+    @Transactional
+    public ResponseEntity<BackfillParentsResultDTO> backfillParents(
+            @RequestBody List<BackfillParentItemDTO> items,
+            @RequestParam("instituteId") String instituteId) {
+        try {
+            return ResponseEntity.ok(authService.backfillParents(items, instituteId));
+        } catch (Exception e) {
+            throw new VacademyException(e.getMessage());
+        }
+    }
+
 }

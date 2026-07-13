@@ -311,6 +311,15 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("statuses") List<String> statuses);
 
   @Query(value = """
+      SELECT DISTINCT user_id FROM student_session_institute_group_mapping
+      WHERE institute_id = :instituteId
+        AND status IN (:statuses)
+      """, nativeQuery = true)
+  List<String> findDistinctUserIdsByInstituteAndStatus(
+      @Param("instituteId") String instituteId,
+      @Param("statuses") List<String> statuses);
+
+  @Query(value = """
       SELECT DISTINCT institute_id FROM student_session_institute_group_mapping
       WHERE user_id = :userId
         AND status IN (:statuses)

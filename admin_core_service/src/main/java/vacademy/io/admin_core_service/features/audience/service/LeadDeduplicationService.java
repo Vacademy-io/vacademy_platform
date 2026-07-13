@@ -112,15 +112,29 @@ public class LeadDeduplicationService {
         LeadDedupSettingService.DedupSettings settings = leadDedupSettingService.get(instituteId);
         if (!settings.enabled()) return Optional.empty();
 
-        boolean instituteWide = settings.scope() == LeadDedupSettingService.DedupScope.INSTITUTE;
-        String scopeLabel = instituteWide ? "in this institute" : "in this lead list";
+        LeadDedupSettingService.DedupScope scope = settings.scope();
+        // A SELECTED scope with no lists configured has nothing to check against —
+        // fail open (no rejection) rather than silently blocking every submission.
+        if (scope == LeadDedupSettingService.DedupScope.SELECTED
+                && (settings.audienceIds() == null || settings.audienceIds().isEmpty())) {
+            return Optional.empty();
+        }
+
+        String scopeLabel = switch (scope) {
+            case INSTITUTE -> "in this institute";
+            case SELECTED -> "in one of the selected lead lists";
+            case CAMPAIGN -> "in this lead list";
+        };
 
         if (settings.field() == LeadDedupSettingService.DedupField.PHONE) {
             String last10 = lastNDigits(phone, 10);
             if (last10 == null) return Optional.empty();
-            boolean exists = instituteWide
-                    ? audienceResponseRepository.existsByInstituteIdAndPhoneLast10(instituteId, last10)
-                    : audienceResponseRepository.existsByAudienceIdAndPhoneLast10(audienceId, last10);
+            boolean exists = switch (scope) {
+                case INSTITUTE -> audienceResponseRepository.existsByInstituteIdAndPhoneLast10(instituteId, last10);
+                case SELECTED -> audienceResponseRepository.existsByAudienceIdInAndPhoneLast10(
+                        settings.audienceIds(), last10);
+                case CAMPAIGN -> audienceResponseRepository.existsByAudienceIdAndPhoneLast10(audienceId, last10);
+            };
             return exists
                     ? Optional.of("A lead with this phone number already exists " + scopeLabel + ".")
                     : Optional.empty();
@@ -128,9 +142,14 @@ public class LeadDeduplicationService {
 
         String normalizedEmail = (email != null) ? email.trim() : "";
         if (normalizedEmail.isEmpty()) return Optional.empty();
-        boolean exists = instituteWide
-                ? audienceResponseRepository.existsByInstituteIdAndParentEmailIgnoreCase(instituteId, normalizedEmail)
-                : audienceResponseRepository.existsByAudienceIdAndParentEmailIgnoreCase(audienceId, normalizedEmail);
+        boolean exists = switch (scope) {
+            case INSTITUTE -> audienceResponseRepository
+                    .existsByInstituteIdAndParentEmailIgnoreCase(instituteId, normalizedEmail);
+            case SELECTED -> audienceResponseRepository
+                    .existsByAudienceIdInAndParentEmailIgnoreCase(settings.audienceIds(), normalizedEmail);
+            case CAMPAIGN -> audienceResponseRepository
+                    .existsByAudienceIdAndParentEmailIgnoreCase(audienceId, normalizedEmail);
+        };
         return exists
                 ? Optional.of("A lead with this email already exists " + scopeLabel + ".")
                 : Optional.empty();

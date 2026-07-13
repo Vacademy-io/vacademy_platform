@@ -499,6 +499,14 @@ public class AudienceService {
         // (user + audience_response) surface real errors, and the enrichment steps are
         // best-effort so a lead is never lost over optional config.
 
+        // Institute-configured hard dedup (LEAD_SETTING.data.dedup) — checked before
+        // creating the auth user so a rejected lead never creates an orphan account.
+        java.util.Optional<String> dedupRejection = leadDeduplicationService.checkForRejection(
+                dto.getInstituteId(), audience.getId(), dto.getEmail(), dto.getMobileNumber());
+        if (dedupRejection.isPresent()) {
+            return dedupRejection.get();
+        }
+
         // 1. Create/fetch the lead's user in auth_service (no credentials email).
         UserDTO createdUser = authService.createUserFromAuthService(userDTO, audience.getInstituteId(), false);
         String userId = createdUser != null ? createdUser.getId() : null;
@@ -515,6 +523,8 @@ public class AudienceService {
                 .sourceType("COURSE_CATALOGUE")
                 .sourceId(sourceId)
                 .userId(userId)
+                .parentEmail(dto.getEmail())
+                .parentMobile(dto.getMobileNumber())
                 .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
                 .initialScore(audience.getDefaultInitialScore())
                 .build());
@@ -741,6 +751,14 @@ public class AudienceService {
                 return "Error in submitting the response: user email, mobile number or name is required";
             }
 
+            // Institute-configured hard dedup (LEAD_SETTING.data.dedup) — checked before
+            // creating the auth user so a rejected lead never creates an orphan account.
+            java.util.Optional<String> dedupRejection = leadDeduplicationService.checkForRejection(
+                    instituteId, requestDTO.getAudienceId(), userDTO.getEmail(), userDTO.getMobileNumber());
+            if (dedupRejection.isPresent()) {
+                return dedupRejection.get();
+            }
+
             if (userDTO != null && StringUtils.hasText(userDTO.getEmail())) {
                 // Call auth_service to create or fetch existing user
                 // sendCred = false (no email notification)
@@ -772,6 +790,8 @@ public class AudienceService {
                         .sourceId(requestDTO.getSourceId())
                         .userId(userId) // Set user_id if created successfully
                         .leadStatusId(resolvedLeadStatusId)
+                        .parentEmail(userDTO.getEmail())
+                        .parentMobile(userDTO.getMobileNumber())
                         .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
                         .initialScore(audience.getDefaultInitialScore())
                         .build();
@@ -1190,6 +1210,14 @@ public class AudienceService {
         try {
             UserDTO userDTO = requestDTO.getUserDTO();
             if (userDTO != null && StringUtils.hasText(userDTO.getEmail())) {
+                // Institute-configured hard dedup (LEAD_SETTING.data.dedup) — checked before
+                // creating the auth user so a rejected lead never creates an orphan account.
+                java.util.Optional<String> dedupRejection = leadDeduplicationService.checkForRejection(
+                        instituteId, requestDTO.getAudienceId(), userDTO.getEmail(), userDTO.getMobileNumber());
+                if (dedupRejection.isPresent()) {
+                    return dedupRejection.get();
+                }
+
                 // Call auth_service to create or fetch existing user
                 // sendCred = false (no email notification)
                 createdUser = authService.createUserFromAuthService(
@@ -1211,6 +1239,8 @@ public class AudienceService {
                         .sourceType(requestDTO.getSourceType())
                         .sourceId(requestDTO.getSourceId())
                         .userId(userId)
+                        .parentEmail(userDTO.getEmail())
+                        .parentMobile(userDTO.getMobileNumber())
                         .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
                         .initialScore(audience.getDefaultInitialScore())
                         .build();
@@ -1617,6 +1647,15 @@ public class AudienceService {
         }
 
         String instituteId = audience.getInstituteId();
+
+        // Institute-configured hard dedup (LEAD_SETTING.data.dedup) — checked before creating
+        // any users so a rejected lead never creates orphan parent/child accounts. When this
+        // setting is disabled (default), STEP 4's soft-merge dedupeKey logic below is unchanged.
+        java.util.Optional<String> dedupRejection = leadDeduplicationService.checkForRejection(
+                instituteId, requestDTO.getAudienceId(), requestDTO.getParentEmail(), requestDTO.getParentMobile());
+        if (dedupRejection.isPresent()) {
+            throw new VacademyException(dedupRejection.get());
+        }
 
         // STEP 2: Create parent and child users using batch endpoint
         String parentUserId = null;
@@ -3395,6 +3434,15 @@ public class AudienceService {
                     formProvider, audienceId, email);
         }
 
+        // Institute-configured hard dedup (LEAD_SETTING.data.dedup) — checked against the
+        // lead's real (pre-synthesis) email/phone, before creating the auth user, so a
+        // rejected lead never creates an orphan account.
+        java.util.Optional<String> dedupRejection = leadDeduplicationService.checkForRejection(
+                instituteId, audienceId, processedData.getEmail(), processedData.getPhone());
+        if (dedupRejection.isPresent()) {
+            return dedupRejection.get();
+        }
+
         // 1. Create/fetch user from auth_service
         UserDTO userDTO = UserDTO.builder()
                 .email(email)
@@ -3429,6 +3477,8 @@ public class AudienceService {
                 .sourceType(formProvider) // ZOHO_FORMS, GOOGLE_FORMS, etc.
                 .sourceId(formProvider + "_WEBHOOK")
                 .userId(userId)
+                .parentEmail(processedData.getEmail())
+                .parentMobile(processedData.getPhone())
                 .workflowActivateDayAt(workflowActivateDayAt)
                 .initialScore(audience.getDefaultInitialScore())
                 .build();

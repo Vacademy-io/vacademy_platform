@@ -14,6 +14,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import LeadStatusesManager from './LeadStatusesManager';
 import LeadSlaSettings from './LeadSlaSettings';
 import LeadReportSettings from './LeadReportSettings';
+import LeadDedupSettings from './LeadDedupSettings';
 import PoolsList from './pools/PoolsList';
 // LOCAL ONLY — these power the Workbench tab where admins pick the leads team
 // and configure the counsellor rating strategy.
@@ -394,6 +395,9 @@ function ConfigSection({
 
                     {/* ── Reports Center config (LEAD_SETTING.data.reports subtree) ── */}
                     <LeadReportSettings />
+
+                    {/* ── Lead uniqueness / deduplication (LEAD_SETTING.data.dedup subtree) ── */}
+                    <LeadDedupSettings />
 
                     {/* ── TAT + Follow-up reminders (table-backed) ── */}
                     <LeadSlaSettings />

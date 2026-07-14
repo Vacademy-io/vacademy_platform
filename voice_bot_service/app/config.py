@@ -138,11 +138,13 @@ class Settings:
         )
     )
 
-    # Call-open pacing: a real caller doesn't blast audio the instant the line
-    # opens. On connect the bot waits up to this long for the callee to answer /
-    # say "hello" (if they speak first, the normal turn greets them back so the
-    # bot never talks over them); on continued silence, the bot opens itself.
-    greet_delay_secs: float = field(default_factory=lambda: float(_env("GREET_DELAY_SECS", "2.0")))
+    # Call-open pacing: on OUTBOUND the callee already said "hello" on pickup, so the
+    # bot SPEAKS FIRST after this short beat — long enough not to clip their "hello",
+    # short enough to avoid dead air / the "double hello". Was 2.0s (the main cause of
+    # the robotic-feeling start); ~0.8s is the production sweet spot (Vapi/Retell fire
+    # the greeting ~0.3-0.8s after the human is on the line). If they say something
+    # substantive in this window, their turn drives the reply and the bot doesn't open.
+    greet_delay_secs: float = field(default_factory=lambda: float(_env("GREET_DELAY_SECS", "0.8")))
 
     # Idle handling: nudge once after this silence, then hang up on continued
     # silence. The clock only runs while the BOT is not speaking (see bot.py).

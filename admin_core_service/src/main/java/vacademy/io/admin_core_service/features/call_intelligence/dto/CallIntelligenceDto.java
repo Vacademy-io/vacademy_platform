@@ -44,6 +44,16 @@ public class CallIntelligenceDto {
     private String schemaVersion;
     private Timestamp completedAt;
 
+    /**
+     * Why a FAILED row failed (the exception from the ai_service pipeline), and how
+     * many times it has been attempted. Without these a FAILED row is completely
+     * opaque — status=FAILED with skipReason=null and every analysis field empty —
+     * so there is no way to tell a bad recording from a model/JSON error without
+     * shell access to the DB. SKIPPED rows carry {@code skipReason} instead.
+     */
+    private String error;
+    private Integer attempts;
+
     public static CallIntelligenceDto from(CallIntelligence c) {
         return CallIntelligenceDto.builder()
                 .id(c.getId())
@@ -71,6 +81,8 @@ public class CallIntelligenceDto {
                 .creditsCharged(c.getCreditsCharged())
                 .schemaVersion(c.getSchemaVersion())
                 .completedAt(c.getCompletedAt())
+                .error(c.getError())
+                .attempts(c.getAttempts())
                 .build();
     }
 }

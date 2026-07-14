@@ -48,7 +48,10 @@ const fetchGuardianSettings = async (): Promise<GuardianSettingsData> => {
         url: GET_INSITITUTE_SETTINGS,
         params: { instituteId, settingKey: SETTING_KEY },
     });
-    const saved = response.data?.data?.[SETTING_KEY]?.data as Partial<GuardianSettingsData> | undefined;
+    // GET returns the SettingDto itself ({key, name, data}) — response.data IS
+    // the SettingDto, so its content is one level down at response.data.data
+    // (matches LeadSettings.tsx's fetchLeadSettings, verified working).
+    const saved = response.data?.data as Partial<GuardianSettingsData> | undefined;
     if (!saved) return DEFAULT_GUARDIAN_SETTINGS;
     return { ...DEFAULT_GUARDIAN_SETTINGS, ...saved };
 };

@@ -4619,6 +4619,10 @@ class VideoGenerationPipeline:
                         # html-stage resume load for rationale).
                         if isinstance(_v3_resume_plan.get("design_identity"), dict):
                             self._design_identity = _v3_resume_plan["design_identity"]
+                        # Cast adoption on resume — cast-gate answers, voice
+                        # map and portrait reuse all need _dialogue_characters,
+                        # which only the fresh plan seam set before.
+                        self._adopt_dialogue_cast(_v3_resume_plan)
                         print(
                             f"♻️  v3 resume — loaded shot_plan.json "
                             f"({len(_v3_resume_plan['shots'])} shots) from disk; "
@@ -5248,6 +5252,9 @@ class VideoGenerationPipeline:
                     # between legs, so the file is the source of truth here.
                     if isinstance(_director_plan.get("design_identity"), dict):
                         self._design_identity = _director_plan["design_identity"]
+                    # Cast adoption on resume (mirrors the script-stage load).
+                    if not (self._dialogue_characters or []):
+                        self._adopt_dialogue_cast(_director_plan)
                     _src = "memory" if _v3_plan_in_memory else "shot_plan.json checkpoint"
                     print(f"♻️  Using v3 shot plan from {_src} ({len(_director_plan['shots'])} shots) — Director skipped")
                     self._emit_progress({
@@ -7666,6 +7673,56 @@ class VideoGenerationPipeline:
     # ------------------------------------------------------------------
     # DIALOGUE_SCENE (storybook/drama mode) helpers
     # ------------------------------------------------------------------
+
+    def _adopt_dialogue_cast(self, plan: Dict[str, Any]) -> None:
+        """Populate self._dialogue_characters from a shot plan (fresh or resumed).
+
+        A saved cast wins (the ctor already stashed it). Otherwise adopt the
+        plan's top-level `characters` array; when the planner OMITTED it but
+        the plan still has DIALOGUE_SCENE shots (LLMs drop the field),
+        synthesize a minimal cast from the shots' character_names/dialogue so
+        portraits, the cast gate (real-face uploads), and the voice map still
+        work — the user can redo/replace the weak synthesized portraits at
+        the gate. Also the RESUME-side cast adoption: only the fresh plan
+        seam used to set _dialogue_characters, so every resume leg (cast
+        gate answers, casting/contact pauses) ran with an empty cast.
+        """
+        if not self._dialogue_scenes_enabled or getattr(self, "_saved_cast", None):
+            return
+        chars = [
+            c for c in (plan.get("characters") or [])
+            if isinstance(c, dict) and str(c.get("name") or "").strip()
+        ]
+        if not chars:
+            names: List[str] = []
+            first_scene: Dict[str, str] = {}
+            for s in plan.get("shots") or []:
+                if not isinstance(s, dict) or \
+                        str(s.get("shot_type") or "").upper() != "DIALOGUE_SCENE":
+                    continue
+                scene = str(s.get("scene_description") or "").strip()
+                cand = [str(n).strip() for n in (s.get("character_names") or []) if str(n).strip()]
+                cand += [
+                    str((l or {}).get("character") or "").strip()
+                    for l in (s.get("dialogue") or []) if isinstance(l, dict)
+                ]
+                for n in cand:
+                    if n and n.lower() not in (x.lower() for x in names):
+                        names.append(n)
+                        if scene and n.lower() not in first_scene:
+                            first_scene[n.lower()] = scene[:220]
+            chars = [
+                {"name": n, "visual_description": first_scene.get(n.lower(), ""), "voice_hint": ""}
+                for n in names[:4]
+            ]
+            if chars:
+                plan["characters"] = chars
+                print(
+                    f"   🎭 Planner omitted the cast — synthesized {len(chars)} character(s) "
+                    f"from dialogue shots: {[c['name'] for c in chars]}"
+                )
+        if chars:
+            self._dialogue_characters = chars
 
     def _dialogue_voice_map(self) -> Dict[str, str]:
         """Stable character→voice_gender map for the whole run. Uses the cast's
@@ -12929,7 +12986,9 @@ class VideoGenerationPipeline:
             shot_plan_dict["characters"] = list(self._saved_cast)
             self._dialogue_characters = list(self._saved_cast)
         else:
-            self._dialogue_characters = shot_plan_dict.get("characters") or []
+            # Adopts the planner cast; synthesizes one from the dialogue
+            # shots when the LLM omitted the top-level characters array.
+            self._adopt_dialogue_cast(shot_plan_dict)
 
         # ── Edit-Choreographer (LLM authors the cut) + picker (validates) ──
         # The ShotPlanner already set transition_in per shot. A focused pass

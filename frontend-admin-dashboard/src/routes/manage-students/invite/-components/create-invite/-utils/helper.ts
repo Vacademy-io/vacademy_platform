@@ -433,6 +433,11 @@ export function convertInviteData(
                         ...(autopay.maxAmount != null
                             ? { MAX_AMOUNT: autopay.maxAmount }
                             : {}),
+                        AUTH_ENABLED: autopay.authEnabled !== false,
+                        AUTH_REFUNDABLE: autopay.authRefundable === true,
+                        ...(autopay.authAmount != null
+                            ? { AUTH_AMOUNT: autopay.authAmount }
+                            : {}),
                     },
                 };
             } else if (next.setting?.AUTOPAY_SETTING) {

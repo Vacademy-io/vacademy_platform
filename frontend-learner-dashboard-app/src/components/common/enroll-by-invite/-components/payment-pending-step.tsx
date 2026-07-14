@@ -202,9 +202,9 @@ const PaymentPendingStep = ({
       {!shouldHidePaidPurchaseUI() && (
         <div className="text-center space-y-2">
           <p className="text-gray-600 text-sm">
-            You will be redirected to Stripe's secure payment page
+            You will be redirected to a secure payment page
           </p>
-          <p className="text-gray-500 text-xs">Powered by Stripe</p>
+          <p className="text-gray-500 text-xs">Payments are processed securely</p>
         </div>
       )}
     </div>

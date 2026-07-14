@@ -38,7 +38,11 @@ async function fetchParentSettings(): Promise<ParentSettingsConfig> {
             url: GET_INSITITUTE_SETTINGS,
             params: { instituteId, settingKey: SETTING_KEY },
         });
-        const data: ParentSettingsConfig | undefined = response.data?.data?.[SETTING_KEY]?.data;
+        // GET returns the SettingDto itself ({key, name, data}) — response.data IS
+        // the SettingDto, so its content is one level down at response.data.data
+        // (matches LeadSettings.tsx's fetchLeadSettings, verified working — NOT
+        // nested under an extra settingKey property).
+        const data: ParentSettingsConfig | undefined = response.data?.data;
         if (!data) return PARENT_SETTINGS_DEFAULTS;
         // Merge with defaults so any newly added keys are present even if not
         // yet saved (backward-compatible config evolution).

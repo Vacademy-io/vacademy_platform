@@ -629,10 +629,10 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
                 ON sa.registration_id = aur.id
                 AND sa.id = (
                     -- Latest ENDED attempt *WITHIN THE REPORT WINDOW*. The window must be applied
-                    -- here, not only in the outer WHERE: this subselect used to pick the learner's
-                    -- latest ENDED attempt across ALL TIME, which the outer date predicate then
-                    -- rejected — so an assessment sat inside the window vanished from the report
-                    -- entirely just because it was retaken after the window closed.
+                    -- here, not only in the outer WHERE: this subselect used to pick the latest
+                    -- ENDED attempt of the learner across ALL TIME, which the outer date predicate
+                    -- then rejected, so an assessment sat inside the window vanished from the
+                    -- report entirely just because it was retaken after the window closed.
                     SELECT sa_inner.id
                     FROM public.student_attempt sa_inner
                     WHERE sa_inner.registration_id = aur.id

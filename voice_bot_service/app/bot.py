@@ -43,6 +43,9 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.audio.interruptions.min_words_interruption_strategy import (
+    MinWordsInterruptionStrategy,
+)
 
 from . import admin_core
 from .config import get_settings
@@ -406,6 +409,26 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         if extraction else "",
         "Rules:",
         "- 1-2 short sentences per reply. ONE question per turn. Never monologue.",
+        # SCRIPT: Sarvam Bulbul TTS pronounces ROMANIZED Hindi noticeably worse than native
+        # Devanagari (Sarvam's own docs: transliterated input 'significantly reduces output
+        # quality'). Write Hindi words in Devanagari and leave genuine English business words
+        # in Latin — exactly how Indians write Hinglish. This is the single biggest naturalness
+        # lever for a Hindi/Hinglish voice.
+        "- SCRIPT: Write Hindi words in DEVANAGARI (हिंदी लिपि), and keep common English business "
+        "words in English letters (demo, course, book, WhatsApp, offer, plan, confirm, link). "
+        "So write 'मैं आपको एक demo book कर देती हूँ' — NOT romanized 'main aapko ek demo book kar "
+        "deti hoon'. NEVER write Hindi words in Latin letters.",
+        # VARIETY: repeating the identical acknowledgment every turn is the #1 cumulative
+        # robotic tell — rotate them.
+        "- Never repeat the same acknowledgment twice in a row. Rotate naturally — हाँ / अच्छा / "
+        "ठीक है / जी बिल्कुल / समझ गई — don't say 'ji' every single turn.",
+        # REFLECT-BACK: acknowledge the caller's SPECIFIC point before answering, not a generic
+        # 'I understand'.
+        "- Briefly reflect back the caller's specific point before you answer (e.g. 'अच्छा, आप "
+        "timing को लेकर puchh rahe hain —') so they feel heard. Not a generic 'मैं समझती हूँ'.",
+        # ENERGY MATCH.
+        "- Match the caller's energy: a brief, businesslike caller gets crisp efficiency; a "
+        "chatty, warm caller gets a little more warmth. Don't be relentlessly peppy.",
         # Numbers/times are the #1 audio break on Hinglish calls: the model mixes
         # languages ('five baje') or spells digits ('two zero zero').
         "- Clock times: ALWAYS the English 12-hour format — 'five PM', 'ten thirty AM', 'twelve "
@@ -500,6 +523,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # turn be heard — a real conversation, not the bot talking over an interrupting
             # caller. Was unset (no interruption), which caused the overlaps on live calls.
             allow_interruptions=True,
+            # ...but require ≥2 words to interrupt, so a single stray sound, a cough, or a
+            # backchannel ("haan", "hmm", "achha") does NOT cancel the bot mid-sentence and
+            # derail it. A real correction (more words) still barges in immediately.
+            interruption_strategies=[MinWordsInterruptionStrategy(min_words=2)],
         ),
     )
     sentinel.set_task(task)

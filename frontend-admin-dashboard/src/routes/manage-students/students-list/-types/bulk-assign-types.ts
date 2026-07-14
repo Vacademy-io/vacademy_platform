@@ -254,13 +254,54 @@ export interface AutosuggestUser {
 }
 
 /**
+ * Identifies a person by either creating a brand-new user or linking to an
+ * already-existing one. Used inside a chip's guardian-link sub-form to
+ * describe the *counterpart* (the student, when the chip is a guardian; or
+ * the guardian, when the chip is a student).
+ */
+export type ParentLinkPersonInput =
+    | { kind: 'create_new'; fullName: string; email: string; mobileNumber: string }
+    | { kind: 'link_existing'; userId: string; name: string; email: string };
+
+/**
+ * Per-chip guardian-link choice made in Step 1 of the bulk-assign dialog.
+ * Mirrors the backend `/admin-core-service/parent-link/v1/link` request:
+ * - 'is_guardian': this chip IS the guardian; we create/link the STUDENT
+ *   under them (backend `direction: PARENT_ADDS_STUDENT`). The chip's own
+ *   target user id must be swapped for the resolved `student_user_id` before
+ *   enrollment — the guardian itself is never enrolled.
+ * - 'add_guardian': this chip is the student being enrolled; we optionally
+ *   create/link a GUARDIAN for them (backend `direction: STUDENT_ADDS_PARENT`).
+ *   Purely additive — the chip itself remains the enrollment target.
+ */
+export type ParentLinkChoice =
+    | { mode: 'none' }
+    | { mode: 'is_guardian'; student: ParentLinkPersonInput }
+    | { mode: 'add_guardian'; guardian: ParentLinkPersonInput };
+
+/**
  * A learner selected for bulk enroll.
  * - 'existing': already has an account in the system (by userId)
  * - 'new': to be created by the backend via new_users[]
  */
 export type SelectedLearner =
-    | { type: 'existing'; userId: string; email: string; name: string }
-    | { type: 'new'; newUser: NewUserRow };
+    | { type: 'existing'; userId: string; email: string; name: string; parentLink?: ParentLinkChoice }
+    | { type: 'new'; newUser: NewUserRow; parentLink?: ParentLinkChoice };
+
+/** True once a guardian-link sub-form has enough data to resolve (create-new needs name+email, link-existing needs a picked user). */
+export const isParentLinkPersonValid = (p: ParentLinkPersonInput | undefined): boolean => {
+    if (!p) return false;
+    if (p.kind === 'create_new') return !!p.fullName.trim() && /\S+@\S+\.\S+/.test(p.email);
+    return !!p.userId;
+};
+
+/** A chip is ready to advance out of Step 1 once its (optional) guardian-link choice is either 'none' or fully filled in. */
+export const isChipGuardianReady = (l: SelectedLearner): boolean => {
+    const pl = l.parentLink;
+    if (!pl || pl.mode === 'none') return true;
+    if (pl.mode === 'is_guardian') return isParentLinkPersonValid(pl.student);
+    return isParentLinkPersonValid(pl.guardian);
+};
 
 /** A package session selected in Step 2 with its Step 3 invite config */
 export interface SelectedPackageSession {

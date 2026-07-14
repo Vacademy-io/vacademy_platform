@@ -357,6 +357,14 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
             @Param("liveSessionIdsSize") int liveSessionIdsSize
     );
 
+    // NOTE: keep SQL "--" comments OUT of this native @Query text block. Spring Data's
+    // SpEL QuotationMap scans the whole string for apostrophes (including inside comments)
+    // before binding params, so a lone "'" in a comment throws "starts a quoted range ...
+    // but never ends it" at startup. Put explanations in Java "//" comments like this one.
+    //
+    // The batch narrowing (:batchId filter) applies ONLY to BATCH rows. Applying it to USER
+    // rows would compare lsp.source_id (which IS the userId for those rows) against the batch
+    // id and drop every session the learner was individually added to.
     @Query(value = """
     SELECT DISTINCT ON (ss.id, ls.id)
         ss.id AS scheduleId,
@@ -371,7 +379,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         COALESCE(lsl.status, 'UNMARKED') AS attendanceStatus
     FROM live_session_participants lsp
     JOIN session_schedules ss ON ss.session_id = lsp.session_id
-    JOIN live_session ls ON ls.id = lsp.session_id AND ls.status = 'LIVE'
+    JOIN live_session ls ON ls.id = lsp.session_id
     LEFT JOIN LATERAL (
         SELECT status, details, created_at
         FROM live_session_logs
@@ -383,27 +391,19 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         ORDER BY created_at DESC
         LIMIT 1
     ) lsl ON TRUE
-    WHERE
-        (
+    LEFT JOIN student_session_institute_group_mapping m
+        ON m.package_session_id = lsp.source_id
+        AND m.user_id = :userId
+        AND m.status = 'ACTIVE'
+    WHERE (
             (lsp.source_type = 'USER' AND lsp.source_id = :userId)
-            OR 
-            (lsp.source_type = 'BATCH' AND lsp.source_id = :batchId 
-             AND EXISTS (
-                 SELECT 1 FROM student_session_institute_group_mapping 
-                 WHERE user_id = :userId 
-                   AND package_session_id = :batchId 
-                   AND status = 'ACTIVE'
-             ))
-        )
-        AND ss.meeting_date BETWEEN :startDate AND :endDate
-        AND ss.meeting_date >= COALESCE((
-            SELECT enrolled_date 
-            FROM student_session_institute_group_mapping 
-            WHERE user_id = :userId 
-              AND (:batchId IS NULL OR package_session_id = :batchId)
-            ORDER BY created_at DESC 
-            LIMIT 1
-        ), :startDate)
+            OR (lsp.source_type = 'BATCH' AND m.user_id IS NOT NULL
+                AND (:batchId IS NULL OR lsp.source_id = :batchId))
+          )
+      AND ls.status <> 'DELETED'
+      AND ss.status <> 'DELETED'
+      AND ss.meeting_date BETWEEN :startDate AND :endDate
+      AND (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)
     ORDER BY ss.id, ls.id
     """, nativeQuery = true)
     List<ScheduleAttendanceProjection> findAttendanceForUser(
@@ -453,7 +453,7 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
        AND m.user_id = :userId
        -- Enrolment status is deliberately NOT restricted to ACTIVE. A report for a past term is
        -- generated after the mapping has flipped to EXPIRED/INACTIVE (or the learner moved to the
-       -- next year's batch) — requiring ACTIVE returned ZERO sessions for a learner with a full
+       -- next years batch) -- requiring ACTIVE returned ZERO sessions for a learner with a full
        -- attendance history. They *were* enrolled when those sessions ran, which is what matters.
        -- INVITED (never enrolled) and DELETED are still excluded.
        AND m.status NOT IN ('INVITED', 'DELETED')

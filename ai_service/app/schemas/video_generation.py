@@ -651,6 +651,18 @@ class VideoGenerationRequest(BaseModel):
             "Adds generation cost (~$0.30/s of dialogue clip at 720p, capped per video)."
         )
     )
+    dialogue_clip_model: Literal["seedance-2.0", "omni-flash"] = Field(
+        default="seedance-2.0",
+        description=(
+            "Only meaningful when dialogue_scenes_enabled=True. Which video model "
+            "films the DIALOGUE_SCENE clips. 'seedance-2.0' (default) = voice-locked: "
+            "characters lip-sync to OUR per-character TTS, so voices stay identical "
+            "across scenes and sequel videos (~$0.30/s at 720p). 'omni-flash' = "
+            "Gemini Omni Flash: the model speaks the lines itself — cheaper "
+            "(~$0.13/s) and strong visuals, but voices are model-invented per clip "
+            "and may drift between scenes; clips cap at 10s (vs 15s)."
+        )
+    )
     dialogue_mode: Literal["storybook", "drama"] = Field(
         default="storybook",
         description=(

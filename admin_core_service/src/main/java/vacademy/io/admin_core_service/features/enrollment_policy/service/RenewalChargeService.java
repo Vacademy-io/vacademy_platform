@@ -57,7 +57,10 @@ public class RenewalChargeService {
 
     public void processDueRenewals() {
         Date now = new Date();
-        List<UserPlan> due = userPlanRepository.findDueForRenewal(now);
+        // next_charge_at carries the enrollment's time-of-day, so a plan due "today" at
+        // 15:00 would be missed by this morning's run and only charge tomorrow. Sweep the
+        // whole day so a plan is always charged on the date it falls due.
+        List<UserPlan> due = userPlanRepository.findDueForRenewal(endOfDay(now));
         if (due.isEmpty()) {
             log.info("[RenewalCharge] No autopay plans due");
             return;
@@ -105,6 +108,17 @@ public class RenewalChargeService {
             log.error("[RenewalCharge] chargeNow failed for {}: {}", userPlanId, e.getMessage(), e);
             return "ERROR: " + e.getMessage();
         }
+    }
+
+    /** Last instant of the given day, so "due today" means due by this run. */
+    private static Date endOfDay(Date date) {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.setTime(date);
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 23);
+        cal.set(java.util.Calendar.MINUTE, 59);
+        cal.set(java.util.Calendar.SECOND, 59);
+        cal.set(java.util.Calendar.MILLISECOND, 999);
+        return cal.getTime();
     }
 
     private enum Outcome { CHARGED, FAILED, SKIPPED }

@@ -989,6 +989,7 @@ class VideoGenerationService:
         sub_shots_enabled: bool = False,
         dialogue_scenes_enabled: bool = False,
         dialogue_mode: str = "storybook",
+        dialogue_clip_model: str = "seedance-2.0",
         cast_id: Optional[str] = None,
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
@@ -1196,6 +1197,8 @@ class VideoGenerationService:
                 gen_metadata["dialogue_scenes_enabled"] = True
             if dialogue_scenes_enabled and dialogue_mode:
                 gen_metadata["dialogue_mode"] = str(dialogue_mode)
+            if dialogue_scenes_enabled and dialogue_clip_model:
+                gen_metadata["dialogue_clip_model"] = str(dialogue_clip_model)
             if cast_id:
                 gen_metadata["cast_id"] = str(cast_id)
             # Persist the TTS voice knobs so per-sentence re-narration in the
@@ -1396,6 +1399,7 @@ class VideoGenerationService:
                     sub_shots_enabled=sub_shots_enabled,
                     dialogue_scenes_enabled=dialogue_scenes_enabled,
                     dialogue_mode=dialogue_mode,
+                    dialogue_clip_model=dialogue_clip_model,
                     saved_cast=_saved_cast_list,
                     routing_overrides=routing_overrides,
                     host=host,
@@ -1558,6 +1562,7 @@ class VideoGenerationService:
         sub_shots_enabled: bool = False,
         dialogue_scenes_enabled: bool = False,
         dialogue_mode: str = "storybook",
+        dialogue_clip_model: str = "seedance-2.0",
         saved_cast: Optional[List[Dict[str, Any]]] = None,
         routing_overrides: Optional[Dict[str, Any]] = None,
         host: Optional[Any] = None,
@@ -2359,6 +2364,7 @@ class VideoGenerationService:
                     "sub_shots_enabled": sub_shots_enabled,
                     "dialogue_scenes_enabled": dialogue_scenes_enabled,
                     "dialogue_mode": dialogue_mode,
+                    "dialogue_clip_model": dialogue_clip_model,
                     "saved_cast": saved_cast,
                     "mute_tts_on_source_clips_kwarg": mute_tts_on_source_clips,
                     "input_video_ids": input_video_ids,
@@ -2862,6 +2868,7 @@ class VideoGenerationService:
                     sub_shots_enabled=sub_shots_enabled,
                     dialogue_scenes_enabled=dialogue_scenes_enabled,
                     dialogue_mode=dialogue_mode,
+                    dialogue_clip_model=dialogue_clip_model,
                     saved_cast=saved_cast,
                     routing_plan=routing_plan.model_dump() if routing_plan else None,
                     video_type_plan=video_type_plan.model_dump() if video_type_plan else None,

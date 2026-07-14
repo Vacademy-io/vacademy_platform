@@ -1121,6 +1121,40 @@ function SettingsBody({
                                     );
                                 })}
                             </div>
+                            <div className="flex gap-1.5">
+                                {(
+                                    [
+                                        {
+                                            v: 'seedance-2.0',
+                                            label: 'Seedance 2.0',
+                                            desc: 'Voice-locked: characters lip-sync to our TTS — same voices every scene and sequel. ~$0.30/s, clips up to 15s.',
+                                        },
+                                        {
+                                            v: 'omni-flash',
+                                            label: 'Omni Flash',
+                                            desc: 'Gemini Omni speaks the lines itself — ~2x cheaper (~$0.13/s) but voices may vary between scenes. Clips up to 10s.',
+                                        },
+                                    ] as const
+                                ).map((m) => {
+                                    const active =
+                                        (options.dialogue_clip_model ?? 'seedance-2.0') === m.v;
+                                    return (
+                                        <button
+                                            key={m.v}
+                                            type="button"
+                                            title={m.desc}
+                                            onClick={() => update('dialogue_clip_model', m.v)}
+                                            className={`rounded-full border px-2.5 py-0.5 text-[10px] transition-colors ${
+                                                active
+                                                    ? 'border-primary-500 bg-primary-50 text-foreground'
+                                                    : 'text-muted-foreground hover:text-foreground'
+                                            }`}
+                                        >
+                                            {m.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
                             <CastPicker
                                 apiKey={apiKey ?? undefined}
                                 castId={options.cast_id}

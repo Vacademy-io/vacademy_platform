@@ -2,7 +2,7 @@
  * useLeadDedupSettings — reads the institute lead-uniqueness config subtree
  * persisted at LEAD_SETTING.data.dedup:
  *
- *   { "enabled": false, "field": "EMAIL", "scope": "CAMPAIGN" }
+ *   { "enabled": false, "field": "EMAIL", "scope": "CAMPAIGN", "audienceIds": [] }
  *
  * Mirrors the backend defaults in
  * admin_core_service/.../features/audience/service/LeadDedupSettingService.java.
@@ -15,34 +15,45 @@ import { useQuery } from '@tanstack/react-query';
 import { fetchLeadSettingRawData } from '@/hooks/use-lead-report-settings';
 
 export type LeadDedupField = 'EMAIL' | 'PHONE';
-export type LeadDedupScope = 'CAMPAIGN' | 'INSTITUTE';
+/** SELECTED = a specific admin-chosen set of lead lists (audienceIds). */
+export type LeadDedupScope = 'CAMPAIGN' | 'SELECTED' | 'INSTITUTE';
 
 /** Raw shape persisted at LEAD_SETTING.data.dedup (backend contract). */
 export interface LeadDedupSettingsSubtree {
     enabled?: boolean;
     field?: LeadDedupField;
     scope?: LeadDedupScope;
+    audienceIds?: string[];
 }
 
 export interface LeadDedupSettings {
     enabled: boolean;
     field: LeadDedupField;
     scope: LeadDedupScope;
+    /** Only meaningful when scope === 'SELECTED'. */
+    audienceIds: string[];
 }
 
 export const LEAD_DEDUP_SETTINGS_DEFAULTS: LeadDedupSettings = {
     enabled: false,
     field: 'EMAIL',
     scope: 'CAMPAIGN',
+    audienceIds: [],
 };
 
 export const LEAD_DEDUP_SETTINGS_QUERY_KEY = ['lead-dedup-settings'];
 
 function withDefaults(subtree: LeadDedupSettingsSubtree | undefined): LeadDedupSettings {
+    const scope: LeadDedupScope =
+        subtree?.scope === 'INSTITUTE' || subtree?.scope === 'SELECTED'
+            ? subtree.scope
+            : LEAD_DEDUP_SETTINGS_DEFAULTS.scope;
+    const audienceIds = subtree?.audienceIds;
     return {
         enabled: subtree?.enabled ?? LEAD_DEDUP_SETTINGS_DEFAULTS.enabled,
         field: subtree?.field === 'PHONE' ? 'PHONE' : LEAD_DEDUP_SETTINGS_DEFAULTS.field,
-        scope: subtree?.scope === 'INSTITUTE' ? 'INSTITUTE' : LEAD_DEDUP_SETTINGS_DEFAULTS.scope,
+        scope,
+        audienceIds: Array.isArray(audienceIds) ? audienceIds : [],
     };
 }
 

@@ -24,8 +24,10 @@ import { StudentEnquiry } from './student-enquiry/student-enquiry';
 import { StudentApplication } from './student-application/student-application';
 import { StudentLeadProfile } from './student-lead-profile/student-lead-profile';
 import { StudentFullHistory } from './student-full-history/student-full-history';
+import { StudentParentProfile } from './student-parent/student-parent-profile';
 import { LeadFormResponseCard } from '@/routes/audience-manager/list/-components/campaign-users/lead-form-response-card';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
+import { useParentSettings } from '@/hooks/use-parent-settings';
 import { getPublicUrl } from '@/services/upload_file';
 import { ErrorBoundary } from '@/components/core/dashboard-loader';
 import { useStudentSidebar } from '../../../-context/selected-student-sidebar-context';
@@ -80,6 +82,7 @@ function orderedVisibleTabIds(settings: StudentSideViewSettings): StudentSideVie
         'application',
         'lead',
         'fullHistory',
+        'parent',
     ];
     const orders = settings.tabOrders ?? {};
     return all
@@ -159,6 +162,7 @@ export const StudentSidebar = ({
     const tabContainerRef = useRef<HTMLDivElement>(null);
     const activeTabRef = useRef<HTMLButtonElement>(null);
     const leadSettings = useLeadSettings();
+    const parentSettings = useParentSettings();
 
     useEffect(() => {
         if (state == 'expanded') {
@@ -420,6 +424,15 @@ export const StudentSidebar = ({
                                         ) {
                                             return null;
                                         }
+                                        // parent (Guardian) requires the guardian-linking
+                                        // feature to be enabled — a distinct toggle from
+                                        // the lead system, gated separately.
+                                        if (
+                                            tabId === 'parent' &&
+                                            (parentSettings.isLoading || !parentSettings.enabled)
+                                        ) {
+                                            return null;
+                                        }
                                         const label =
                                             tabId === 'courses'
                                                 ? getTerminologyPlural(
@@ -526,6 +539,14 @@ export const StudentSidebar = ({
                                         if (
                                             isLeadGated &&
                                             (!leadSettings.enabled || leadSettings.isLoading)
+                                        )
+                                            return false;
+                                        // Guardian section — gated on its own feature
+                                        // toggle, separate from the lead system.
+                                        const isParentGated = s.id === 'parent';
+                                        if (
+                                            isParentGated &&
+                                            (!parentSettings.enabled || parentSettings.isLoading)
                                         )
                                             return false;
                                         return flag;
@@ -636,6 +657,14 @@ export const StudentSidebar = ({
                             !isEnrollRequestStudentList &&
                             selectedStudent?.user_id && (
                                 <StudentFullHistory studentUserId={selectedStudent.user_id} />
+                            )}
+                        {category === 'parent' &&
+                            tabSettings?.parentTab &&
+                            !parentSettings.isLoading &&
+                            parentSettings.enabled &&
+                            !isEnrollRequestStudentList &&
+                            selectedStudent?.user_id && (
+                                <StudentParentProfile userId={selectedStudent.user_id} />
                             )}
                     </ErrorBoundary>
                 </div>

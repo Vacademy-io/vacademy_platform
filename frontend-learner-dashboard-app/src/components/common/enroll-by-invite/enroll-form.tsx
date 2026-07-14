@@ -1,4 +1,5 @@
 import { Route } from "@/routes/learner-invitation-response";
+import { cn } from "@/lib/utils";
 import { Preferences } from "@capacitor/preferences";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { applyTabBranding } from "@/utils/branding";
@@ -318,6 +319,8 @@ const EnrollByInvite = ({
           ENABLED?: boolean;
           TRIAL_DAYS?: number;
           MAX_AMOUNT?: number;
+          AUTH_AMOUNT?: number;
+          AUTH_REFUNDABLE?: boolean;
         } | null;
       }
     } catch {
@@ -327,6 +330,10 @@ const EnrollByInvite = ({
   }, [inviteData?.setting_json]);
   const isAutopay = Boolean(autopayConfig?.ENABLED);
   const [autopayConsent, setAutopayConsent] = useState(false);
+  // A recurring order is bound to one authorization method, so the learner must
+  // choose before the order is created — it can't be picked inside Checkout.
+  const [mandateMethod, setMandateMethod] = useState<"card" | "upi">("card");
+  const authAmount = autopayConfig?.AUTH_AMOUNT ?? 1;
 
   // Per-field config for the billing-contact form. The admin writes this under
   // postformfillConfiguration.billingContactFields in the invite settingJson;
@@ -1887,6 +1894,8 @@ const EnrollByInvite = ({
           couponDiscount,
           razorpayPaymentData: razorpayPaymentData || undefined, // Will be undefined on first call
           paymentVendor: "RAZORPAY",
+          // Binds the recurring order to the learner's chosen authorization method.
+          ...(isAutopay ? { mandateMethod } : {}),
           isUsingInstituteCustomFields: isUsingInstituteCustomFields,
           billingContact: collectBillingContact ? billingContact : undefined,
           // userId: submittedUserId || undefined,
@@ -2645,6 +2654,43 @@ const EnrollByInvite = ({
             onCouponChange={handleCouponChange}
             initialCouponCode={appliedCouponCode}
           />
+          {isAutopay && (propVendor || getPaymentVendor(inviteData)) === "RAZORPAY" && (
+            <div className="mt-4 rounded-xl border border-gray-200 p-4">
+              <p className="text-sm font-medium text-gray-700">
+                How would you like to set up auto-renewal?
+              </p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                {(
+                  [
+                    { key: "upi", label: "UPI Autopay", hint: "GPay, PhonePe, Paytm" },
+                    { key: "card", label: "Card", hint: "Debit / credit card" },
+                  ] as const
+                ).map((option) => (
+                  <label
+                    key={option.key}
+                    className={cn(
+                      "flex flex-1 cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm",
+                      mandateMethod === option.key
+                        ? "border-primary-500 bg-primary-50"
+                        : "border-gray-200"
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="mandate-method"
+                      className="mt-1 size-4"
+                      checked={mandateMethod === option.key}
+                      onChange={() => setMandateMethod(option.key)}
+                    />
+                    <span>
+                      <span className="font-medium text-gray-700">{option.label}</span>
+                      <span className="block text-xs text-gray-500">{option.hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           {isAutopay && (
             <label className="mt-4 flex items-start gap-3 rounded-xl border border-gray-200 p-4 text-sm text-gray-700">
               <input
@@ -2656,8 +2702,10 @@ const EnrollByInvite = ({
               <span>
                 {autopayConfig?.TRIAL_DAYS ? (
                   <>
-                    I agree: a <span className="font-semibold">₹1</span>{" "}
-                    authorization today starts my{" "}
+                    I agree: a{" "}
+                    <span className="font-semibold">₹{authAmount}</span>{" "}
+                    authorization today
+                    {autopayConfig?.AUTH_REFUNDABLE ? " (refunded)" : ""} starts my{" "}
                     <span className="font-semibold">
                       {autopayConfig.TRIAL_DAYS}-day free trial
                     </span>
@@ -2701,7 +2749,7 @@ const EnrollByInvite = ({
               paymentType === "CPO"
                 ? cpoPayAmount
                 : isAutopay && autopayConfig?.TRIAL_DAYS
-                  ? 1 // free trial: only the ₹1 mandate authorization is charged now
+                  ? authAmount // free trial: only the mandate authorization is charged now
                   : Math.max(
                       0,
                       getSelectedPaymentPrice(enrollmentData.selectedPayment) -

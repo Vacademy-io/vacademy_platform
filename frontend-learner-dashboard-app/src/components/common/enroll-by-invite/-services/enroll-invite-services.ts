@@ -121,6 +121,11 @@ interface EnrollLearnerForPaymentProps {
    * the BE-recorded discount. Default 0 = full price.
    */
   couponDiscount?: number;
+  /**
+   * Autopay mandate authorization method. A recurring order is bound to one method,
+   * so the learner picks before the order is created. "card" (default) | "upi".
+   */
+  mandateMethod?: string;
   returnUrl?: string;
   // Eway-specific payment data
   ewayPaymentData?: {
@@ -416,6 +421,7 @@ export const handleEnrollLearnerForPayment = async ({
   userId,
   couponCode,
   couponDiscount = 0,
+  mandateMethod,
   billingContact,
 }: EnrollLearnerForPaymentProps) => {
   // Dynamically extract email, phone, full name, and password using helper functions
@@ -470,6 +476,8 @@ export const handleEnrollLearnerForPayment = async ({
           customer_id: null,
           contact: phoneNumber,
           email: email,
+          // Only meaningful for autopay orders; the backend ignores it otherwise.
+          ...(mandateMethod ? { mandate_method: mandateMethod } : {}),
         }
       : {};
 

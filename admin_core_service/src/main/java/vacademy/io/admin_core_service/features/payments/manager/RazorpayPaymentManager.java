@@ -28,6 +28,16 @@ import java.util.Map;
 @Service
 public class RazorpayPaymentManager implements PaymentServiceStrategy {
 
+    private static final String MANDATE_METHOD_CARD = "card";
+    private static final String MANDATE_METHOD_UPI = "upi";
+    /** Razorpay wants a mandate expiry for UPI Autopay; hold the mandate for 10 years. */
+    private static final long DEFAULT_MANDATE_YEARS = 10;
+
+    private static long defaultMandateExpiry() {
+        return java.time.Instant.now().plus(java.time.Duration.ofDays(365 * DEFAULT_MANDATE_YEARS))
+                .getEpochSecond();
+    }
+
     @Override
     public PaymentResponseDTO initiatePayment(UserDTO user, PaymentInitiationRequestDTO request,
             Map<String, Object> paymentGatewaySpecificData) {
@@ -148,6 +158,20 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
             token.put("max_amount", maxAmountPaise);
             token.put("frequency", StringUtils.hasText(rr.getMandateFrequency())
                     ? rr.getMandateFrequency() : "as_presented");
+
+            // A recurring order is bound to one authorization method. Card e-mandate is the
+            // default; UPI Autopay must be requested explicitly and requires a mandate expiry.
+            String mandateMethod = StringUtils.hasText(rr.getMandateMethod())
+                    ? rr.getMandateMethod().toLowerCase()
+                    : MANDATE_METHOD_CARD;
+            if (!MANDATE_METHOD_CARD.equals(mandateMethod)) {
+                orderRequest.put("method", mandateMethod);
+            }
+            if (MANDATE_METHOD_UPI.equals(mandateMethod)) {
+                token.put("expire_at", rr.getMandateExpireAt() != null
+                        ? rr.getMandateExpireAt()
+                        : defaultMandateExpiry());
+            }
             orderRequest.put("token", token);
 
             JSONObject notes = new JSONObject();
@@ -163,6 +187,7 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
             dto.getResponseData().put("recurring", 1);
             dto.getResponseData().put("customerId", rr.getCustomerId());
             dto.getResponseData().put("mandateMaxAmount", maxAmountPaise);
+            dto.getResponseData().put("mandateMethod", mandateMethod);
             return dto;
         } catch (RazorpayException e) {
             throw new VacademyException("Error initiating Razorpay mandate payment: " + e.getMessage());
@@ -238,6 +263,25 @@ public class RazorpayPaymentManager implements PaymentServiceStrategy {
     }
 
     // --- Private Helper Methods ---
+
+    /**
+     * Refunds a captured payment in full. Used to return the mandate authorization
+     * charge once the token is registered, so a "free" trial really is free.
+     */
+    public void refundPayment(String razorpayPaymentId, Map<String, Object> paymentGatewaySpecificData) {
+        if (!StringUtils.hasText(razorpayPaymentId)) {
+            throw new VacademyException("Cannot refund Razorpay payment: missing payment id");
+        }
+        try {
+            RazorpayClient razorpayClient = createRazorpayClient(paymentGatewaySpecificData);
+            JSONObject refundRequest = new JSONObject();
+            refundRequest.put("speed", "normal");
+            razorpayClient.payments.refund(razorpayPaymentId, refundRequest);
+        } catch (RazorpayException e) {
+            throw new VacademyException("Error refunding Razorpay payment " + razorpayPaymentId
+                    + ": " + e.getMessage());
+        }
+    }
 
     private RazorpayClient createRazorpayClient(Map<String, Object> paymentGatewaySpecificData)
             throws RazorpayException {

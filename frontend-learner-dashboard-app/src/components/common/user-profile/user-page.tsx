@@ -25,6 +25,12 @@ import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { FileText } from "@phosphor-icons/react";
 import { playIllustrations } from "@/assets/play-illustrations";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
+import { useQuery } from "@tanstack/react-query";
+import { SubscriptionMandateList } from "./payment-billing/subscription-mandate-list";
+import {
+  SUBSCRIPTION_LIST_QUERY_KEY,
+  fetchSubscriptions,
+} from "./payment-billing/subscription-services";
 // import { SessionExpiry } from "./sessionExpiery";
 interface CourseDetails {
   packageName: string;
@@ -383,6 +389,18 @@ export default function ProfilePage() {
     !isHolistic &&
     (showFather || showMother || showParentsEmail || showParentsMobile);
 
+  // Same query key as SubscriptionMandateList, so this is a cache hit rather than a
+  // second request — it only decides whether the card is worth rendering at all.
+  const { data: subscriptions } = useQuery({
+    queryKey: [SUBSCRIPTION_LIST_QUERY_KEY, studentData?.institute_id],
+    queryFn: () => fetchSubscriptions(studentData?.institute_id as string),
+    enabled: Boolean(studentData?.institute_id),
+    staleTime: 60 * 1000,
+  });
+  const hasAutopaySubscription = (subscriptions ?? []).some(
+    (s) => s.has_active_mandate || s.auto_renewal_enabled
+  );
+
   return (
     <div className="min-h-screen bg-gray-50/50 pb-24 md:pb-8">
       {/* Main Content. The page heading lives in the standard navbar
@@ -652,6 +670,21 @@ export default function ProfilePage() {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* Subscriptions & Autopay — a learner looking to stop a recurring charge
+                  looks at their profile, not at an edit form. Only rendered when the
+                  learner actually has one, so free learners don't get an empty card. */}
+              {studentData?.institute_id && hasAutopaySubscription && (
+                <div className="bg-card rounded-xl border shadow p-6 md:p-8">
+                  <h3 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
+                    <span className="w-1 h-6 bg-primary-500 rounded-full"></span>
+                    Subscriptions &amp; Autopay
+                  </h3>
+                  <SubscriptionMandateList
+                    instituteId={studentData.institute_id}
+                  />
                 </div>
               )}
 

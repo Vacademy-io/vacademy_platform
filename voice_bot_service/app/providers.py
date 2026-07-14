@@ -24,19 +24,21 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
     # "Aayushi"/"Aarush" and fed back into the LLM context as a wrong name. Guarded so a
     # bad value can't crash startup — it just falls back to auto / no bias.
     tag = language or s.sarvam_stt_language
+    # The `prompt` bias is ONLY accepted by Sarvam STT-TRANSLATE models (saaras*);
+    # saarika (transcription, our default) REJECTS it at construction with a ValueError.
+    # So only attach the bias on a translate model — otherwise the name bias is silently
+    # skipped (the language pin, which matters more, still applies).
+    allow_bias = bool(bias) and "saaras" in (s.sarvam_stt_model or "").lower()
     params = None
-    if tag or bias:
+    if tag or allow_bias:
         try:
             from pipecat.transcriptions.language import Language
-            lang_kw = {"language": Language(tag)} if tag else {}
-            try:
-                # Preferred: language pin + name bias together.
-                params = SarvamSTTService.InputParams(
-                    **lang_kw, **({"prompt": bias[:200]} if bias else {}))
-            except TypeError:
-                # This pipecat build's InputParams has no `prompt` field — keep the
-                # language pin (the more important of the two), drop the bias.
-                params = SarvamSTTService.InputParams(**lang_kw) if lang_kw else None
+            kwargs = {}
+            if tag:
+                kwargs["language"] = Language(tag)
+            if allow_bias:
+                kwargs["prompt"] = bias[:200]
+            params = SarvamSTTService.InputParams(**kwargs)
         except Exception:
             params = None
     return SarvamSTTService(

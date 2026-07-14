@@ -163,6 +163,26 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
           @Param("userId") String userId,
           @Param("statuses") List<String> statuses);
 
+  /**
+   * The newest mapping this user can re-use for the session, ignoring the throwaway
+   * ABANDONED_CART / PAYMENT_FAILED rows. The type exclusion must happen in SQL: with
+   * "ORDER BY created_at DESC LIMIT 1" plus a filter in Java, a newer throwaway row
+   * hides the reusable one, and the caller then inserts a duplicate that trips
+   * uq_dest_pkg_inst_user_status. NULL type is a real mapping, so it must be kept.
+   */
+  @Query(value = "SELECT * FROM student_session_institute_group_mapping " +
+          "WHERE package_session_id = :packageSessionId " +
+          "AND user_id = :userId " +
+          "AND status IN (:statuses) AND institute_id = :instituteId " +
+          "AND (type IS NULL OR type NOT IN (:excludedTypes)) " +
+          "ORDER BY created_at DESC LIMIT 1", nativeQuery = true)
+  Optional<StudentSessionInstituteGroupMapping> findTopReusableMapping(
+          @Param("packageSessionId") String packageSessionId,
+          @Param("instituteId") String instituteId,
+          @Param("userId") String userId,
+          @Param("statuses") List<String> statuses,
+          @Param("excludedTypes") List<String> excludedTypes);
+
   Optional<StudentSessionInstituteGroupMapping> findTopByUserIdAndInstituteIdOrderByCreatedAtDesc(String userId,
                                                                                                   String instituteId);
 

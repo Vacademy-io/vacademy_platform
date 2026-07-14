@@ -531,23 +531,28 @@ public class StudentRegistrationManager {
      */
     private Optional<StudentSessionInstituteGroupMapping> getExistingMapping(Student student,
                                                                              InstituteStudentDetails details) {
-        return studentSessionRepository.findTopByPackageSessionIdAndUserIdAndStatusIn(
-                        details.getPackageSessionId(),
-                        details.getInstituteId(),
-                        student.getUserId(),
-                        List.of(
-                                LearnerSessionStatusEnum.ACTIVE.name(),
-                                LearnerSessionStatusEnum.INVITED.name(),
-                                LearnerSessionStatusEnum.TERMINATED.name(),
-                                LearnerSessionStatusEnum.INACTIVE.name(),
-                                LearnerSessionStatusEnum.EXPIRED.name(), // <-- ADDED
-                                // Paid flows park mappings here pre-webhook; a re-enrollment
-                                // must reuse the row or the insert dies on
-                                // uq_dest_pkg_inst_user_status (seen via sub-org re-registration).
-                                LearnerStatusEnum.PENDING_FOR_APPROVAL.name()
-                        ))
-                .filter(mapping -> !LearnerSessionTypeEnum.ABANDONED_CART.name().equals(mapping.getType()))
-                .filter(mapping -> !LearnerSessionTypeEnum.PAYMENT_FAILED.name().equals(mapping.getType()));
+        // Excluding the throwaway types in SQL (not with a Java filter on the single row
+        // this returns) is what keeps a newer ABANDONED_CART row from hiding the reusable
+        // mapping and sending us down the insert path into uq_dest_pkg_inst_user_status.
+        return studentSessionRepository.findTopReusableMapping(
+                details.getPackageSessionId(),
+                details.getInstituteId(),
+                student.getUserId(),
+                List.of(
+                        LearnerSessionStatusEnum.ACTIVE.name(),
+                        LearnerSessionStatusEnum.INVITED.name(),
+                        LearnerSessionStatusEnum.TERMINATED.name(),
+                        LearnerSessionStatusEnum.INACTIVE.name(),
+                        LearnerSessionStatusEnum.EXPIRED.name(), // <-- ADDED
+                        // Paid flows park mappings here pre-webhook; a re-enrollment
+                        // must reuse the row or the insert dies on
+                        // uq_dest_pkg_inst_user_status (seen via sub-org re-registration).
+                        LearnerStatusEnum.PENDING_FOR_APPROVAL.name()
+                ),
+                List.of(
+                        LearnerSessionTypeEnum.ABANDONED_CART.name(),
+                        LearnerSessionTypeEnum.PAYMENT_FAILED.name()
+                ));
     }
 
     /**

@@ -465,6 +465,8 @@ export interface GenerateVideoRequest {
     sub_shots_enabled?: boolean;
     dialogue_scenes_enabled?: boolean;
     dialogue_mode?: 'storybook' | 'drama';
+    /** Which model films dialogue clips: seedance-2.0 = voice-locked lip-sync (default); omni-flash = cheaper, self-voiced. */
+    dialogue_clip_model?: 'seedance-2.0' | 'omni-flash';
     /** Reuse a saved cast — same characters, faces, and voices as a prior video. */
     cast_id?: string;
     /** Sparse override for the auto-routing plan. User toggles win over router decisions. */
@@ -1241,6 +1243,7 @@ export interface VideoStatusUserSelections {
     sub_shots_enabled?: boolean;
     dialogue_scenes_enabled?: boolean;
     dialogue_mode?: 'storybook' | 'drama';
+    dialogue_clip_model?: 'seedance-2.0' | 'omni-flash';
     /** Reuse a saved cast — same characters, faces, and voices as a prior video. */
     cast_id?: string;
     mute_tts_on_source_clips_kwarg?: boolean;
@@ -1852,6 +1855,7 @@ export function resumeVideo(
         sub_shots_enabled: opts?.sub_shots_enabled ?? false,
         dialogue_scenes_enabled: opts?.dialogue_scenes_enabled ?? false,
         dialogue_mode: opts?.dialogue_mode ?? 'storybook',
+        dialogue_clip_model: opts?.dialogue_clip_model ?? 'seedance-2.0',
         cast_id: opts?.cast_id,
     };
     if (request.modifiedScript !== undefined) {

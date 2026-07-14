@@ -2255,10 +2255,12 @@ class VideoGenerationPipeline:
         self._fal_veo_client = None
         self._ai_video_cost_tracker = None
         self._fal_seedance_client = None
+        self._fal_omni_client = None
         self._dialogue_cost_tracker = None
         self._dialogue_ledger: Any = None
         self._dialogue_institute_id = None
         self._dialogue_mode: str = "storybook"
+        self._dialogue_clip_model: str = "seedance-2.0"
         self._dialogue_characters: List[Dict[str, Any]] = []
         self._dialogue_init_lock = threading.Lock()
         self._dialogue_cast_sheet_url: Optional[str] = None
@@ -3136,6 +3138,7 @@ class VideoGenerationPipeline:
         sub_shots_enabled: bool = False,
         dialogue_scenes_enabled: bool = False,
         dialogue_mode: str = "storybook",
+        dialogue_clip_model: str = "seedance-2.0",
         saved_cast: Optional[List[Dict[str, Any]]] = None,
         routing_plan: Optional[Dict[str, Any]] = None,
         video_type_plan: Optional[Dict[str, Any]] = None,
@@ -3282,6 +3285,17 @@ class VideoGenerationPipeline:
             if str(dialogue_mode or "").strip().lower() in ("storybook", "drama")
             else "storybook"
         )
+        # Which video model films the clips. "seedance-2.0" = voice-locked
+        # lip-sync to our TTS (@Audio1). "omni-flash" = Gemini Omni Flash:
+        # cheaper, SELF-VOICED (no audio input — the model speaks the lines
+        # itself, so no per-character TTS pre-pass and no voice lock).
+        self._dialogue_clip_model: str = (
+            str(dialogue_clip_model or "").strip().lower()
+            if str(dialogue_clip_model or "").strip().lower() in ("seedance-2.0", "omni-flash")
+            else "seedance-2.0"
+        )
+        if self._dialogue_scenes_enabled and self._dialogue_clip_model != "seedance-2.0":
+            print(f"🎭 Dialogue clip model: {self._dialogue_clip_model} (self-voiced, no TTS voice lock)")
         self._dialogue_characters: List[Dict[str, Any]] = []
         self._fal_seedance_client = None
         self._dialogue_cost_tracker = None
@@ -7714,8 +7728,55 @@ class VideoGenerationPipeline:
             s["audio_policy"] = "narration_only"
             if not s.get("image_prompt"):
                 s["image_prompt"] = str(s.get("scene_description") or "cinematic scene")[:300]
-            for k in ("dialogue", "_dialogue_audio_url", "_dialogue_audio_s", "_dialogue_clip_s"):
+            for k in ("dialogue", "_dialogue_audio_url", "_dialogue_audio_s",
+                      "_dialogue_clip_s", "_dialogue_self_voiced"):
                 s.pop(k, None)
+
+        if self._dialogue_clip_model == "omni-flash":
+            # SELF-VOICED path (Gemini Omni Flash): the model has no audio
+            # input, so there is no TTS pre-pass and no voice lock — it speaks
+            # the lines itself. We only estimate the clip length from the text
+            # (~150 wpm + staging beats) so the master-narration silence gap
+            # matches the clip we request. Omni caps at 10s per clip.
+            import math as _math
+            changed_timing = False
+            for s in dialogue_shots:
+                if s.get("_dialogue_self_voiced") and s.get("_dialogue_clip_s"):
+                    continue  # already prepared (resume)
+                shot_idx = int(s.get("shot_index") or 0)
+                lines = [
+                    l for l in (s.get("dialogue") or [])
+                    if isinstance(l, dict) and str(l.get("line") or "").strip()
+                ][:3]
+                if not lines:
+                    _demote(s, "no dialogue lines")
+                    continue
+                words = sum(len(str(l.get("line") or "").split()) for l in lines)
+                est = words / 2.5 + 1.5
+                clip_s = max(3, min(10, int(_math.ceil(est))))
+                if est > 10.5:
+                    print(
+                        f"   ⚠️ DIALOGUE_SCENE shot {shot_idx}: ~{est:.1f}s of speech vs "
+                        "Omni's 10s clip cap — delivery may be rushed or truncated"
+                    )
+                s["_dialogue_self_voiced"] = True
+                s["_dialogue_audio_s"] = round(min(est, float(clip_s)), 2)
+                s["_dialogue_clip_s"] = clip_s
+                if abs(float(s.get("duration_estimate_s") or 0.0) - clip_s) > 0.01:
+                    s["duration_estimate_s"] = float(clip_s)
+                    changed_timing = True
+                print(
+                    f"   🎭 Dialogue shot {shot_idx}: {len(lines)} line(s), self-voiced "
+                    f"(Omni) → {clip_s}s clip requested"
+                )
+            if changed_timing:
+                try:
+                    from shot_planner import _derive_shot_timings
+                    _derive_shot_timings([s for s in shots if isinstance(s, dict)])
+                except Exception as _t_err:
+                    print(f"   ⚠️ dialogue timing re-derive failed: {_t_err}")
+            self._persist_dialogue_plan(run_dir, shots=[s for s in shots if isinstance(s, dict)])
+            return
 
         uploaders = self._build_ai_video_uploaders()
         svc = getattr(self, "_ai_video_s3_service", None)
@@ -8092,17 +8153,23 @@ class VideoGenerationPipeline:
         try:
             try:
                 from app.services.fal_seedance_client import FalSeedanceClient
+                from app.services.fal_omni_client import FalOmniClient
                 from app.services.fal_veo_client import get_fal_api_key_from_env as _gk
             except ImportError:
                 from fal_seedance_client import FalSeedanceClient  # type: ignore[no-redef]
+                from fal_omni_client import FalOmniClient  # type: ignore[no-redef]
                 from fal_veo_client import get_fal_api_key_from_env as _gk  # type: ignore[no-redef]
+            _use_omni = self._dialogue_clip_model == "omni-flash"
             with self._dialogue_init_lock:
-                if self._fal_seedance_client is None:
+                if (self._fal_omni_client if _use_omni else self._fal_seedance_client) is None:
                     _fal_key = _gk()
                     if not _fal_key:
                         print("   ⚠️ DIALOGUE_SCENE: FAL_API_KEY not set")
                         return False
-                    self._fal_seedance_client = FalSeedanceClient(_fal_key)
+                    if _use_omni:
+                        self._fal_omni_client = FalOmniClient(_fal_key)
+                    else:
+                        self._fal_seedance_client = FalSeedanceClient(_fal_key)
                 if self._dialogue_cost_tracker is None:
                     from ai_video_orchestrator import AiVideoCostTracker
                     # Drama = the whole video is clips → a bigger default budget.
@@ -8148,12 +8215,18 @@ class VideoGenerationPipeline:
         try:
             try:
                 from app.services.fal_seedance_client import seedance_price_per_call_usd
+                from app.services.fal_omni_client import omni_price_per_call_usd
             except ImportError:
                 from fal_seedance_client import seedance_price_per_call_usd  # type: ignore[no-redef]
+                from fal_omni_client import omni_price_per_call_usd  # type: ignore[no-redef]
             if not self._seedance_ready():
                 return None
+            _use_omni = self._dialogue_clip_model == "omni-flash"
             clip_s = int(shot.get("_dialogue_clip_s") or 8)
-            expected = seedance_price_per_call_usd(resolution="720p", duration_s=clip_s)
+            if _use_omni:
+                expected = omni_price_per_call_usd(duration_s=clip_s)
+            else:
+                expected = seedance_price_per_call_usd(resolution="720p", duration_s=clip_s)
             try:
                 self._dialogue_cost_tracker.try_charge(expected)
             except Exception as cap_err:
@@ -8181,16 +8254,27 @@ class VideoGenerationPipeline:
                     return None
             aspect = "9:16" if self.video_height > self.video_width else "16:9"
             prompt = self._build_dialogue_scene_prompt(shot, ref_names)
-            print(f"   🎭 Shot {shot_idx}: Seedance dialogue clip ({clip_s}s, ~${expected:.2f})…")
-            result = self._fal_seedance_client.generate_reference_to_video(
-                prompt=prompt,
-                image_urls=image_urls,
-                audio_urls=[shot["_dialogue_audio_url"]],
-                duration_s=clip_s,
-                aspect_ratio=aspect,
-                resolution="720p",
-                generate_audio=True,
-            )
+            _model_label = "Omni" if _use_omni else "Seedance"
+            print(f"   🎭 Shot {shot_idx}: {_model_label} dialogue clip ({clip_s}s, ~${expected:.2f})…")
+            if _use_omni:
+                # Self-voiced: no audio input exists — the lines are in the
+                # prompt and Omni speaks them itself.
+                result = self._fal_omni_client.generate_reference_to_video(
+                    prompt=prompt,
+                    image_urls=image_urls,
+                    duration_s=clip_s,
+                    aspect_ratio=aspect,
+                )
+            else:
+                result = self._fal_seedance_client.generate_reference_to_video(
+                    prompt=prompt,
+                    image_urls=image_urls,
+                    audio_urls=[shot["_dialogue_audio_url"]],
+                    duration_s=clip_s,
+                    aspect_ratio=aspect,
+                    resolution="720p",
+                    generate_audio=True,
+                )
             print(
                 f"   🎭 Shot {shot_idx}: dialogue clip ready "
                 f"(${result.cost_usd:.2f}, {result.elapsed_s:.0f}s)"
@@ -8229,9 +8313,12 @@ class VideoGenerationPipeline:
             str(c.get("name") or "").strip().lower(): c
             for c in (self._dialogue_characters or [])
         }
+        _use_omni = self._dialogue_clip_model == "omni-flash"
         bindings: List[str] = []
         for i, rn in enumerate(ref_names or []):
-            tag = f"@Image{i + 1}"
+            # Omni binds references with zero-indexed inline <IMAGE_REF_i>
+            # tags; Seedance uses @Image1..N.
+            tag = f"<IMAGE_REF_{i}>" if _use_omni else f"@Image{i + 1}"
             if rn == "__PREV_FRAME__":
                 bindings.append(
                     f"{tag} is the final frame of the PREVIOUS scene — continue "
@@ -8252,10 +8339,33 @@ class VideoGenerationPipeline:
             if isinstance(l, dict) and str(l.get("line") or "").strip()
         )
         scene = str(shot.get("scene_description") or "").strip()
+        if _use_omni:
+            # Self-voiced: Omni speaks the lines itself. Give it voice
+            # direction per character (the closest we can get to consistency
+            # without an audio input).
+            voice_notes = []
+            vmap = self._dialogue_voice_map()
+            for l in (shot.get("dialogue") or []):
+                nm = str((l or {}).get("character") or "").strip()
+                if not nm or any(nm.lower() in v for v in voice_notes):
+                    continue
+                c = cast_by_name.get(nm.lower()) or {}
+                hint = str(c.get("voice_hint") or "").strip()
+                g = vmap.get(nm.lower(), "")
+                desc = hint or (f"a natural {g} voice" if g else "a natural voice")
+                voice_notes.append(f"{nm.lower()} speaks with {desc}")
+            speak = (
+                "The characters speak these lines aloud, in this exact order, "
+                f"verbatim: {lines_txt}"
+            )
+            if voice_notes:
+                speak += ". Voices: " + "; ".join(voice_notes) + "."
+        else:
+            speak = f"The characters speak these lines, lip-synced verbatim to @Audio1: {lines_txt}"
         parts = [
             f"Cinematic scene: {scene}" if scene else "Cinematic dialogue scene.",
             "\n".join(bindings) if bindings else "",
-            f"The characters speak these lines, lip-synced verbatim to @Audio1: {lines_txt}",
+            speak,
             "Natural performance, realistic lighting, subtle camera movement. "
             "No text overlays, no captions, no subtitles.",
         ]
@@ -8279,7 +8389,7 @@ class VideoGenerationPipeline:
                 s for s in shots
                 if isinstance(s, dict)
                 and str(s.get("shot_type") or "").upper() == "DIALOGUE_SCENE"
-                and s.get("_dialogue_audio_url")
+                and (s.get("_dialogue_audio_url") or s.get("_dialogue_self_voiced"))
             ),
             key=lambda s: int(s.get("shot_index") or 0),
         )
@@ -8378,7 +8488,7 @@ class VideoGenerationPipeline:
             cost_usd = float(shot.get("_dialogue_clip_cost_usd") or 0.0)
             elapsed_s = float(shot.get("_dialogue_clip_elapsed_s") or 0.0)
             if not video_url:
-                if not shot.get("_dialogue_audio_url"):
+                if not shot.get("_dialogue_audio_url") and not shot.get("_dialogue_self_voiced"):
                     print(f"   ⚠️ DIALOGUE_SCENE shot {shot_idx}: no prepared dialogue audio")
                     return None
                 sheets = self._ensure_character_sheets(run_dir)
@@ -17205,7 +17315,8 @@ class VideoGenerationPipeline:
                     shot["image_prompt"] = str(
                         shot.get("scene_description") or "cinematic scene"
                     )[:300]
-                for _k in ("dialogue", "_dialogue_audio_url", "_dialogue_clip_s"):
+                for _k in ("dialogue", "_dialogue_audio_url", "_dialogue_clip_s",
+                           "_dialogue_self_voiced"):
                     shot.pop(_k, None)
 
             # ── AI_VIDEO_HERO bypass (Phase 3b, ultra+ only, opt-in) ──

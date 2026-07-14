@@ -426,6 +426,7 @@ async def generate_video_external(
                         sub_shots_enabled=p.sub_shots_enabled,
                         dialogue_scenes_enabled=p.dialogue_scenes_enabled,
                         dialogue_mode=p.dialogue_mode,
+                        dialogue_clip_model=p.dialogue_clip_model,
                         cast_id=p.cast_id,
                         routing_overrides=p.routing_overrides,
                         host=p.host,
@@ -775,6 +776,7 @@ async def resume_video_external(
                         sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                     dialogue_scenes_enabled=bool(_meta.get("dialogue_scenes_enabled", False)),
                     dialogue_mode=str(_meta.get("dialogue_mode", "storybook")),
+                    dialogue_clip_model=str(_meta.get("dialogue_clip_model", "seedance-2.0")),
                     cast_id=_meta.get("cast_id"),
                         visual_preferences=_meta.get("visual_preferences"),
                         # Brand kit + per-video overrides: rehydrate so a resumed
@@ -1288,6 +1290,7 @@ async def decision_video_external(
                         sub_shots_enabled=bool(m.get("sub_shots_enabled", False)),
                         dialogue_scenes_enabled=bool(m.get("dialogue_scenes_enabled", False)),
                         dialogue_mode=str(m.get("dialogue_mode", "storybook")),
+                        dialogue_clip_model=str(m.get("dialogue_clip_model", "seedance-2.0")),
                         cast_id=m.get("cast_id"),
                         visual_preferences=m.get("visual_preferences"),
                         brand_kit_id=m.get("brand_kit_id"),
@@ -1618,6 +1621,7 @@ async def retry_video_external(
                     sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                     dialogue_scenes_enabled=bool(_meta.get("dialogue_scenes_enabled", False)),
                     dialogue_mode=str(_meta.get("dialogue_mode", "storybook")),
+                    dialogue_clip_model=str(_meta.get("dialogue_clip_model", "seedance-2.0")),
                     cast_id=_meta.get("cast_id"),
                     visual_preferences=_meta.get("visual_preferences"),
                     # Brand kit + per-video overrides — retry rehydrates from saved

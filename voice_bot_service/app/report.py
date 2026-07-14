@@ -43,6 +43,11 @@ def _llm_target(s):
         return s.google_llm_base_url, s.gemini_api_key, s.google_llm_model
     if s.llm_provider == "openrouter":
         return s.openrouter_base_url, s.openrouter_api_key, s.openrouter_model
+    # "vertex" conversation → analyse on Sarvam. The analysis is a one-shot HTTP
+    # OpenAI-style call with a static bearer key; Vertex needs a refreshing OAuth
+    # token + a region/project base URL, which doesn't fit here. Sarvam is always
+    # configured (it still serves STT+TTS under Vertex) and analysis isn't latency-
+    # critical, so classify + summarise on Sarvam. Non-vertex sarvam falls through here too.
     return s.sarvam_llm_base_url, s.sarvam_api_key, s.sarvam_llm_model
 
 
@@ -75,9 +80,11 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
         "temperature": 0.1,
         "max_tokens": 500,
     }
-    if s.llm_provider == "sarvam":
+    if base_url == s.sarvam_llm_base_url:
         # Literal null disables Sarvam's hybrid thinking — without it the whole
-        # 500-token budget goes to reasoning and content comes back None.
+        # 500-token budget goes to reasoning and content comes back None. Keyed on the
+        # resolved target (Sarvam) not the provider, so a "vertex" conversation — whose
+        # analysis runs on Sarvam — still disables thinking.
         payload["reasoning_effort"] = None
     try:
         async with httpx.AsyncClient(timeout=_ANALYSIS_TIMEOUT) as client:

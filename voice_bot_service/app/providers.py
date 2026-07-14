@@ -51,6 +51,25 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
 
 def build_llm():
     s = get_settings()
+    if s.llm_provider == "vertex":
+        # Gemini on Vertex AI, served from vertex_location (asia-south1 = Mumbai):
+        # in-country inference → low TTFT with no cross-ocean RTT. Lazy import so the
+        # google extra is only touched when this provider is actually selected (the
+        # sarvam/google/openrouter paths never load it). Auth = service account JSON.
+        # pipecat's GoogleLLMService auto-sets thinking_budget=0 (thinking OFF) → the
+        # fast path, no extra config. temperature 0.35 for proper-noun stability.
+        from pipecat.services.google.llm import GoogleLLMService
+        from pipecat.services.google.llm_vertex import GoogleVertexLLMService
+
+        creds = s.vertex_credentials_json.strip() or None
+        return GoogleVertexLLMService(
+            credentials=creds,
+            credentials_path=(s.vertex_credentials_path.strip() or None) if not creds else None,
+            project_id=s.vertex_project_id or None,
+            location=s.vertex_location,
+            model=s.vertex_model,
+            params=GoogleLLMService.InputParams(temperature=0.35, max_tokens=150),
+        )
     if s.llm_provider == "google":
         # Gemini via its OpenAI-compat endpoint, hit directly (no proxy hop;
         # Google's edge is local to the cluster — see config.llm_provider).

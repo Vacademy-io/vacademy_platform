@@ -24,6 +24,7 @@ import { Question, UploadSimple, FileText } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { TimesUpModal } from "@/components/modals/times-up-modal";
 import { ASSESSMENT_SUBMIT, ASSESSMENT_SUBMIT_MANUAL } from "@/constants/urls";
+import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import {
   readSlideReturnContext,
   clearSlideReturnContext,
@@ -478,10 +479,24 @@ export function Navbar({
         // the slide complete so the chapter tree shows progress.
         const returnContext = await readSlideReturnContext();
         if (returnContext?.returnSlideId) {
+          // chapterId/moduleId/subjectId ride along in the captured
+          // returnSearch (the study-library slide route's query string);
+          // packageSessionId isn't part of that URL, so resolve it the same
+          // way the rest of study-library does.
+          const returnSearchParams = new URLSearchParams(
+            returnContext.returnSearch,
+          );
+          const packageSessionId = await getPackageSessionId();
           await markAssessmentSlideComplete(
             returnContext.returnSlideId,
             attemptId,
             pdfFile?.fileId,
+            {
+              chapterId: returnSearchParams.get("chapterId") || undefined,
+              moduleId: returnSearchParams.get("moduleId") || undefined,
+              subjectId: returnSearchParams.get("subjectId") || undefined,
+              packageSessionId: packageSessionId || undefined,
+            },
           );
           await clearSlideReturnContext();
           // Use a raw URL string here — the captured pathname + search lives

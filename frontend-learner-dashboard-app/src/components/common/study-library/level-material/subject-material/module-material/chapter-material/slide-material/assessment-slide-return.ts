@@ -82,8 +82,24 @@ export const markAssessmentSlideComplete = async (
   // on the assessment-slide activity log so the submission (learner + attempt +
   // answer file) is tracked the same way assignment submissions are.
   fileIds?: string,
+  // Hierarchy context (chapter/module/subject/package_session) so the backend
+  // can cascade the slide-level completion into the chapter/module/subject/
+  // course progress rollups. Optional — the slide-level 100% write (which is
+  // what prerequisite/drip checks read) still happens without them.
+  hierarchy?: {
+    chapterId?: string;
+    moduleId?: string;
+    subjectId?: string;
+    packageSessionId?: string;
+  },
 ) => {
   const params = new URLSearchParams({ slideId });
+  const activityLogParams = new URLSearchParams({ slideId });
+  if (hierarchy?.chapterId) activityLogParams.set("chapterId", hierarchy.chapterId);
+  if (hierarchy?.moduleId) activityLogParams.set("moduleId", hierarchy.moduleId);
+  if (hierarchy?.subjectId) activityLogParams.set("subjectId", hierarchy.subjectId);
+  if (hierarchy?.packageSessionId)
+    activityLogParams.set("packageSessionId", hierarchy.packageSessionId);
 
   // 1) Mark the slide complete (progress). Best-effort — re-visiting the slide
   //    re-fetches live status from assessment_service so progress reconciles.
@@ -103,11 +119,12 @@ export const markAssessmentSlideComplete = async (
   }
 
   // 2) Record the submission on the assessment-slide activity log (learner +
-  //    attempt + answer file). Separate from completion so a failure in either
-  //    can't take down the other.
+  //    attempt + answer file), which is also what marks the SLIDE-level
+  //    progress operation as 100% complete server-side. Separate from (1) so
+  //    a failure in either can't take down the other.
   try {
     await authenticatedAxiosInstance.post(
-      `${SUBMIT_ASSESSMENT_SLIDE_ACTIVITY_LOG}?${params.toString()}`,
+      `${SUBMIT_ASSESSMENT_SLIDE_ACTIVITY_LOG}?${activityLogParams.toString()}`,
       {
         id: uuidv4(),
         slide_id: slideId,

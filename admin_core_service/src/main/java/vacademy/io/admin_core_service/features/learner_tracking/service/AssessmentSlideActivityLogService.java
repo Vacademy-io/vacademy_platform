@@ -20,8 +20,9 @@ import java.util.List;
  * (learner user_id + slide_id) plus an assessment_slide_tracked child carrying
  * the assessment-service attempt id and, for manual assessments, the learner's
  * answer file id(s). Marks/evaluation stay authoritative in the assessment-
- * service; this is purely the slide-level submission record, so it does NOT
- * touch the learner-progress cascade (completion is marked separately).
+ * service; this call also marks the SLIDE-level progress as 100% complete
+ * (submission itself is the completion signal, same as ASSIGNMENT slides) so
+ * that prerequisite/drip conditions gated on this slide unlock correctly.
  */
 @RequiredArgsConstructor
 @Service
@@ -30,6 +31,7 @@ public class AssessmentSlideActivityLogService {
     private final AssessmentSlideTrackedRepository assessmentSlideTrackedRepository;
     private final ActivityLogRepository activityLogRepository;
     private final ActivityLogService activityLogService;
+    private final LearnerTrackingAsyncService learnerTrackingAsyncService;
 
     public void addAssessmentSlideActivityLog(ActivityLog activityLog,
             List<AssessmentSlideActivityLogDTO> assessmentSlideActivityLogDTOS) {
@@ -45,7 +47,8 @@ public class AssessmentSlideActivityLogService {
     }
 
     public String addOrUpdateAssessmentSlideActivityLog(ActivityLogDTO activityLogDTO, String slideId,
-            String userId, CustomUserDetails user) {
+            String userId, CustomUserDetails user, String chapterId, String moduleId, String subjectId,
+            String packageSessionId) {
         ActivityLog activityLog;
         if (activityLogDTO.isNewActivity()) {
             activityLog = activityLogService.saveActivityLog(activityLogDTO, userId, slideId);
@@ -53,6 +56,8 @@ public class AssessmentSlideActivityLogService {
             activityLog = activityLogService.updateActivityLog(activityLogDTO);
         }
         addAssessmentSlideActivityLog(activityLog, activityLogDTO.getAssessmentSlides());
+        learnerTrackingAsyncService.updateLearnerOperationsForAssessment(userId, slideId, chapterId, moduleId,
+                subjectId, packageSessionId);
         return activityLog.getId();
     }
 

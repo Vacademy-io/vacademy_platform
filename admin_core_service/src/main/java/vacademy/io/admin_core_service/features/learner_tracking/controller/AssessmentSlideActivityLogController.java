@@ -20,11 +20,16 @@ public class AssessmentSlideActivityLogController {
     @PostMapping("/add-or-update-assessment-slide-activity-log")
     public ResponseEntity<String> addOrUpdateAssessmentSlideActivityLog(@RequestBody ActivityLogDTO activityLogDTO,
                                                                         @RequestParam("slideId") String slideId,
+                                                                        @RequestParam(value = "chapterId", required = false) String chapterId,
+                                                                        @RequestParam(value = "moduleId", required = false) String moduleId,
+                                                                        @RequestParam(value = "subjectId", required = false) String subjectId,
+                                                                        @RequestParam(value = "packageSessionId", required = false) String packageSessionId,
                                                                         @RequestAttribute("user") CustomUserDetails user) {
         // The submitter is always the authenticated learner — don't trust a
         // client-supplied user id for self-submission.
         return ResponseEntity.ok(assessmentSlideActivityLogService
-                .addOrUpdateAssessmentSlideActivityLog(activityLogDTO, slideId, user.getUserId(), user));
+                .addOrUpdateAssessmentSlideActivityLog(activityLogDTO, slideId, user.getUserId(), user, chapterId,
+                        moduleId, subjectId, packageSessionId));
     }
 
     @GetMapping("/assessment-slide-activity-logs")

@@ -7696,26 +7696,72 @@ class VideoGenerationPipeline:
         if not chars:
             names: List[str] = []
             first_scene: Dict[str, str] = {}
+            lines_by_name: Dict[str, str] = {}
             for s in plan.get("shots") or []:
                 if not isinstance(s, dict) or \
                         str(s.get("shot_type") or "").upper() != "DIALOGUE_SCENE":
                     continue
                 scene = str(s.get("scene_description") or "").strip()
                 cand = [str(n).strip() for n in (s.get("character_names") or []) if str(n).strip()]
-                cand += [
-                    str((l or {}).get("character") or "").strip()
-                    for l in (s.get("dialogue") or []) if isinstance(l, dict)
-                ]
+                for l in (s.get("dialogue") or []):
+                    if not isinstance(l, dict):
+                        continue
+                    _ln = str(l.get("character") or "").strip()
+                    if _ln:
+                        cand.append(_ln)
+                        if _ln.lower() not in lines_by_name:
+                            lines_by_name[_ln.lower()] = str(l.get("line") or "")[:120]
                 for n in cand:
                     if n and n.lower() not in (x.lower() for x in names):
                         names.append(n)
                         if scene and n.lower() not in first_scene:
                             first_scene[n.lower()] = scene[:220]
-            chars = [
-                {"name": n, "visual_description": first_scene.get(n.lower(), ""), "voice_hint": ""}
-                for n in names[:4]
-            ]
-            if chars:
+            names = names[:4]
+            if names:
+                # The portrait generator + Seedance/Omni need PERSON
+                # descriptions (age/build/hair/attire) — a scene description
+                # as visual_description makes Seedream paint the SCENE, and
+                # that reference image then drags every clip back to it
+                # (observed in prod: the happy final scene re-staged the
+                # night-office setup). Ask a small LLM to write proper
+                # person descriptions from the user's own prompt; fall back
+                # to the scene text only if that call fails.
+                chars = []
+                try:
+                    _cast_prompt = (
+                        "From the video request below, write a character sheet for these "
+                        f"characters: {names}. Use any physical details the request gives "
+                        "(age, hair, glasses, attire); invent plausible specifics where "
+                        "it is silent. Return ONLY a JSON array, one object per character: "
+                        '{"name": <exactly as given>, "visual_description": <one sentence '
+                        "describing the PERSON only — age, build, hair, face, attire; NO "
+                        'scene/location>, "voice_hint": <e.g. "older male, weary" / '
+                        '"warm female, 30s">}.\n\nVIDEO REQUEST:\n'
+                        + (getattr(self, "_base_prompt", "") or "")[:2000]
+                        + "\n\nSAMPLE LINES:\n"
+                        + "\n".join(f"{n}: {lines_by_name.get(n.lower(), '')}" for n in names)
+                    )
+                    _raw, _ = self.script_client.chat(
+                        [{"role": "user", "content": _cast_prompt}],
+                        temperature=0.3, max_tokens=600,
+                    )
+                    _m = re.search(r"\[.*\]", _raw, re.DOTALL)
+                    for c in (json.loads(_m.group(0)) if _m else []):
+                        if isinstance(c, dict) and str(c.get("name") or "").strip():
+                            chars.append({
+                                "name": str(c["name"]).strip()[:80],
+                                "visual_description": str(c.get("visual_description") or "").strip()[:300],
+                                "voice_hint": str(c.get("voice_hint") or "").strip()[:80],
+                            })
+                except Exception as _cast_err:
+                    print(f"   ⚠️ cast-description LLM failed ({_cast_err}) — using scene-text fallback")
+                # Keep only characters we actually named; fall back per-name.
+                _by = {c["name"].lower(): c for c in chars}
+                chars = [
+                    _by.get(n.lower())
+                    or {"name": n, "visual_description": first_scene.get(n.lower(), ""), "voice_hint": ""}
+                    for n in names
+                ]
                 plan["characters"] = chars
                 print(
                     f"   🎭 Planner omitted the cast — synthesized {len(chars)} character(s) "
@@ -8040,9 +8086,10 @@ class VideoGenerationPipeline:
                     try:
                         prompt = (
                             f"Character reference portrait of {name}: {desc}. "
-                            "Full body, standing, facing camera, neutral studio "
-                            "background, photorealistic, cinematic lighting, "
-                            "no text, single person only."
+                            "Waist-up, facing camera, face clearly visible and "
+                            "in sharp focus, neutral studio background, "
+                            "photorealistic, cinematic lighting, no text, "
+                            "single person only, no scenery or props."
                         )
                         img_bytes, _u = self._call_image_generation_llm(
                             prompt,
@@ -8490,10 +8537,28 @@ class VideoGenerationPipeline:
                 print(f"   ⚠️ DIALOGUE_SCENE shot {shot_idx}: no reference image — will demote")
                 prev_frame_url, prev_shot_idx = None, None
                 continue
-            # Scene chaining: adjacent dialogue shots share a scene.
-            if prev_frame_url and prev_shot_idx is not None and shot_idx == prev_shot_idx + 1:
+            # Scene chaining: adjacent dialogue shots that CONTINUE the same
+            # moment share a scene. A time-skip ("next morning") or location
+            # change must NOT be chained — feeding the previous last frame
+            # with "continue seamlessly" makes the model open the new scene
+            # in the OLD setting and jump-cut mid-clip (observed in prod).
+            # Planner emits scene_continuity; when absent, a time-jump
+            # heuristic on scene_description decides.
+            _continuity = str(s.get("scene_continuity") or "").strip().lower()
+            _scene_txt = str(s.get("scene_description") or "").lower()
+            _time_jump = bool(re.search(
+                r"next (morning|day|evening|week|month)|the following|later that"
+                r"|that (evening|night|afternoon)|hours later|days later"
+                r"|weeks later|months later|meanwhile|elsewhere|back at",
+                _scene_txt,
+            ))
+            _chain_ok = (_continuity == "continuous") or (not _continuity and not _time_jump)
+            if prev_frame_url and prev_shot_idx is not None and shot_idx == prev_shot_idx + 1 \
+                    and _chain_ok:
                 image_urls = image_urls[:8] + [prev_frame_url]
                 ref_names = ref_names[:8] + ["__PREV_FRAME__"]
+            elif prev_frame_url and not _chain_ok:
+                print(f"   🎬 Shot {shot_idx}: new scene (time/location change) — chain skipped")
 
             result = self._call_seedance_dialogue_clip(s, image_urls, ref_names)
             if result is None:

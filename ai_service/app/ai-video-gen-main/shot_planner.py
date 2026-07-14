@@ -223,7 +223,10 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "`scene_description` = one vivid sentence staging the scene (location, mood, camera feel, what "
     "the characters are doing); `character_names` = the characters appearing; "
     "`audio_policy: \"intrinsic_only\"` (the clip carries its own audio — the master narrator is "
-    "silent here); `duration_estimate_s` between 5 and 15. When you use DIALOGUE_SCENE anywhere, "
+    "silent here); `duration_estimate_s` between 5 and 15; `scene_continuity` = \"continuous\" ONLY "
+    "when this shot carries on the SAME moment and location as the immediately previous "
+    "DIALOGUE_SCENE (it will be visually chained from its last frame) — any time-skip (\"next "
+    "morning\", \"later\") or location change MUST be \"new\". When you use DIALOGUE_SCENE anywhere, "
     "you MUST also emit a top-level `characters` array — [{name, visual_description, voice_hint}] — "
     "where `visual_description` is a REUSABLE VERBATIM portrait (age, build, hair, clothing, one "
     "distinctive detail) that stays IDENTICAL across the video, and `voice_hint` describes the "
@@ -525,13 +528,19 @@ def build_shot_planner_user_prompt(
     if dialogue_scenes_enabled and str(dialogue_mode or "").lower() == "drama":
         lines.append("")
         lines.append(
-            "DRAMA MODE — this video is a PURE dialogue drama: EVERY shot MUST be a "
-            "DIALOGUE_SCENE. There is NO narrator (write narration_brief=\"\" everywhere). "
-            "Structure it as 3-6 scenes with a dramatic arc (setup → tension → turn → "
-            "resolution); consecutive shots in the SAME location continue the scene "
-            "(they will be visually chained). Keep each shot's spoken lines ≤ 12s. Emit "
-            "the top-level `characters` cast array with VERBATIM-reusable visual "
-            "descriptions — the SAME characters recur across scenes."
+            "DRAMA MODE — this video is a dialogue-driven drama: strongly prefer "
+            "DIALOGUE_SCENE for every beat. Structure it as 3-6 scenes with a dramatic "
+            "arc (setup → tension → turn → resolution); mark consecutive shots that "
+            "continue the SAME moment/location with scene_continuity=\"continuous\" "
+            "(they will be visually chained) and any time-skip or location change as "
+            "\"new\". Keep each shot's spoken lines ≤ 12s. If you DO include a "
+            "non-dialogue shot (hook, product mockup, close), it MUST carry a real "
+            "narration_brief — background music is OFF in drama, so a non-dialogue "
+            "shot without narration plays as DEAD SILENCE. The narrator speaks ONLY "
+            "on non-dialogue shots (write narration_brief=\"\" on every "
+            "DIALOGUE_SCENE). Emit the top-level `characters` cast array with "
+            "VERBATIM-reusable visual descriptions — the SAME characters recur "
+            "across scenes."
         )
     elif dialogue_scenes_enabled:
         lines.append("")
@@ -896,6 +905,7 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
         "dialogue",
         "scene_description",
         "character_names",
+        "scene_continuity",
         # Asset-request gate answers (assist): real user assets + figures.
         "user_asset_url",
         "user_asset_kind",

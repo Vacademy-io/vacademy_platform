@@ -14,18 +14,31 @@ from pipecat.services.sarvam.tts import SarvamTTSService
 from .config import get_settings
 
 
-def build_stt(sample_rate: int, language: str | None = None):
+def build_stt(sample_rate: int, language: str | None = None, bias: str | None = None):
     s = get_settings()
     # Pin STT to the agent's configured language (BCP-47, e.g. "hi-IN"), falling back to
     # the SARVAM_STT_LANGUAGE env default. A pin matters: auto-detect drifts a Hindi/
     # Hinglish caller into a neighbouring Indic language (Punjabi/Marathi) and the call
-    # follows it. Guarded so a bad value can't crash startup — it just falls back to auto.
+    # follows it. `bias` is a short vocabulary hint (the agent's own name, e.g. "Aarushi")
+    # fed to saarika's `prompt` so a caller repeating the name isn't transcribed as
+    # "Aayushi"/"Aarush" and fed back into the LLM context as a wrong name. Guarded so a
+    # bad value can't crash startup — it just falls back to auto / no bias.
     tag = language or s.sarvam_stt_language
+    # The `prompt` bias is ONLY accepted by Sarvam STT-TRANSLATE models (saaras*);
+    # saarika (transcription, our default) REJECTS it at construction with a ValueError.
+    # So only attach the bias on a translate model — otherwise the name bias is silently
+    # skipped (the language pin, which matters more, still applies).
+    allow_bias = bool(bias) and "saaras" in (s.sarvam_stt_model or "").lower()
     params = None
-    if tag:
+    if tag or allow_bias:
         try:
             from pipecat.transcriptions.language import Language
-            params = SarvamSTTService.InputParams(language=Language(tag))
+            kwargs = {}
+            if tag:
+                kwargs["language"] = Language(tag)
+            if allow_bias:
+                kwargs["prompt"] = bias[:200]
+            params = SarvamSTTService.InputParams(**kwargs)
         except Exception:
             params = None
     return SarvamSTTService(
@@ -50,7 +63,7 @@ def build_llm():
             base_url=s.google_llm_base_url,
             model=s.google_llm_model,
             params=OpenAILLMService.InputParams(
-                temperature=0.6, max_tokens=150,
+                temperature=0.35, max_tokens=150,
                 extra={"extra_body": {"reasoning_effort": "none"}},
             ),
         )
@@ -61,7 +74,7 @@ def build_llm():
         return OpenRouterLLMService(
             api_key=s.openrouter_api_key,
             model=s.openrouter_model,
-            params=OpenRouterLLMService.InputParams(temperature=0.6, max_tokens=150),
+            params=OpenRouterLLMService.InputParams(temperature=0.35, max_tokens=150),
         )
     # Sarvam's OpenAI-compatible chat-completions API, India-hosted.
     # reasoning_effort MUST be the literal JSON null (Python None via extra_body;
@@ -75,7 +88,7 @@ def build_llm():
         base_url=s.sarvam_llm_base_url,
         model=s.sarvam_llm_model,
         params=OpenAILLMService.InputParams(
-            temperature=0.6, max_tokens=150,
+            temperature=0.35, max_tokens=150,
             extra={"extra_body": {"reasoning_effort": None}},
         ),
     )

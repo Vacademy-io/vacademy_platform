@@ -19,6 +19,8 @@ interface AutopaySettingsCardProps {
  */
 const AutopaySettingsCard = ({ form }: AutopaySettingsCardProps) => {
     const enabled = form.watch('autopaySettings.enabled');
+    const trialDays = form.watch('autopaySettings.trialDays');
+    const authEnabled = form.watch('autopaySettings.authEnabled');
     const planType = form.watch('selectedPlan')?.type?.toLowerCase();
 
     // Autopay only applies to recurring (subscription) plans — hide otherwise.
@@ -97,7 +99,113 @@ const AutopaySettingsCard = ({ form }: AutopaySettingsCardProps) => {
                             to charge immediately and renew each cycle.
                         </div>
 
-                        <div className="mt-4">
+                        <div className="mt-4 border-t pt-4">
+                            <FormField
+                                control={form.control}
+                                name="autopaySettings.authEnabled"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormControl>
+                                            <div className="flex items-center justify-between gap-4">
+                                                <div className="w-full">
+                                                    <div className="text-base font-semibold">
+                                                        Take an authorization charge
+                                                    </div>
+                                                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                                        <span>
+                                                            A nominal amount debited at signup to
+                                                            verify the payment method and register
+                                                            the mandate.
+                                                        </span>
+                                                        <Switch
+                                                            id="enable-auth-charge-switch"
+                                                            checked={field.value ?? true}
+                                                            onCheckedChange={field.onChange}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </FormControl>
+                                    </FormItem>
+                                )}
+                            />
+
+                            {authEnabled !== false && (
+                                <div className="mt-4">
+                                    <span className="text-sm font-medium">Authorization amount</span>
+                                    <FormField
+                                        control={form.control}
+                                        name="autopaySettings.authAmount"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormControl>
+                                                    <Input
+                                                        type="number"
+                                                        min={1}
+                                                        step="0.01"
+                                                        className="mt-2 w-40"
+                                                        placeholder="1"
+                                                        value={field.value ?? ''}
+                                                        onChange={(e) =>
+                                                            field.onChange(
+                                                                e.target.value === ''
+                                                                    ? null
+                                                                    : Number(e.target.value)
+                                                            )
+                                                        }
+                                                    />
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <div className="mt-1 text-xs text-muted-foreground">
+                                        Defaults to 1. Only charged on free-trial signups — without a
+                                        trial the first real payment registers the mandate itself.
+                                    </div>
+
+                                    <FormField
+                                        control={form.control}
+                                        name="autopaySettings.authRefundable"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormControl>
+                                                    <div className="mt-4 flex items-center justify-between gap-4">
+                                                        <div className="w-full">
+                                                            <div className="text-sm font-medium">
+                                                                Refund the authorization amount
+                                                            </div>
+                                                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                                                <span>
+                                                                    Refund it automatically once the
+                                                                    mandate is registered. The full
+                                                                    plan price is still charged when
+                                                                    the trial ends.
+                                                                </span>
+                                                                <Switch
+                                                                    id="refund-auth-switch"
+                                                                    checked={field.value ?? false}
+                                                                    onCheckedChange={field.onChange}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+                                </div>
+                            )}
+
+                            {authEnabled === false && (trialDays ?? 0) > 0 && (
+                                <div className="mt-2 text-xs text-warning-600">
+                                    Free trials need an authorization charge — gateways will not
+                                    register a mandate on a zero-value order, so autopay cannot be set
+                                    up for trial signups without one.
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="mt-4 border-t pt-4">
                             <span className="text-sm font-medium">
                                 Mandate limit (max charge per renewal)
                             </span>

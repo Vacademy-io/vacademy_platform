@@ -384,8 +384,19 @@ export const inviteLinkSchema = z.object({
                 .transform((val) => val ?? 0),
             // Mandate cap per auto-charge. null = derive from the plan price.
             maxAmount: z.number().min(0).nullable().default(null),
+            // Nominal charge taken at trial signup to register the mandate. null = 1.
+            authEnabled: z.boolean().nullable().default(true),
+            authAmount: z.number().min(0).nullable().default(null),
+            authRefundable: z.boolean().nullable().default(false),
         })
-        .default({ enabled: false, trialDays: 0, maxAmount: null }),
+        .default({
+            enabled: false,
+            trialDays: 0,
+            maxAmount: null,
+            authEnabled: true,
+            authAmount: null,
+            authRefundable: false,
+        }),
 });
 
 export type InviteLinkFormValues = z.infer<typeof inviteLinkSchema>;

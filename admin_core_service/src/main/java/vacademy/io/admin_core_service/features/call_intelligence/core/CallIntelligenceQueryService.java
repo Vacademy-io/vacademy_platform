@@ -17,6 +17,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -72,9 +73,7 @@ public class CallIntelligenceQueryService {
      */
     public CallIntelligenceCoachingDto teamCoachingInsights(String instituteId, String callerUserId,
                                                             Long fromMillis, Long toMillis) {
-        // Scoped caller (COUNSELLOR role) → their reporting line; pure admin →
-        // every counsellor-role user of the institute.
-        List<String> ids = counsellorScopeService.visibleCounsellorUserIds(instituteId, callerUserId);
+        List<String> ids = teamScopeIds(instituteId, callerUserId);
         List<CallIntelligence> rows = (ids == null || ids.isEmpty())
                 ? List.of()
                 : repo.findByCounsellorUserIdInAndStatusAndCallStartedAtBetweenOrderByCallStartedAtDesc(
@@ -235,11 +234,38 @@ public class CallIntelligenceQueryService {
     }
 
     /** A sales head's whole team (self + all reports) over the window;
-     *  pure admins get the institute-wide counsellor roster. */
+     *  pure admins get every user with analyzed calls in the institute. */
     public CallIntelligenceAnalyticsDto teamAnalytics(String instituteId, String callerUserId,
                                                       Long fromMillis, Long toMillis) {
-        List<String> ids = counsellorScopeService.visibleCounsellorUserIds(instituteId, callerUserId);
+        List<String> ids = teamScopeIds(instituteId, callerUserId);
         return aggregate(ids, from(fromMillis), to(toMillis), true);
+    }
+
+    /**
+     * The user ids a caller's TEAM view covers.
+     *
+     * <ul>
+     *   <li><b>Scoped caller</b> (non-admin COUNSELLOR): their reporting line
+     *       (self + reports) — unchanged.</li>
+     *   <li><b>Pure admin</b>: the counsellor roster UNION everyone who actually has
+     *       analyzed calls in the institute.</li>
+     * </ul>
+     *
+     * <p>The union matters: resolving an admin's cohort from the COUNSELLOR-role
+     * roster alone (as this did briefly) hides every call made by a user without
+     * that role — including admins themselves — and yields an EMPTY list when the
+     * institute has granted no counsellor roles. An empty list short-circuits to
+     * {@code totalAnalyzed = 0}, which silently blanked the AI Intelligence page and
+     * all team analytics/coaching even though the calls were analyzed fine.
+     */
+    private List<String> teamScopeIds(String instituteId, String callerUserId) {
+        if (counsellorScopeService.isScopedCaller(instituteId, callerUserId)) {
+            return counsellorScopeService.scopedCounsellorUserIds(instituteId, callerUserId);
+        }
+        LinkedHashSet<String> ids = new LinkedHashSet<>(
+                counsellorScopeService.allCounsellorUserIds(instituteId));
+        ids.addAll(repo.findDistinctCounsellorUserIdsByInstituteId(instituteId));
+        return new ArrayList<>(ids);
     }
 
     // -------------------------------------------------------------------------

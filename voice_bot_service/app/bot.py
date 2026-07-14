@@ -43,6 +43,9 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.audio.interruptions.min_words_interruption_strategy import (
+    MinWordsInterruptionStrategy,
+)
 
 from . import admin_core
 from .config import get_settings
@@ -293,7 +296,6 @@ def _lead_fields_line(context: Dict[str, Any]) -> str:
 def build_system_prompt(context: Dict[str, Any]) -> str:
     agent = context.get("agent") or {}
     lead_name = context.get("leadName")
-    institute = context.get("instituteName") or "our institute"
     extraction = agent.get("extractionQuestions") or []
     dispositions = agent.get("dispositions") or []
     name = agent.get("name") or "the assistant"
@@ -348,17 +350,23 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             "aaya'/'karunga' = a man) may you switch to the matching feminine/masculine forms."
         )
 
+    # Company identity comes from the AGENT'S OWN prompt (which names the brand it should
+    # say, e.g. "Vacademy"). Do NOT also inject the institute's legal display name here — a
+    # second, different company name ("Vidyayatan Technologies") makes the model mash the two
+    # ("Vacancy"). Refer to it generically and let the prompt be the single source of the name.
     if direction == "INBOUND":
         intent_line = (
-            f"This person has CALLED {institute}. You are answering their call — greet them "
-            "warmly, quickly find out why they called, and help them."
+            "This person has CALLED your organisation. You are answering their call — greet them "
+            "warmly, quickly find out why they called, and help them. Name your company EXACTLY as "
+            "your instructions specify."
         )
     else:
         intent_line = (
-            f"You are PROACTIVELY CALLING this person on behalf of {institute} — YOU placed "
-            "this call, they did not call you. Never sound like you are answering their call. "
-            "Open with a clear reason for calling, lead the conversation confidently, and keep a "
-            "warm, positive, forward-moving tone that gives them a reason to engage right now."
+            "You are PROACTIVELY CALLING this person — YOU placed this call, they did not call you. "
+            "Never sound like you are answering their call. Open with a clear reason for calling, "
+            "introduce yourself and your company EXACTLY as your instructions specify (never invent "
+            "or alter the company name), lead the conversation confidently, and keep a warm, "
+            "positive, forward-moving tone that gives them a reason to engage right now."
         )
 
     # Placed near the TOP (primacy matters under live-call latency) and applied to every
@@ -401,6 +409,26 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         if extraction else "",
         "Rules:",
         "- 1-2 short sentences per reply. ONE question per turn. Never monologue.",
+        # SCRIPT: Sarvam Bulbul TTS pronounces ROMANIZED Hindi noticeably worse than native
+        # Devanagari (Sarvam's own docs: transliterated input 'significantly reduces output
+        # quality'). Write Hindi words in Devanagari and leave genuine English business words
+        # in Latin — exactly how Indians write Hinglish. This is the single biggest naturalness
+        # lever for a Hindi/Hinglish voice.
+        "- SCRIPT: Write Hindi words in DEVANAGARI (हिंदी लिपि), and keep common English business "
+        "words in English letters (demo, course, book, WhatsApp, offer, plan, confirm, link). "
+        "So write 'मैं आपको एक demo book कर देती हूँ' — NOT romanized 'main aapko ek demo book kar "
+        "deti hoon'. NEVER write Hindi words in Latin letters.",
+        # VARIETY: repeating the identical acknowledgment every turn is the #1 cumulative
+        # robotic tell — rotate them.
+        "- Never repeat the same acknowledgment twice in a row. Rotate naturally — हाँ / अच्छा / "
+        "ठीक है / जी बिल्कुल / समझ गई — don't say 'ji' every single turn.",
+        # REFLECT-BACK: acknowledge the caller's SPECIFIC point before answering, not a generic
+        # 'I understand'.
+        "- Briefly reflect back the caller's specific point before you answer (e.g. 'अच्छा, आप "
+        "timing को लेकर puchh rahe hain —') so they feel heard. Not a generic 'मैं समझती हूँ'.",
+        # ENERGY MATCH.
+        "- Match the caller's energy: a brief, businesslike caller gets crisp efficiency; a "
+        "chatty, warm caller gets a little more warmth. Don't be relentlessly peppy.",
         # Numbers/times are the #1 audio break on Hinglish calls: the model mixes
         # languages ('five baje') or spells digits ('two zero zero').
         "- Clock times: ALWAYS the English 12-hour format — 'five PM', 'ten thirty AM', 'twelve "
@@ -415,6 +443,14 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         else f"- If the caller asks for a human, say a counsellor will call them right back, then append {END_MARKER}.",
         ("At the end you must be able to judge the caller's interest as one of: "
          + ", ".join(dispositions)) if dispositions else "",
+        # RECENCY anchor: the last thing the model reads before every generation. A long
+        # persona prompt states the name once near the top, which loses salience as the
+        # call grows — the model then hallucinates a different name (Anjali) or garbles it
+        # (Aarush/Aayushi). Restating the exact identity here, last, holds it steady.
+        f"IDENTITY LOCK (most important): your name is EXACTLY \"{name}\" — say it identically "
+        f"every single time, and NEVER introduce yourself with any other name, spelling or "
+        f"variation. Use the SAME company name you introduce yourself with for the whole call; "
+        f"never change, translate or invent a different company name.",
     ]
     return "\n".join(l for l in lines if l)
 
@@ -441,7 +477,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         flags["bot_speaking"] = speaking
 
     stt_lang, _ = _agent_language(agent)
-    stt = build_stt(settings.sample_rate, language=stt_lang)
+    # Bias STT toward the agent's own name so a caller repeating it ("aapka naam Aarushi
+    # tha?") isn't transcribed as "Aayushi"/"Aarush" and fed back into the LLM context as
+    # a wrong name — the #1 way the agent "forgets" its name mid-call.
+    stt_bias = (agent.get("name") or "").strip() or None
+    stt = build_stt(settings.sample_rate, language=stt_lang, bias=stt_bias)
     llm = build_llm()
     tts = build_tts(settings.sample_rate, voice=agent.get("voice"),
                     aiohttp_session=aiohttp_session)
@@ -483,6 +523,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # turn be heard — a real conversation, not the bot talking over an interrupting
             # caller. Was unset (no interruption), which caused the overlaps on live calls.
             allow_interruptions=True,
+            # ...but require ≥2 words to interrupt, so a single stray sound, a cough, or a
+            # backchannel ("haan", "hmm", "achha") does NOT cancel the bot mid-sentence and
+            # derail it. A real correction (more words) still barges in immediately.
+            interruption_strategies=[MinWordsInterruptionStrategy(min_words=2)],
         ),
     )
     sentinel.set_task(task)

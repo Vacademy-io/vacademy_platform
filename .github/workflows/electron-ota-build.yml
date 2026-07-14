@@ -17,9 +17,10 @@ name: Build & Publish Electron OTA Update (NSIS + portable)
 #     collide with the existing one and clients won't see an update.
 #
 # TOKEN: publishing lands in a DIFFERENT repo (electron-build-repo), so the
-# default GITHUB_TOKEN (scoped to this repo) is not enough. Provide a PAT with
-# `contents:write` on Vacademy-io/electron-build-repo as the repo/org secret
-# ELECTRON_PUBLISH_TOKEN.
+# default GITHUB_TOKEN (scoped to this repo) is not enough. This uses the
+# existing GH_ACTION_TOKEN secret (a cross-repo PAT). If that token lacks
+# `contents:write` on Vacademy-io/electron-build-repo, the publish step fails
+# with an auth error — swap in a token that has it.
 
 run-name: "electron-ota-build ${{ inputs.flavor }} v${{ inputs.version_note }}"
 
@@ -92,8 +93,10 @@ jobs:
       - name: Build & publish OTA update
         working-directory: ./frontend-learner-dashboard-app/electron
         env:
-          # PAT with contents:write on Vacademy-io/electron-build-repo (cross-repo publish).
-          GH_TOKEN: ${{ secrets.ELECTRON_PUBLISH_TOKEN }}
+          # Cross-repo publish to Vacademy-io/electron-build-repo. Uses the existing
+          # GH_ACTION_TOKEN secret (the account running this repo has pull-only access
+          # to electron-build-repo, so a personal PAT can't publish there).
+          GH_TOKEN: ${{ secrets.GH_ACTION_TOKEN }}
         run: npx electron-builder build --win -c ./electron-builder.${{ inputs.flavor }}.json --publish always
 
       - name: Upload build artifacts (installer + update manifest)

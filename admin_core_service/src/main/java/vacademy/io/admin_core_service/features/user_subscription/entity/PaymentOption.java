@@ -75,6 +75,10 @@ public class PaymentOption {
     // mappedBy refers to the field in the PaymentPlan entity that owns the relationship (the foreign key)
     @OneToMany(mappedBy = "paymentOption", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @Where(clause = "status = 'ACTIVE'")
+    // Without this the plans come back in physical row order, so editing any one plan
+    // silently reshuffles the learner's plan list. Shortest cycle first (Monthly →
+    // Quarterly → Half-Yearly → Annual), which is the order learners expect to compare in.
+    @OrderBy("validityInDays ASC")
     private List<PaymentPlan> paymentPlans = new ArrayList<>();
 
     public PaymentOption(PaymentOptionDTO paymentOptionDTO) {

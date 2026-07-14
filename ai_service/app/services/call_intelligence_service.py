@@ -34,7 +34,7 @@ from ..schemas.credits import CreditCheckRequest, CreditDeductRequest
 from . import llm_json
 from .call_intelligence_prompt import PROMPT_VERSION, SCHEMA_VERSION, build_prompt
 from .credit_service import CreditService
-from .media_file_client import get_public_file_url
+from .media_file_client import get_file_url, get_public_file_url
 from .transcription_service import TranscriptionService
 
 logger = logging.getLogger(__name__)
@@ -322,9 +322,16 @@ async def process_one(claimed: Dict[str, Any]) -> None:
         if not storage_key:
             _mark(row_id, "SKIPPED", skip_reason="NO_RECORDING")
             return
-        # Recordings are stored in the PUBLIC media bucket (same as lead-profile
-        # playback). The private resolver 404s for them → transcription fails.
-        source_url = await get_public_file_url(storage_key)
+        # Recordings live in EITHER bucket and each has its own resolver route, so the
+        # bucket has to drive the choice (telephony_call_log.recording_private):
+        #   • public  (most telephony recordings, same as lead-profile playback)
+        #   • private (e.g. VACADEMY_AI / Plivo AI-call recordings)
+        # Hardcoding either one 404s for the other half and fails the transcription job
+        # with "transcription failed: HTTP Error 404: Not Found".
+        if claimed.get("recording_private"):
+            source_url = await get_file_url(storage_key)
+        else:
+            source_url = await get_public_file_url(storage_key)
 
         # 2. Settings (rubric + credit override).
         cfg = await asyncio.to_thread(_read_call_settings, institute_id)

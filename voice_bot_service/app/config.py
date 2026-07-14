@@ -104,8 +104,10 @@ class Settings:
     vertex_credentials_path: str = field(
         default_factory=lambda: _env("VERTEX_CREDENTIALS_PATH", "")
     )
+    # gemini-2.5-flash-lite is NOT served in asia-south1 (404 verified 2026-07-14) — only
+    # gemini-2.5-flash is. Default to what the target region actually has; override per region.
     vertex_model: str = field(
-        default_factory=lambda: _env("VERTEX_MODEL", "gemini-2.5-flash-lite")
+        default_factory=lambda: _env("VERTEX_MODEL", "gemini-2.5-flash")
     )
 
     # Telephony audio is 8 kHz mu-law on Plivo <Stream>.

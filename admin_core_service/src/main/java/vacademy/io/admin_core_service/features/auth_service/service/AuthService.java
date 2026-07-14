@@ -633,4 +633,74 @@ public class AuthService {
             throw new VacademyException("Failed to update institute settings: " + e.getMessage());
         }
     }
+
+    /**
+     * Links two EXISTING users as guardian (parent) and student. Back-fill
+     * only on the auth_service side — never overwrites an existing link.
+     */
+    public void linkParentChild(String parentUserId, String studentUserId) {
+        try {
+            vacademy.io.common.auth.dto.ParentChildLinkRequestDTO body =
+                    vacademy.io.common.auth.dto.ParentChildLinkRequestDTO.builder()
+                            .parentUserId(parentUserId)
+                            .studentUserId(studentUserId)
+                            .build();
+            hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    AuthServiceRoutes.LINK_PARENT_CHILD,
+                    body);
+        } catch (Exception e) {
+            throw new VacademyException("Failed to link parent and child: " + e.getMessage());
+        }
+    }
+
+    /**
+     * All children (students) linked to a single guardian (parent) user id.
+     */
+    public List<UserDTO> getChildrenOfParent(String parentUserId) {
+        if (parentUserId == null || parentUserId.isBlank()) {
+            return List.of();
+        }
+        try {
+            String endpoint = AuthServiceRoutes.CHILDREN_OF_PARENT + "?parentUserId=" + parentUserId;
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.GET.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    null);
+            if (response == null || response.getBody() == null || !response.getStatusCode().is2xxSuccessful()) {
+                return List.of();
+            }
+            ObjectMapper objectMapper = new ObjectMapper();
+            return objectMapper.readValue(response.getBody(), new TypeReference<List<UserDTO>>() {
+            });
+        } catch (Exception e) {
+            throw new VacademyException("Failed to get children of parent: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Institute-wide guardian backfill: creates a synthetic parent for each
+     * item whose child does not already have one linked.
+     */
+    public vacademy.io.common.auth.dto.BackfillParentsResultDTO backfillParents(
+            List<vacademy.io.common.auth.dto.BackfillParentItemDTO> items, String instituteId) {
+        try {
+            String endpoint = AuthServiceRoutes.BACKFILL_PARENTS + "?instituteId=" + instituteId;
+            ObjectMapper objectMapper = new ObjectMapper();
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    endpoint,
+                    items);
+            return objectMapper.readValue(response.getBody(),
+                    vacademy.io.common.auth.dto.BackfillParentsResultDTO.class);
+        } catch (Exception e) {
+            throw new VacademyException("Failed to backfill parents: " + e.getMessage());
+        }
+    }
 }

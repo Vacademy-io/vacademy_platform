@@ -43,7 +43,22 @@ public class ProgressCollector {
     private static final List<String> ACTIVE_STATUS = Arrays.asList("ACTIVE");
     private static final List<String> STANDARD_STATUSES = Arrays.asList("ACTIVE", "PUBLISHED");
     private static final List<String> CHAPTER_PACKAGE_STATUSES = Arrays.asList("ACTIVE");
-    private static final List<String> SLIDE_TYPES = Arrays.asList("VIDEO", "DOCUMENT", "AUDIO", "PDF");
+
+    /**
+     * Slide statuses a learner can actually see. Must include UNSYNC: when a teacher edits a live
+     * slide it flips to UNSYNC while learners keep seeing and studying the published version.
+     * Filtering to PUBLISHED alone erased those slides — and all time spent on them — from
+     * completion and time-spent. Matches LearnerReportService.VALID_SLIDE_STATUSES.
+     */
+    private static final List<String> VISIBLE_SLIDE_STATUSES = Arrays.asList("PUBLISHED", "UNSYNC");
+
+    /**
+     * Only VIDEO and DOCUMENT: those are the only two the completion query has progress CTEs for.
+     * AUDIO was included here but has no CTE, so every audio slide resolved to 0% completion while
+     * still counting in the denominator — silently deflating the learner's progress. ("PDF" was
+     * never a real SlideTypeEnum value at all.) Matches LearnerReportService.
+     */
+    private static final List<String> SLIDE_TYPES = Arrays.asList("VIDEO", "DOCUMENT");
 
     public ProgressSection collect(String userId, String packageSessionId, LocalDate startDate, LocalDate endDate) {
         try {
@@ -53,14 +68,20 @@ public class ProgressCollector {
             }
 
             // Fetch per-subject, per-module completion + time using existing query
+            // Slide-level statuses must allow UNSYNC (see VISIBLE_SLIDE_STATUSES); the subject /
+            // module / chapter levels keep the ACTIVE+PUBLISHED list.
             List<Object[]> subjectRows = activityLogRepository.getModuleCompletionByUserAndBatch(
                     packageSessionId, userId,
                     STANDARD_STATUSES, STANDARD_STATUSES, STANDARD_STATUSES,
-                    STANDARD_STATUSES, STANDARD_STATUSES,
+                    VISIBLE_SLIDE_STATUSES, VISIBLE_SLIDE_STATUSES,
                     ACTIVE_STATUS);
 
             List<ProgressSection.SubjectProgress> subjects = new ArrayList<>();
             double overallCompletion = 0.0;
+            // True once ANY real source (subject rows, subject rollup, package rollup, or the CTE)
+            // yields a value. Without this, "we found nothing" and "the learner completed 0%" both
+            // emit 0.0 and are indistinguishable in the report.
+            boolean haveCompletionData = false;
 
             if (subjectRows != null && !subjectRows.isEmpty()) {
                 for (Object[] row : subjectRows) {
@@ -104,7 +125,10 @@ public class ProgressCollector {
 
                     overallCompletion += subjectCompletion;
                 }
-                if (!subjects.isEmpty()) overallCompletion /= subjects.size();
+                if (!subjects.isEmpty()) {
+                    overallCompletion /= subjects.size();
+                    haveCompletionData = true;
+                }
             }
 
             // Overall completion precedence:
@@ -118,19 +142,35 @@ public class ProgressCollector {
             Double packageRollup = readRollup(userId, SRC_PACKAGE_SESSION, packageSessionId, OP_PACKAGE_SESSION_COMPLETED);
             if (packageRollup != null) {
                 overallCompletion = packageRollup;
+                haveCompletionData = true;
             } else if (subjectAvg > 0) {
                 overallCompletion = subjectAvg;
+                haveCompletionData = true;
             } else {
                 try {
+                    // End bound must be the last instant of endDate: activity_log.created_at is a
+                    // TIMESTAMP, so binding a bare DATE made it `endDate 00:00:00` and every slide
+                    // the learner studied on the final day of the window was excluded.
                     Double courseCompletion = activityLogRepository.getLearnerCourseCompletionPercentage(
                             packageSessionId, userId,
-                            Date.valueOf(startDate), Date.valueOf(endDate),
-                            STANDARD_STATUSES, STANDARD_STATUSES, STANDARD_STATUSES, STANDARD_STATUSES,
+                            java.sql.Timestamp.valueOf(startDate.atStartOfDay()),
+                            java.sql.Timestamp.valueOf(endDate.atTime(23, 59, 59, 999_000_000)),
+                            STANDARD_STATUSES, STANDARD_STATUSES, STANDARD_STATUSES, VISIBLE_SLIDE_STATUSES,
                             SLIDE_TYPES, CHAPTER_PACKAGE_STATUSES);
-                    if (courseCompletion != null) overallCompletion = courseCompletion;
+                    if (courseCompletion != null) {
+                        overallCompletion = courseCompletion;
+                        haveCompletionData = true;
+                    }
                 } catch (Exception e) {
                     log.warn("[ProgressCollector] Course completion percentage query failed, using subject average: {}", e.getMessage());
                 }
+            }
+
+            // Nothing anywhere knows this learner's progress — say so instead of asserting 0%.
+            if (!haveCompletionData) {
+                log.info("[ProgressCollector] No progress data for userId={} packageSessionId={} "
+                        + "— reporting as unavailable rather than 0%.", userId, packageSessionId);
+                return ProgressSection.builder().available(false).subjects(List.of()).build();
             }
 
             return ProgressSection.builder()

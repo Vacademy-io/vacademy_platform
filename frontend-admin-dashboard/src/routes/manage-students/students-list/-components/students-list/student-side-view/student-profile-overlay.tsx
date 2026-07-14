@@ -26,6 +26,7 @@ import { type StudentSideViewSettings, type StudentSideViewTabId } from '@/types
 import { TAB_ID_TO_VISIBILITY_KEY } from '@/constants/display-settings/student-side-view-tabs';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
+import { useParentSettings } from '@/hooks/use-parent-settings';
 import { useLeadProfiles } from '@/hooks/use-lead-profiles';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -67,6 +68,7 @@ import { StudentEnquiry } from './student-enquiry/student-enquiry';
 import { StudentApplication } from './student-application/student-application';
 import { StudentLeadProfile } from './student-lead-profile/student-lead-profile';
 import { StudentFullHistory } from './student-full-history/student-full-history';
+import { StudentParentProfile } from './student-parent/student-parent-profile';
 
 type SectionId = StudentSideViewTabId | 'subOrg';
 
@@ -93,6 +95,7 @@ const DEFAULT_ORDER: StudentSideViewTabId[] = [
     'application',
     'lead',
     'fullHistory',
+    'parent',
 ];
 
 function orderedVisibleSectionIds(settings: StudentSideViewSettings): StudentSideViewTabId[] {
@@ -130,6 +133,7 @@ export const StudentProfileOverlay = () => {
         !!learnerListPosition &&
         learnerListPosition.index < learnerListPosition.total - 1;
     const leadSettings = useLeadSettings();
+    const parentSettings = useParentSettings();
     const [tabSettings, setTabSettings] = useState<StudentSideViewSettings | null>(null);
     const [activeSection, setActiveSection] = useState<SectionId>('overview');
     const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -261,6 +265,12 @@ export const StudentProfileOverlay = () => {
                 return (
                     <StudentFullHistory
                         studentUserId={selectedStudent.user_id || selectedStudent.id}
+                    />
+                );
+            case 'parent':
+                return (
+                    <StudentParentProfile
+                        userId={selectedStudent.user_id || selectedStudent.id}
                     />
                 );
             case 'subOrg':
@@ -485,6 +495,14 @@ export const StudentProfileOverlay = () => {
                                         if (
                                             (id === 'lead' || id === 'fullHistory') &&
                                             (leadSettings.isLoading || !leadSettings.enabled)
+                                        ) {
+                                            return false;
+                                        }
+                                        // Guardian requires its own feature toggle — kept
+                                        // separate from the lead system on purpose.
+                                        if (
+                                            id === 'parent' &&
+                                            (parentSettings.isLoading || !parentSettings.enabled)
                                         ) {
                                             return false;
                                         }

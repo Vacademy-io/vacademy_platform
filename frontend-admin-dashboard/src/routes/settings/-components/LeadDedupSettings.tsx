@@ -5,7 +5,8 @@
  *
  *   1. Enabled     → turn duplicate rejection on/off (off preserves prior behaviour)
  *   2. Field       → match by email or phone number
- *   3. Scope       → within the same lead list, or across every lead list in the institute
+ *   3. Scope       → this lead list, a hand-picked set of lead lists, or every
+ *                    lead list in the institute
  *
  * Persisted at LEAD_SETTING.data.dedup (snake_case-free, matches backend enum
  * casing directly). The save path READ-MODIFY-WRITES the whole LEAD_SETTING
@@ -27,10 +28,12 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { MultiSelect, type OptionType } from '@/components/design-system/multi-select';
 import { MyButton } from '@/components/design-system/button';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_INSITITUTE_SETTINGS } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { useCampaignsList } from '@/routes/audience-manager/list/-hooks/useCampaignsList';
 import {
     LEAD_DEDUP_SETTINGS_QUERY_KEY,
     fetchLeadDedupSettings,
@@ -54,6 +57,7 @@ async function saveDedupSettings(next: LeadDedupSettingsValues): Promise<void> {
         enabled: next.enabled,
         field: next.field,
         scope: next.scope,
+        audienceIds: next.scope === 'SELECTED' ? next.audienceIds : [],
     };
     const merged = { ...current, dedup };
     await authenticatedAxiosInstance.post(
@@ -65,6 +69,7 @@ async function saveDedupSettings(next: LeadDedupSettingsValues): Promise<void> {
 
 export default function LeadDedupSettings() {
     const queryClient = useQueryClient();
+    const instituteId = getCurrentInstituteId() ?? '';
 
     const { data: saved, isLoading } = useQuery({
         queryKey: LEAD_DEDUP_SETTINGS_QUERY_KEY,
@@ -72,9 +77,25 @@ export default function LeadDedupSettings() {
         staleTime: 5 * 60 * 1000,
     });
 
+    // All lead lists in the institute, for the "specific lead lists" multi-select
+    // and for detecting a full selection (→ auto-switch to institute-wide).
+    const { data: campaignsPage, isLoading: campaignsLoading } = useCampaignsList({
+        institute_id: instituteId,
+        page: 0,
+        size: 200,
+    });
+    const audienceOptions: OptionType[] = (campaignsPage?.content ?? []).map((c) => ({
+        // AudienceDTO's actual id field is `id` (== Audience.id, the FK
+        // audience_response.audience_id points at); campaign_id/audience_id are
+        // defensive aliases in case a different serializer shape shows up.
+        value: c.id ?? c.audience_id ?? c.campaign_id ?? '',
+        label: c.campaign_name,
+    }));
+
     const [enabled, setEnabled] = useState(false);
     const [field, setField] = useState<LeadDedupField>('EMAIL');
     const [scope, setScope] = useState<LeadDedupScope>('CAMPAIGN');
+    const [audienceIds, setAudienceIds] = useState<string[]>([]);
     const [hasChanges, setHasChanges] = useState(false);
 
     useEffect(() => {
@@ -82,6 +103,7 @@ export default function LeadDedupSettings() {
             setEnabled(saved.enabled);
             setField(saved.field);
             setScope(saved.scope);
+            setAudienceIds(saved.audienceIds);
             setHasChanges(false);
         }
     }, [saved]);
@@ -101,7 +123,24 @@ export default function LeadDedupSettings() {
     });
 
     const handleSave = () => {
-        save({ enabled, field, scope });
+        if (scope === 'SELECTED' && audienceIds.length === 0) {
+            toast.error('Pick at least one lead list, or choose a different scope');
+            return;
+        }
+        save({ enabled, field, scope, audienceIds });
+    };
+
+    // Picking every currently-available lead list is equivalent to "the whole
+    // institute" and stays correct as new lead lists get created later, so
+    // collapse it to the INSTITUTE scope instead of storing a static id list.
+    const handleAudienceSelectionChange = (ids: string[]) => {
+        if (audienceOptions.length > 0 && ids.length === audienceOptions.length) {
+            setScope('INSTITUTE');
+            setAudienceIds([]);
+        } else {
+            setAudienceIds(ids);
+        }
+        setHasChanges(true);
     };
 
     return (
@@ -164,8 +203,8 @@ export default function LeadDedupSettings() {
                                 <div className="flex flex-col gap-1.5">
                                     <Label htmlFor="dedup-scope">Applies to</Label>
                                     <p className="text-xs text-muted-foreground">
-                                        Check only the lead list being submitted to, or every lead
-                                        list in the institute.
+                                        Check only the lead list being submitted to, a specific set
+                                        of lead lists, or every lead list in the institute.
                                     </p>
                                     <Select
                                         value={scope}
@@ -179,12 +218,36 @@ export default function LeadDedupSettings() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="CAMPAIGN">This lead list only</SelectItem>
+                                            <SelectItem value="SELECTED">Specific lead lists</SelectItem>
                                             <SelectItem value="INSTITUTE">
                                                 All lead lists in this institute
                                             </SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
+
+                                {scope === 'SELECTED' && (
+                                    <div className="flex flex-col gap-1.5">
+                                        <Label>Lead lists</Label>
+                                        <p className="text-xs text-muted-foreground">
+                                            Duplicates are checked across only the lead lists picked
+                                            here. Selecting all of them switches this to
+                                            institute-wide automatically.
+                                        </p>
+                                        <MultiSelect
+                                            options={audienceOptions}
+                                            selected={audienceIds}
+                                            onChange={handleAudienceSelectionChange}
+                                            placeholder={
+                                                campaignsLoading
+                                                    ? 'Loading lead lists…'
+                                                    : 'Select lead lists'
+                                            }
+                                            disabled={campaignsLoading}
+                                            className="max-w-sm"
+                                        />
+                                    </div>
+                                )}
                             </>
                         )}
 

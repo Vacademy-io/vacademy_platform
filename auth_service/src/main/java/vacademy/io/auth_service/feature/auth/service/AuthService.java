@@ -20,6 +20,8 @@ import vacademy.io.auth_service.feature.notification.service.NotificationEmailBo
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.auth_service.feature.user.repository.PermissionRepository;
 import vacademy.io.auth_service.feature.util.UsernameGenerator;
+import vacademy.io.common.auth.dto.BackfillParentItemDTO;
+import vacademy.io.common.auth.dto.BackfillParentsResultDTO;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.entity.*;
 import vacademy.io.common.auth.enums.UserRoleStatus;
@@ -30,6 +32,7 @@ import vacademy.io.common.auth.repository.UserRoleRepository;
 import vacademy.io.common.auth.service.JwtService;
 import vacademy.io.common.auth.service.RefreshTokenService;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
 import java.util.HashSet;
 import java.util.List;
@@ -645,5 +648,86 @@ public class AuthService {
         emailRequest.setSubject("Course Enrollment - " + instituteName);
         emailRequest.setBody(body);
         notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
+    }
+
+    /**
+     * Links two EXISTING users as parent and child. Back-fill only: never
+     * overwrites a linked_parent_id the child already has.
+     */
+    @Transactional
+    public void linkParentChild(String parentUserId, String studentUserId) {
+        if (!StringUtils.hasText(parentUserId) || !StringUtils.hasText(studentUserId)) {
+            throw new VacademyException("parentUserId and studentUserId are required");
+        }
+        User parent = userRepository.findById(parentUserId)
+                .orElseThrow(() -> new VacademyException("Parent user not found: " + parentUserId));
+        User student = userRepository.findById(studentUserId)
+                .orElseThrow(() -> new VacademyException("Student user not found: " + studentUserId));
+
+        if (!Boolean.TRUE.equals(parent.getIsParent())) {
+            parent.setIsParent(true);
+            userRepository.save(parent);
+        }
+        if (!StringUtils.hasText(student.getLinkedParentId())) {
+            student.setLinkedParentId(parentUserId);
+            userRepository.save(student);
+        }
+    }
+
+    /**
+     * All children linked to a single parent (supports the multi-child case,
+     * unlike {@link #createMultipleUsers} / users-with-children which assumes
+     * one child per parent).
+     */
+    public List<UserDTO> getChildrenOfParent(String parentUserId) {
+        if (!StringUtils.hasText(parentUserId)) {
+            return List.of();
+        }
+        return userRepository.findByLinkedParentIdIn(List.of(parentUserId)).stream()
+                .map(this::convertToUserDto)
+                .toList();
+    }
+
+    /**
+     * Institute-wide backfill: for each item whose child does not already have
+     * a linked parent, creates a synthetic parent user and links it. Re-checks
+     * each child's linked_parent_id at write time so re-running the backfill is
+     * idempotent even if the caller's snapshot is stale.
+     */
+    @Transactional
+    public BackfillParentsResultDTO backfillParents(List<BackfillParentItemDTO> items, String instituteId) {
+        List<BackfillParentItemDTO> safeItems = items != null ? items : List.of();
+        int created = 0;
+        int skipped = 0;
+        for (BackfillParentItemDTO item : safeItems) {
+            Optional<User> childOpt = userRepository.findById(item.getChildUserId());
+            if (childOpt.isEmpty()) {
+                skipped++;
+                continue;
+            }
+            User child = childOpt.get();
+            if (StringUtils.hasText(child.getLinkedParentId()) || Boolean.TRUE.equals(child.getIsParent())) {
+                skipped++;
+                continue;
+            }
+
+            UserDTO parentDTO = new UserDTO();
+            parentDTO.setFullName(item.getParentFullName());
+            parentDTO.setEmail(item.getParentEmail());
+            parentDTO.setRoles(List.of("PARENT"));
+
+            User parentUser = createUser(parentDTO, instituteId, false);
+            parentUser.setIsParent(true);
+            parentUser = userRepository.save(parentUser);
+
+            child.setLinkedParentId(parentUser.getId());
+            userRepository.save(child);
+            created++;
+        }
+        return BackfillParentsResultDTO.builder()
+                .totalRequested(safeItems.size())
+                .created(created)
+                .skipped(skipped)
+                .build();
     }
 }

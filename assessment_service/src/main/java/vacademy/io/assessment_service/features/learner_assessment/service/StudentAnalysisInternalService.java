@@ -67,10 +67,16 @@ public class StudentAnalysisInternalService {
     public StudentAssessmentHistoryResponse fetchAssessmentHistory(
             String userId, String instituteId, Date startDate, Date endDate) {
 
+        // `endDate` arrives via @DateTimeFormat(ISO.DATE), so "2026-06-30" materialises as
+        // 2026-06-30T00:00:00 and the query's `created_at <= :endDate` then excluded EVERY attempt
+        // taken on the final day of the window — an "inclusive upper bound" that silently lost 24h.
+        // Widen it to the last instant of that day so the bound is genuinely inclusive.
+        Date inclusiveEnd = endOfDay(endDate);
+
         // Fetch at most MAX+1 rows so we can detect truncation without fetching everything
         List<StudentAttemptHistoryProjection> rows = studentAttemptRepository
                 .findAssessmentHistoryForUserInDateRange(
-                        userId, instituteId, startDate, endDate,
+                        userId, instituteId, startDate, inclusiveEnd,
                         PageRequest.of(0, MAX_ASSESSMENTS_PER_REPORT + 1));
 
         boolean truncated = rows.size() > MAX_ASSESSMENTS_PER_REPORT;
@@ -101,6 +107,22 @@ public class StudentAnalysisInternalService {
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * Widens a date-only upper bound to the last instant of that same day, so that
+     * {@code created_at <= :endDate} includes attempts made during the day rather than
+     * only those at exactly 00:00:00. Null-safe (null = no upper bound).
+     */
+    private static Date endOfDay(Date endDate) {
+        if (endDate == null) return null;
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.setTime(endDate);
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 23);
+        cal.set(java.util.Calendar.MINUTE, 59);
+        cal.set(java.util.Calendar.SECOND, 59);
+        cal.set(java.util.Calendar.MILLISECOND, 999);
+        return cal.getTime();
+    }
 
     private AssessmentHistoryItemDto buildHistoryItem(
             StudentAttemptHistoryProjection row,

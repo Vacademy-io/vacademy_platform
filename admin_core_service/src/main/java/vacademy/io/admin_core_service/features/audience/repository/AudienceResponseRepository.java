@@ -1025,6 +1025,34 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("instituteId") String instituteId,
                         @Param("last10") String last10);
 
+        /**
+         * SELECTED-scope variant of the two above — dedup checked across an
+         * admin-chosen set of specific lead lists rather than one campaign or the
+         * whole institute.
+         */
+        @Query("""
+                            SELECT COUNT(ar) > 0 FROM AudienceResponse ar
+                            WHERE ar.audienceId IN (:audienceIds)
+                            AND LOWER(TRIM(ar.parentEmail)) = LOWER(TRIM(:email))
+                            AND (ar.isDuplicate IS NULL OR ar.isDuplicate = false)
+                            AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                        """)
+        boolean existsByAudienceIdInAndParentEmailIgnoreCase(
+                        @Param("audienceIds") java.util.List<String> audienceIds,
+                        @Param("email") String email);
+
+        @Query(value = """
+                            SELECT COUNT(*) > 0 FROM audience_response ar
+                            WHERE ar.audience_id IN (:audienceIds)
+                            AND ar.parent_mobile IS NOT NULL
+                            AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                        """, nativeQuery = true)
+        boolean existsByAudienceIdInAndPhoneLast10(
+                        @Param("audienceIds") java.util.List<String> audienceIds,
+                        @Param("last10") String last10);
+
         // ── TAT / Follow-up SLA scan (emit-only scheduler) ────────────────────────
 
         /**

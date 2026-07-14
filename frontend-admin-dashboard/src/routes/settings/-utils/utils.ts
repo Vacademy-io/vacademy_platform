@@ -16,6 +16,7 @@ import WhiteLabelSettings from '../-components/WhiteLabelSettings';
 import AssessmentSettings from '../-components/AssessmentSettings';
 import WhatsAppSettings from '../-components/WhatsAppSettings/WhatsAppSettings';
 import LeadSettings from '../-components/LeadSettings';
+import GuardianSettings from '../-components/GuardianSettings';
 import GtmSettings from '../-components/GtmSettings';
 import TncSettings from '../-components/Tnc/TncSettings';
 import IntegrationSettings from '../-components/IntegrationSettings';
@@ -132,6 +133,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.LeadSettings,
             value: 'Lead Settings',
             component: LeadSettings,
+        },
+        {
+            tab: SettingsTabs.GuardianSettings,
+            value: 'Guardian Settings',
+            component: GuardianSettings,
         },
         {
             tab: SettingsTabs.GtmSettings,

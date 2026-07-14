@@ -46,8 +46,9 @@ public class AdminManualEvaluationController {
 
     @GetMapping("/get/attempt-data")
     public ResponseEntity<String> getAttemptData(@RequestAttribute("user") CustomUserDetails userDetails,
-                                                 @RequestParam("attemptId") String attemptId) {
-        return adminManualEvaluationManager.getAttemptData(userDetails, attemptId);
+                                                 @RequestParam("attemptId") String attemptId,
+                                                 @RequestParam(value = "markEvaluating", required = false, defaultValue = "false") boolean markEvaluating) {
+        return adminManualEvaluationManager.getAttemptData(userDetails, attemptId, markEvaluating);
     }
 
     // --- Draft (save-for-later) endpoints: pause & resume manual evaluation ---

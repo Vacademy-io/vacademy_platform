@@ -68,6 +68,12 @@ export const InitiateReportDialog = ({ onSuccess }: InitiateReportDialogProps) =
             toast.error('Please select both start and end dates');
             return;
         }
+        // An inverted range makes every collector query an empty window, and the report comes back
+        // as a confident 0% across the board. Catch it here rather than shipping a wrong report.
+        if (startDate > endDate) {
+            toast.error('Start date must be on or before the end date');
+            return;
+        }
         if (selectedModules.length === 0) {
             toast.error('Select at least one module to include in the report');
             return;
@@ -189,6 +195,7 @@ export const InitiateReportDialog = ({ onSuccess }: InitiateReportDialogProps) =
                                 id="start-date"
                                 type="date"
                                 value={startDate}
+                                max={endDate || undefined}
                                 onChange={(e) => setStartDate(e.target.value)}
                             />
                         </div>
@@ -205,6 +212,7 @@ export const InitiateReportDialog = ({ onSuccess }: InitiateReportDialogProps) =
                                 id="end-date"
                                 type="date"
                                 value={endDate}
+                                min={startDate || undefined}
                                 onChange={(e) => setEndDate(e.target.value)}
                             />
                         </div>

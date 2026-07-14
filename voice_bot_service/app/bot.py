@@ -293,7 +293,6 @@ def _lead_fields_line(context: Dict[str, Any]) -> str:
 def build_system_prompt(context: Dict[str, Any]) -> str:
     agent = context.get("agent") or {}
     lead_name = context.get("leadName")
-    institute = context.get("instituteName") or "our institute"
     extraction = agent.get("extractionQuestions") or []
     dispositions = agent.get("dispositions") or []
     name = agent.get("name") or "the assistant"
@@ -348,17 +347,23 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             "aaya'/'karunga' = a man) may you switch to the matching feminine/masculine forms."
         )
 
+    # Company identity comes from the AGENT'S OWN prompt (which names the brand it should
+    # say, e.g. "Vacademy"). Do NOT also inject the institute's legal display name here — a
+    # second, different company name ("Vidyayatan Technologies") makes the model mash the two
+    # ("Vacancy"). Refer to it generically and let the prompt be the single source of the name.
     if direction == "INBOUND":
         intent_line = (
-            f"This person has CALLED {institute}. You are answering their call — greet them "
-            "warmly, quickly find out why they called, and help them."
+            "This person has CALLED your organisation. You are answering their call — greet them "
+            "warmly, quickly find out why they called, and help them. Name your company EXACTLY as "
+            "your instructions specify."
         )
     else:
         intent_line = (
-            f"You are PROACTIVELY CALLING this person on behalf of {institute} — YOU placed "
-            "this call, they did not call you. Never sound like you are answering their call. "
-            "Open with a clear reason for calling, lead the conversation confidently, and keep a "
-            "warm, positive, forward-moving tone that gives them a reason to engage right now."
+            "You are PROACTIVELY CALLING this person — YOU placed this call, they did not call you. "
+            "Never sound like you are answering their call. Open with a clear reason for calling, "
+            "introduce yourself and your company EXACTLY as your instructions specify (never invent "
+            "or alter the company name), lead the conversation confidently, and keep a warm, "
+            "positive, forward-moving tone that gives them a reason to engage right now."
         )
 
     # Placed near the TOP (primacy matters under live-call latency) and applied to every
@@ -415,6 +420,14 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         else f"- If the caller asks for a human, say a counsellor will call them right back, then append {END_MARKER}.",
         ("At the end you must be able to judge the caller's interest as one of: "
          + ", ".join(dispositions)) if dispositions else "",
+        # RECENCY anchor: the last thing the model reads before every generation. A long
+        # persona prompt states the name once near the top, which loses salience as the
+        # call grows — the model then hallucinates a different name (Anjali) or garbles it
+        # (Aarush/Aayushi). Restating the exact identity here, last, holds it steady.
+        f"IDENTITY LOCK (most important): your name is EXACTLY \"{name}\" — say it identically "
+        f"every single time, and NEVER introduce yourself with any other name, spelling or "
+        f"variation. Use the SAME company name you introduce yourself with for the whole call; "
+        f"never change, translate or invent a different company name.",
     ]
     return "\n".join(l for l in lines if l)
 
@@ -441,7 +454,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         flags["bot_speaking"] = speaking
 
     stt_lang, _ = _agent_language(agent)
-    stt = build_stt(settings.sample_rate, language=stt_lang)
+    # Bias STT toward the agent's own name so a caller repeating it ("aapka naam Aarushi
+    # tha?") isn't transcribed as "Aayushi"/"Aarush" and fed back into the LLM context as
+    # a wrong name — the #1 way the agent "forgets" its name mid-call.
+    stt_bias = (agent.get("name") or "").strip() or None
+    stt = build_stt(settings.sample_rate, language=stt_lang, bias=stt_bias)
     llm = build_llm()
     tts = build_tts(settings.sample_rate, voice=agent.get("voice"),
                     aiohttp_session=aiohttp_session)

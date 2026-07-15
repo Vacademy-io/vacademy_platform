@@ -1004,19 +1004,35 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                                     </button>
                                                 )}
                                                 {isAdminInvoicePending && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            setMarkPaidTarget({
-                                                                id: inv.id,
-                                                                number: inv.invoice_number || inv.invoiceNumber || inv.id,
-                                                            })
-                                                        }
-                                                        className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
-                                                        title="Record an offline / manual payment against this invoice"
-                                                    >
-                                                        Record Offline
-                                                    </button>
+                                                    adminUserPlanId && canEditLedger ? (
+                                                        // Preferred: same FIFO bucket-fill dialog as CPO rows
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setRecordPaymentAmount(typeof amount === 'number' ? amount : undefined);
+                                                                setRecordPaymentOpen(true);
+                                                            }}
+                                                            className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
+                                                            title="Record an offline payment — FIFO bucket-fill across installments"
+                                                        >
+                                                            Record Offline
+                                                        </button>
+                                                    ) : (
+                                                        // Fallback when no UserPlan: mark this specific invoice paid directly
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                setMarkPaidTarget({
+                                                                    id: inv.id,
+                                                                    number: inv.invoice_number || inv.invoiceNumber || inv.id,
+                                                                })
+                                                            }
+                                                            className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
+                                                            title="Mark this invoice as paid"
+                                                        >
+                                                            Record Offline
+                                                        </button>
+                                                    )
                                                 )}
                                                 {isAdminInvoicePending && (
                                                     <button

@@ -236,6 +236,8 @@ function mergeWithDefaults(
                 incoming?.liveClasses?.showAttendance ?? d.liveClasses.showAttendance,
             showActivityStats:
                 incoming?.liveClasses?.showActivityStats ?? d.liveClasses.showActivityStats,
+            showClassMaterials:
+                incoming?.liveClasses?.showClassMaterials ?? d.liveClasses.showClassMaterials,
         },
         postLoginRedirectRoute: incoming?.postLoginRedirectRoute ?? d.postLoginRedirectRoute,
     };

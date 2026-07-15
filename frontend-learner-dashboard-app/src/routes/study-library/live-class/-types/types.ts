@@ -179,12 +179,22 @@ export interface PastSessionActivity {
     poll_votes?: number | null;
 }
 
-/** The four admin-governed learner-display flags, echoed on every /learner/past response. */
+/** The admin-governed learner-display flags, echoed on every /learner/past response. */
 export interface PastDisplayFlags {
     show_past_sessions: boolean;
     show_recordings: boolean;
     show_attendance: boolean;
     show_activity_stats: boolean;
+    show_class_materials: boolean;
+}
+
+/** A class material (PDF / uploaded video / YouTube) the teacher linked from this session. */
+export interface PastSessionMaterial {
+    slide_id: string;
+    title: string;
+    kind: "PDF" | "VIDEO" | "YOUTUBE";
+    file_id?: string;
+    url?: string;
 }
 
 export interface PastSessionDetails {
@@ -204,6 +214,8 @@ export interface PastSessionDetails {
     attendance_status?: PastAttendanceStatus;
     /** Omitted entirely by the backend when show_activity_stats=false. */
     activity?: PastSessionActivity;
+    /** Omitted entirely by the backend when show_class_materials=false. */
+    materials?: PastSessionMaterial[];
 }
 
 export interface PastSessionsPageResponse {

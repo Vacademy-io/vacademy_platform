@@ -126,6 +126,9 @@ interface GroupedSchedule {
 function ViewLiveSession() {
     const { sessionId } = Route.useParams();
     const navigate = useNavigate();
+    // Institute-level "LMS Connection" toggles gate the recording→course and
+    // class-materials entry points on this page.
+    const { settings: instituteLiveSessionSettings } = useLiveSessionSettings();
     const [sessionData, setSessionData] = useState<SessionBySessionIdResponse | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -1401,7 +1404,9 @@ function ViewLiveSession() {
                                                 </div>
                                             </div>
 
-                                                {contentLinkBatches.length > 0 && (
+                                                {contentLinkBatches.length > 0 &&
+                                                    instituteLiveSessionSettings.lmsConnection
+                                                        .recordingAddToCourseEnabled && (
                                                     <AddRecordingToCourseCard
                                                         sessionId={sessionId}
                                                         scheduleId={rec.scheduleId}
@@ -1486,7 +1491,8 @@ function ViewLiveSession() {
                         )}
 
                         {/* Class Materials — always visible, not tied to a recording */}
-                        {contentLinkBatches.length > 0 && (
+                        {contentLinkBatches.length > 0 &&
+                            instituteLiveSessionSettings.lmsConnection.classMaterialsEnabled && (
                             <ClassMaterialsCard
                                 sessionId={sessionId}
                                 scheduleId={soleScheduleId}

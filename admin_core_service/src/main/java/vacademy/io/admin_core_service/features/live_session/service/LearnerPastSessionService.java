@@ -14,19 +14,30 @@ import vacademy.io.admin_core_service.features.live_session.dto.LearnerDisplaySe
 import vacademy.io.admin_core_service.features.live_session.dto.LearnerPastSessionDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LearnerPastSessionsResponseDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LearnerRecordingDTO;
+import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionContentLink;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSessionLogs;
+import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionContentLinkRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionLogsRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.slide.entity.DocumentSlide;
+import vacademy.io.admin_core_service.features.slide.entity.Slide;
+import vacademy.io.admin_core_service.features.slide.entity.VideoSlide;
+import vacademy.io.admin_core_service.features.slide.repository.DocumentSlideRepository;
+import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
+import vacademy.io.admin_core_service.features.slide.repository.VideoSlideRepository;
 import vacademy.io.common.meeting.dto.MeetingRecordingDTO;
 
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -49,6 +60,10 @@ public class LearnerPastSessionService {
 
     private final LiveSessionRepository liveSessionRepository;
     private final LiveSessionLogsRepository liveSessionLogsRepository;
+    private final LiveSessionContentLinkRepository liveSessionContentLinkRepository;
+    private final SlideRepository slideRepository;
+    private final VideoSlideRepository videoSlideRepository;
+    private final DocumentSlideRepository documentSlideRepository;
     private final LiveSessionLearnerDisplaySettingsService displaySettingsService;
     private final PackageSessionRepository packageSessionRepository;
     private final StudentSessionInstituteGroupMappingRepository studentSessionInstituteGroupMappingRepository;
@@ -77,21 +92,27 @@ public class LearnerPastSessionService {
 
         List<LiveSessionRepository.LearnerPastSessionProjection> projections = pageResult.getContent();
 
+        List<String> scheduleIds = projections.stream()
+                .map(LiveSessionRepository.LearnerPastSessionProjection::getScheduleId)
+                .distinct()
+                .collect(Collectors.toList());
+
         Map<String, List<LiveSessionLogs>> logsByScheduleId = Collections.emptyMap();
         if ((flags.showAttendance() || flags.showActivityStats()) && StringUtils.hasText(userId)
-                && !projections.isEmpty()) {
-            List<String> scheduleIds = projections.stream()
-                    .map(LiveSessionRepository.LearnerPastSessionProjection::getScheduleId)
-                    .distinct()
-                    .collect(Collectors.toList());
+                && !scheduleIds.isEmpty()) {
             List<LiveSessionLogs> logs = liveSessionLogsRepository
                     .findAttendanceLogsForScheduleIdsAndUser(scheduleIds, userId);
             logsByScheduleId = logs.stream().collect(Collectors.groupingBy(LiveSessionLogs::getScheduleId));
         }
 
+        Map<String, List<LearnerPastSessionDTO.MaterialDTO>> materialsByScheduleId = Collections.emptyMap();
+        if (flags.showClassMaterials() && StringUtils.hasText(batchId) && !scheduleIds.isEmpty()) {
+            materialsByScheduleId = loadMaterials(scheduleIds, batchId);
+        }
+
         List<LearnerPastSessionDTO> content = new ArrayList<>();
         for (LiveSessionRepository.LearnerPastSessionProjection projection : projections) {
-            content.add(buildDto(projection, flags, logsByScheduleId));
+            content.add(buildDto(projection, flags, logsByScheduleId, materialsByScheduleId));
         }
 
         return LearnerPastSessionsResponseDTO.builder()
@@ -132,7 +153,8 @@ public class LearnerPastSessionService {
     }
 
     private LearnerPastSessionDTO buildDto(LiveSessionRepository.LearnerPastSessionProjection projection,
-            LearnerDisplaySettingsFlags flags, Map<String, List<LiveSessionLogs>> logsByScheduleId) {
+            LearnerDisplaySettingsFlags flags, Map<String, List<LiveSessionLogs>> logsByScheduleId,
+            Map<String, List<LearnerPastSessionDTO.MaterialDTO>> materialsByScheduleId) {
 
         LearnerPastSessionDTO.LearnerPastSessionDTOBuilder builder = LearnerPastSessionDTO.builder()
                 .sessionId(projection.getSessionId())
@@ -160,7 +182,100 @@ public class LearnerPastSessionService {
             builder.activity(resolveActivity(logs));
         }
 
+        if (flags.showClassMaterials()) {
+            builder.materials(
+                    materialsByScheduleId.getOrDefault(projection.getScheduleId(), Collections.emptyList()));
+        }
+
         return builder.build();
+    }
+
+    /**
+     * Loads the Track B class materials (content_type MATERIAL_*) linked from
+     * the page's schedules INTO THE LEARNER'S OWN BATCH, resolving each link's
+     * slide to a learner-safe descriptor. Draft/unpublished slides are
+     * excluded — learners only ever see published material. One batched query
+     * per table (links, slides, video rows, document rows); no N+1.
+     */
+    private Map<String, List<LearnerPastSessionDTO.MaterialDTO>> loadMaterials(List<String> scheduleIds,
+            String batchId) {
+        List<LiveSessionContentLink> links = liveSessionContentLinkRepository
+                .findActiveMaterialsForSchedulesAndBatch(scheduleIds, batchId);
+        if (links.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        List<String> slideIds = links.stream().map(LiveSessionContentLink::getSlideId).distinct()
+                .collect(Collectors.toList());
+        Map<String, Slide> publishedSlides = slideRepository.findAllById(slideIds).stream()
+                .filter(s -> "PUBLISHED".equalsIgnoreCase(s.getStatus()))
+                .collect(Collectors.toMap(Slide::getId, s -> s));
+
+        List<String> videoSourceIds = publishedSlides.values().stream()
+                .filter(s -> "VIDEO".equalsIgnoreCase(s.getSourceType()))
+                .map(Slide::getSourceId).distinct().collect(Collectors.toList());
+        List<String> documentSourceIds = publishedSlides.values().stream()
+                .filter(s -> "DOCUMENT".equalsIgnoreCase(s.getSourceType()))
+                .map(Slide::getSourceId).distinct().collect(Collectors.toList());
+
+        Map<String, VideoSlide> videosById = videoSourceIds.isEmpty() ? Collections.emptyMap()
+                : videoSlideRepository.findAllById(videoSourceIds).stream()
+                        .collect(Collectors.toMap(VideoSlide::getId, v -> v));
+        Map<String, DocumentSlide> documentsById = documentSourceIds.isEmpty() ? Collections.emptyMap()
+                : documentSlideRepository.findAllById(documentSourceIds).stream()
+                        .collect(Collectors.toMap(DocumentSlide::getId, d -> d));
+
+        Map<String, List<LearnerPastSessionDTO.MaterialDTO>> result = new LinkedHashMap<>();
+        Map<String, Set<String>> seenSlidesPerSchedule = new LinkedHashMap<>();
+        for (LiveSessionContentLink link : links) {
+            if (link.getScheduleId() == null) {
+                continue;
+            }
+            Slide slide = publishedSlides.get(link.getSlideId());
+            if (slide == null) {
+                continue;
+            }
+            // Same slide linked into multiple chapters of the same batch → one entry.
+            if (!seenSlidesPerSchedule.computeIfAbsent(link.getScheduleId(), k -> new LinkedHashSet<>())
+                    .add(slide.getId())) {
+                continue;
+            }
+            LearnerPastSessionDTO.MaterialDTO material = toMaterial(slide, videosById, documentsById);
+            if (material != null) {
+                result.computeIfAbsent(link.getScheduleId(), k -> new ArrayList<>()).add(material);
+            }
+        }
+        return result;
+    }
+
+    private LearnerPastSessionDTO.MaterialDTO toMaterial(Slide slide, Map<String, VideoSlide> videosById,
+            Map<String, DocumentSlide> documentsById) {
+        LearnerPastSessionDTO.MaterialDTO.MaterialDTOBuilder builder = LearnerPastSessionDTO.MaterialDTO.builder()
+                .slideId(slide.getId())
+                .title(slide.getTitle());
+
+        if ("DOCUMENT".equalsIgnoreCase(slide.getSourceType())) {
+            DocumentSlide document = documentsById.get(slide.getSourceId());
+            if (document == null || !StringUtils.hasText(document.getPublishedData())) {
+                return null;
+            }
+            return builder.kind("PDF").fileId(document.getPublishedData()).build();
+        }
+
+        if ("VIDEO".equalsIgnoreCase(slide.getSourceType())) {
+            VideoSlide video = videosById.get(slide.getSourceId());
+            if (video == null || !StringUtils.hasText(video.getPublishedUrl())) {
+                return null;
+            }
+            // source_type follows the frontend player contract: FILE_ID = media
+            // file id, VIDEO = YouTube URL (see LiveSessionContentLinkService).
+            if ("FILE_ID".equalsIgnoreCase(video.getSourceType())) {
+                return builder.kind("VIDEO").fileId(video.getPublishedUrl()).build();
+            }
+            return builder.kind("YOUTUBE").url(video.getPublishedUrl()).build();
+        }
+
+        return null;
     }
 
     private String resolveAttendanceStatus(List<LiveSessionLogs> logs) {

@@ -14,6 +14,7 @@ import {
     Broadcast,
     BellRinging,
     MonitorPlay,
+    PlugsConnected,
 } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
@@ -146,6 +147,16 @@ export default function LiveSessionSettings() {
 
     const togglePrimitive = (key: keyof LiveSessionSettingsType, value: boolean) => {
         setSettings((prev) => ({ ...prev, [key]: value }) as LiveSessionSettingsType);
+    };
+
+    const toggleLmsConnection = (
+        key: keyof LiveSessionSettingsType['lmsConnection'],
+        value: boolean
+    ) => {
+        setSettings((prev) => ({
+            ...prev,
+            lmsConnection: { ...prev.lmsConnection, [key]: value },
+        }));
     };
 
     const reset = () => setSettings(initial);
@@ -999,6 +1010,39 @@ export default function LiveSessionSettings() {
                         description="Adds a Process Recording action next to each recording in the live-session view so admins/teachers can kick off transcription. Existing transcripts remain viewable regardless of this setting — only the entry point to start new ones is hidden when off."
                         checked={settings.recordingTranscriptionEnabled}
                         onChange={(v) => togglePrimitive('recordingTranscriptionEnabled', v)}
+                    />
+                </CardContent>
+            </Card>
+
+            {/* LMS Connection — live class content → course chapters */}
+            <Card className="border-neutral-200 shadow-none">
+                <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-4">
+                    <div className="flex size-9 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                        <PlugsConnected size={18} />
+                    </div>
+                    <div className="flex-1">
+                        <CardTitle className="text-base">LMS Connection</CardTitle>
+                        <CardDescription>
+                            Lets teachers push live-class content into course chapters right from
+                            the session page. Off by default — turn on the features you want.
+                            Turning one off hides its entry point only; recordings and materials
+                            already added to chapters stay there.
+                        </CardDescription>
+                    </div>
+                </CardHeader>
+                <CardContent className="border-t border-neutral-100 p-5">
+                    <SettingRow
+                        title="Add recordings to course"
+                        description="Shows an 'Add to course' action next to each recording on the live-session view, so teachers can link the recording into chapters of the session's batches."
+                        checked={settings.lmsConnection.recordingAddToCourseEnabled}
+                        onChange={(v) => toggleLmsConnection('recordingAddToCourseEnabled', v)}
+                    />
+                    <Separator />
+                    <SettingRow
+                        title="Class materials"
+                        description="Shows the Class Materials card on the live-session view, where teachers upload a PDF or video (or paste a YouTube link) and add it to chapters."
+                        checked={settings.lmsConnection.classMaterialsEnabled}
+                        onChange={(v) => toggleLmsConnection('classMaterialsEnabled', v)}
                     />
                 </CardContent>
             </Card>

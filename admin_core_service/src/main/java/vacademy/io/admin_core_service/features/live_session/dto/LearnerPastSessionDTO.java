@@ -62,6 +62,28 @@ public class LearnerPastSessionDTO {
     /** Only present when display_flags.show_activity_stats is true. */
     private ActivityDTO activity;
 
+    /**
+     * Class materials the teacher linked from this session (Track B,
+     * content_type MATERIAL_*) that are PUBLISHED and belong to the learner's
+     * batch. Only present when display_flags.show_class_materials is true.
+     */
+    private List<MaterialDTO> materials;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class MaterialDTO {
+        private String slideId;
+        private String title;
+        /** PDF (file_id) | VIDEO (file_id, uploaded mp4) | YOUTUBE (url). */
+        private String kind;
+        private String fileId;
+        private String url;
+    }
+
     @Data
     @Builder
     @NoArgsConstructor

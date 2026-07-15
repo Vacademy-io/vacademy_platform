@@ -20,4 +20,11 @@ public interface LiveSessionContentLinkRepository extends JpaRepository<LiveSess
             @Param("scheduleId") String scheduleId,
             @Param("recordingId") String recordingId,
             @Param("chapterId") String chapterId);
+
+    @Query("SELECT l FROM LiveSessionContentLink l WHERE l.scheduleId IN :scheduleIds " +
+            "AND l.packageSessionId = :packageSessionId " +
+            "AND l.contentType IN ('MATERIAL_PDF', 'MATERIAL_VIDEO') AND l.status <> 'DELETED'")
+    List<LiveSessionContentLink> findActiveMaterialsForSchedulesAndBatch(
+            @Param("scheduleIds") List<String> scheduleIds,
+            @Param("packageSessionId") String packageSessionId);
 }

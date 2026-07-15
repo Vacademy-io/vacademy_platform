@@ -1,8 +1,10 @@
 import { useRouterState } from '@tanstack/react-router';
-import { BookOpen, CaretRight, GraduationCap, Sparkle, X } from '@phosphor-icons/react';
+import { BookOpen, CaretRight, GraduationCap, Question, Sparkle, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { getTokenFromCookie, isTokenExpired } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
+import { useSupportConfig } from '@/services/support';
+import { SupportPanel } from '@/components/common/support/SupportPanel';
 import { useAssistDock } from './store';
 import { tutorialsForRoute } from './tutorials';
 import { TutorialViewer } from './TutorialViewer';
@@ -28,6 +30,8 @@ export function AssistDock() {
     const togglePanel = useAssistDock((s) => s.togglePanel);
     const setPanel = useAssistDock((s) => s.setPanel);
     const openTutorial = useAssistDock((s) => s.openTutorial);
+    // Non-admin roles get a 403 here (retry disabled on the hook); the badge is simply omitted then.
+    const supportConfig = useSupportConfig();
 
     const token = getTokenFromCookie(TokenKey.accessToken);
     const isAuthed = !!token && !isTokenExpired(token);
@@ -60,7 +64,21 @@ export function AssistDock() {
                 >
                     <Sparkle size={20} weight={panel === 'assistant' ? 'fill' : 'regular'} />
                 </RailButton>
+
+                <RailButton
+                    label="Issues"
+                    active={panel === 'support'}
+                    onClick={() => togglePanel('support')}
+                    badge={supportConfig.data?.openTicketCount || undefined}
+                >
+                    <Question size={20} weight={panel === 'support' ? 'fill' : 'regular'} />
+                </RailButton>
             </aside>
+
+            <SupportPanel
+                open={panel === 'support'}
+                onOpenChange={(v) => setPanel(v ? 'support' : 'none')}
+            />
 
             {/* Tutorials panel (slides out left of the rail) */}
             {panel === 'tutorials' && (

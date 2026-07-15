@@ -257,9 +257,6 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
         courses?: { id: string; label: string }[];
     } | null>(null);
     const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
-    // Per-row CPO "Record Offline" pre-fills the installment amount; falls back to
-    // the suggested amount (next-due remainder / outstanding) when opened from the top button.
-    const [recordPaymentAmount, setRecordPaymentAmount] = useState<number | undefined>(undefined);
     // Create Invoice CTA in the Invoices tab — surfaces the same dialog the drawer
     // uses, but pre-targeted at the sub-org admin user. Without this the only way
     // to raise an admin invoice was to open the per-user drawer first.
@@ -962,19 +959,6 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                                         )}
                                                     </button>
                                                 )}
-                                                {isSfpRow && canEditLedger && adminUserPlanId && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setRecordPaymentAmount(typeof amount === 'number' ? amount : undefined);
-                                                            setRecordPaymentOpen(true);
-                                                        }}
-                                                        className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
-                                                        title="Record an offline / cash payment against this installment"
-                                                    >
-                                                        Record Offline
-                                                    </button>
-                                                )}
 
                                                 {/* ADMIN_MANUAL pending — full action set */}
                                                 {isAdminInvoicePending && (
@@ -1004,35 +988,19 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                                     </button>
                                                 )}
                                                 {isAdminInvoicePending && (
-                                                    adminUserPlanId && canEditLedger ? (
-                                                        // Preferred: same FIFO bucket-fill dialog as CPO rows
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setRecordPaymentAmount(typeof amount === 'number' ? amount : undefined);
-                                                                setRecordPaymentOpen(true);
-                                                            }}
-                                                            className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
-                                                            title="Record an offline payment — FIFO bucket-fill across installments"
-                                                        >
-                                                            Record Offline
-                                                        </button>
-                                                    ) : (
-                                                        // Fallback when no UserPlan: mark this specific invoice paid directly
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                setMarkPaidTarget({
-                                                                    id: inv.id,
-                                                                    number: inv.invoice_number || inv.invoiceNumber || inv.id,
-                                                                })
-                                                            }
-                                                            className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
-                                                            title="Mark this invoice as paid"
-                                                        >
-                                                            Record Offline
-                                                        </button>
-                                                    )
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setMarkPaidTarget({
+                                                                id: inv.id,
+                                                                number: inv.invoice_number || inv.invoiceNumber || inv.id,
+                                                            })
+                                                        }
+                                                        className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
+                                                        title="Mark this invoice as paid"
+                                                    >
+                                                        Mark Paid
+                                                    </button>
                                                 )}
                                                 {isAdminInvoicePending && (
                                                     <button
@@ -1143,16 +1111,13 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
             {canEditLedger && adminUserPlanId && (
                 <RecordSubOrgPaymentDialog
                     open={recordPaymentOpen}
-                    onOpenChange={(o) => {
-                        setRecordPaymentOpen(o);
-                        if (!o) setRecordPaymentAmount(undefined);
-                    }}
+                    onOpenChange={setRecordPaymentOpen}
                     userPlanId={adminUserPlanId}
                     adminUserId={adminUserId || undefined}
                     contextLabel={
                         subOrgName ? `${subOrgName} — admin CPO` : 'Sub-org admin CPO'
                     }
-                    suggestedAmount={recordPaymentAmount ?? suggestedAmount}
+                    suggestedAmount={suggestedAmount}
                 />
             )}
 

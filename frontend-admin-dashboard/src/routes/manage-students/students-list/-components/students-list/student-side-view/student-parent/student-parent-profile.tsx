@@ -9,19 +9,28 @@
  * list first — a non-empty result means "this is a guardian profile" — and
  * only falls back to the parent lookup when there are no children.
  *
- * Also supports linking a guardian/child directly from this tab (not just
- * from the assignment-time dialog) — reuses the same GuardianLinkPanel +
+ * Supports linking a guardian/child directly from this tab (not just from
+ * the assignment-time dialog) — reuses the same GuardianLinkPanel +
  * /parent-link/v1/link plumbing built for the bulk-assign dialog. The anchor
  * (this profile's own userId) always already exists here, so this is the
  * simple LINK/CREATE case — no need for the new-guardian-from-scratch
  * endpoint the assignment dialog needs for brand-new manual chips.
+ *
+ * Click-through navigation: clicking a linked child or a linked guardian
+ * pivots this tab's own view to that person (an in-panel history stack,
+ * with a "back" trail) — NOT a jump to their full StudentTable side-view.
+ * A guardian isn't an enrolled student and has no StudentTable row to jump
+ * to, and a synthesized placeholder row risked breaking enrollment-shaped
+ * tabs (courses, payments, …) elsewhere in the side-view for real students
+ * too. Pivoting in-panel works for both directions with zero backend
+ * changes and no risk to other tabs.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_PARENT_LINK_PARENT, GET_PARENT_LINK_CHILDREN } from '@/constants/urls';
-import { Users, Plus } from '@phosphor-icons/react';
+import { Users, Plus, ArrowLeft } from '@phosphor-icons/react';
 import { useStudentCredentails } from '@/services/student-list-section/getStudentCredentails';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useParentSettings } from '@/hooks/use-parent-settings';
@@ -46,6 +55,11 @@ interface GuardianLinkedUser {
     email: string | null;
     full_name: string | null;
     mobile_number: string | null;
+}
+
+interface ViewedPerson {
+    id: string;
+    name: string;
 }
 
 // ── API helpers ───────────────────────────────────────────────────────────────
@@ -122,6 +136,21 @@ function InlineLinkForm({
     );
 }
 
+// ── Back-navigation trail ───────────────────────────────────────────────────────
+
+function BackTrail({ current, onBack }: { current: ViewedPerson; onBack: () => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onBack}
+            className="flex items-center gap-1.5 self-start text-caption font-medium text-primary-500 hover:text-primary-700"
+        >
+            <ArrowLeft size={14} weight="bold" />
+            Back — viewing {current.name}
+        </button>
+    );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface StudentParentProfileProps {
@@ -131,10 +160,32 @@ interface StudentParentProfileProps {
 export function StudentParentProfile({ userId }: StudentParentProfileProps) {
     const [copiedField, setCopiedField] = useState<string>('');
     const [showLinkForm, setShowLinkForm] = useState(false);
+    // In-panel pivot history: empty = viewing `userId` itself. Each entry is a
+    // person clicked into (a linked child or guardian) — see file header.
+    const [history, setHistory] = useState<ViewedPerson[]>([]);
     const queryClient = useQueryClient();
     const instituteId = getCurrentInstituteId() ?? '';
     const { enabled: guardianLinkingEnabled } = useParentSettings();
     const { mutateAsync: linkGuardian, isPending: isLinking } = useParentLink();
+
+    const currentId = history.length ? history[history.length - 1].id : userId;
+
+    // The actual selected student changed upstream (e.g. admin picked a
+    // different learner) — drop any in-panel pivot so we don't show a stale
+    // "back to X" trail pointing at the wrong root.
+    useEffect(() => {
+        setHistory([]);
+        setShowLinkForm(false);
+    }, [userId]);
+
+    const goInto = (person: ViewedPerson) => {
+        setShowLinkForm(false);
+        setHistory((h) => [...h, person]);
+    };
+    const goBack = () => {
+        setShowLinkForm(false);
+        setHistory((h) => h.slice(0, -1));
+    };
 
     const handleCopy = async (text: string, fieldName: string) => {
         try {
@@ -148,9 +199,9 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
     };
 
     const childrenQuery = useQuery({
-        queryKey: ['parent-link-children', userId],
-        queryFn: () => fetchChildren(userId),
-        enabled: !!userId,
+        queryKey: ['parent-link-children', currentId],
+        queryFn: () => fetchChildren(currentId),
+        enabled: !!currentId,
         staleTime: 2 * 60 * 1000,
         retry: 1,
     });
@@ -160,9 +211,9 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
     // Only look up a guardian once we know this profile has no children of
     // its own — avoids an unnecessary request for guardian profiles.
     const parentQuery = useQuery({
-        queryKey: ['parent-link-parent', userId],
-        queryFn: () => fetchGuardian(userId),
-        enabled: !!userId && !childrenQuery.isLoading && !isGuardian,
+        queryKey: ['parent-link-parent', currentId],
+        queryFn: () => fetchGuardian(currentId),
+        enabled: !!currentId && !childrenQuery.isLoading && !isGuardian,
         staleTime: 2 * 60 * 1000,
         retry: 1,
     });
@@ -185,7 +236,7 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
         const base = {
             institute_id: instituteId,
             direction,
-            anchor_user_id: userId,
+            anchor_user_id: currentId,
         } as const;
         const request =
             person.kind === 'create_new'
@@ -205,23 +256,35 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
             await linkGuardian(request);
             toast.success(direction === 'STUDENT_ADDS_PARENT' ? 'Guardian linked' : 'Student linked');
             setShowLinkForm(false);
-            queryClient.invalidateQueries({ queryKey: ['parent-link-children', userId] });
-            queryClient.invalidateQueries({ queryKey: ['parent-link-parent', userId] });
+            queryClient.invalidateQueries({ queryKey: ['parent-link-children', currentId] });
+            queryClient.invalidateQueries({ queryKey: ['parent-link-parent', currentId] });
         } catch (err) {
             toast.error(extractErrorMessage(err));
         }
     };
 
+    const backTrail = history.length > 0 && (
+        <BackTrail current={history[history.length - 1]} onBack={goBack} />
+    );
+
     if (childrenQuery.isLoading || parentQuery.isLoading) {
-        return <ProfileSkeleton blocks={2} />;
+        return (
+            <div className="flex flex-col gap-3">
+                {backTrail}
+                <ProfileSkeleton blocks={2} />
+            </div>
+        );
     }
 
     if (childrenQuery.isError) {
         return (
-            <ProfileError
-                title="Couldn't load guardian information"
-                onRetry={() => childrenQuery.refetch()}
-            />
+            <div className="flex flex-col gap-3">
+                {backTrail}
+                <ProfileError
+                    title="Couldn't load guardian information"
+                    onRetry={() => childrenQuery.refetch()}
+                />
+            </div>
         );
     }
 
@@ -230,6 +293,7 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
         const children = childrenQuery.data ?? [];
         return (
             <div className="flex flex-col gap-3">
+                {backTrail}
                 <ProfileHero
                     icon={Users}
                     tone="info"
@@ -254,8 +318,16 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
                 >
                     <div className="flex flex-col divide-y divide-border">
                         {children.map((child) => (
-                            <div key={child.id} className="flex flex-col gap-0.5 py-2 first:pt-0 last:pb-0">
-                                <span className="text-sm font-medium text-card-foreground">
+                            <button
+                                key={child.id}
+                                type="button"
+                                onClick={() =>
+                                    goInto({ id: child.id, name: child.full_name || child.email || 'this learner' })
+                                }
+                                className="flex flex-col gap-0.5 py-2 text-left first:pt-0 last:pb-0 hover:opacity-80"
+                                title="View this learner's guardian info"
+                            >
+                                <span className="text-sm font-medium text-primary-600 underline-offset-2 hover:underline">
                                     {child.full_name || '—'}
                                 </span>
                                 <span className="text-2xs text-muted-foreground">
@@ -264,7 +336,7 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
                                 <span className="text-2xs text-muted-foreground">
                                     {child.mobile_number || '—'}
                                 </span>
-                            </div>
+                            </button>
                         ))}
                     </div>
                     {showLinkForm && (
@@ -287,10 +359,13 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
     // ── Student profile: show the linked guardian, if any ──
     if (parentQuery.isError) {
         return (
-            <ProfileError
-                title="Couldn't load guardian information"
-                onRetry={() => parentQuery.refetch()}
-            />
+            <div className="flex flex-col gap-3">
+                {backTrail}
+                <ProfileError
+                    title="Couldn't load guardian information"
+                    onRetry={() => parentQuery.refetch()}
+                />
+            </div>
         );
     }
 
@@ -299,6 +374,7 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
     if (!guardian) {
         return (
             <div className="flex flex-col gap-3">
+                {backTrail}
                 <ProfileEmpty
                     icon={Users}
                     title="No guardian linked yet"
@@ -331,33 +407,51 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
     }
 
     return (
-        <ProfileSectionCard icon={Users} heading="Guardian">
-            <dl>
-                <ProfileFieldRow label="Name" value={guardian.full_name} />
-                <ProfileFieldRow
-                    label="Username"
-                    value={guardian.username}
-                    copied={copiedField === 'Username'}
-                    onCopy={guardian.username ? () => handleCopy(guardian.username!, 'Username') : undefined}
-                />
-                <ProfileFieldRow
-                    label="Email"
-                    value={guardian.email}
-                    copied={copiedField === 'Email'}
-                    onCopy={guardian.email ? () => handleCopy(guardian.email!, 'Email') : undefined}
-                />
-                <ProfileFieldRow label="Mobile" value={guardian.mobile_number} />
-                <ProfileFieldRow
-                    label="Password"
-                    value={guardianPassword}
-                    copied={copiedField === 'Password'}
-                    onCopy={
-                        guardianPassword && guardianPassword !== 'Password not found' && guardianPassword !== 'Loading...'
-                            ? () => handleCopy(guardianPassword, 'Password')
-                            : undefined
-                    }
-                />
-            </dl>
-        </ProfileSectionCard>
+        <div className="flex flex-col gap-3">
+            {backTrail}
+            <ProfileSectionCard
+                icon={Users}
+                heading="Guardian"
+                action={
+                    <button
+                        type="button"
+                        onClick={() =>
+                            goInto({ id: guardian.id, name: guardian.full_name || guardian.email || 'this guardian' })
+                        }
+                        className="text-caption font-medium text-primary-500 hover:text-primary-700 hover:underline"
+                        title="View this guardian's own profile"
+                    >
+                        View guardian's profile →
+                    </button>
+                }
+            >
+                <dl>
+                    <ProfileFieldRow label="Name" value={guardian.full_name} />
+                    <ProfileFieldRow
+                        label="Username"
+                        value={guardian.username}
+                        copied={copiedField === 'Username'}
+                        onCopy={guardian.username ? () => handleCopy(guardian.username!, 'Username') : undefined}
+                    />
+                    <ProfileFieldRow
+                        label="Email"
+                        value={guardian.email}
+                        copied={copiedField === 'Email'}
+                        onCopy={guardian.email ? () => handleCopy(guardian.email!, 'Email') : undefined}
+                    />
+                    <ProfileFieldRow label="Mobile" value={guardian.mobile_number} />
+                    <ProfileFieldRow
+                        label="Password"
+                        value={guardianPassword}
+                        copied={copiedField === 'Password'}
+                        onCopy={
+                            guardianPassword && guardianPassword !== 'Password not found' && guardianPassword !== 'Loading...'
+                                ? () => handleCopy(guardianPassword, 'Password')
+                                : undefined
+                        }
+                    />
+                </dl>
+            </ProfileSectionCard>
+        </div>
     );
 }

@@ -142,9 +142,9 @@ export function UpcomingLiveClassesWidget({
         <div className="flex items-center gap-2">
           <div
             className={cn(
-              "p-2 bg-violet-100 dark:bg-violet-900/30 rounded-lg text-violet-600 dark:text-violet-400",
+              "p-2 bg-secondary-100 dark:bg-secondary-100 rounded-lg text-secondary-500 dark:text-secondary-500",
               // Vibrant: primary icon chip (dark-prefixed too so the default
-              // dark: violet classes can't out-rank it in dark mode)
+              // dark: secondary classes can't out-rank it in dark mode)
               "[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500",
               "dark:[.ui-vibrant_&]:bg-primary-100 dark:[.ui-vibrant_&]:text-primary-500",
               // Play icon
@@ -285,7 +285,7 @@ export function UpcomingLiveClassesWidget({
               <div className="flex w-full items-center gap-3 min-w-0">
                 <div
                   className={cn(
-                    "p-2 bg-violet-100 dark:bg-violet-900/30 rounded-lg text-violet-600 dark:text-violet-400 shrink-0",
+                    "p-2 bg-secondary-100 dark:bg-secondary-100 rounded-lg text-secondary-500 dark:text-secondary-500 shrink-0",
                     "[.ui-play_&]:bg-white/15 [.ui-play_&]:text-white/80 [.ui-play_&]:rounded-xl"
                   )}
                 >
@@ -319,7 +319,7 @@ export function UpcomingLiveClassesWidget({
                     {relTime && (
                       <span
                         className={cn(
-                          "whitespace-nowrap text-violet-600 dark:text-violet-400 font-medium",
+                          "whitespace-nowrap text-secondary-500 dark:text-secondary-500 font-medium",
                           "[.ui-play_&]:text-white [.ui-play_&]:font-bold"
                         )}
                       >
@@ -332,7 +332,7 @@ export function UpcomingLiveClassesWidget({
               <Badge
                 variant="secondary"
                 className={cn(
-                  "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-400 dark:border-violet-800 text-xs shrink-0",
+                  "bg-secondary-100 text-secondary-500 border-secondary-200 dark:bg-secondary-100 dark:text-secondary-500 dark:border-secondary-200 text-xs shrink-0",
                   "[.ui-play_&]:bg-white/20 [.ui-play_&]:text-white [.ui-play_&]:border-white/20"
                 )}
               >

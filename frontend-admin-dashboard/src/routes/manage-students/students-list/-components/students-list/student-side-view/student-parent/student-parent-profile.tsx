@@ -1,9 +1,6 @@
 /**
  * StudentParentProfile — the "Guardian" side-view tab.
  *
- * Read-only, informational for v1 (no inline add/create guardian form — that
- * lives in the assignment-time dialog elsewhere).
- *
  * A single userId can be EITHER side of a guardian-student link:
  *   - a guardian, with one or more linked children, or
  *   - a student, with at most one linked guardian.
@@ -11,14 +8,27 @@
  * component determines which case it is itself: it fetches the children
  * list first — a non-empty result means "this is a guardian profile" — and
  * only falls back to the parent lookup when there are no children.
+ *
+ * Also supports linking a guardian/child directly from this tab (not just
+ * from the assignment-time dialog) — reuses the same GuardianLinkPanel +
+ * /parent-link/v1/link plumbing built for the bulk-assign dialog. The anchor
+ * (this profile's own userId) always already exists here, so this is the
+ * simple LINK/CREATE case — no need for the new-guardian-from-scratch
+ * endpoint the assignment dialog needs for brand-new manual chips.
  */
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_PARENT_LINK_PARENT, GET_PARENT_LINK_CHILDREN } from '@/constants/urls';
-import { Users } from '@phosphor-icons/react';
+import { Users, Plus } from '@phosphor-icons/react';
 import { useStudentCredentails } from '@/services/student-list-section/getStudentCredentails';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { useParentSettings } from '@/hooks/use-parent-settings';
+import { useParentLink } from '../../../../-hooks/useParentLink';
+import { GuardianLinkPanel } from '../../../../-components/enroll-bulk/components/GuardianLinkPanel';
+import { ParentLinkPersonInput, isParentLinkPersonValid } from '../../../../-types/bulk-assign-types';
+import { MyButton } from '@/components/design-system/button';
 import {
     ProfileHero,
     ProfileSectionCard,
@@ -58,6 +68,60 @@ async function fetchChildren(parentUserId: string): Promise<GuardianLinkedUser[]
     return response.data ?? [];
 }
 
+function extractErrorMessage(err: unknown): string {
+    const e = err as { response?: { data?: { message?: string } }; message?: string };
+    return e?.response?.data?.message || e?.message || 'Failed to link guardian.';
+}
+
+// ── Inline link form (shared by both directions) ───────────────────────────────
+
+interface InlineLinkFormProps {
+    instituteId: string;
+    /** "Guardian" (student adding a guardian) or "Student" (guardian adding a child). */
+    personLabel: string;
+    searchRoles: string[];
+    onSubmit: (person: ParentLinkPersonInput) => Promise<void>;
+    onCancel: () => void;
+    submitting: boolean;
+}
+
+function InlineLinkForm({
+    instituteId,
+    personLabel,
+    searchRoles,
+    onSubmit,
+    onCancel,
+    submitting,
+}: InlineLinkFormProps) {
+    const [person, setPerson] = useState<ParentLinkPersonInput | undefined>(undefined);
+    const ready = isParentLinkPersonValid(person);
+
+    return (
+        <div className="flex flex-col gap-3">
+            <GuardianLinkPanel
+                instituteId={instituteId}
+                personLabel={personLabel}
+                searchRoles={searchRoles}
+                value={person}
+                onChange={setPerson}
+            />
+            <div className="flex items-center justify-end gap-2">
+                <MyButton buttonType="secondary" scale="small" onClick={onCancel} disable={submitting}>
+                    Cancel
+                </MyButton>
+                <MyButton
+                    buttonType="primary"
+                    scale="small"
+                    onClick={() => person && onSubmit(person)}
+                    disable={!ready || submitting}
+                >
+                    {submitting ? 'Linking…' : `Link ${personLabel}`}
+                </MyButton>
+            </div>
+        </div>
+    );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface StudentParentProfileProps {
@@ -66,6 +130,11 @@ interface StudentParentProfileProps {
 
 export function StudentParentProfile({ userId }: StudentParentProfileProps) {
     const [copiedField, setCopiedField] = useState<string>('');
+    const [showLinkForm, setShowLinkForm] = useState(false);
+    const queryClient = useQueryClient();
+    const instituteId = getCurrentInstituteId() ?? '';
+    const { enabled: guardianLinkingEnabled } = useParentSettings();
+    const { mutateAsync: linkGuardian, isPending: isLinking } = useParentLink();
 
     const handleCopy = async (text: string, fieldName: string) => {
         try {
@@ -109,6 +178,40 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
         ? credentialsQuery.data?.password || (credentialsQuery.isLoading ? 'Loading...' : 'Password not found')
         : null;
 
+    const submitLink = async (
+        direction: 'PARENT_ADDS_STUDENT' | 'STUDENT_ADDS_PARENT',
+        person: ParentLinkPersonInput
+    ) => {
+        const base = {
+            institute_id: instituteId,
+            direction,
+            anchor_user_id: userId,
+        } as const;
+        const request =
+            person.kind === 'create_new'
+                ? {
+                      ...base,
+                      mode: 'CREATE_NEW' as const,
+                      new_full_name: person.fullName,
+                      new_email: person.email,
+                      new_mobile_number: person.mobileNumber || undefined,
+                  }
+                : {
+                      ...base,
+                      mode: 'LINK_EXISTING' as const,
+                      existing_user_id: person.userId,
+                  };
+        try {
+            await linkGuardian(request);
+            toast.success(direction === 'STUDENT_ADDS_PARENT' ? 'Guardian linked' : 'Student linked');
+            setShowLinkForm(false);
+            queryClient.invalidateQueries({ queryKey: ['parent-link-children', userId] });
+            queryClient.invalidateQueries({ queryKey: ['parent-link-parent', userId] });
+        } catch (err) {
+            toast.error(extractErrorMessage(err));
+        }
+    };
+
     if (childrenQuery.isLoading || parentQuery.isLoading) {
         return <ProfileSkeleton blocks={2} />;
     }
@@ -134,7 +237,21 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
                     title="This is a guardian profile"
                     subtitle={`Linked to ${children.length} ${children.length === 1 ? 'child' : 'children'}`}
                 />
-                <ProfileSectionCard icon={Users} heading="Linked Children">
+                <ProfileSectionCard
+                    icon={Users}
+                    heading="Linked Children"
+                    action={
+                        guardianLinkingEnabled && !showLinkForm ? (
+                            <MyButton
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => setShowLinkForm(true)}
+                            >
+                                <Plus size={14} weight="bold" /> Add Child
+                            </MyButton>
+                        ) : undefined
+                    }
+                >
                     <div className="flex flex-col divide-y divide-border">
                         {children.map((child) => (
                             <div key={child.id} className="flex flex-col gap-0.5 py-2 first:pt-0 last:pb-0">
@@ -150,6 +267,18 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
                             </div>
                         ))}
                     </div>
+                    {showLinkForm && (
+                        <div className="mt-3 border-t border-border pt-3">
+                            <InlineLinkForm
+                                instituteId={instituteId}
+                                personLabel="Student"
+                                searchRoles={['STUDENT']}
+                                submitting={isLinking}
+                                onCancel={() => setShowLinkForm(false)}
+                                onSubmit={(person) => submitLink('PARENT_ADDS_STUDENT', person)}
+                            />
+                        </div>
+                    )}
                 </ProfileSectionCard>
             </div>
         );
@@ -169,11 +298,35 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
 
     if (!guardian) {
         return (
-            <ProfileEmpty
-                icon={Users}
-                title="No guardian linked yet"
-                hint="A guardian can be linked to this learner from the enrolment or bulk-assign flow."
-            />
+            <div className="flex flex-col gap-3">
+                <ProfileEmpty
+                    icon={Users}
+                    title="No guardian linked yet"
+                    hint="Link an existing guardian, or add a new one, right from here."
+                />
+                {guardianLinkingEnabled && (
+                    <ProfileSectionCard icon={Users} heading="Link a Guardian">
+                        {showLinkForm ? (
+                            <InlineLinkForm
+                                instituteId={instituteId}
+                                personLabel="Guardian"
+                                searchRoles={['PARENT']}
+                                submitting={isLinking}
+                                onCancel={() => setShowLinkForm(false)}
+                                onSubmit={(person) => submitLink('STUDENT_ADDS_PARENT', person)}
+                            />
+                        ) : (
+                            <MyButton
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => setShowLinkForm(true)}
+                            >
+                                <Plus size={14} weight="bold" /> Add Guardian
+                            </MyButton>
+                        )}
+                    </ProfileSectionCard>
+                )}
+            </div>
         );
     }
 

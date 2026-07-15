@@ -1,8 +1,9 @@
 /* =====================================================================
    Cleaner Play Theme — warm, premium, illustrated skin
-   Cream/parchment surfaces, soft felted-clay illustrations, generous
-   whitespace, pill buttons. Deliberately calmer than .ui-play (no bold
-   primary-colored blocks, no loud gamified type).
+   White page canvas (matching the reference dashboards), soft felted-clay
+   illustrations, generous whitespace, pill buttons, subtle warm accent
+   tints. Deliberately calmer than .ui-play (no bold primary-colored
+   blocks, no loud gamified type, no tinted page background).
    Applied via .ui-cleaner-play class on <html> (mutually exclusive with
    .ui-play / .ui-vibrant — see __root.tsx applyUiType).
 

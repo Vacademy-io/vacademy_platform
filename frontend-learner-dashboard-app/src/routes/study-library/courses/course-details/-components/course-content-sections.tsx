@@ -23,6 +23,9 @@ interface CourseData {
 
 interface CourseContentSectionsProps {
     courseData: CourseData;
+    /** Show the Teachers/Instructors section. Default false (hidden) — gated by
+     *  the STUDENT_DISPLAY_SETTINGS.courseDetails.showInstructors toggle. */
+    showInstructors?: boolean;
 }
 
 const getInitials = (email: string) => {
@@ -34,44 +37,14 @@ const getInitials = (email: string) => {
         .slice(0, 2);
 };
 
-export const CourseContentSections = ({ courseData }: CourseContentSectionsProps) => {
+export const CourseContentSections = ({ courseData, showInstructors = false }: CourseContentSectionsProps) => {
     return (
         <div className="space-y-4">
-            {/* What You'll Learn Section */}
-            {extractTextFromHTML(courseData.whatYoullLearn) && (
-                <div
-                    className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-                    style={{ animationDelay: "0.3s" }}
-                >
-                    <div className="absolute inset-0 bg-gradient-to-br from-success-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
-                    <div className="relative">
-                        <div className="flex items-center space-x-2 mb-3">
-                            <div className="p-1.5 bg-gradient-to-br from-success-100 to-success-200 rounded-lg shadow-sm">
-                                <BookOpen
-                                    size={18}
-                                    className="text-success-600"
-                                    weight="duotone"
-                                />
-                            </div>
-                            <h2 className="text-base font-bold text-gray-900">
-                                What you'll learn
-                            </h2>
-                        </div>
-                        <div
-                            className="text-sm text-gray-600 leading-relaxed"
-                            dangerouslySetInnerHTML={{
-                                __html: courseData.whatYoullLearn || "",
-                            }}
-                        />
-                    </div>
-                </div>
-            )}
-
             {/* About Course Section */}
             {extractTextFromHTML(courseData.aboutTheCourse) && (
                 <div
                     className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
-                    style={{ animationDelay: "0.4s" }}
+                    style={{ animationDelay: "0.3s" }}
                 >
                     <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
                     <div className="relative">
@@ -84,17 +57,47 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
                                 />
                             </div>
                             <h2 className="text-base font-bold text-gray-900">
-                                About this{" "}
+                                About This{" "}
                                 {getTerminology(
                                     ContentTerms.Course,
                                     SystemTerms.Course
-                                ).toLocaleLowerCase()}
+                                )}
                             </h2>
                         </div>
                         <div
-                            className="text-sm text-gray-600 leading-relaxed"
+                            className="richtext-content text-sm text-gray-600 leading-relaxed"
                             dangerouslySetInnerHTML={{
                                 __html: courseData.aboutTheCourse || "",
+                            }}
+                        />
+                    </div>
+                </div>
+            )}
+
+            {/* What You'll Learn Section */}
+            {extractTextFromHTML(courseData.whatYoullLearn) && (
+                <div
+                    className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
+                    style={{ animationDelay: "0.4s" }}
+                >
+                    <div className="absolute inset-0 bg-gradient-to-br from-success-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
+                    <div className="relative">
+                        <div className="flex items-center space-x-2 mb-3">
+                            <div className="p-1.5 bg-gradient-to-br from-success-100 to-success-200 rounded-lg shadow-sm">
+                                <BookOpen
+                                    size={18}
+                                    className="text-success-600"
+                                    weight="duotone"
+                                />
+                            </div>
+                            <h2 className="text-base font-bold text-gray-900">
+                                What You'll Learn
+                            </h2>
+                        </div>
+                        <div
+                            className="richtext-content text-sm text-gray-600 leading-relaxed"
+                            dangerouslySetInnerHTML={{
+                                __html: courseData.whatYoullLearn || "",
                             }}
                         />
                     </div>
@@ -118,11 +121,11 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
                                 />
                             </div>
                             <h2 className="text-base font-bold text-gray-900">
-                                Who should join
+                                Who Should Join
                             </h2>
                         </div>
                         <div
-                            className="text-sm text-gray-600 leading-relaxed"
+                            className="richtext-content text-sm text-gray-600 leading-relaxed"
                             dangerouslySetInnerHTML={{
                                 __html: courseData.whoShouldLearn || "",
                             }}
@@ -132,7 +135,7 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
             )}
 
             {/* Instructors Section */}
-            {courseData.instructors && courseData.instructors.length > 0 && (
+            {showInstructors && courseData.instructors && courseData.instructors.length > 0 && (
                 <div
                     className="relative bg-white border border-gray-200 rounded-md shadow-sm hover:shadow-md transition-all duration-300 p-3 sm:p-4 group animate-fade-in-up"
                     style={{ animationDelay: "0.6s" }}
@@ -151,7 +154,7 @@ export const CourseContentSections = ({ courseData }: CourseContentSectionsProps
                                 {getTerminology(
                                     RoleTerms.Teacher,
                                     SystemTerms.Teacher
-                                ).toLocaleLowerCase()}
+                                )}
                                 s
                             </h2>
                         </div>

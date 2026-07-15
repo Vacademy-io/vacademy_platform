@@ -31,6 +31,11 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
   @Query("SELECT pl FROM PaymentLog pl WHERE pl.userPlan.id = :userPlanId ORDER BY pl.createdAt DESC")
   List<PaymentLog> findByUserPlanIdOrderByCreatedAtDesc(@Param("userPlanId") String userPlanId);
 
+  @Query("SELECT CASE WHEN COUNT(pl) > 0 THEN true ELSE false END FROM PaymentLog pl "
+      + "WHERE pl.userPlan.id = :userPlanId AND pl.paymentStatus = :paymentStatus")
+  boolean existsByUserPlanIdAndPaymentStatus(@Param("userPlanId") String userPlanId,
+      @Param("paymentStatus") String paymentStatus);
+
   @Query(value = """
             SELECT DISTINCT pl FROM PaymentLog pl
             JOIN FETCH pl.userPlan up

@@ -145,6 +145,8 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     outlineMode: "expanded",
     ratingsAndReviewsVisible: true,
     hideAuthorName: false,
+    // Teachers/Instructors section hidden by default; admins opt-in to show it.
+    showInstructors: false,
     // New defaults
     showCourseConfiguration: true,
     showCourseContentPrefixes: true,

@@ -238,12 +238,18 @@ export function sanitizeHtml(dirtyHtml: string): string {
 
   const allowedTags = new Set([
     "b", "i", "em", "strong", "u", "br", "p", "span", "div", "ul", "ol", "li",
-    "blockquote", "code", "pre", "a", "img", "h1", "h2", "h3", "h4", "h5", "h6"
+    "blockquote", "code", "pre", "a", "img", "h1", "h2", "h3", "h4", "h5", "h6",
+    // Tables — authored in the admin rich-text editor and styled by .richtext-content.
+    "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "colgroup", "col"
   ]);
 
   const allowedAttrsByTag: Record<string, Set<string>> = {
     a: new Set(["href", "title", "target", "rel"]),
     img: new Set(["src", "alt", "title"]),
+    th: new Set(["colspan", "rowspan", "scope"]),
+    td: new Set(["colspan", "rowspan"]),
+    col: new Set(["span"]),
+    colgroup: new Set(["span"]),
     '*': new Set(["style", "class"]),
   };
 

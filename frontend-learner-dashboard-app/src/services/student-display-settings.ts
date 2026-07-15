@@ -170,6 +170,9 @@ function mergeWithDefaults(
       hideAuthorName:
         incoming?.courseDetails?.hideAuthorName ??
         d.courseDetails.hideAuthorName,
+      showInstructors:
+        incoming?.courseDetails?.showInstructors ??
+        d.courseDetails.showInstructors,
       // New flags with defaults
       showCourseConfiguration:
         incoming?.courseDetails?.showCourseConfiguration ??

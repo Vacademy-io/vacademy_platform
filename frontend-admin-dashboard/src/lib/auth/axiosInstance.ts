@@ -218,12 +218,13 @@ authenticatedAxiosInstance.interceptors.response.use(
         // Handle other authentication-related errors
         if (response?.status >= 500 && response?.status < 600) {
             console.error(`[Axios Response] Server error ${response.status}:`, response.data);
-            // If the backend included a structured VacademyException body
-            // (ex / responseCode), preserve the original AxiosError so callers
-            // can surface the actual error message. Without this the helpful
+            // If the backend included a structured error body — a Vacademy
+            // exception (ex / responseCode) or a FastAPI ai_service body
+            // ({detail}) — preserve the original AxiosError so callers can
+            // surface the actual error message. Without this the helpful
             // backend message gets replaced by a generic toast.
             const responseData = response?.data;
-            if (responseData && (responseData.ex || responseData.responseCode)) {
+            if (responseData && (responseData.ex || responseData.responseCode || responseData.detail)) {
                 return Promise.reject(error);
             }
             return Promise.reject(new Error('Server error. Please try again later.'));

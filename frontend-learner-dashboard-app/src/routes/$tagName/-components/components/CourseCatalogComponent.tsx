@@ -568,10 +568,11 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     filtersEnabled &&
     (defaultToAllFilters || filterIds.has("level")) &&
     levels.length > 1;
-  const shouldShowTagsFilter =
-    filtersEnabled &&
-    (defaultToAllFilters || filterIds.has("tags")) &&
-    tags.length > 0;
+  // Tags are intentionally NOT gated on filtersConfig: the page-builder default
+  // template ships filtersConfig=[{level}] and there is no admin UI to add a
+  // "tags" entry yet, so gating would hide tags on every catalogue. Show the Tags
+  // filter whenever filters are enabled and the loaded courses carry any tags.
+  const shouldShowTagsFilter = filtersEnabled && tags.length > 0;
   const shouldShowInstructorFilter =
     filtersEnabled &&
     (defaultToAllFilters ||

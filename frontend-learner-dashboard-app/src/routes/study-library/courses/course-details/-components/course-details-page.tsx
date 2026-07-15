@@ -1960,6 +1960,8 @@ export const CourseDetailsPage = () => {
     useState<boolean>(true);
   const [overviewVisible, setOverviewVisible] = useState<boolean>(true);
   const [hideAuthorName, setHideAuthorName] = useState<boolean>(false);
+  // Teachers/Instructors section is hidden unless the institute opts in.
+  const [showInstructors, setShowInstructors] = useState<boolean>(false);
 
   useEffect(() => {
     getStudentDisplaySettings(false)
@@ -1972,12 +1974,14 @@ export const CourseDetailsPage = () => {
           setShowCourseConfiguration(resolvedShowCourseConfiguration);
           setOverviewVisible(resolvedOverviewVisible);
           setHideAuthorName(cd.hideAuthorName ?? false);
+          setShowInstructors(cd.showInstructors ?? false);
         }
       })
       .catch(() => {
         setShowCourseConfiguration(true);
         setOverviewVisible(true);
         setHideAuthorName(false);
+        setShowInstructors(false);
       });
   }, []);
 
@@ -2147,6 +2151,7 @@ export const CourseDetailsPage = () => {
                 const highlightsBlock = (
                   <CourseDetailsCollapsible
                     courseData={form.getValues("courseData")}
+                    showInstructors={showInstructors}
                   />
                 );
 
@@ -2384,8 +2389,10 @@ type CourseDetailsForSections = {
 // appears as an empty control.
 const CourseDetailsCollapsible = ({
   courseData,
+  showInstructors = false,
 }: {
   courseData: CourseDetailsForSections;
+  showInstructors?: boolean;
 }) => {
   const [open, setOpen] = useState<boolean>(false);
   const hasWhatYoullLearn = !!extractTextFromHTML(courseData?.whatYoullLearn);
@@ -2413,7 +2420,7 @@ const CourseDetailsCollapsible = ({
         <span className="flex items-center gap-2 min-w-0">
           <Info className="w-4 h-4 text-primary flex-shrink-0" weight="bold" />
           <span className="text-sm font-semibold truncate">
-            {getTerminology(ContentTerms.Course, SystemTerms.Course)} highlights
+            {getTerminology(ContentTerms.Course, SystemTerms.Course)} Highlights
           </span>
         </span>
         <CaretDown
@@ -2425,7 +2432,7 @@ const CourseDetailsCollapsible = ({
       </button>
       {open && (
         <div id={contentId} className="px-4 pb-4 pt-1">
-          <CourseContentSections courseData={courseData} />
+          <CourseContentSections courseData={courseData} showInstructors={showInstructors} />
         </div>
       )}
     </section>

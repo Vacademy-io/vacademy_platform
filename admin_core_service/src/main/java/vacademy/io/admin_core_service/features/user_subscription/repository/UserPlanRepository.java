@@ -224,6 +224,14 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
                         String enrollInviteId,
                         List<String> statuses);
 
+        // All of a user's plans for an enroll invite in the given statuses. Used to
+        // reconcile abandoned duplicate checkout attempts (PENDING_FOR_PAYMENT siblings)
+        // once one attempt is finally paid.
+        List<UserPlan> findAllByUserIdAndEnrollInviteIdAndStatusIn(
+                        String userId,
+                        String enrollInviteId,
+                        List<String> statuses);
+
         Optional<UserPlan> findTopByUserIdAndEnrollInviteIdAndStatusInAndIdNotInOrderByEndDateDesc(
                         String userId,
                         String enrollInviteId,

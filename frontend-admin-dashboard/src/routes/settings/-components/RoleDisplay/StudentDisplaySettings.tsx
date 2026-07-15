@@ -884,6 +884,20 @@ export default function StudentDisplaySettings(): JSX.Element {
                         <Label className="text-xs">Hide Author Name (Course Details Page)</Label>
                     </div>
 
+                    {/* Show Teachers/Instructors section on the course-details page (default off = hidden) */}
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.courseDetails.showInstructors ?? false}
+                            onCheckedChange={(v) =>
+                                update('courseDetails', {
+                                    ...settings.courseDetails,
+                                    showInstructors: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Show Teachers (Course Details Page)</Label>
+                    </div>
+
                     {/* General visibility toggles */}
                     <div className="flex items-center gap-2">
                         <Switch

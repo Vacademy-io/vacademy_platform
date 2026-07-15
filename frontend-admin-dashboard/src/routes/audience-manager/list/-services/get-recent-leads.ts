@@ -73,6 +73,12 @@ export interface RecentLeadsRequest {
     // Conversion-state filter — defaults to EXCLUDE_CONVERTED on the backend so
     // leads that have been enrolled into a course don't pollute the active list.
     conversion_status_filter?: 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
+    /**
+     * Soft-delete visibility — defaults to EXCLUDE_DELETED on the backend, so deleted leads stay
+     * hidden unless explicitly asked for. ONLY_DELETED backs the "Deleted leads" view that restore
+     * is driven from.
+     */
+    audience_status_filter?: 'EXCLUDE_DELETED' | 'ONLY_DELETED' | 'ALL';
     /** Filter by SLA stage (the badge shown in the table). 'ANY_OVERDUE' = TAT_OVERDUE OR FOLLOW_UP_OVERDUE. */
     sla_filter?:
         | 'TAT_BEFORE'

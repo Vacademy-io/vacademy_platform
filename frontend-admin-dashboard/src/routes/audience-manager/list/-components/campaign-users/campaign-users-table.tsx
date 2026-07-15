@@ -24,6 +24,7 @@ import {
     X,
     Clock,
     CaretDown,
+    Trash,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -70,6 +71,8 @@ import {
 import { MyDropdown } from '@/components/design-system/dropdown';
 import type { LeadCardVM } from '@/components/shared/leads/lead-view-model';
 import { MyButton } from '@/components/design-system/button';
+import { isAdminForInstitute } from '@/lib/auth/roleUtils';
+import { DeleteLeadsDialog } from '@/components/shared/leads/delete-leads-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import {
     LeadEmptyState,
@@ -510,10 +513,17 @@ const CampaignUsersContent = ({
     };
 
     // ── Bulk assign / remove counsellor (multi-select, every view) ──
-    const [selectedLeads, setSelectedLeads] = useState<Map<string, { userId: string; name: string }>>(
+    // Keyed by RESPONSE id, not user id: a row is one campaign response and the same person
+    // can hold several, so keying by user collapsed their rows into one checkbox. The value
+    // carries the userId too, because the assign actions operate per person.
+    const [selectedLeads, setSelectedLeads] = useState<
+        Map<string, { userId: string; responseId: string; name: string }>
+    >(
         new Map()
     );
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+    const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+    const canDeleteLeads = isAdminForInstitute(instituteId);
     // Which flow the "Bulk actions" menu opened: assign (round-robin default)
     // or unassign (REMOVE).
     const [bulkActionMode, setBulkActionMode] = useState<BulkAssignMode>('ROUND_ROBIN');
@@ -525,11 +535,11 @@ const CampaignUsersContent = ({
         setSelectedLeads(new Map());
     }, [counsellorFilters]);
 
-    const toggleLeadRow = (userId: string, vm: LeadCardVM) =>
+    const toggleLeadRow = (responseId: string, vm: LeadCardVM) =>
         setSelectedLeads((prev) => {
             const next = new Map(prev);
-            if (next.has(userId)) next.delete(userId);
-            else next.set(userId, { userId, name: vm.name });
+            if (next.has(responseId)) next.delete(responseId);
+            else if (vm.userId) next.set(responseId, { userId: vm.userId, responseId, name: vm.name });
             return next;
         });
 
@@ -537,9 +547,10 @@ const CampaignUsersContent = ({
         setSelectedLeads((prev) => {
             const next = new Map(prev);
             selectableVms.forEach((v) => {
-                if (!v.userId) return;
-                if (checked) next.set(v.userId, { userId: v.userId, name: v.name });
-                else next.delete(v.userId);
+                if (!v.userId || !v.responseId) return;
+                if (checked)
+                    next.set(v.responseId, { userId: v.userId, responseId: v.responseId, name: v.name });
+                else next.delete(v.responseId);
             });
             return next;
         });
@@ -557,11 +568,17 @@ const CampaignUsersContent = ({
         try {
             setSelectAllLoading(true);
             const res = await fetchCampaignLeads({ ...leadsPayload, page: 0, size: totalElements });
-            const map = new Map<string, { userId: string; name: string }>();
+            const map = new Map<string, { userId: string; responseId: string; name: string }>();
             (res.content ?? []).forEach((lead) => {
                 const uid = lead.user?.id || lead.user_id;
-                if (!uid) return;
-                map.set(uid, { userId: uid, name: lead.user?.full_name || lead.parent_name || uid });
+                // Keyed by response id to match the per-row selection — a person with several
+                // responses is several selected rows, not one.
+                if (!uid || !lead.response_id) return;
+                map.set(lead.response_id, {
+                    userId: uid,
+                    responseId: lead.response_id,
+                    name: lead.user?.full_name || lead.parent_name || uid,
+                });
             });
             setSelectedLeads(map);
         } catch {
@@ -1157,8 +1174,24 @@ const CampaignUsersContent = ({
                                             value: 'unassign',
                                             icon: <UserMinus className="size-4" />,
                                         },
+                                        // Delete is admin-only, matching the endpoint's own check.
+                                        ...(canDeleteLeads
+                                            ? [
+                                                  {
+                                                      label: 'Delete leads',
+                                                      value: 'delete',
+                                                      icon: (
+                                                          <Trash className="size-4 text-danger-600" />
+                                                      ),
+                                                  },
+                                              ]
+                                            : []),
                                     ]}
                                     onSelect={(value) => {
+                                        if (value === 'delete') {
+                                            setBulkDeleteOpen(true);
+                                            return;
+                                        }
                                         setBulkActionMode(
                                             value === 'unassign' ? 'REMOVE' : 'ROUND_ROBIN'
                                         );
@@ -1227,6 +1260,17 @@ const CampaignUsersContent = ({
                     counsellorOptions={assignableCounsellorOptions}
                     initialMode={bulkActionMode}
                     onSuccess={handleBulkAssignSuccess}
+                />
+
+                <DeleteLeadsDialog
+                    open={bulkDeleteOpen}
+                    onOpenChange={setBulkDeleteOpen}
+                    instituteId={instituteId ?? ''}
+                    responseIds={Array.from(selectedLeads.keys())}
+                    onSuccess={() => {
+                        setSelectedLeads(new Map());
+                        handleStatusUpdated();
+                    }}
                 />
 
                 {noteTarget && (

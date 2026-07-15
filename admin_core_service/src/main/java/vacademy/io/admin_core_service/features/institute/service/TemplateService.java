@@ -290,7 +290,7 @@ public class TemplateService {
 
         // Apply additional filters using stream chaining
         return templates.stream()
-                .filter(t -> request.getType() == null || t.getType().equals(request.getType()))
+                .filter(t -> request.getType() == null || t.getType().equalsIgnoreCase(request.getType()))
                 .filter(t -> request.getVendorId() == null || request.getVendorId().equals(t.getVendorId()))
                 .filter(t -> request.getCanDelete() == null || t.getCanDelete().equals(request.getCanDelete()))
                 .filter(t -> request.getContentType() == null || request.getContentType().equals(t.getContentType()))

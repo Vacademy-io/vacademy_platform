@@ -17,11 +17,14 @@ public interface TemplateRepository extends JpaRepository<Template, String> {
     // Find templates by institute ID
     List<Template> findByInstituteId(String instituteId);
 
-    // Find templates by institute ID and type
-    List<Template> findByInstituteIdAndType(String instituteId, String type);
+    // Find templates by institute ID and type (case-insensitive: "EMAIL"/"email" both match)
+    @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId AND UPPER(t.type) = UPPER(:type)")
+    List<Template> findByInstituteIdAndType(@Param("instituteId") String instituteId, @Param("type") String type);
 
-    // Find templates by institute ID, type, and vendor ID
-    List<Template> findByInstituteIdAndTypeAndVendorId(String instituteId, String type, String vendorId);
+    // Find templates by institute ID, type, and vendor ID (case-insensitive type)
+    @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId AND UPPER(t.type) = UPPER(:type) AND t.vendorId = :vendorId")
+    List<Template> findByInstituteIdAndTypeAndVendorId(@Param("instituteId") String instituteId,
+            @Param("type") String type, @Param("vendorId") String vendorId);
 
     // Find template by institute ID and name
     Optional<Template> findByInstituteIdAndName(String instituteId, String name);
@@ -29,8 +32,9 @@ public interface TemplateRepository extends JpaRepository<Template, String> {
     // Find templates by vendor ID
     List<Template> findByVendorId(String vendorId);
 
-    // Find templates by type
-    List<Template> findByType(String type);
+    // Find templates by type (case-insensitive)
+    @Query("SELECT t FROM Template t WHERE UPPER(t.type) = UPPER(:type)")
+    List<Template> findByType(@Param("type") String type);
 
     // Find templates that can be deleted
     List<Template> findByCanDeleteTrue();
@@ -56,8 +60,9 @@ public interface TemplateRepository extends JpaRepository<Template, String> {
     List<Template> findBySubjectContainingIgnoreCase(@Param("instituteId") String instituteId,
             @Param("searchText") String searchText);
 
-    // Count templates by institute ID and type
-    long countByInstituteIdAndType(String instituteId, String type);
+    // Count templates by institute ID and type (case-insensitive)
+    @Query("SELECT COUNT(t) FROM Template t WHERE t.instituteId = :instituteId AND UPPER(t.type) = UPPER(:type)")
+    long countByInstituteIdAndType(@Param("instituteId") String instituteId, @Param("type") String type);
 
     // Count templates by institute ID
     long countByInstituteId(String instituteId);
@@ -70,20 +75,21 @@ public interface TemplateRepository extends JpaRepository<Template, String> {
     @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId ORDER BY t.createdAt DESC")
     Page<Template> findByInstituteIdOrderByCreatedAtDescPageable(@Param("instituteId") String instituteId, Pageable pageable);
 
-    // Find templates by institute ID with pagination, optionally filtered by type and/or a name/subject search term.
-    // Bind params are always wrapped in COALESCE (never a bare ":param IS NULL") so Postgres can always infer
-    // their type from the surrounding comparison — a bare "? IS NULL" with no other typed usage in that branch
-    // is a known source of "could not determine data type of parameter" errors from the PG JDBC driver.
+    // Find templates by institute ID with pagination, optionally filtered by type (case-insensitive) and/or a
+    // name/subject search term.
+    // Bind params are always wrapped in COALESCE/UPPER (never a bare ":param IS NULL") so Postgres can always
+    // infer their type from the surrounding comparison — a bare "? IS NULL" with no other typed usage in that
+    // branch is a known source of "could not determine data type of parameter" errors from the PG JDBC driver.
     @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId " +
-            "AND t.type = COALESCE(:type, t.type) " +
+            "AND UPPER(t.type) = COALESCE(UPPER(:type), UPPER(t.type)) " +
             "AND (LOWER(t.name) LIKE LOWER(CONCAT('%', COALESCE(:searchText, ''), '%')) " +
             "OR LOWER(t.subject) LIKE LOWER(CONCAT('%', COALESCE(:searchText, ''), '%'))) " +
             "ORDER BY t.createdAt DESC")
     Page<Template> findByInstituteIdAndTypeAndSearchPageable(@Param("instituteId") String instituteId,
             @Param("type") String type, @Param("searchText") String searchText, Pageable pageable);
 
-    // Find templates by institute ID and type with pagination support
-    @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId AND t.type = :type ORDER BY t.createdAt DESC")
+    // Find templates by institute ID and type with pagination support (case-insensitive type)
+    @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId AND UPPER(t.type) = UPPER(:type) ORDER BY t.createdAt DESC")
     List<Template> findByInstituteIdAndTypeOrderByCreatedAtDesc(@Param("instituteId") String instituteId,
             @Param("type") String type);
 
@@ -120,7 +126,13 @@ public interface TemplateRepository extends JpaRepository<Template, String> {
     // Count templates by institute ID, status, and template category
     long countByInstituteIdAndStatusAndTemplateCategory(String instituteId, String status, String templateCategory);
 
-    Optional<Template> findByInstituteIdAndNameAndTypeAndStatus(String instituteId, String name, String type,String status);
+    // Case-insensitive type match ("EMAIL"/"email" both match)
+    @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId AND t.name = :name AND UPPER(t.type) = UPPER(:type) AND t.status = :status")
+    Optional<Template> findByInstituteIdAndNameAndTypeAndStatus(@Param("instituteId") String instituteId,
+            @Param("name") String name, @Param("type") String type, @Param("status") String status);
 
-    Optional<Template>findByInstituteIdAndNameAndType(String instituteId,String name,String type);
+    // Case-insensitive type match ("EMAIL"/"email" both match)
+    @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId AND t.name = :name AND UPPER(t.type) = UPPER(:type)")
+    Optional<Template> findByInstituteIdAndNameAndType(@Param("instituteId") String instituteId,
+            @Param("name") String name, @Param("type") String type);
 }

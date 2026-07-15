@@ -11,7 +11,7 @@ import vacademy.io.admin_core_service.features.user_account.service.UserAccountL
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 @RestController
-@RequestMapping("/v1/user-account")
+@RequestMapping("/admin-core-service/v1/user-account")
 @RequiredArgsConstructor
 public class UserAccountController {
 

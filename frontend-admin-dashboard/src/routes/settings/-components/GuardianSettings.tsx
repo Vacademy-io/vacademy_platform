@@ -32,11 +32,20 @@ const DEFAULT_GUARDIAN_SETTINGS: GuardianSettingsData = {
 const SETTING_KEY = 'PARENT_SETTING';
 const SAVE_URL = GET_INSITITUTE_SETTINGS.replace('/get', '/save-setting');
 const BACKFILL_URL = `${BASE_URL}/admin-core-service/parent-link/v1/backfill`;
+const PENDING_URL = `${BASE_URL}/admin-core-service/parent-link/v1/backfill/pending`;
+const PENDING_PREVIEW_LIMIT = 25;
 
 interface BackfillResult {
     total_eligible: number;
     created: number;
     skipped: number;
+}
+
+interface PendingGuardianStudent {
+    user_id: string;
+    full_name: string | null;
+    email: string | null;
+    mobile_number: string | null;
 }
 
 // ─── API ─────────────────────────────────────────────────────────────────────
@@ -75,6 +84,17 @@ const runGuardianBackfill = async (): Promise<BackfillResult> => {
     return response.data as BackfillResult;
 };
 
+const fetchPendingGuardianStudents = async (): Promise<PendingGuardianStudent[]> => {
+    const instituteId = getCurrentInstituteId();
+    if (!instituteId) return [];
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: PENDING_URL,
+        params: { instituteId },
+    });
+    return (response.data as PendingGuardianStudent[]) ?? [];
+};
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function GuardianSettings() {
@@ -87,6 +107,13 @@ export default function GuardianSettings() {
         queryKey: ['guardian-settings'],
         queryFn: fetchGuardianSettings,
         staleTime: 5 * 60 * 1000,
+    });
+
+    const { data: pendingStudents, isLoading: pendingLoading } = useQuery({
+        queryKey: ['guardian-backfill-pending'],
+        queryFn: fetchPendingGuardianStudents,
+        enabled: settings.enabled,
+        staleTime: 60 * 1000,
     });
 
     useEffect(() => {
@@ -115,6 +142,7 @@ export default function GuardianSettings() {
             toast.success(
                 `Guardian backfill complete: ${result.created} created, ${result.skipped} skipped out of ${result.total_eligible} eligible students.`
             );
+            queryClient.invalidateQueries({ queryKey: ['guardian-backfill-pending'] });
         },
         onError: () => {
             toast.error('Guardian backfill failed');
@@ -185,11 +213,50 @@ export default function GuardianSettings() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
+                        {settings.enabled && (
+                            <div className="mb-4">
+                                {pendingLoading ? (
+                                    <div className="text-body text-neutral-500">
+                                        Checking for students awaiting a guardian…
+                                    </div>
+                                ) : (pendingStudents?.length ?? 0) === 0 ? (
+                                    <div className="text-body text-success-600">
+                                        Every student already has a guardian linked. Nothing to backfill.
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col gap-2">
+                                        <div className="text-body font-medium text-neutral-800">
+                                            {pendingStudents!.length} student
+                                            {pendingStudents!.length === 1 ? '' : 's'} awaiting a guardian
+                                        </div>
+                                        <div className="max-h-56 overflow-y-auto rounded-md border border-neutral-200">
+                                            <div className="flex flex-col divide-y divide-neutral-100">
+                                                {pendingStudents!.slice(0, PENDING_PREVIEW_LIMIT).map((s) => (
+                                                    <div key={s.user_id} className="flex flex-col gap-0.5 px-3 py-2">
+                                                        <span className="text-caption font-medium text-neutral-800">
+                                                            {s.full_name || '—'}
+                                                        </span>
+                                                        <span className="text-2xs text-neutral-500">
+                                                            {s.email || '—'} · {s.mobile_number || '—'}
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        {pendingStudents!.length > PENDING_PREVIEW_LIMIT && (
+                                            <div className="text-caption text-neutral-500">
+                                                +{pendingStudents!.length - PENDING_PREVIEW_LIMIT} more not shown
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         <MyButton
                             buttonType="primary"
                             scale="medium"
                             onClick={() => setBackfillDialogOpen(true)}
-                            disable={!settings.enabled || backfilling}
+                            disable={!settings.enabled || backfilling || (pendingStudents?.length ?? 0) === 0}
                         >
                             {backfilling ? 'Running Backfill…' : 'Run Backfill'}
                         </MyButton>
@@ -201,6 +268,7 @@ export default function GuardianSettings() {
                 open={backfillDialogOpen}
                 onOpenChange={setBackfillDialogOpen}
                 onConfirm={() => backfill()}
+                pendingCount={pendingStudents?.length ?? 0}
             />
         </div>
     );
@@ -213,12 +281,14 @@ interface GuardianBackfillConfirmDialogProps {
     onOpenChange: (open: boolean) => void;
     /** Called when the user confirms. Closing is handled by the dialog. */
     onConfirm: () => void;
+    pendingCount: number;
 }
 
 function GuardianBackfillConfirmDialog({
     open,
     onOpenChange,
     onConfirm,
+    pendingCount,
 }: GuardianBackfillConfirmDialogProps) {
     const footer = (
         <div className="flex w-full items-center justify-end gap-2">
@@ -248,9 +318,12 @@ function GuardianBackfillConfirmDialog({
         >
             <div className="px-6 py-6">
                 <p className="text-body text-neutral-500">
-                    This will create a guardian account for every student in this institute that
-                    doesn&apos;t already have one linked. Students that already have a guardian
-                    are skipped and untouched.
+                    This will create a guardian account for{' '}
+                    <span className="font-medium text-neutral-800">
+                        {pendingCount} student{pendingCount === 1 ? '' : 's'}
+                    </span>{' '}
+                    in this institute that {pendingCount === 1 ? "doesn't" : "don't"} already have one
+                    linked. Students that already have a guardian are skipped and untouched.
                 </p>
             </div>
         </MyDialog>

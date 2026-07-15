@@ -257,6 +257,9 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
         courses?: { id: string; label: string }[];
     } | null>(null);
     const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
+    // Per-row CPO "Record Offline" pre-fills the installment amount; falls back to
+    // the suggested amount (next-due remainder / outstanding) when opened from the top button.
+    const [recordPaymentAmount, setRecordPaymentAmount] = useState<number | undefined>(undefined);
     // Create Invoice CTA in the Invoices tab — surfaces the same dialog the drawer
     // uses, but pre-targeted at the sub-org admin user. Without this the only way
     // to raise an admin invoice was to open the per-user drawer first.
@@ -932,7 +935,7 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                             {/* Action row — source-specific buttons */}
                                             <div className="flex flex-wrap items-center gap-1.5">
 
-                                                {/* CPO installment — Remind only */}
+                                                {/* CPO installment — Remind + Copy Link + Record Offline */}
                                                 {isSfpRemindable && sfpId && (
                                                     <button
                                                         type="button"
@@ -943,6 +946,33 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                                     >
                                                         <Bell className="size-3" />
                                                         {remindingId === sfpId ? 'Sending…' : 'Remind'}
+                                                    </button>
+                                                )}
+                                                {isSfpRow && paymentLink && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCopyInvoiceLink(inv.id, paymentLink)}
+                                                        className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                        title="Copy payment link to share with learner"
+                                                    >
+                                                        {copiedLinkId === inv.id ? (
+                                                            <><CircleCheck className="size-3" /> Copied</>
+                                                        ) : (
+                                                            <><Copy className="size-3" /> Copy Link</>
+                                                        )}
+                                                    </button>
+                                                )}
+                                                {isSfpRow && canEditLedger && adminUserPlanId && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setRecordPaymentAmount(typeof amount === 'number' ? amount : undefined);
+                                                            setRecordPaymentOpen(true);
+                                                        }}
+                                                        className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
+                                                        title="Record an offline / cash payment against this installment"
+                                                    >
+                                                        Record Offline
                                                     </button>
                                                 )}
 
@@ -983,9 +1013,9 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                                             })
                                                         }
                                                         className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
-                                                        title="Record an offline / manual payment"
+                                                        title="Record an offline / manual payment against this invoice"
                                                     >
-                                                        Mark Paid
+                                                        Record Offline
                                                     </button>
                                                 )}
                                                 {isAdminInvoicePending && (
@@ -1097,13 +1127,16 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
             {canEditLedger && adminUserPlanId && (
                 <RecordSubOrgPaymentDialog
                     open={recordPaymentOpen}
-                    onOpenChange={setRecordPaymentOpen}
+                    onOpenChange={(o) => {
+                        setRecordPaymentOpen(o);
+                        if (!o) setRecordPaymentAmount(undefined);
+                    }}
                     userPlanId={adminUserPlanId}
                     adminUserId={adminUserId || undefined}
                     contextLabel={
                         subOrgName ? `${subOrgName} — admin CPO` : 'Sub-org admin CPO'
                     }
-                    suggestedAmount={suggestedAmount}
+                    suggestedAmount={recordPaymentAmount ?? suggestedAmount}
                 />
             )}
 

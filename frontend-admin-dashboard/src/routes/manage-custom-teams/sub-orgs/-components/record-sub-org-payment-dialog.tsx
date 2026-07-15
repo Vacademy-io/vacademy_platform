@@ -84,6 +84,13 @@ export function RecordSubOrgPaymentDialog({
                 queryClient.invalidateQueries({
                     queryKey: ['cpo-side-view', 'user-plans', adminUserId],
                 });
+                // Invalidate account summary so the balance/overdue tiles refresh.
+                queryClient.invalidateQueries({
+                    predicate: (q) =>
+                        Array.isArray(q.queryKey)
+                        && q.queryKey[0] === 'sub-org-admin-account-summary'
+                        && q.queryKey[1] === adminUserId,
+                });
             }
             queryClient.invalidateQueries({
                 queryKey: ['cpo-side-view', 'installments', userPlanId],

@@ -53,6 +53,7 @@ public class CpoSideViewService {
     private final StudentFeePaymentRepository studentFeePaymentRepository;
     private final CpoDiscountService cpoDiscountService;
     private final PaymentLogService paymentLogService;
+    private final vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
     private final PaymentLogRepository paymentLogRepository;
     private final FeeLedgerAllocationService feeLedgerAllocationService;
     private final InvoiceService invoiceService;
@@ -284,6 +285,21 @@ public class CpoSideViewService {
                 PaymentStatusEnum.PAID.name(),
                 JsonUtil.toJson(paymentSpecificData));
 
+        // Resolve institute_id from SFP rows — UserPlan has no instituteId column.
+        String instituteId = studentFeePaymentRepository.findByUserPlanId(userPlanId).stream()
+                .map(StudentFeePayment::getInstituteId)
+                .filter(s -> s != null && !s.isBlank())
+                .findFirst().orElse(null);
+
+        // Ledger: credit payment for CPO offline settlement
+        if (instituteId != null) {
+            userAccountLedgerService.recordCreditPayment(
+                    plan.getUserId(), instituteId,
+                    BigDecimal.valueOf(req.getAmount()), currency,
+                    "USER_PLAN", userPlanId,
+                    paymentLogId, null, "CPO offline payment recorded");
+        }
+
         feeLedgerAllocationService.allocatePaymentForNewLog(
                 paymentLogId, BigDecimal.valueOf(req.getAmount()), userPlanId);
 
@@ -291,12 +307,6 @@ public class CpoSideViewService {
             try {
                 PaymentLog persistedLog = paymentLogRepository.findById(paymentLogId)
                         .orElseThrow(() -> new VacademyException("Payment log not found: " + paymentLogId));
-                // institute_id is carried on each SFP — pick any row's institute_id, since
-                // all installments on this plan share an institute.
-                String instituteId = studentFeePaymentRepository.findByUserPlanId(userPlanId).stream()
-                        .map(StudentFeePayment::getInstituteId)
-                        .filter(s -> s != null && !s.isBlank())
-                        .findFirst().orElse(null);
                 if (instituteId != null) {
                     invoiceService.generateInvoice(plan, persistedLog, instituteId);
                 } else {

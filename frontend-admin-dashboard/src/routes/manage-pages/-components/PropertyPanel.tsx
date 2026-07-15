@@ -872,7 +872,9 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
         const newSlots = Array.from({ length: newCount }, (_, i) => slots[i] ?? []);
         const newWidths = Array.from({ length: newCount }, (_, i) => columnWidths[i] ?? def);
         updateComponent(pageId, component.id, {
-            props: { ...component.props, columns: newCount, slots: newSlots, columnWidths: newWidths },
+            // columnFr is a per-count precise ratio — clear it on count change or a
+            // stale 2-column ratio silently re-activates when switching back to 2.
+            props: { ...component.props, columns: newCount, slots: newSlots, columnWidths: newWidths, columnFr: undefined },
         });
     };
 

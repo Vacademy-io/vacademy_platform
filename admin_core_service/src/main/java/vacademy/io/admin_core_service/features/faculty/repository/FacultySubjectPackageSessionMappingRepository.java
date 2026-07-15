@@ -17,6 +17,14 @@ import java.util.Set;
 public interface FacultySubjectPackageSessionMappingRepository
     extends JpaRepository<FacultySubjectPackageSessionMapping, String> {
 
+  // findByFilters excludes linkage_type='SUB_ORG' rows: those are sub-org admin/team/learner
+  // linkages (their `name` column holds the sub-org name), not real teachers of the batch.
+  // Sub-org admins get their own view via findByFiltersScopedToSubOrgs.
+  //
+  // NOTE: keep prose OUT of the @Query string. Spring Data scans the raw query text for quote
+  // characters and does NOT understand SQL `--` comments, so a single apostrophe inside a
+  // comment (e.g. "the org's name") opens a quoted range that never closes and the repository
+  // bean fails to build at startup ("starts a quoted range at N, but never ends it").
   @Query(value = """
       SELECT DISTINCT ON (fm.user_id) fm.*
       FROM faculty_subject_package_session_mapping fm
@@ -26,9 +34,6 @@ public interface FacultySubjectPackageSessionMappingRepository
           OR (fm.access_type = 'EnrollInvite' AND EXISTS (SELECT 1 FROM enroll_invite ei WHERE ei.id = fm.access_id AND ei.institute_id = :instituteId))
           OR ((fm.access_type IS NULL OR fm.access_type NOT IN ('Package', 'PACKAGE_SESSION', 'EnrollInvite')) AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.package_session_id AND pi.institute_id = :instituteId))
       )
-        -- Exclude SUB_ORG linkage rows: these are sub-org admin/team/learner
-        -- linkages (name = sub-org's name), not real teachers of the batch.
-        -- Sub-org admins get their own view via findByFiltersScopedToSubOrgs.
         AND (fm.linkage_type IS NULL OR fm.linkage_type <> 'SUB_ORG')
         AND (CAST(:hasSubjectIds AS boolean) = false OR fm.subject_id IN (:subjectIds))
         AND (CAST(:hasBatchesIds AS boolean) = false OR (
@@ -47,9 +52,6 @@ public interface FacultySubjectPackageSessionMappingRepository
           OR (fm.access_type = 'EnrollInvite' AND EXISTS (SELECT 1 FROM enroll_invite ei WHERE ei.id = fm.access_id AND ei.institute_id = :instituteId))
           OR ((fm.access_type IS NULL OR fm.access_type NOT IN ('Package', 'PACKAGE_SESSION', 'EnrollInvite')) AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.package_session_id AND pi.institute_id = :instituteId))
       )
-        -- Exclude SUB_ORG linkage rows: these are sub-org admin/team/learner
-        -- linkages (name = sub-org's name), not real teachers of the batch.
-        -- Sub-org admins get their own view via findByFiltersScopedToSubOrgs.
         AND (fm.linkage_type IS NULL OR fm.linkage_type <> 'SUB_ORG')
         AND (CAST(:hasSubjectIds AS boolean) = false OR fm.subject_id IN (:subjectIds))
         AND (CAST(:hasBatchesIds AS boolean) = false OR (

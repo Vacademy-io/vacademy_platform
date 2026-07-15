@@ -1,4 +1,4 @@
-package vacademy.io.common.auth.dto;
+package vacademy.io.admin_core_service.features.parent_link.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -8,18 +8,16 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
+/** One row in the "students awaiting a guardian" backfill preview list. */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class BackfillParentsResultDTO {
-    private int totalRequested;
-    private int created;
-    private int skipped;
-    /** One entry per successfully-created pair — lets the caller stamp its own denormalized pointers. */
-    private List<BackfillCreatedPairDTO> createdPairs;
+public class PendingGuardianStudentDTO {
+    private String userId;
+    private String fullName;
+    private String email;
+    private String mobileNumber;
 }

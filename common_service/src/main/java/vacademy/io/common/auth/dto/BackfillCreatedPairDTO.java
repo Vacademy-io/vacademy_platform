@@ -8,18 +8,14 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
+/** One successfully-created guardian from a backfill chunk — lets the caller stamp its own denormalized pointers. */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class BackfillParentsResultDTO {
-    private int totalRequested;
-    private int created;
-    private int skipped;
-    /** One entry per successfully-created pair — lets the caller stamp its own denormalized pointers. */
-    private List<BackfillCreatedPairDTO> createdPairs;
+public class BackfillCreatedPairDTO {
+    private String childUserId;
+    private String parentUserId;
 }

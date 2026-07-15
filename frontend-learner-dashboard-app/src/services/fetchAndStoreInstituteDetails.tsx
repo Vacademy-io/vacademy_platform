@@ -2,6 +2,7 @@ import { Preferences } from "@capacitor/preferences";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { INSTITUTE_DETAIL } from "@/constants/urls";
 import { NAMING_SETTINGS_KEY } from "@/types/naming-settings";
+import { THEME_ROLE_SETTINGS_KEY, type ThemeRoleSettings } from "@/types/theme-role-settings";
 import { upsertInstituteDetails } from "@/services/institute-settings-cache";
 
 export interface InstituteDetails {
@@ -44,6 +45,11 @@ interface InstituteSettings {
       data?: {
         data?: NamingSettingsType[];
       };
+    };
+    THEME_SETTING?: {
+      key: string;
+      name: string;
+      data?: ThemeRoleSettings;
     };
   };
 }
@@ -120,6 +126,15 @@ export const fetchAndStoreInstituteDetails = async (
             NAMING_SETTINGS_KEY,
             JSON.stringify(namingSettings)
           );
+        }
+
+        // Role-based theme (currently just `nav`) — absent for every
+        // institute until someone saves THEME_SETTING via the settings API.
+        const themeRoleData = settingsObj?.setting?.THEME_SETTING?.data;
+        if (themeRoleData?.roles) {
+          localStorage.setItem(THEME_ROLE_SETTINGS_KEY, JSON.stringify(themeRoleData));
+        } else {
+          localStorage.removeItem(THEME_ROLE_SETTINGS_KEY);
         }
       } catch (err) {
         console.error("Failed to parse or store naming settings:", err);

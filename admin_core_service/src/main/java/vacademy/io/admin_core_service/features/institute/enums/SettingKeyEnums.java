@@ -16,5 +16,9 @@ public enum SettingKeyEnums {
     AI_CALLING_SETTING,
     CRM_INTELLIGENCE_SETTING,
     VOICE_CALLING_SETTING,
-    PARENT_SETTING
+    PARENT_SETTING,
+    // Role-based institute color theme (brand/accent/nav) — see
+    // GenericSettingStrategy for read/write; institute_theme_code on the
+    // Institute entity remains the legacy single-hue fallback.
+    THEME_SETTING
 }

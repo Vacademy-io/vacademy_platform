@@ -221,13 +221,14 @@ html, body {
     --tertiary-400: 0 0% 86%;
     --tertiary-500: 0 0% 74%;
 
-    /* Nav role fallbacks (overridden by theme-provider at runtime). No
-       component consumes these yet — see theme-provider.tsx applyNavRoles. */
-    --nav-surface: 24 30% 14%;
-    --nav-surface-hover: 24 30% 20%;
-    --nav-active: 24 85% 54%;
-    --nav-active-text: 0 0% 98%;
-    --nav-text: 24 18% 65%;
+    /* Nav role fallbacks (overridden by theme-provider at runtime). Matches
+       today's hardcoded sidebar look (white surface, primary-50 active pill,
+       primary-500 active text) — see theme-provider.tsx applyNavRoles. */
+    --nav-surface: 0 0% 100%;
+    --nav-surface-hover: 210 40% 96%;
+    --nav-active: 34 89% 96%;
+    --nav-active-text: 24 85% 54%;
+    --nav-text: 222.2 84% 4.9%;
 
     --danger-50: 0 100% 99%;
     --danger-100: 0 86% 97%;

@@ -202,7 +202,7 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
     };
 
     return (
-        <div className="flex h-full w-16 flex-shrink-0 flex-col items-center border-r border-primary-600 bg-primary-500 py-3">
+        <div className="flex h-full w-16 flex-shrink-0 flex-col items-center border-r border-primary-600 bg-nav-surface py-3">
             {/* Search Icon */}
             <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>

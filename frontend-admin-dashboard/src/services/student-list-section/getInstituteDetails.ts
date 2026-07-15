@@ -19,6 +19,7 @@ import { StorageKey } from '@/constants/storage/storage';
 import useLocalStorage from '@/hooks/use-local-storage';
 import { isNullOrEmptyOrUndefined } from '@/lib/utils';
 import { NamingSettingsType } from '@/routes/settings/-constants/terms';
+import { THEME_ROLE_SETTINGS_KEY } from '@/types/theme-role-settings';
 
 // Cache duration: 1 hour
 const CACHE_STALE_TIME = 3600000;
@@ -193,6 +194,15 @@ export const useInstituteLightweightQuery = () => {
                         if (namingSettings && Array.isArray(namingSettings.data?.data)) {
                             setValue(namingSettings.data.data);
                         }
+                        const themeRoleData = instituteSettings.setting?.THEME_SETTING?.data;
+                        if (themeRoleData?.roles) {
+                            localStorage.setItem(
+                                THEME_ROLE_SETTINGS_KEY,
+                                JSON.stringify(themeRoleData)
+                            );
+                        } else {
+                            localStorage.removeItem(THEME_ROLE_SETTINGS_KEY);
+                        }
                     }
                 }
                 if (data && !isNullOrEmptyOrUndefined(data.sub_modules)) {
@@ -247,6 +257,15 @@ export const useInstituteFullQuery = () => {
                         if (namingSettings && Array.isArray(namingSettings.data?.data)) {
                             setValue(namingSettings.data.data);
                         }
+                        const themeRoleData = instituteSettings.setting?.THEME_SETTING?.data;
+                        if (themeRoleData?.roles) {
+                            localStorage.setItem(
+                                THEME_ROLE_SETTINGS_KEY,
+                                JSON.stringify(themeRoleData)
+                            );
+                        } else {
+                            localStorage.removeItem(THEME_ROLE_SETTINGS_KEY);
+                        }
                     }
                 }
                 if (data && !isNullOrEmptyOrUndefined(data.sub_modules)) {
@@ -300,6 +319,15 @@ export const useInstituteQuery = () => {
                         const namingSettings = instituteSettings.setting?.NAMING_SETTING;
                         if (namingSettings && Array.isArray(namingSettings.data?.data)) {
                             setValue(namingSettings.data.data);
+                        }
+                        const themeRoleData = instituteSettings.setting?.THEME_SETTING?.data;
+                        if (themeRoleData?.roles) {
+                            localStorage.setItem(
+                                THEME_ROLE_SETTINGS_KEY,
+                                JSON.stringify(themeRoleData)
+                            );
+                        } else {
+                            localStorage.removeItem(THEME_ROLE_SETTINGS_KEY);
                         }
                     }
                 }

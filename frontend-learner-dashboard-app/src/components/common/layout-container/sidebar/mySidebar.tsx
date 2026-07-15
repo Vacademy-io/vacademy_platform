@@ -329,7 +329,7 @@ export const MySidebar = ({
           : undefined
       }
     >
-      <SidebarContent className={`sidebar-content flex flex-col bg-white dark:bg-neutral-900 py-1 transition-all  duration-200 ${isIOS ? 'mt-10' : ''} ease-in-out max-w-full w-full overflow-x-hidden`}>
+      <SidebarContent className={`sidebar-content flex flex-col bg-nav-surface dark:bg-neutral-900 py-1 transition-all  duration-200 ${isIOS ? 'mt-10' : ''} ease-in-out max-w-full w-full overflow-x-hidden`}>
         <SidebarHeader className="border-b border-border pb-2">
           {isAndroid && (
             <button

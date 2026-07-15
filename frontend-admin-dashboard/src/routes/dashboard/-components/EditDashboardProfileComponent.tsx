@@ -25,6 +25,46 @@ import PhoneInputField from '@/components/design-system/phone-input-field';
 import themeData from '@/constants/themes/theme.json';
 import { useTheme } from '@/providers/theme/theme-provider';
 import { cn } from '@/lib/utils';
+import convert from 'color-convert';
+import { navPresets } from '@/constants/themes/nav-presets';
+import { getThemeRoleSettings, saveThemeRoleSettings } from '@/services/theme-role-settings';
+import type { NavRoleColors } from '@/types/theme-role-settings';
+
+/** Mirrors the light legacy default in theme-provider.tsx's applyNavRoles. */
+const buildLightNavPreview = (brandHex: string): NavRoleColors => {
+    const [h, s, l] = convert.hex.hsl(brandHex.replace('#', ''));
+    const toHex = (hh: number, ss: number, ll: number) => `#${convert.hsl.hex([hh, ss, ll])}`;
+    return {
+        surface: toHex(0, 0, 100),
+        surfaceHover: toHex(210, 40, 96),
+        active: toHex(h, Math.min(s + 40, 100), Math.min(l + 45, 96)),
+        activeText: brandHex,
+        text: toHex(222.2, 20, 20),
+    };
+};
+
+const CUSTOM_NAV_ID = 'custom';
+// Seeds the 5 pickers with a Charcoal-Rail-like starting point (active item
+// uses the institute's real brand color) when a user first switches to
+// Custom, so they're editing something real, not black-on-black.
+const buildDefaultCustomNav = (brandHex: string): NavRoleColors => {
+    const toHex = (hh: number, ss: number, ll: number) => `#${convert.hsl.hex([hh, ss, ll])}`;
+    return {
+        surface: toHex(220, 10, 13),
+        surfaceHover: toHex(220, 10, 18),
+        active: brandHex,
+        activeText: toHex(0, 0, 100),
+        text: toHex(220, 8, 65),
+    };
+};
+
+const NAV_COLOR_FIELDS: Array<{ key: keyof NavRoleColors; label: string }> = [
+    { key: 'surface', label: 'Surface' },
+    { key: 'surfaceHover', label: 'Surface hover' },
+    { key: 'active', label: 'Active item' },
+    { key: 'activeText', label: 'Active text' },
+    { key: 'text', label: 'Text' },
+];
 
 // Predefined themes with their base colors
 const presetThemes = [
@@ -46,7 +86,42 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
     const [open, setOpen] = useState(false);
     const [openThemeDialog, setThemeDialog] = useState(false);
     const [selectedTheme, setSelectedTheme] = useState(presetThemes[0]?.code || 'primary');
-    const { setPrimaryColor } = useTheme();
+    const [selectedNavPresetId, setSelectedNavPresetId] = useState(navPresets[0]!.id);
+    const [customNav, setCustomNav] = useState<NavRoleColors | null>(null);
+    const [isSavingNav, setIsSavingNav] = useState(false);
+    const { setPrimaryColor, getPrimaryColorCode } = useTheme();
+
+    // Load whatever nav role is already saved for this institute whenever the
+    // theme dialog opens, so re-opening it doesn't silently reset the choice.
+    useEffect(() => {
+        if (!openThemeDialog) return;
+        let cancelled = false;
+        getThemeRoleSettings().then((saved) => {
+            if (cancelled) return;
+            if (!saved?.roles?.nav) {
+                setSelectedNavPresetId('match-brand');
+                return;
+            }
+            const brandHex = getPrimaryColorCode();
+            const matched = navPresets.find((preset) => {
+                const built = preset.build(brandHex);
+                return built && built.surface.toLowerCase() === saved.roles!.nav!.surface.toLowerCase();
+            });
+            if (matched) {
+                setSelectedNavPresetId(matched.id);
+            } else {
+                // Saved colors don't match any curated preset exactly — this
+                // is a previously-saved custom nav. Load it into the editor
+                // rather than silently falling back to a preset.
+                setSelectedNavPresetId(CUSTOM_NAV_ID);
+                setCustomNav(saved.roles!.nav!);
+            }
+        });
+        return () => {
+            cancelled = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [openThemeDialog]);
 
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
     const instituteId = getInstituteId();
@@ -168,6 +243,33 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
         setSelectedTheme(code);
         setPrimaryColor(code);
         form.setValue('instituteThemeCode', code);
+    };
+
+    const handleSaveThemeDialog = async () => {
+        setIsSavingNav(true);
+        try {
+            const brandHex = getPrimaryColorCode();
+            const nav =
+                selectedNavPresetId === CUSTOM_NAV_ID
+                    ? (customNav ?? buildDefaultCustomNav(brandHex))
+                    : (navPresets.find((p) => p.id === selectedNavPresetId) ?? navPresets[0]!).build(
+                          brandHex
+                      );
+            await saveThemeRoleSettings({
+                version: 2,
+                mode: selectedNavPresetId === CUSTOM_NAV_ID ? 'custom' : nav ? 'preset' : 'legacy',
+                roles: nav ? { nav } : {},
+            });
+        } catch (error) {
+            console.error('Failed to save nav theme', error);
+            toast.error('Could not save sidebar color — brand color was still updated.', {
+                className: 'error-toast',
+                duration: 2500,
+            });
+        } finally {
+            setIsSavingNav(false);
+            setThemeDialog(false);
+        }
     };
 
     return (
@@ -631,6 +733,133 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                     );
                                 })}
                             </div>
+
+                            <Separator className="my-4" />
+                            <h1 className="mb-1 text-lg">Sidebar color</h1>
+                            <p className="mb-4 text-sm text-neutral-500">
+                                Give your sidebar its own look, independent of the brand color
+                                above — like Slack&apos;s sidebar themes.
+                            </p>
+                            <div className="mb-4 grid w-full grid-cols-1 gap-3 sm:grid-cols-3">
+                                {navPresets.map((preset) => (
+                                    <div
+                                        key={preset.id}
+                                        role="button"
+                                        onClick={() => setSelectedNavPresetId(preset.id)}
+                                        className={cn(
+                                            'flex flex-col gap-2 rounded-lg p-3 text-left shadow-sm transition-shadow hover:shadow-md',
+                                            selectedNavPresetId === preset.id
+                                                ? 'ring-2 ring-primary-500 ring-offset-2'
+                                                : 'ring-1 ring-gray-200'
+                                        )}
+                                        aria-label={`Select ${preset.label} sidebar`}
+                                    >
+                                        <span className="text-sm font-medium">{preset.label}</span>
+                                        <span className="text-xs text-neutral-500">
+                                            {preset.description}
+                                        </span>
+                                    </div>
+                                ))}
+                                <div
+                                    role="button"
+                                    onClick={() => {
+                                        setSelectedNavPresetId(CUSTOM_NAV_ID);
+                                        setCustomNav(
+                                            (prev) => prev ?? buildDefaultCustomNav(getPrimaryColorCode())
+                                        );
+                                    }}
+                                    className={cn(
+                                        'flex flex-col gap-2 rounded-lg p-3 text-left shadow-sm transition-shadow hover:shadow-md',
+                                        selectedNavPresetId === CUSTOM_NAV_ID
+                                            ? 'ring-2 ring-primary-500 ring-offset-2'
+                                            : 'ring-1 ring-gray-200'
+                                    )}
+                                    aria-label="Select Custom sidebar"
+                                >
+                                    <span className="text-sm font-medium">Custom</span>
+                                    <span className="text-xs text-neutral-500">
+                                        Pick every color yourself.
+                                    </span>
+                                </div>
+                            </div>
+
+                            {selectedNavPresetId === CUSTOM_NAV_ID && (
+                                <div className="mb-4 flex flex-col gap-2 rounded-lg border border-gray-200 p-3">
+                                    {NAV_COLOR_FIELDS.map(({ key, label }) => {
+                                        const current =
+                                            customNav ?? buildDefaultCustomNav(getPrimaryColorCode());
+                                        return (
+                                            <div key={key} className="flex items-center justify-between gap-3">
+                                                <span className="text-sm text-neutral-700">{label}</span>
+                                                <div className="flex items-center gap-2">
+                                                    {/* design-lint-ignore: native color input — the value is
+                                                        user-chosen per-institute data, not a static token. */}
+                                                    <input
+                                                        type="color"
+                                                        value={current[key]}
+                                                        onChange={(e) =>
+                                                            setCustomNav({ ...current, [key]: e.target.value })
+                                                        }
+                                                        className="h-8 w-8 cursor-pointer rounded border border-gray-200 p-0"
+                                                        aria-label={`${label} color`}
+                                                    />
+                                                    <MyInput
+                                                        inputType="text"
+                                                        input={current[key]}
+                                                        onChangeFunction={(e) =>
+                                                            setCustomNav({
+                                                                ...current,
+                                                                [key]: e.target.value,
+                                                            })
+                                                        }
+                                                        size="small"
+                                                        className="w-24 font-mono text-xs"
+                                                        inputPlaceholder="Hex color"
+                                                    />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {/* Live preview — a self-contained mockup, not the real sidebar,
+                                so previewing a choice can never affect the live app. */}
+                            {(() => {
+                                const brandHex = getPrimaryColorCode();
+                                const nav =
+                                    selectedNavPresetId === CUSTOM_NAV_ID
+                                        ? (customNav ?? buildDefaultCustomNav(brandHex))
+                                        : ((
+                                              navPresets.find((p) => p.id === selectedNavPresetId) ??
+                                              navPresets[0]!
+                                          ).build(brandHex) ?? buildLightNavPreview(brandHex));
+                                return (
+                                    // design-lint-ignore: computed per-institute nav colors (brand hex
+                                    // + selected preset), not static — can't be a Tailwind token.
+                                    <div
+                                        className="w-48 rounded-lg p-2 shadow-sm"
+                                        style={{ backgroundColor: nav.surface }}
+                                    >
+                                        {['Dashboard', 'Courses', 'Learners'].map((label, i) => (
+                                            <div
+                                                key={label}
+                                                className="mb-1 rounded-md px-2 py-1.5 text-xs font-medium"
+                                                style={
+                                                    i === 0
+                                                        ? {
+                                                              backgroundColor: nav.active,
+                                                              color: nav.activeText,
+                                                          }
+                                                        : { color: nav.text }
+                                                }
+                                            >
+                                                {label}
+                                            </div>
+                                        ))}
+                                    </div>
+                                );
+                            })()}
                         </div>
 
                         {/* Fixed Save Changes button */}
@@ -640,10 +869,13 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                 scale="large"
                                 buttonType="secondary"
                                 layoutVariant="default"
-                                onClick={() => setThemeDialog(false)}
-                                disable={Object.keys(form.formState.errors).length > 0}
+                                onClick={handleSaveThemeDialog}
+                                disable={
+                                    isSavingNav ||
+                                    Object.keys(form.formState.errors).length > 0
+                                }
                             >
-                                Save
+                                {isSavingNav ? 'Saving…' : 'Save'}
                             </MyButton>
                         </div>
                     </div>

@@ -411,7 +411,7 @@ export const StudentPaymentHistory = () => {
     // rows for this user (leads and pre-enrolled users will see zeros, which is fine).
     const { data: accountSummary } = useQuery({
         queryKey: ['user-account-summary', selectedStudent?.user_id, instituteDetails?.id],
-        queryFn: () => fetchUserAccountSummary(selectedStudent!.user_id, instituteDetails!.id),
+        queryFn: () => fetchUserAccountSummary(selectedStudent!.user_id, instituteDetails?.id ?? ''),
         staleTime: 60000,
         enabled: Boolean(selectedStudent?.user_id) && Boolean(instituteDetails?.id),
     });

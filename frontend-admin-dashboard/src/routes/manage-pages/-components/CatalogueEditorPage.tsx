@@ -14,12 +14,13 @@ import { LayersPanel } from './LayersPanel';
 import { PropertyPanel } from './PropertyPanel';
 import { PageTabs } from './PageTabs';
 import { CanvasRenderer } from './CanvasRenderer';
+import { AiCopilotPanel } from './AiCopilotPanel';
 import { RevisionHistoryDialog } from './RevisionHistoryDialog';
 import { Button } from '@/components/ui/button';
 import {
     CircleNotch as Loader2, FloppyDisk as Save, Code, Layout as LayoutTemplate,
     ArrowUUpLeft as Undo2, ArrowUUpRight as Redo2, Stack as Layers,
-    PuzzlePiece as PuzzleIcon, List, RocketLaunch, ClockCounterClockwise,
+    PuzzlePiece as PuzzleIcon, List, RocketLaunch, ClockCounterClockwise, Sparkle,
 } from '@phosphor-icons/react';
 import { useToast } from '@/hooks/use-toast';
 import { Route } from '../editor/$tagName';
@@ -94,6 +95,7 @@ export const CatalogueEditorPage = () => {
     const [jsonText, setJsonText] = useState('');
     const [jsonError, setJsonError] = useState<string | null>(null);
     const [sidebarTab, setSidebarTab] = useState<'components' | 'layers' | 'templates'>('components');
+    const [rightTab, setRightTab] = useState<'properties' | 'ai'>('properties');
     const [savedConfigJSON, setSavedConfigJSON] = useState('');
     const isDirty = config ? JSON.stringify(config) !== savedConfigJSON : false;
 
@@ -457,10 +459,38 @@ export const CatalogueEditorPage = () => {
                             </div>
                         </div>
 
-                        {/* Right Sidebar — Properties */}
-                        <div className="flex w-80 flex-col overflow-auto border-l bg-white">
-                            <div className="border-b p-4 font-medium">Properties</div>
-                            <PropertyPanel />
+                        {/* Right Sidebar — Properties / AI copilot */}
+                        <div className="flex w-80 flex-col overflow-hidden border-l bg-white">
+                            <div className="flex shrink-0 border-b">
+                                <button
+                                    onClick={() => setRightTab('properties')}
+                                    className={`flex flex-1 items-center justify-center gap-1 py-2.5 text-xs font-medium transition-colors ${
+                                        rightTab === 'properties'
+                                            ? 'border-b-2 border-blue-500 text-blue-600'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                                >
+                                    Properties
+                                </button>
+                                <button
+                                    onClick={() => setRightTab('ai')}
+                                    className={`flex flex-1 items-center justify-center gap-1 py-2.5 text-xs font-medium transition-colors ${
+                                        rightTab === 'ai'
+                                            ? 'border-b-2 border-primary-500 text-primary-500'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                                >
+                                    <Sparkle className="size-3.5" weight="duotone" />
+                                    AI
+                                </button>
+                            </div>
+                            {rightTab === 'properties' ? (
+                                <div className="flex-1 overflow-auto">
+                                    <PropertyPanel />
+                                </div>
+                            ) : (
+                                <AiCopilotPanel />
+                            )}
                         </div>
                     </div>
 

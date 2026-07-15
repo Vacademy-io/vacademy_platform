@@ -54,7 +54,7 @@ public class LiveClassEmailBody {
                         </tr>
                         <tr>
                           <td style="background:#fbeae3; text-align:center; padding:15px; font-size:12px; color:#777;">
-                            © {{YEAR}} {{INSTITUTE_NAME}}. All rights reserved.
+                            © 2025 Your Organization. All rights reserved.
                           </td>
                         </tr>
                       </table>
@@ -116,7 +116,7 @@ public class LiveClassEmailBody {
                         </tr>
                         <tr>
                           <td style="background:#fbeae3; text-align:center; padding:15px; font-size:12px; color:#777;">
-                            © {{YEAR}} {{INSTITUTE_NAME}}. All rights reserved.
+                            © 2025 Your Organization. All rights reserved.
                           </td>
                         </tr>
                       </table>
@@ -176,7 +176,7 @@ public class LiveClassEmailBody {
                         </tr>
                         <tr>
                           <td style="background:#fbeae3; text-align:center; padding:15px; font-size:12px; color:#777;">
-                            © {{YEAR}} {{INSTITUTE_NAME}}. All rights reserved.
+                            © 2025 Your Organization. All rights reserved.
                           </td>
                         </tr>
                       </table>

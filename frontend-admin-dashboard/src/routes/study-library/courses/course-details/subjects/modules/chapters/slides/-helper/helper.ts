@@ -477,7 +477,7 @@ export const convertToAssignmentSlideBackendFormat = (assignmentSlide: Assignmen
                     ? {
                           options: question.options.map((opt) => ({
                               id: opt.id,
-                              text: { content: opt.text.content },
+                              text: { id: null, type: 'HTML', content: opt.text.content },
                           })),
                       }
                     : {}),

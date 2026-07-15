@@ -132,9 +132,12 @@ function PaymentResultPage() {
     queryStatus === "cancelled";
   const isPending = !isPaid && !isFailed && (!!orderId || isLoading);
 
+  // Invoice payments: just show the success screen, no enrollment redirect.
+  // The invoice page is public; the learner may not have a dashboard session.
+
   // When payment is successful: auto-login via tokens from status API, or fallback to stored creds + login API
   useEffect(() => {
-    if (!isPaid || hasRedirectedRef.current) return;
+    if (!isPaid || hasRedirectedRef.current || isInvoicePayment) return;
 
     // PhonePe order is settled — drop the pending marker so a later visit doesn't
     // resurrect a stale order id.
@@ -288,20 +291,29 @@ function PaymentResultPage() {
             <h1 className="text-xl font-semibold text-gray-900 mb-2">
               Payment Successful!
             </h1>
-            <p className="text-gray-600 mb-6">
-              Your enrollment has been confirmed. Redirecting you to your
-              courses...
-            </p>
-            <a
-              href={
-                typeof window !== "undefined"
-                  ? `${window.location.origin}/study-library/courses`
-                  : `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`
-              }
-              className="inline-flex items-center justify-center px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 font-medium"
-            >
-              Go to My Courses
-            </a>
+            {isInvoicePayment ? (
+              <p className="text-gray-600 mb-6">
+                Your invoice has been paid. A confirmation email will be sent to
+                you shortly.
+              </p>
+            ) : (
+              <p className="text-gray-600 mb-6">
+                Your enrollment has been confirmed. Redirecting you to your
+                courses...
+              </p>
+            )}
+            {isInvoicePayment ? null : (
+              <a
+                href={
+                  typeof window !== "undefined"
+                    ? `${window.location.origin}/study-library/courses`
+                    : `${BASE_URL_LEARNER_DASHBOARD}/study-library/courses`
+                }
+                className="inline-flex items-center justify-center px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 font-medium"
+              >
+                Go to My Courses
+              </a>
+            )}
           </div>
         ) : isFailed ? (
           <>

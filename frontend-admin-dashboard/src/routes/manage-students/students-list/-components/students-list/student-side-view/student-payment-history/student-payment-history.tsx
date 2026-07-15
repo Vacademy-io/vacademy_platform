@@ -425,6 +425,38 @@ export const StudentPaymentHistory = () => {
     const invalidateInvoices = () =>
         queryClient.invalidateQueries({ queryKey: ['user-invoices', selectedStudent?.user_id] });
 
+    // Client-side fallback summary computed from the invoice list.
+    // Used when the ledger API returns all-zeros (migration not yet applied,
+    // or invoices created before the DEBIT_ACCRUAL recording was wired up).
+    // The ledger summary takes precedence once it has real data.
+    const invoiceList = invoicesData || [];
+    const fallbackSummary: UserAccountSummaryDTO | null = invoiceList.length > 0
+        ? (() => {
+              const currency = invoiceList[0]?.currency || 'INR';
+              const totalAccrued = invoiceList.reduce((s, inv) => s + (inv.total_amount ?? 0), 0);
+              const totalPaid = invoiceList
+                  .filter((inv) => String(inv.status || '').toUpperCase() === 'PAID')
+                  .reduce((s, inv) => s + (inv.total_amount ?? 0), 0);
+              const balance = Math.max(0, totalAccrued - totalPaid);
+              const now = Date.now();
+              const overdue = invoiceList
+                  .filter((inv) => {
+                      const st = String(inv.status || '').toUpperCase();
+                      const isPending = st === 'PENDING_PAYMENT' || st === 'GENERATED' || st === 'SENT';
+                      const pastDue = inv.due_date ? new Date(inv.due_date).getTime() < now : false;
+                      return isPending && pastDue;
+                  })
+                  .reduce((s, inv) => s + (inv.total_amount ?? 0), 0);
+              return { user_id: selectedStudent?.user_id || '', institute_id: instituteDetails?.id || '', total_accrued: totalAccrued, total_paid: totalPaid, balance, overdue, currency };
+          })()
+        : null;
+
+    // Prefer ledger data when non-zero; fall back to invoice-derived summary.
+    const effectiveSummary: UserAccountSummaryDTO | null =
+        accountSummary && (accountSummary.total_accrued > 0 || accountSummary.total_paid > 0)
+            ? accountSummary
+            : fallbackSummary;
+
     if (!selectedStudent?.user_id) {
         return (
             <ProfileEmpty
@@ -438,11 +470,13 @@ export const StudentPaymentHistory = () => {
     return (
         <div className="flex flex-col gap-3">
             {/* Account summary — total accrued / paid / balance / overdue.
-                Only shown when the ledger has data (non-zero totals). Leads
-                without any invoices/payments will see this section empty. */}
-            {accountSummary && (accountSummary.total_accrued > 0 || accountSummary.total_paid > 0) && (
+                Ledger data is authoritative; falls back to client-side totals
+                computed from the invoice list (covers old invoices / fresh installs
+                before the migration writes ledger rows). Hidden only when there
+                are no invoices at all. */}
+            {effectiveSummary && (
                 <ProfileSectionCard icon={Wallet} heading="Account Summary">
-                    <AccountSummaryGrid summary={accountSummary} />
+                    <AccountSummaryGrid summary={effectiveSummary} />
                 </ProfileSectionCard>
             )}
 

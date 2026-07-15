@@ -14,6 +14,9 @@ import vacademy.io.admin_core_service.features.fee_management.entity.ComplexPaym
 import vacademy.io.admin_core_service.features.fee_management.repository.ComplexPaymentOptionRepository;
 import vacademy.io.admin_core_service.features.fee_management.entity.StudentFeePayment;
 import vacademy.io.admin_core_service.features.fee_management.repository.StudentFeePaymentRepository;
+import vacademy.io.admin_core_service.features.invoice.dto.ManualInvoicePaymentRequestDTO;
+import vacademy.io.admin_core_service.features.invoice.entity.Invoice;
+import vacademy.io.admin_core_service.features.invoice.repository.InvoiceRepository;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanDiscountJson;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
@@ -57,6 +60,7 @@ public class CpoSideViewService {
     private final PaymentLogRepository paymentLogRepository;
     private final FeeLedgerAllocationService feeLedgerAllocationService;
     private final InvoiceService invoiceService;
+    private final InvoiceRepository invoiceRepository;
     private final ComplexPaymentOptionRepository complexPaymentOptionRepository;
     private final FacultySubjectPackageSessionMappingRepository facultyMappingRepository;
 
@@ -302,6 +306,27 @@ public class CpoSideViewService {
 
         feeLedgerAllocationService.allocatePaymentForNewLog(
                 paymentLogId, BigDecimal.valueOf(req.getAmount()), userPlanId);
+
+        // After filling CPO installments, mark any pending ADMIN_MANUAL invoices for
+        // this user+institute as paid (oldest-first). These are ad-hoc invoices the
+        // institute admin raised outside the CPO schedule; settling them here gives a
+        // single "Record Offline Payment" action that clears all outstanding obligations.
+        if (instituteId != null) {
+            ManualInvoicePaymentRequestDTO invoicePayReq = new ManualInvoicePaymentRequestDTO();
+            invoicePayReq.setNotes("Auto-settled via offline payment log " + paymentLogId
+                    + (req.getReference() != null && !req.getReference().isBlank()
+                       ? " (ref: " + req.getReference() + ")" : ""));
+            List<Invoice> pendingAdminInvoices =
+                    invoiceRepository.findPendingAdminManualInvoices(plan.getUserId(), instituteId);
+            for (Invoice inv : pendingAdminInvoices) {
+                try {
+                    invoiceService.markInvoicePaidManually(inv.getId(), invoicePayReq, null);
+                } catch (Exception e) {
+                    log.warn("Could not auto-settle admin invoice {} during offline payment {}: {}",
+                            inv.getId(), paymentLogId, e.getMessage());
+                }
+            }
+        }
 
         if (req.isGenerateInvoice()) {
             try {

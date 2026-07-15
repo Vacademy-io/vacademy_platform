@@ -174,6 +174,20 @@ public class AudienceController {
     }
 
     /**
+     * Edit a lead's profile from the CRM. The learner-profile endpoint cannot serve
+     * a lead: it resolves the caller against the {@code student} table, and a lead
+     * that never enrolled has no row there. This writes only where a lead is actually
+     * read from — the auth user, the {@code audience_response} parent/guardian fields,
+     * and the lead's custom field values. It never touches {@code student}.
+     */
+    @PutMapping("/lead/{responseId}/profile")
+    public ResponseEntity<String> updateLeadProfile(@PathVariable String responseId,
+                                                    @RequestBody LeadProfileEditRequestDTO request) {
+        audienceService.updateLeadProfile(responseId, request);
+        return ResponseEntity.ok("Lead profile updated");
+    }
+
+    /**
      * Send a message to audience campaign leads.
      */
     @PostMapping("/campaign/{audienceId}/send")

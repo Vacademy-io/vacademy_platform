@@ -169,6 +169,9 @@ public class LeadAutomationScheduler {
         ctxBuilder.put(ctx, "leadName", c.getParentName());
         ctxBuilder.put(ctx, "leadEmail", c.getParentEmail());
         ctxBuilder.put(ctx, "leadMobile", c.getParentMobile());
+        // parent_* is null for an ordinary campaign lead — fill the lead-* keys from the
+        // lead's own auth user so the reminder still has a name and a recipient to send to.
+        ctxBuilder.enrichLeadContact(ctx, c.getUserId());
         ctxBuilder.put(ctx, "tatStage", emission.canonicalStage);
         ctxBuilder.put(ctx, "stageLabel", emission.stageLabel);
         if (notifyRoles != null && !notifyRoles.isEmpty()) {

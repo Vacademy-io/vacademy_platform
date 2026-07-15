@@ -78,7 +78,7 @@ export interface StudentSignupSettings {
 }
 
 // UI
-export type StudentUiType = 'default' | 'vibrant' | 'play';
+export type StudentUiType = 'default' | 'vibrant' | 'play' | 'cleanerPlay';
 export interface StudentUiSettings {
     type: StudentUiType;
 }

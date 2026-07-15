@@ -301,6 +301,22 @@ module.exports = {
           // plain var() colors silently drop the /N modifier.
           ink: "rgb(60 60 60 / <alpha-value>)",
         },
+        // Cleaner Play — warm cream/illustrated skin. Decorative-only;
+        // brand actions still use primary-*, see cleaner-play-theme.css.
+        cp: {
+          bg: "hsl(var(--cp-bg))",
+          "bg-deep": "hsl(var(--cp-bg-deep))",
+          surface: "hsl(var(--cp-surface))",
+          border: "hsl(var(--cp-border))",
+          ink: "hsl(var(--cp-ink))",
+          muted: "hsl(var(--cp-muted))",
+          sage: "hsl(var(--cp-sage))",
+          "sage-tint": "hsl(var(--cp-sage-tint))",
+          terracotta: "hsl(var(--cp-terracotta))",
+          "terracotta-tint": "hsl(var(--cp-terracotta-tint))",
+          gold: "hsl(var(--cp-gold))",
+          "gold-tint": "hsl(var(--cp-gold-tint))",
+        },
       },
       // Named layout dimensions that can't use the spacing scale (viewport math, fixed art heights).
       height: {

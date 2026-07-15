@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CaretRight, ArrowRight } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { usePlayTheme } from "@/hooks/use-play-theme";
+import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
 
 export const StatCardSkeleton = () => (
     <Card className="h-full">
@@ -29,6 +30,7 @@ export const StatCard = ({
     className,
     iconClassName,
     illustration,
+    cleanerIllustrationSrc,
     emptyActionLabel,
 }: {
     title: string;
@@ -40,11 +42,15 @@ export const StatCard = ({
     className?: string;
     iconClassName?: string;
     illustration?: React.FC<React.SVGProps<SVGSVGElement>>;
+    /** Cleaner Play only — a raster (webp) icon illustration, since that
+     *  skin's art is generated imagery, not an SVG component. */
+    cleanerIllustrationSrc?: string;
     /** Shown instead of the title when the count is genuinely 0, turning the
      *  card into an invitation (e.g. "Browse Courses") rather than a dead zero. */
     emptyActionLabel?: string;
 }) => {
     const isPlay = usePlayTheme();
+    const isCleanerPlay = useCleanerPlayTheme();
 
     // Skeleton while loading — covers the count-not-yet-known (undefined/null) case
     if (isLoading) return <StatCardSkeleton />;
@@ -52,6 +58,55 @@ export const StatCard = ({
     const isEmpty = (count ?? 0) === 0;
     const showAction = isEmpty && !!emptyActionLabel;
     const subtitleText = showAction ? emptyActionLabel : title;
+
+    if (isCleanerPlay) {
+        return (
+            <button
+                type="button"
+                onClick={onClick}
+                aria-label={
+                    showAction
+                        ? `${title} - ${emptyActionLabel}`
+                        : `View ${title} - ${count ?? 0} items`
+                }
+                className={cn(
+                    "cp-card group flex h-full w-full flex-col items-start gap-3 p-4 text-left transition-transform duration-base ease-out-soft hover:-translate-y-0.5"
+                )}
+            >
+                <div className="flex w-full items-center justify-between">
+                    {cleanerIllustrationSrc ? (
+                        <img
+                            src={cleanerIllustrationSrc}
+                            alt=""
+                            aria-hidden="true"
+                            className="h-11 w-11 object-contain"
+                        />
+                    ) : (
+                        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-cp-sage-tint text-cp-sage">
+                            <Icon size={20} weight="duotone" />
+                        </span>
+                    )}
+                    <CaretRight
+                        size={16}
+                        className="cp-muted transition-transform duration-300 group-hover:translate-x-0.5"
+                    />
+                </div>
+                {showAction ? (
+                    <span className="cp-heading inline-flex items-center gap-1 text-h3">
+                        {emptyActionLabel}
+                        <ArrowRight size={16} weight="bold" />
+                    </span>
+                ) : (
+                    <span className="cp-heading text-h2 tabular-nums">
+                        {(count ?? 0).toLocaleString()}
+                    </span>
+                )}
+                {!showAction && (
+                    <span className="cp-muted text-caption font-medium">{title}</span>
+                )}
+            </button>
+        );
+    }
 
     return (
         <Card

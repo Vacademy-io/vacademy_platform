@@ -6,6 +6,8 @@
 @import './styles/catalogue-animations.css';
 /* Play Theme - Duolingo-inspired gamified skin */
 @import './styles/play-theme.css';
+/* Cleaner Play Theme - warm, premium, illustrated skin */
+@import './styles/cleaner-play-theme.css';
 /* Flaticon Uicons - Rounded bubbly icons for play theme */
 @import '@flaticon/flaticon-uicons/css/all/all';
 

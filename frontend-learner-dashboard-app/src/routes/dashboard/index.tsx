@@ -70,6 +70,7 @@ import { StatCard } from "./-components/DashboardStatCard";
 import { ContinueLearningCard } from "./-components/DashboardContinueLearningCard";
 import { DashboardHero } from "./-components/DashboardHero";
 import { PlayDashboardHero } from "./-components/play/PlayDashboardHero";
+import { CleanerPlayDashboardHero } from "./-components/play/CleanerPlayDashboardHero";
 import { cn } from "@/lib/utils";
 import { getChatbotSettings } from "@/services/chatbot-settings";
 import { MyMembershipWidget } from "./-components/MyMembershipWidget";
@@ -80,7 +81,11 @@ import { UpcomingLiveClassesWidget } from "./-components/UpcomingLiveClassesWidg
 import { Preferences } from "@capacitor/preferences";
 import { AttendanceWidget } from "./-components/AttendanceWidget";
 import { playIllustrations } from "@/assets/play-illustrations";
+import cleanerIconCourses from "@/assets/cleaner-play/icon-courses.webp";
+import cleanerIconAssessments from "@/assets/cleaner-play/icon-assessments.webp";
+import cleanerIconLive from "@/assets/cleaner-play/icon-live-sessions.webp";
 import { usePlayTheme } from "@/hooks/use-play-theme";
+import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import { computeGamificationData } from "@/services/play-gamification";
 import {
@@ -127,6 +132,7 @@ export function DashboardComponent() {
   const { setActiveItem } = useContentStore();
   const { getUserTimezone } = useServerTime();
   const isPlayTheme = usePlayTheme();
+  const isCleanerPlayTheme = useCleanerPlayTheme();
   const { setData: setGamificationData } = usePlayGamificationStore();
   const { instituteId } = useInstituteFeatureStore();
 
@@ -618,6 +624,7 @@ export function DashboardComponent() {
           className="stat-card-courses [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-play_&]:text-white"
           iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
           illustration={playIllustrations.Course}
+          cleanerIllustrationSrc={cleanerIconCourses}
         />
       ),
     },
@@ -640,6 +647,7 @@ export function DashboardComponent() {
           className="stat-card-live [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-play_&]:text-white"
           iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
           illustration={playIllustrations.LiveClass}
+          cleanerIllustrationSrc={cleanerIconLive}
         />
       ),
     },
@@ -662,6 +670,7 @@ export function DashboardComponent() {
           className="stat-card-assessments [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-play_&]:text-white"
           iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
           illustration={playIllustrations.Certificate}
+          cleanerIllustrationSrc={cleanerIconAssessments}
         />
       ),
     },
@@ -869,7 +878,9 @@ export function DashboardComponent() {
         {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
           <>
             {/* Hero — owns the live-class banner and resume / first-run band */}
-            {isPlayTheme ? (
+            {isCleanerPlayTheme ? (
+              <CleanerPlayDashboardHero {...heroProps} />
+            ) : isPlayTheme ? (
               <PlayDashboardHero {...heroProps} />
             ) : (
               <DashboardHero {...heroProps} />

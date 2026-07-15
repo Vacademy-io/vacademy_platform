@@ -1,0 +1,87 @@
+/* =====================================================================
+   Cleaner Play Theme — warm, premium, illustrated skin
+   Cream/parchment surfaces, soft felted-clay illustrations, generous
+   whitespace, pill buttons. Deliberately calmer than .ui-play (no bold
+   primary-colored blocks, no loud gamified type).
+   Applied via .ui-cleaner-play class on <html> (mutually exclusive with
+   .ui-play / .ui-vibrant — see __root.tsx applyUiType).
+
+   Font note: no external font is loaded here — the app already bundles
+   Plus Jakarta Sans (--app-font-family) with no network font dependency;
+   introducing a second webfont for headings would add a CSP/privacy/
+   load-time cost for a look achievable with weight + tracking instead.
+   ===================================================================== */
+
+/* Specificity note: :root { --background: ... } lives inside @layer base,
+   which Tailwind injects AFTER this file's @import in index.css. A plain
+   .ui-cleaner-play selector has the same specificity (0,1,0) as :root, so
+   with equal specificity the later rule (:root) would win regardless of
+   source order intuition — hence html.ui-cleaner-play (0,1,1) here, which
+   unconditionally outranks :root. */
+html.ui-cleaner-play {
+  /* White page canvas, matching the reference screenshots (Owen Carter /
+     Marcus Bennett dashboards) — flat white throughout, surfaces
+     distinguished by border + shadow only, not by a tinted page. The
+     route shell's <main> paints bg-background over <body>, so this has to
+     be set explicitly rather than relying on inheriting white by default. */
+  --background: 0 0% 100%;
+}
+
+.ui-cleaner-play {
+  --cp-bg: 0 0% 100%;            /* white page canvas */
+  --cp-bg-deep: 40 20% 96%;      /* faint warm-gray — skeleton/recessed states only, not the canvas */
+  --cp-surface: 0 0% 100%;       /* card background */
+  --cp-border: 36 24% 87%;       /* #E6E0D2 hairline */
+  --cp-ink: 30 15% 20%;          /* #392F27 warm near-black text */
+  --cp-muted: 30 10% 46%;        /* #7D7468 secondary text */
+
+  /* Decorative accents pulled from the illustration palette — used for
+     small details only (icon chips, dividers). Institute brand color
+     (--primary-*) still drives every actionable element (buttons, links,
+     active states) — these never substitute for it. */
+  --cp-sage: 88 15% 46%;         /* #7C8F63 */
+  --cp-sage-tint: 88 20% 92%;
+  --cp-terracotta: 16 45% 48%;   /* #B2603A */
+  --cp-terracotta-tint: 16 45% 94%;
+  --cp-gold: 42 62% 55%;         /* #D9A441 */
+  --cp-gold-tint: 42 62% 94%;
+
+  --cp-radius-card: 20px;
+  --cp-radius-btn: 999px;
+  --cp-shadow-card: 0 1px 2px rgba(57, 47, 39, 0.04), 0 8px 24px -12px rgba(57, 47, 39, 0.10);
+}
+
+/* Page canvas */
+.ui-cleaner-play body,
+.ui-cleaner-play .cp-page {
+  background: hsl(var(--cp-bg));
+}
+
+/* Generic card surface used across the skin */
+.ui-cleaner-play .cp-card {
+  background: hsl(var(--cp-surface));
+  border: 1px solid hsl(var(--cp-border));
+  border-radius: var(--cp-radius-card);
+  box-shadow: var(--cp-shadow-card);
+}
+
+.ui-cleaner-play .cp-heading {
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: hsl(var(--cp-ink));
+}
+
+.ui-cleaner-play .cp-muted {
+  color: hsl(var(--cp-muted));
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ui-cleaner-play .cp-hero-illustration {
+    animation: cp-float 5s ease-in-out infinite;
+  }
+}
+
+@keyframes cp-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}

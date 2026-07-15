@@ -55,6 +55,13 @@ public class LeadFilterDTO {
     // 'ONLY_CONVERTED' shows only converted leads. 'ALL' shows everything.
     private String conversionStatusFilter;
 
+    /**
+     * Soft-delete visibility: EXCLUDE_DELETED (default) | ONLY_DELETED | ALL.
+     * Null/blank behaves as EXCLUDE_DELETED, so deleted leads stay hidden unless asked for —
+     * ONLY_DELETED backs the "show deleted leads" view that restore is driven from.
+     */
+    private String audienceStatusFilter;
+
     // ── SLA-state filter ──
     // Filters by audience_response.tat_reminder_stage — the stage the SLA scheduler last
     // emitted for the lead. Same values shown in the leads-table badges:

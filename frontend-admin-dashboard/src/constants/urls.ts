@@ -264,8 +264,10 @@ export const TELEPHONY_VOICE_CONFIG = (instituteId: string) =>
 // Lead Reports endpoints — use BASE_URL so they work across dev/stage/prod.
 export const GET_LEAD_REPORT_SUMMARY = `${BASE_URL}/admin-core-service/v1/reports/leads/summary`;
 export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/reports/counselor-performance`;
-export const DELETE_AUDIENCE_LEAD = (responseId: string) =>
-    `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}`;
+/** Soft-delete leads (ADMIN only). Body: { response_ids, scope: RESPONSE|USER, institute_id }. */
+export const DELETE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/delete`;
+/** Restore soft-deleted leads (ADMIN only). Same body shape as DELETE_AUDIENCE_LEADS. */
+export const RESTORE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/restore`;
 export const UPDATE_LEAD_PROFILE = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/profile`;
 export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiries`;

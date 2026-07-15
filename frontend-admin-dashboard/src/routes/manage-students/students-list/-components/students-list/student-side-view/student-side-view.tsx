@@ -1,9 +1,12 @@
-import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getActiveRoleDisplaySettingsKey, getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { Sidebar, SidebarContent, SidebarHeader } from '@/components/ui/sidebar';
 import { useSidebar } from '@/components/ui/sidebar';
 import { useCompactMode } from '@/hooks/use-compact-mode';
-import { X, ArrowsOutSimple, CaretLeft, CaretRight } from '@phosphor-icons/react';
+import { X, ArrowsOutSimple, CaretLeft, CaretRight, Trash } from '@phosphor-icons/react';
+import { DeleteLeadsDialog } from '@/components/shared/leads/delete-leads-dialog';
+import { isAdminForInstitute } from '@/lib/auth/roleUtils';
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import DummyProfile from '@/assets/svgs/dummy_profile_photo.svg';
 import { StatusChips } from '@/components/design-system/chips';
 import { StudentOverview } from './student-overview/student-overview';
@@ -136,9 +139,19 @@ export const StudentSidebar = ({
         setOpen(false);
         setOpenMobile(false);
     };
+    const [deleteOpen, setDeleteOpen] = useState(false);
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [faceLoader, setFaceLoader] = useState(false);
-    const { selectedStudent, openOverlay, isOverlayOpen } = useStudentSidebar();
+    const { selectedStudent, setSelectedStudent, openOverlay, isOverlayOpen } = useStudentSidebar();
+    const queryClient = useQueryClient();
+    // `_response_id` marks a row that came from a lead surface (the lead lists map a lead into
+    // StudentTable shape to reuse this sheet). Contacts never carry it, so it doubles as the
+    // "is this a lead" test — and only a lead can be deleted here.
+    const leadResponseId =
+        ((selectedStudent as unknown as Record<string, unknown>)?._response_id as string | null) ??
+        null;
+    const currentInstituteId = getCurrentInstituteId();
+    const canDeleteLead = isAdminForInstitute(currentInstituteId);
     const [tabSettings, setTabSettings] = useState<StudentSideViewSettings | null>(null);
     /**
      * navStyle — selects between the horizontal tab bar (default) and the
@@ -345,6 +358,19 @@ export const StudentSidebar = ({
                                 evaluation submission tabs — don't supply `openOverlay`,
                                 so we hide the expand affordance there instead of crashing
                                 on click (TypeError: openOverlay is not a function). */}
+                            {/* Delete is offered only for leads (rows carrying a `_response_id`)
+                                and only to admins — a contact's row here is a real enrolled
+                                learner, which this endpoint deliberately can't touch. */}
+                            {leadResponseId && canDeleteLead && (
+                                <button
+                                    onClick={() => setDeleteOpen(true)}
+                                    className="flex size-9 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-danger-50 hover:text-danger-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger-400"
+                                    aria-label="Delete lead"
+                                    title="Delete lead"
+                                >
+                                    <Trash className="size-5" />
+                                </button>
+                            )}
                             {typeof openOverlay === 'function' && (
                                 <button
                                     onClick={() => openOverlay()}
@@ -670,6 +696,30 @@ export const StudentSidebar = ({
                 </div>
                 </div>
             </SidebarContent>
+
+            {leadResponseId && currentInstituteId && (
+                <DeleteLeadsDialog
+                    open={deleteOpen}
+                    onOpenChange={setDeleteOpen}
+                    instituteId={currentInstituteId}
+                    responseIds={[leadResponseId]}
+                    userId={selectedStudent?.user_id}
+                    leadName={selectedStudent?.full_name}
+                    onSuccess={() => {
+                        // The lead is gone from every list — close the sheet rather than leave
+                        // it showing a row that no longer exists, and refetch the lists behind it.
+                        // These keys must match the lists' own useQuery keys exactly (prefix
+                        // matching only helps within a key, not across a different first element),
+                        // so they mirror what the tables invalidate after a status change.
+                        queryClient.invalidateQueries({ queryKey: ['recent-leads'] });
+                        queryClient.invalidateQueries({ queryKey: ['campaignUsers'] });
+                        queryClient.invalidateQueries({ queryKey: ['user-lead-profile'] });
+                        queryClient.invalidateQueries({ queryKey: ['lead-profiles-batch'] });
+                        setSelectedStudent(null);
+                        closeSidebar();
+                    }}
+                />
+            )}
         </Sidebar>
     );
 };

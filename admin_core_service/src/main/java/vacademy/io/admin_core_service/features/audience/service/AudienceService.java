@@ -62,7 +62,9 @@ import vacademy.io.admin_core_service.features.audience.enums.CustomFieldValueSo
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
+import vacademy.io.admin_core_service.features.audience.enums.AudienceStatusEnum;
 import vacademy.io.common.exceptions.ConflictException;
+import vacademy.io.common.exceptions.ForbiddenException;
 import vacademy.io.common.exceptions.InvalidRequestException;
 import vacademy.io.common.exceptions.ResourceNotFoundException;
 import vacademy.io.common.exceptions.VacademyException;
@@ -522,6 +524,9 @@ public class AudienceService {
         // 2. Dedup per person per campaign (same behaviour as submitLeadV2).
         if (StringUtils.hasText(userId)
                 && audienceResponseRepository.existsByAudienceIdAndUserId(audience.getId(), userId)) {
+            // Their lead may have been soft-deleted — revive it rather than leaving them
+            // permanently invisible. Return either way: this is still a duplicate submission.
+            reactivateSoftDeletedLeads(audience.getId(), userId);
             return "You have already submitted your response for this campaign";
         }
 
@@ -784,6 +789,8 @@ public class AudienceService {
                 // Duplicate submission guard: same audience + same user
                 if (StringUtils.hasText(userId) &&
                         audienceResponseRepository.existsByAudienceIdAndUserId(requestDTO.getAudienceId(), userId)) {
+                    // Revive a soft-deleted lead instead of blackholing the resubmission.
+                    reactivateSoftDeletedLeads(requestDTO.getAudienceId(), userId);
                     return "You have already submitted your response for this campaign";
                 }
 
@@ -1238,6 +1245,8 @@ public class AudienceService {
                 // Duplicate submission guard: same audience + same user
                 if (StringUtils.hasText(userId) &&
                         audienceResponseRepository.existsByAudienceIdAndUserId(requestDTO.getAudienceId(), userId)) {
+                    // Revive a soft-deleted lead instead of blackholing the resubmission.
+                    reactivateSoftDeletedLeads(requestDTO.getAudienceId(), userId);
                     return "You have already submitted your response for this campaign";
                 }
 
@@ -1762,9 +1771,19 @@ public class AudienceService {
             java.util.Optional<AudienceResponse> existingPrimary = leadDeduplicationService
                     .findDuplicate(requestDTO.getAudienceId(), dedupeKey);
             if (existingPrimary.isPresent()) {
-                leadDeduplicationService.markDuplicate(response, existingPrimary.get(), requestDTO.getSourceType());
+                // Unlike the guards above, this path always inserts and merely flags the new row
+                // as a duplicate of the primary. If that primary was soft-deleted, revive it —
+                // otherwise the person's original lead (and its history) stays hidden forever
+                // while a duplicate-flagged row accumulates beside it.
+                AudienceResponse primary = existingPrimary.get();
+                if (AudienceStatusEnum.INACTIVE.name().equalsIgnoreCase(primary.getAudienceStatus())) {
+                    primary.setAudienceStatus(AudienceStatusEnum.ACTIVE.name());
+                    audienceResponseRepository.save(primary);
+                    logger.info("Reactivated soft-deleted primary lead {} on re-submission", primary.getId());
+                }
+                leadDeduplicationService.markDuplicate(response, primary, requestDTO.getSourceType());
                 logger.info("Duplicate lead detected for campaign {}, primary={}",
-                        requestDTO.getAudienceId(), existingPrimary.get().getId());
+                        requestDTO.getAudienceId(), primary.getId());
             }
         }
 
@@ -2324,6 +2343,10 @@ public class AudienceService {
         // listing. Callers must opt into ONLY_CONVERTED or ALL to see them.
         String conversionStatusFilter = filterDTO.getConversionStatusFilter();
 
+        // Soft-delete filter — EXCLUDE_DELETED unless the caller explicitly asks otherwise, so
+        // every existing caller (and every new one that forgets) hides deleted leads by default.
+        String audienceStatusFilter = filterDTO.getAudienceStatusFilter();
+
         // Cross-service search expansion. Leads created via the simple submit flow
         // store the user's name/email/mobile on the User row in auth_service, not
         // on audience_response.parent_*. So a substring search like "cold" against
@@ -2400,6 +2423,7 @@ public class AudienceService {
                     filterDTO.getIsUnassigned(),
                     allowedAudienceIdsCsv,
                     conversionStatusFilter,
+                    audienceStatusFilter,
                     filterDTO.getSlaFilter(),
                     filterTatHours,
                     customFieldMatchedIdsCsv,
@@ -2427,6 +2451,7 @@ public class AudienceService {
                 overallStatusStr,
                 customFieldMatchedIdsCsv,
                 conversionStatusFilter,
+                audienceStatusFilter,
                 filterDTO.getSlaFilter(),
                 filterTatHours,
                 filterDTO.getSortBy(),
@@ -2835,14 +2860,200 @@ public class AudienceService {
     }
 
     /**
-     * Delete a single lead (audience response) by response ID.
+     * Soft-delete one or more leads.
+     *
+     * <p>Sets {@code audience_status = INACTIVE} instead of removing the row, so the lead
+     * disappears from lead views and — the point of the feature — from every promotional and
+     * automated send recipient list, while call history, admission records and reports keep
+     * referring to a row that still exists.</p>
+     *
+     * <p>Restricted to ADMIN. A lead that has already converted cannot be deleted (409): the
+     * row is now the head of an admission/payment trail, and hiding it would strand that trail.</p>
+     *
+     * <p>Deliberately does NOT touch {@code user_lead_profile}: that is one row per person and
+     * carries the counsellor assignment, while this is per response. Deleting one of a person's
+     * leads must not drop their assignment. The workbench derives its own visibility instead.</p>
+     *
+     * @return the number of leads actually flipped ACTIVE -> INACTIVE.
      */
     @Transactional
-    public void deleteLead(String responseId) {
-        AudienceResponse response = audienceResponseRepository.findById(responseId)
-                .orElseThrow(() -> new VacademyException("Lead not found"));
-        audienceResponseRepository.delete(response);
-        logger.info("Deleted lead: {}", responseId);
+    public int deleteLeads(LeadDeleteRequestDTO request, CustomUserDetails actor) {
+        List<AudienceResponse> targets = resolveDeleteTargets(request, actor);
+
+        // Block converted leads BEFORE mutating anything, so a bulk delete containing one
+        // converted lead fails whole rather than half-applying.
+        for (AudienceResponse response : targets) {
+            String leadUserId = response.getUserId() != null ? response.getUserId() : response.getStudentUserId();
+            if (leadUserId != null && isConverted(leadUserId)) {
+                throw new ConflictException(
+                        "This lead has already converted and cannot be deleted.");
+            }
+        }
+
+        int deleted = 0;
+        for (AudienceResponse response : targets) {
+            if (AudienceStatusEnum.INACTIVE.name().equalsIgnoreCase(response.getAudienceStatus())) {
+                continue; // already deleted — idempotent
+            }
+            response.setAudienceStatus(AudienceStatusEnum.INACTIVE.name());
+            audienceResponseRepository.save(response);
+            logLeadCurationEvent(response, actor, LeadJourneyActionType.LEAD_DELETED,
+                    "Lead deleted", "Lead removed from the CRM", request.getScope());
+            deleted++;
+        }
+        logger.info("Soft-deleted {} lead(s) (scope={}) by user {}",
+                deleted, resolveScope(request), actor.getUserId());
+        return deleted;
+    }
+
+    /**
+     * Restore soft-deleted leads — the inverse of {@link #deleteLeads}. ADMIN only.
+     *
+     * @return the number of leads actually flipped INACTIVE -> ACTIVE.
+     */
+    @Transactional
+    public int restoreLeads(LeadDeleteRequestDTO request, CustomUserDetails actor) {
+        List<AudienceResponse> targets = resolveDeleteTargets(request, actor);
+
+        int restored = 0;
+        for (AudienceResponse response : targets) {
+            if (!AudienceStatusEnum.INACTIVE.name().equalsIgnoreCase(response.getAudienceStatus())) {
+                continue; // already active — idempotent
+            }
+            response.setAudienceStatus(AudienceStatusEnum.ACTIVE.name());
+            audienceResponseRepository.save(response);
+            logLeadCurationEvent(response, actor, LeadJourneyActionType.LEAD_RESTORED,
+                    "Lead restored", "Lead restored to the CRM", request.getScope());
+            restored++;
+        }
+        logger.info("Restored {} lead(s) (scope={}) by user {}",
+                restored, resolveScope(request), actor.getUserId());
+        return restored;
+    }
+
+    /**
+     * Revive any soft-deleted lead this person holds in this campaign, on re-submission.
+     *
+     * <p>Without this, a delete is a permanent blackhole. The intake guards ask
+     * {@code existsByAudienceIdAndUserId}, which is a derived query and therefore status-blind:
+     * it matches the INACTIVE row, the guard early-returns "you have already submitted", and no
+     * insert and no un-hide ever happen. The person could resubmit forever and stay invisible.</p>
+     *
+     * <p>Callers must return immediately after this, exactly as they do today for a live
+     * duplicate — NOT fall through to the insert. Falling through would both create a duplicate
+     * row and re-run {@code autoAssignCounsellorOnIntake}, which would advance the pool's
+     * round-robin pointer and re-roll a counsellor the lead already had.</p>
+     *
+     * @return true if at least one row was revived (for logging only; the caller returns either way).
+     */
+    private boolean reactivateSoftDeletedLeads(String audienceId, String userId) {
+        if (!StringUtils.hasText(audienceId) || !StringUtils.hasText(userId)) {
+            return false;
+        }
+        List<AudienceResponse> hidden = audienceResponseRepository
+                .findByAudienceIdAndUserIdAndAudienceStatus(
+                        audienceId, userId, AudienceStatusEnum.INACTIVE.name());
+        if (CollectionUtils.isEmpty(hidden)) {
+            return false;
+        }
+        hidden.forEach(lead -> {
+            lead.setAudienceStatus(AudienceStatusEnum.ACTIVE.name());
+            audienceResponseRepository.save(lead);
+            logger.info("Reactivated soft-deleted lead {} on re-submission", lead.getId());
+        });
+        return true;
+    }
+
+    /**
+     * Resolve the rows a delete/restore acts on, enforcing the ADMIN check.
+     *
+     * <p>Under RESPONSE scope the given ids ARE the targets. Under USER scope they only identify
+     * the people, and every lead those people hold in this institute is swept in.</p>
+     */
+    private List<AudienceResponse> resolveDeleteTargets(LeadDeleteRequestDTO request, CustomUserDetails actor) {
+        if (request == null || CollectionUtils.isEmpty(request.getResponseIds())) {
+            throw new InvalidRequestException("At least one response id is required");
+        }
+        if (!StringUtils.hasText(request.getInstituteId())) {
+            throw new InvalidRequestException("instituteId is required");
+        }
+        if (!hasAdminRole(actor, request.getInstituteId())) {
+            throw new ForbiddenException("Only an admin can delete or restore a lead");
+        }
+
+        // Resolve the targets THROUGH the institute, never by raw id. The role check above only
+        // proves the caller administers the institute they named — it says nothing about who owns
+        // the rows they asked for. Fetching by id alone would let an admin pass their own
+        // institute_id (satisfying that check) with another tenant's response ids and delete them.
+        List<AudienceResponse> found = audienceResponseRepository
+                .findAllByInstituteAndIds(request.getInstituteId(), request.getResponseIds());
+        if (found.size() != new HashSet<>(request.getResponseIds()).size()) {
+            // Some id was unknown, or belongs to another institute. Same 404 either way: telling
+            // the caller which would confirm the existence of a lead they may not be entitled to see.
+            throw new ResourceNotFoundException("Lead not found");
+        }
+
+        if (!"USER".equalsIgnoreCase(resolveScope(request))) {
+            return found;
+        }
+
+        // USER scope — expand to every lead these people hold in this institute.
+        List<String> userIds = found.stream()
+                .map(r -> r.getUserId() != null ? r.getUserId() : r.getStudentUserId())
+                .filter(StringUtils::hasText)
+                .distinct()
+                .toList();
+        if (userIds.isEmpty()) {
+            return found;
+        }
+        return audienceResponseRepository.findAllByInstituteAndUserIds(request.getInstituteId(), userIds);
+    }
+
+    private String resolveScope(LeadDeleteRequestDTO request) {
+        return StringUtils.hasText(request.getScope()) ? request.getScope().toUpperCase() : "RESPONSE";
+    }
+
+    /** True when this user's lead profile is marked CONVERTED. */
+    private boolean isConverted(String leadUserId) {
+        return userLeadProfileRepository.findByUserId(leadUserId)
+                .map(p -> "CONVERTED".equalsIgnoreCase(p.getConversionStatus()))
+                .orElse(false);
+    }
+
+    /** Best-effort audit trail — a delete must be attributable, but must not fail over logging. */
+    private void logLeadCurationEvent(AudienceResponse response, CustomUserDetails actor,
+            LeadJourneyActionType actionType, String title, String description, String scope) {
+        String leadUserId = response.getUserId() != null ? response.getUserId() : response.getStudentUserId();
+        if (!StringUtils.hasText(leadUserId)) {
+            return;
+        }
+        try {
+            String campaignName = response.getAudienceId() == null ? null
+                    : audienceRepository.findById(response.getAudienceId())
+                            .map(Audience::getCampaignName).orElse(null);
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("response_id", response.getId());
+            metadata.put("scope", scope != null ? scope.toUpperCase() : "RESPONSE");
+            metadata.put("campaign_name", campaignName != null ? campaignName : "");
+            metadata.put("actor", actor.getUsername() != null ? actor.getUsername() : "");
+            timelineEventService.logJourneyEvent(
+                    "USER_LEAD_PROFILE", leadUserId, actionType,
+                    "ADMIN", actor.getUserId(), actor.getUsername(),
+                    title, description, metadata, leadUserId);
+        } catch (Exception e) {
+            logger.warn("Failed to log {} event for response {}: {}",
+                    actionType, response.getId(), e.getMessage());
+        }
+    }
+
+    /**
+     * True when the caller carries the ADMIN role FOR THIS INSTITUTE. Roles are per-institute,
+     * so this defers to the same resolver the rest of the audience feature uses rather than
+     * scanning the authorities flat — otherwise an admin of institute A could delete institute
+     * B's leads.
+     */
+    private boolean hasAdminRole(CustomUserDetails user, String instituteId) {
+        return audienceRoleAccessService.resolvedCallerRoles(user, instituteId).contains("ADMIN");
     }
 
     /**
@@ -3580,6 +3791,10 @@ public class AudienceService {
         // Duplicate submission guard
         if (audienceResponseRepository.existsByAudienceIdAndUserId(audienceId, userId)) {
             logger.warn("Duplicate submission for audienceId={}, userId={}", audienceId, userId);
+            // Revive a soft-deleted lead instead of blackholing the resubmission. This path is
+            // the Meta/Zoho/Google form webhooks, so it's the most likely to re-deliver a lead
+            // an admin has since deleted.
+            reactivateSoftDeletedLeads(audienceId, userId);
             return "You have already submitted your response for this campaign";
         }
 
@@ -4735,9 +4950,10 @@ public class AudienceService {
         Audience audience = audienceRepository.findById(request.getAudienceId())
                 .orElseThrow(() -> new VacademyException("Audience not found: " + request.getAudienceId()));
 
-        // 2. Fetch all leads for this audience (TODO: apply filters from
-        // request.getFilters())
-        List<AudienceResponse> allResponses = audienceResponseRepository.findByAudienceId(request.getAudienceId());
+        // 2. Fetch this audience's live leads (TODO: apply filters from request.getFilters()).
+        // ACTIVE-only, hardcoded: a soft-deleted lead must never receive a campaign send.
+        List<AudienceResponse> allResponses = audienceResponseRepository
+                .findActiveByAudienceId(request.getAudienceId());
         if (CollectionUtils.isEmpty(allResponses)) {
             throw new VacademyException("No leads found for audience: " + request.getAudienceId());
         }

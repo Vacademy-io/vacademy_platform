@@ -386,6 +386,8 @@ public class LiveSessionNotificationProcessor {
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
+            placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
+            placeholders.put("YEAR", getCurrentYear());
 
             // Add schedule details if available
             if (schedule != null) {
@@ -453,6 +455,8 @@ public class LiveSessionNotificationProcessor {
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
+            placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
+            placeholders.put("YEAR", getCurrentYear());
 
             // Add schedule details if available
             if (schedule != null) {
@@ -602,6 +606,8 @@ public class LiveSessionNotificationProcessor {
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
+            placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
+            placeholders.put("YEAR", getCurrentYear());
 
             // Add schedule details if available
             if (schedule != null) {
@@ -688,6 +694,8 @@ public class LiveSessionNotificationProcessor {
             placeholders.put("SESSION_TITLE", session.getTitle() != null ? session.getTitle() : "Live Class");
             placeholders.put("ACTION", LiveClassAction.RESCHEDULED.getDisplayName());
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
+            placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
+            placeholders.put("YEAR", getCurrentYear());
 
             String liveClassUrl = buildLiveClassUrl(session, session.getId(), userId);
             placeholders.put("LINK", liveClassUrl);
@@ -847,6 +855,8 @@ public class LiveSessionNotificationProcessor {
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
+            placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
+            placeholders.put("YEAR", getCurrentYear());
 
             // Add schedule details if available
             if (schedule != null) {
@@ -982,6 +992,8 @@ public class LiveSessionNotificationProcessor {
                     placeholders.put("SESSION_TITLE", sessionTitle);
                     placeholders.put("ACTION", "Attendance: " + status);
                     placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
+                    placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
+                    placeholders.put("YEAR", getCurrentYear());
                     placeholders.put("LINK", "#");
                     placeholders.put("ALL_TIMEZONE_TIMES", "");
                     placeholders.put("DATE", "");
@@ -1015,7 +1027,24 @@ public class LiveSessionNotificationProcessor {
         return "#ff6f3c";
     }
 
+    private String getInstituteName(String instituteId) {
+        try {
+            if (instituteId != null && !instituteId.trim().isEmpty()) {
+                var institute = instituteService.findById(instituteId);
+                String name = institute.getInstituteName();
+                if (name != null && !name.trim().isEmpty()) {
+                    return name;
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Failed to fetch institute name for institute " + instituteId + ": " + e.getMessage());
+        }
+        return "Your Organization";
+    }
 
+    private String getCurrentYear() {
+        return String.valueOf(java.time.Year.now().getValue());
+    }
 
 }
 

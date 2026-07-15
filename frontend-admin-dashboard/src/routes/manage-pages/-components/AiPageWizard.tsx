@@ -54,7 +54,7 @@ export const AiPageWizard = ({
 }) => {
     const instituteId = getCurrentInstituteId();
     const { instituteDetails } = useInstituteDetailsStore();
-    const { config, addPage } = useEditorStore();
+    const { config, addPage, updateGlobalSettings } = useEditorStore();
     const { toast } = useToast();
 
     const [step, setStep] = useState<Step>('brief');
@@ -63,8 +63,11 @@ export const AiPageWizard = ({
     const [useRealData, setUseRealData] = useState(true);
     const [images, setImages] = useState<AiPageImage[]>([]);
     const [pendingUrl, setPendingUrl] = useState('');
+    const [inspiration, setInspiration] = useState<string[]>([]);
+    const [pendingInsp, setPendingInsp] = useState('');
     const [directionIdx, setDirectionIdx] = useState(-1); // -1 = model's own choice
     const [result, setResult] = useState<GeneratePageResponse | null>(null);
+    const [applyTheme, setApplyTheme] = useState(true);
 
     // Compact snapshot of real offerings from institute details (no new API)
     const courseSnapshot = useMemo(() => {
@@ -103,6 +106,7 @@ export const AiPageWizard = ({
                 page_type: pageType,
                 institute_name: (instituteDetails as any)?.institute_name || undefined,
                 images,
+                inspiration_image_urls: inspiration,
                 courses: useRealData ? courseSnapshot : [],
                 terminology,
                 direction,
@@ -126,8 +130,11 @@ export const AiPageWizard = ({
         setBrief('');
         setPageType('homepage');
         setImages([]);
+        setInspiration([]);
+        setPendingInsp('');
         setDirectionIdx(-1);
         setResult(null);
+        setApplyTheme(true);
     };
 
     const handleClose = (next: boolean) => {
@@ -148,6 +155,12 @@ export const AiPageWizard = ({
         let route = result.page.route || 'ai-page';
         let n = 2;
         while (routes.has(route)) route = `${result.page.route}-${n++}`;
+
+        // Apply the matching site theme first (a page renders premium only when
+        // the theme/font/atmosphere are set) — opt-out via the review toggle.
+        if (applyTheme && result.global_settings) {
+            updateGlobalSettings(result.global_settings);
+        }
 
         const page: Page = {
             id: result.page.id,
@@ -272,6 +285,50 @@ export const AiPageWizard = ({
                                 )}
                             </div>
                         )}
+
+                        {/* Inspiration screenshots — analysed for layout/mood only */}
+                        <div className="mt-4 space-y-2 rounded-lg border border-dashed border-gray-200 p-3">
+                            <p className="text-xs font-medium text-gray-700">Screenshots of sites you like (optional)</p>
+                            <p className="text-caption text-gray-400">
+                                We read the layout &amp; style direction — never their content.
+                            </p>
+                            {inspiration.length > 0 && (
+                                <div className="flex flex-wrap gap-2">
+                                    {inspiration.map((url, i) => (
+                                        <div key={i} className="relative">
+                                            <img src={url} alt="" className="size-16 rounded object-cover" />
+                                            <button
+                                                onClick={() => setInspiration(inspiration.filter((_, j) => j !== i))}
+                                                className="absolute -right-1.5 -top-1.5 rounded-full bg-red-500 p-0.5 text-white"
+                                            >
+                                                <Trash className="size-3" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {inspiration.length < 3 && (
+                                <div className="space-y-2">
+                                    <ImageUploadField
+                                        label="Add a screenshot"
+                                        value={pendingInsp}
+                                        onChange={setPendingInsp}
+                                    />
+                                    {pendingInsp && (
+                                        <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => {
+                                                setInspiration((p) => (p.includes(pendingInsp) ? p : [...p, pendingInsp]));
+                                                setPendingInsp('');
+                                            }}
+                                        >
+                                            <Plus className="mr-1 size-4" /> Add this screenshot
+                                        </Button>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
 
@@ -325,6 +382,18 @@ export const AiPageWizard = ({
                             <p className="text-caption text-warning-600">
                                 {result.warnings.length} item(s) were auto-cleaned during validation.
                             </p>
+                        )}
+                        {result.global_settings && (
+                            <div className="flex items-center justify-between rounded-lg border border-primary-100 bg-primary-50 p-3">
+                                <div className="min-w-0">
+                                    <p className="text-xs font-medium text-primary-600">Apply the matching site theme</p>
+                                    <p className="text-caption text-gray-500">
+                                        {(result.global_settings as any)?.theme?.preset || 'default'} theme ·{' '}
+                                        {String((result.global_settings as any)?.fonts?.family || '').split(',')[0]} · sets colors &amp; fonts site-wide
+                                    </p>
+                                </div>
+                                <Switch checked={applyTheme} onCheckedChange={setApplyTheme} />
+                            </div>
                         )}
                         <p className="text-caption text-gray-400">
                             Accepting adds this page to your site as an unsaved change — review it on the

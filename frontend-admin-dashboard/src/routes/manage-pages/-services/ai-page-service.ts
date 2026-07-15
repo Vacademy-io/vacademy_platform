@@ -28,6 +28,7 @@ export interface GeneratePagePayload {
     route_slug?: string;
     institute_name?: string;
     images?: AiPageImage[];
+    inspiration_image_urls?: string[];
     courses?: AiCourseSnapshotItem[];
     terminology?: Record<string, string>;
     direction?: string;
@@ -43,6 +44,8 @@ export interface GeneratedPage {
 
 export interface GeneratePageResponse {
     page: GeneratedPage;
+    /** A matching site theme the composer chose — apply for a premium render. */
+    global_settings?: Record<string, any> | null;
     run_id: string;
     model: string;
     warnings: string[];

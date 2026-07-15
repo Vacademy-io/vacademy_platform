@@ -88,6 +88,32 @@ def _load_catalog() -> Dict[str, Any]:
         return json.load(fh)
 
 
+async def _analyze_inspiration(image_urls: List[str], db, institute_id: Optional[str], user_id: Optional[str]) -> str:
+    """Vision pass over inspiration screenshots → a short DESIGN brief (mood,
+    palette direction, serif-vs-sans display, layout patterns). Structure/mood
+    only — never content. Best-effort; returns '' on any failure."""
+    from ..services.chat_llm_client import ChatLLMClient
+    from ..services.api_key_resolver import ApiKeyResolver
+
+    client = ChatLLMClient(ApiKeyResolver(db))
+    messages = [{
+        "role": "user",
+        "content": (
+            "These are screenshots of websites an education institute admires. Give a concise DESIGN "
+            "BRIEF (NOT their content) to guide building a NEW page: overall mood (editorial / premium / "
+            "playful / techy / minimal), color-palette direction, whether the display type reads serif or "
+            "sans, and layout patterns (hero style, use of stat cards, marquee tickers, feature cards, "
+            "testimonials). 4–6 short bullet points. Do NOT transcribe or suggest copying their text, "
+            "logos, or images."
+        ),
+        "attachments": [{"type": "image", "url": u} for u in image_urls[:3]],
+    }]
+    resp = await client.chat_completion(
+        messages, temperature=0.2, max_tokens=400, institute_id=institute_id, user_id=user_id
+    )
+    return _clean_string((resp.get("content") or "").strip())
+
+
 # ─── Request / response models ──────────────────────────────────────────────
 
 class PageImage(BaseModel):
@@ -110,6 +136,9 @@ class GeneratePageRequest(BaseModel):
     route_slug: Optional[str] = None
     institute_name: Optional[str] = None
     images: List[PageImage] = Field(default_factory=list)
+    # Screenshots of sites the admin likes — analysed for LAYOUT/MOOD only
+    # (never content), producing a design brief that steers the composer.
+    inspiration_image_urls: List[str] = Field(default_factory=list)
     # Compact snapshot of real courses, passed by the admin FE so copy and
     # data-bound components reference real offerings (no new cross-service call).
     courses: List[CourseSnapshotItem] = Field(default_factory=list)
@@ -125,21 +154,126 @@ class GeneratePageRequest(BaseModel):
 
 class GeneratePageResponse(BaseModel):
     page: Dict[str, Any]
+    # A matching site theme (globalSettings) the composer chose for this page —
+    # the wizard applies it so the page renders premium, not on the plain
+    # default. None when the model omitted it.
+    global_settings: Optional[Dict[str, Any]] = None
     run_id: str
     model: str
     warnings: List[str] = Field(default_factory=list)
 
 
+# Font LABEL → CSS stack (globalSettings.fonts.family is stored as a stack).
+_FONT_STACKS: Dict[str, str] = {
+    "Inter": "Inter, sans-serif",
+    "Roboto": "Roboto, sans-serif",
+    "Open Sans": '"Open Sans", sans-serif',
+    "Poppins": "Poppins, sans-serif",
+    "Lato": "Lato, sans-serif",
+    "Montserrat": "Montserrat, sans-serif",
+    "Mulish": "Mulish, sans-serif",
+    "Figtree": "Figtree, sans-serif",
+    "Outfit": "Outfit, sans-serif",
+    "Nunito": "Nunito, sans-serif",
+    "Space Grotesk": '"Space Grotesk", sans-serif',
+    "Playfair Display": '"Playfair Display", serif',
+    "Fraunces": "Fraunces, serif",
+    "Newsreader": "Newsreader, serif",
+    "Lora": "Lora, serif",
+    "DM Serif Display": '"DM Serif Display", serif',
+}
+
+# One compact, VALID exemplar page showing the premium vocabulary in-schema —
+# few-shot so the model produces designed pages (eyebrow badges, stat chips,
+# highlighted headings, glass cards, ornaments, marquee, atmosphere theme)
+# instead of plain stacked sections on the default theme.
+_PREMIUM_EXEMPLAR = json.dumps({
+    "globalSettings": {
+        "theme": {"preset": "forest", "atmosphere": {"canvas": "mesh", "intensity": "medium"}, "headingScale": "editorial", "borderRadius": "rounded"},
+        "fonts": {"enabled": True, "family": "Playfair Display, serif"},
+        "motion": {"personality": "calm"},
+    },
+    "page": {
+        "title": "GATE & ISRO Coaching",
+        "route": "home",
+        "components": [
+            {
+                "id": "hero", "type": "heroSection", "enabled": True,
+                "props": {
+                    "layout": "split",
+                    "eyebrow": {"text": "Trivandrum's premier engineering institute", "style": "badge"},
+                    "left": {
+                        "title": "Train for GATE, ISRO, PSC — and land your career",
+                        "description": "<p>IIT & NIT alumni-led coaching across every engineering branch — from GATE and ISRO to Kerala PSC and campus placements.</p>",
+                        "buttons": [
+                            {"text": "Explore all programs", "action": "navigate", "target": "#courses", "variant": "primary"},
+                            {"text": "View branches", "action": "navigate", "target": "#branches", "variant": "secondary"},
+                        ],
+                    },
+                    "statChips": [
+                        {"value": "30K+", "label": "Students trained"},
+                        {"value": "5K+", "label": "Placements / year"},
+                        {"value": "85%", "label": "Selection rate"},
+                    ],
+                },
+                "style": {"layout": {"width": "wide"}, "minHeight": "80vh", "contentAlign": "center"},
+            },
+            {
+                "id": "ticker", "type": "logoCloud", "enabled": True,
+                "props": {"layout": "marquee", "display": "label-pill", "marqueeSpeed": "slow", "logos": [
+                    {"label": "GATE 2025 batches open"}, {"label": "ISRO / BARC post-GATE"}, {"label": "Kerala PSC technical coaching"},
+                ]},
+            },
+            {
+                "id": "why", "type": "sectionHeading", "enabled": True,
+                "props": {"eyebrow": "Why choose us", "title": "Coaching that actually converts", "highlight": {"text": "converts", "style": "gradient"}, "lead": "Outcome-first programs built around real exam patterns.", "align": "center", "size": "lg"},
+            },
+            {
+                "id": "features", "type": "featureGrid", "enabled": True,
+                "props": {"columns": 3, "style": "glass", "align": "left", "features": [
+                    {"iconName": "Trophy", "title": "Proven results", "description": "Consistent top ranks across GATE and PSC.", "chips": ["30K+ trained"]},
+                    {"iconName": "UsersThree", "title": "Alumni mentors", "description": "Taught by IIT/NIT alumni who cleared these exams."},
+                    {"iconName": "Target", "title": "Exam-pattern drills", "description": "Weekly mocks tuned to the latest paper pattern."},
+                ]},
+                "style": {"ornaments": [{"preset": "glow-orb", "x": "72%", "y": "-10%", "size": "420px", "opacity": 0.22, "blur": 40}]},
+            },
+            {"id": "courses", "type": "courseCatalog", "enabled": True, "props": {"title": "Explore our programs"}},
+            {
+                "id": "cta", "type": "ctaBanner", "enabled": True,
+                "props": {"headerText": "Ready to start?", "description": "Book a free demo class this week.", "buttonText": "Book a free demo", "buttonAction": "openLeadCollection"},
+                "style": {"layout": {"width": "full"}, "backgroundLayers": [{"type": "linear", "from": "hsl(var(--primary-500))", "to": "hsl(var(--primary-400))", "angle": 120}]},
+            },
+        ],
+    },
+}, ensure_ascii=False)
+
+
 # ─── Prompt ──────────────────────────────────────────────────────────────────
 
-def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any]) -> str:
+_PREMIUM_DOCTRINE = [
+    "Design like a senior product designer for a premium education brand — NOT a generic template. "
+    "Compare your output to award-winning cohort/coaching landing pages: confident, editorial, spacious.",
+    "ALWAYS return globalSettings that suit the brand: pick a theme preset (not 'default' unless the brand is truly neutral), "
+    "an atmosphere (soft/mesh/aurora give the page depth — flat looks cheap), an editorial headingScale for premium/story brands, "
+    "and a font that fits the mood (serif like Playfair Display/Fraunces = editorial & premium; Space Grotesk/Outfit = modern & techy; "
+    "Inter/Mulish = clean & neutral). Motion: calm or balanced.",
+    "OPEN with a rich heroSection: an eyebrow BADGE, a bold specific headline, 2 CTA buttons (primary+secondary), and 3 statChips "
+    "for proof numbers. Put it on a section shell (style.layout.width 'wide') with minHeight '80vh' + contentAlign 'center' so it fills the fold.",
+    "Use a sectionHeading with a highlight (style 'gradient' or 'underline') on ONE key phrase before each dense section — this accent is what makes pages feel designed.",
+    "Prefer rich components over plain ones: featureGrid with iconName + chips (style 'glass'/'gradient-border'/'tinted'), stepsProcess with variant 'timeline-cards', "
+    "logoCloud in 'marquee' layout as a ticker of announcements, testimonialSection with ratings, trustChip. NEVER use the plain 'banner' component for a hero.",
+    "Add tasteful depth: an ornaments glow-orb behind a feature section, a subtle backgroundLayers gradient on the CTA, atmosphere on the hero. Keep it restrained — one accent per section.",
+    "Rhythm: exactly ONE hero; alternate section surface tints; place a live courseCatalog where offerings belong; end with a CTA (and contact if a contact page). 6–12 sections.",
+    "Copy: concise, benefit-led, specific to THIS institute (use real course names + the provided stats/claims). Never lorem ipsum, never generic filler. Mirror the brief's language.",
+]
+
+
+def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration_brief: str = "") -> str:
     parts: List[str] = []
     parts.append(
-        "You are the page composer for Vacademy's catalogue website builder. "
-        "You produce ONE page as pure JSON against the component vocabulary below. "
-        "You never write HTML or CSS — only the JSON schema. Your pages must look "
-        "designed by a senior product designer: clear hierarchy, generous rhythm, "
-        "specific benefit-led copy (never lorem ipsum, never generic filler)."
+        "You are the page composer for Vacademy's catalogue website builder. You produce ONE page as "
+        "pure JSON against the component vocabulary below — you never write HTML or CSS, only the JSON "
+        "schema. Study the PREMIUM EXEMPLAR: match that level of polish and richness."
     )
     vocab = catalog["components"]
     if not req.allow_chrome:
@@ -148,7 +282,12 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any]) -> str:
         vocab = [c for c in vocab if c.get("type") not in ("header", "footer")]
     parts.append("## COMPONENT VOCABULARY (types with example props)\n" + json.dumps(vocab, ensure_ascii=False))
     parts.append("## STYLE VOCABULARY\n" + json.dumps(catalog["styleSchema"], ensure_ascii=False))
-    parts.append("## RULES\n- " + "\n- ".join(catalog["doctrine"]))
+    parts.append("## DESIGN RULES\n- " + "\n- ".join(_PREMIUM_DOCTRINE))
+    parts.append(
+        "## PREMIUM EXEMPLAR (a page at the quality bar you must hit — study its globalSettings, hero, "
+        "highlighted heading, glass feature cards, marquee ticker and CTA; do NOT copy its content)\n"
+        + _PREMIUM_EXEMPLAR
+    )
 
     if req.institute_name:
         parts.append(f"## INSTITUTE\nName: {req.institute_name}")
@@ -168,6 +307,11 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any]) -> str:
             "leave image fields empty if nothing fits)\n"
             + json.dumps([i.model_dump(exclude_none=True) for i in req.images], ensure_ascii=False)
         )
+    if inspiration_brief:
+        parts.append(
+            "## INSPIRATION (the admin shared screenshots of sites they admire — a design DIRECTION for "
+            "layout/mood/theme ONLY, never copy their text or images)\n" + inspiration_brief
+        )
     if req.direction:
         parts.append(f"## DESIGN DIRECTION\n{req.direction}")
 
@@ -177,9 +321,13 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any]) -> str:
     )
     parts.append(
         "## OUTPUT CONTRACT\nReturn ONLY a JSON object of this exact shape (no markdown, no commentary):\n"
-        '{"page": {"id": "<kebab-id>", "title": "<short page title>", "route": "<kebab-slug>", '
+        '{"globalSettings": {"theme": {"preset": "...", "atmosphere": {"canvas": "...", "intensity": "..."}, '
+        '"headingScale": "...", "borderRadius": "..."}, "fonts": {"enabled": true, "family": "<one of the '
+        'allowed font labels>"}, "motion": {"personality": "..."}}, '
+        '"page": {"id": "<kebab-id>", "title": "<short page title>", "route": "<kebab-slug>", '
         '"components": [{"id": "<kebab-id>", "type": "<type>", "enabled": true, "props": {…}, "style": {…}?}, …]}}\n'
-        "6–12 components. Do NOT include header or footer components — the site provides global ones."
+        "6–12 components. Do NOT include header or footer components — the site provides global ones. "
+        "globalSettings is REQUIRED — a plain default theme makes the page look cheap."
     )
     return "\n\n".join(parts)
 
@@ -301,13 +449,43 @@ def sanitize_component(
     return cleaned
 
 
-def _sanitize_page(raw_json: str, req: GeneratePageRequest, catalog: Dict[str, Any]) -> tuple[Dict[str, Any], List[str]]:
+def _coerce_global_settings(raw: Any) -> Optional[Dict[str, Any]]:
+    """Clamp the model's globalSettings to valid values (the theme presets,
+    atmospheres, fonts, etc. the renderers actually support). Font label OR a
+    known stack maps to a stack; anything else falls back to Inter."""
+    if not isinstance(raw, dict):
+        return None
+    theme_in = raw.get("theme") if isinstance(raw.get("theme"), dict) else {}
+    atm_in = theme_in.get("atmosphere") if isinstance(theme_in.get("atmosphere"), dict) else {}
+    fonts_in = raw.get("fonts") if isinstance(raw.get("fonts"), dict) else {}
+    motion_in = raw.get("motion") if isinstance(raw.get("motion"), dict) else {}
+
+    fam = fonts_in.get("family")
+    font_stack = _FONT_STACKS.get(fam) or (fam if fam in set(_FONT_STACKS.values()) else "Inter, sans-serif")
+
+    return {
+        "theme": {
+            "preset": theme_in.get("preset") if theme_in.get("preset") in _THEME_PRESETS else "default",
+            "atmosphere": {
+                "canvas": atm_in.get("canvas") if atm_in.get("canvas") in _ATMOSPHERES else "soft",
+                "intensity": atm_in.get("intensity") if atm_in.get("intensity") in _INTENSITIES else "subtle",
+            },
+            "headingScale": theme_in.get("headingScale") if theme_in.get("headingScale") in _HEADING_SCALES else "default",
+            "borderRadius": theme_in.get("borderRadius") if theme_in.get("borderRadius") in _RADII else "rounded",
+        },
+        "fonts": {"enabled": True, "family": font_stack},
+        "motion": {"personality": motion_in.get("personality") if motion_in.get("personality") in _MOTIONS else "calm"},
+    }
+
+
+def _sanitize_page(raw_json: str, req: GeneratePageRequest, catalog: Dict[str, Any]) -> tuple[Dict[str, Any], Optional[Dict[str, Any]], List[str]]:
     warnings: List[str] = []
     try:
         data = json.loads(raw_json)
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=502, detail=f"Model returned invalid JSON: {e}")
 
+    global_settings = _coerce_global_settings(data.get("globalSettings")) if isinstance(data, dict) else None
     page = data.get("page") if isinstance(data, dict) else None
     if page is None and isinstance(data, dict) and "components" in data:
         page = data  # model returned the page object directly
@@ -336,7 +514,7 @@ def _sanitize_page(raw_json: str, req: GeneratePageRequest, catalog: Dict[str, A
         "route": route,
         "components": components,
     }
-    return result, warnings
+    return result, global_settings, warnings
 
 
 # ─── Endpoints ───────────────────────────────────────────────────────────────
@@ -385,7 +563,18 @@ async def generate_page(
         )
 
     catalog = _load_catalog()
-    prompt = _build_prompt(body, catalog)
+    # Optional: turn inspiration screenshots into a design brief (best-effort —
+    # a vision hiccup must never fail the generation).
+    inspiration_brief = ""
+    if body.inspiration_image_urls:
+        try:
+            inspiration_brief = await _analyze_inspiration(
+                body.inspiration_image_urls, db, institute_id, actor_user_id
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[page-builder] inspiration analysis skipped: %s", e)
+
+    prompt = _build_prompt(body, catalog, inspiration_brief)
     # Billing id is minted server-side — a caller-supplied id could replay the
     # idempotency key and make repeat generations free.
     run_id = uuid.uuid4().hex
@@ -401,7 +590,7 @@ async def generate_page(
         logger.warning("[page-builder] generation failed: %s", e)
         raise HTTPException(status_code=502, detail=f"Page generation failed: {e}")
 
-    page, warnings = _sanitize_page(raw_json, body, catalog)
+    page, global_settings, warnings = _sanitize_page(raw_json, body, catalog)
 
     # Best-effort post-paid billing; idempotency key dedups retried runs.
     try:
@@ -421,7 +610,9 @@ async def generate_page(
     except Exception as e:  # noqa: BLE001
         logger.warning("[page-builder] billing skipped: %s", e)
 
-    return GeneratePageResponse(page=page, run_id=run_id, model=model_used, warnings=warnings)
+    return GeneratePageResponse(
+        page=page, global_settings=global_settings, run_id=run_id, model=model_used, warnings=warnings
+    )
 
 
 # ─── Copilot (conversational edit) ──────────────────────────────────────────

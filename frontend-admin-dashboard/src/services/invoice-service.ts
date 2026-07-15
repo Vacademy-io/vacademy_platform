@@ -8,6 +8,7 @@ import {
     POST_ADMIN_PREVIEW_INVOICE,
     POST_REJECT_INVOICE,
     GET_USER_ACCOUNT_SUMMARY,
+    GET_USER_ACCOUNT_LEDGER,
     POST_MARK_INVOICE_PAID_MANUAL,
 } from '@/constants/urls';
 
@@ -50,6 +51,28 @@ export interface InvoiceDTO {
     payment_link?: string | null;
 }
 
+export interface UserAccountLedgerEntryDTO {
+    id: string;
+    event_type: string; // DEBIT_ACCRUAL | CREDIT_PAYMENT | CREDIT_WAIVER | CREDIT_ADJUSTMENT | DEBIT_PENALTY
+    amount: number;
+    currency: string;
+    due_date: string | null;
+    source_type: string | null;
+    source_id: string | null;
+    invoice_id: string | null;
+    reference_id: string | null;
+    remarks: string | null;
+    created_at: string;
+}
+
+export interface LedgerPageResponse {
+    content: UserAccountLedgerEntryDTO[];
+    totalElements: number;
+    totalPages: number;
+    number: number;
+    last: boolean;
+}
+
 export interface UserAccountSummaryDTO {
     user_id: string;
     institute_id: string;
@@ -84,6 +107,19 @@ export async function fetchUserAccountSummary(
     const response = await authenticatedAxiosInstance.get<UserAccountSummaryDTO>(
         GET_USER_ACCOUNT_SUMMARY(userId),
         { params: { instituteId } }
+    );
+    return response.data;
+}
+
+export async function fetchUserAccountLedger(
+    userId: string,
+    instituteId: string,
+    page = 0,
+    size = 20
+): Promise<LedgerPageResponse> {
+    const response = await authenticatedAxiosInstance.get<LedgerPageResponse>(
+        GET_USER_ACCOUNT_LEDGER(userId),
+        { params: { instituteId, page, size } }
     );
     return response.data;
 }

@@ -209,6 +209,45 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
         return psId;
     };
 
+    // Effective account summary — ledger data when available, client-side fallback otherwise.
+    // Computed here (component level) so it's accessible both above the tabs and inside them.
+    const effectiveAdminSummary: UserAccountSummaryDTO | null = (() => {
+        const hasLedger =
+            adminAccountSummary
+            && (adminAccountSummary.total_accrued > 0 || adminAccountSummary.total_paid > 0);
+        if (hasLedger) return adminAccountSummary!;
+        // Fallback: derive totals from the invoices list (covers old invoices / pre-migration installs)
+        if (invoices.length === 0) return null;
+        const currency = (invoices[0]?.currency as string | undefined) || 'INR';
+        const totalAccrued = invoices.reduce(
+            (s, inv) => s + ((inv.total_amount ?? inv.totalAmount ?? 0) as number), 0
+        );
+        const totalPaid = invoices
+            .filter((inv) => String(inv.status || '').toUpperCase() === 'PAID')
+            .reduce((s, inv) => s + ((inv.total_amount ?? inv.totalAmount ?? 0) as number), 0);
+        const balance = Math.max(0, totalAccrued - totalPaid);
+        const now = Date.now();
+        const overdue = invoices
+            .filter((inv) => {
+                const st = String(inv.status || '').toUpperCase();
+                const isPending = st === 'PENDING_PAYMENT' || st === 'GENERATED' || st === 'SENT';
+                const pastDue = inv.due_date
+                    ? new Date(String(inv.due_date)).getTime() < now
+                    : false;
+                return isPending && pastDue;
+            })
+            .reduce((s, inv) => s + ((inv.total_amount ?? inv.totalAmount ?? 0) as number), 0);
+        return {
+            user_id: adminUserId || '',
+            institute_id: instituteId || '',
+            total_accrued: totalAccrued,
+            total_paid: totalPaid,
+            balance,
+            overdue,
+            currency,
+        } as UserAccountSummaryDTO;
+    })();
+
     const [showLedger, setShowLedger] = useState(false);
     const [activeTab, setActiveTab] = useState<'admin' | 'courses' | 'learners' | 'invoices' | 'team'>('admin');
     const [drawer, setDrawer] = useState<{
@@ -438,6 +477,18 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                 )}
             </div>
 
+            {/* Account Summary — always visible above tabs so it's reachable from any tab.
+                Ledger data is authoritative; falls back to client-side totals from invoices. */}
+            {effectiveAdminSummary && (
+                <div className="rounded-lg border bg-white p-4">
+                    <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        <Wallet className="h-3.5 w-3.5" />
+                        Account Summary
+                    </h4>
+                    <AccountSummaryGrid summary={effectiveAdminSummary} />
+                </div>
+            )}
+
             {/* Horizontal tabs — each tab renders its own dataset lazily on click. */}
             <Tabs
                 value={activeTab}
@@ -622,18 +673,6 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                         )}
                     </section>
 
-                    {/* Ledger summary — total accrued / paid / balance / overdue for the
-                        admin's account. Only rendered when the ledger has data (first
-                        payment or invoice will populate it). */}
-                    {adminAccountSummary && (adminAccountSummary.total_accrued > 0 || adminAccountSummary.total_paid > 0) && (
-                        <div className="mt-3 rounded-lg border bg-white p-4">
-                            <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                                <Wallet className="h-3.5 w-3.5" />
-                                Account Summary
-                            </h4>
-                            <AccountSummaryGrid summary={adminAccountSummary} />
-                        </div>
-                    )}
 
                     {/* Direct "Add admin user" form — CPO installment editor + discount
                         card live in this section. Lets the institute admin enroll the

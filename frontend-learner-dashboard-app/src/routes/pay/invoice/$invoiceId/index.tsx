@@ -203,7 +203,12 @@ function InvoicePaymentPage() {
   };
 
   const handlePaymentReady = () => {
-    setPaymentInitiated(true);
+    // Navigate to the polling confirmation page; source=invoice skips gateway-specific status checks
+    if (pendingOrderId.current && invoice?.institute_id) {
+      window.location.href = `/payment-result?orderId=${pendingOrderId.current}&source=invoice&instituteId=${invoice.institute_id}`;
+    } else {
+      setPaymentInitiated(true);
+    }
   };
 
   // ── Shared outer wrapper ───────────────────────────────────────────────────

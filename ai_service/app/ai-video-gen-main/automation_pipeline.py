@@ -5729,6 +5729,44 @@ class VideoGenerationPipeline:
                     # branch then just consumes the pre-generated clip URLs.
                     if getattr(self, "_dialogue_scenes_enabled", False):
                         try:
+                            # RESUME SAFETY: _prepare_dialogue_scenes (which sets
+                            # the _dialogue_self_voiced / _dialogue_silent /
+                            # _dialogue_clip_s prep flags) runs inside
+                            # _run_per_shot_tts_v2, gated on deferred_to_html —
+                            # NEVER set on a resume leg (do_tts False). After the
+                            # cast gate resumes, the shots reload from
+                            # shot_plan.json without those runtime flags, so the
+                            # film gate below skips every clip and EVERY dialogue
+                            # scene demotes to stock (observed live: all Omni
+                            # clips → IMAGE_HERO). Re-run the prep here when any
+                            # dialogue shot is missing it — idempotent (Omni /
+                            # silent prep re-derives from the persisted
+                            # audio_policy / dialogue / character_names and skips
+                            # already-prepared shots), so the cast-gate resume
+                            # actually films.
+                            _dlg = [
+                                s for s in _director_plan["shots"]
+                                if isinstance(s, dict)
+                                and str(s.get("shot_type") or "").upper() == "DIALOGUE_SCENE"
+                            ]
+                            if _dlg and any(
+                                not (s.get("_dialogue_audio_url")
+                                     or s.get("_dialogue_self_voiced")
+                                     or s.get("_dialogue_silent"))
+                                for s in _dlg
+                            ):
+                                print(
+                                    f"   ♻️ Resume: re-preparing {len(_dlg)} dialogue "
+                                    f"scene(s) — prep flags absent (would have demoted to stock)"
+                                )
+                                try:
+                                    self._prepare_dialogue_scenes(
+                                        _director_plan["shots"], run_dir,
+                                        language=language, voice_gender=voice_gender,
+                                        tts_provider=tts_provider, voice_id=voice_id,
+                                    )
+                                except Exception as _rp_err:
+                                    print(f"   ⚠️ resume dialogue re-prep failed: {_rp_err}")
                             self._emit_progress({
                                 "type": "sub_stage", "sub_stage": "dialogue_clips",
                                 "message": "Filming dialogue scenes…",

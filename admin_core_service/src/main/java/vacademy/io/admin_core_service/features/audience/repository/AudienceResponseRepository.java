@@ -24,9 +24,28 @@ import java.util.Optional;
 public interface AudienceResponseRepository extends JpaRepository<AudienceResponse, String> {
 
         /**
-         * Find all leads for a specific campaign
+         * Find all leads for a specific campaign, INCLUDING soft-deleted ones.
+         *
+         * <p>Use {@link #findActiveByAudienceId(String)} for anything that contacts a lead or
+         * shows it to a user. This raw variant is for whole-campaign maintenance (e.g. score
+         * recalculation), where a deleted lead's derived data should still be kept correct in
+         * case it is restored.</p>
          */
         List<AudienceResponse> findByAudienceId(String audienceId);
+
+        /**
+         * Live leads for a campaign — soft-deleted rows excluded.
+         *
+         * <p>This is the safe default for send/dial recipient selection. Deliberately has no
+         * "include deleted" parameter: there is no legitimate reason to blast a lead an admin
+         * has deleted, so the option should not exist.</p>
+         */
+        @Query("""
+                            SELECT ar FROM AudienceResponse ar
+                            WHERE ar.audienceId = :audienceId
+                            AND ar.audienceStatus = 'ACTIVE'
+                        """)
+        List<AudienceResponse> findActiveByAudienceId(@Param("audienceId") String audienceId);
 
         /**
          * Lead lookup by phone number for telephony attribution: the most recent
@@ -98,13 +117,13 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         /**
          * Find all converted leads (with user_id)
          */
-        @Query("SELECT ar FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NOT NULL AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')")
+        @Query("SELECT ar FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NOT NULL AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT') AND ar.audienceStatus = 'ACTIVE'")
         List<AudienceResponse> findConvertedLeads(@Param("audienceId") String audienceId);
 
         /**
          * Find all unconverted leads (without user_id)
          */
-        @Query("SELECT ar FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NULL AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')")
+        @Query("SELECT ar FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NULL AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT') AND ar.audienceStatus = 'ACTIVE'")
         List<AudienceResponse> findUnconvertedLeads(@Param("audienceId") String audienceId);
 
         /**
@@ -178,6 +197,25 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 OR (
                                   :conversionStatusFilter = 'ONLY_CONVERTED'
                                   AND ulp.conversion_status = 'CONVERTED'
+                                )
+                              )
+                              -- Soft-delete filter. Mirrors conversionStatusFilter above:
+                              -- EXCLUDE_DELETED (default) / ONLY_DELETED / ALL, so the UI can
+                              -- offer a "show deleted leads" view without a second query.
+                              -- Kept as its OWN unconditional AND rather than folded into the
+                              -- overall_status OR block above: that block disables its own
+                              -- OPTED_OUT guard whenever :overallStatusStr is set, and a
+                              -- soft-deleted lead must stay hidden regardless of what else the
+                              -- caller filters by.
+                              AND (
+                                COALESCE(:audienceStatusFilter, 'EXCLUDE_DELETED') = 'ALL'
+                                OR (
+                                  COALESCE(:audienceStatusFilter, 'EXCLUDE_DELETED') = 'EXCLUDE_DELETED'
+                                  AND ar.audience_status = 'ACTIVE'
+                                )
+                                OR (
+                                  :audienceStatusFilter = 'ONLY_DELETED'
+                                  AND ar.audience_status = 'INACTIVE'
                                 )
                               )
                               -- SLA-state filter. Aligned with the row-level badges + the new
@@ -318,6 +356,25 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                   AND ulp.conversion_status = 'CONVERTED'
                                 )
                               )
+                              -- Soft-delete filter. Mirrors conversionStatusFilter above:
+                              -- EXCLUDE_DELETED (default) / ONLY_DELETED / ALL, so the UI can
+                              -- offer a "show deleted leads" view without a second query.
+                              -- Kept as its OWN unconditional AND rather than folded into the
+                              -- overall_status OR block above: that block disables its own
+                              -- OPTED_OUT guard whenever :overallStatusStr is set, and a
+                              -- soft-deleted lead must stay hidden regardless of what else the
+                              -- caller filters by.
+                              AND (
+                                COALESCE(:audienceStatusFilter, 'EXCLUDE_DELETED') = 'ALL'
+                                OR (
+                                  COALESCE(:audienceStatusFilter, 'EXCLUDE_DELETED') = 'EXCLUDE_DELETED'
+                                  AND ar.audience_status = 'ACTIVE'
+                                )
+                                OR (
+                                  :audienceStatusFilter = 'ONLY_DELETED'
+                                  AND ar.audience_status = 'INACTIVE'
+                                )
+                              )
                               -- SLA-state filter. Aligned with the row-level badges + the new
                               -- column semantics:
                               --   * Reach-out buckets use submitted_at + tatHours AND a NOT EXISTS
@@ -403,6 +460,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("overallStatusStr") String overallStatusStr,
                         @Param("customFieldMatchedIdsCsv") String customFieldMatchedIdsCsv,
                         @Param("conversionStatusFilter") String conversionStatusFilter,
+                        @Param("audienceStatusFilter") String audienceStatusFilter,
                         @Param("slaFilter") String slaFilter,
                         @Param("tatHours") Integer tatHours,
                         @Param("sortBy") String sortBy,
@@ -417,6 +475,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             JOIN Audience a ON a.id = ar.audienceId
                             WHERE a.instituteId = :instituteId
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND ar.audienceStatus = 'ACTIVE'
                             ORDER BY ar.submittedAt DESC
                         """)
         Page<AudienceResponse> findAllLeadsForInstitute(
@@ -487,6 +546,25 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 OR (
                                   :conversionStatusFilter = 'ONLY_CONVERTED'
                                   AND ulp.conversion_status = 'CONVERTED'
+                                )
+                              )
+                              -- Soft-delete filter. Mirrors conversionStatusFilter above:
+                              -- EXCLUDE_DELETED (default) / ONLY_DELETED / ALL, so the UI can
+                              -- offer a "show deleted leads" view without a second query.
+                              -- Kept as its OWN unconditional AND rather than folded into the
+                              -- overall_status OR block above: that block disables its own
+                              -- OPTED_OUT guard whenever :overallStatusStr is set, and a
+                              -- soft-deleted lead must stay hidden regardless of what else the
+                              -- caller filters by.
+                              AND (
+                                COALESCE(:audienceStatusFilter, 'EXCLUDE_DELETED') = 'ALL'
+                                OR (
+                                  COALESCE(:audienceStatusFilter, 'EXCLUDE_DELETED') = 'EXCLUDE_DELETED'
+                                  AND ar.audience_status = 'ACTIVE'
+                                )
+                                OR (
+                                  :audienceStatusFilter = 'ONLY_DELETED'
+                                  AND ar.audience_status = 'INACTIVE'
                                 )
                               )
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
@@ -614,6 +692,25 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                   AND ulp.conversion_status = 'CONVERTED'
                                 )
                               )
+                              -- Soft-delete filter. Mirrors conversionStatusFilter above:
+                              -- EXCLUDE_DELETED (default) / ONLY_DELETED / ALL, so the UI can
+                              -- offer a "show deleted leads" view without a second query.
+                              -- Kept as its OWN unconditional AND rather than folded into the
+                              -- overall_status OR block above: that block disables its own
+                              -- OPTED_OUT guard whenever :overallStatusStr is set, and a
+                              -- soft-deleted lead must stay hidden regardless of what else the
+                              -- caller filters by.
+                              AND (
+                                COALESCE(:audienceStatusFilter, 'EXCLUDE_DELETED') = 'ALL'
+                                OR (
+                                  COALESCE(:audienceStatusFilter, 'EXCLUDE_DELETED') = 'EXCLUDE_DELETED'
+                                  AND ar.audience_status = 'ACTIVE'
+                                )
+                                OR (
+                                  :audienceStatusFilter = 'ONLY_DELETED'
+                                  AND ar.audience_status = 'INACTIVE'
+                                )
+                              )
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
                               -- SLA-state filter. Aligned with the row-level badges + the new
                               -- column semantics:
@@ -694,6 +791,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("isUnassigned") Boolean isUnassigned,
                         @Param("allowedAudienceIdsCsv") String allowedAudienceIdsCsv,
                         @Param("conversionStatusFilter") String conversionStatusFilter,
+                        @Param("audienceStatusFilter") String audienceStatusFilter,
                         @Param("slaFilter") String slaFilter,
                         @Param("tatHours") Integer tatHours,
                         @Param("customFieldMatchedIdsCsv") String customFieldMatchedIdsCsv,
@@ -764,6 +862,15 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         boolean existsByAudienceIdAndUserId(String audienceId, String userId);
 
         /**
+         * This person's leads in this campaign with the given audience_status. Backs
+         * reactivate-on-resubmit: {@link #existsByAudienceIdAndUserId} above is derived and so
+         * cannot see status, which is exactly why a soft-deleted lead would otherwise trip the
+         * duplicate guard forever and never come back.
+         */
+        List<AudienceResponse> findByAudienceIdAndUserIdAndAudienceStatus(
+                        String audienceId, String userId, String audienceStatus);
+
+        /**
          * Check if a child (student) has already been submitted for this audience campaign.
          * Used for parent+child flows where the same parent can submit for multiple children.
          */
@@ -779,6 +886,49 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          * Used for fetching all applications related to a parent/child
          */
         List<AudienceResponse> findByUserIdOrStudentUserId(String userId, String studentUserId);
+
+        /**
+         * These specific leads, but ONLY the ones that belong to this institute.
+         *
+         * <p>Security boundary for delete/restore: the caller supplies both the response ids and
+         * the institute the ADMIN check is made against, so those two MUST be reconciled against
+         * the data — otherwise an admin of institute A can pass their own institute_id (clearing
+         * the role check) together with institute B's response ids and mutate another tenant's
+         * leads. Resolving the targets through the institute join makes that impossible by
+         * construction rather than by a follow-up check someone can forget.</p>
+         *
+         * <p>The join is INNER, matching the leads-list queries: a response with no audience
+         * (admission/application rows) can't be attributed to an institute here and isn't listable
+         * either, so it is correctly not deletable through this endpoint.</p>
+         *
+         * <p>Does not filter audience_status — delete needs the ACTIVE rows and restore needs the
+         * INACTIVE ones.</p>
+         */
+        @Query("""
+                            SELECT ar FROM AudienceResponse ar
+                            JOIN Audience a ON a.id = ar.audienceId
+                            WHERE a.instituteId = :instituteId
+                            AND ar.id IN :responseIds
+                        """)
+        List<AudienceResponse> findAllByInstituteAndIds(
+                        @Param("instituteId") String instituteId,
+                        @Param("responseIds") List<String> responseIds);
+
+        /**
+         * Every lead belonging to these users within one institute, whatever its
+         * audience_status. Backs the USER-scoped soft-delete ("remove the person
+         * entirely") and its restore counterpart, so it must NOT filter on
+         * audience_status: delete needs the ACTIVE rows, restore needs the INACTIVE ones.
+         */
+        @Query("""
+                            SELECT ar FROM AudienceResponse ar
+                            JOIN Audience a ON a.id = ar.audienceId
+                            WHERE a.instituteId = :instituteId
+                            AND ar.userId IN :userIds
+                        """)
+        List<AudienceResponse> findAllByInstituteAndUserIds(
+                        @Param("instituteId") String instituteId,
+                        @Param("userIds") List<String> userIds);
 
         /**
          * Find audience response by parent mobile number for pre-fill lookup
@@ -806,7 +956,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          */
         @Query("SELECT DISTINCT ar.userId FROM AudienceResponse ar " +
                         "WHERE ar.audienceId IN :audienceIds AND ar.userId IS NOT NULL " +
-                        "AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')")
+                        "AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT') AND ar.audienceStatus = 'ACTIVE'")
         List<String> findDistinctUserIdsByAudienceIds(@Param("audienceIds") List<String> audienceIds);
 
         /**
@@ -822,7 +972,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          */
         @Query("SELECT DISTINCT ar.userId FROM AudienceResponse ar " +
                         "WHERE ar.audienceId IN :audienceIds AND ar.userId IN :userIds AND ar.userId IS NOT NULL " +
-                        "AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')")
+                        "AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT') AND ar.audienceStatus = 'ACTIVE'")
         List<String> findDistinctUserIdsByAudienceIdsAndUserIds(
                         @Param("audienceIds") List<String> audienceIds,
                         @Param("userIds") List<String> userIds);
@@ -834,6 +984,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             AND ar.audienceId = :audienceId
                             AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND ar.audienceStatus = 'ACTIVE'
                         """)
         List<AudienceResponse> findLeadsByAudienceAndDateRange(
                         @Param("instituteId") String instituteId,
@@ -855,6 +1006,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
                             AND ar.conversionStatus = :conversionStatus
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND ar.audienceStatus = 'ACTIVE'
                         """)
         List<AudienceResponse> findLeadsByAudienceDateRangeAndConversionStatus(
                         @Param("instituteId") String instituteId,
@@ -874,6 +1026,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             AND ar.userId IS NOT NULL
                             AND ar.parentMobile IS NOT NULL
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND ar.audienceStatus = 'ACTIVE'
                         """)
         List<AudienceResponse> findActiveLeadsByAudienceIds(
                         @Param("audienceIds") List<String> audienceIds);
@@ -889,6 +1042,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             WHERE a.instituteId = :instituteId
                             AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND ar.audienceStatus = 'ACTIVE'
                         """)
         List<AudienceResponse> findLeadsByInstituteAndDateRange(
                         @Param("instituteId") String instituteId,
@@ -1065,6 +1219,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
                             WHERE (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            AND ar.audience_status = 'ACTIVE'
                         """, nativeQuery = true)
         List<String> findInstituteIdsWithActiveLeads();
 
@@ -1109,6 +1264,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              AND ar.audience_status = 'ACTIVE'
                               AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
                               AND COALESCE(lu.user_id, ulp.assigned_counselor_id) IS NOT NULL
                         """, nativeQuery = true)

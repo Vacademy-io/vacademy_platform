@@ -91,6 +91,11 @@ public class WorkbenchLeadRepository {
             "    ORDER BY ar.created_at DESC LIMIT 1" +
             ") latest_ar ON true " +
             "WHERE ulp.institute_id = ? " +
+            // Hide soft-deleted leads: the profile is one row per PERSON while the delete is
+            // per response, so a person stays visible until every lead they hold is deleted.
+            "  AND EXISTS (SELECT 1 FROM audience_response ar_live " +
+            "              WHERE ar_live.user_id = ulp.user_id " +
+            "                AND ar_live.audience_status = 'ACTIVE') " +
             "  AND ulp.assigned_counselor_id IN (" + placeholders + ") " +
             (conversionStatus != null ? "  AND ulp.conversion_status = ? " : "") +
             "ORDER BY ta.assigned_at DESC NULLS LAST " +
@@ -122,6 +127,11 @@ public class WorkbenchLeadRepository {
         String placeholders = counsellorIds.stream().map(c -> "?").collect(Collectors.joining(","));
         String sql = "SELECT COUNT(*) FROM user_lead_profile ulp " +
                      "WHERE ulp.institute_id = ? " +
+                     // Hide soft-deleted leads: the profile is one row per PERSON while the delete is
+                     // per response, so a person stays visible until every lead they hold is deleted.
+                     "  AND EXISTS (SELECT 1 FROM audience_response ar_live " +
+                     "              WHERE ar_live.user_id = ulp.user_id " +
+                     "                AND ar_live.audience_status = 'ACTIVE') " +
                      "  AND ulp.assigned_counselor_id IN (" + placeholders + ") " +
                      (conversionStatus != null ? "  AND ulp.conversion_status = ? " : "");
         Object[] args = buildCountArgs(instituteId, counsellorIds, conversionStatus);
@@ -138,6 +148,11 @@ public class WorkbenchLeadRepository {
         Long n = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM user_lead_profile ulp " +
                         "WHERE ulp.institute_id = ? " +
+                        // Hide soft-deleted leads: the profile is one row per PERSON while the delete is
+                        // per response, so a person stays visible until every lead they hold is deleted.
+                        "  AND EXISTS (SELECT 1 FROM audience_response ar_live " +
+                        "              WHERE ar_live.user_id = ulp.user_id " +
+                        "                AND ar_live.audience_status = 'ACTIVE') " +
                         "  AND ulp.assigned_counselor_id = ? " +
                         "  AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')",
                 Long.class, instituteId, counsellorUserId);
@@ -184,6 +199,11 @@ public class WorkbenchLeadRepository {
             "      AND te.action_type = 'COUNSELOR_ASSIGNED' " +
             ") ta ON true " +
             "WHERE ulp.institute_id = ? " +
+            // Hide soft-deleted leads: the profile is one row per PERSON while the delete is
+            // per response, so a person stays visible until every lead they hold is deleted.
+            "  AND EXISTS (SELECT 1 FROM audience_response ar_live " +
+            "              WHERE ar_live.user_id = ulp.user_id " +
+            "                AND ar_live.audience_status = 'ACTIVE') " +
             "  AND ulp.assigned_counselor_id = ? " +
             "  AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED') " +
             "ORDER BY ta.assigned_at DESC NULLS LAST " +

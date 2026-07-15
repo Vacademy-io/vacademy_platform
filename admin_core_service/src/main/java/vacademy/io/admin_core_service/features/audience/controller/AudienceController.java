@@ -167,10 +167,30 @@ public class AudienceController {
                 audienceService.getLeadCustomFieldValues(instituteId, customFieldId, search, pageNo, pageSize));
     }
 
-    @DeleteMapping("/lead/{responseId}")
-    public ResponseEntity<String> deleteLead(@PathVariable String responseId) {
-        audienceService.deleteLead(responseId);
-        return ResponseEntity.ok("Lead deleted successfully");
+    /**
+     * Soft-delete one or more leads. Replaces the previous
+     * {@code DELETE /lead/{responseId}}, which hard-deleted the row with no authorization
+     * check and was never wired to any UI.
+     *
+     * <p>Body-based because a delete needs three things a path param can't carry: the id LIST
+     * (bulk), the {@code scope} (this response vs the whole person), and the
+     * {@code institute_id} the ADMIN check is made against.</p>
+     */
+    @PostMapping("/leads/delete")
+    public ResponseEntity<Map<String, Object>> deleteLeads(
+            @RequestBody LeadDeleteRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        int deleted = audienceService.deleteLeads(request, user);
+        return ResponseEntity.ok(Map.of("deleted", deleted));
+    }
+
+    /** Restore soft-deleted leads — the inverse of {@link #deleteLeads}. ADMIN only. */
+    @PostMapping("/leads/restore")
+    public ResponseEntity<Map<String, Object>> restoreLeads(
+            @RequestBody LeadDeleteRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        int restored = audienceService.restoreLeads(request, user);
+        return ResponseEntity.ok(Map.of("restored", restored));
     }
 
     /**

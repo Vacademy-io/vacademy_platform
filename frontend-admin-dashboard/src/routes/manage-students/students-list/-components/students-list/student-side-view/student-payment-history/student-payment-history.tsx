@@ -5,10 +5,11 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import {
     fetchUserInvoices,
     fetchUserAccountSummary,
+    fetchUserAccountLedger,
     markInvoicePaidManual,
     getInvoiceDownloadUrl,
 } from '@/services/invoice-service';
-import type { InvoiceDTO, UserAccountSummaryDTO } from '@/services/invoice-service';
+import type { InvoiceDTO, UserAccountSummaryDTO, UserAccountLedgerEntryDTO } from '@/services/invoice-service';
 import {
     FileText,
     Wallet,
@@ -19,6 +20,9 @@ import {
     Receipt,
     Copy,
     Check,
+    ClockCounterClockwise,
+    ArrowCircleUp,
+    ArrowCircleDown,
 } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { CpoInstallmentsEditor } from './cpo-installments-editor';
@@ -390,6 +394,118 @@ const InvoicesList = ({
     );
 };
 
+const LEDGER_EVENT_META: Record<string, { label: string; cls: string; isCredit: boolean }> = {
+    DEBIT_ACCRUAL:     { label: 'Invoice raised',   cls: 'bg-red-50 text-red-700 border-red-200',         isCredit: false },
+    CREDIT_PAYMENT:    { label: 'Payment received',  cls: 'bg-green-50 text-green-700 border-green-200',   isCredit: true  },
+    CREDIT_WAIVER:     { label: 'Waiver',            cls: 'bg-blue-50 text-blue-700 border-blue-200',      isCredit: true  },
+    CREDIT_ADJUSTMENT: { label: 'Adjustment',        cls: 'bg-amber-50 text-amber-700 border-amber-200',   isCredit: true  },
+    DEBIT_PENALTY:     { label: 'Penalty',           cls: 'bg-orange-50 text-orange-700 border-orange-200',isCredit: false },
+};
+
+const TransactionHistory = ({
+    userId,
+    instituteId,
+}: {
+    userId: string;
+    instituteId: string;
+}) => {
+    const [page, setPage] = useState(0);
+    const PAGE_SIZE = 10;
+
+    const { data, isLoading } = useQuery({
+        queryKey: ['user-account-ledger', userId, instituteId, page],
+        queryFn: () => fetchUserAccountLedger(userId, instituteId, page, PAGE_SIZE),
+        staleTime: 60000,
+        enabled: !!userId && !!instituteId,
+    });
+
+    const entries: UserAccountLedgerEntryDTO[] = data?.content ?? [];
+    const totalPages = data?.totalPages ?? 1;
+
+    if (isLoading && entries.length === 0) {
+        return (
+            <div className="flex items-center justify-center p-4">
+                <div className="size-4 animate-spin rounded-full border-2 border-muted-foreground border-t-foreground" />
+                <span className="ml-2 text-xs text-muted-foreground">Loading transactions…</span>
+            </div>
+        );
+    }
+
+    if (!isLoading && entries.length === 0) {
+        return (
+            <p className="text-xs text-muted-foreground">No transaction history yet.</p>
+        );
+    }
+
+    return (
+        <div className="space-y-2">
+            <ul className="divide-y divide-neutral-100 overflow-hidden rounded-lg border border-neutral-200">
+                {entries.map((entry) => {
+                    const meta = LEDGER_EVENT_META[entry.event_type] ?? {
+                        label: entry.event_type,
+                        cls: 'bg-gray-50 text-gray-600 border-gray-200',
+                        isCredit: false,
+                    };
+                    const sym = entry.currency === 'USD' ? '$' : entry.currency === 'EUR' ? '€' : '₹';
+                    const amtStr = `${sym}${Number(entry.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                    return (
+                        <li key={entry.id} className="flex items-start gap-2.5 px-3 py-2 hover:bg-neutral-50">
+                            <span className="mt-0.5 shrink-0">
+                                {meta.isCredit
+                                    ? <ArrowCircleUp className="size-4 text-green-600" weight="duotone" />
+                                    : <ArrowCircleDown className="size-4 text-red-500" weight="duotone" />
+                                }
+                            </span>
+                            <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}>
+                                        {meta.label}
+                                    </span>
+                                    {entry.remarks && (
+                                        <span className="truncate text-[11px] text-muted-foreground" title={entry.remarks}>
+                                            {entry.remarks}
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                    {formatDate(entry.created_at)}
+                                    {entry.source_type && <> · {entry.source_type.replace(/_/g, ' ')}</>}
+                                </p>
+                            </div>
+                            <span className={`shrink-0 text-sm font-semibold tabular-nums ${meta.isCredit ? 'text-green-700' : 'text-red-600'}`}>
+                                {meta.isCredit ? '+' : '-'}{amtStr}
+                            </span>
+                        </li>
+                    );
+                })}
+            </ul>
+            {totalPages > 1 && (
+                <div className="flex items-center justify-between px-1">
+                    <span className="text-xs text-muted-foreground">
+                        Page {page + 1} of {totalPages}
+                    </span>
+                    <div className="flex gap-1">
+                        <button
+                            onClick={() => setPage((p) => Math.max(0, p - 1))}
+                            disabled={page === 0}
+                            className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-40"
+                        >
+                            <CaretLeft className="size-3.5" />
+                        </button>
+                        <button
+                            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                            disabled={page >= totalPages - 1}
+                            className="rounded p-1 text-neutral-500 hover:bg-neutral-100 disabled:opacity-40"
+                        >
+                            <CaretRight className="size-3.5" />
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 export const StudentPaymentHistory = () => {
     const { selectedStudent } = useStudentSidebar();
     const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
@@ -536,11 +652,17 @@ export const StudentPaymentHistory = () => {
                 )}
             </ProfileSectionCard>
 
-            {/* Payment Logs table removed per handoff PaymentHistorySection —
-                Invoices already shows the per-installment lifecycle (GENERATED
-                → SENT → PAID), so the raw payment-log audit trail is forensic
-                detail rather than counsellor surface. CpoInstallmentsEditor
-                continues to cover plan adjustments above. */}
+            {/* Transaction History — append-only ledger entries from user_account_ledger.
+                Shows every debit (invoice raised, penalty) and credit (payment, waiver,
+                adjustment) with sign-coded colours. Newest-first, server-paginated. */}
+            {selectedStudent?.user_id && instituteDetails?.id && (
+                <ProfileSectionCard icon={ClockCounterClockwise} heading="Transaction History">
+                    <TransactionHistory
+                        userId={selectedStudent.user_id}
+                        instituteId={instituteDetails.id}
+                    />
+                </ProfileSectionCard>
+            )}
         </div>
     );
 };

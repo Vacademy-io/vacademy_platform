@@ -23,9 +23,11 @@ import {
     getInvoiceDownloadUrl,
     fetchInvoiceById,
     fetchUserAccountSummary,
+    fetchUserAccountLedger,
     rejectInvoice,
     type InvoiceDTO,
     type UserAccountSummaryDTO,
+    type UserAccountLedgerEntryDTO,
 } from '@/services/invoice-service';
 import { getPaymentOptions } from '@/services/payment-options';
 import type { PaymentOptionApi } from '@/types/payment';
@@ -49,7 +51,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, Copy, CopySimple, Plus, XCircle } from '@phosphor-icons/react';
+import { Bell, Copy, CopySimple, Plus, XCircle, ArrowCircleUp, ArrowCircleDown, ClockCounterClockwise } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useState } from 'react';
 import { MyButton } from '@/components/design-system/button';
@@ -247,6 +249,17 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
             currency,
         } as UserAccountSummaryDTO;
     })();
+
+    const [ledgerPage, setLedgerPage] = useState(0);
+    const LEDGER_PAGE_SIZE = 10;
+    const { data: ledgerData } = useQuery({
+        queryKey: ['sub-org-admin-ledger', adminUserId, instituteId, ledgerPage],
+        queryFn: () => fetchUserAccountLedger(adminUserId!, instituteId!, ledgerPage, LEDGER_PAGE_SIZE),
+        enabled: !!adminUserId && !!instituteId,
+        staleTime: 60000,
+    });
+    const ledgerEntries: UserAccountLedgerEntryDTO[] = ledgerData?.content ?? [];
+    const ledgerTotalPages = ledgerData?.totalPages ?? 1;
 
     const [showLedger, setShowLedger] = useState(false);
     const [activeTab, setActiveTab] = useState<'admin' | 'courses' | 'learners' | 'invoices' | 'team'>('admin');
@@ -486,6 +499,94 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                         Account Summary
                     </h4>
                     <AccountSummaryGrid summary={effectiveAdminSummary} />
+                </div>
+            )}
+
+            {/* Transaction History — append-only ledger entries, always visible below summary. */}
+            {adminUserId && instituteId && (
+                <div className="rounded-lg border bg-white p-4">
+                    <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        <ClockCounterClockwise className="h-3.5 w-3.5" />
+                        Transaction History
+                    </h4>
+                    {ledgerEntries.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No transactions recorded yet.</p>
+                    ) : (
+                        <div className="space-y-2">
+                            <ul className="divide-y divide-neutral-100 overflow-hidden rounded-lg border border-neutral-200">
+                                {ledgerEntries.map((entry) => {
+                                    const LEDGER_META: Record<string, { label: string; cls: string; isCredit: boolean }> = {
+                                        DEBIT_ACCRUAL:     { label: 'Invoice raised',   cls: 'bg-red-50 text-red-700 border-red-200',         isCredit: false },
+                                        CREDIT_PAYMENT:    { label: 'Payment received',  cls: 'bg-green-50 text-green-700 border-green-200',   isCredit: true  },
+                                        CREDIT_WAIVER:     { label: 'Waiver',            cls: 'bg-blue-50 text-blue-700 border-blue-200',      isCredit: true  },
+                                        CREDIT_ADJUSTMENT: { label: 'Adjustment',        cls: 'bg-amber-50 text-amber-700 border-amber-200',   isCredit: true  },
+                                        DEBIT_PENALTY:     { label: 'Penalty',           cls: 'bg-orange-50 text-orange-700 border-orange-200',isCredit: false },
+                                    };
+                                    const meta = LEDGER_META[entry.event_type] ?? {
+                                        label: entry.event_type,
+                                        cls: 'bg-gray-50 text-gray-600 border-gray-200',
+                                        isCredit: false,
+                                    };
+                                    const sym = entry.currency === 'USD' ? '$' : entry.currency === 'EUR' ? '€' : '₹';
+                                    const amtStr = `${sym}${Number(entry.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                                    return (
+                                        <li key={entry.id} className="flex items-start gap-2.5 px-3 py-2 text-xs hover:bg-neutral-50">
+                                            <span className="mt-0.5 shrink-0">
+                                                {meta.isCredit
+                                                    ? <ArrowCircleUp className="size-4 text-green-600" weight="duotone" />
+                                                    : <ArrowCircleDown className="size-4 text-red-500" weight="duotone" />
+                                                }
+                                            </span>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex flex-wrap items-center gap-1.5">
+                                                    <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}>
+                                                        {meta.label}
+                                                    </span>
+                                                    {entry.remarks && (
+                                                        <span className="truncate text-[11px] text-muted-foreground" title={entry.remarks}>
+                                                            {entry.remarks}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                                    {fmtDate(entry.created_at)}
+                                                    {entry.source_type && <> · {entry.source_type.replace(/_/g, ' ')}</>}
+                                                </p>
+                                            </div>
+                                            <span className={`shrink-0 font-semibold tabular-nums ${meta.isCredit ? 'text-green-700' : 'text-red-600'}`}>
+                                                {meta.isCredit ? '+' : '-'}{amtStr}
+                                            </span>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                            {ledgerTotalPages > 1 && (
+                                <div className="flex items-center justify-between px-1">
+                                    <span className="text-[10px] text-muted-foreground">
+                                        Page {ledgerPage + 1} of {ledgerTotalPages}
+                                    </span>
+                                    <div className="flex gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setLedgerPage((p) => Math.max(0, p - 1))}
+                                            disabled={ledgerPage === 0}
+                                            className="rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-40"
+                                        >
+                                            <ChevronDown className="h-3.5 w-3.5 rotate-90" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setLedgerPage((p) => Math.min(ledgerTotalPages - 1, p + 1))}
+                                            disabled={ledgerPage >= ledgerTotalPages - 1}
+                                            className="rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-40"
+                                        >
+                                            <ChevronDown className="h-3.5 w-3.5 -rotate-90" />
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -932,7 +1033,7 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                             {/* Action row — source-specific buttons */}
                                             <div className="flex flex-wrap items-center gap-1.5">
 
-                                                {/* CPO installment — Remind only */}
+                                                {/* CPO installment — Remind + Copy Link + Record Offline */}
                                                 {isSfpRemindable && sfpId && (
                                                     <button
                                                         type="button"
@@ -943,6 +1044,20 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                                     >
                                                         <Bell className="size-3" />
                                                         {remindingId === sfpId ? 'Sending…' : 'Remind'}
+                                                    </button>
+                                                )}
+                                                {isSfpRow && paymentLink && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCopyInvoiceLink(inv.id, paymentLink)}
+                                                        className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                        title="Copy payment link to share with learner"
+                                                    >
+                                                        {copiedLinkId === inv.id ? (
+                                                            <><CircleCheck className="size-3" /> Copied</>
+                                                        ) : (
+                                                            <><Copy className="size-3" /> Copy Link</>
+                                                        )}
                                                     </button>
                                                 )}
 
@@ -983,7 +1098,7 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                                             })
                                                         }
                                                         className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
-                                                        title="Record an offline / manual payment"
+                                                        title="Mark this invoice as paid"
                                                     >
                                                         Mark Paid
                                                     </button>

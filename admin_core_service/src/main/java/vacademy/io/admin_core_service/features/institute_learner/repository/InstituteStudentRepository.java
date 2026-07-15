@@ -1256,6 +1256,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 WHERE ar.user_id = s.user_id
                   AND ar.audience_id IN (:audienceIds)
                   AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                  AND ar.audience_status = 'ACTIVE'
               )
             )
           GROUP BY ssigm.user_id
@@ -1297,6 +1298,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             WHERE ar.user_id = s.user_id
               AND ar.audience_id IN (:audienceIds)
               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+              AND ar.audience_status = 'ACTIVE'
           )
         )
       """)
@@ -1356,6 +1358,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 WHERE ar.user_id = s.user_id
                   AND ar.audience_id IN (:audienceIds)
                   AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                  AND ar.audience_status = 'ACTIVE'
               )
             )
             AND (
@@ -1409,6 +1412,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             WHERE ar.user_id = s.user_id
               AND ar.audience_id IN (:audienceIds)
               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+              AND ar.audience_status = 'ACTIVE'
           )
         )
         AND (
@@ -1486,6 +1490,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 WHERE ar.user_id = s.user_id
                   AND ar.audience_id IN (:audienceIds)
                   AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                  AND ar.audience_status = 'ACTIVE'
               )
             )
             AND (
@@ -1512,6 +1517,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             AND a.institute_id IN (:instituteIds)
             AND ar.user_id IS NOT NULL
             AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+            AND ar.audience_status = 'ACTIVE'
             AND (:#{#audienceIds == null || #audienceIds.isEmpty()} = true OR ar.audience_id IN (:audienceIds))
             AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
             AND (
@@ -1572,6 +1578,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 WHERE ar.user_id = s.user_id
                   AND ar.audience_id IN (:audienceIds)
                   AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                  AND ar.audience_status = 'ACTIVE'
               )
             )
             AND (
@@ -1597,6 +1604,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             AND a.institute_id IN (:instituteIds)
             AND ar.user_id IS NOT NULL
             AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+            AND ar.audience_status = 'ACTIVE'
             AND (:#{#audienceIds == null || #audienceIds.isEmpty()} = true OR ar.audience_id IN (:audienceIds))
             AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
             AND (
@@ -1693,6 +1701,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           WHERE a.institute_id = :instituteId
             AND ar.user_id IS NOT NULL
             AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+            AND ar.audience_status = 'ACTIVE'
             AND (:#{#audienceIds == null || #audienceIds.isEmpty()} = true OR ar.audience_id IN (:audienceIds))
             AND (:#{#genders == null || #genders.isEmpty()} = true OR sg.gender IN (:genders))
             AND (
@@ -1760,6 +1769,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           WHERE a.institute_id = :instituteId
             AND ar.user_id IS NOT NULL
             AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+            AND ar.audience_status = 'ACTIVE'
             AND (:#{#audienceIds == null || #audienceIds.isEmpty()} = true OR ar.audience_id IN (:audienceIds))
             AND (:#{#genders == null || #genders.isEmpty()} = true OR sg.gender IN (:genders))
             AND (

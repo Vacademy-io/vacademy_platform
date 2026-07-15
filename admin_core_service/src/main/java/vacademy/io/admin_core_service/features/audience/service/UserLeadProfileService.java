@@ -595,6 +595,7 @@ public class UserLeadProfileService {
                     .campaignStatus(aud != null ? aud.getStatus() : null)
                     .responseId(r.getId())
                     .overallStatus(r.getOverallStatus())
+                    .audienceStatus(r.getAudienceStatus())
                     .sourceType(r.getSourceType())
                     .submittedAt(r.getSubmittedAt())
                     .leadScore(score != null ? score.getRawScore() : null)

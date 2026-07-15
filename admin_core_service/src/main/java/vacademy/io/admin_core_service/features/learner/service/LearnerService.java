@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.learner.dto.LearnerDetailsEditDTO
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.dto.learner.LearnerExtraDetails;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.UserNotFoundException;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.List;
@@ -35,7 +36,7 @@ public class LearnerService {
             throw new VacademyException("Invalid request");
         }
         Student student = instituteStudentRepository.findTopByUserId(learnerDetailsEditDTO.getUserId())
-                .orElseThrow(() -> new VacademyException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
         // Captured before mutation: the LMS sync looks the user up by their
         // CURRENT email on the LMS, and only fires when name/email changed.
         String previousEmail = student.getEmail();
@@ -102,7 +103,7 @@ public class LearnerService {
     public String updateFaceFileId(String faceFileId, CustomUserDetails userDetails) {
         if (StringUtils.hasText(userDetails.getId()) && StringUtils.hasText(faceFileId)) {
             Student student = instituteStudentRepository.findTopByUserId(userDetails.getId())
-                    .orElseThrow(() -> new VacademyException("User not found"));
+                    .orElseThrow(() -> new UserNotFoundException("User not found"));
             student.setFaceFileId(faceFileId);
             instituteStudentRepository.save(student);
             return "success";
@@ -123,7 +124,7 @@ public class LearnerService {
 
     public String updateLearnerDetail(UserDTO userDTO, LearnerExtraDetails learnerExtraDetails) {
         Student student = instituteStudentRepository.findTopByUserId(userDTO.getId())
-                .orElseThrow(() -> new VacademyException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
 
         student.setUsername(userDTO.getUsername());
         student.setFullName(userDTO.getFullName());
@@ -149,7 +150,7 @@ public class LearnerService {
 
     public String updateLearnerDetail(UserDTO userDTO) {
         Student student = instituteStudentRepository.findTopByUserId(userDTO.getId())
-                .orElseThrow(() -> new VacademyException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
 
         if (StringUtils.hasText(userDTO.getUsername())) {
             student.setUsername(userDTO.getUsername());
@@ -194,7 +195,7 @@ public class LearnerService {
         }
 
         Student student = instituteStudentRepository.findTopByUserId(userId)
-                .orElseThrow(() -> new VacademyException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
 
         if (StringUtils.hasText(learnerExtraDetails.getFathersName())) {
             student.setFatherName(learnerExtraDetails.getFathersName());

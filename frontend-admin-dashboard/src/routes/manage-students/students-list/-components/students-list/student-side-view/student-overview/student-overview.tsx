@@ -25,6 +25,7 @@ import type { FieldGroup } from '@/services/custom-field-settings';
 import { getPublicUrl } from '@/services/upload_file';
 import { ProfileSectionCard, ProfileFieldRow, ProfileEmpty } from '../profile-ui';
 import { EditStudentDetails } from './EditStudentDetails';
+import { EditLeadDetails } from './EditLeadDetails';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
@@ -223,9 +224,17 @@ export const StudentOverview = ({ isSubmissionTab }: { isSubmissionTab?: boolean
 
     return (
         <div className="flex flex-col gap-3 text-card-foreground">
-            {/* Single primary action — edit the learner's profile. */}
+            {/* Single primary action — edit the profile. This sidebar is shared between
+                Manage Contacts (real students) and the lead surfaces, which feed it a
+                lead mapped into StudentTable shape. A lead has no `student` row, so the
+                learner-profile endpoint 404s for it; rows carrying a `_response_id`
+                marker therefore get the lead-shaped editor instead. */}
             <div className="flex justify-end">
-                <EditStudentDetails />
+                {(selectedStudent as unknown as Record<string, unknown>)?._response_id ? (
+                    <EditLeadDetails />
+                ) : (
+                    <EditStudentDetails />
+                )}
             </div>
 
             {/* Detail sections — clean label/value cards (General Details,

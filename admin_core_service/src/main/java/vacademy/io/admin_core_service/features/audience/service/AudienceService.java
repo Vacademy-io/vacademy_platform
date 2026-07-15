@@ -58,8 +58,13 @@ import vacademy.io.admin_core_service.features.notification_service.service.Noti
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
+import vacademy.io.admin_core_service.features.audience.enums.CustomFieldValueSourceType;
+import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
+import vacademy.io.common.exceptions.ConflictException;
+import vacademy.io.common.exceptions.InvalidRequestException;
+import vacademy.io.common.exceptions.ResourceNotFoundException;
 import vacademy.io.common.exceptions.VacademyException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -89,6 +94,9 @@ public class AudienceService {
 
     @Autowired
     private AudienceResponseRepository audienceResponseRepository;
+
+    @Autowired
+    private CustomFieldValueService customFieldValueService;
 
     @Autowired
     private AudienceCommunicationRepository audienceCommunicationRepository;
@@ -2835,6 +2843,95 @@ public class AudienceService {
                 .orElseThrow(() -> new VacademyException("Lead not found"));
         audienceResponseRepository.delete(response);
         logger.info("Deleted lead: {}", responseId);
+    }
+
+    /**
+     * Edit a lead's profile from the CRM.
+     *
+     * <p>Writes only where a lead is actually read from — the auth user
+     * (name / email / mobile), the {@code audience_response} parent/guardian
+     * fields, and the lead's custom field values. It never touches the
+     * {@code student} table: a lead that never enrolled has no row there, which
+     * is why the learner-profile endpoint cannot serve this case.</p>
+     *
+     * <p>If the edit moves email/phone onto an identity that another lead in the
+     * same campaign already owns, it is rejected (409) so two leads cannot
+     * collide on one {@code dedupe_key}.</p>
+     */
+    @Transactional
+    public void updateLeadProfile(String responseId, LeadProfileEditRequestDTO request) {
+        if (request == null) {
+            throw new InvalidRequestException("Request body is required");
+        }
+
+        AudienceResponse response = audienceResponseRepository.findById(responseId)
+                .orElseThrow(() -> new ResourceNotFoundException("Lead not found"));
+
+        UserDTO updates = request.getUserDetails();
+
+        // 1) The lead's identity lives on the auth user — merge the edits over the
+        // existing record so unsent fields aren't blanked.
+        String leadUserId = response.getUserId() != null ? response.getUserId() : response.getStudentUserId();
+        if (updates != null && StringUtils.hasText(leadUserId)) {
+            String newEmail = updates.getEmail();
+            String newPhone = updates.getMobileNumber();
+            if (StringUtils.hasText(newEmail) || StringUtils.hasText(newPhone)) {
+                String newKey = leadDeduplicationService.generateDedupeKey(newEmail, newPhone);
+                if (newKey != null && response.getAudienceId() != null) {
+                    leadDeduplicationService.findDuplicate(response.getAudienceId(), newKey)
+                            .filter(existing -> !existing.getId().equals(responseId))
+                            .ifPresent(existing -> {
+                                throw new ConflictException(
+                                        "A lead already exists with this phone number or email.");
+                            });
+                    response.setDedupeKey(newKey);
+                }
+            }
+
+            List<UserDTO> existingUsers = authService.getUsersFromAuthServiceByUserIds(List.of(leadUserId));
+            UserDTO existing = (existingUsers != null && !existingUsers.isEmpty()) ? existingUsers.get(0) : null;
+            UserDTO merged = (existing != null) ? mergeUserDTO(existing, updates) : updates;
+            merged.setId(leadUserId);
+            authService.updateUser(merged, leadUserId);
+        }
+
+        // 2) Parent/guardian fields on the audience_response row. A cleared field arrives
+        // as "" from the form; store it as NULL rather than an empty string, otherwise
+        // queries that gate on `parent_mobile IS NOT NULL` would start matching leads that
+        // have no parent contact at all.
+        if (request.getParentName() != null) {
+            response.setParentName(blankToNull(request.getParentName()));
+        }
+        if (request.getParentEmail() != null) {
+            response.setParentEmail(blankToNull(request.getParentEmail()));
+        }
+        if (request.getParentMobile() != null) {
+            response.setParentMobile(blankToNull(request.getParentMobile()));
+        }
+        // dedupe_key may also have changed above.
+        audienceResponseRepository.save(response);
+
+        // 3) The lead's form answers.
+        if (!CollectionUtils.isEmpty(request.getCustomFieldValues())) {
+            request.getCustomFieldValues().forEach(cfv -> {
+                if (cfv != null) {
+                    if (!StringUtils.hasText(cfv.getSourceType())) {
+                        cfv.setSourceType(CustomFieldValueSourceType.AUDIENCE_RESPONSE.name());
+                    }
+                    if (!StringUtils.hasText(cfv.getSourceId())) {
+                        cfv.setSourceId(responseId);
+                    }
+                }
+            });
+            customFieldValueService.upsertCustomFieldValues(request.getCustomFieldValues());
+        }
+
+        logger.info("Lead profile updated for response {}", responseId);
+    }
+
+    /** Trim a form-supplied value, mapping "" (a cleared field) to NULL. */
+    private String blankToNull(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     /**

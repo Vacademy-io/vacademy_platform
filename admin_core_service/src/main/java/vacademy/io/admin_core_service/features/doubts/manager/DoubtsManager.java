@@ -709,6 +709,27 @@ public class DoubtsManager {
     }
 
     /**
+     * Loads one doubt by id and maps it to the same {@link DoubtsDto} the inbox list renders (via
+     * {@link DoubtService#createDtoFromDoubts}, so child replies / slide metadata are populated too).
+     * Backs the doubt-management deep link (?doubtId=X) — the inbox fetches the target doubt this way
+     * when it isn't on the loaded page. Returns 404 when the id doesn't resolve to a doubt.
+     */
+    public ResponseEntity<DoubtsDto> getDoubtById(String doubtId) {
+        if (doubtId == null || doubtId.isBlank()) {
+            return ResponseEntity.notFound().build();
+        }
+        Optional<Doubts> doubt = doubtService.getDoubtById(doubtId);
+        if (doubt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        List<DoubtsDto> dtos = doubtService.createDtoFromDoubts(List.of(doubt.get()));
+        if (dtos.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(dtos.get(0));
+    }
+
+    /**
      * Returns {@code null} when the caller should see all doubts (admin / unrestricted), and the
      * user id when the caller's view should be scoped by doubt_assignee / FSPSSM / self-raised.
      *

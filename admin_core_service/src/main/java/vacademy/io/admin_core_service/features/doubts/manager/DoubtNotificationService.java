@@ -487,7 +487,11 @@ public class DoubtNotificationService {
     }
 
     /** Assembles {@code https://subdomain.domain/path?doubtId=id}. Trims trailing slashes from
-     *  the domain so we don't end up with double slashes when the routing row has them. */
+     *  the domain so we don't end up with double slashes when the routing row has them. Returns
+     *  {@code "#"} (no navigation) for hosts that can't be reached from a recipient's inbox —
+     *  {@code localhost}, loopback IPs, or a bare hostname with no dot — so a stray/dev
+     *  {@code institute_domain_routing} row can never produce a dead {@code https://student.localhost/...}
+     *  CTA in a real email. */
     private String formatDoubtUrl(String subdomain, String domain, String path, String doubtId) {
         if (domain == null || domain.isBlank()) return "#";
         String cleanDomain = domain.trim().replaceAll("^https?://", "").replaceAll("/$", "");
@@ -495,7 +499,27 @@ public class DoubtNotificationService {
         String host = cleanSubdomain.isEmpty() || "*".equals(cleanSubdomain)
                 ? cleanDomain
                 : cleanSubdomain + "." + cleanDomain;
+        if (isUnreachableHost(host)) {
+            log.warn("Skipping doubt CTA link — routing resolved to a non-routable host '{}' "
+                    + "(check institute_domain_routing for a localhost/dev row). doubt={}", host, doubtId);
+            return "#";
+        }
         return "https://" + host + path + "?doubtId=" + doubtId;
+    }
+
+    /**
+     * A host is unreachable from an emailed link when it points at the local machine or isn't a
+     * real public hostname: {@code localhost}/{@code *.localhost}, loopback IPs, or a bare label
+     * with no dot (e.g. {@code student}). Public FQDNs and IPv4 addresses pass.
+     */
+    private boolean isUnreachableHost(String host) {
+        if (host == null || host.isBlank()) return true;
+        String h = host.toLowerCase().trim();
+        if (h.equals("localhost") || h.endsWith(".localhost")) return true;
+        if (h.equals("127.0.0.1") || h.equals("0.0.0.0") || h.equals("::1")) return true;
+        // No dot at all → single-label host like "student"/"admin" that won't resolve publicly.
+        // (IPv4 addresses contain dots and are left alone.)
+        return !h.contains(".");
     }
 
     /**

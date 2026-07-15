@@ -334,6 +334,22 @@ export default function ProfilePage() {
     navigate({ to: "/user-profile/edit" });
   };
 
+  // Same query key as SubscriptionMandateList, so this is a cache hit rather than a
+  // second request — it only decides whether the card is worth rendering at all.
+  // Hooks must run unconditionally on every render, so this has to sit above the
+  // isLoading early return below — it previously came after it, which meant the
+  // loading render called one fewer hook than the loaded render ("Rendered more
+  // hooks than during the previous render").
+  const { data: subscriptions } = useQuery({
+    queryKey: [SUBSCRIPTION_LIST_QUERY_KEY, studentData?.institute_id],
+    queryFn: () => fetchSubscriptions(studentData?.institute_id as string),
+    enabled: Boolean(studentData?.institute_id),
+    staleTime: 60 * 1000,
+  });
+  const hasAutopaySubscription = (subscriptions ?? []).some(
+    (s) => s.has_active_mandate || s.auto_renewal_enabled
+  );
+
   if (isLoading || permissionsLoading) {
     return <DashboardLoader />;
   }
@@ -388,18 +404,6 @@ export default function ProfilePage() {
   const showGuardianSection =
     !isHolistic &&
     (showFather || showMother || showParentsEmail || showParentsMobile);
-
-  // Same query key as SubscriptionMandateList, so this is a cache hit rather than a
-  // second request — it only decides whether the card is worth rendering at all.
-  const { data: subscriptions } = useQuery({
-    queryKey: [SUBSCRIPTION_LIST_QUERY_KEY, studentData?.institute_id],
-    queryFn: () => fetchSubscriptions(studentData?.institute_id as string),
-    enabled: Boolean(studentData?.institute_id),
-    staleTime: 60 * 1000,
-  });
-  const hasAutopaySubscription = (subscriptions ?? []).some(
-    (s) => s.has_active_mandate || s.auto_renewal_enabled
-  );
 
   return (
     <div className="min-h-screen bg-gray-50/50 pb-24 md:pb-8">

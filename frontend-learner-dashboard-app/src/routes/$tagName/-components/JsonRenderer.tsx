@@ -87,7 +87,10 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         componentStyle={buildComponentStyle(child.style)}
         responsiveCSS={buildResponsiveCSS(child.id, child.style)}
         hoverClass={getHoverClass(child.style)}
-        motionOff={(globalSettings as any)?.motion?.personality === 'none'}
+        // Preview iframe: top-level components suppress entrances (preview
+        // branch renders statically) — slot children must match, or they
+        // hide behind IntersectionObserver gates while editing.
+        motionOff={isPreviewMode || (globalSettings as any)?.motion?.personality === 'none'}
       >
         {rendered}
       </ComponentStyleWrapper>
@@ -293,8 +296,10 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
           return map[w ?? ''] || '1fr';
         };
         // columnFr (true per-column track sizes, e.g. ['3fr','2fr']) takes
-        // precedence over the legacy lossy columnWidths fractions.
-        const gridCols = columnFr?.length === slots.length && columnFr.every(Boolean)
+        // precedence over the legacy lossy columnWidths fractions. Array.isArray
+        // matters: a hand-authored STRING whose length equals the slot count
+        // would otherwise pass the guard and crash on .every().
+        const gridCols = Array.isArray(columnFr) && columnFr.length === slots.length && columnFr.every(Boolean)
           ? columnFr.join(' ')
           : slots.map((_: any, i: number) => widthToFr(columnWidths[i])).join(' ');
         // Use a CSS custom property so the @media rule in index.css can override it
@@ -313,7 +318,15 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             } as React.CSSProperties}
           >
             {slots.map((slotComponents: any[], slotIndex: number) => (
-              <div key={slotIndex} className="min-w-0">
+              <div
+                key={slotIndex}
+                className="min-w-0"
+                // A sticky child needs travel room: stretch just this slot to
+                // the row height, overriding the container's alignItems.
+                style={{
+                  alignSelf: slotComponents.some((c: any) => c?.style?.sticky?.enabled) ? 'stretch' : undefined,
+                }}
+              >
                 {slotComponents.map((child: any) => renderChild(child))}
               </div>
             ))}

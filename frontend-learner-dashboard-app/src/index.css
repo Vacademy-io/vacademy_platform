@@ -143,6 +143,10 @@ html, body {
   .grid-layout-responsive.grid-layout-reverse {
     display: flex !important;
     flex-direction: column-reverse;
+    /* The container's inline align-items (grid block-axis, harmless there)
+       becomes the flex CROSS axis here and would shrink-wrap the columns —
+       force full-width stacking. */
+    align-items: stretch !important;
   }
 }
 
@@ -216,6 +220,14 @@ html, body {
     --tertiary-300: 0 0% 92%;
     --tertiary-400: 0 0% 86%;
     --tertiary-500: 0 0% 74%;
+
+    /* Nav role fallbacks (overridden by theme-provider at runtime). No
+       component consumes these yet — see theme-provider.tsx applyNavRoles. */
+    --nav-surface: 24 30% 14%;
+    --nav-surface-hover: 24 30% 20%;
+    --nav-active: 24 85% 54%;
+    --nav-active-text: 0 0% 98%;
+    --nav-text: 24 18% 65%;
 
     --danger-50: 0 100% 99%;
     --danger-100: 0 86% 97%;

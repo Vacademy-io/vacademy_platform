@@ -958,7 +958,11 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
                                     onChange={(e) => {
                                         const updated = [...columnWidths];
                                         updated[i] = e.target.value;
-                                        updateProp('columnWidths', updated);
+                                        // Last-touched control wins: columnFr overrides these
+                                        // widths on both renderers, so clear it in the SAME update
+                                        updateComponent(pageId, component.id, {
+                                            props: { ...component.props, columnWidths: updated, columnFr: undefined },
+                                        });
                                     }}
                                     className="mt-0.5 w-full rounded border px-1.5 py-1 text-xs"
                                 >
@@ -3516,7 +3520,7 @@ const SectionHeadingEditor = ({ component, pageId, updateComponent }: any) => {
                         ))}
                     </div>
                 )}
-                {props.highlight?.text && !(props.title || '').includes(props.highlight.text) && (
+                {props.highlight?.text && !(typeof props.title === 'string' && props.title.includes(props.highlight.text)) && (
                     <p className="text-caption text-warning-600">Not found in the title — the highlight will not show.</p>
                 )}
             </div>

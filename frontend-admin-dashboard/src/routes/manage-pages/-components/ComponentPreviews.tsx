@@ -733,10 +733,12 @@ export const renderComponentPreview = (
             return <DataPlaceholder label="Policy Page" description="Renders policy / terms content" />;
         case 'sectionHeading': {
             const shSize = props.size === 'xl' ? 'catalogue-display' : props.size === 'md' ? 'catalogue-h3' : 'catalogue-h2';
-            const shTitle: string = props.title || '';
+            // Guard like the live renderer: a non-string title (hand-authored
+            // JSON) renders as text with the highlight skipped, never crashes
+            const shTitle: string = typeof props.title === 'string' ? props.title : String(props.title ?? '');
             const hl = props.highlight;
             let shTitleNode: React.ReactNode = shTitle;
-            if (hl?.text && shTitle.includes(hl.text)) {
+            if (hl?.text && typeof props.title === 'string' && shTitle.includes(hl.text)) {
                 const idx = shTitle.indexOf(hl.text);
                 const hlClass =
                     hl.style === 'underline'

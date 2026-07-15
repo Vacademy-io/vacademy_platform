@@ -49,11 +49,18 @@ const Section = ({ title, children, defaultOpen = false }: { title: string; chil
 
 /* ─── Preset Button Row ───────────────────────────────────────────────── */
 
-const PresetRow = ({ options, value, onChange, label }: { options: { label: string; value: string }[]; value?: string; onChange: (v: string) => void; label?: string }) => (
+const PresetRow = ({ options, value, onChange, label }: { options: { label: string; value: string }[]; value?: string; onChange: (v: string) => void; label?: string }) => {
+    // A stored value outside the presets (hand-authored JSON, engine defaults
+    // like sticky top 88) still needs a selected state — show it as a chip so
+    // the row never looks "Off" while the field is actually set.
+    const opts = value && !options.some((o) => o.value === value)
+        ? [...options, { label: `Custom (${value})`, value }]
+        : options;
+    return (
     <div>
         {label && <Label className="mb-1 text-xs">{label}</Label>}
         <div className="flex flex-wrap gap-1">
-            {options.map((o) => (
+            {opts.map((o) => (
                 <button
                     key={o.value}
                     onClick={() => onChange(o.value)}
@@ -68,7 +75,8 @@ const PresetRow = ({ options, value, onChange, label }: { options: { label: stri
             ))}
         </div>
     </div>
-);
+    );
+};
 
 /* ─── Spacing presets ─────────────────────────────────────────────────── */
 
@@ -703,8 +711,12 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                         value={style.dividers?.[edge]?.shape ?? ''}
                         onChange={(v) => {
                             const next: SectionDividers = { ...style.dividers };
-                            if (v) next[edge] = { ...next[edge], shape: v as DividerConfig['shape'] };
-                            else delete next[edge];
+                            if (v) {
+                                // Seed height from the other edge so the shared
+                                // Height row's selection is true for both edges
+                                const other = next[edge === 'top' ? 'bottom' : 'top'];
+                                next[edge] = { ...next[edge], shape: v as DividerConfig['shape'], height: next[edge]?.height ?? other?.height };
+                            } else delete next[edge];
                             update({ dividers: next.top || next.bottom ? next : undefined });
                         }}
                     />
@@ -784,7 +796,12 @@ export const StyleEditor = ({ style, onChange }: StyleEditorProps) => {
                     <Label className="mb-1 text-xs">Min Height (custom — presets in Layout &amp; Width)</Label>
                     <Input
                         value={style.minHeight || ''}
-                        onChange={(e) => update({ minHeight: e.target.value || undefined })}
+                        onChange={(e) => {
+                            const v = e.target.value;
+                            // Clearing min-height orphans contentAlign (engine only
+                            // emits it alongside minHeight) — drop both together
+                            update({ minHeight: v || undefined, ...(v ? {} : { contentAlign: undefined }) });
+                        }}
                         placeholder="e.g. 400px"
                         className="h-8 text-xs"
                     />

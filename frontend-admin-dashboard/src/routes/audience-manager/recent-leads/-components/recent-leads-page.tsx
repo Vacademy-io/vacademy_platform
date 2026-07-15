@@ -74,6 +74,8 @@ import {
     useAiCallButtonEnabled,
     recentLeadToVM,
     type LeadActionHandlers,
+    type LeadSortKey,
+    type LeadSortDirection,
 } from '@/components/shared/leads';
 
 import {
@@ -201,6 +203,13 @@ const RecentLeadsContent = () => {
 
     const [page, setPage] = useState(0);
     const [pageSize, setPageSize] = useState(20);
+    const [sortBy, setSortBy] = useState<LeadSortKey>('SUBMITTED_AT');
+    const [sortDirection, setSortDirection] = useState<LeadSortDirection>('DESC');
+    const handleSortChange = (nextSortBy: LeadSortKey, nextSortDirection: LeadSortDirection) => {
+        setPage(0);
+        setSortBy(nextSortBy);
+        setSortDirection(nextSortDirection);
+    };
     const [rangeDays, setRangeDays] = useState<string>(
         () =>
             urlSearch.range ??
@@ -427,6 +436,8 @@ const RecentLeadsContent = () => {
             customFieldFiltersKey,
             page,
             pageSize,
+            sortBy,
+            sortDirection,
         ],
         queryFn: () =>
             fetchRecentLeads({
@@ -450,6 +461,8 @@ const RecentLeadsContent = () => {
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
                     : undefined,
+                sort_by: sortBy,
+                sort_direction: sortDirection,
                 page,
                 size: pageSize,
             }),
@@ -1308,6 +1321,9 @@ const RecentLeadsContent = () => {
                             selectedIds={new Set(selectedLeads.keys())}
                             onToggleRow={toggleLeadRow}
                             onToggleAll={toggleAllLeads}
+                            sortBy={sortBy}
+                            sortDirection={sortDirection}
+                            onSortChange={handleSortChange}
                             emptyState={
                                 <LeadEmptyState
                                     onClear={isFilterActive ? handleClearFilter : undefined}

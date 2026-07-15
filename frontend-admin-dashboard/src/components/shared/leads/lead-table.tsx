@@ -9,6 +9,9 @@ import {
     UserPlus,
     ArrowsClockwise,
     NotePencil,
+    CaretUp,
+    CaretDown,
+    CaretUpDown,
 } from '@phosphor-icons/react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -47,6 +50,10 @@ export interface LeadNotesSummary {
     count: number;
 }
 
+/** Sort keys the backend's lead-list/recent-leads endpoints understand. */
+export type LeadSortKey = 'SUBMITTED_AT' | 'LEAD_SCORE' | 'LEAD_TIER' | 'STATUS';
+export type LeadSortDirection = 'ASC' | 'DESC';
+
 interface LeadTableProps {
     vms: LeadCardVM[];
     profiles: Record<string, LeadProfileSummary>;
@@ -74,6 +81,11 @@ interface LeadTableProps {
     onToggleRow?: (userId: string, vm: LeadCardVM) => void;
     /** Toggle all selectable (userId-bearing) rows currently rendered. */
     onToggleAll?: (checked: boolean, selectableVms: LeadCardVM[]) => void;
+    /** Server-driven column sort. Omit to render headers as non-interactive (unsorted). */
+    sortBy?: LeadSortKey | null;
+    sortDirection?: LeadSortDirection | null;
+    /** Fired with the clicked column's sort key + the direction it should switch to. */
+    onSortChange?: (sortBy: LeadSortKey, sortDirection: LeadSortDirection) => void;
 }
 
 /** Shape of a caller-supplied trailing column. */
@@ -91,6 +103,8 @@ interface Col {
     show: boolean;
     /** Stops a cell click from bubbling to the row's open-side-view handler. */
     interactive?: boolean;
+    /** When set, the header becomes clickable and sorts the backend query by this key. */
+    sortKey?: LeadSortKey;
     render: (vm: LeadCardVM, profile?: LeadProfileSummary) => ReactNode;
 }
 
@@ -219,6 +233,9 @@ export function LeadTable({
     selectedIds,
     onToggleRow,
     onToggleAll,
+    sortBy,
+    sortDirection,
+    onSortChange,
 }: LeadTableProps) {
     const profOf = (vm: LeadCardVM) => (vm.userId ? profiles[vm.userId] : undefined);
     const notesOf = (vm: LeadCardVM) => (vm.userId ? notes?.[vm.userId] : undefined);
@@ -389,6 +406,7 @@ export function LeadTable({
             thClass: 'w-40',
             show: showOps,
             interactive: true,
+            sortKey: 'STATUS',
             render: (vm) => (
                 <LeadStatusSelect
                     responseId={vm.responseId}
@@ -404,6 +422,7 @@ export function LeadTable({
             thClass: 'w-44',
             show: showScore,
             interactive: true,
+            sortKey: 'LEAD_SCORE',
             render: (vm, profile) => {
                 if (!vm.userId || profile?.best_score == null)
                     return <span className="text-sm text-neutral-300">—</span>;
@@ -416,6 +435,7 @@ export function LeadTable({
             thClass: 'w-28',
             show: showOps,
             interactive: true,
+            sortKey: 'LEAD_TIER',
             render: (vm, profile) => {
                 if (!vm.userId) return <span className="text-sm text-neutral-300">—</span>;
                 const explicitTier = profile?.lead_tier;
@@ -531,6 +551,7 @@ export function LeadTable({
             header: 'Submitted',
             thClass: 'min-w-32',
             show: true,
+            sortKey: 'SUBMITTED_AT',
             render: (vm) => (
                 <span className="whitespace-nowrap text-sm text-neutral-600">
                     {vm.submittedIso
@@ -548,6 +569,13 @@ export function LeadTable({
     }
 
     const cols = allCols.filter((c) => c.show && !hiddenColumns?.has(c.id));
+
+    const handleSortClick = (key: LeadSortKey) => {
+        if (!onSortChange) return;
+        const nextDirection: LeadSortDirection =
+            sortBy === key && sortDirection === 'ASC' ? 'DESC' : 'ASC';
+        onSortChange(key, nextDirection);
+    };
 
     if (!isLoading && vms.length === 0) {
         return <>{emptyState ?? <LeadEmptyState />}</>;
@@ -581,6 +609,24 @@ export function LeadTable({
                                         }
                                         aria-label="Select all"
                                     />
+                                ) : c.sortKey && onSortChange ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSortClick(c.sortKey!)}
+                                        className="group/sort inline-flex items-center gap-1 hover:text-primary-700"
+                                        aria-label={`Sort by ${c.header}`}
+                                    >
+                                        {c.header}
+                                        {sortBy === c.sortKey ? (
+                                            sortDirection === 'ASC' ? (
+                                                <CaretUp className="size-3.5 text-primary-600" weight="bold" />
+                                            ) : (
+                                                <CaretDown className="size-3.5 text-primary-600" weight="bold" />
+                                            )
+                                        ) : (
+                                            <CaretUpDown className="size-3.5 text-neutral-400 opacity-60 group-hover/sort:opacity-100" />
+                                        )}
+                                    </button>
                                 ) : (
                                     c.header
                                 )}

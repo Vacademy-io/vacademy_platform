@@ -283,10 +283,32 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                               AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
                             ORDER BY
+                              CASE WHEN :sortBy = 'SUBMITTED_AT' AND :sortDirection = 'ASC'
+                                   THEN ar.submitted_at END ASC,
+                              CASE WHEN :sortBy = 'SUBMITTED_AT' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN ar.submitted_at END DESC,
                               CASE WHEN :sortBy = 'LEAD_SCORE' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
                                    THEN COALESCE(ls.raw_score, 0) END DESC,
                               CASE WHEN :sortBy = 'LEAD_SCORE' AND :sortDirection = 'ASC'
                                    THEN COALESCE(ls.raw_score, 0) END ASC,
+                              CASE WHEN :sortBy = 'LEAD_TIER' AND :sortDirection = 'ASC'
+                                   THEN CASE COALESCE(NULLIF(ulp.lead_tier, ''),
+                                            CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                                 WHEN ulp.best_score >= 50 THEN 'WARM'
+                                                 WHEN ulp.best_score IS NOT NULL THEN 'COLD'
+                                                 ELSE NULL END)
+                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END END ASC,
+                              CASE WHEN :sortBy = 'LEAD_TIER' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN CASE COALESCE(NULLIF(ulp.lead_tier, ''),
+                                            CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                                 WHEN ulp.best_score >= 50 THEN 'WARM'
+                                                 WHEN ulp.best_score IS NOT NULL THEN 'COLD'
+                                                 ELSE NULL END)
+                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END END DESC,
+                              CASE WHEN :sortBy = 'STATUS' AND :sortDirection = 'ASC'
+                                   THEN COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) END ASC,
+                              CASE WHEN :sortBy = 'STATUS' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) END DESC,
                               CASE WHEN :sortBy = 'PARENT_NAME' AND (:sortDirection IS NULL OR :sortDirection = 'ASC')
                                    THEN ar.parent_name END ASC,
                               CASE WHEN :sortBy = 'PARENT_NAME' AND :sortDirection = 'DESC'
@@ -632,7 +654,38 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                  AND lf.schedule_time < NOW()))))
                               AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
-                            ORDER BY ar.submitted_at DESC
+                            ORDER BY
+                              CASE WHEN :sortBy = 'SUBMITTED_AT' AND :sortDirection = 'ASC'
+                                   THEN ar.submitted_at END ASC,
+                              CASE WHEN :sortBy = 'SUBMITTED_AT' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN ar.submitted_at END DESC,
+                              CASE WHEN :sortBy = 'LEAD_SCORE' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN COALESCE(ls.raw_score, 0) END DESC,
+                              CASE WHEN :sortBy = 'LEAD_SCORE' AND :sortDirection = 'ASC'
+                                   THEN COALESCE(ls.raw_score, 0) END ASC,
+                              CASE WHEN :sortBy = 'LEAD_TIER' AND :sortDirection = 'ASC'
+                                   THEN CASE COALESCE(NULLIF(ulp.lead_tier, ''),
+                                            CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                                 WHEN ulp.best_score >= 50 THEN 'WARM'
+                                                 WHEN ulp.best_score IS NOT NULL THEN 'COLD'
+                                                 ELSE NULL END)
+                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END END ASC,
+                              CASE WHEN :sortBy = 'LEAD_TIER' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN CASE COALESCE(NULLIF(ulp.lead_tier, ''),
+                                            CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                                 WHEN ulp.best_score >= 50 THEN 'WARM'
+                                                 WHEN ulp.best_score IS NOT NULL THEN 'COLD'
+                                                 ELSE NULL END)
+                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END END DESC,
+                              CASE WHEN :sortBy = 'STATUS' AND :sortDirection = 'ASC'
+                                   THEN COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) END ASC,
+                              CASE WHEN :sortBy = 'STATUS' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) END DESC,
+                              CASE WHEN :sortBy = 'PARENT_NAME' AND (:sortDirection IS NULL OR :sortDirection = 'ASC')
+                                   THEN ar.parent_name END ASC,
+                              CASE WHEN :sortBy = 'PARENT_NAME' AND :sortDirection = 'DESC'
+                                   THEN ar.parent_name END DESC,
+                              ar.submitted_at DESC
                         """, countQuery = """
                             SELECT COUNT(*)
                             FROM audience_response ar
@@ -795,6 +848,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("slaFilter") String slaFilter,
                         @Param("tatHours") Integer tatHours,
                         @Param("customFieldMatchedIdsCsv") String customFieldMatchedIdsCsv,
+                        @Param("sortBy") String sortBy,
+                        @Param("sortDirection") String sortDirection,
                         Pageable pageable);
 
         /**

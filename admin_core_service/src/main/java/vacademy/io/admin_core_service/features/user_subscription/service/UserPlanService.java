@@ -537,6 +537,19 @@ public class UserPlanService {
 
             logger.info("UserPlan status updated to ACTIVE and saved. ID={}", userPlan.getId());
 
+            // Reconcile abandoned duplicate checkout attempts: earlier retries for the same
+            // (user, enroll_invite) leave PENDING_FOR_PAYMENT plans whose course mappings still
+            // point at them. Now that THIS attempt is the paid/active plan, move that access onto
+            // it and cancel the abandoned siblings — otherwise finance/roster views (and the
+            // learner's access) resolve to an unpaid plan. Scoped to SUB_ORG, the only path that
+            // exhibits this retry pattern, to keep the blast radius tight.
+            try {
+                supersedeAbandonedSubOrgSiblings(userPlan, enrollInvite);
+            } catch (Exception e) {
+                logger.warn("Failed to reconcile abandoned sub-org sibling plans for paid plan {}: {}",
+                        userPlan.getId(), e.getMessage());
+            }
+
             // Ledger: credit payment for gateway-confirmed enrollment
             try {
                 paymentLogRepository.findByUserPlanIdOrderByCreatedAtDesc(userPlan.getId())
@@ -594,6 +607,70 @@ public class UserPlanService {
 
         }
         sendEnrollmentNotificationsAfterPayment(userPlan, enrollInvite, packageSessionIds);
+    }
+
+    /**
+     * A sub-org admin who abandons a gateway checkout and retries accumulates duplicate
+     * PENDING_FOR_PAYMENT UserPlans for the same (user, enroll_invite); the course mappings
+     * created on the first attempt stay pinned to that (now abandoned) plan. When a later
+     * attempt is finally paid, this moves those ACTIVE mappings onto the paid plan and cancels
+     * the abandoned siblings, so the finance panel, roster, and learner access all resolve to
+     * the plan that actually holds the payment. Dedupes by package session so a course already
+     * covered by the paid plan never gets a duplicate mapping. Best-effort; never blocks payment.
+     */
+    private void supersedeAbandonedSubOrgSiblings(UserPlan paidPlan, EnrollInvite enrollInvite) {
+        if (paidPlan == null || enrollInvite == null
+                || !UserPlanSourceEnum.SUB_ORG.name().equals(paidPlan.getSource())
+                || !StringUtils.hasText(paidPlan.getUserId())) {
+            return;
+        }
+
+        List<UserPlan> siblings = userPlanRepository
+                .findAllByUserIdAndEnrollInviteIdAndStatusIn(
+                        paidPlan.getUserId(), enrollInvite.getId(),
+                        List.of(UserPlanStatusEnum.PENDING_FOR_PAYMENT.name(),
+                                UserPlanStatusEnum.PAYMENT_FAILED.name()))
+                .stream()
+                .filter(s -> !s.getId().equals(paidPlan.getId()))
+                // Only supersede other SUB_ORG plans — never touch a plan of a different
+                // source that happens to share this (user, enroll_invite).
+                .filter(s -> UserPlanSourceEnum.SUB_ORG.name().equals(s.getSource()))
+                .collect(Collectors.toList());
+        if (siblings.isEmpty()) return;
+
+        // Package sessions the paid plan already covers with an ACTIVE mapping — never dup these.
+        Set<String> coveredPs = studentSessionRepository
+                .findAllByUserPlanIdAndStatusIn(paidPlan.getId(),
+                        List.of(LearnerSessionStatusEnum.ACTIVE.name()))
+                .stream()
+                .map(m -> m.getPackageSession() != null ? m.getPackageSession().getId() : null)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(HashSet::new));
+
+        for (UserPlan sibling : siblings) {
+            List<StudentSessionInstituteGroupMapping> sibMaps = studentSessionRepository
+                    .findAllByUserPlanIdAndStatusIn(sibling.getId(),
+                            List.of(LearnerSessionStatusEnum.ACTIVE.name()));
+            int moved = 0, deduped = 0;
+            for (StudentSessionInstituteGroupMapping m : sibMaps) {
+                String psId = m.getPackageSession() != null ? m.getPackageSession().getId() : null;
+                if (psId != null && coveredPs.contains(psId)) {
+                    // Paid plan already grants this course — retire the abandoned-plan duplicate.
+                    m.setStatus(LearnerSessionStatusEnum.DELETED.name());
+                    deduped++;
+                } else {
+                    // Move the access onto the plan that was actually paid.
+                    m.setUserPlanId(paidPlan.getId());
+                    if (psId != null) coveredPs.add(psId);
+                    moved++;
+                }
+            }
+            if (!sibMaps.isEmpty()) studentSessionRepository.saveAll(sibMaps);
+            sibling.setStatus(UserPlanStatusEnum.CANCELED.name());
+            userPlanRepository.save(sibling);
+            logger.info("Superseded abandoned SUB_ORG sibling plan {} after payment on {} "
+                    + "(mappings moved={}, deduped={})", sibling.getId(), paidPlan.getId(), moved, deduped);
+        }
     }
 
     private void sendEnrollmentNotificationsAfterPayment(UserPlan userPlan, EnrollInvite enrollInvite,

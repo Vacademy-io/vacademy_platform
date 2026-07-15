@@ -26,6 +26,10 @@ public interface FacultySubjectPackageSessionMappingRepository
           OR (fm.access_type = 'EnrollInvite' AND EXISTS (SELECT 1 FROM enroll_invite ei WHERE ei.id = fm.access_id AND ei.institute_id = :instituteId))
           OR ((fm.access_type IS NULL OR fm.access_type NOT IN ('Package', 'PACKAGE_SESSION', 'EnrollInvite')) AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.package_session_id AND pi.institute_id = :instituteId))
       )
+        -- Exclude SUB_ORG linkage rows: these are sub-org admin/team/learner
+        -- linkages (name = sub-org's name), not real teachers of the batch.
+        -- Sub-org admins get their own view via findByFiltersScopedToSubOrgs.
+        AND (fm.linkage_type IS NULL OR fm.linkage_type <> 'SUB_ORG')
         AND (CAST(:hasSubjectIds AS boolean) = false OR fm.subject_id IN (:subjectIds))
         AND (CAST(:hasBatchesIds AS boolean) = false OR (
             (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id IN (:batchesIds)) OR
@@ -43,6 +47,10 @@ public interface FacultySubjectPackageSessionMappingRepository
           OR (fm.access_type = 'EnrollInvite' AND EXISTS (SELECT 1 FROM enroll_invite ei WHERE ei.id = fm.access_id AND ei.institute_id = :instituteId))
           OR ((fm.access_type IS NULL OR fm.access_type NOT IN ('Package', 'PACKAGE_SESSION', 'EnrollInvite')) AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.package_session_id AND pi.institute_id = :instituteId))
       )
+        -- Exclude SUB_ORG linkage rows: these are sub-org admin/team/learner
+        -- linkages (name = sub-org's name), not real teachers of the batch.
+        -- Sub-org admins get their own view via findByFiltersScopedToSubOrgs.
+        AND (fm.linkage_type IS NULL OR fm.linkage_type <> 'SUB_ORG')
         AND (CAST(:hasSubjectIds AS boolean) = false OR fm.subject_id IN (:subjectIds))
         AND (CAST(:hasBatchesIds AS boolean) = false OR (
             (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id IN (:batchesIds)) OR

@@ -22,6 +22,7 @@ import vacademy.io.admin_core_service.features.user_subscription.dto.UserPlanDis
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentLog;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentLogStatusEnum;
+import vacademy.io.admin_core_service.features.user_subscription.enums.UserPlanStatusEnum;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService;
@@ -306,6 +307,21 @@ public class CpoSideViewService {
 
         feeLedgerAllocationService.allocatePaymentForNewLog(
                 paymentLogId, BigDecimal.valueOf(req.getAmount()), userPlanId);
+
+        // Mirror the gateway/webhook success path (RazorpayWebHookService): a recorded
+        // payment settles the pending balance, so lift the plan out of its awaiting-payment
+        // state. Without this, the sub-org admin panel (and the learner CPO side-view) stays
+        // stuck at PENDING_FOR_PAYMENT even after a full offline payment. Only transition from
+        // a pending-payment state so a CANCELED/EXPIRED/TERMINATED plan is never reactivated.
+        String planStatus = plan.getStatus();
+        if (UserPlanStatusEnum.PENDING_FOR_PAYMENT.name().equalsIgnoreCase(planStatus)
+                || UserPlanStatusEnum.PENDING.name().equalsIgnoreCase(planStatus)
+                || UserPlanStatusEnum.PAYMENT_FAILED.name().equalsIgnoreCase(planStatus)) {
+            plan.setStatus(UserPlanStatusEnum.ACTIVE.name());
+            userPlanRepository.save(plan);
+            log.info("Activated UserPlan {} (was {}) after offline payment log {}",
+                    userPlanId, planStatus, paymentLogId);
+        }
 
         // After filling CPO installments, mark any pending ADMIN_MANUAL invoices for
         // this user+institute as paid (oldest-first). These are ad-hoc invoices the

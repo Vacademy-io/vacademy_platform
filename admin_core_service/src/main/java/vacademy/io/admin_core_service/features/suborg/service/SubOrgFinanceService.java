@@ -18,9 +18,11 @@ import vacademy.io.admin_core_service.features.suborg.dto.SubOrgFinanceDetailDTO
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
+import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentLogRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.PaymentOptionRepository;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.payment.enums.PaymentStatusEnum;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.institute.entity.Institute;
 
@@ -57,6 +59,7 @@ public class SubOrgFinanceService {
     private final StudentFeePaymentRepository studentFeePaymentRepository;
     private final InstituteRepository instituteRepository;
     private final AuthService authService;
+    private final PaymentLogRepository paymentLogRepository;
 
     @Transactional(readOnly = true)
     public SubOrgFinanceDetailDTO getFinanceDetail(String subOrgId, String parentInstituteId) {
@@ -69,10 +72,12 @@ public class SubOrgFinanceService {
 
         List<Object[]> rosterRows = mappingRepository.findActiveSubOrgRoster(subOrgId);
 
-        // Partition rows into root-admin and everyone-else. Sub-orgs normally have a single
-        // ROOT_ADMIN; while testing produces multiples, the right one to show is the one
-        // that actually has a CPO ledger (non-empty SFP rows). Falls back to "first seen"
-        // if none of the admins have bills yet.
+        // Partition rows into root-admin and everyone-else. Sub-orgs can have more than one
+        // ROOT_ADMIN (e.g. a free co-admin added after the paying admin). The right one to
+        // surface as "Admin payment" is, in order: the admin with a CPO ledger (SFP rows),
+        // else the admin who actually PAID, else a deterministic earliest-enrolled fallback.
+        // See pickAdminRowWithBills — the roster query is unordered, so this ordering is what
+        // keeps the displayed admin stable instead of flipping between co-admins.
         List<Object[]> adminCandidates = new ArrayList<>();
         List<Object[]> learnerRows = new ArrayList<>(rosterRows.size());
         for (Object[] row : rosterRows) {
@@ -139,6 +144,7 @@ public class SubOrgFinanceService {
      */
     private Object[] pickAdminRowWithBills(List<Object[]> candidates) {
         if (candidates == null || candidates.isEmpty()) return null;
+        // 1) Prefer an admin whose plan has a CPO ledger (SFP installment bills).
         for (Object[] row : candidates) {
             String userPlanId = (String) row[3];
             if (!StringUtils.hasText(userPlanId)) continue;
@@ -146,7 +152,29 @@ public class SubOrgFinanceService {
                 return row;
             }
         }
-        return candidates.get(0);
+        // 2) Otherwise prefer the admin who actually PAID. A sub-org can have several
+        //    ROOT_ADMINs (e.g. a free co-admin added later); the payer is the meaningful
+        //    "Admin payment" to surface. This also makes selection DETERMINISTIC — the
+        //    roster query is unordered, so without a real signal the displayed admin could
+        //    flip between co-admins from one request to the next.
+        for (Object[] row : candidates) {
+            String userPlanId = (String) row[3];
+            if (!StringUtils.hasText(userPlanId)) continue;
+            if (paymentLogRepository.existsByUserPlanIdAndPaymentStatus(
+                    userPlanId, PaymentStatusEnum.PAID.name())) {
+                return row;
+            }
+        }
+        // 3) Deterministic fallback (no bills, no payment on any admin yet): earliest-enrolled,
+        //    tie-broken by mapping id, so the same admin shows on every request. Compare the
+        //    enrolled_date (row[5]) by its epoch value — java.sql.Date/Timestamp both extend
+        //    java.util.Date — with null-enrolled rows sorted last, rather than by string form.
+        return candidates.stream()
+                .min(Comparator
+                        .comparingLong((Object[] r) -> r[5] instanceof java.util.Date
+                                ? ((java.util.Date) r[5]).getTime() : Long.MAX_VALUE)
+                        .thenComparing(r -> r[0] == null ? "" : r[0].toString()))
+                .orElse(candidates.get(0));
     }
 
     /**

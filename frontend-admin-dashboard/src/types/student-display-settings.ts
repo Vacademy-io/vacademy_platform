@@ -114,6 +114,8 @@ export interface StudentCourseDetailsSettings {
     ratingsAndReviewsVisible: boolean;
     /** Hide the "Author" row in the course-details Course Overview panel. Default false (author shown). */
     hideAuthorName?: boolean;
+    /** Show the Teachers/Instructors section on the course-details page. Default false (hidden). */
+    showInstructors?: boolean;
     // New toggles
     showCourseConfiguration: boolean;
     showCourseContentPrefixes: boolean;

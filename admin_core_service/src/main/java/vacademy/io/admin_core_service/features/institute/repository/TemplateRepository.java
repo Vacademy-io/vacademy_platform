@@ -70,6 +70,14 @@ public interface TemplateRepository extends JpaRepository<Template, String> {
     @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId ORDER BY t.createdAt DESC")
     Page<Template> findByInstituteIdOrderByCreatedAtDescPageable(@Param("instituteId") String instituteId, Pageable pageable);
 
+    // Find templates by institute ID with pagination, optionally filtered by type and/or a name/subject search term
+    @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId " +
+            "AND (:type IS NULL OR t.type = :type) " +
+            "AND (:searchText IS NULL OR LOWER(t.name) LIKE LOWER(CONCAT('%', :searchText, '%')) OR LOWER(t.subject) LIKE LOWER(CONCAT('%', :searchText, '%'))) " +
+            "ORDER BY t.createdAt DESC")
+    Page<Template> findByInstituteIdAndTypeAndSearchPageable(@Param("instituteId") String instituteId,
+            @Param("type") String type, @Param("searchText") String searchText, Pageable pageable);
+
     // Find templates by institute ID and type with pagination support
     @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId AND t.type = :type ORDER BY t.createdAt DESC")
     List<Template> findByInstituteIdAndTypeOrderByCreatedAtDesc(@Param("instituteId") String instituteId,

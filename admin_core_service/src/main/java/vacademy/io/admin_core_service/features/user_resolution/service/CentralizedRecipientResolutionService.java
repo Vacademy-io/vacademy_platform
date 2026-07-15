@@ -243,9 +243,13 @@ public class CentralizedRecipientResolutionService {
             }
 
             case "AUDIENCE": {
+                // audience_status = 'ACTIVE' is hardcoded, not a filter option: this resolver
+                // decides who RECEIVES an announcement, and a soft-deleted lead must never be
+                // a recipient.
                 QueryWithParams q = new QueryWithParams(
                         "SELECT DISTINCT ar.user_id FROM audience_response ar " +
-                        "WHERE ar.audience_id = ?" + paramOffset + " AND ar.user_id IS NOT NULL");
+                        "WHERE ar.audience_id = ?" + paramOffset + " AND ar.user_id IS NOT NULL " +
+                        "AND ar.audience_status = 'ACTIVE'");
                 q.params.add(recipientId);
                 return narrowByFilters(q, filters, paramOffset + q.params.size());
             }

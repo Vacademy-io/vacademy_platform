@@ -78,7 +78,8 @@ public class AiCallCampaignService {
             throw new VacademyException("No default Campaign ID set in AI Calling settings.");
         }
 
-        List<AudienceResponse> leads = audienceResponseRepository.findByAudienceId(audienceId);
+        // ACTIVE-only, hardcoded: a soft-deleted lead must never be dialled by a bulk campaign.
+        List<AudienceResponse> leads = audienceResponseRepository.findActiveByAudienceId(audienceId);
         // Eligible = has a user id; the phone is resolved at call time (parent_mobile
         // first, then the user's profile number), so we don't pre-filter on phone.
         List<LeadRef> refs = leads.stream()

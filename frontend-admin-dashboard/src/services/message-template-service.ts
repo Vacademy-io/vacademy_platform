@@ -149,7 +149,8 @@ export const createMessageTemplate = async (
 export const getMessageTemplates = async (
     type?: 'EMAIL' | 'WHATSAPP' | 'INVOICE' | 'INVOICE_EMAIL',
     page = 0,
-    size = 10
+    size = 10,
+    searchText?: string
 ): Promise<TemplateListResponse> => {
     try {
         const accessToken = getAccessToken();
@@ -166,6 +167,9 @@ export const getMessageTemplates = async (
         url.searchParams.append('size', size.toString());
         if (type) {
             url.searchParams.append('type', type);
+        }
+        if (searchText && searchText.trim()) {
+            url.searchParams.append('search', searchText.trim());
         }
 
         const response = await fetch(url.toString(), {

@@ -1183,6 +1183,19 @@ export default function StudentDisplaySettings(): JSX.Element {
                         />
                         <Label className="text-xs">Show Activity Stats</Label>
                     </div>
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.liveClasses.showClassMaterials}
+                            disabled={!settings.liveClasses.showPastSessions}
+                            onCheckedChange={(v) =>
+                                update('liveClasses', {
+                                    ...settings.liveClasses,
+                                    showClassMaterials: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Show Class Materials</Label>
+                    </div>
                 </div>
             </Card>
             </section>

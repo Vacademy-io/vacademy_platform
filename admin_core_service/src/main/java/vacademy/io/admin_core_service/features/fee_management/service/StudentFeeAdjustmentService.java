@@ -37,6 +37,9 @@ public class StudentFeeAdjustmentService {
     @Autowired
     private InstituteSettingService instituteSettingService;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
+
     public record AdjustmentResult(StudentFeePayment bill, StudentFeeAdjustmentHistory event) {}
 
     @Transactional
@@ -119,6 +122,14 @@ public class StudentFeeAdjustmentService {
         bill.setCurrentAdjustmentHistoryId(event.getId());
         StudentFeePayment savedBill = studentFeePaymentRepository.save(bill);
 
+        // Ledger: penalties are auto-approved, record debit immediately
+        if (autoApproved) {
+            userAccountLedgerService.recordDebitPenalty(
+                    bill.getUserId(), resolvedInstituteId, amount, "INR",
+                    "STUDENT_FEE_PAYMENT", studentFeePaymentId,
+                    event.getId(), "Penalty applied");
+        }
+
         log.info("Adjustment submitted: billId={}, userId={}, type={}, amount={}, status={}, auto={}",
                 studentFeePaymentId, userId, type, amount, resultingStatus, autoApproved);
         return new AdjustmentResult(savedBill, event);
@@ -172,6 +183,16 @@ public class StudentFeeAdjustmentService {
 
         bill.setCurrentAdjustmentHistoryId(event.getId());
         StudentFeePayment savedBill = studentFeePaymentRepository.save(bill);
+
+        // Ledger: approved concession = credit adjustment
+        if (action == AdjustmentStatus.APPROVED
+                && AdjustmentType.CONCESSION.name().equals(currentEvent.getAdjustmentType())) {
+            userAccountLedgerService.recordCreditAdjustment(
+                    bill.getUserId(), currentEvent.getInstituteId(),
+                    currentEvent.getAmount(), "INR",
+                    "STUDENT_FEE_PAYMENT", studentFeePaymentId,
+                    event.getId(), "Concession approved");
+        }
 
         log.info("Adjustment reviewed: billId={}, action={}, reviewer={}",
                 studentFeePaymentId, action, reviewer.getUserId());

@@ -35,6 +35,9 @@ public class StudentFeePaymentGenerationService {
     @Autowired
     private StudentFeePaymentRepository studentFeePaymentRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
+
     /**
      * Generates StudentFeePayment rows from the CPO template chain:
      * CPO -> FeeType -> AssignedFeeValue -> AftInstallment
@@ -85,6 +88,11 @@ public class StudentFeePaymentGenerationService {
 
                     StudentFeePayment saved = studentFeePaymentRepository.save(payment);
                     createdPaymentIds.add(saved.getId());
+                    userAccountLedgerService.recordDebitAccrual(
+                            userId, instituteId,
+                            afv.getAmount(), "INR", null,
+                            "STUDENT_FEE_PAYMENT", saved.getId(),
+                            null, "Fee bill generated");
                 } else {
                     // Step 4: Create one StudentFeePayment per AftInstallment
                     for (AftInstallment installment : installments) {
@@ -109,6 +117,12 @@ public class StudentFeePaymentGenerationService {
 
                         StudentFeePayment saved = studentFeePaymentRepository.save(payment);
                         createdPaymentIds.add(saved.getId());
+                        userAccountLedgerService.recordDebitAccrual(
+                                userId, instituteId,
+                                installment.getAmount(), "INR",
+                                installment.getDueDate(),
+                                "STUDENT_FEE_PAYMENT", saved.getId(),
+                                null, "Fee installment generated");
 
                         log.info("Created StudentFeePayment {} for installment #{}, amount: {}, due: {}",
                                 saved.getId(), installment.getInstallmentNumber(),

@@ -122,6 +122,9 @@ public class UserPlanService {
     @Autowired
     private vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponRedemptionService couponRedemptionService;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
+
     public UserPlan createUserPlan(String userId,
             PaymentPlan paymentPlan,
             AppliedCouponDiscount appliedCouponDiscount,
@@ -344,6 +347,19 @@ public class UserPlanService {
         UserPlan saved = userPlanRepository.save(userPlan);
         logger.info("UserPlan created with ID={}", saved.getId());
 
+        // Ledger: record obligation when payment is required
+        if (UserPlanStatusEnum.PENDING_FOR_PAYMENT.name().equals(saved.getStatus())
+                && paymentPlan != null && paymentPlan.getActualPrice() > 0
+                && enrollInvite != null && enrollInvite.getInstituteId() != null) {
+            userAccountLedgerService.recordDebitAccrual(
+                    userId, enrollInvite.getInstituteId(),
+                    java.math.BigDecimal.valueOf(paymentPlan.getActualPrice()),
+                    paymentPlan.getCurrency() != null ? paymentPlan.getCurrency() : "INR",
+                    null,
+                    "USER_PLAN", saved.getId(),
+                    null, "Plan enrollment payment required");
+        }
+
         // Autopay (centralized for ALL enrollment entry points): SUBSCRIPTION plans
         // whose invite enabled AUTOPAY_SETTING opt into auto-renewal + free trial.
         applyAutopayFromInvite(saved, enrollInvite, paymentOption);
@@ -520,6 +536,26 @@ public class UserPlanService {
             userPlanRepository.save(userPlan);
 
             logger.info("UserPlan status updated to ACTIVE and saved. ID={}", userPlan.getId());
+
+            // Ledger: credit payment for gateway-confirmed enrollment
+            try {
+                paymentLogRepository.findByUserPlanIdOrderByCreatedAtDesc(userPlan.getId())
+                        .stream()
+                        .filter(pl -> "SUCCESS".equalsIgnoreCase(pl.getStatus()))
+                        .findFirst()
+                        .ifPresent(pl -> {
+                            if (pl.getPaymentAmount() != null && pl.getPaymentAmount() > 0) {
+                                userAccountLedgerService.recordCreditPayment(
+                                        userPlan.getUserId(), enrollInvite.getInstituteId(),
+                                        java.math.BigDecimal.valueOf(pl.getPaymentAmount()),
+                                        pl.getCurrency() != null ? pl.getCurrency() : "INR",
+                                        "USER_PLAN", userPlan.getId(),
+                                        pl.getId(), null, "Gateway payment confirmed");
+                            }
+                        });
+            } catch (Exception e) {
+                logger.warn("Failed to record ledger credit for userPlan={}: {}", userPlan.getId(), e.getMessage());
+            }
 
             // Process pending referral benefits after payment confirmation
             // This sends referrer reward emails that were deferred during enrollment

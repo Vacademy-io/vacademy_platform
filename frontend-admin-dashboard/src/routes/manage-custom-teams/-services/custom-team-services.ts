@@ -750,6 +750,17 @@ export interface InvoiceSummary {
      */
     payment_link?: string;
     paymentLink?: string;
+    /**
+     * Which creation flow generated this invoice:
+     *   ADMIN_MANUAL         — institute admin created via the Create Invoice dialog
+     *   USER_PLAN            — auto-generated when a learner subscribes / renews a plan
+     *   STUDENT_FEE_PAYMENT  — CPO installment (real Invoice row linked to an SFP)
+     * Drives source-specific action visibility in the Invoices tab.
+     */
+    source?: string | null;
+    source_id?: string | null;
+    /** Due date on the Invoice row (distinct from invoice_date). */
+    due_date?: string | null;
     [key: string]: unknown;
 }
 

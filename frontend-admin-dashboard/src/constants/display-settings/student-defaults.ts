@@ -163,6 +163,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         showRecordings: false,
         showAttendance: false,
         showActivityStats: false,
+        showClassMaterials: false,
     },
     postLoginRedirectRoute: '/dashboard',
 };

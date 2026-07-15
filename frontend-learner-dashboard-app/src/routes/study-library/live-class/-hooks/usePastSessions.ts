@@ -24,6 +24,7 @@ export const DEFAULT_DISPLAY_FLAGS: PastDisplayFlags = {
   show_recordings: false,
   show_attendance: false,
   show_activity_stats: false,
+  show_class_materials: false,
 };
 
 export const fetchPastSessions = async (
@@ -83,6 +84,8 @@ export const fetchPastSessionsForMultipleBatches = async (
       show_recordings: acc.show_recordings || r.display_flags.show_recordings,
       show_attendance: acc.show_attendance || r.display_flags.show_attendance,
       show_activity_stats: acc.show_activity_stats || r.display_flags.show_activity_stats,
+      show_class_materials:
+        acc.show_class_materials || r.display_flags.show_class_materials,
     }),
     { ...DEFAULT_DISPLAY_FLAGS }
   );

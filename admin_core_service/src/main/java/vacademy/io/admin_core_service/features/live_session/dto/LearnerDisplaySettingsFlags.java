@@ -16,9 +16,10 @@ public record LearnerDisplaySettingsFlags(
         boolean showPastSessions,
         boolean showRecordings,
         boolean showAttendance,
-        boolean showActivityStats) {
+        boolean showActivityStats,
+        boolean showClassMaterials) {
 
     public static LearnerDisplaySettingsFlags allOff() {
-        return new LearnerDisplaySettingsFlags(false, false, false, false);
+        return new LearnerDisplaySettingsFlags(false, false, false, false, false);
     }
 }

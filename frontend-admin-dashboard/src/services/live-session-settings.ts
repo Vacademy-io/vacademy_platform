@@ -120,6 +120,18 @@ export interface LiveSessionSettings {
      */
     recordingTranscriptionEnabled: boolean;
     /**
+     * "LMS Connection" — bridges live classes into course content (the LMS).
+     * `recordingAddToCourseEnabled` shows/hides the per-recording "Add to
+     * course" action on the session view page; `classMaterialsEnabled`
+     * shows/hides the Class Materials card (PDF/video upload → chapter).
+     * Both default OFF (opt-in per institute); turning one off hides only
+     * the entry point — content already linked stays in its chapters.
+     */
+    lmsConnection: {
+        recordingAddToCourseEnabled: boolean;
+        classMaterialsEnabled: boolean;
+    };
+    /**
      * Defaults for the "Vacademy Meet recording & controls" block. These only
      * affect live classes whose platform is Vacademy Meet (BBB); other
      * platforms ignore them. Pre-filled on new single-class and bulk forms;
@@ -220,6 +232,10 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
     defaultDailyAttendanceCounting: false,
     descriptionEnabled: true,
     recordingTranscriptionEnabled: false,
+    lmsConnection: {
+        recordingAddToCourseEnabled: false,
+        classMaterialsEnabled: false,
+    },
     defaultBbbRecordEnabled: true,
     defaultBbbAutoStartRecording: false,
     defaultBbbMuteOnStart: true,
@@ -275,6 +291,10 @@ export const getLiveSessionSettings = async (): Promise<LiveSessionSettings> => 
             allowedPlatforms: {
                 ...DEFAULT_LIVE_SESSION_SETTINGS.allowedPlatforms,
                 ...(partial.allowedPlatforms ?? {}),
+            },
+            lmsConnection: {
+                ...DEFAULT_LIVE_SESSION_SETTINGS.lmsConnection,
+                ...(partial.lmsConnection ?? {}),
             },
         };
     } catch (err) {

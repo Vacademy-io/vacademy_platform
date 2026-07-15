@@ -184,6 +184,7 @@ export interface StudentLiveClassesSettings {
     showRecordings: boolean;
     showAttendance: boolean;
     showActivityStats: boolean;
+    showClassMaterials: boolean;
 }
 
 // Root schema

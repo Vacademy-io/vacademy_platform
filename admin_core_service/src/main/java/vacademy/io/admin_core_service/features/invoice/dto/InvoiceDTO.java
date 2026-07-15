@@ -43,6 +43,8 @@ public class InvoiceDTO {
      */
     private String paymentLink;
     private Boolean taxIncluded;
+    private String source;
+    private String sourceId;
     // Admin-entered notes (from invoice_data_json), if any — used by the frontend
     // "Duplicate" action to prefill a new Create-Invoice dialog from this invoice.
     private String notes;

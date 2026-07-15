@@ -10,13 +10,21 @@ import {
   HandPalm,
   Smiley,
   ChartBar,
+  FilePdf,
+  VideoCamera,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import {
   formatSessionTimeInUserTimezone,
   getTimezoneDisplayInfo,
 } from "@/utils/timezone";
-import { PastSessionDetails, LearnerRecording } from "../-types/types";
+import { toast } from "sonner";
+import { getPublicUrl } from "@/services/upload_file";
+import {
+  PastSessionDetails,
+  LearnerRecording,
+  PastSessionMaterial,
+} from "../-types/types";
 import { RecordingPlayerDialog } from "./RecordingPlayerDialog";
 
 interface PastSessionCardProps {
@@ -102,6 +110,30 @@ export const PastSessionCard = ({ session }: PastSessionCardProps) => {
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const recordings = session.recordings ?? [];
+  const materials = session.materials ?? [];
+
+  // Video/YouTube materials reuse the recording player dialog via a pseudo
+  // recording; PDFs resolve the media-service file id and open in a new tab.
+  const handleOpenMaterial = async (material: PastSessionMaterial) => {
+    if (material.kind === "PDF") {
+      if (!material.file_id) return;
+      try {
+        const url = await getPublicUrl(material.file_id);
+        if (url) window.open(url, "_blank", "noopener,noreferrer");
+        else toast.error("Could not open this material.");
+      } catch {
+        toast.error("Could not open this material.");
+      }
+      return;
+    }
+    setActiveRecording({
+      recording_id: `material-${material.slide_id}`,
+      playback_type: material.kind === "YOUTUBE" ? "YOUTUBE" : "S3",
+      file_id: material.file_id,
+      url: material.url,
+    });
+    setDialogOpen(true);
+  };
 
   const handleWatch = (recording: LearnerRecording) => {
     if (recording.expired) return;
@@ -175,6 +207,31 @@ export const PastSessionCard = ({ session }: PastSessionCardProps) => {
               {recording.expired ? "Recording expired" : recordingLabel(recording, idx)}
             </Button>
           ))}
+        </div>
+      )}
+
+      {materials.length > 0 && (
+        <div className="mt-2">
+          <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1.5">
+            Class materials
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {materials.map((material) => (
+              <Button
+                key={material.slide_id}
+                variant="outline"
+                size="sm"
+                onClick={() => void handleOpenMaterial(material)}
+              >
+                {material.kind === "PDF" ? (
+                  <FilePdf size={16} className="mr-1.5" />
+                ) : (
+                  <VideoCamera size={16} className="mr-1.5" />
+                )}
+                <span className="max-w-48 truncate">{material.title || "Material"}</span>
+              </Button>
+            ))}
+          </div>
         </div>
       )}
     </>

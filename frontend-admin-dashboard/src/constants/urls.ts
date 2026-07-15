@@ -822,6 +822,7 @@ export const LOGIN_URL_GOOGLE_GITHUB = `${BASE_URL}/auth-service/v1/oauth`;
 
 export const ADD_DOUBT = `${BASE_URL}/admin-core-service/institute/v1/doubts/create`;
 export const GET_DOUBTS = `${BASE_URL}/admin-core-service/institute/v1/doubts/get-all`;
+export const GET_DOUBT_BY_ID = `${BASE_URL}/admin-core-service/institute/v1/doubts`;
 export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;
 
 // Engage Session URLs (Presentation specific)
@@ -1006,6 +1007,12 @@ export const POST_ADMIN_CREATE_INVOICE = `${BASE_URL}/admin-core-service/v1/invo
 export const POST_ADMIN_PREVIEW_INVOICE = `${BASE_URL}/admin-core-service/v1/invoices/admin/preview`;
 export const POST_REJECT_INVOICE = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/reject`;
+export const POST_MARK_INVOICE_PAID_MANUAL = (invoiceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/mark-paid-manual`;
+export const GET_USER_ACCOUNT_SUMMARY = (userId: string) =>
+    `${BASE_URL}/admin-core-service/v1/user-account/${userId}/summary`;
+export const GET_USER_ACCOUNT_LEDGER = (userId: string) =>
+    `${BASE_URL}/admin-core-service/v1/user-account/${userId}/ledger`;
 export const GET_INVOICE_SETTINGS_URL = `${BASE_URL}/admin-core-service/v1/settings/institute`;
 
 // Instructor Copilot

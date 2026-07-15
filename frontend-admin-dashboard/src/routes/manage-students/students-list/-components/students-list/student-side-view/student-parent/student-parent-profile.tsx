@@ -168,7 +168,10 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
     const { enabled: guardianLinkingEnabled } = useParentSettings();
     const { mutateAsync: linkGuardian, isPending: isLinking } = useParentLink();
 
-    const currentId = history.length ? history[history.length - 1].id : userId;
+    // noUncheckedIndexedAccess means history[n] is `ViewedPerson | undefined`
+    // even right after a length check — resolve it once, explicitly.
+    const lastView = history.length > 0 ? history[history.length - 1] : undefined;
+    const currentId = lastView ? lastView.id : userId;
 
     // The actual selected student changed upstream (e.g. admin picked a
     // different learner) — drop any in-panel pivot so we don't show a stale
@@ -263,9 +266,7 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
         }
     };
 
-    const backTrail = history.length > 0 && (
-        <BackTrail current={history[history.length - 1]} onBack={goBack} />
-    );
+    const backTrail = lastView && <BackTrail current={lastView} onBack={goBack} />;
 
     if (childrenQuery.isLoading || parentQuery.isLoading) {
         return (

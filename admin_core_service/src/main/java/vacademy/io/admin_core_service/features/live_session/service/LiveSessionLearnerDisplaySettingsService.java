@@ -59,9 +59,10 @@ public class LiveSessionLearnerDisplaySettingsService {
             boolean showRecordings = learnerDisplay.path("showRecordings").asBoolean(false);
             boolean showAttendance = learnerDisplay.path("showAttendance").asBoolean(false);
             boolean showActivityStats = learnerDisplay.path("showActivityStats").asBoolean(false);
+            boolean showClassMaterials = learnerDisplay.path("showClassMaterials").asBoolean(false);
 
             return new LearnerDisplaySettingsFlags(showPastSessions, showRecordings, showAttendance,
-                    showActivityStats);
+                    showActivityStats, showClassMaterials);
         } catch (Exception e) {
             log.warn("Failed to read learnerDisplay flags for institute {}: {}", instituteId, e.getMessage());
             return LearnerDisplaySettingsFlags.allOff();

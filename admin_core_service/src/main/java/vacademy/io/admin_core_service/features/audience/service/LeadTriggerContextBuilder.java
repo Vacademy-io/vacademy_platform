@@ -89,6 +89,43 @@ public class LeadTriggerContextBuilder {
         }
     }
 
+    /**
+     * Fall back to the lead's own auth user for any lead-* contact key the
+     * audience_response row didn't supply.
+     *
+     * <p>The {@code parent_*} columns are only populated by the enquiry/admission,
+     * walk-in and inbound-call paths. A lead captured by an ordinary campaign form
+     * leaves them null and carries its contact details on the auth user alone — so
+     * without this fallback {{leadEmail}} / {{leadMobile}} / {{leadName}} render empty
+     * and SEND_EMAIL / SEND_WHATSAPP have no recipient to resolve. Parent-sourced
+     * values still win when present, which keeps "contact the parent first" intact.
+     * Best-effort; never throws into the emit path.</p>
+     */
+    public void enrichLeadContact(Map<String, Object> ctx, String leadUserId) {
+        if (leadUserId == null || leadUserId.isBlank()) return;
+        if (hasText(ctx.get("leadName")) && hasText(ctx.get("leadEmail")) && hasText(ctx.get("leadMobile"))) {
+            return;
+        }
+        try {
+            List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(leadUserId));
+            if (users == null || users.isEmpty()) return;
+            UserDTO u = users.get(0);
+            putIfBlank(ctx, "leadName", u.getFullName());
+            putIfBlank(ctx, "leadEmail", u.getEmail());
+            putIfBlank(ctx, "leadMobile", u.getMobileNumber());
+        } catch (Exception e) {
+            log.warn("[LeadTrigger] Failed to enrich lead contact for {}: {}", leadUserId, e.getMessage());
+        }
+    }
+
+    private void putIfBlank(Map<String, Object> ctx, String key, Object value) {
+        if (!hasText(ctx.get(key))) put(ctx, key, value);
+    }
+
+    private static boolean hasText(Object value) {
+        return value instanceof String s ? !s.isBlank() : value != null;
+    }
+
     /** Context anchored on a specific lead row (audience_response). */
     public Map<String, Object> forLead(AudienceResponse ar, String instituteId, String campaignName,
                                        String counselorId, String counselorName) {
@@ -111,6 +148,9 @@ public class LeadTriggerContextBuilder {
             put(ctx, "leadName", ar.getParentName());
             put(ctx, "leadEmail", ar.getParentEmail());
             put(ctx, "leadMobile", ar.getParentMobile());
+            // parent_* is null for an ordinary campaign lead — fill the lead-* keys from
+            // the lead's own auth user so templates still resolve a name and a recipient.
+            enrichLeadContact(ctx, ar.getUserId());
             // If the caller didn't pass a campaignName, look it up from the audience so
             // {{campaignName}} resolves for every forLead path (not just the SLA scheduler
             // which already passes it from LeadSlaCandidate).

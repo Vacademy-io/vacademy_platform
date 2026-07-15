@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Plus, Trash2, Search, Edit, Eye, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MyButton } from '@/components/design-system/button';
@@ -27,7 +27,7 @@ export const EmailTemplatesTab: React.FC = () => {
     const [templates, setTemplates] = useState<MessageTemplate[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
-    const [filteredTemplates, setFilteredTemplates] = useState<MessageTemplate[]>([]);
+    const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
     const [showPreview, setShowPreview] = useState(false);
     const [previewTemplate, setPreviewTemplate] = useState<MessageTemplate | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -42,13 +42,12 @@ export const EmailTemplatesTab: React.FC = () => {
     const [isLast, setIsLast] = useState(true);
     const [isFirst, setIsFirst] = useState(true);
 
-    // Load templates with pagination
-    const loadTemplates = async (page: number = currentPage, size: number = pageSize) => {
+    // Load templates with pagination + server-side search
+    const loadTemplates = async (page: number = currentPage, size: number = pageSize, search: string = debouncedSearchQuery) => {
         setIsLoading(true);
         try {
-            const response = await getMessageTemplates('EMAIL', page, size);
+            const response = await getMessageTemplates('EMAIL', page, size, search);
             setTemplates(response.templates);
-            setFilteredTemplates(response.templates);
             setTotalElements(response.total);
             setTotalPages(response.totalPages || 1);
             setIsLast(response.isLast ?? true);
@@ -62,30 +61,32 @@ export const EmailTemplatesTab: React.FC = () => {
         }
     };
 
-    // Filter templates based on search query (client-side filtering on current page)
+    // Debounce the search input before hitting the server
     useEffect(() => {
-        if (!searchQuery.trim()) {
-            setFilteredTemplates(templates);
-        } else {
-            const filtered = templates.filter((template) =>
-                template.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                template.subject?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (template.content && template.content.toLowerCase().includes(searchQuery.toLowerCase()))
-            );
-            setFilteredTemplates(filtered);
+        const timer = setTimeout(() => setDebouncedSearchQuery(searchQuery.trim()), 300);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
+
+    // Reload when page or page size changes (skips the initial mount, handled by the search-query effect below)
+    const didMountRef = useRef(false);
+    useEffect(() => {
+        if (!didMountRef.current) {
+            didMountRef.current = true;
+            return;
         }
-    }, [searchQuery, templates]);
-
-    useEffect(() => {
-        loadTemplates(0, pageSize);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    // Reload when page or page size changes
-    useEffect(() => {
-        loadTemplates(currentPage, pageSize);
+        loadTemplates(currentPage, pageSize, debouncedSearchQuery);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentPage, pageSize]);
+
+    // Reset to first page and reload whenever the search query changes (also covers the initial load)
+    useEffect(() => {
+        if (currentPage === 0) {
+            loadTemplates(0, pageSize, debouncedSearchQuery);
+        } else {
+            setCurrentPage(0);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [debouncedSearchQuery]);
 
     const handleCreateTemplate = () => {
         navigate({ to: '/templates/create' });
@@ -208,7 +209,7 @@ export const EmailTemplatesTab: React.FC = () => {
                     <Loader2 className="size-6 animate-spin" />
                     <span className="ml-2 text-sm">Loading templates...</span>
                 </div>
-            ) : filteredTemplates.length === 0 ? (
+            ) : templates.length === 0 ? (
                 <div className="text-center py-8">
                     <div className="mx-auto size-12 rounded-full bg-muted flex items-center justify-center mb-4">
                         <Search className="size-6 text-muted-foreground" />
@@ -248,7 +249,7 @@ export const EmailTemplatesTab: React.FC = () => {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {filteredTemplates.map((template) => {
+                            {templates.map((template) => {
                                 const templateType = getTemplateType(template);
                                 const typeConfig = TEMPLATE_TYPE_CONFIG[templateType];
 

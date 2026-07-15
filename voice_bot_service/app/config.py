@@ -59,7 +59,7 @@ class Settings:
     sarvam_tts_model: str = field(default_factory=lambda: _env("SARVAM_TTS_MODEL", "bulbul:v3"))
     sarvam_tts_voice: str = field(default_factory=lambda: _env("SARVAM_TTS_VOICE", "priya"))
 
-    # LLM provider switch: "sarvam" (default) | "google" | "openrouter". Governs
+    # LLM provider switch: "sarvam" (default) | "vertex" | "google" | "openrouter". Governs
     # BOTH the live conversation (providers.build_llm) and the end-of-call
     # analysis (report._llm_target) — they must never diverge.
     # sarvam = India-hosted sarvam-105b with reasoning_effort=null (the literal
@@ -85,6 +85,29 @@ class Settings:
     )
     google_llm_model: str = field(
         default_factory=lambda: _env("GOOGLE_LLM_MODEL", "gemini-3.1-flash-lite")
+    )
+
+    # Vertex AI (Gemini) served from an IN-INDIA region — LLM_PROVIDER="vertex".
+    # Unlike the "google" path (generativelanguage.googleapis.com, US/global, ~5x
+    # the TTFT from Mumbai), Vertex runs the model in vertex_location, so pinning
+    # asia-south1 (Mumbai) gives ~0.37s TTFT + near-zero network RTT AND better
+    # instruction-following than sarvam-105b. Auth is a Google SERVICE ACCOUNT
+    # (JSON), not an API key: set VERTEX_CREDENTIALS_JSON (the full SA JSON string)
+    # or VERTEX_CREDENTIALS_PATH (path to the file), plus VERTEX_PROJECT_ID. The SA
+    # needs role roles/aiplatform.user and the Vertex AI API enabled in the project.
+    # Gemini "thinking" is auto-disabled by pipecat (thinking_budget=0) → fast path.
+    vertex_project_id: str = field(default_factory=lambda: _env("VERTEX_PROJECT_ID", ""))
+    vertex_location: str = field(default_factory=lambda: _env("VERTEX_LOCATION", "asia-south1"))
+    vertex_credentials_json: str = field(
+        default_factory=lambda: _env("VERTEX_CREDENTIALS_JSON", "")
+    )
+    vertex_credentials_path: str = field(
+        default_factory=lambda: _env("VERTEX_CREDENTIALS_PATH", "")
+    )
+    # gemini-2.5-flash-lite is NOT served in asia-south1 (404 verified 2026-07-14) — only
+    # gemini-2.5-flash is. Default to what the target region actually has; override per region.
+    vertex_model: str = field(
+        default_factory=lambda: _env("VERTEX_MODEL", "gemini-2.5-flash")
     )
 
     # Telephony audio is 8 kHz mu-law on Plivo <Stream>.
@@ -115,11 +138,13 @@ class Settings:
         )
     )
 
-    # Call-open pacing: a real caller doesn't blast audio the instant the line
-    # opens. On connect the bot waits up to this long for the callee to answer /
-    # say "hello" (if they speak first, the normal turn greets them back so the
-    # bot never talks over them); on continued silence, the bot opens itself.
-    greet_delay_secs: float = field(default_factory=lambda: float(_env("GREET_DELAY_SECS", "2.0")))
+    # Call-open pacing: on OUTBOUND the callee already said "hello" on pickup, so the
+    # bot SPEAKS FIRST after this short beat — long enough not to clip their "hello",
+    # short enough to avoid dead air / the "double hello". Was 2.0s (the main cause of
+    # the robotic-feeling start); ~0.8s is the production sweet spot (Vapi/Retell fire
+    # the greeting ~0.3-0.8s after the human is on the line). If they say something
+    # substantive in this window, their turn drives the reply and the bot doesn't open.
+    greet_delay_secs: float = field(default_factory=lambda: float(_env("GREET_DELAY_SECS", "0.8")))
 
     # Idle handling: nudge once after this silence, then hang up on continued
     # silence. The clock only runs while the BOT is not speaking (see bot.py).

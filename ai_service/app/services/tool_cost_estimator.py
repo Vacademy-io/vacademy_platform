@@ -147,6 +147,35 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "pages",
         "params": {},
     },
+    # AI Page Builder — one wizard run composes a full catalogue page as
+    # schema-bound JSON (one large LLM call + validation/repair round-trips).
+    # Charged as max(flat, actual token cost).
+    "page_generate": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("10"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # AI Page Builder copilot — one conversational edit returns a small op list
+    # (insert/update/remove/move) against the current page. Cheaper than a full
+    # generate (reuses the existing page as context, smaller output).
+    "page_edit": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("3"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # AI Page Builder brand kit — one small LLM call proposing 2-3 ThemePacks
+    # (color/atmosphere/fonts) from the institute's brand. Cheap.
+    "page_brand_kit": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
 }
 
 # Tool keys this estimator knows about (used for validation / FE discovery).

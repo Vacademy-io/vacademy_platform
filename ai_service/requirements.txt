@@ -37,3 +37,4 @@ pdfplumber>=0.10.0
 # for selective Mathpix re-OCR. Without this, mathpix.enrich_layout_for_math
 # crashes with "No module named 'fitz'" right after LAYOUT_OCR_DONE.
 pymupdf>=1.24.0
+nh3==0.2.*

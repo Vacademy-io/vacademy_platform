@@ -1,8 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
 import { UseFormReturn } from 'react-hook-form';
 import { InviteLinkFormValues } from '../GenerateInviteLinkSchema';
 import { CodeSimple } from '@phosphor-icons/react';
-import { PPTViewQuillEditor } from '@/components/quill/PPTViewQuillEditor';
 
 interface InviteViaEmailCardProps {
     form: UseFormReturn<InviteLinkFormValues>;
@@ -25,11 +25,12 @@ const CustomHTMLCard = ({ form }: InviteViaEmailCardProps) => {
                 </div>
             </CardHeader>
             <CardContent>
-                <PPTViewQuillEditor
-                    value={form.watch('customHtml')}
-                    onChange={(value: string) => form.setValue('customHtml', value)}
+                <Textarea
+                    value={form.watch('customHtml') ?? ''}
+                    onChange={(e) => form.setValue('customHtml', e.target.value)}
                     placeholder="Enter custom HTML code here..."
-                    className="h-[100px]"
+                    rows={5}
+                    className="font-mono text-sm"
                 />
             </CardContent>
         </Card>

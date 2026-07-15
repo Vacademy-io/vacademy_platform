@@ -28,6 +28,9 @@ public class CourseCatalogueService {
         @Autowired
         private CatalogueInstituteMappingRepository catalogueInstituteMappingRepository;
 
+        @Autowired
+        private CatalogueRevisionService catalogueRevisionService;
+
         @Transactional
         public List<CourseCatalogueResponse> createCatalogues(List<CourseCatalogueRequest> requests, String instituteId,
                         Institute institute) {
@@ -76,17 +79,24 @@ public class CourseCatalogueService {
         }
 
         @Transactional
-        public CourseCatalogueResponse updateCatalogue(String catalogueId, CourseCatalogueRequest request) {
+        public CourseCatalogueResponse updateCatalogue(String catalogueId, CourseCatalogueRequest request, String userId) {
                 Optional<CourseCatalogue> optional = courseCatalogueRepository.findById(catalogueId);
                 if (optional.isEmpty()) {
                         throw new RuntimeException("Catalogue not found");
                 }
 
                 CourseCatalogue catalogue = optional.get();
-                catalogue.setCatalogueJson(request.getCatalogueJson());
-                catalogue.setTagName(request.getTagName());
-                catalogue.setStatus(request.getStatus());
+                if (request.getCatalogueJson() != null) catalogue.setCatalogueJson(request.getCatalogueJson());
+                if (request.getTagName() != null) catalogue.setTagName(request.getTagName());
+                if (request.getStatus() != null) catalogue.setStatus(request.getStatus());
                 catalogue = courseCatalogueRepository.save(catalogue);
+
+                // Legacy direct write bypasses the draft/publish flow — record it
+                // as a PUBLISHED revision so history stays complete/restorable.
+                if (request.getCatalogueJson() != null) {
+                        catalogueRevisionService.recordLegacyPublishedRevision(catalogueId,
+                                        request.getCatalogueJson(), userId);
+                }
 
                 Optional<CatalogueInstituteMapping> mapping = catalogueInstituteMappingRepository
                                 .findByCourseCatalogueId(catalogueId);

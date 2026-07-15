@@ -1,6 +1,8 @@
 import { useEditorStore } from '../-stores/editor-store';
 import { Button } from '@/components/ui/button';
-import { Settings, Plus, Copy, Trash2, MoreVertical, Globe, EyeOff } from 'lucide-react';
+import { Settings, Plus, Copy, Trash2, MoreVertical } from 'lucide-react'; // design-lint-ignore: legacy icon set, migrated incrementally
+import { Sparkle } from '@phosphor-icons/react';
+import { AiPageWizard } from './AiPageWizard';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -48,10 +50,10 @@ export const PageTabs = () => {
         addPage,
         deletePage,
         duplicatePage,
-        togglePagePublished,
     } = useEditorStore();
 
     const [showAddDialog, setShowAddDialog] = useState(false);
+    const [showAiWizard, setShowAiWizard] = useState(false);
     const [newPageRoute, setNewPageRoute] = useState('');
     const [newPageTitle, setNewPageTitle] = useState('');
     const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -106,10 +108,6 @@ export const PageTabs = () => {
                             onClick={() => selectPage(page.id)}
                             className="gap-1.5 pr-1"
                         >
-                            <span
-                                className={`size-2 rounded-full ${page.published ? 'bg-green-500' : 'bg-gray-300'}`}
-                                title={page.published ? 'Published' : 'Draft'}
-                            />
                             {page.title || page.route}
                         </Button>
                         <DropdownMenu>
@@ -122,20 +120,10 @@ export const PageTabs = () => {
                                     <MoreVertical className="size-3" />
                                 </Button>
                             </DropdownMenuTrigger>
+                            {/* Per-page publish toggle removed: the flag was never
+                                enforced on the learner side — the site-level
+                                Draft/Publish in the header is the single gate. */}
                             <DropdownMenuContent align="start">
-                                <DropdownMenuItem onClick={() => togglePagePublished(page.id)}>
-                                    {page.published ? (
-                                        <>
-                                            <EyeOff className="mr-2 size-4" />
-                                            Set as Draft
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Globe className="mr-2 size-4 text-green-600" />
-                                            Publish
-                                        </>
-                                    )}
-                                </DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => duplicatePage(page.id)}>
                                     <Copy className="mr-2 size-4" />
                                     Duplicate
@@ -161,7 +149,19 @@ export const PageTabs = () => {
                     <Plus className="size-4" />
                     Add Page
                 </Button>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowAiWizard(true)}
+                    className="gap-1 text-primary-500 hover:text-primary-400"
+                >
+                    <Sparkle className="size-4" weight="duotone" />
+                    AI Page
+                </Button>
             </div>
+
+            {/* AI Page Wizard */}
+            <AiPageWizard open={showAiWizard} onOpenChange={setShowAiWizard} />
 
             {/* Delete confirmation */}
             <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>

@@ -266,6 +266,8 @@ export const GET_LEAD_REPORT_SUMMARY = `${BASE_URL}/admin-core-service/v1/report
 export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/reports/counselor-performance`;
 export const DELETE_AUDIENCE_LEAD = (responseId: string) =>
     `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}`;
+export const UPDATE_LEAD_PROFILE = (responseId: string) =>
+    `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/profile`;
 export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiries`;
 // Distinct values a custom field holds across the institute's leads — searchable
 // + paginated. Powers the multi-select custom-field dropdowns in the leads filter bar.
@@ -820,6 +822,7 @@ export const LOGIN_URL_GOOGLE_GITHUB = `${BASE_URL}/auth-service/v1/oauth`;
 
 export const ADD_DOUBT = `${BASE_URL}/admin-core-service/institute/v1/doubts/create`;
 export const GET_DOUBTS = `${BASE_URL}/admin-core-service/institute/v1/doubts/get-all`;
+export const GET_DOUBT_BY_ID = `${BASE_URL}/admin-core-service/institute/v1/doubts`;
 export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;
 
 // Engage Session URLs (Presentation specific)
@@ -1004,6 +1007,12 @@ export const POST_ADMIN_CREATE_INVOICE = `${BASE_URL}/admin-core-service/v1/invo
 export const POST_ADMIN_PREVIEW_INVOICE = `${BASE_URL}/admin-core-service/v1/invoices/admin/preview`;
 export const POST_REJECT_INVOICE = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/reject`;
+export const POST_MARK_INVOICE_PAID_MANUAL = (invoiceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/mark-paid-manual`;
+export const GET_USER_ACCOUNT_SUMMARY = (userId: string) =>
+    `${BASE_URL}/admin-core-service/v1/user-account/${userId}/summary`;
+export const GET_USER_ACCOUNT_LEDGER = (userId: string) =>
+    `${BASE_URL}/admin-core-service/v1/user-account/${userId}/ledger`;
 export const GET_INVOICE_SETTINGS_URL = `${BASE_URL}/admin-core-service/v1/settings/institute`;
 
 // Instructor Copilot
@@ -1043,6 +1052,25 @@ export const UPDATE_CATALOGUE = (catalogueId: string) =>
     `${CATALOGUE_BASE_URL}/update?catalogueId=${catalogueId}`;
 export const GET_CATALOGUE_BY_TAG = (instituteId: string, tagName: string) =>
     `${CATALOGUE_BASE_URL}/institute/get/by-tag?instituteId=${instituteId}&tagName=${encodeURIComponent(tagName)}`;
+// Draft/publish revisions (AI Page Builder Phase A)
+export const CATALOGUE_REVISION_DRAFT = (catalogueId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/draft?catalogueId=${catalogueId}`;
+export const CATALOGUE_REVISION_SAVE_DRAFT = (catalogueId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/save-draft?catalogueId=${catalogueId}`;
+export const CATALOGUE_REVISION_PUBLISH = (catalogueId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/publish?catalogueId=${catalogueId}`;
+export const CATALOGUE_REVISION_DISCARD = (catalogueId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/discard-draft?catalogueId=${catalogueId}`;
+export const CATALOGUE_REVISION_HISTORY = (catalogueId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/history?catalogueId=${catalogueId}`;
+export const CATALOGUE_REVISION_GET = (revisionId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/get?revisionId=${revisionId}`;
+// AI Page Builder (ai_service)
+export const AI_PAGE_BUILDER_GENERATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/generate`;
+// Institute scope comes from the auth token — no params
+export const AI_PAGE_BUILDER_ESTIMATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/estimate`;
+export const AI_PAGE_BUILDER_EDIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/edit`;
+export const AI_PAGE_BUILDER_BRAND_KIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/brand-kit`;
 
 export const LINK_COUNSELLOR = `${BASE_URL}/admin-core-service/enquiry/link-counselor`;
 export const GET_ENQUIRY_DETAILS = `${BASE_URL}/admin-core-service/enquiry/v1/admin/details`;

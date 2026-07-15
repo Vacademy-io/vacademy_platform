@@ -54,6 +54,8 @@ const SlotDropZone = ({
                 const isSelected = child.id === selectedComponentId;
                 const isDisabled = child.enabled === false;
                 const childStyle = buildComponentStyle(child.style);
+                const childOverlay = child.style?.backgroundImage && child.style?.backgroundOverlay;
+                const childDecor = hasDecorations(child.style?.ornaments, child.style?.dividers);
                 return (
                     <div
                         key={child.id}
@@ -63,9 +65,15 @@ const SlotDropZone = ({
                                 ? 'outline outline-2 outline-blue-500 outline-offset-[-2px]'
                                 : 'hover:outline hover:outline-1 hover:outline-blue-300 hover:outline-offset-[-1px]'
                         }`}
-                        style={childStyle}
+                        style={{ ...childStyle, ...(child.style?.ornaments?.length ? { overflow: 'hidden' } : {}) }}
                         title={isDisabled ? `${child.type} (hidden)` : child.type}
                     >
+                        {childOverlay && (
+                            <div style={{ position: 'absolute', inset: 0, backgroundColor: child.style.backgroundOverlay, zIndex: 0, borderRadius: childStyle.borderRadius }} />
+                        )}
+                        {childDecor && (
+                            <SectionDecorations ornaments={child.style?.ornaments} dividers={child.style?.dividers} />
+                        )}
                         {isSelected && (
                             <div className="absolute left-0 top-0 z-50 select-none rounded-br-md bg-blue-500 px-2 py-0.5 text-xs font-medium text-white">
                                 {child.type}
@@ -76,7 +84,7 @@ const SlotDropZone = ({
                                 hidden
                             </div>
                         )}
-                        <div style={{ pointerEvents: 'none' }}>
+                        <div style={{ pointerEvents: 'none', position: childOverlay || childDecor ? 'relative' : undefined, zIndex: childOverlay || childDecor ? 1 : undefined }}>
                             {renderComponentPreview(child)}
                         </div>
                     </div>
@@ -109,6 +117,8 @@ const ColumnLayoutCanvas = ({
             ? columnFr.join(' ')
             : slots.map((_: any, i: number) => widthToFr(columnWidths[i])).join(' ');
     const layoutStyle = buildComponentStyle(component.style);
+    const hasOverlay = component.style?.backgroundImage && component.style?.backgroundOverlay;
+    const decor = hasDecorations(component.style?.ornaments, component.style?.dividers);
     return (
         <div
             onClick={(e) => { e.stopPropagation(); onSelectComponent(component.id); }}
@@ -117,8 +127,12 @@ const ColumnLayoutCanvas = ({
                     ? 'outline outline-2 outline-teal-500 outline-offset-[-2px] bg-teal-50/40'
                     : 'hover:outline hover:outline-1 hover:outline-teal-300 hover:outline-offset-[-1px]'
             }`}
-            style={layoutStyle}
+            style={{ ...layoutStyle, ...(component.style?.ornaments?.length ? { overflow: 'hidden' } : {}) }}
         >
+            {hasOverlay && (
+                <div style={{ position: 'absolute', inset: 0, backgroundColor: component.style.backgroundOverlay, zIndex: 0, borderRadius: layoutStyle.borderRadius }} />
+            )}
+            {decor && <SectionDecorations ornaments={component.style?.ornaments} dividers={component.style?.dividers} />}
             <div className="absolute left-0 top-0 z-50 select-none rounded-br bg-teal-500 px-2 py-0.5 text-caption font-medium text-white">
                 {slots.length} Columns
             </div>
@@ -128,6 +142,8 @@ const ColumnLayoutCanvas = ({
                     gridTemplateColumns: gridCols,
                     gap: gapPx[gap] ?? 16,
                     marginTop: 16,
+                    position: hasOverlay || decor ? 'relative' : undefined,
+                    zIndex: hasOverlay || decor ? 1 : undefined,
                 }}
             >
                 {slots.map((slotComps: any[], i: number) => (

@@ -1,0 +1,929 @@
+{
+  "_generated": "scripts/export-catalogue-schema-catalog.mjs — do not edit by hand",
+  "version": 1,
+  "components": [
+    {
+      "type": "header",
+      "templateKey": "header",
+      "exampleProps": {
+        "logo": "",
+        "title": "My Platform",
+        "backgroundColor": "#4F46E5",
+        "textColor": "#FFFFFF",
+        "navigation": [
+          {
+            "label": "Home",
+            "url": "/",
+            "openInSameTab": true
+          },
+          {
+            "label": "Courses",
+            "url": "#courses",
+            "openInSameTab": true
+          }
+        ],
+        "ctaButton": {
+          "enabled": true,
+          "text": "Enroll Now",
+          "url": ""
+        }
+      }
+    },
+    {
+      "type": "heroSection",
+      "templateKey": "heroSection",
+      "exampleProps": {
+        "layout": "split",
+        "backgroundColor": "#F8FAFC",
+        "textColor": "#111827",
+        "eyebrow": {
+          "text": "New batch enrolling now",
+          "style": "badge"
+        },
+        "left": {
+          "title": "Welcome to Our Platform",
+          "subheading": "Your path to mastery starts here",
+          "description": "<p>Start your learning journey today with expert-led courses designed for real-world success.</p>",
+          "tags": [
+            "Online",
+            "Self-paced",
+            "Certified"
+          ],
+          "button": {
+            "enabled": true,
+            "text": "Explore Courses",
+            "action": "navigate",
+            "target": "#courses"
+          },
+          "buttons": [
+            {
+              "text": "Explore Courses",
+              "action": "navigate",
+              "target": "#courses",
+              "variant": "primary"
+            },
+            {
+              "text": "Talk to Us",
+              "action": "openLeadCollection",
+              "variant": "secondary"
+            }
+          ]
+        },
+        "statChips": [
+          {
+            "value": "10,000+",
+            "label": "Learners"
+          },
+          {
+            "value": "4.8/5",
+            "label": "Average rating"
+          }
+        ],
+        "right": {
+          "image": "",
+          "alt": "Hero image",
+          "imageCollage": []
+        },
+        "styles": {
+          "padding": "40px",
+          "roundedEdges": true,
+          "textAlign": "left"
+        }
+      }
+    },
+    {
+      "type": "courseCatalog",
+      "templateKey": "courseCatalog",
+      "exampleProps": {
+        "title": "Our Courses",
+        "showFilters": true,
+        "filtersConfig": [
+          {
+            "id": "level",
+            "label": "Level",
+            "type": "checkbox",
+            "field": "level_name"
+          }
+        ],
+        "render": {
+          "layout": "grid",
+          "cardFields": [
+            "package_name",
+            "course_preview_image_media_id",
+            "price"
+          ],
+          "styles": {
+            "hoverEffect": "shadow",
+            "roundedEdges": true,
+            "backgroundColor": "#FFFFFF"
+          }
+        }
+      },
+      "dataBound": "Renders the institute's LIVE course grid. Configure filters/title only — never invent course entries."
+    },
+    {
+      "type": "footer",
+      "templateKey": "footer",
+      "exampleProps": {
+        "layout": "two-column",
+        "backgroundColor": "#F9FAFB",
+        "textColor": "#374151",
+        "leftSection": {
+          "title": "My Platform",
+          "text": "Welcome to our platform.",
+          "socials": []
+        },
+        "rightSection": {
+          "title": "Links",
+          "links": []
+        },
+        "bottomNote": "© 2025"
+      }
+    },
+    {
+      "type": "columnLayout",
+      "templateKey": "columnLayout2",
+      "exampleProps": {
+        "columns": 2,
+        "columnWidths": [
+          "1/2",
+          "1/2"
+        ],
+        "gap": "md",
+        "align": "top",
+        "stackOnMobile": true,
+        "slots": [
+          [],
+          []
+        ]
+      }
+    },
+    {
+      "type": "mediaShowcase",
+      "templateKey": "mediaShowcase",
+      "exampleProps": {
+        "headerText": "Success Stories",
+        "description": "Hear directly from our learners.",
+        "media": [],
+        "layout": "carousel",
+        "styles": {
+          "backgroundColor": "#F0F9FF",
+          "roundedEdges": true
+        }
+      }
+    },
+    {
+      "type": "statsHighlights",
+      "templateKey": "statsHighlights",
+      "exampleProps": {
+        "headerText": "Our Achievements",
+        "description": "Numbers that speak about our growth.",
+        "stats": [
+          {
+            "label": "Students",
+            "value": "100+"
+          }
+        ],
+        "style": "circle",
+        "backgroundColor": "#FFFFFF",
+        "textColor": "#111827",
+        "styles": {
+          "backgroundColor": "#FFFFFF",
+          "textColor": "#111827",
+          "hoverEffect": "scale"
+        }
+      }
+    },
+    {
+      "type": "testimonialSection",
+      "templateKey": "testimonialSection",
+      "exampleProps": {
+        "headerText": "What Our Students Say",
+        "description": "Real feedback from our learners.",
+        "layout": "grid-scroll",
+        "testimonials": [],
+        "backgroundColor": "#F9FAFB",
+        "textColor": "#111827",
+        "styles": {
+          "backgroundColor": "#F9FAFB",
+          "roundedEdges": true,
+          "cardHoverEffect": "lift",
+          "scrollEnabled": true
+        }
+      }
+    },
+    {
+      "type": "bookCatalogue",
+      "templateKey": "bookCatalogue",
+      "exampleProps": {
+        "title": "Book Collection",
+        "showFilters": true,
+        "filtersConfig": [],
+        "cartButtonConfig": {
+          "enabled": true,
+          "showAddToCartButton": true
+        },
+        "render": {
+          "layout": "grid",
+          "cardFields": [],
+          "styles": {
+            "hoverEffect": "shadow",
+            "roundedEdges": true
+          }
+        }
+      },
+      "dataBound": "Renders the LIVE book store. Configure presentation only."
+    },
+    {
+      "type": "bookDetails",
+      "templateKey": "bookDetails",
+      "exampleProps": {
+        "showEnquiry": true,
+        "showPayment": true,
+        "fields": {
+          "title": "package_name",
+          "price": "price"
+        },
+        "showAddToCart": true
+      },
+      "dataBound": "Live single-book detail context."
+    },
+    {
+      "type": "cartComponent",
+      "templateKey": "cartComponent",
+      "exampleProps": {
+        "showItemImage": true,
+        "showItemTitle": true,
+        "showPrice": true,
+        "showEmptyState": true,
+        "styles": {
+          "padding": "10px"
+        }
+      },
+      "dataBound": "Live cart. Placement only."
+    },
+    {
+      "type": "buyRentSection",
+      "templateKey": "buyRentSection",
+      "exampleProps": {
+        "heading": "Choose Your Path",
+        "buy": {
+          "buttonLabel": "Buy",
+          "levelFilterValue": "Buy",
+          "targetRoute": "homepage"
+        },
+        "rent": {
+          "buttonLabel": "Rent",
+          "levelFilterValue": "Rent",
+          "targetRoute": "homepage"
+        }
+      },
+      "dataBound": "Live buy/rent controls."
+    },
+    {
+      "type": "policyRenderer",
+      "templateKey": "policyRenderer",
+      "exampleProps": {
+        "policies": {
+          "shipping": {
+            "title": "Policy",
+            "content": "<p>Content here</p>"
+          }
+        }
+      },
+      "dataBound": "Renders stored policy documents. Placement only."
+    },
+    {
+      "type": "courseDetails",
+      "templateKey": "courseDetails",
+      "exampleProps": {
+        "showEnquiry": true,
+        "fields": {
+          "title": "package_name",
+          "price": "price"
+        }
+      },
+      "dataBound": "Live single-course detail context. Only on course sub-pages."
+    },
+    {
+      "type": "faqSection",
+      "templateKey": "faqSection",
+      "exampleProps": {
+        "headerText": "Frequently Asked Questions",
+        "subheading": "Everything you need to know.",
+        "faqs": [
+          {
+            "question": "What courses do you offer?",
+            "answer": "We offer a wide range of courses across multiple disciplines."
+          },
+          {
+            "question": "How do I enroll?",
+            "answer": "Simply sign up, browse our catalogue, and click enroll on any course."
+          },
+          {
+            "question": "Is there a free trial?",
+            "answer": "Yes! Many of our courses offer a free preview."
+          }
+        ],
+        "backgroundColor": "#F9FAFB",
+        "textColor": "#111827"
+      }
+    },
+    {
+      "type": "videoEmbed",
+      "templateKey": "videoEmbed",
+      "exampleProps": {
+        "url": "",
+        "title": "Watch Our Story",
+        "caption": "",
+        "aspectRatio": "16:9",
+        "autoplay": false,
+        "backgroundColor": "#000000"
+      }
+    },
+    {
+      "type": "ctaBanner",
+      "templateKey": "ctaBanner",
+      "exampleProps": {
+        "heading": "Ready to Get Started?",
+        "subheading": "Join thousands of learners and start your journey today.",
+        "backgroundColor": "#3B82F6",
+        "textColor": "#FFFFFF",
+        "layout": "centered",
+        "button": {
+          "enabled": true,
+          "text": "Start Learning",
+          "action": "navigate",
+          "target": "",
+          "style": "white"
+        }
+      }
+    },
+    {
+      "type": "pricingTable",
+      "templateKey": "pricingTable",
+      "exampleProps": {
+        "headerText": "Choose Your Plan",
+        "subheading": "Simple, transparent pricing for everyone.",
+        "plans": [
+          {
+            "name": "Basic",
+            "price": "Free",
+            "period": "",
+            "description": "Perfect for getting started",
+            "features": [
+              "5 Courses",
+              "Community access",
+              "Email support"
+            ],
+            "highlighted": false,
+            "buttonText": "Get Started",
+            "buttonTarget": ""
+          },
+          {
+            "name": "Pro",
+            "price": "₹999",
+            "period": "/month",
+            "description": "For serious learners",
+            "features": [
+              "Unlimited Courses",
+              "Priority support",
+              "Certificates",
+              "Live sessions"
+            ],
+            "highlighted": true,
+            "buttonText": "Get Pro",
+            "buttonTarget": ""
+          }
+        ]
+      }
+    },
+    {
+      "type": "contactForm",
+      "templateKey": "contactForm",
+      "exampleProps": {
+        "heading": "Get In Touch",
+        "subheading": "We'd love to hear from you. Send us a message!",
+        "fields": [
+          {
+            "name": "name",
+            "label": "Full Name",
+            "type": "text",
+            "required": true
+          },
+          {
+            "name": "email",
+            "label": "Email Address",
+            "type": "email",
+            "required": true
+          },
+          {
+            "name": "phone",
+            "label": "Phone Number",
+            "type": "text",
+            "required": false
+          },
+          {
+            "name": "message",
+            "label": "Message",
+            "type": "textarea",
+            "required": true
+          }
+        ],
+        "submitLabel": "Send Message",
+        "successMessage": "Thank you! We'll be in touch soon.",
+        "backgroundColor": "#FFFFFF"
+      }
+    },
+    {
+      "type": "teamSection",
+      "templateKey": "teamSection",
+      "exampleProps": {
+        "headerText": "Meet Our Team",
+        "subheading": "The passionate people behind our platform.",
+        "members": [
+          {
+            "name": "Team Member",
+            "role": "Co-Founder & CEO",
+            "bio": "Passionate about education and technology.",
+            "avatar": "",
+            "socials": []
+          },
+          {
+            "name": "Team Member",
+            "role": "Head of Learning",
+            "bio": "Dedicated to creating the best learning experience.",
+            "avatar": "",
+            "socials": []
+          }
+        ],
+        "layout": "grid",
+        "columns": 3
+      }
+    },
+    {
+      "type": "announcementFeed",
+      "templateKey": "announcementFeed",
+      "exampleProps": {
+        "headerText": "Latest Updates",
+        "subheading": "Stay up to date with our latest news.",
+        "announcements": [
+          {
+            "title": "New Course Launch",
+            "date": "2025-01-15",
+            "summary": "We are excited to announce our new advanced course series.",
+            "tag": "News"
+          },
+          {
+            "title": "Platform Update",
+            "date": "2025-01-10",
+            "summary": "We have improved our platform for a better learning experience.",
+            "tag": "Update"
+          }
+        ],
+        "layout": "list",
+        "showDate": true,
+        "showTag": true,
+        "backgroundColor": "#FFFFFF"
+      }
+    },
+    {
+      "type": "imageGallery",
+      "templateKey": "imageGallery",
+      "exampleProps": {
+        "headerText": "Gallery",
+        "subheading": "",
+        "images": [
+          {
+            "src": "",
+            "alt": "Gallery image 1",
+            "caption": ""
+          },
+          {
+            "src": "",
+            "alt": "Gallery image 2",
+            "caption": ""
+          },
+          {
+            "src": "",
+            "alt": "Gallery image 3",
+            "caption": ""
+          }
+        ],
+        "columns": 3,
+        "gap": "medium",
+        "showCaptions": false
+      }
+    },
+    {
+      "type": "spacer",
+      "templateKey": "spacer",
+      "exampleProps": {
+        "height": "48px",
+        "showDivider": false,
+        "dividerStyle": "solid",
+        "dividerColor": "#E5E7EB",
+        "dividerWidth": "1px",
+        "maxWidth": "100%"
+      }
+    },
+    {
+      "type": "tabsAccordion",
+      "templateKey": "tabsAccordion",
+      "exampleProps": {
+        "mode": "tabs",
+        "items": [
+          {
+            "title": "Tab 1",
+            "content": "<p>Content for tab 1</p>"
+          },
+          {
+            "title": "Tab 2",
+            "content": "<p>Content for tab 2</p>"
+          },
+          {
+            "title": "Tab 3",
+            "content": "<p>Content for tab 3</p>"
+          }
+        ],
+        "defaultOpen": 0,
+        "allowMultiple": false,
+        "backgroundColor": "#FFFFFF"
+      }
+    },
+    {
+      "type": "logoCloud",
+      "templateKey": "logoCloud",
+      "exampleProps": {
+        "headerText": "Trusted By",
+        "subheading": "",
+        "logos": [],
+        "layout": "grid",
+        "grayscale": true,
+        "columns": 5,
+        "display": "logo",
+        "tile": "none",
+        "marqueeSpeed": "medium",
+        "logoHeight": "md"
+      }
+    },
+    {
+      "type": "trustChip",
+      "templateKey": "trustChip",
+      "exampleProps": {
+        "text": "Trusted by 10,000+ learners",
+        "rating": 4.8,
+        "avatars": [],
+        "alignment": "center"
+      }
+    },
+    {
+      "type": "sectionHeading",
+      "templateKey": "sectionHeading",
+      "exampleProps": {
+        "eyebrow": "Why choose us",
+        "title": "Learning that actually sticks",
+        "highlight": {
+          "text": "actually sticks",
+          "style": "gradient"
+        },
+        "lead": "Programs designed around outcomes — not just content.",
+        "align": "center",
+        "size": "lg"
+      }
+    },
+    {
+      "type": "mapEmbed",
+      "templateKey": "mapEmbed",
+      "exampleProps": {
+        "embedUrl": "",
+        "height": "400px",
+        "borderRadius": "8px",
+        "title": "Our Location"
+      }
+    },
+    {
+      "type": "countdownTimer",
+      "templateKey": "countdownTimer",
+      "exampleProps": {
+        "targetDate": "",
+        "heading": "Event Starts In",
+        "expiredMessage": "The event has started!",
+        "backgroundColor": "#1E293B",
+        "textColor": "#FFFFFF",
+        "style": "cards"
+      }
+    },
+    {
+      "type": "textBlock",
+      "templateKey": "textBlock",
+      "exampleProps": {
+        "content": "<h2>Your Heading Here</h2><p>Write your content here. This is a rich text block — you can add headings, paragraphs, lists, links, and more.</p>",
+        "maxWidth": "800px",
+        "alignment": "center"
+      }
+    },
+    {
+      "type": "featureGrid",
+      "templateKey": "featureGrid",
+      "exampleProps": {
+        "headerText": "Why Choose Us",
+        "subheading": "Everything you need to succeed",
+        "columns": 3,
+        "features": [
+          {
+            "icon": "🎓",
+            "title": "Expert Instructors",
+            "description": "Learn from industry professionals with years of experience."
+          },
+          {
+            "icon": "📚",
+            "title": "Rich Content",
+            "description": "Access comprehensive course materials and resources."
+          },
+          {
+            "icon": "🏆",
+            "title": "Certified Courses",
+            "description": "Earn recognized certificates upon completion."
+          },
+          {
+            "icon": "💡",
+            "title": "Interactive Learning",
+            "description": "Engage with hands-on projects and exercises."
+          },
+          {
+            "icon": "🕐",
+            "title": "Flexible Schedule",
+            "description": "Learn at your own pace, anytime, anywhere."
+          },
+          {
+            "icon": "🤝",
+            "title": "Community Support",
+            "description": "Join a thriving community of learners."
+          }
+        ],
+        "style": "cards",
+        "iconSize": "large",
+        "backgroundColor": "#FFFFFF",
+        "textColor": "#111827"
+      }
+    },
+    {
+      "type": "imageBlock",
+      "templateKey": "imageBlock",
+      "exampleProps": {
+        "src": "",
+        "alt": "Image",
+        "caption": "",
+        "linkUrl": "",
+        "linkTarget": "_blank",
+        "alignment": "center",
+        "maxWidth": "100%",
+        "borderRadius": "8px",
+        "aspectRatio": "auto"
+      }
+    },
+    {
+      "type": "buttonBlock",
+      "templateKey": "buttonBlock",
+      "exampleProps": {
+        "text": "Get Started",
+        "url": "",
+        "target": "_self",
+        "variant": "filled",
+        "size": "large",
+        "alignment": "center",
+        "backgroundColor": "",
+        "textColor": "",
+        "borderRadius": "8px",
+        "fullWidth": false
+      }
+    },
+    {
+      "type": "newsletterSignup",
+      "templateKey": "newsletterSignup",
+      "exampleProps": {
+        "heading": "Stay Updated",
+        "subheading": "Subscribe to our newsletter for the latest updates.",
+        "placeholder": "Enter your email",
+        "buttonText": "Subscribe",
+        "layout": "inline",
+        "backgroundColor": "#F8FAFC",
+        "successMessage": "Thank you for subscribing!"
+      }
+    },
+    {
+      "type": "stepsProcess",
+      "templateKey": "stepsProcess",
+      "exampleProps": {
+        "headerText": "How It Works",
+        "subheading": "Get started in just a few steps",
+        "layout": "horizontal",
+        "steps": [
+          {
+            "number": "1",
+            "title": "Sign Up",
+            "description": "Create your free account in seconds."
+          },
+          {
+            "number": "2",
+            "title": "Choose a Course",
+            "description": "Browse our catalog and pick what interests you."
+          },
+          {
+            "number": "3",
+            "title": "Start Learning",
+            "description": "Access your course materials and begin."
+          }
+        ],
+        "connectorStyle": "line",
+        "backgroundColor": "#FFFFFF",
+        "textColor": "#111827",
+        "accentColor": ""
+      }
+    },
+    {
+      "type": "marquee",
+      "templateKey": "marquee",
+      "exampleProps": {
+        "items": [
+          {
+            "icon": "⭐",
+            "text": "Top-rated courses"
+          },
+          {
+            "icon": "🎓",
+            "text": "10,000+ learners enrolled"
+          },
+          {
+            "icon": "🏆",
+            "text": "Expert-led curriculum"
+          },
+          {
+            "icon": "🚀",
+            "text": "Learn at your own pace"
+          },
+          {
+            "icon": "💡",
+            "text": "Industry-relevant skills"
+          }
+        ],
+        "defaultIcon": "⭐",
+        "speed": "medium",
+        "direction": "left",
+        "pauseOnHover": true,
+        "backgroundColor": "#1e1b4b",
+        "textColor": "#ffffff",
+        "iconColor": "#facc15",
+        "fontSize": "sm"
+      }
+    },
+    {
+      "type": "productCourseGrid",
+      "templateKey": "productCourseGrid",
+      "exampleProps": {
+        "title": "",
+        "columns": 3,
+        "layout": "grid",
+        "showPrice": true,
+        "showBadge": true,
+        "showFilters": true
+      }
+    }
+  ],
+  "styleSchema": {
+    "description": "Every component may carry an optional \"style\" object (ComponentStyle). All fields optional; omit for defaults. Use PRESETS over raw values.",
+    "fields": {
+      "padding_margin": "paddingTop/Bottom/Left/Right, marginTop/Bottom — CSS lengths like \"48px\".",
+      "background": "backgroundColor (hex), backgroundImage (URL from provided media only), backgroundSize, backgroundPosition, overlayPreset: scrim-dark|scrim-bottom|scrim-light|brand-tint (legible text over images).",
+      "backgroundLayers": "Array of composed layers [{type: linear|radial|color, from,to,angle | color,posX,posY,size}]. Radial size must be a percentage like \"60%\". Use for mesh/glow backdrops.",
+      "effects": "glass:{blur:sm|md|lg}, glow:{intensity:sm|md|lg}, borderGradient:{from,to,angle,width}, boxShadow: sm|md|lg|xl|2xl.",
+      "ornaments": "Ambient decorative shapes behind content. STRONGLY prefer the preset arrays below (copy one verbatim into style.ornaments).",
+      "dividers": "Shaped section edges: {top?:{shape:wave|angle|curve,height?,flip?}, bottom?:{...}}. Cut in the page background color.",
+      "layout": "Section shell: {width: text|narrow|default|wide|full, contentMaxWidth?, zIndex?, overlapTop?: \"-80px\"} — full-bleed background with centered content column. Use for hero/CTA/atmosphere sections.",
+      "position": "sticky:{enabled,top} (rails inside column layouts), minHeight (\"60vh\"|\"80vh\"|\"100svh\"), contentAlign: start|center|end (vertical centering within minHeight).",
+      "animation": "animation.entrance:{type: fade-up|fade-in|slide-left|slide-right|zoom-in, stagger?:{interval:60|100|160}} — stagger cascades list items. Use sparingly; motion personality is global.",
+      "typography": "typography:{fontFamily,fontSize,fontWeight,textColor,textAlign} — prefer theme defaults.",
+      "responsive": "responsive:{tablet:{...},mobile:{...}} partial overrides; visibility:{desktop,tablet,mobile}."
+    },
+    "ornamentPresets": [
+      {
+        "id": "glow-tr",
+        "label": "Glow · top right",
+        "ornaments": [
+          {
+            "preset": "glow-orb",
+            "x": "68%",
+            "y": "-20%",
+            "size": "480px",
+            "opacity": 0.35,
+            "blur": 40
+          }
+        ]
+      },
+      {
+        "id": "glow-duo",
+        "label": "Glow · corners",
+        "ornaments": [
+          {
+            "preset": "glow-orb",
+            "x": "-12%",
+            "y": "-25%",
+            "size": "420px",
+            "opacity": 0.3,
+            "blur": 40
+          },
+          {
+            "preset": "glow-orb",
+            "x": "75%",
+            "y": "55%",
+            "size": "460px",
+            "opacity": 0.25,
+            "blur": 48,
+            "color": "hsl(var(--primary-200))"
+          }
+        ]
+      },
+      {
+        "id": "blob-left",
+        "label": "Blob · left",
+        "ornaments": [
+          {
+            "preset": "blob",
+            "x": "-8%",
+            "y": "18%",
+            "size": "340px",
+            "opacity": 0.22,
+            "blur": 32
+          }
+        ]
+      },
+      {
+        "id": "dots-corner",
+        "label": "Dot grid · corner",
+        "ornaments": [
+          {
+            "preset": "dots",
+            "x": "3%",
+            "y": "10%",
+            "size": "220px",
+            "opacity": 0.35,
+            "color": "hsl(var(--primary-400))"
+          }
+        ]
+      },
+      {
+        "id": "ring-tr",
+        "label": "Ring · top right",
+        "ornaments": [
+          {
+            "preset": "ring",
+            "x": "82%",
+            "y": "-14%",
+            "size": "300px",
+            "opacity": 0.3
+          },
+          {
+            "preset": "ring",
+            "x": "87%",
+            "y": "-6%",
+            "size": "190px",
+            "opacity": 0.2
+          }
+        ]
+      },
+      {
+        "id": "grid-wash",
+        "label": "Grid lines",
+        "ornaments": [
+          {
+            "preset": "grid",
+            "x": "0",
+            "y": "0",
+            "size": "100%",
+            "opacity": 0.12,
+            "color": "hsl(var(--primary-400))"
+          }
+        ]
+      }
+    ],
+    "meshBackgroundHint": "For hero atmosphere prefer globalSettings theme.atmosphere (flat|soft|mesh|aurora + intensity) over per-component layers."
+  },
+  "globalSettingsSchema": {
+    "description": "Site-wide settings. In Phase A the composer should NOT change theme/fonts unless explicitly asked — pages inherit the institute theme.",
+    "fields": {
+      "theme": "{preset, atmosphere:{canvas:flat|soft|mesh|aurora, intensity:subtle|medium|bold}, headingScale, borderRadius:sharp|rounded|pill}",
+      "fonts": "{enabled, family} — from the registered font list.",
+      "motion": "{personality: none|calm|balanced|dynamic}"
+    }
+  },
+  "doctrine": [
+    "Output is a single Page object: {id, name, route, components: Component[]}. Component = {id, type, enabled:true, props, style?}.",
+    "ids: kebab-case unique strings.",
+    "NEVER emit htmlBlock. NEVER invent image URLs — only use media URLs provided in the source pack (or leave image fields empty).",
+    "Data-bound components render live institute data; configure, do not fabricate their entries.",
+    "Rhythm: open with ONE hero; use sectionHeading before dense sections; alternate section surface tints; end with a CTA and/or contact section.",
+    "Copy: concise, benefit-led, in the institute's voice; use the institute's configured terminology for Course/Batch/etc. when provided.",
+    "Styling: presets first; theme tokens over raw hex except where the brand demands a specific color."
+  ]
+}

@@ -196,12 +196,27 @@ public class TemplateService {
      * This method is optimized to prevent memory issues by excluding large fields
      */
     public PagedTemplateResponse getTemplatesByInstitutePaginated(String instituteId, int pageNo, int pageSize) {
-        log.info("Getting paginated templates for institute: {}, page: {}, size: {}", instituteId, pageNo, pageSize);
+        return getTemplatesByInstitutePaginated(instituteId, pageNo, pageSize, null, null);
+    }
+
+    /**
+     * Get paginated templates for an institute, optionally filtered by type and/or a name/subject search term
+     * (returns summary without content)
+     * This method is optimized to prevent memory issues by excluding large fields
+     */
+    public PagedTemplateResponse getTemplatesByInstitutePaginated(String instituteId, int pageNo, int pageSize,
+            String type, String searchText) {
+        log.info("Getting paginated templates for institute: {}, page: {}, size: {}, type: {}, search: {}",
+                instituteId, pageNo, pageSize, type, searchText);
+
+        String normalizedType = (type == null || type.trim().isEmpty()) ? null : type.trim();
+        String normalizedSearch = (searchText == null || searchText.trim().isEmpty()) ? null : searchText.trim();
 
         // Convert pageNo from 1-based to 0-based (if needed) or use as-is if already 0-based
         // Based on PageConstants, DEFAULT_PAGE_NUMBER is "0", so we'll use it as-is
         Pageable pageable = PageRequest.of(pageNo, pageSize);
-        Page<Template> templatePage = templateRepository.findByInstituteIdOrderByCreatedAtDescPageable(instituteId, pageable);
+        Page<Template> templatePage = templateRepository.findByInstituteIdAndTypeAndSearchPageable(instituteId,
+                normalizedType, normalizedSearch, pageable);
 
         List<TemplateSummaryResponse> summaryList = templatePage.getContent().stream()
                 .map(this::convertToSummaryResponse)

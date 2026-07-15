@@ -32,6 +32,7 @@ from pipecat.frames.frames import (
     BotStoppedSpeakingFrame,
     Frame,
     LLMFullResponseEndFrame,
+    LLMMessagesAppendFrame,
     LLMTextFrame,
     TranscriptionFrame,
     TTSSpeakFrame,
@@ -532,23 +533,37 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     sentinel.set_task(task)
 
     async def _greet_when_ready():
-        """Don't blast the opening the instant the line connects — a real caller waits
-        for the callee to pick up and say 'hello'. Give them a short beat: if they speak
-        first, the normal STT→LLM turn greets them back (so the bot never talks over their
-        'hello' and never double-greets); if they stay silent past the grace window, WE
-        open. flags['t'] advances on the first transcribed user speech, so t > connect_t
-        means the callee spoke."""
-        opening = agent.get("openingLine")
-        if not opening:
-            return
+        """Open the call like a person would. On OUTBOUND the callee has already said
+        'hello' when they picked up, so we SPEAK FIRST after a short beat — long enough
+        not to clip their 'hello', short enough to avoid the dead-air / 'double hello'
+        that makes an agent feel robotic (the old 2s wait was the culprit). If the callee
+        says something substantive in that beat (e.g. 'kaun?'), their turn drives the
+        LLM's reply and we don't also open. flags['t'] advances on the first transcribed
+        user speech, so t > connect_t means the callee spoke.
+
+        The opening itself: if the agent set an explicit openingLine, speak it verbatim
+        (instant, pre-scripted — good for a fixed compliance line). Otherwise let the LLM
+        generate the opening from the system prompt (warm, in-persona, uses the lead's
+        name) — the SAME path that already runs when a caller speaks first, so it's
+        proven. A bare scripted 'Hello' spoken straight to TTS is what felt robotic."""
+        opening = (agent.get("openingLine") or "").strip()
         connect_t = time.time()
         while time.time() - connect_t < settings.greet_delay_secs:
             if flags["t"] > connect_t + 0.05:
-                logger.info("greet: callee spoke first — LLM will reply, skipping scripted opening (corr=%s)", corr)
+                logger.info("greet: callee spoke first — LLM replies, skipping our open (corr=%s)", corr)
                 return
             await asyncio.sleep(0.1)
-        outcome.transcript.append({"role": "assistant", "text": opening})
-        await task.queue_frames([TTSSpeakFrame(opening)])
+        if opening:
+            outcome.transcript.append({"role": "assistant", "text": opening})
+            await task.queue_frames([TTSSpeakFrame(opening)])
+        else:
+            # No scripted line → LLM opens. Seed a synthetic caller 'Hello?' into the LLM
+            # context (NOT our saved transcript) and run: this reproduces the exact
+            # proven caller-spoke-first path, so the model reliably emits its persona
+            # opening instead of us hoping it generates from a system-only context.
+            logger.info("greet: LLM-generated opening (corr=%s)", corr)
+            await task.queue_frames([LLMMessagesAppendFrame(
+                messages=[{"role": "user", "content": "Hello?"}], run_llm=True)])
 
     @transport.event_handler("on_client_connected")
     async def _on_connected(_transport, _client):

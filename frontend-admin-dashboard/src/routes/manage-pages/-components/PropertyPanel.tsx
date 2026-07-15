@@ -39,7 +39,6 @@ export const PropertyPanel = () => {
         deleteComponent,
         duplicateComponent,
         reorderComponents,
-        togglePagePublished,
         updatePageSeo,
         updatePageBackgroundColor,
         copyComponent,
@@ -242,24 +241,12 @@ export const PropertyPanel = () => {
                 <div className="flex flex-col gap-5 p-4">
                     <h3 className="text-base font-semibold">Page Settings</h3>
 
-                    {/* Publish status */}
-                    <div className="flex items-center justify-between rounded-lg border bg-gray-50 p-3">
-                        <div>
-                            <div className="flex items-center gap-1.5 font-medium text-sm">
-                                <span className={`size-2 rounded-full ${page.published ? 'bg-green-500' : 'bg-gray-300'}`} />
-                                {page.published ? 'Published' : 'Draft'}
-                            </div>
-                            <div className="text-xs text-gray-500 mt-0.5">
-                                {page.published ? 'Visible to visitors' : 'Hidden from visitors'}
-                            </div>
-                        </div>
-                        <Button
-                            size="sm"
-                            variant={page.published ? 'outline' : 'default'}
-                            onClick={() => togglePagePublished(page.id)}
-                        >
-                            {page.published ? 'Unpublish' : 'Publish'}
-                        </Button>
+                    {/* Per-page publish toggle removed: the flag was never
+                        enforced learner-side ("Hidden from visitors" was
+                        untrue). The site-level Draft/Publish in the editor
+                        header is the single gate. */}
+                    <div className="rounded-lg border bg-gray-50 p-3 text-xs text-gray-500">
+                        Pages go live together when you hit Publish in the top bar.
                     </div>
 
                     {/* Basic info (read-only) */}
@@ -885,7 +872,9 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
         const newSlots = Array.from({ length: newCount }, (_, i) => slots[i] ?? []);
         const newWidths = Array.from({ length: newCount }, (_, i) => columnWidths[i] ?? def);
         updateComponent(pageId, component.id, {
-            props: { ...component.props, columns: newCount, slots: newSlots, columnWidths: newWidths },
+            // columnFr is a per-count precise ratio — clear it on count change or a
+            // stale 2-column ratio silently re-activates when switching back to 2.
+            props: { ...component.props, columns: newCount, slots: newSlots, columnWidths: newWidths, columnFr: undefined },
         });
     };
 
@@ -969,7 +958,11 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
                                     onChange={(e) => {
                                         const updated = [...columnWidths];
                                         updated[i] = e.target.value;
-                                        updateProp('columnWidths', updated);
+                                        // Last-touched control wins: columnFr overrides these
+                                        // widths on both renderers, so clear it in the SAME update
+                                        updateComponent(pageId, component.id, {
+                                            props: { ...component.props, columnWidths: updated, columnFr: undefined },
+                                        });
                                     }}
                                     className="mt-0.5 w-full rounded border px-1.5 py-1 text-xs"
                                 >
@@ -3527,7 +3520,7 @@ const SectionHeadingEditor = ({ component, pageId, updateComponent }: any) => {
                         ))}
                     </div>
                 )}
-                {props.highlight?.text && !(props.title || '').includes(props.highlight.text) && (
+                {props.highlight?.text && !(typeof props.title === 'string' && props.title.includes(props.highlight.text)) && (
                     <p className="text-caption text-warning-600">Not found in the title — the highlight will not show.</p>
                 )}
             </div>

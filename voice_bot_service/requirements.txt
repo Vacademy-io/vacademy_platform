@@ -6,7 +6,7 @@
 # (0.0.79 lacks Sarvam STT entirely; 1.x moved the transports package).
 # The `sarvam` extra is REQUIRED: pipecat's sarvam/stt.py imports the `sarvamai`
 # SDK at module load and the service dies at boot without it (verified in prod logs).
-pipecat-ai[silero,websocket,sarvam]==0.0.95
+pipecat-ai[silero,websocket,sarvam,google]==0.0.95
 aiohttp>=3.9
 fastapi>=0.115
 uvicorn[standard]>=0.30

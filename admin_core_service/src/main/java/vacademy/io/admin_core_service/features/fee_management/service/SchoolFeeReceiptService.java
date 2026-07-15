@@ -207,7 +207,8 @@ public class SchoolFeeReceiptService {
 
             // 10. Save to invoice table
             Invoice invoice = saveReceipt(userId, instituteId, receiptNumber, pdfFileId,
-                    amountPaid, totalExpected, totalPaid, totalConcession, totalPenalty, balanceDue, currency);
+                    amountPaid, totalExpected, totalPaid, totalConcession, totalPenalty, balanceDue, currency,
+                    "STUDENT_FEE_PAYMENT", feePayments.get(0).getId());
 
             // 11. Save line items (one per installment)
             saveLineItems(invoice, feePayments, currency);
@@ -318,7 +319,8 @@ public class SchoolFeeReceiptService {
 
             // 10. Save to invoice table
             Invoice invoice = saveReceipt(userId, instituteId, receiptNumber, pdfFileId,
-                    amountPaid, totalExpected, totalPaid, totalConcession, totalPenalty, balanceDue, currency);
+                    amountPaid, totalExpected, totalPaid, totalConcession, totalPenalty, balanceDue, currency,
+                    "STUDENT_FEE_PAYMENT", feePayments.get(0).getId());
 
             // 11. Save line items (only for paid installments)
             saveLineItems(invoice, feePayments, currency);
@@ -401,7 +403,8 @@ public class SchoolFeeReceiptService {
 
         // Save invoice record
         saveReceipt(userId, instituteId, receiptNumber, pdfFileId,
-                totalPaid, totalExpected, totalPaid, totalConcession, totalPenalty, balanceDue, currency);
+                totalPaid, totalExpected, totalPaid, totalConcession, totalPenalty, balanceDue, currency,
+                "STUDENT_FEE_PAYMENT", feePayments.get(0).getId());
 
         return pdfFileId;
     }
@@ -1065,7 +1068,8 @@ public class SchoolFeeReceiptService {
             String pdfFileId, BigDecimal amountPaid,
             BigDecimal totalExpected, BigDecimal totalPaid,
             BigDecimal totalConcession, BigDecimal totalPenalty,
-            BigDecimal balanceDue, String currency) {
+            BigDecimal balanceDue, String currency,
+            String source, String sourceId) {
         Invoice invoice = new Invoice();
         invoice.setInvoiceNumber(receiptNumber);
         invoice.setUserId(userId);
@@ -1080,6 +1084,8 @@ public class SchoolFeeReceiptService {
         invoice.setStatus("GENERATED");
         invoice.setPdfFileId(pdfFileId);
         invoice.setTaxIncluded(false);
+        invoice.setSource(source);
+        invoice.setSourceId(sourceId);
 
         // Save receipt metadata as JSON
         try {

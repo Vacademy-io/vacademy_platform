@@ -97,14 +97,21 @@ public class TemplateController {
     public ResponseEntity<PagedTemplateResponse> getTemplatesByInstitute(
             @RequestAttribute("user") CustomUserDetails userDetails,
             @PathVariable String instituteId,
-            @RequestParam(value = "pageNo", defaultValue = DEFAULT_PAGE_NUMBER, required = false) int pageNo,
-            @RequestParam(value = "pageSize", defaultValue = PageConstants.DEFAULT_PAGE_SIZE, required = false) int pageSize) {
-        
-        log.info("Getting paginated templates for institute: {} by user: {}, page: {}, size: {}", 
-                instituteId, userDetails.getUserId(), pageNo, pageSize);
-        
+            @RequestParam(value = "pageNo", required = false) Integer pageNoParam,
+            @RequestParam(value = "pageSize", required = false) Integer pageSizeParam,
+            @RequestParam(value = "page", required = false) Integer pageParam,
+            @RequestParam(value = "size", required = false) Integer sizeParam,
+            @RequestParam(value = "type", required = false) String type,
+            @RequestParam(value = "search", required = false) String search) {
+
+        int pageNo = pageNoParam != null ? pageNoParam : (pageParam != null ? pageParam : Integer.parseInt(DEFAULT_PAGE_NUMBER));
+        int pageSize = pageSizeParam != null ? pageSizeParam : (sizeParam != null ? sizeParam : Integer.parseInt(PageConstants.DEFAULT_PAGE_SIZE));
+
+        log.info("Getting paginated templates for institute: {} by user: {}, page: {}, size: {}, type: {}, search: {}",
+                instituteId, userDetails.getUserId(), pageNo, pageSize, type, search);
+
         try {
-            PagedTemplateResponse response = templateService.getTemplatesByInstitutePaginated(instituteId, pageNo, pageSize);
+            PagedTemplateResponse response = templateService.getTemplatesByInstitutePaginated(instituteId, pageNo, pageSize, type, search);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("Error getting templates for institute: {}", e.getMessage());

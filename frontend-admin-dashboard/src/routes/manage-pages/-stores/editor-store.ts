@@ -38,7 +38,6 @@ interface EditorState {
     addPage: (page: Page) => void;
     deletePage: (pageId: string) => void;
     duplicatePage: (pageId: string) => void;
-    togglePagePublished: (pageId: string) => void;
     updatePageSeo: (pageId: string, seo: Page['seo']) => void;
     updatePageBackgroundColor: (pageId: string, color: string) => void;
 
@@ -352,15 +351,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             };
         }),
 
-    togglePagePublished: (pageId) =>
-        set((state) => {
-            if (!state.config) return {};
-            const newPages = state.config.pages.map((p) =>
-                p.id === pageId ? { ...p, published: !p.published } : p
-            );
-            const newConfig = { ...state.config, pages: newPages };
-            return pushToHistory(state, newConfig);
-        }),
+    // togglePagePublished removed: page.published was never enforced on the
+    // learner side — the site-level Draft/Publish revision flow is the gate.
 
     updatePageSeo: (pageId, seo) =>
         set((state) => {

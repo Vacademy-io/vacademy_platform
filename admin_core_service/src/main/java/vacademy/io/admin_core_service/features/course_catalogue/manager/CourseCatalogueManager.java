@@ -33,7 +33,7 @@ public class CourseCatalogueManager {
     }
 
     public ResponseEntity<CourseCatalogueResponse> updateCatalogue(CustomUserDetails userDetails, String catalogueId, CourseCatalogueRequest request) {
-        return ResponseEntity.ok(service.updateCatalogue(catalogueId, request));
+        return ResponseEntity.ok(service.updateCatalogue(catalogueId, request, userDetails != null ? userDetails.getUserId() : null));
     }
 
     public ResponseEntity<List<CourseCatalogueResponse>> getAllCatalogues(CustomUserDetails userDetails, String instituteId) {

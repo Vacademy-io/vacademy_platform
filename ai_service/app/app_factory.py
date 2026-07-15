@@ -38,6 +38,7 @@ from .routers.coding_question_gen import router as coding_question_gen_router
 from .routers.brand_kit_scrape import router as brand_kit_scrape_router
 from .routers.transcript_notes import router as transcript_notes_router
 from .routers.html_document import router as html_document_router
+from .routers.page_builder import router as page_builder_router
 from .routers.copy_check import router as copy_check_router
 from .routers.lecture import router as lecture_router
 from .routers.ai_task_status import router as ai_task_status_router
@@ -241,6 +242,7 @@ def create_app() -> FastAPI:
     app.include_router(brand_kit_scrape_router, prefix=settings.api_base_path)
     app.include_router(transcript_notes_router, prefix=settings.api_base_path)
     app.include_router(html_document_router, prefix=settings.api_base_path)
+    app.include_router(page_builder_router, prefix=settings.api_base_path)
     app.include_router(copy_check_router, prefix=settings.api_base_path)
     # Migrated from media_service: AI lecture planner (kick-off) + the
     # task-status polling mirror. Final paths:

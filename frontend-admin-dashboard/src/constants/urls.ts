@@ -1043,6 +1043,23 @@ export const UPDATE_CATALOGUE = (catalogueId: string) =>
     `${CATALOGUE_BASE_URL}/update?catalogueId=${catalogueId}`;
 export const GET_CATALOGUE_BY_TAG = (instituteId: string, tagName: string) =>
     `${CATALOGUE_BASE_URL}/institute/get/by-tag?instituteId=${instituteId}&tagName=${encodeURIComponent(tagName)}`;
+// Draft/publish revisions (AI Page Builder Phase A)
+export const CATALOGUE_REVISION_DRAFT = (catalogueId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/draft?catalogueId=${catalogueId}`;
+export const CATALOGUE_REVISION_SAVE_DRAFT = (catalogueId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/save-draft?catalogueId=${catalogueId}`;
+export const CATALOGUE_REVISION_PUBLISH = (catalogueId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/publish?catalogueId=${catalogueId}`;
+export const CATALOGUE_REVISION_DISCARD = (catalogueId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/discard-draft?catalogueId=${catalogueId}`;
+export const CATALOGUE_REVISION_HISTORY = (catalogueId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/history?catalogueId=${catalogueId}`;
+export const CATALOGUE_REVISION_GET = (revisionId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/get?revisionId=${revisionId}`;
+// AI Page Builder (ai_service)
+export const AI_PAGE_BUILDER_GENERATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/generate`;
+// Institute scope comes from the auth token — no params
+export const AI_PAGE_BUILDER_ESTIMATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/estimate`;
 
 export const LINK_COUNSELLOR = `${BASE_URL}/admin-core-service/enquiry/link-counselor`;
 export const GET_ENQUIRY_DETAILS = `${BASE_URL}/admin-core-service/enquiry/v1/admin/details`;

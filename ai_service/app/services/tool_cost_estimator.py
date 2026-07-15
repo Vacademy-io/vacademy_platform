@@ -147,6 +147,16 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "pages",
         "params": {},
     },
+    # AI Page Builder — one wizard run composes a full catalogue page as
+    # schema-bound JSON (one large LLM call + validation/repair round-trips).
+    # Charged as max(flat, actual token cost).
+    "page_generate": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("10"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
 }
 
 # Tool keys this estimator knows about (used for validation / FE discovery).

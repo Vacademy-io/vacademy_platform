@@ -1,19 +1,26 @@
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
-import { getCatalogueConfig, saveCatalogueConfig } from '../-services/catalogue-service';
+import {
+    getCatalogueMeta,
+    getDraftRevision,
+    saveDraftRevision,
+    publishDraftRevision,
+} from '../-services/catalogue-service';
 import { useEditorStore } from '../-stores/editor-store';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ComponentLibrary } from './ComponentLibrary';
 import { TemplateLibrary } from './TemplateLibrary';
 import { LayersPanel } from './LayersPanel';
 import { PropertyPanel } from './PropertyPanel';
 import { PageTabs } from './PageTabs';
 import { CanvasRenderer } from './CanvasRenderer';
+import { RevisionHistoryDialog } from './RevisionHistoryDialog';
 import { Button } from '@/components/ui/button';
 import {
-    Loader2, Save, Code, LayoutTemplate, Undo2, Redo2,
-    Layers, PuzzleIcon, List,
-} from 'lucide-react';
+    CircleNotch as Loader2, FloppyDisk as Save, Code, Layout as LayoutTemplate,
+    ArrowUUpLeft as Undo2, ArrowUUpRight as Redo2, Stack as Layers,
+    PuzzlePiece as PuzzleIcon, List, RocketLaunch, ClockCounterClockwise,
+} from '@phosphor-icons/react';
 import { useToast } from '@/hooks/use-toast';
 import { Route } from '../editor/$tagName';
 import { CatalogueConfig } from '../-types/editor-types';
@@ -40,6 +47,7 @@ export const CatalogueEditorPage = () => {
         canUndo,
         canRedo,
         selectedPageId,
+        selectPage,
         addComponent,
         addToSlot,
     } = useEditorStore();
@@ -89,18 +97,39 @@ export const CatalogueEditorPage = () => {
     const [savedConfigJSON, setSavedConfigJSON] = useState('');
     const isDirty = config ? JSON.stringify(config) !== savedConfigJSON : false;
 
-    const { data, isLoading } = useQuery({
-        queryKey: ['catalogueConfig', instituteId, tagName],
-        queryFn: () => getCatalogueConfig(instituteId!, tagName),
+    const queryClient = useQueryClient();
+    const [hasDraft, setHasDraft] = useState(false);
+    const [showHistory, setShowHistory] = useState(false);
+
+    // Draft/publish model: the editor works on a DRAFT revision; learners keep
+    // seeing the last PUBLISHED config until the admin hits Publish.
+    const { data: meta, isLoading: metaLoading } = useQuery({
+        queryKey: ['catalogueMeta', instituteId, tagName],
+        queryFn: () => getCatalogueMeta(instituteId!, tagName),
         enabled: !!instituteId && !!tagName,
     });
+    const catalogueId = meta?.id;
+
+    const draftQuery = useQuery({
+        queryKey: ['catalogueDraft', catalogueId],
+        queryFn: () => getDraftRevision(catalogueId!),
+        enabled: !!catalogueId,
+    });
+
+    const isLoading = metaLoading || (!!catalogueId && !draftQuery.isFetched);
 
     const saveMutation = useMutation({
-        mutationFn: (newConfig: CatalogueConfig) =>
-            saveCatalogueConfig(instituteId!, tagName, newConfig),
-        onSuccess: (_, savedConfig) => {
+        mutationFn: (newConfig: CatalogueConfig) => saveDraftRevision(catalogueId!, newConfig),
+        onSuccess: (savedRevision, savedConfig) => {
             setSavedConfigJSON(JSON.stringify(savedConfig));
-            toast({ title: 'Saved', description: 'Changes saved successfully' });
+            setHasDraft(true);
+            // Keep the draft cache honest (the save response omits the JSON) so
+            // a later focus refetch doesn't look like fresh server state.
+            queryClient.setQueryData(['catalogueDraft', catalogueId], {
+                ...savedRevision,
+                catalogue_json: JSON.stringify(savedConfig),
+            });
+            toast({ title: 'Draft saved', description: 'Publish when you want learners to see it' });
         },
         onError: (err) => {
             toast({
@@ -112,17 +141,48 @@ export const CatalogueEditorPage = () => {
         },
     });
 
+    const publishMutation = useMutation({
+        mutationFn: async () => {
+            // Publish always ships what's on screen: persist the draft first
+            if (config) await saveDraftRevision(catalogueId!, config);
+            return publishDraftRevision(catalogueId!);
+        },
+        onSuccess: () => {
+            if (config) setSavedConfigJSON(JSON.stringify(config));
+            setHasDraft(false);
+            // The draft was promoted — clear its cache or the stale entry flips
+            // the badge back to "Draft" on the next refetch.
+            queryClient.setQueryData(['catalogueDraft', catalogueId], null);
+            queryClient.invalidateQueries({ queryKey: ['catalogueMeta', instituteId, tagName] });
+            queryClient.invalidateQueries({ queryKey: ['catalogueRevisions', catalogueId] });
+            toast({ title: 'Published', description: 'The site is now live with this version' });
+        },
+        onError: (err) => {
+            toast({ title: 'Publish failed', description: 'Please try again', variant: 'destructive' });
+            console.error(err);
+        },
+    });
+
+    // Hydrate ONCE per catalogue. Background refetches (window focus,
+    // post-publish invalidation) must never re-run setConfig — it resets undo
+    // history/selection and would clobber unsaved edits.
+    const loadedForRef = useRef<string | null>(null);
     useEffect(() => {
-        if (data && data.catalogue_json) {
-            try {
-                const parsed = JSON.parse(data.catalogue_json);
-                setConfig(parsed);
-                setSavedConfigJSON(data.catalogue_json);
-            } catch (e) {
-                console.error('Failed to parse catalogue JSON', e);
-            }
+        if (!meta || !draftQuery.isFetched) return;
+        if (loadedForRef.current === meta.id) return;
+        const json = draftQuery.data?.catalogue_json || meta.catalogue_json;
+        if (!json) return;
+        try {
+            const parsed = JSON.parse(json);
+            setConfig(parsed);
+            setSavedConfigJSON(json);
+            setHasDraft(!!draftQuery.data);
+            loadedForRef.current = meta.id;
+        } catch (e) {
+            console.error('Failed to parse catalogue JSON', e);
         }
-    }, [data, setConfig]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [meta, draftQuery.isFetched, draftQuery.data, setConfig]);
 
     // Warn before leaving with unsaved changes
     useEffect(() => {
@@ -173,7 +233,7 @@ export const CatalogueEditorPage = () => {
             }
             if ((e.ctrlKey || e.metaKey) && e.key === 's') {
                 e.preventDefault();
-                if (config && canWrite && !saveMutation.isPending && !jsonError) {
+                if (config && canWrite && !saveMutation.isPending && !publishMutation.isPending && !jsonError && catalogueId) {
                     saveMutation.mutate(config);
                 }
             }
@@ -223,11 +283,16 @@ export const CatalogueEditorPage = () => {
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {/* Unsaved indicator */}
-                    {isDirty && (
-                        <span className="flex items-center gap-1.5 text-xs text-amber-600">
+                    {/* Draft / live status */}
+                    {hasDraft || isDirty ? (
+                        <span className="flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-600">
                             <span className="size-2 rounded-full bg-amber-500" />
-                            Unsaved changes
+                            {isDirty ? 'Unsaved changes' : 'Draft — not published'}
+                        </span>
+                    ) : (
+                        <span className="flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-600">
+                            <span className="size-2 rounded-full bg-green-500" />
+                            Live
                         </span>
                     )}
                     {/* Undo/Redo */}
@@ -252,15 +317,61 @@ export const CatalogueEditorPage = () => {
                         </Button>
                     </div>
                     <Button
+                        variant="ghost"
                         size="sm"
+                        onClick={() => setShowHistory(true)}
+                        title="Version history"
+                        disabled={!catalogueId}
+                    >
+                        <ClockCounterClockwise className="size-4" />
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="outline"
                         onClick={() => saveMutation.mutate(config)}
-                        disabled={saveMutation.isPending || !canWrite || !!jsonError}
+                        disabled={saveMutation.isPending || publishMutation.isPending || !canWrite || !!jsonError || !catalogueId}
                     >
                         <Save className="mr-2 size-4" />
-                        Save
+                        Save draft
+                    </Button>
+                    <Button
+                        size="sm"
+                        onClick={() => publishMutation.mutate()}
+                        disabled={
+                            publishMutation.isPending || saveMutation.isPending || !canWrite || !!jsonError || !catalogueId ||
+                            (!hasDraft && !isDirty)
+                        }
+                        title="Make this version live for learners"
+                    >
+                        {publishMutation.isPending ? (
+                            <Loader2 className="mr-2 size-4 animate-spin" />
+                        ) : (
+                            <RocketLaunch className="mr-2 size-4" />
+                        )}
+                        Publish
                     </Button>
                 </div>
             </div>
+
+            {/* Version history */}
+            <RevisionHistoryDialog
+                open={showHistory}
+                onOpenChange={setShowHistory}
+                catalogueId={catalogueId}
+                onRestore={(json) => {
+                    try {
+                        const parsed = JSON.parse(json) as CatalogueConfig;
+                        updateConfig(parsed);
+                        // Restored config may not contain the selected page —
+                        // reselect so the canvas doesn't go blank.
+                        if (!parsed.pages.some((p) => p.id === selectedPageId) && parsed.pages[0]) {
+                            selectPage(parsed.pages[0].id);
+                        }
+                    } catch (e) {
+                        console.error('Failed to parse revision JSON', e);
+                    }
+                }}
+            />
 
             {/* Main Content */}
             {activeTab === 'json' ? (
@@ -356,7 +467,7 @@ export const CatalogueEditorPage = () => {
                     {/* Floating drag ghost */}
                     <DragOverlay dropAnimation={null}>
                         {activeDragLabel && (
-                            <div className="pointer-events-none z-[9999] rounded-lg border-2 border-blue-400 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-xl">
+                            <div className="pointer-events-none z-50 rounded-lg border-2 border-blue-400 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-xl">
                                 + {activeDragLabel}
                             </div>
                         )}

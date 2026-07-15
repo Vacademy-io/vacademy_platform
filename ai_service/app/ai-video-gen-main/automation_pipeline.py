@@ -7832,8 +7832,48 @@ class VideoGenerationPipeline:
             if not s.get("image_prompt"):
                 s["image_prompt"] = str(s.get("scene_description") or "cinematic scene")[:300]
             for k in ("dialogue", "_dialogue_audio_url", "_dialogue_audio_s",
-                      "_dialogue_clip_s", "_dialogue_self_voiced"):
+                      "_dialogue_clip_s", "_dialogue_self_voiced", "_dialogue_silent",
+                      "_dialogue_muted"):
                 s.pop(k, None)
+
+        def _is_silent_character_scene(s: Dict[str, Any]) -> bool:
+            # Drama redesign: a character clip with NO spoken lines — the cast
+            # member acts while the master narrator plays over the shot. Marked
+            # by audio_policy=narration_over_clip + at least one character. Such
+            # a shot is FILMED (against the locked faces), not demoted to stock.
+            if str(s.get("audio_policy") or "") != "narration_over_clip":
+                return False
+            return bool([n for n in (s.get("character_names") or []) if str(n).strip()])
+
+        def _prepare_silent_scene(s: Dict[str, Any]) -> bool:
+            # A no-dialogue character clip. Two sub-cases keyed on whether the
+            # shot actually has narration to play over it — this is the
+            # DEAD-AIR guard (review P1): a muted clip + an empty master gap
+            # would be total silence.
+            #   • narration present → MUTED clip, narrator VO carries the beat.
+            #   • no narration      → SELF-AUDIBLE clip (its own ambient plays,
+            #     master stays silent) — still shows the character, never
+            #     silent. audio_policy is left as narration_over_clip (stable
+            #     across resume — the muted/self-audible split is recomputed
+            #     from the persisted narration_text each leg).
+            # Idempotent. Returns True when it changed the shot's duration.
+            _sidx = int(s.get("shot_index") or 0)
+            _cap = 10 if self._dialogue_clip_model == "omni-flash" else 15
+            clip_s = max(3, min(_cap, int(round(float(s.get("duration_estimate_s") or 6.0)))))
+            _has_narr = bool(str(s.get("narration_text") or "").strip())
+            s["_dialogue_silent"] = True
+            s["_dialogue_muted"] = _has_narr
+            s["_dialogue_clip_s"] = clip_s
+            s["_dialogue_audio_s"] = 0.0
+            if _has_narr:
+                print(f"   🎭 Silent character shot {_sidx}: no lines → {clip_s}s muted clip (narrator over)")
+            else:
+                print(f"   🎭 Silent character shot {_sidx}: no lines AND no narration "
+                      f"→ {clip_s}s self-audible clip (clip ambient carries it — no dead air)")
+            if abs(float(s.get("duration_estimate_s") or 0.0) - clip_s) > 0.01:
+                s["duration_estimate_s"] = float(clip_s)
+                return True
+            return False
 
         if self._dialogue_clip_model == "omni-flash":
             # SELF-VOICED path (Gemini Omni Flash): the model has no audio
@@ -7844,7 +7884,7 @@ class VideoGenerationPipeline:
             import math as _math
             changed_timing = False
             for s in dialogue_shots:
-                if s.get("_dialogue_self_voiced") and s.get("_dialogue_clip_s"):
+                if (s.get("_dialogue_self_voiced") or s.get("_dialogue_silent")) and s.get("_dialogue_clip_s"):
                     continue  # already prepared (resume)
                 shot_idx = int(s.get("shot_index") or 0)
                 lines = [
@@ -7852,7 +7892,12 @@ class VideoGenerationPipeline:
                     if isinstance(l, dict) and str(l.get("line") or "").strip()
                 ][:3]
                 if not lines:
-                    _demote(s, "no dialogue lines")
+                    # Silent character clip → film it (narrator over); only a
+                    # non-character empty scene falls back to stock.
+                    if _is_silent_character_scene(s):
+                        changed_timing = _prepare_silent_scene(s) or changed_timing
+                    else:
+                        _demote(s, "no dialogue lines")
                     continue
                 words = sum(len(str(l.get("line") or "").split()) for l in lines)
                 est = words / 2.5 + 1.5
@@ -7895,7 +7940,7 @@ class VideoGenerationPipeline:
         changed_timing = False
 
         for s in dialogue_shots:
-            if s.get("_dialogue_audio_url"):
+            if s.get("_dialogue_audio_url") or (s.get("_dialogue_silent") and s.get("_dialogue_clip_s")):
                 continue  # already prepared (resume)
             shot_idx = int(s.get("shot_index") or 0)
             lines = [
@@ -7903,7 +7948,12 @@ class VideoGenerationPipeline:
                 if isinstance(l, dict) and str(l.get("line") or "").strip()
             ][:3]
             if not lines:
-                _demote(s, "no dialogue lines")
+                # Silent character clip (Seedance path) → film with NO audio
+                # input; the narrator plays over it. Non-character → stock.
+                if _is_silent_character_scene(s):
+                    changed_timing = _prepare_silent_scene(s) or changed_timing
+                else:
+                    _demote(s, "no dialogue lines")
                 continue
             try:
                 seg_paths: List[Path] = []
@@ -8326,6 +8376,11 @@ class VideoGenerationPipeline:
             if not self._seedance_ready():
                 return None
             _use_omni = self._dialogue_clip_model == "omni-flash"
+            _silent = bool(shot.get("_dialogue_silent"))
+            # MUTED = silent AND there's narration to play over it. A silent
+            # scene without narration is filmed SELF-AUDIBLE (its own ambient)
+            # so the beat is never both muted and silent (review P1).
+            _muted = _silent and bool(shot.get("_dialogue_muted"))
             clip_s = int(shot.get("_dialogue_clip_s") or 8)
             if _use_omni:
                 expected = omni_price_per_call_usd(duration_s=clip_s)
@@ -8344,7 +8399,7 @@ class VideoGenerationPipeline:
                 try:
                     charged_credits = _ledger.charge(
                         cost_usd=expected, shot_idx=shot_idx,
-                        duration_s=clip_s, audio_on=True,
+                        duration_s=clip_s, audio_on=not _muted,
                     )
                 except Exception as _led_err:
                     try:
@@ -8370,14 +8425,20 @@ class VideoGenerationPipeline:
                     aspect_ratio=aspect,
                 )
             else:
+                # Silent character clip → NO audio INPUT (no TTS pre-pass);
+                # `_dialogue_audio_url` is absent, so guard the lookup. A MUTED
+                # silent clip generates no audio (narrator plays over it); a
+                # self-audible silent clip generates its own ambient so the
+                # beat is never dead-silent.
+                _audio_urls = [] if _silent else [shot["_dialogue_audio_url"]]
                 result = self._fal_seedance_client.generate_reference_to_video(
                     prompt=prompt,
                     image_urls=image_urls,
-                    audio_urls=[shot["_dialogue_audio_url"]],
+                    audio_urls=_audio_urls,
                     duration_s=clip_s,
                     aspect_ratio=aspect,
                     resolution="720p",
-                    generate_audio=True,
+                    generate_audio=not _muted,
                 )
             print(
                 f"   🎭 Shot {shot_idx}: dialogue clip ready "
@@ -8443,7 +8504,18 @@ class VideoGenerationPipeline:
             if isinstance(l, dict) and str(l.get("line") or "").strip()
         )
         scene = str(shot.get("scene_description") or "").strip()
-        if _use_omni:
+        _silent = bool(shot.get("_dialogue_silent"))
+        if _silent:
+            # Silent character clip: the cast member ACTS but does not speak —
+            # the narrator plays over it. Drive the clip from action_description
+            # and forbid any speech so the model doesn't invent dialogue.
+            _action = str(shot.get("action_description") or scene or "the character in the scene").strip()
+            speak = (
+                f"The character performs this action, silently and naturally, WITHOUT speaking "
+                f"or moving their lips to talk: {_action}. No dialogue, no talking — a purely "
+                "visual performance the narrator will speak over."
+            )
+        elif _use_omni:
             # Self-voiced: Omni speaks the lines itself. Give it voice
             # direction per character (the closest we can get to consistency
             # without an audio input).
@@ -8493,7 +8565,8 @@ class VideoGenerationPipeline:
                 s for s in shots
                 if isinstance(s, dict)
                 and str(s.get("shot_type") or "").upper() == "DIALOGUE_SCENE"
-                and (s.get("_dialogue_audio_url") or s.get("_dialogue_self_voiced"))
+                and (s.get("_dialogue_audio_url") or s.get("_dialogue_self_voiced")
+                     or s.get("_dialogue_silent"))
             ),
             key=lambda s: int(s.get("shot_index") or 0),
         )
@@ -8610,7 +8683,8 @@ class VideoGenerationPipeline:
             cost_usd = float(shot.get("_dialogue_clip_cost_usd") or 0.0)
             elapsed_s = float(shot.get("_dialogue_clip_elapsed_s") or 0.0)
             if not video_url:
-                if not shot.get("_dialogue_audio_url") and not shot.get("_dialogue_self_voiced"):
+                if (not shot.get("_dialogue_audio_url") and not shot.get("_dialogue_self_voiced")
+                        and not shot.get("_dialogue_silent")):
                     print(f"   ⚠️ DIALOGUE_SCENE shot {shot_idx}: no prepared dialogue audio")
                     return None
                 sheets = self._ensure_character_sheets(run_dir)
@@ -8635,12 +8709,22 @@ class VideoGenerationPipeline:
                 cost_usd = float(result.cost_usd or 0.0)
                 elapsed_s = float(result.elapsed_s or 0.0)
 
+            # Audio routing per flavor (build_ai_video_html mutes the <video>
+            # for every policy EXCEPT intrinsic_only):
+            #   • speaking scene            → intrinsic_only (clip lip-sync plays)
+            #   • silent + narration (muted)→ narration_over_clip (clip muted,
+            #                                 master narrator plays over it)
+            #   • silent + NO narration     → intrinsic_only (clip's own ambient
+            #                                 plays — never dead-silent; review P1)
+            _silent_entry = bool(shot.get("_dialogue_silent"))
+            _muted_entry = _silent_entry and bool(shot.get("_dialogue_muted"))
+            _entry_policy = "narration_over_clip" if _muted_entry else "intrinsic_only"
             from ai_video_orchestrator import build_ai_video_html
             html = self._ensure_fonts(
                 build_ai_video_html(
                     shot_idx=shot_idx,
                     video_url=video_url,
-                    audio_policy="intrinsic_only",
+                    audio_policy=_entry_policy,
                 )
             )
             return {
@@ -8653,13 +8737,23 @@ class VideoGenerationPipeline:
                 "index": shot_idx,
                 "z": shot.get("z", 10),
                 "_shot_type": "DIALOGUE_SCENE",
-                "_narration_excerpt": "",
+                # Telemetry excerpt = the SPOKEN narration (narration_text),
+                # not the planner's brief — the audio for a muted silent clip
+                # is the master narration built from narration_text (review P2).
+                # A speaking scene has no master narration → "".
+                "_narration_excerpt": (
+                    str(shot.get("narration_text") or shot.get("narration_brief") or "")[:200]
+                    if _silent_entry else ""
+                ),
                 "_visual_description": str(shot.get("scene_description") or "")[:200],
                 "_skill_audio_events": [],
                 "_ai_video_url": video_url,
                 "_ai_video_cost_usd": cost_usd,
                 "_ai_video_elapsed_s": elapsed_s,
-                "_ai_video_audio_on": True,
+                # Clip's OWN audio is on for a speaking scene AND a self-audible
+                # silent scene; off only when the clip is muted (narrator over).
+                "_ai_video_audio_on": not _muted_entry,
+                "_audio_policy": _entry_policy,
             }
         except Exception as ds_err:
             print(f"   ⚠️ DIALOGUE_SCENE shot {shot_idx} entry failed: {type(ds_err).__name__}: {ds_err}")

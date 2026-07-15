@@ -82,6 +82,13 @@ TRANSITIONS: Tuple[str, ...] = (
 AUDIO_POLICIES: Tuple[str, ...] = (
     "narration_only",
     "intrinsic_only",
+    # Drama redesign: the shot is an AI-generated CHARACTER clip (the cast
+    # member acting, NOT speaking) with the master narrator's VO playing OVER
+    # it. Distinct from intrinsic_only (which silences the narrator) — here the
+    # clip's own audio is muted and narration_brief is KEPT so the narrator
+    # carries the beat. Lets a whole drama be filmed with the characters while
+    # the narrator connects the scenes.
+    "narration_over_clip",
 )
 
 # Shot types whose audio comes from their own video track. Mirrors
@@ -217,13 +224,21 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "sentence, ≤120 chars), `highlight_box_pct` (rect to zoom toward, 0–100 scale), and optional "
     "`source_label` (e.g. 'BBC News'). Best at 3–5s shot duration.\n"
     "- **DIALOGUE_SCENE** *(only when dialogue scenes are enabled)*: A cinematic AI-generated clip "
-    "where CHARACTERS SPEAK on screen (storybook/drama beats). The clip is fully generated (video + "
-    "lip-synced speech + ambience) — no HTML, no narrator. MUST set: `dialogue` = ordered list of "
-    "`{character, line}` (1-3 short lines, total spoken time ≤ 12s at natural pace); "
-    "`scene_description` = one vivid sentence staging the scene (location, mood, camera feel, what "
-    "the characters are doing); `character_names` = the characters appearing; "
-    "`audio_policy: \"intrinsic_only\"` (the clip carries its own audio — the master narrator is "
-    "silent here); `duration_estimate_s` between 5 and 15; `scene_continuity` = \"continuous\" ONLY "
+    "of the CAST CHARACTERS on screen (storybook/drama beats), filmed against their locked "
+    "reference faces. It comes in TWO flavors:\n"
+    "    (a) SPEAKING — the characters talk. Set `dialogue` = ordered list of `{character, line}` "
+    "(1-3 short lines, total spoken time ≤ 12s); `audio_policy: \"intrinsic_only\"` (the clip "
+    "carries its own lip-synced audio, master narrator silent); `narration_brief: \"\"`.\n"
+    "    (b) SILENT ACTION — a character acts but does NOT speak (e.g. slumped over papers, "
+    "reacting, working) while the NARRATOR speaks over the shot. Set `dialogue: []` (empty); "
+    "`action_description` = one vivid sentence of what the character is DOING (no speech); "
+    "`audio_policy: \"narration_over_clip\"`; and a real `narration_brief` (the narrator carries "
+    "this beat — this is how a drama shows its characters between spoken scenes instead of "
+    "cutting to stock footage of strangers).\n"
+    "  BOTH flavors MUST set: `scene_description` = one vivid sentence staging the scene "
+    "(location, mood, camera feel); `character_names` = the cast members appearing (so the shot "
+    "films against their faces); `duration_estimate_s` between 5 and 15; `scene_continuity` = "
+    "\"continuous\" ONLY "
     "when this shot carries on the SAME moment and location as the immediately previous "
     "DIALOGUE_SCENE (it will be visually chained from its last frame) — any time-skip (\"next "
     "morning\", \"later\") or location change MUST be \"new\". When you use DIALOGUE_SCENE anywhere, "
@@ -318,8 +333,13 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "      narration_brief=\"\"; otherwise narration_only and write a voice-over brief).\n"
     "    • AI_VIDEO_HERO shots with `ai_video_audio=true` (only on runs with audio_enabled).\n"
     "    • Pure visual moments where silence + visual carries the beat better than narration.\n"
+    "- `\"narration_over_clip\"` — the shot is a CHARACTER clip (a cast member acting, NOT "
+    "speaking) and the master narrator speaks OVER it. Use for the SILENT flavor of "
+    "DIALOGUE_SCENE (see that shot type). Unlike intrinsic_only, the clip's own audio is muted "
+    "and `narration_brief` is REQUIRED and KEPT — the narrator carries the beat.\n"
     "When `audio_policy=intrinsic_only`, `narration_brief` MUST be \"\" (empty string) — there is "
-    "no narration to brief.\n\n"
+    "no narration to brief. When `audio_policy=narration_over_clip`, `narration_brief` MUST be "
+    "non-empty.\n\n"
 
     "**BACKGROUND CONTINUITY — `background_treatment` (per shot, RECOMMENDED)**:\n"
     "Every non-media-hero shot should declare a `background_treatment` field. Allowed values:\n"
@@ -528,19 +548,30 @@ def build_shot_planner_user_prompt(
     if dialogue_scenes_enabled and str(dialogue_mode or "").lower() == "drama":
         lines.append("")
         lines.append(
-            "DRAMA MODE — this video is a dialogue-driven drama: strongly prefer "
-            "DIALOGUE_SCENE for every beat. Structure it as 3-6 scenes with a dramatic "
-            "arc (setup → tension → turn → resolution); mark consecutive shots that "
-            "continue the SAME moment/location with scene_continuity=\"continuous\" "
-            "(they will be visually chained) and any time-skip or location change as "
-            "\"new\". Keep each shot's spoken lines ≤ 12s. If you DO include a "
-            "non-dialogue shot (hook, product mockup, close), it MUST carry a real "
-            "narration_brief — background music is OFF in drama, so a non-dialogue "
-            "shot without narration plays as DEAD SILENCE. The narrator speaks ONLY "
-            "on non-dialogue shots (write narration_brief=\"\" on every "
-            "DIALOGUE_SCENE). Emit the top-level `characters` cast array with "
+            "DRAMA MODE — this is a SHORT FILM CARRIED BY THE CHARACTERS, not an "
+            "explainer with a couple of clips. The story advances scene to scene "
+            "THROUGH the cast; the narrator only connects. Build a dramatic arc "
+            "(setup → tension → turn → resolution) across 3-6 beats.\n"
+            "ROUTING RULE — decide per beat by WHO is on screen:\n"
+            "• A character SPEAKS → DIALOGUE_SCENE, speaking flavor (dialogue lines, "
+            "audio_policy=intrinsic_only, narration_brief=\"\").\n"
+            "• A character is SHOWN but not speaking (working, reacting, struggling — "
+            "e.g. 'exhausted teacher buried in papers') → DIALOGUE_SCENE, SILENT "
+            "flavor (dialogue=[], action_description of what they DO, "
+            "audio_policy=narration_over_clip, a real narration_brief). This films "
+            "the actual character — NEVER cut to stock footage of a stranger for a "
+            "beat that is about one of your cast.\n"
+            "• ONLY a genuinely person-free beat (a bare product/UI screen, an "
+            "abstract title) may be a non-DIALOGUE_SCENE shot — give it a real "
+            "narration_brief (background music is OFF in drama, so a silent "
+            "non-narrated shot plays as DEAD SILENCE).\n"
+            "Every beat that involves a cast member MUST list them in "
+            "`character_names` so it films against their faces. Mark consecutive "
+            "shots continuing the SAME moment/location scene_continuity="
+            "\"continuous\" (visually chained); any time-skip or location change "
+            "\"new\". Emit the top-level `characters` cast array with "
             "VERBATIM-reusable visual descriptions — the SAME characters recur "
-            "across scenes."
+            "across every scene."
         )
     elif dialogue_scenes_enabled:
         lines.append("")
@@ -849,7 +880,9 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
         audio_policy = "narration_only"
 
     narration_brief = str(raw.get("narration_brief") or "").strip()
-    # Contract: intrinsic_only shots have empty narration_brief.
+    # Contract: intrinsic_only shots have empty narration_brief (the clip's own
+    # audio carries the beat). narration_over_clip is the OPPOSITE — the clip is
+    # muted and the narrator speaks over it, so the brief is kept.
     if audio_policy == "intrinsic_only":
         narration_brief = ""
 
@@ -904,6 +937,9 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
         # DIALOGUE_SCENE (storybook/drama mode): spoken lines + scene staging.
         "dialogue",
         "scene_description",
+        # Silent-character-clip flavor (drama redesign): what the cast member
+        # DOES on screen while the narrator speaks over the shot.
+        "action_description",
         "character_names",
         "scene_continuity",
         # Asset-request gate answers (assist): real user assets + figures.

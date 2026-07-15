@@ -47,6 +47,14 @@ AUDIO_POLICIES: Tuple[str, ...] = (
     "intrinsic_only",
     "intrinsic_under_narration",
     "narration_over_intrinsic",
+    # Drama redesign: silent CHARACTER clip (cast acts, doesn't speak) with the
+    # master narrator playing OVER it — the clip is muted. MUST be listed here
+    # or plan_audio_policy's "respect an existing valid policy" guard fails and
+    # resets it to narration_only, which would make _is_silent_character_scene
+    # miss and demote the shot back to stock. Behaves like narration_only for
+    # the mixer (narrator plays, no silent gap) — the muting happens in
+    # build_ai_video_html + the per-shot TTS branch, keyed off the value.
+    "narration_over_clip",
 )
 
 # Shot types whose audio comes from the shot's own video track (not master

@@ -27,6 +27,10 @@ public class SupportTicketDto {
     private String planAtCreation;
     private String assignedEngineerId;
     private String assignedEngineerName;
+    /** PORTAL | EMAIL | WHATSAPP | PHONE | MANUAL | OTHER. */
+    private String source;
+    /** Optional expected-resolution time set by the support team; visible to the institute. */
+    private Date eta;
     private Date firstResponseDueAt;
     private Date firstRespondedAt;
     private Date resolvedAt;

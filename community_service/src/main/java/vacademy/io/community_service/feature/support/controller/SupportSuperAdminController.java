@@ -71,6 +71,23 @@ public class SupportSuperAdminController {
         return ResponseEntity.ok(ticketService.getByIdForSupport(id));
     }
 
+    /** Log a ticket on an institute's behalf (issue reported over email / WhatsApp, etc.). */
+    @PostMapping("/tickets")
+    public ResponseEntity<SupportTicketDto> createTicket(@RequestAttribute("user") CustomUserDetails user,
+                                                         @RequestBody CreateSupportTicketRequest request) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(ticketService.createBySupport(request, user));
+    }
+
+    /** Set or clear (null eta) the expected-resolution ETA shown to the institute. */
+    @PostMapping("/tickets/{id}/eta")
+    public ResponseEntity<SupportTicketDto> setEta(@RequestAttribute("user") CustomUserDetails user,
+                                                   @PathVariable String id,
+                                                   @RequestBody UpdateEtaRequest request) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(ticketService.setEta(id, request != null ? request.getEta() : null));
+    }
+
     @PostMapping("/tickets/{id}/messages")
     public ResponseEntity<SupportTicketDto> reply(@RequestAttribute("user") CustomUserDetails user,
                                                   @PathVariable String id,

@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import {
     ArrowSquareOut,
+    CalendarCheck,
     CaretLeft,
     ChatCircleDots,
     CheckCircle,
@@ -595,6 +596,11 @@ function ThreadView({ ticketId }: { ticketId: string }) {
                         >
                             {ticket.overdue ? <Warning size={13} /> : <Clock size={13} />}
                             We will respond by {fmt(ticket.firstResponseDueAt)}
+                        </span>
+                    ) : null}
+                    {ticket.eta ? (
+                        <span className="mt-1 flex items-center gap-1 text-primary-600">
+                            <CalendarCheck size={13} /> Expected resolution by {fmt(ticket.eta)}
                         </span>
                     ) : null}
                 </div>

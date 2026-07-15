@@ -10,6 +10,7 @@ import org.hibernate.type.SqlTypes;
 import vacademy.io.community_service.feature.support.enums.SupportPlan;
 import vacademy.io.community_service.feature.support.enums.TicketCategory;
 import vacademy.io.community_service.feature.support.enums.TicketPriority;
+import vacademy.io.community_service.feature.support.enums.TicketSource;
 import vacademy.io.community_service.feature.support.enums.TicketStatus;
 
 import java.util.Date;
@@ -72,6 +73,15 @@ public class SupportTicket {
 
     @Column(name = "assigned_engineer_id")
     private String assignedEngineerId;
+
+    /** Where the ticket came from: PORTAL (client-raised) or a channel the support team logged it from. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source", length = 50)
+    private TicketSource source;
+
+    /** Optional expected-resolution time the support team fills in; shown to the institute. */
+    @Column(name = "eta")
+    private Date eta;
 
     @Column(name = "first_response_due_at")
     private Date firstResponseDueAt;

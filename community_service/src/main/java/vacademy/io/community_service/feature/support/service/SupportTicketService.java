@@ -14,6 +14,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.community_service.feature.support.dto.AddMessageRequest;
 import vacademy.io.community_service.feature.support.dto.AssignEngineerRequest;
 import vacademy.io.community_service.feature.support.dto.AttachmentDto;
+import vacademy.io.community_service.feature.support.dto.CreateSupportTicketRequest;
 import vacademy.io.community_service.feature.support.dto.CreateTicketRequest;
 import vacademy.io.community_service.feature.support.dto.PageResponseDto;
 import vacademy.io.community_service.feature.support.dto.SupportTicketDto;
@@ -26,6 +27,7 @@ import vacademy.io.community_service.feature.support.enums.SenderType;
 import vacademy.io.community_service.feature.support.enums.SupportPlan;
 import vacademy.io.community_service.feature.support.enums.TicketCategory;
 import vacademy.io.community_service.feature.support.enums.TicketPriority;
+import vacademy.io.community_service.feature.support.enums.TicketSource;
 import vacademy.io.community_service.feature.support.enums.TicketStatus;
 import vacademy.io.community_service.feature.support.repository.SupportTicketMessageRepository;
 import vacademy.io.community_service.feature.support.repository.SupportTicketRepository;
@@ -93,6 +95,7 @@ public class SupportTicketService {
                 .priority(priority)
                 .status(TicketStatus.OPEN)
                 .planAtCreation(plan)
+                .source(TicketSource.PORTAL)
                 .firstResponseDueAt(computeDue(now, plan, priority))
                 .lastMessageAt(now)
                 .messageCount(1)
@@ -185,6 +188,79 @@ public class SupportTicketService {
     }
 
     // ============================== SUPER-ADMIN ===============================
+
+    /**
+     * The support team logs a ticket on an institute's behalf (issue reported over email / WhatsApp,
+     * etc.). Attributed to "Vacademy Support" but attached to the chosen institute, so it surfaces in
+     * that institute's own support panel like any client-raised ticket. The opening message is a
+     * visible SUPPORT message carrying the reported issue text; because support is already engaged we
+     * stamp firstRespondedAt so it is never flagged overdue against a first-response SLA.
+     */
+    @Transactional
+    public SupportTicketDto createBySupport(CreateSupportTicketRequest request, CustomUserDetails user) {
+        if (request == null || !StringUtils.hasText(request.getInstituteId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "instituteId is required");
+        }
+        if (!StringUtils.hasText(request.getSubject())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "subject is required");
+        }
+        if (!StringUtils.hasText(request.getMessage())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "message is required");
+        }
+        String instituteId = request.getInstituteId().trim();
+        SupportPlan plan = configService.resolvePlan(instituteId);
+        TicketPriority priority = TicketPriority.fromName(request.getPriority(), TicketPriority.MINOR);
+        TicketCategory category = TicketCategory.fromName(request.getCategory(), TicketCategory.QUESTION);
+        TicketSource source = TicketSource.fromName(request.getSource(), TicketSource.MANUAL);
+        Date now = new Date();
+
+        String engineerId = null;
+        if (StringUtils.hasText(request.getAssignedEngineerId())) {
+            engineerId = engineerService.getOrThrow(request.getAssignedEngineerId().trim()).getId();
+        }
+
+        SupportTicket ticket = SupportTicket.builder()
+                .instituteId(instituteId)
+                .instituteName(StringUtils.hasText(request.getInstituteName()) ? request.getInstituteName().trim() : null)
+                .raisedByUserId(user != null ? user.getUserId() : null)
+                .raisedByName("Vacademy Support")
+                .raisedByRole("SUPPORT")
+                .subject(request.getSubject().trim())
+                .category(category)
+                .priority(priority)
+                .status(TicketStatus.OPEN)
+                .planAtCreation(plan)
+                .source(source)
+                .eta(request.getEta())
+                .assignedEngineerId(engineerId)
+                // support authored the first message → treat first response as already given (no SLA clock).
+                .firstRespondedAt(now)
+                .lastMessageAt(now)
+                .messageCount(1)
+                .build();
+        ticket = ticketRepository.save(ticket);
+
+        SupportTicketMessage first = SupportTicketMessage.builder()
+                .ticketId(ticket.getId())
+                .senderType(SenderType.SUPPORT)
+                .senderUserId(user != null ? user.getUserId() : null)
+                .senderName(user != null && StringUtils.hasText(user.getFullName()) ? user.getFullName() : "Vacademy Support")
+                .body(request.getMessage().trim())
+                .attachments(writeAttachments(request.getAttachments()))
+                .internalNote(false)
+                .build();
+        messageRepository.save(first);
+
+        return toDetailDto(ticket, true);
+    }
+
+    @Transactional
+    public SupportTicketDto setEta(String ticketId, Date eta) {
+        SupportTicket ticket = getOrThrow(ticketId);
+        ticket.setEta(eta);
+        ticketRepository.save(ticket);
+        return toDetailDto(ticket, true);
+    }
 
     @Transactional(readOnly = true)
     public PageResponseDto<SupportTicketDto> search(String instituteId, String statusFilter, String engineerId,
@@ -385,6 +461,8 @@ public class SupportTicketService {
                 .status(t.getStatus() != null ? t.getStatus().name() : null)
                 .planAtCreation(t.getPlanAtCreation() != null ? t.getPlanAtCreation().name() : null)
                 .assignedEngineerId(t.getAssignedEngineerId())
+                .source(t.getSource() != null ? t.getSource().name() : null)
+                .eta(t.getEta())
                 .firstResponseDueAt(t.getFirstResponseDueAt())
                 .firstRespondedAt(t.getFirstRespondedAt())
                 .resolvedAt(t.getResolvedAt())

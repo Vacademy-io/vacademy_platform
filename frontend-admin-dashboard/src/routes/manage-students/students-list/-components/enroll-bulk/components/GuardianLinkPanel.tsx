@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { MyInput } from '@/components/design-system/input';
+import PhoneInputField from '@/components/design-system/phone-input-field';
 import { MagnifyingGlass, X } from '@phosphor-icons/react';
 import { useAutosuggestUsers } from '../../../-hooks/useAutosuggestUsers';
 import { AutosuggestUser, ParentLinkPersonInput } from '../../../-types/bulk-assign-types';
@@ -12,6 +13,8 @@ import { AutosuggestUser, ParentLinkPersonInput } from '../../../-types/bulk-ass
 const createNewSchema = z.object({
     fullName: z.string().min(1, 'Name is required'),
     email: z.string().email('Enter a valid email'),
+    // PhoneInputField (react-phone-input-2) already restricts entry to
+    // digits and formats per country — no extra numeric regex needed here.
     mobileNumber: z.string().optional(),
 });
 type CreateNewFormValues = z.infer<typeof createNewSchema>;
@@ -46,20 +49,18 @@ export const GuardianLinkPanel = ({ instituteId, personLabel, searchRoles, value
         },
     });
 
-    const emitCreateNew = <K extends keyof CreateNewFormValues>(field: K, fieldValue: string) => {
+    const emitCreateNew = <K extends 'fullName' | 'email'>(field: K, fieldValue: string) => {
         // react-hook-form's setValue overload resolves PathValueImpl<K> from a
         // literal key — it can't be satisfied through a generic K (no `as`
         // cast survives it either), so dispatch to a literal call per field
-        // instead of a single generic call.
+        // instead of a single generic call. mobileNumber is handled separately
+        // below (PhoneInputField writes straight into RHF state via `control`).
         switch (field) {
             case 'fullName':
                 form.setValue('fullName', fieldValue, { shouldValidate: true });
                 break;
             case 'email':
                 form.setValue('email', fieldValue, { shouldValidate: true });
-                break;
-            case 'mobileNumber':
-                form.setValue('mobileNumber', fieldValue, { shouldValidate: true });
                 break;
         }
         const next = { ...form.getValues(), [field]: fieldValue };
@@ -70,6 +71,24 @@ export const GuardianLinkPanel = ({ instituteId, personLabel, searchRoles, value
             mobileNumber: next.mobileNumber || '',
         });
     };
+
+    // PhoneInputField owns `mobileNumber` directly via RHF `control` (its
+    // onChange never goes through emitCreateNew above), so bubble it up to
+    // the parent's ParentLinkPersonInput separately. Only while this tab is
+    // actually active, so switching to "Link Existing" can't get silently
+    // clobbered back to a create_new value by a stray watch tick.
+    const watchedMobile = form.watch('mobileNumber');
+    useEffect(() => {
+        if (tab !== 'create_new') return;
+        const next = form.getValues();
+        onChange({
+            kind: 'create_new',
+            fullName: next.fullName || '',
+            email: next.email || '',
+            mobileNumber: next.mobileNumber || '',
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [watchedMobile, tab]);
 
     const { data: suggestedUsers, isFetching } = useAutosuggestUsers({
         instituteId,
@@ -123,14 +142,14 @@ export const GuardianLinkPanel = ({ instituteId, personLabel, searchRoles, value
                             onChangeFunction={(e) => emitCreateNew('email', e.target.value)}
                             error={form.formState.errors.email?.message}
                         />
-                        <MyInput
-                            label="Mobile (optional)"
-                            size="small"
-                            inputType="tel"
-                            inputPlaceholder="9876543210"
-                            input={form.watch('mobileNumber')}
-                            onChangeFunction={(e) => emitCreateNew('mobileNumber', e.target.value)}
-                        />
+                        <div className="w-full sm:w-auto sm:min-w-[220px]">
+                            <PhoneInputField
+                                label="Mobile (optional)"
+                                name="mobileNumber"
+                                control={form.control}
+                                placeholder="9876543210"
+                            />
+                        </div>
                     </div>
                 </TabsContent>
 

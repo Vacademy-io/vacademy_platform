@@ -17,6 +17,13 @@ public enum LeadJourneyActionType {
     /** A duplicate submission was detected and merged into this lead. */
     DUPLICATE_MERGED,
 
+    // ── Curation ─────────────────────────────────────────────────────────────
+    /** An admin soft-deleted this lead (metadata: scope, campaign_name, deleted_by). */
+    LEAD_DELETED,
+
+    /** A soft-deleted lead was restored, by an admin or by the person re-submitting. */
+    LEAD_RESTORED,
+
     // ── Assignment ───────────────────────────────────────────────────────────
     /** A counselor was assigned (or reassigned) to this lead. */
     COUNSELOR_ASSIGNED,

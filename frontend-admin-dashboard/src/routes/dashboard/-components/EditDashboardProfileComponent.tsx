@@ -66,6 +66,41 @@ const NAV_COLOR_FIELDS: Array<{ key: keyof NavRoleColors; label: string }> = [
     { key: 'text', label: 'Text' },
 ];
 
+/**
+ * Secondary/tertiary aren't 5 distinct roles like nav — they're a single
+ * base color that the learner app ramps into 6 shades (see setShadeRamp in
+ * that app's theme-provider.tsx). This mirrors that exact clamp curve so the
+ * preview strip matches what will actually render.
+ */
+const buildShadeRampPreview = (hex: string): string[] => {
+    try {
+        const [h, s, l] = convert.hex.hsl(hex.replace('#', ''));
+        const toHex = (hh: number, ss: number, ll: number) => `#${convert.hsl.hex([hh, ss, ll])}`;
+        return [
+            toHex(h, Math.min(s + 40, 100), Math.min(l + 45, 96)),
+            toHex(h, Math.min(s + 30, 90), Math.min(l + 38, 92)),
+            toHex(h, Math.min(s + 20, 88), Math.min(l + 29, 83)),
+            toHex(h, Math.min(s + 10, 87), Math.min(l + 18, 72)),
+            toHex(h, Math.min(s + 5, 86), Math.min(l + 7, 61)),
+            hex,
+        ];
+    } catch {
+        return [];
+    }
+};
+
+// Seeds a secondary/tertiary override with the same hue-shift heuristic the
+// learner app uses for a custom brand hex, so switching the toggle on starts
+// from something on-brand rather than an arbitrary color.
+const buildDefaultSecondaryHex = (brandHex: string): string => {
+    const [h, s, l] = convert.hex.hsl(brandHex.replace('#', ''));
+    return `#${convert.hsl.hex([((h - 24) % 360 + 360) % 360, Math.max(s - 25, 20), Math.min(l + 15, 80)])}`;
+};
+const buildDefaultTertiaryHex = (brandHex: string): string => {
+    const [h, s, l] = convert.hex.hsl(brandHex.replace('#', ''));
+    return `#${convert.hsl.hex([((h + 48) % 360 + 360) % 360, Math.max(s - 35, 15), Math.min(l + 25, 88)])}`;
+};
+
 // Predefined themes with their base colors
 const presetThemes = [
     { name: 'Orange', code: 'primary' },
@@ -88,6 +123,8 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
     const [selectedTheme, setSelectedTheme] = useState(presetThemes[0]?.code || 'primary');
     const [selectedNavPresetId, setSelectedNavPresetId] = useState(navPresets[0]!.id);
     const [customNav, setCustomNav] = useState<NavRoleColors | null>(null);
+    const [secondaryOverride, setSecondaryOverride] = useState<string | null>(null);
+    const [tertiaryOverride, setTertiaryOverride] = useState<string | null>(null);
     const [isSavingNav, setIsSavingNav] = useState(false);
     const { setPrimaryColor, getPrimaryColorCode } = useTheme();
 
@@ -98,6 +135,8 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
         let cancelled = false;
         getThemeRoleSettings().then((saved) => {
             if (cancelled) return;
+            setSecondaryOverride(saved?.roles?.secondary ?? null);
+            setTertiaryOverride(saved?.roles?.tertiary ?? null);
             if (!saved?.roles?.nav) {
                 setSelectedNavPresetId('match-brand');
                 return;
@@ -258,7 +297,11 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
             await saveThemeRoleSettings({
                 version: 2,
                 mode: selectedNavPresetId === CUSTOM_NAV_ID ? 'custom' : nav ? 'preset' : 'legacy',
-                roles: nav ? { nav } : {},
+                roles: {
+                    ...(nav ? { nav } : {}),
+                    ...(secondaryOverride ? { secondary: secondaryOverride } : {}),
+                    ...(tertiaryOverride ? { tertiary: tertiaryOverride } : {}),
+                },
             });
         } catch (error) {
             console.error('Failed to save nav theme', error);
@@ -729,6 +772,94 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                     />
                                                 ))}
                                             </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            <Separator className="my-4" />
+                            <h1 className="mb-1 text-lg">Secondary &amp; tertiary colors</h1>
+                            <p className="mb-4 text-sm text-neutral-500">
+                                Supporting accent colors used across the learner app (badges,
+                                secondary highlights). Auto-generated from your brand color above
+                                unless you set one here — this only affects the learner app; the
+                                admin dashboard doesn&apos;t use these colors.
+                            </p>
+                            <div className="mb-4 flex flex-col gap-4">
+                                {(
+                                    [
+                                        {
+                                            key: 'secondary' as const,
+                                            label: 'Secondary color',
+                                            value: secondaryOverride,
+                                            setValue: setSecondaryOverride,
+                                            buildDefault: buildDefaultSecondaryHex,
+                                        },
+                                        {
+                                            key: 'tertiary' as const,
+                                            label: 'Tertiary color',
+                                            value: tertiaryOverride,
+                                            setValue: setTertiaryOverride,
+                                            buildDefault: buildDefaultTertiaryHex,
+                                        },
+                                    ]
+                                ).map(({ key, label, value, setValue, buildDefault }) => {
+                                    const brandHex = getPrimaryColorCode();
+                                    const isOverridden = value != null;
+                                    const currentHex = value ?? buildDefault(brandHex);
+                                    const ramp = buildShadeRampPreview(currentHex);
+                                    return (
+                                        <div key={key} className="rounded-lg border border-gray-200 p-3">
+                                            <div className="mb-2 flex items-center justify-between">
+                                                <span className="text-sm font-medium">{label}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setValue(isOverridden ? null : buildDefault(brandHex))
+                                                    }
+                                                    className="text-xs font-medium text-primary-500 hover:underline"
+                                                >
+                                                    {isOverridden ? 'Reset to auto' : 'Customize'}
+                                                </button>
+                                            </div>
+                                            {isOverridden && (
+                                                <div className="mb-2 flex items-center gap-2">
+                                                    {/* design-lint-ignore: native color input — the value is
+                                                        user-chosen per-institute data, not a static token. */}
+                                                    <input
+                                                        type="color"
+                                                        value={currentHex}
+                                                        onChange={(e) => setValue(e.target.value)}
+                                                        className="h-8 w-8 cursor-pointer rounded border border-gray-200 p-0"
+                                                        aria-label={`${label} color`}
+                                                    />
+                                                    <MyInput
+                                                        inputType="text"
+                                                        input={currentHex}
+                                                        onChangeFunction={(e) => setValue(e.target.value)}
+                                                        size="small"
+                                                        className="w-24 font-mono text-xs"
+                                                        inputPlaceholder="Hex color"
+                                                    />
+                                                </div>
+                                            )}
+                                            {/* design-lint-ignore: computed per-institute ramp preview,
+                                                not static — can't be a Tailwind token. */}
+                                            <div className="flex overflow-hidden rounded-md">
+                                                {ramp.map((swatch, i) => (
+                                                    <div
+                                                        key={i}
+                                                        className="h-5 flex-1"
+                                                        style={{ backgroundColor: swatch }}
+                                                    />
+                                                ))}
+                                            </div>
+                                            {!isOverridden && (
+                                                <p className="mt-1 text-xs text-neutral-400">
+                                                    Auto — preview only, exact shade depends on your
+                                                    selected brand theme.
+                                                </p>
+                                            )}
                                         </div>
                                     );
                                 })}

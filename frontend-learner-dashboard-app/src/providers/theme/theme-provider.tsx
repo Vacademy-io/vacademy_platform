@@ -12,6 +12,64 @@ import {
   type ThemeRoleSettings,
 } from "@/types/theme-role-settings";
 
+// Generates a full 50-500 shade ramp (same clamp curve for every caller —
+// primary, secondary, tertiary) around an arbitrary HSL base.
+const setShadeRamp = (prefix: string, hue: number, sat: number, light: number) => {
+  const wrap = (deg: number) => ((deg % 360) + 360) % 360;
+  document.documentElement.style.setProperty(`--${prefix}`, `${wrap(hue)} ${sat}% ${light}%`);
+  document.documentElement.style.setProperty(`--${prefix}-500`, `${wrap(hue)} ${sat}% ${light}%`);
+  document.documentElement.style.setProperty(
+    `--${prefix}-50`,
+    `${wrap(hue)} ${Math.min(sat + 40, 100)}% ${Math.min(light + 45, 96)}%`
+  );
+  document.documentElement.style.setProperty(
+    `--${prefix}-100`,
+    `${wrap(hue)} ${Math.min(sat + 30, 90)}% ${Math.min(light + 38, 92)}%`
+  );
+  document.documentElement.style.setProperty(
+    `--${prefix}-200`,
+    `${wrap(hue)} ${Math.min(sat + 20, 88)}% ${Math.min(light + 29, 83)}%`
+  );
+  document.documentElement.style.setProperty(
+    `--${prefix}-300`,
+    `${wrap(hue)} ${Math.min(sat + 10, 87)}% ${Math.min(light + 18, 72)}%`
+  );
+  document.documentElement.style.setProperty(
+    `--${prefix}-400`,
+    `${wrap(hue)} ${Math.min(sat + 5, 86)}% ${Math.min(light + 7, 61)}%`
+  );
+};
+
+// Institute-authored secondary/tertiary override (THEME_SETTING). Runs after
+// whatever default (preset or hue-shift) already set --secondary-*/
+// --tertiary-*, and replaces them with a ramp built directly from the
+// chosen hex — no hue-shift, since the admin explicitly picked this color.
+const applySecondaryTertiaryOverrides = () => {
+  let secondary: string | undefined;
+  let tertiary: string | undefined;
+  try {
+    const raw = localStorage.getItem(THEME_ROLE_SETTINGS_KEY);
+    const parsed: ThemeRoleSettings | null = raw ? JSON.parse(raw) : null;
+    secondary = parsed?.roles?.secondary;
+    tertiary = parsed?.roles?.tertiary;
+  } catch {
+    secondary = undefined;
+    tertiary = undefined;
+  }
+
+  const applyOne = (prefix: "secondary" | "tertiary", hex?: string) => {
+    if (!hex) return;
+    try {
+      const [h, s, l] = convert.hex.hsl(hex.replace("#", ""));
+      setShadeRamp(prefix, h, s, l);
+    } catch {
+      // ignore malformed institute-authored hex
+    }
+  };
+  applyOne("secondary", secondary);
+  applyOne("tertiary", tertiary);
+};
+
 // Applies the `nav` role (sidebar/rail surface, hover, active, active-text,
 // text) from institute settings if one has been saved (THEME_SETTING). With
 // no override, the default REPRODUCES the sidebar's current hardcoded look
@@ -184,6 +242,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         const [ph, ps, pl] = convert.hex.hsl(primary500.replace("#", ""));
         applyNavRoles(ph, ps, pl);
       }
+      // Institute-authored secondary/tertiary override, if any — replaces
+      // the preset's bundled shades set above.
+      applySecondaryTertiaryOverrides();
 
       // Store the theme selection
       localStorage.setItem("theme-code", primaryColor);
@@ -191,36 +252,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       // Handle custom hex colors (for color picker)
       const [h, s, l] = convert.hex.hsl(primaryColor.replace("#", ""));
 
-      // Generates a full 50-500 shade ramp (same clamp curve used for primary)
-      // around an arbitrary HSL base, so secondary/tertiary can be derived too.
-      const setShadesFromHSL = (prefix: string, hue: number, sat: number, light: number) => {
-        const wrap = (deg: number) => ((deg % 360) + 360) % 360;
-        document.documentElement.style.setProperty(`--${prefix}`, `${wrap(hue)} ${sat}% ${light}%`);
-        document.documentElement.style.setProperty(`--${prefix}-500`, `${wrap(hue)} ${sat}% ${light}%`);
-        document.documentElement.style.setProperty(
-          `--${prefix}-50`,
-          `${wrap(hue)} ${Math.min(sat + 40, 100)}% ${Math.min(light + 45, 96)}%`
-        );
-        document.documentElement.style.setProperty(
-          `--${prefix}-100`,
-          `${wrap(hue)} ${Math.min(sat + 30, 90)}% ${Math.min(light + 38, 92)}%`
-        );
-        document.documentElement.style.setProperty(
-          `--${prefix}-200`,
-          `${wrap(hue)} ${Math.min(sat + 20, 88)}% ${Math.min(light + 29, 83)}%`
-        );
-        document.documentElement.style.setProperty(
-          `--${prefix}-300`,
-          `${wrap(hue)} ${Math.min(sat + 10, 87)}% ${Math.min(light + 18, 72)}%`
-        );
-        document.documentElement.style.setProperty(
-          `--${prefix}-400`,
-          `${wrap(hue)} ${Math.min(sat + 5, 86)}% ${Math.min(light + 7, 61)}%`
-        );
-      };
-
       // Primary: exact chosen hue.
-      setShadesFromHSL("primary", h, s, l);
+      setShadeRamp("primary", h, s, l);
       document.documentElement.style.setProperty(
         "--primary-foreground",
         l > 60 ? "222.2 47.4% 11.2%" : "210 40% 98%"
@@ -230,11 +263,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       // (an analogous, softer supporting hue in each direction) rather than
       // leaving them pinned to the static blue-gray/cream fallback in
       // index.css regardless of the institute's chosen brand color.
-      setShadesFromHSL("secondary", h - 24, Math.max(s - 25, 20), Math.min(l + 15, 80));
-      setShadesFromHSL("tertiary", h + 48, Math.max(s - 35, 15), Math.min(l + 25, 88));
+      setShadeRamp("secondary", h - 24, Math.max(s - 25, 20), Math.min(l + 15, 80));
+      setShadeRamp("tertiary", h + 48, Math.max(s - 35, 15), Math.min(l + 25, 88));
 
       // Nav role (sidebar/rail) — explicit institute override or derived default.
       applyNavRoles(h, s, l);
+      // Institute-authored secondary/tertiary override, if any — replaces
+      // the hue-shifted defaults set above.
+      applySecondaryTertiaryOverrides();
 
       // Store the custom color
       localStorage.setItem("theme-custom-color", primaryColor);

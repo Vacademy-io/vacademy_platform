@@ -7837,12 +7837,16 @@ class VideoGenerationPipeline:
                 s.pop(k, None)
 
         def _is_silent_character_scene(s: Dict[str, Any]) -> bool:
-            # Drama redesign: a character clip with NO spoken lines — the cast
-            # member acts while the master narrator plays over the shot. Marked
-            # by audio_policy=narration_over_clip + at least one character. Such
-            # a shot is FILMED (against the locked faces), not demoted to stock.
-            if str(s.get("audio_policy") or "") != "narration_over_clip":
-                return False
+            # A DIALOGUE_SCENE with cast characters but NO spoken lines — the
+            # member ACTS on screen. Filmed against the locked faces (never
+            # demoted to stock) regardless of audio flavor:
+            #   • PURE DRAMA (no narrator): audio_policy=intrinsic_only → the
+            #     clip carries its own ambient, no master narration.
+            #   • NARRATED cut: audio_policy=narration_over_clip → clip muted,
+            #     master narrator plays over it.
+            # The muted/self-audible split is decided in _prepare_silent_scene
+            # from the shot's narration; here we only decide film-vs-demote,
+            # which is purely "does this beat feature a cast member?"
             return bool([n for n in (s.get("character_names") or []) if str(n).strip()])
 
         def _prepare_silent_scene(s: Dict[str, Any]) -> bool:

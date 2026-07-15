@@ -51,6 +51,12 @@ public interface InvoiceRepository extends JpaRepository<Invoice, String> {
 
        boolean existsByInvoiceNumber(String invoiceNumber);
 
+       @Query("SELECT i FROM Invoice i WHERE i.userId = :userId AND i.instituteId = :instituteId " +
+                     "AND i.status = 'PENDING_PAYMENT' AND i.source = 'ADMIN_MANUAL' " +
+                     "ORDER BY i.createdAt ASC")
+       List<Invoice> findPendingAdminManualInvoices(@Param("userId") String userId,
+                     @Param("instituteId") String instituteId);
+
        @Query("SELECT i FROM Invoice i WHERE i.instituteId = :instituteId " +
                      "AND (:userId IS NULL OR i.userId = :userId) " +
                      "AND (:status IS NULL OR i.status = :status) " +

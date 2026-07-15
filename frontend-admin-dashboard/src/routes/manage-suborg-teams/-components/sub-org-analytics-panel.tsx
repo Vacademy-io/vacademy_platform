@@ -932,7 +932,7 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                             {/* Action row — source-specific buttons */}
                                             <div className="flex flex-wrap items-center gap-1.5">
 
-                                                {/* CPO installment — Remind only */}
+                                                {/* CPO installment — Remind + Copy Link + Record Offline */}
                                                 {isSfpRemindable && sfpId && (
                                                     <button
                                                         type="button"
@@ -943,6 +943,20 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                                     >
                                                         <Bell className="size-3" />
                                                         {remindingId === sfpId ? 'Sending…' : 'Remind'}
+                                                    </button>
+                                                )}
+                                                {isSfpRow && paymentLink && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCopyInvoiceLink(inv.id, paymentLink)}
+                                                        className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                        title="Copy payment link to share with learner"
+                                                    >
+                                                        {copiedLinkId === inv.id ? (
+                                                            <><CircleCheck className="size-3" /> Copied</>
+                                                        ) : (
+                                                            <><Copy className="size-3" /> Copy Link</>
+                                                        )}
                                                     </button>
                                                 )}
 
@@ -983,7 +997,7 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                                             })
                                                         }
                                                         className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
-                                                        title="Record an offline / manual payment"
+                                                        title="Mark this invoice as paid"
                                                     >
                                                         Mark Paid
                                                     </button>

@@ -70,10 +70,14 @@ public interface TemplateRepository extends JpaRepository<Template, String> {
     @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId ORDER BY t.createdAt DESC")
     Page<Template> findByInstituteIdOrderByCreatedAtDescPageable(@Param("instituteId") String instituteId, Pageable pageable);
 
-    // Find templates by institute ID with pagination, optionally filtered by type and/or a name/subject search term
+    // Find templates by institute ID with pagination, optionally filtered by type and/or a name/subject search term.
+    // Bind params are always wrapped in COALESCE (never a bare ":param IS NULL") so Postgres can always infer
+    // their type from the surrounding comparison — a bare "? IS NULL" with no other typed usage in that branch
+    // is a known source of "could not determine data type of parameter" errors from the PG JDBC driver.
     @Query("SELECT t FROM Template t WHERE t.instituteId = :instituteId " +
-            "AND (:type IS NULL OR t.type = :type) " +
-            "AND (:searchText IS NULL OR LOWER(t.name) LIKE LOWER(CONCAT('%', :searchText, '%')) OR LOWER(t.subject) LIKE LOWER(CONCAT('%', :searchText, '%'))) " +
+            "AND t.type = COALESCE(:type, t.type) " +
+            "AND (LOWER(t.name) LIKE LOWER(CONCAT('%', COALESCE(:searchText, ''), '%')) " +
+            "OR LOWER(t.subject) LIKE LOWER(CONCAT('%', COALESCE(:searchText, ''), '%'))) " +
             "ORDER BY t.createdAt DESC")
     Page<Template> findByInstituteIdAndTypeAndSearchPageable(@Param("instituteId") String instituteId,
             @Param("type") String type, @Param("searchText") String searchText, Pageable pageable);

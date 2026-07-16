@@ -80,4 +80,22 @@ public class ParentLinkController {
             @RequestParam("instituteId") String instituteId) {
         return ResponseEntity.ok(parentLinkService.backfillGuardians(instituteId));
     }
+
+    @GetMapping("/backfill-leads/pending")
+    public ResponseEntity<List<PendingGuardianStudentDTO>> getPendingLeadGuardianStudents(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(parentLinkService.previewPendingLeadGuardians(instituteId));
+    }
+
+    @PostMapping("/backfill-leads")
+    @Auditable(
+            entityType = "GUARDIAN_LINK",
+            action = "CREATE",
+            entityIdExpr = "#instituteId",
+            descriptionExpr = "'ran guardian backfill for institute leads'")
+    public ResponseEntity<BackfillSummaryDTO> backfillLeads(@RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(parentLinkService.backfillLeadGuardians(instituteId));
+    }
 }

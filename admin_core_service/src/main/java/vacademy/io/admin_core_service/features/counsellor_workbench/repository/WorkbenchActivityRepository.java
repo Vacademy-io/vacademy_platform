@@ -105,6 +105,14 @@ public class WorkbenchActivityRepository {
             "           WHEN te.action_type ILIKE '%status%' THEN 'STATUS_CHANGED' " +
             "           WHEN te.action_type ILIKE '%note%' THEN 'NOTE_ADDED' " +
             "           ELSE upper(replace(te.action_type, ' ', '_')) END AS action_type, " +
+            // lead_id is polymorphic: this CTE deliberately spans every type
+            // with an actor_id (USER_LEAD_PROFILE, AUDIENCE_RESPONSE, ENQUIRY,
+            // LEAD, STUDENT, ...) to show the counsellor's full activity, so
+            // type_id means a different table's PK depending on te.type — do
+            // NOT treat lead_id as directly joinable to user_lead_profile
+            // without also checking source_table/type first. For
+            // USER_LEAD_PROFILE rows specifically it is user_lead_profile.id
+            // (not user_id) as of V379 — see UserLeadProfile's uniqueConstraints.
             "         te.type_id AS lead_id, " +
             "         te.title AS title, " +
             "         te.description AS description, " +

@@ -1,7 +1,7 @@
 import React from "react";
-import { Star, Lightning } from "@phosphor-icons/react";
+import { Lightning } from "@phosphor-icons/react";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
-import { playIllustrations } from "@/assets/play-illustrations";
+import iconPoints from "@/assets/cleaner-play/icon-points.webp";
 
 export const XpDisplayWidget: React.FC = () => {
   const data = usePlayGamificationStore((s) => s.data);
@@ -16,61 +16,46 @@ export const XpDisplayWidget: React.FC = () => {
   const hasXp = totalXp > 0;
 
   return (
-    <div className="overflow-hidden rounded-play-card bg-play-gold shadow-play-4d-gold">
-      <div className="flex flex-row md:flex-col">
-        {/* SVG: right on mobile, top on desktop */}
-        <div className="order-2 md:order-1 w-28 md:w-full flex items-center justify-center bg-white/10 p-2 md:px-6 md:pt-5 md:pb-2 flex-shrink-0">
-          <playIllustrations.SteppingUp className="h-24 md:h-32 w-auto text-white" />
-        </div>
-
-        {/* Content */}
-        <div className="order-1 md:order-2 flex-1 p-4 md:pt-3">
-          {hasXp ? (
-            <>
-              <div className="flex items-center gap-3 mb-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white shadow-play-2d-gold">
-                  <Star weight="fill" size={26} className="text-play-warn" />
-                </div>
-                <div>
-                  <div className="flex items-baseline gap-1.5">
-                    <p className="text-3xl font-black text-play-ink leading-none">{totalXp.toLocaleString()}</p>
-                    <span className="text-sm font-black text-play-ink">XP</span>
-                  </div>
-                  <p className="text-xs font-bold text-play-ink uppercase tracking-wide">Level {level}</p>
-                </div>
+    <div className="flex h-full flex-col gap-3 rounded-play-card bg-play-gold-soft p-4 shadow-play-soft-card">
+      {hasXp ? (
+        <>
+          <div className="flex items-center gap-3">
+            <img src={iconPoints} alt="" aria-hidden="true" className="h-11 w-11 shrink-0 object-contain" />
+            <div>
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-h2 font-black leading-none text-play-gold-soft-ink">{totalXp.toLocaleString()}</p>
+                <span className="text-caption font-black text-play-ink/60">XP</span>
               </div>
+              <p className="text-caption font-bold uppercase tracking-wide text-play-ink/60">Level {level}</p>
+            </div>
+          </div>
 
-              <div className="mb-2">
-                <div className="flex justify-between text-caption font-bold text-play-ink uppercase tracking-wide mb-1">
-                  <span>Lvl {level}</span>
-                  <span>Lvl {level + 1}</span>
-                </div>
-                <div className="h-3 rounded-full bg-play-gold-deep overflow-hidden">
-                  {/* dynamic: computed progress percentage */}
-                  <div className="h-full rounded-full bg-white transition-all duration-700" style={{ width: `${progress}%` }} />
-                </div>
-                <p className="text-caption font-bold text-play-ink mt-1 text-right uppercase">{xpToNext} XP to go</p>
-              </div>
+          <div>
+            <div className="mb-1 flex justify-between text-3xs font-bold uppercase tracking-wide text-play-ink/60">
+              <span>Lvl {level}</span>
+              <span>Lvl {level + 1}</span>
+            </div>
+            <div className="h-3 overflow-hidden rounded-full bg-white/70">
+              <div className="h-full rounded-full bg-play-gold transition-all duration-700" style={{ width: `${progress}%` }} /* design-lint-ignore: dynamic progress percentage */ />
+            </div>
+            <p className="mt-1 text-right text-3xs font-bold uppercase text-play-ink/60">{xpToNext} XP to go</p>
+          </div>
 
-              {todayXp > 0 && (
-                <div className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-0.5 shadow-play-2d-gold">
-                  <Lightning weight="fill" size={14} className="text-play-warn" />
-                  <span className="text-xs font-black text-play-ink">+{todayXp} XP today</span>
-                </div>
-              )}
-            </>
-          ) : (
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white shadow-play-2d-gold">
-                <Star weight="fill" size={26} className="text-play-warn" />
-              </div>
-              <p className="text-base font-black text-play-ink leading-tight">
-                Earn your first XP in a lesson today
-              </p>
+          {todayXp > 0 && (
+            <div className="inline-flex w-fit items-center gap-1 rounded-full bg-white px-2.5 py-0.5 shadow-sm">
+              <Lightning weight="fill" size={14} className="text-play-gold-soft-ink" />
+              <span className="text-3xs font-black text-play-ink">+{todayXp} XP today</span>
             </div>
           )}
+        </>
+      ) : (
+        <div className="flex items-center gap-3">
+          <img src={iconPoints} alt="" aria-hidden="true" className="h-11 w-11 shrink-0 object-contain" />
+          <p className="text-body font-black leading-tight text-play-ink">
+            Earn your first XP in a lesson today
+          </p>
         </div>
-      </div>
+      )}
     </div>
   );
 };

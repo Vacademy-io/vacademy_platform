@@ -14,7 +14,10 @@ import {
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { Play, Target, BookOpen, CaretRight, Sparkle } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { playIllustrations } from "@/assets/play-illustrations";
+import { usePlayTheme } from "@/hooks/use-play-theme";
+import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
+import iconContinue from "@/assets/cleaner-play/icon-continue.webp";
+import emptyLearningIllustration from "@/assets/cleaner-play/empty-learning.webp";
 
 // Skeleton mirroring the card layout to avoid layout shift while loading
 const ContinueLearningCardSkeleton = () => (
@@ -52,6 +55,8 @@ export const ContinueLearningCard = ({
     hasAnyProgress?: boolean;
 }) => {
     const navigate = useNavigate();
+    const isPlay = usePlayTheme();
+    const isCleanerPlay = useCleanerPlayTheme();
 
     if (isLoading) {
         return <ContinueLearningCardSkeleton />;
@@ -59,18 +64,93 @@ export const ContinueLearningCard = ({
 
     if (!data?.slides || data.slides.length === 0) {
         const isFirstRun = !hasAnyProgress;
+
+        if (isCleanerPlay) {
+            return (
+                <div className="cp-card flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
+                    <img
+                        src={emptyLearningIllustration}
+                        alt=""
+                        aria-hidden="true"
+                        className="h-32 w-auto sm:h-36"
+                    />
+                    <div className="space-y-1">
+                        <h3 className="cp-heading text-h3">
+                            {isFirstRun ? "Start Learning" : "All Caught Up!"}
+                        </h3>
+                        <p className="cp-muted mx-auto max-w-xs text-body">
+                            {isFirstRun
+                                ? `Browse your ${getTerminologyPlural(
+                                      ContentTerms.Course,
+                                      SystemTerms.Course
+                                  )} and start your first lesson.`
+                                : `You've completed all available ${getTerminologyPlural(
+                                      ContentTerms.Slides,
+                                      SystemTerms.Slides
+                                  )}. Great work, keep the momentum going.`}
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => navigate({ to: "/study-library/courses" })}
+                        className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-body font-semibold text-primary-foreground shadow-sm transition-transform active:translate-y-0.5"
+                    >
+                        {isFirstRun ? (
+                            <Play weight="fill" size={16} />
+                        ) : (
+                            <BookOpen weight="fill" size={16} />
+                        )}
+                        {isFirstRun ? "Start your first lesson" : "Explore Content"}
+                    </button>
+                </div>
+            );
+        }
+
+        if (isPlay) {
+            return (
+                <div className="flex h-full flex-col items-center justify-center gap-4 rounded-play-card bg-play-success-soft p-6 text-center shadow-play-soft-card">
+                    <img
+                        src={emptyLearningIllustration}
+                        alt=""
+                        aria-hidden="true"
+                        className="h-32 w-auto sm:h-36"
+                    />
+                    <div className="space-y-1">
+                        <h3 className="text-h3 font-black text-play-success-soft-ink">
+                            {isFirstRun ? "Start Learning" : "All Caught Up!"}
+                        </h3>
+                        <p className="mx-auto max-w-xs text-body font-medium text-play-ink/70">
+                            {isFirstRun
+                                ? `Browse your ${getTerminologyPlural(
+                                      ContentTerms.Course,
+                                      SystemTerms.Course
+                                  )} and start your first lesson.`
+                                : `You've completed all available ${getTerminologyPlural(
+                                      ContentTerms.Slides,
+                                      SystemTerms.Slides
+                                  )}. Great work, keep the momentum going.`}
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => navigate({ to: "/study-library/courses" })}
+                        className="inline-flex items-center gap-2 rounded-play-btn bg-play-success px-6 py-3 text-body font-black uppercase tracking-wide text-white shadow-play-2d-success transition-transform active:translate-y-0.5 active:shadow-none"
+                    >
+                        {isFirstRun ? (
+                            <Play weight="fill" size={16} />
+                        ) : (
+                            <BookOpen weight="fill" size={16} />
+                        )}
+                        {isFirstRun ? "Start your first lesson" : "Explore Content"}
+                    </button>
+                </div>
+            );
+        }
+
         return (
-            <Card className={cn(
-                "continue-learning-card-empty h-full border-dashed bg-muted/40 shadow-none hover:shadow-none transition-none",
-                // Play: success surface (completion/progress semantics) — bright
-                // surface, so ink text only; self-sufficient vs the legacy
-                // .continue-learning-card-empty CSS shell (slated for deletion)
-                "[.ui-play_&]:!bg-play-success [.ui-play_&]:!rounded-play-card [.ui-play_&]:!shadow-play-4d-success [.ui-play_&]:!border-0"
-            )}>
+            <Card className="continue-learning-card-empty h-full border-dashed bg-muted/40 shadow-none hover:shadow-none transition-none">
                 <CardContent className="p-6 text-center flex flex-col items-center justify-center h-full space-y-4 relative overflow-hidden">
-                    {/* Play mode illustration */}
-                    <playIllustrations.Education className="hidden [.ui-play_&]:!block h-20 w-auto mb-2" />
-                    <div className="p-3 bg-primary/10 rounded-full text-primary ring-1 ring-primary/20 [.ui-play_&]:bg-white [.ui-play_&]:text-play-ink [.ui-play_&]:ring-0">
+                    <div className="p-3 bg-primary/10 rounded-full text-primary ring-1 ring-primary/20">
                         {isFirstRun ? (
                             <BookOpen weight="duotone" size={24} />
                         ) : (
@@ -78,10 +158,10 @@ export const ContinueLearningCard = ({
                         )}
                     </div>
                     <div className="space-y-1">
-                        <h3 className="text-lg font-semibold tracking-tight [.ui-play_&]:font-black [.ui-play_&]:text-play-ink">
+                        <h3 className="text-lg font-semibold tracking-tight">
                             {isFirstRun ? "Start Learning" : "All Caught Up!"}
                         </h3>
-                        <p className="text-sm text-muted-foreground max-w-xs mx-auto [.ui-play_&]:text-play-ink">
+                        <p className="text-sm text-muted-foreground max-w-xs mx-auto">
                             {isFirstRun
                                 ? `Browse your ${getTerminologyPlural(
                                       ContentTerms.Course,
@@ -96,13 +176,7 @@ export const ContinueLearningCard = ({
                     <Button
                         onClick={() => navigate({ to: "/study-library/courses" })}
                         variant="outline"
-                        className={cn(
-                            "gap-2",
-                            // Play: white chip with ink text on the bright success surface + press grammar
-                            "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide",
-                            "[.ui-play_&]:!bg-white [.ui-play_&]:!text-play-ink [.ui-play_&]:!border-white [.ui-play_&]:hover:!bg-white/90",
-                            "[.ui-play_&]:shadow-play-2d-success [.ui-play_&]:active:translate-y-0.5 [.ui-play_&]:active:shadow-none"
-                        )}
+                        className="gap-2"
                     >
                         {isFirstRun ? (
                             <Play weight="fill" size={16} />
@@ -116,34 +190,173 @@ export const ContinueLearningCard = ({
         );
     }
 
+    if (isCleanerPlay) {
+        return (
+            <div className="cp-card flex h-full flex-col gap-4 p-4 sm:p-5">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <img
+                            src={iconContinue}
+                            alt=""
+                            aria-hidden="true"
+                            className="h-11 w-11 object-contain"
+                        />
+                        <div>
+                            <p className="cp-heading text-body">Continue Learning</p>
+                            <p className="cp-muted text-caption">
+                                {data.slides.length}{" "}
+                                {(data.slides.length === 1
+                                    ? getTerminology(ContentTerms.Slides, SystemTerms.Slides)
+                                    : getTerminologyPlural(
+                                          ContentTerms.Slides,
+                                          SystemTerms.Slides
+                                      )
+                                ).toLocaleLowerCase()}{" "}
+                                in progress
+                            </p>
+                        </div>
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-cp-terracotta-tint px-2.5 py-1 text-caption font-semibold text-cp-terracotta">
+                        <Sparkle size={10} weight="fill" /> Active
+                    </span>
+                </div>
+
+                <div className="flex-1 space-y-2">
+                    {data.slides.slice(0, 3).map((slide, index) => (
+                        <div
+                            key={slide.slide_id}
+                            onClick={() => onResumeClick(slide)}
+                            className="flex cursor-pointer items-center gap-3 rounded-xl border border-cp-border p-2.5 transition-colors hover:bg-cp-bg-deep"
+                        >
+                            <span
+                                className={cn(
+                                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-semibold",
+                                    index === 0
+                                        ? "bg-primary text-primary-foreground"
+                                        : "bg-cp-bg-deep text-cp-muted"
+                                )}
+                            >
+                                {index + 1}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                                <h4 className="cp-heading truncate text-caption font-semibold">
+                                    {slide.slide_title}
+                                </h4>
+                                <p className="cp-muted truncate text-3xs">
+                                    {slide.slide_description || "Continue from where you left off"}
+                                </p>
+                            </div>
+                            <CaretRight size={14} weight="bold" className="cp-muted shrink-0" />
+                        </div>
+                    ))}
+                </div>
+
+                <button
+                    type="button"
+                    onClick={() => data.slides[0] && onResumeClick(data.slides[0])}
+                    className="flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-body font-semibold text-primary-foreground shadow-sm transition-transform active:translate-y-0.5"
+                >
+                    <Play weight="fill" size={16} />
+                    Resume Learning
+                </button>
+            </div>
+        );
+    }
+
+    if (isPlay) {
+        return (
+            <div className="flex h-full flex-col gap-4 rounded-play-card bg-play-navy-soft p-4 shadow-play-soft-card sm:p-5">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <img
+                            src={iconContinue}
+                            alt=""
+                            aria-hidden="true"
+                            className="h-11 w-11 object-contain"
+                        />
+                        <div>
+                            <p className="text-body font-black text-play-navy-soft-ink">Continue Learning</p>
+                            <p className="text-caption font-bold text-play-ink/60">
+                                {data.slides.length}{" "}
+                                {(data.slides.length === 1
+                                    ? getTerminology(ContentTerms.Slides, SystemTerms.Slides)
+                                    : getTerminologyPlural(
+                                          ContentTerms.Slides,
+                                          SystemTerms.Slides
+                                      )
+                                ).toLocaleLowerCase()}{" "}
+                                in progress
+                            </p>
+                        </div>
+                    </div>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-caption font-black uppercase tracking-wide text-play-navy-soft-ink shadow-play-soft-card">
+                        <Sparkle size={10} weight="fill" /> Active
+                    </span>
+                </div>
+
+                <div className="flex-1 space-y-2">
+                    {data.slides.slice(0, 3).map((slide, index) => (
+                        <div
+                            key={slide.slide_id}
+                            onClick={() => onResumeClick(slide)}
+                            className="flex cursor-pointer items-center gap-3 rounded-xl bg-white/60 p-2.5 transition-colors hover:bg-white"
+                        >
+                            <span
+                                className={cn(
+                                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-black",
+                                    index === 0
+                                        ? "bg-play-navy text-white"
+                                        : "bg-white text-play-ink/60"
+                                )}
+                            >
+                                {index + 1}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                                <h4 className="truncate text-caption font-bold text-play-ink">
+                                    {slide.slide_title}
+                                </h4>
+                                <p className="truncate text-3xs text-play-ink/60">
+                                    {slide.slide_description || "Continue from where you left off"}
+                                </p>
+                            </div>
+                            <CaretRight size={14} weight="bold" className="shrink-0 text-play-ink/50" />
+                        </div>
+                    ))}
+                </div>
+
+                <button
+                    type="button"
+                    onClick={() => data.slides[0] && onResumeClick(data.slides[0])}
+                    className="flex w-full items-center justify-center gap-2 rounded-play-btn bg-play-navy py-3 text-body font-black uppercase tracking-wide text-white shadow-play-2d-navy transition-transform active:translate-y-0.5 active:shadow-none"
+                >
+                    <Play weight="fill" size={16} />
+                    Resume Learning
+                </button>
+            </div>
+        );
+    }
+
     return (
         <Card className={cn(
             "continue-learning-card h-full flex flex-col shadow-sm hover:shadow-md transition-all duration-300 group relative overflow-hidden",
             // Vibrant: tenant-primary wash + top rail (no fixed hues)
             "[.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100",
-            "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
-            // Play Mode: navy premium surface, self-sufficient in JSX (legacy
-            // .continue-learning-card rules in play-theme.css are slated for deletion)
-            "[.ui-play_&]:!bg-play-navy [.ui-play_&]:!rounded-play-card [.ui-play_&]:!border-0",
-            "[.ui-play_&]:!shadow-play-4d-navy [.ui-play_&]:hover:!shadow-play-4d-navy",
-            "[.ui-play_&]:text-white",
-            "[.ui-play_&]:flex [.ui-play_&]:flex-row"
+            "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300"
         )}>
-            <div className="[.ui-play_&]:flex-1 [.ui-play_&]:min-w-0 [.ui-play_&]:flex [.ui-play_&]:flex-col">
+            <div>
             <CardHeader className="pb-3 px-4 sm:px-6 flex flex-row items-center justify-between space-y-0">
                 <div className="flex items-center space-x-3">
                     <div className={cn(
                         "p-2 bg-primary/10 rounded-md text-primary",
-                        "[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500",
-                        "[.ui-play_&]:bg-white/25 [.ui-play_&]:text-white"
+                        "[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500"
                     )}>
                         <Play weight="duotone" size={20} />
                     </div>
                     <div>
-                        <CardTitle className="text-lg font-bold [.ui-play_&]:text-white [.ui-play_&]:font-black">
+                        <CardTitle className="text-lg font-bold">
                             Continue Learning
                         </CardTitle>
-                        <p className="text-xs text-muted-foreground mt-0.5 [.ui-play_&]:text-white/80">
+                        <p className="text-xs text-muted-foreground mt-0.5">
                             {data.slides.length}{" "}
                             {(data.slides.length === 1
                                 ? getTerminology(ContentTerms.Slides, SystemTerms.Slides)
@@ -158,8 +371,7 @@ export const ContinueLearningCard = ({
                 </div>
                 <Badge variant="secondary" className={cn(
                     "bg-primary/10 text-primary border-primary/20 gap-1",
-                    "[.ui-vibrant_&]:bg-white/50 [.ui-vibrant_&]:border-primary/30",
-                    "[.ui-play_&]:bg-white/20 [.ui-play_&]:text-white [.ui-play_&]:border-white/20"
+                    "[.ui-vibrant_&]:bg-white/50 [.ui-vibrant_&]:border-primary/30"
                 )}>
                     <Sparkle size={10} weight="fill" /> Active
                 </Badge>
@@ -173,29 +385,28 @@ export const ContinueLearningCard = ({
                             onClick={() => onResumeClick(slide)}
                             className={cn(
                                 "group/item flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/80 transition-colors cursor-pointer border border-transparent hover:border-border",
-                                "[.ui-vibrant_&]:hover:bg-white/60 [.ui-vibrant_&]:hover:border-primary/20",
-                                "[.ui-play_&]:bg-white/10 [.ui-play_&]:border-white/20 [.ui-play_&]:rounded-xl [.ui-play_&]:hover:bg-white/15 [.ui-play_&]:hover:border-white/30"
+                                "[.ui-vibrant_&]:hover:bg-white/60 [.ui-vibrant_&]:hover:border-primary/20"
                             )}
                         >
                             <div className="flex-shrink-0">
                                 <span className={cn(
                                     "flex items-center justify-center w-6 h-6 rounded-md text-xs font-medium",
                                     index === 0
-                                        ? "bg-primary text-primary-foreground shadow-sm [.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-primary [.ui-vibrant_&]:to-primary/80 [.ui-play_&]:bg-white [.ui-play_&]:text-play-navy-deep [.ui-play_&]:font-bold"
-                                        : "bg-muted text-muted-foreground [.ui-play_&]:bg-white/20 [.ui-play_&]:text-white"
+                                        ? "bg-primary text-primary-foreground shadow-sm [.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-primary [.ui-vibrant_&]:to-primary/80"
+                                        : "bg-muted text-muted-foreground"
                                 )}>
                                     {index + 1}
                                 </span>
                             </div>
                             <div className="flex-1 min-w-0">
-                                <h4 className="font-medium text-sm truncate group-hover/item:text-primary transition-colors [.ui-play_&]:text-white [.ui-play_&]:font-bold [.ui-play_&]:group-hover/item:text-white">
+                                <h4 className="font-medium text-sm truncate group-hover/item:text-primary transition-colors">
                                     {slide.slide_title}
                                 </h4>
-                                <p className="text-xs text-muted-foreground truncate [.ui-play_&]:text-white/80">
+                                <p className="text-xs text-muted-foreground truncate">
                                     {slide.slide_description || "Continue from where you left off"}
                                 </p>
                             </div>
-                            <CaretRight size={14} weight="bold" className="text-muted-foreground group-hover/item:text-primary transition-colors [.ui-play_&]:text-white/70 [.ui-play_&]:group-hover/item:text-white" />
+                            <CaretRight size={14} weight="bold" className="text-muted-foreground group-hover/item:text-primary transition-colors" />
                         </div>
                     ))}
                 </div>
@@ -204,21 +415,13 @@ export const ContinueLearningCard = ({
                     onClick={() => data.slides[0] && onResumeClick(data.slides[0])}
                     className={cn(
                         "w-full gap-2 font-semibold",
-                        "[.ui-vibrant_&]:bg-gradient-to-r [.ui-vibrant_&]:from-primary [.ui-vibrant_&]:to-primary/90 [.ui-vibrant_&]:shadow-lg [.ui-vibrant_&]:shadow-primary/20",
-                        // Play: white chip with navy-deep ink — unmistakably readable on navy + press grammar
-                        "[.ui-play_&]:!bg-white [.ui-play_&]:!text-play-navy-deep [.ui-play_&]:hover:!bg-white/90",
-                        "[.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:rounded-xl",
-                        "[.ui-play_&]:shadow-play-2d-navy [.ui-play_&]:active:translate-y-0.5 [.ui-play_&]:active:shadow-none"
+                        "[.ui-vibrant_&]:bg-gradient-to-r [.ui-vibrant_&]:from-primary [.ui-vibrant_&]:to-primary/90 [.ui-vibrant_&]:shadow-lg [.ui-vibrant_&]:shadow-primary/20"
                     )}
                 >
                     <Play weight="fill" size={16} />
                     Resume Learning
                 </Button>
             </CardContent>
-            </div>
-            {/* Play: compact decorative side-rail (content owns the card) */}
-            <div className="hidden [.ui-play_&]:!flex order-last w-24 flex-shrink-0 items-center justify-center self-center pr-3">
-                <playIllustrations.ContinueLearning className="h-20 w-auto text-white" />
             </div>
         </Card>
     );

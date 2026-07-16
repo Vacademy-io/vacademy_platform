@@ -1,10 +1,10 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Fire, Play, VideoCamera } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
-import { playIllustrations } from "@/assets/play-illustrations";
 import { ProgressRing } from "./ProgressRing";
+import heroGreeting from "@/assets/cleaner-play/hero-greeting.webp";
 import {
   getLatestResume,
   resumeSearchParams,
@@ -166,18 +166,18 @@ export function PlayDashboardHero(props: PlayDashboardHeroProps): JSX.Element {
         <div className="h-11 w-full max-w-md animate-pulse self-start rounded-full bg-play-surface" />
       ) : (
         imminent && (
-          <div className="flex items-center gap-3 rounded-full bg-play-danger py-2 pl-4 pr-2 shadow-play-2d-danger">
+          <div className="flex items-center gap-3 rounded-full bg-play-danger-soft py-2 pl-4 pr-2">
             <span className="relative flex h-3 w-3 shrink-0">
-              <span className="play-pulse absolute inline-flex h-full w-full rounded-full bg-white/60" />
-              <span className="relative inline-flex h-3 w-3 rounded-full bg-white" />
+              <span className="play-pulse absolute inline-flex h-full w-full rounded-full bg-play-danger/50" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-play-danger" />
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-caption font-black uppercase tracking-wide text-white">
+              <p className="truncate text-caption font-black uppercase tracking-wide text-play-danger-soft-ink">
                 {imminent.isLive
                   ? `${liveClassTerm} live now`
                   : `${liveClassTerm} in ${imminent.minutesToStart} min`}
               </p>
-              <p className="truncate text-body font-bold leading-tight text-white">
+              <p className="truncate text-body font-bold leading-tight text-play-danger-soft-ink">
                 {imminent.session.title}
               </p>
             </div>
@@ -185,9 +185,9 @@ export function PlayDashboardHero(props: PlayDashboardHeroProps): JSX.Element {
               type="button"
               onClick={() => onJoinSession(imminent.session)}
               className={cn(
-                "h-11 shrink-0 rounded-full bg-white px-5 text-body font-black text-play-ink",
-                "shadow-play-2d-danger active:translate-y-0.5 active:shadow-none",
-                "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-white/60"
+                "h-11 shrink-0 rounded-full bg-white px-5 text-body font-black text-play-danger-soft-ink",
+                "shadow-play-soft-card active:translate-y-0.5 active:shadow-none",
+                "focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-play-danger-soft"
               )}
             >
               <span className="inline-flex items-center gap-1.5">
@@ -204,9 +204,11 @@ export function PlayDashboardHero(props: PlayDashboardHeroProps): JSX.Element {
         <div className="flex flex-col items-stretch gap-5 md:flex-row md:items-center md:gap-8">
           {/* Left: mascot + greeting + chips */}
           <div className="flex items-center gap-4">
-            <playIllustrations.FeelingHappy
-              className="play-float h-24 w-auto shrink-0 text-play-accent sm:h-28"
+            <img
+              src={heroGreeting}
+              alt=""
               aria-hidden="true"
+              className="play-float h-24 w-auto shrink-0 sm:h-28"
             />
             <div className="min-w-0">
               <h1 className="text-h2 font-bold text-play-ink">{greeting}</h1>

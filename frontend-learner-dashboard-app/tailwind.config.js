@@ -297,6 +297,21 @@ module.exports = {
           "gold-deep": "var(--play-c-gold-deep)",
           navy: "var(--play-c-navy)",
           "navy-deep": "var(--play-c-navy-deep)",
+          // Pastel tint + ink pairs (Dashboard-only usage) — see play-theme.css.
+          "success-soft": "var(--play-c-success-soft)",
+          "success-soft-ink": "var(--play-c-success-soft-ink)",
+          "info-soft": "var(--play-c-info-soft)",
+          "info-soft-ink": "var(--play-c-info-soft-ink)",
+          "danger-soft": "var(--play-c-danger-soft)",
+          "danger-soft-ink": "var(--play-c-danger-soft-ink)",
+          "warn-soft": "var(--play-c-warn-soft)",
+          "warn-soft-ink": "var(--play-c-warn-soft-ink)",
+          "accent-soft": "var(--play-c-accent-soft)",
+          "accent-soft-ink": "var(--play-c-accent-soft-ink)",
+          "gold-soft": "var(--play-c-gold-soft)",
+          "gold-soft-ink": "var(--play-c-gold-soft-ink)",
+          "navy-soft": "var(--play-c-navy-soft)",
+          "navy-soft-ink": "var(--play-c-navy-soft-ink)",
           // rgb form so Tailwind alpha modifiers work (text-play-ink/80);
           // plain var() colors silently drop the /N modifier.
           ink: "rgb(60 60 60 / <alpha-value>)",
@@ -403,8 +418,9 @@ module.exports = {
         xl: "calc(var(--radius) + 2px)",
         "2xl": "calc(var(--radius) + 4px)",
         "3xl": "2rem",
-        // Play (gamified) card radius token.
+        // Play (gamified) card + button radius tokens.
         "play-card": "var(--play-radius-card)",
+        "play-btn": "var(--play-radius-btn)",
       },
       // Tinted shadow scale (tokens defined in src/index.css :root). Upgrades every
       // existing shadow-* utility to a softer, surface-tinted elevation at once.
@@ -419,6 +435,9 @@ module.exports = {
         "play-press": "0 2px 0 hsl(var(--primary-200))",
         // Play badge inset 3D shadow.
         "play-badge": "0 2px 0 rgba(0,0,0,0.15)",
+        // Play pastel-card lift (Dashboard-only "soft" surfaces) — a gentle
+        // neutral elevation, no role-colored press block.
+        "play-soft-card": "0 1px 2px rgba(60,60,60,0.05), 0 10px 26px -14px rgba(60,60,60,0.16)",
         // Play (gamified) 3D drop shadows keyed to the Duolingo deep shades.
         "play-2d-success": "0 2px 0 0 var(--play-c-success-deep)",
         "play-2d-danger": "0 2px 0 0 var(--play-c-danger-deep)",

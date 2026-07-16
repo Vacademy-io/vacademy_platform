@@ -7871,7 +7871,8 @@ class VideoGenerationPipeline:
                 s["image_prompt"] = str(s.get("scene_description") or "cinematic scene")[:300]
             for k in ("dialogue", "_dialogue_audio_url", "_dialogue_audio_s",
                       "_dialogue_clip_s", "_dialogue_self_voiced", "_dialogue_silent",
-                      "_dialogue_muted"):
+                      "_dialogue_muted", "_dialogue_last_frame_url",
+                      "_dialogue_clip_actual_s"):
                 s.pop(k, None)
 
         def _is_silent_character_scene(s: Dict[str, Any]) -> bool:
@@ -7942,12 +7943,19 @@ class VideoGenerationPipeline:
                         _demote(s, "no dialogue lines")
                     continue
                 words = sum(len(str(l.get("line") or "").split()) for l in lines)
-                est = words / 2.5 + 1.5
+                # Size the clip for DRAMATIC delivery (~120 wpm = 2.0 words/s)
+                # plus a staging buffer for the pause before/after speech —
+                # the old 150 wpm (words/2.5) + 1.5 under-sized the clip, so
+                # Omni truncated the last words mid-sentence. Still capped at
+                # Omni's 10s ceiling; the planner now keeps dialogue ≤2 lines
+                # so it fits inside that ceiling.
+                est = words / 2.0 + 2.0
                 clip_s = max(3, min(10, int(_math.ceil(est))))
                 if est > 10.5:
                     print(
                         f"   ⚠️ DIALOGUE_SCENE shot {shot_idx}: ~{est:.1f}s of speech vs "
-                        "Omni's 10s clip cap — delivery may be rushed or truncated"
+                        "Omni's 10s clip cap — delivery may be rushed or truncated "
+                        "(planner should have split this into 2 continuous scenes)"
                     )
                 s["_dialogue_self_voiced"] = True
                 s["_dialogue_audio_s"] = round(min(est, float(clip_s)), 2)
@@ -8634,7 +8642,9 @@ class VideoGenerationPipeline:
             shot_idx = int(s.get("shot_index") or 0)
             if s.get("_dialogue_clip_url"):
                 prev_shot_idx = shot_idx  # cached from a prior leg — keep order sense
-                prev_frame_url = None     # no frame stashed across legs; chain breaks
+                # Restore the last frame from the persisted plan so continuity
+                # survives a resume leg (cast/casting gate) instead of breaking.
+                prev_frame_url = s.get("_dialogue_last_frame_url") or None
                 continue
             # Per-character refs for THIS scene, in cast order.
             image_urls: List[str] = []
@@ -8668,12 +8678,25 @@ class VideoGenerationPipeline:
                 _scene_txt,
             ))
             _chain_ok = (_continuity == "continuous") or (not _continuity and not _time_jump)
-            if prev_frame_url and prev_shot_idx is not None and shot_idx == prev_shot_idx + 1 \
-                    and _chain_ok:
+            # Chain to the PREVIOUS dialogue clip's last frame for continuity.
+            # ADJACENT dialogue shots chain on the loose rule (continuous OR just
+            # no time-jump). NON-adjacent shots — a product mockup / title played
+            # BETWEEN them in the final cut — chain ONLY when the planner
+            # EXPLICITLY marked this scene "continuous"; the old code required
+            # strict index-adjacency and so lost all continuity across any
+            # intervening HTML shot (office/lighting/characters drifted between
+            # scenes of the same moment). prev_frame_url tracks the last filmed
+            # dialogue frame regardless of what shot types sit between.
+            _adjacent = prev_shot_idx is not None and shot_idx == prev_shot_idx + 1
+            _do_chain = _chain_ok if _adjacent else (_continuity == "continuous")
+            if prev_frame_url and _do_chain:
                 image_urls = image_urls[:8] + [prev_frame_url]
                 ref_names = ref_names[:8] + ["__PREV_FRAME__"]
-            elif prev_frame_url and not _chain_ok:
-                print(f"   🎬 Shot {shot_idx}: new scene (time/location change) — chain skipped")
+                if not _adjacent:
+                    print(f"   🎬 Shot {shot_idx}: chaining continuity across an "
+                          f"intervening shot (continuous scene)")
+            elif prev_frame_url and not _do_chain:
+                print(f"   🎬 Shot {shot_idx}: new scene — chain skipped")
 
             result = self._call_seedance_dialogue_clip(s, image_urls, ref_names)
             if result is None:
@@ -8693,8 +8716,25 @@ class VideoGenerationPipeline:
                 try:
                     mp4_local = run_dir / "dialogue_tts" / f"clip_{shot_idx:03d}.mp4"
                     png_local = run_dir / "dialogue_tts" / f"clip_{shot_idx:03d}_last.png"
-                    if _download_url_to_path(result.video_url, mp4_local) and \
-                            _ffmpeg_extract_last_frame(mp4_local, png_local):
+                    _dl_ok = _download_url_to_path(result.video_url, mp4_local)
+                    # Reconcile the shot's timeline window to the ACTUAL clip
+                    # length so the next shot never starts before this clip
+                    # finishes (nor leaves a frozen pad). ffprobe the downloaded
+                    # mp4; timings are re-derived once after the loop.
+                    if _dl_ok:
+                        try:
+                            _probe = subprocess.run(
+                                ["ffprobe", "-v", "quiet", "-show_entries",
+                                 "format=duration", "-of",
+                                 "default=noprint_wrappers=1:nokey=1", str(mp4_local)],
+                                capture_output=True, text=True, timeout=10,
+                            )
+                            _actual = float((_probe.stdout or "0").strip() or 0.0)
+                            if _actual > 0.5:
+                                s["_dialogue_clip_actual_s"] = round(_actual, 2)
+                        except Exception:
+                            pass
+                    if _dl_ok and _ffmpeg_extract_last_frame(mp4_local, png_local):
                         _u = svc.upload_file(
                             png_local,
                             s3_key=f"ai-videos/dialogue/{run_name}/clip_{shot_idx:03d}_last.png",
@@ -8702,8 +8742,48 @@ class VideoGenerationPipeline:
                         )
                         if _u:
                             prev_frame_url = _u
+                            # Persist so a resume leg restores the chain frame.
+                            s["_dialogue_last_frame_url"] = _u
+                            self._persist_dialogue_plan(run_dir, shots=shots)
                 except Exception as fr_err:
                     print(f"   ⚠️ last-frame extract failed (shot {shot_idx}): {fr_err}")
+
+        # Reconcile timeline windows to the ACTUAL clip durations and re-derive
+        # contiguous timings — so each clip sits in a window that exactly fits
+        # it (no early cut, no frozen pad).
+        # SAFETY (review P1): this is only safe for a PURE-DRAMA run where every
+        # shot carries its OWN audio (intrinsic_only). If ANY shot relies on the
+        # master narration track (narration_only / narration_over_clip), that
+        # track was ALREADY concatenated earlier (in _run_per_shot_tts_v2) with
+        # per-shot gaps sized to the pre-film estimates; re-deriving the whole
+        # timeline here would slide the narrator out of sync with the video
+        # (narration.mp3 is never re-concatenated). In that case we skip the
+        # reconcile entirely — the generous estimate + the planner's ≤2-line cap
+        # already prevent truncation, so the windows stay narration-aligned.
+        _has_master_narration = any(
+            isinstance(s, dict)
+            and str(s.get("audio_policy") or "narration_only") != "intrinsic_only"
+            for s in shots
+        )
+        _reconciled = 0
+        if not _has_master_narration:
+            for s in dlg:
+                _a = s.get("_dialogue_clip_actual_s")
+                if _a and abs(float(s.get("duration_estimate_s") or 0.0) - float(_a)) > 0.3:
+                    s["duration_estimate_s"] = float(_a)
+                    s["_dialogue_clip_s"] = float(_a)
+                    _reconciled += 1
+        elif any(s.get("_dialogue_clip_actual_s") for s in dlg):
+            print("   ℹ️ Skipping dialogue window reconcile — run has master "
+                  "narration (would desync the narrator track)")
+        if _reconciled:
+            try:
+                from shot_planner import _derive_shot_timings
+                _derive_shot_timings([s for s in shots if isinstance(s, dict)])
+                self._persist_dialogue_plan(run_dir, shots=shots)
+                print(f"   🎬 Reconciled {_reconciled} dialogue window(s) to actual clip length")
+            except Exception as _rc_err:
+                print(f"   ⚠️ dialogue window reconcile failed: {_rc_err}")
 
     def _generate_dialogue_scene_entry(
         self,

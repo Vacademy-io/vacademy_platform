@@ -1,4 +1,3 @@
-import React from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CaretRight, ArrowRight } from "@phosphor-icons/react";
@@ -29,7 +28,6 @@ export const StatCard = ({
     isLoading = false,
     className,
     iconClassName,
-    illustration,
     cleanerIllustrationSrc,
     emptyActionLabel,
 }: {
@@ -41,9 +39,8 @@ export const StatCard = ({
     isLoading?: boolean;
     className?: string;
     iconClassName?: string;
-    illustration?: React.FC<React.SVGProps<SVGSVGElement>>;
-    /** Cleaner Play only — a raster (webp) icon illustration, since that
-     *  skin's art is generated imagery, not an SVG component. */
+    /** Play + Cleaner Play — a shared raster (webp) icon illustration, since
+     *  both skins' art is generated imagery, not an SVG component. */
     cleanerIllustrationSrc?: string;
     /** Shown instead of the title when the count is genuinely 0, turning the
      *  card into an invitation (e.g. "Browse Courses") rather than a dead zero. */
@@ -92,18 +89,16 @@ export const StatCard = ({
                     />
                 </div>
                 {showAction ? (
-                    <span className="cp-heading inline-flex items-center gap-1 text-h3">
-                        {emptyActionLabel}
+                    <span className="cp-heading inline-flex flex-wrap items-center gap-1 text-h3 sm:text-h2">
+                        Get started
                         <ArrowRight size={16} weight="bold" />
                     </span>
                 ) : (
-                    <span className="cp-heading text-h2 tabular-nums">
+                    <span className="cp-heading text-h3 tabular-nums sm:text-h2">
                         {(count ?? 0).toLocaleString()}
                     </span>
                 )}
-                {!showAction && (
-                    <span className="cp-muted text-caption font-medium">{title}</span>
-                )}
+                <span className="cp-muted text-caption font-medium">{subtitleText}</span>
             </button>
         );
     }
@@ -133,32 +128,41 @@ export const StatCard = ({
                 }
             }}
         >
-            {/* Play mode: compact layout, content left + illustration right rail at all breakpoints */}
-            {isPlay && illustration ? (
-                <div className="flex flex-row h-full">
-                    {/* Content: left */}
-                    <div className="flex-1 p-3 sm:p-4 flex flex-col justify-between relative z-10">
-                        <div className="flex items-center justify-between mb-3">
-                            <div className={cn(
-                                "p-2 rounded-md transition-colors",
-                                iconClassName || "bg-white/20 text-white"
-                            )}>
+            {/* Play mode: pastel-tint card, felted icon top-left + chevron, ink text below */}
+            {isPlay ? (
+                <div className="flex h-full flex-col justify-between p-3 sm:p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                        {cleanerIllustrationSrc ? (
+                            <img
+                                src={cleanerIllustrationSrc}
+                                alt=""
+                                aria-hidden="true"
+                                className="h-11 w-11 object-contain"
+                            />
+                        ) : (
+                            <div className={cn("p-2 rounded-md transition-colors", iconClassName)}>
                                 <Icon size={20} weight="fill" className="w-5 h-5 sm:w-6 sm:h-6" />
                             </div>
-                            <CaretRight size={16} className="text-white/90 group-hover:text-white" />
-                        </div>
-                        <div className="space-y-1">
-                            <div className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+                        )}
+                        <CaretRight
+                            size={16}
+                            className="text-play-ink/50 transition-all duration-300 group-hover:translate-x-0.5 group-hover:text-play-ink"
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        {showAction ? (
+                            <div className="inline-flex items-center gap-1 text-xl font-black tracking-tight text-play-ink sm:text-2xl">
+                                Get started
+                                <ArrowRight size={16} weight="bold" />
+                            </div>
+                        ) : (
+                            <div className="text-2xl font-black tracking-tight text-play-ink tabular-nums sm:text-3xl">
                                 {(count ?? 0).toLocaleString()}
                             </div>
-                            <div className="text-caption font-bold text-white/90 uppercase tracking-wide">
-                                {subtitleText}
-                            </div>
+                        )}
+                        <div className="text-caption font-bold uppercase tracking-wide text-play-ink/70">
+                            {subtitleText}
                         </div>
-                    </div>
-                    {/* Illustration: right rail */}
-                    <div className="w-24 sm:w-28 flex items-center justify-center bg-white/10 p-2 flex-shrink-0">
-                        {React.createElement(illustration, { className: "h-20 w-auto text-white" })}
                     </div>
                 </div>
             ) : (

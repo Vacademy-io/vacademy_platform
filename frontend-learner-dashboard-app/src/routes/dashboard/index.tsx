@@ -80,7 +80,6 @@ import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { UpcomingLiveClassesWidget } from "./-components/UpcomingLiveClassesWidget";
 import { Preferences } from "@capacitor/preferences";
 import { AttendanceWidget } from "./-components/AttendanceWidget";
-import { playIllustrations } from "@/assets/play-illustrations";
 import cleanerIconCourses from "@/assets/cleaner-play/icon-courses.webp";
 import cleanerIconAssessments from "@/assets/cleaner-play/icon-assessments.webp";
 import cleanerIconLive from "@/assets/cleaner-play/icon-live-sessions.webp";
@@ -621,9 +620,8 @@ export function DashboardComponent() {
             ContentTerms.Course,
             SystemTerms.Course
           )}`}
-          className="stat-card-courses [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-play_&]:text-white"
-          iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
-          illustration={playIllustrations.Course}
+          className="stat-card-courses [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300"
+          iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/70 [.ui-play_&]:text-play-info-soft-ink [.ui-play_&]:ring-0"
           cleanerIllustrationSrc={cleanerIconCourses}
         />
       ),
@@ -644,9 +642,8 @@ export function DashboardComponent() {
             ContentTerms.LiveSession,
             SystemTerms.LiveSession
           )}`}
-          className="stat-card-live [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-play_&]:text-white"
-          iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
-          illustration={playIllustrations.LiveClass}
+          className="stat-card-live [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300"
+          iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/70 [.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:ring-0"
           cleanerIllustrationSrc={cleanerIconLive}
         />
       ),
@@ -667,9 +664,8 @@ export function DashboardComponent() {
           }}
           isLoading={isLoading}
           emptyActionLabel="View Assessments"
-          className="stat-card-assessments [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-play_&]:text-white"
-          iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
-          illustration={playIllustrations.Certificate}
+          className="stat-card-assessments [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300"
+          iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/70 [.ui-play_&]:text-play-accent-soft-ink [.ui-play_&]:ring-0"
           cleanerIllustrationSrc={cleanerIconAssessments}
         />
       ),
@@ -702,7 +698,7 @@ export function DashboardComponent() {
         : Number.MAX_SAFE_INTEGER,
       visible: statCards.length > 0,
       render: (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 max-sm:[.ui-cleaner-play_&]:grid-cols-2 max-sm:[.ui-play_&]:grid-cols-2">
           {statCards.map((w) => (
             <div key={w.id}>{w.render}</div>
           ))}
@@ -835,8 +831,8 @@ export function DashboardComponent() {
       )}
 
       <div className="relative z-10 space-y-4 p-3 sm:p-4 lg:p-6 mx-auto w-full max-w-7xl animate-in fade-in duration-500">
-        {/* Header — default/vibrant only; the play hero carries its own greeting */}
-        {!isPlayTheme && (
+        {/* Header — default/vibrant only; the play / cleaner-play hero carries its own greeting */}
+        {!isPlayTheme && !isCleanerPlayTheme && (
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center space-x-3">
               <Avatar className="h-10 w-10 sm:h-12 sm:w-12 border-2 border-background shadow-sm">
@@ -907,7 +903,7 @@ export function DashboardComponent() {
                 Play theme keeps its vibrant play-token widgets; every other theme
                 gets the standard design-token panel. */}
             {isPlayTheme ? (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
                 <StreakCounterWidget />
                 <XpDisplayWidget />
                 <AchievementBadgesWidget />

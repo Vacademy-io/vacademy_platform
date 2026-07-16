@@ -6,6 +6,7 @@ import { formatTimeFromMillis, millisToMinutes } from "@/helpers/formatTimeFromM
 import { Badge } from "@/components/ui/badge";
 import { Calendar, Clock, TrendUp, Users } from "@phosphor-icons/react";
 import { usePlayTheme } from "@/hooks/use-play-theme";
+import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
 import { cn } from "@/lib/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
@@ -20,6 +21,7 @@ export interface ChartDataType {
 
 export const LineChartComponent = ({ userActivity }: { userActivity: UserActivityArray }) => {
     const isPlay = usePlayTheme();
+    const isCleanerPlay = useCleanerPlayTheme();
     const batchLabel = getTerminology(ContentTerms.Batch, SystemTerms.Batch);
 
     // ONE data accent: the learner's own line. The batch comparison line is
@@ -83,12 +85,24 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
             {/* Enhanced Header with Performance Metrics */}
             <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 sm:gap-4">
                 <div className="flex items-center space-x-3">
-                    <div className="p-2 bg-primary/10 rounded-lg [.ui-play_&]:bg-play-surface [.ui-play_&]:rounded-xl">
-                        <TrendUp size={18} className="text-primary [.ui-play_&]:text-play-ink" />
+                    <div className={cn(
+                        "p-2 bg-primary/10 rounded-lg [.ui-play_&]:bg-play-surface [.ui-play_&]:rounded-xl",
+                        isCleanerPlay && "!bg-cp-sage-tint !rounded-xl"
+                    )}>
+                        <TrendUp size={18} className={cn(
+                            "text-primary [.ui-play_&]:text-play-ink",
+                            isCleanerPlay && "!text-cp-sage"
+                        )} />
                     </div>
                     <div className="min-w-0">
-                        <h3 className="text-base sm:text-lg font-semibold text-foreground [.ui-play_&]:font-black [.ui-play_&]:text-play-ink">Learning Progress Trend</h3>
-                        <p className="text-xs sm:text-sm text-muted-foreground flex items-center space-x-1">
+                        <h3 className={cn(
+                            "text-base sm:text-lg font-semibold text-foreground [.ui-play_&]:font-black [.ui-play_&]:text-play-ink",
+                            isCleanerPlay && "cp-heading !text-body"
+                        )}>Learning Progress Trend</h3>
+                        <p className={cn(
+                            "text-xs sm:text-sm text-muted-foreground flex items-center space-x-1",
+                            isCleanerPlay && "cp-muted !text-caption"
+                        )}>
                             <Calendar size={12} className="flex-shrink-0" />
                             <span>Weekly learning activity comparison</span>
                         </p>
@@ -100,7 +114,10 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                         {performanceStatus.text}
                     </Badge>
                     {hasActivity && chartData.length > 0 && (
-                        <div className="hidden md:flex items-center space-x-4 bg-muted/40 rounded-lg px-3 sm:px-4 py-2 border border-border [.ui-play_&]:rounded-xl">
+                        <div className={cn(
+                            "hidden md:flex items-center space-x-4 bg-muted/40 rounded-lg px-3 sm:px-4 py-2 border border-border [.ui-play_&]:rounded-xl",
+                            isCleanerPlay && "!bg-cp-bg-deep !border-cp-border !rounded-xl"
+                        )}>
                             <div className="flex items-center space-x-2 text-xs sm:text-sm">
                                 <div className="w-2 sm:w-3 h-2 sm:h-3 rounded-full bg-primary [.ui-play_&]:bg-play-info"></div>
                                 <span className="text-foreground font-medium tabular-nums [.ui-play_&]:text-play-ink">
@@ -120,7 +137,10 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
             </div>
 
             {/* Enhanced Legend */}
-            <div className="flex flex-wrap items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-muted/40 rounded-lg sm:rounded-xl border border-border [.ui-play_&]:rounded-xl">
+            <div className={cn(
+                "flex flex-wrap items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-muted/40 rounded-lg sm:rounded-xl border border-border [.ui-play_&]:rounded-xl",
+                isCleanerPlay && "!bg-cp-bg-deep !border-cp-border"
+            )}>
                 <div className="flex items-center space-x-2">
                     <div className="w-3 sm:w-4 h-0.5 sm:h-1 rounded-full bg-primary [.ui-play_&]:bg-play-info"></div>
                     <span className="text-xs sm:text-sm font-medium text-foreground [.ui-play_&]:text-play-ink">Your Study Time</span>
@@ -140,7 +160,10 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                 {/* Background pattern */}
                 <div className="absolute inset-0 rounded-lg sm:rounded-xl bg-transparent"></div>
 
-                <div className="relative bg-white/50 backdrop-blur-sm rounded-lg sm:rounded-xl border border-gray-200/40 p-2 sm:p-4 overflow-hidden w-full max-w-full [.ui-play_&]:bg-white [.ui-play_&]:border-play-surface [.ui-play_&]:rounded-xl">
+                <div className={cn(
+                    "relative bg-white/50 backdrop-blur-sm rounded-lg sm:rounded-xl border border-gray-200/40 p-2 sm:p-4 overflow-hidden w-full max-w-full [.ui-play_&]:bg-white [.ui-play_&]:border-play-surface [.ui-play_&]:rounded-xl",
+                    isCleanerPlay && "!bg-cp-surface !border-cp-border"
+                )}>
                     <ResponsiveContainer width="100%" height={280}>
                         <ChartContainer config={chartConfig} className="w-full h-full overflow-hidden">
                             <LineChart
@@ -315,7 +338,10 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
             {chartData.length > 0 && (
                 hasActivity ? (
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-                        <div className="bg-muted/40 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:rounded-xl">
+                        <div className={cn(
+                            "bg-muted/40 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:rounded-xl",
+                            isCleanerPlay && "!bg-cp-bg-deep !border-cp-border !rounded-xl"
+                        )}>
                             <div className="flex items-center space-x-2 mb-1">
                                 <TrendUp size={14} className="text-muted-foreground" />
                                 <span className="text-xs sm:text-sm font-semibold text-foreground [.ui-play_&]:font-black [.ui-play_&]:text-play-ink">Consistency</span>
@@ -325,7 +351,10 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                             </p>
                         </div>
 
-                        <div className="bg-muted/40 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:rounded-xl">
+                        <div className={cn(
+                            "bg-muted/40 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:rounded-xl",
+                            isCleanerPlay && "!bg-cp-bg-deep !border-cp-border !rounded-xl"
+                        )}>
                             <div className="flex items-center space-x-2 mb-1">
                                 <Clock size={14} className="text-muted-foreground" />
                                 <span className="text-xs sm:text-sm font-semibold text-foreground [.ui-play_&]:font-black [.ui-play_&]:text-play-ink">Peak Day</span>
@@ -335,7 +364,10 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                             </p>
                         </div>
 
-                        <div className="bg-muted/40 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:rounded-xl">
+                        <div className={cn(
+                            "bg-muted/40 rounded-lg p-3 sm:p-4 border border-border [.ui-play_&]:rounded-xl",
+                            isCleanerPlay && "!bg-cp-bg-deep !border-cp-border !rounded-xl"
+                        )}>
                             <div className="flex items-center space-x-2 mb-1">
                                 <Users size={14} className="text-muted-foreground" />
                                 <span className="text-xs sm:text-sm font-semibold text-foreground [.ui-play_&]:font-black [.ui-play_&]:text-play-ink">Vs {batchLabel}</span>
@@ -351,7 +383,10 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                         </div>
                     </div>
                 ) : (
-                    <div className="rounded-lg sm:rounded-xl border border-border bg-muted/40 p-4 text-center [.ui-play_&]:rounded-xl">
+                    <div className={cn(
+                        "rounded-lg sm:rounded-xl border border-border bg-muted/40 p-4 text-center [.ui-play_&]:rounded-xl",
+                        isCleanerPlay && "!bg-cp-bg-deep !border-cp-border !rounded-xl"
+                    )}>
                         <p className="text-sm font-medium text-muted-foreground">
                             Your activity will appear here as you learn.
                         </p>

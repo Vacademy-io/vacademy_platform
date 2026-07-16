@@ -54,11 +54,13 @@ public class WorkbenchLeadRepository {
         // through AuthService.getUsersFromAuthServiceByUserIds, batched once
         // per response. Same fix is applied to every workbench query.
         //
-        // type_id for USER_LEAD_PROFILE timeline events is user_lead_profile
-        // .user_id (TimelineEventService writes the enum NAME as action_type
-        // — 'COUNSELOR_ASSIGNED' — and callers pass user_id as typeId). The
-        // earlier join on `te.type_id = ulp.id` matched nothing, so
-        // assigned_at was always NULL.
+        // type_id for USER_LEAD_PROFILE timeline events is user_lead_profile.id
+        // (TimelineEventService writes the enum NAME as action_type —
+        // 'COUNSELOR_ASSIGNED'). Was user_lead_profile.user_id before user_id
+        // became non-unique per V379 (a user can now have a profile per
+        // institute) — all writers switched to profile id, and existing rows
+        // were backfilled in the same migration, so ulp.id is the only
+        // correlation that stays correct as a person gains more profiles.
         final String sql =
             "SELECT ulp.id AS lead_id, " +
             "       ulp.user_id AS user_id, " +
@@ -81,7 +83,7 @@ public class WorkbenchLeadRepository {
             "    SELECT MAX(te.created_at) AS assigned_at " +
             "    FROM timeline_event te " +
             "    WHERE te.type = 'USER_LEAD_PROFILE' " +
-            "      AND te.type_id = ulp.user_id " +
+            "      AND te.type_id = ulp.id " +
             "      AND te.action_type = 'COUNSELOR_ASSIGNED' " +
             ") ta ON true " +
             "LEFT JOIN LATERAL (" +
@@ -170,9 +172,9 @@ public class WorkbenchLeadRepository {
                                                              int limit) {
         // Same separate-DB constraint as findLeadsForCounsellors — no JOIN
         // to users. Caller hydrates lead name / email / phone via AuthService.
-        // type_id on USER_LEAD_PROFILE timeline events is user_id, and
-        // action_type stores the enum NAME ('COUNSELOR_ASSIGNED'), not the
-        // human title.
+        // type_id on USER_LEAD_PROFILE timeline events is user_lead_profile.id
+        // (see findLeadsForCounsellors above for why), and action_type stores
+        // the enum NAME ('COUNSELOR_ASSIGNED'), not the human title.
         final String sql =
             "SELECT ulp.id AS lead_id, " +
             "       ulp.user_id AS user_id, " +
@@ -195,7 +197,7 @@ public class WorkbenchLeadRepository {
             "    SELECT MAX(te.created_at) AS assigned_at " +
             "    FROM timeline_event te " +
             "    WHERE te.type = 'USER_LEAD_PROFILE' " +
-            "      AND te.type_id = ulp.user_id " +
+            "      AND te.type_id = ulp.id " +
             "      AND te.action_type = 'COUNSELOR_ASSIGNED' " +
             ") ta ON true " +
             "WHERE ulp.institute_id = ? " +
@@ -247,8 +249,11 @@ public class WorkbenchLeadRepository {
      * the trigger tag. Names are NOT joined here — the service layer
      * hydrates them via auth_service (separate Postgres DB on stage/prod).
      */
-    public List<LeadTransferDTO> findTransfersForLead(String leadUserId) {
-        // type_id on USER_LEAD_PROFILE events is the lead's user_id.
+    public List<LeadTransferDTO> findTransfersForLead(String leadUserId, String instituteId) {
+        // type_id on USER_LEAD_PROFILE events is the lead profile's own id, not the raw
+        // user_id — timeline_event has no institute_id column, and a user_id alone can now
+        // resolve to a profile per institute, so correlating by user_id would leak another
+        // institute's assignment history for the same person. Resolve the profile id first.
         // action_type is the enum NAME ('COUNSELOR_ASSIGNED'), see
         // TimelineEventService.logJourneyEvent which calls actionType.name().
         final String sql =
@@ -260,7 +265,7 @@ public class WorkbenchLeadRepository {
             "       te.metadata_json::jsonb ->> 'mode'             AS mode " +
             "FROM timeline_event te " +
             "WHERE te.type = 'USER_LEAD_PROFILE' " +
-            "  AND te.type_id = ? " +
+            "  AND te.type_id = (SELECT id FROM user_lead_profile WHERE user_id = ? AND institute_id = ?) " +
             "  AND te.action_type = 'COUNSELOR_ASSIGNED' " +
             "ORDER BY te.created_at ASC";
 
@@ -276,7 +281,7 @@ public class WorkbenchLeadRepository {
                         .mode(rs.getString("mode"))
                         .at(rs.getTimestamp("created_at"))
                         .build(),
-                leadUserId);
+                leadUserId, instituteId);
     }
 
     private Object[] buildArgs(String instituteId,

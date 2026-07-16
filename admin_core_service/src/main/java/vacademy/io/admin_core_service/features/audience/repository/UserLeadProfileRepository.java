@@ -20,6 +20,8 @@ public interface UserLeadProfileRepository extends JpaRepository<UserLeadProfile
 
     List<UserLeadProfile> findByUserIdIn(List<String> userIds);
 
+    List<UserLeadProfile> findByUserIdInAndInstituteId(List<String> userIds, String instituteId);
+
     Page<UserLeadProfile> findByInstituteId(String instituteId, Pageable pageable);
 
     /** Find profiles by institute + tier (HOT, WARM, COLD). */

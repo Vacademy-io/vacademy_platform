@@ -90,6 +90,22 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("userId") String userId);
 
         /**
+         * Every distinct student_user_id across this institute's leads (any
+         * campaign, any status) — a lead is "student-shaped" the moment a real
+         * user is attached, whether or not they've ever been enrolled. Powers
+         * the guardian-linking backfill's lead variant, which needs to reach
+         * leads that never got as far as an SSIGM enrollment row.
+         */
+        @Query(value = """
+                SELECT DISTINCT ar.student_user_id
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE a.institute_id = :instituteId
+                  AND ar.student_user_id IS NOT NULL
+                """, nativeQuery = true)
+        List<String> findDistinctStudentUserIdsByInstitute(@Param("instituteId") String instituteId);
+
+        /**
          * Find all leads for a campaign with pagination
          */
         Page<AudienceResponse> findByAudienceId(String audienceId, Pageable pageable);

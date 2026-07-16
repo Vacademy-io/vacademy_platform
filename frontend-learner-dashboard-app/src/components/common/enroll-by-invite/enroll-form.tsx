@@ -2629,6 +2629,13 @@ const EnrollByInvite = ({
       case 2:
         return (
           <>
+          {isAutopay && autopayConfig?.TRIAL_DAYS ? (
+            <div className="mb-4 rounded-xl border border-primary-200 bg-primary-50 p-4 text-center text-sm font-medium text-primary-600">
+              Start your ₹{authAmount} trial and activate your{" "}
+              {autopayConfig.TRIAL_DAYS}-day free trial, cancel anytime within{" "}
+              {autopayConfig.TRIAL_DAYS} days.
+            </div>
+          ) : null}
           <ReviewStep
             courseData={{
               course: courseData.course,

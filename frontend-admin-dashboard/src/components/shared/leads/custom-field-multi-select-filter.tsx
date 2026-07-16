@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { CaretDown, Check, CircleNotch } from '@phosphor-icons/react';
+import { CaretDown, Check, CircleNotch, PlusCircle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -11,6 +11,7 @@ import {
     CommandItem,
     CommandList,
 } from '@/components/ui/command';
+import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { fetchLeadCustomFieldValues } from '@/routes/audience-manager/list/-services/get-lead-custom-field-values';
 
@@ -44,6 +45,12 @@ interface CustomFieldMultiSelectFilterProps {
      *  different fetcher (e.g. the Manage Students learner-scoped one) to
      *  reuse this same combobox for other USER-scoped custom fields. */
     fetchValues?: (params: FetchCustomFieldValuesParams) => Promise<CustomFieldValuesPage>;
+    /** Trigger look. 'button' (default) matches the leads filter bar's other
+     *  outline-button chips. 'pill' matches Manage Students' rounded
+     *  FilterChips pill (see design-system/chips.tsx) so this combobox blends
+     *  in next to that page's other filter chips. Styling only — no behavior
+     *  differs between variants. */
+    variant?: 'button' | 'pill';
 }
 
 /**
@@ -63,6 +70,7 @@ export function CustomFieldMultiSelectFilter({
     selected,
     onChange,
     fetchValues = fetchLeadCustomFieldValues,
+    variant = 'button',
 }: CustomFieldMultiSelectFilterProps) {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -127,21 +135,47 @@ export function CustomFieldMultiSelectFilter({
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-                <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    role="combobox"
-                    aria-expanded={open}
-                    aria-label={`Filter by ${fieldName}`}
-                    className={cn(
-                        'h-10 max-w-56 justify-between',
-                        count > 0 && 'border-primary-300 bg-primary-50'
-                    )}
-                >
-                    <span className="truncate text-sm font-normal">{triggerLabel}</span>
-                    <CaretDown className="size-4 shrink-0 text-neutral-400" />
-                </Button>
+                {variant === 'pill' ? (
+                    <button
+                        type="button"
+                        role="combobox"
+                        aria-expanded={open}
+                        aria-label={`Filter by ${fieldName}`}
+                        className={cn(
+                            'inline-flex h-8 flex-shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-neutral-300 px-3 py-1.5 text-body font-regular text-neutral-600 active:bg-primary-100',
+                            count > 0
+                                ? 'border-primary-500 bg-primary-100'
+                                : 'hover:border-primary-500 hover:bg-primary-50'
+                        )}
+                    >
+                        <PlusCircle className="size-4 text-neutral-600" />
+                        <span>{fieldName}</span>
+                        {count > 0 && (
+                            <div className="flex items-center gap-2">
+                                <Separator orientation="vertical" className="h-4 bg-neutral-500" />
+                                <div className="inline-flex items-center rounded-md bg-primary-200 px-2.5 py-0.5 text-caption font-normal">
+                                    {count} selected
+                                </div>
+                            </div>
+                        )}
+                    </button>
+                ) : (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        role="combobox"
+                        aria-expanded={open}
+                        aria-label={`Filter by ${fieldName}`}
+                        className={cn(
+                            'h-10 max-w-56 justify-between',
+                            count > 0 && 'border-primary-300 bg-primary-50'
+                        )}
+                    >
+                        <span className="truncate text-sm font-normal">{triggerLabel}</span>
+                        <CaretDown className="size-4 shrink-0 text-neutral-400" />
+                    </Button>
+                )}
             </PopoverTrigger>
             <PopoverContent align="start" className="w-64 p-0">
                 <Command shouldFilter={false}>

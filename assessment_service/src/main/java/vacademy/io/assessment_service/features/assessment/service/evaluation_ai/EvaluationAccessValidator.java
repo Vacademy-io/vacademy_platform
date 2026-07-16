@@ -1,0 +1,72 @@
+package vacademy.io.assessment_service.features.assessment.service.evaluation_ai;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import vacademy.io.assessment_service.features.assessment.entity.AiEvaluationProcess;
+import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
+import vacademy.io.assessment_service.features.assessment.repository.AiEvaluationProcessRepository;
+import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
+import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.ForbiddenException;
+import vacademy.io.common.exceptions.ResourceNotFoundException;
+
+/**
+ * Authorization guard for the AI-evaluation endpoints.
+ *
+ * <p>These endpoints used to be {@code permitAll} (anyone on the internet could
+ * trigger paid grading runs on arbitrary attempt IDs, stop other tenants' runs,
+ * and read student PII from progress). They now require a valid JWT, and this
+ * validator additionally enforces that the caller is acting within the institute
+ * that owns the resource.
+ *
+ * <p>The JWT filter scopes a principal's authorities to the institute in the
+ * {@code clientId} header (see AssessmentJwtAuthFilter): a user only receives
+ * roles for that institute, so a non-empty authority set proves genuine
+ * membership. We therefore require: the resource's institute equals the caller's
+ * active institute ({@code clientId}), and the caller actually holds a role
+ * there. This blocks the cross-tenant IDOR without new infrastructure.
+ */
+@Service
+@Slf4j
+@RequiredArgsConstructor
+public class EvaluationAccessValidator {
+
+    private final StudentAttemptRepository studentAttemptRepository;
+    private final AiEvaluationProcessRepository aiEvaluationProcessRepository;
+
+    /** Load an attempt and assert the caller may act on it, returning the attempt. */
+    public StudentAttempt requireAttemptAccess(CustomUserDetails user, String instituteId, String attemptId) {
+        StudentAttempt attempt = studentAttemptRepository.findById(attemptId)
+                .orElseThrow(() -> new ResourceNotFoundException("Student Attempt not found: " + attemptId));
+        assertCallerOwnsAttempt(user, instituteId, attempt);
+        return attempt;
+    }
+
+    /** Assert the caller may act on the attempt behind an evaluation process. */
+    public void requireProcessAccess(CustomUserDetails user, String instituteId, String processId) {
+        AiEvaluationProcess process = aiEvaluationProcessRepository.findById(processId)
+                .orElseThrow(() -> new ResourceNotFoundException("Evaluation process not found: " + processId));
+        assertCallerOwnsAttempt(user, instituteId, process.getStudentAttempt());
+    }
+
+    private void assertCallerOwnsAttempt(CustomUserDetails user, String instituteId, StudentAttempt attempt) {
+        if (user == null || user.getUserId() == null) {
+            throw new ForbiddenException("Authentication is required for AI evaluation");
+        }
+        if (user.getAuthorities() == null || user.getAuthorities().isEmpty()) {
+            // Authorities are filtered to the clientId institute by the JWT filter,
+            // so an empty set means the caller has no role in the institute they
+            // are authenticating against.
+            throw new ForbiddenException("You do not have a role in this institute");
+        }
+        String attemptInstituteId = (attempt != null && attempt.getRegistration() != null)
+                ? attempt.getRegistration().getInstituteId()
+                : null;
+        if (instituteId == null || attemptInstituteId == null || !instituteId.equals(attemptInstituteId)) {
+            log.warn("Blocked cross-institute AI-evaluation access: caller institute={}, attempt institute={}",
+                    instituteId, attemptInstituteId);
+            throw new ForbiddenException("You do not have access to this attempt");
+        }
+    }
+}

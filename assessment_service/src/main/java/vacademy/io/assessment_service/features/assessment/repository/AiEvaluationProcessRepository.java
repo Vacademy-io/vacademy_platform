@@ -16,6 +16,17 @@ public interface AiEvaluationProcessRepository extends JpaRepository<AiEvaluatio
 
         Optional<AiEvaluationProcess> findByStudentAttemptId(String attemptId);
 
+        /**
+         * In-flight evaluations for an attempt, newest first. Used for trigger
+         * idempotency so a double-click / re-trigger returns the running process
+         * instead of spawning a second concurrent (full-cost) run that would
+         * interleave marks into the same question_wise_marks rows.
+         */
+        @Query("SELECT p FROM AiEvaluationProcess p WHERE p.studentAttempt.id = :attemptId " +
+                        "AND p.status IN :activeStatuses ORDER BY p.startedAt DESC")
+        List<AiEvaluationProcess> findActiveByAttemptId(@Param("attemptId") String attemptId,
+                        @Param("activeStatuses") List<String> activeStatuses);
+
         List<AiEvaluationProcess> findByStatus(String status);
 
         List<AiEvaluationProcess> findByStatusAndRetryCountLessThan(String status, Integer maxRetryCount);

@@ -40,8 +40,13 @@ public class ApplicationSecurityConfig {
             "/assessment-service/open-registrations/v1/assessment-page", "/assessment-service/evaluation-tool/**",
 
             "/assessment-service/scheduler/test/**", "/assessment-service/health/**",
-            "/assessment-service/assessment/evaluation-criteria/**",
-            "/assessment-service/assessment/evaluation-ai/**",
+            // NOTE: /assessment/evaluation-ai/** and /assessment/evaluation-criteria/**
+            // were previously permitAll — anyone could trigger paid grading runs on
+            // arbitrary attempts, stop other tenants' runs, and read student PII from
+            // progress. They now require a valid JWT (fall through to anyRequest()
+            // .authenticated()) and enforce institute ownership in
+            // EvaluationAccessValidator. The copy-check callback path below stays open
+            // because it is authenticated by a shared X-Internal-Service-Token instead.
             // Copy-check callbacks: deliberately NOT under /internal/** because
             // InternalAuthFilter (common_service) intercepts anything whose URI
             // contains "internal" and demands HMAC headers (clientName +

@@ -93,6 +93,12 @@ public class CopyCheckCallbackDto {
 
         @JsonProperty("rubric_version")
         private Integer rubricVersion;
+
+        // Per-question outcome from the grader: COMPLETED (graded) or FAILED
+        // (grading failed after retry). Null is treated as COMPLETED for
+        // backward-compat with older ai_service builds.
+        @JsonProperty("status")
+        private String status;
     }
 
     @Data

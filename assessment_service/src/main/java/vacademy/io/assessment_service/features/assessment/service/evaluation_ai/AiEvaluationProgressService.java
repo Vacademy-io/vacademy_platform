@@ -43,14 +43,17 @@ public class AiEvaluationProgressService {
                 List<AiQuestionEvaluation> questionEvals = questionEvaluationRepository
                                 .findByEvaluationProcessIdOrderByQuestionNumberAsc(process.getId());
 
-                // Separate completed and pending
+                // "Resolved" questions (graded OR failed) carry the rich result DTO
+                // so the review page can render — and let the teacher grade — a
+                // FAILED question. Only genuinely still-processing questions stay in
+                // the lightweight pending list (which shows a spinner).
                 List<QuestionEvaluationResultDto> completed = questionEvals.stream()
-                                .filter(q -> "COMPLETED".equals(q.getStatus()))
+                                .filter(q -> "COMPLETED".equals(q.getStatus()) || "FAILED".equals(q.getStatus()))
                                 .map(this::mapToResultDto)
                                 .collect(Collectors.toList());
 
                 List<EvaluationProgressDto.PendingQuestionDto> pending = questionEvals.stream()
-                                .filter(q -> !"COMPLETED".equals(q.getStatus()))
+                                .filter(q -> !"COMPLETED".equals(q.getStatus()) && !"FAILED".equals(q.getStatus()))
                                 .map(q -> EvaluationProgressDto.PendingQuestionDto.builder()
                                                 .questionId(q.getQuestion().getId())
                                                 .questionNumber(q.getQuestionNumber())
@@ -283,6 +286,7 @@ public class AiEvaluationProgressService {
                                 .criteriaBreakdown(criteriaBreakdown)
                                 .rubricVersion(questionEval.getRubricVersion())
                                 .confidence(confidence)
+                                .isEdited(questionEval.getIsEdited())
                                 .startedAt(questionEval.getStartedAt())
                                 .completedAt(questionEval.getCompletedAt())
                                 .build();

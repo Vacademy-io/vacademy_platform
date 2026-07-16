@@ -11,8 +11,7 @@ import vacademy.io.assessment_service.features.assessment.entity.AiEvaluationPro
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 import vacademy.io.assessment_service.features.assessment.enums.AiEvaluationStatusEnum;
 import vacademy.io.assessment_service.features.assessment.repository.AiEvaluationProcessRepository;
-import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
-import vacademy.io.assessment_service.core.exception.VacademyException;
+import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -23,21 +22,36 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AiEvaluationService {
 
+        // In-flight statuses for trigger idempotency: an attempt already in any of
+        // these has a live run, so a re-trigger returns it instead of duplicating.
+        private static final List<String> ACTIVE_STATUSES = List.of(
+                        AiEvaluationStatusEnum.PENDING.name(),
+                        AiEvaluationStatusEnum.STARTED.name(),
+                        AiEvaluationStatusEnum.PROCESSING.name(),
+                        AiEvaluationStatusEnum.EXTRACTING.name(),
+                        AiEvaluationStatusEnum.EVALUATING.name());
+
         private final AiEvaluationProcessRepository aiEvaluationProcessRepository;
-        private final StudentAttemptRepository studentAttemptRepository;
         private final AiEvaluationAsyncService aiEvaluationAsyncService;
         private final AiEvaluationCancellationService cancellationService;
+        private final EvaluationAccessValidator accessValidator;
 
         @Transactional
-        public List<String> triggerEvaluation(AiEvaluationTriggerRequest request) {
+        public List<String> triggerEvaluation(AiEvaluationTriggerRequest request, CustomUserDetails user,
+                        String instituteId) {
                 log.info("Triggering AI evaluation for {} attempts with model: {}", request.getAttemptIds().size(),
                                 request.getPreferredModel());
 
                 List<String> processIds = new ArrayList<>();
 
                 for (String attemptId : request.getAttemptIds()) {
+                        // Authorization is intentionally NOT caught below: a request that
+                        // references an attempt outside the caller's institute (or an
+                        // unauthenticated caller) fails the whole batch rather than being
+                        // silently skipped.
+                        StudentAttempt attempt = accessValidator.requireAttemptAccess(user, instituteId, attemptId);
                         try {
-                                String processId = initiateEvaluationForAttempt(attemptId, request.getPreferredModel());
+                                String processId = initiateEvaluationForAttempt(attempt, request.getPreferredModel());
                                 processIds.add(processId);
                                 log.info("Successfully initiated evaluation for attempt: {} with processId: {}",
                                                 attemptId, processId);
@@ -51,9 +65,19 @@ public class AiEvaluationService {
                 return processIds;
         }
 
-        private String initiateEvaluationForAttempt(String attemptId, String preferredModel) {
-                StudentAttempt attempt = studentAttemptRepository.findById(attemptId)
-                                .orElseThrow(() -> new VacademyException("Student Attempt not found: " + attemptId));
+        private String initiateEvaluationForAttempt(StudentAttempt attempt, String preferredModel) {
+                String attemptId = attempt.getId();
+
+                // Idempotency: reuse an already-running evaluation for this attempt
+                // instead of spawning a second concurrent (full-cost) run.
+                List<AiEvaluationProcess> active = aiEvaluationProcessRepository
+                                .findActiveByAttemptId(attemptId, ACTIVE_STATUSES);
+                if (!active.isEmpty()) {
+                        String existingId = active.get(0).getId();
+                        log.info("Active evaluation {} already exists for attempt {}; returning it (idempotent)",
+                                        existingId, attemptId);
+                        return existingId;
+                }
 
                 AiEvaluationProcess process = new AiEvaluationProcess();
                 // Remove manual ID setting - let @UuidGenerator handle it

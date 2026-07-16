@@ -18,4 +18,10 @@ import lombok.NoArgsConstructor;
 public class BackfillCreatedPairDTO {
     private String childUserId;
     private String parentUserId;
+    private String studentFullName;
+    private String studentEmail;
+    private String guardianFullName;
+    private String guardianUsername;
+    private String guardianEmail;
+    private String guardianPassword;
 }

@@ -74,6 +74,14 @@ public class NotificationTemplateVariables {
         private String portalUrl; // Portal login URL
         private String trackingId; // Application tracking ID
 
+        // Guardian account-created notification
+        private String guardianName;
+        private String guardianUsername;
+        private String guardianEmail;
+        private String guardianPassword;
+        private String studentName;
+        private String studentEmail;
+
         /**
          * Factory method to create variables from entities
          */

@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.parent_link.dto.BackfillSummaryDTO;
+import vacademy.io.admin_core_service.features.parent_link.dto.CredentialTemplateConfigDTO;
 import vacademy.io.admin_core_service.features.parent_link.dto.NewGuardianLinkRequestDTO;
 import vacademy.io.admin_core_service.features.parent_link.dto.ParentLinkActionRequestDTO;
 import vacademy.io.admin_core_service.features.parent_link.dto.ParentLinkActionResponseDTO;
@@ -97,5 +98,24 @@ public class ParentLinkController {
     public ResponseEntity<BackfillSummaryDTO> backfillLeads(@RequestAttribute("user") CustomUserDetails userDetails,
             @RequestParam("instituteId") String instituteId) {
         return ResponseEntity.ok(parentLinkService.backfillLeadGuardians(instituteId));
+    }
+
+    @GetMapping("/credential-template")
+    public ResponseEntity<CredentialTemplateConfigDTO> getCredentialTemplate(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(parentLinkService.getCredentialTemplateConfig(instituteId));
+    }
+
+    @PostMapping("/credential-template")
+    @Auditable(
+            entityType = "GUARDIAN_LINK",
+            action = "UPDATE",
+            entityIdExpr = "#instituteId",
+            descriptionExpr = "'set guardian credential email template'")
+    public ResponseEntity<Void> setCredentialTemplate(@RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestParam("instituteId") String instituteId, @RequestParam("templateId") String templateId) {
+        parentLinkService.setCredentialTemplate(instituteId, templateId);
+        return ResponseEntity.ok().build();
     }
 }

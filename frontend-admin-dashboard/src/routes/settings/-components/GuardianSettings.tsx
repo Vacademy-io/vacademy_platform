@@ -8,12 +8,18 @@
  */
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { SpinnerGap, Sparkle } from '@phosphor-icons/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
+import { Button } from '@/components/ui/button';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
+import { TemplateSelector } from '@/components/templates/TemplateSelector';
+import { MessageTemplate } from '@/types/message-template-types';
+import { createMessageTemplate, getMessageTemplate } from '@/services/message-template-service';
+import { buildSampleGuardianCredentialsTemplate } from './sample-guardian-credentials-template';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL, GET_INSITITUTE_SETTINGS } from '@/constants/urls';
@@ -21,26 +27,31 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type BackfillCredentialRecipient = 'STUDENT' | 'GUARDIAN';
+export type CredentialRecipient = 'STUDENT' | 'GUARDIAN';
 
 export interface GuardianSettingsData {
     /** If false, all guardian-linking UI (bulk-assign, side-view, backfill) is hidden institute-wide. */
     enabled: boolean;
-    /** Whether backfill emails the newly-created guardian's login credentials once created. */
-    sendCredentialsOnBackfill: boolean;
+    /**
+     * Whether a credential email is sent whenever a new guardian account is
+     * created — via bulk-assign linking, the side-view "Add Guardian" flow,
+     * or backfill.
+     */
+    sendCredentialEmail: boolean;
     /**
      * Who receives the credential email. "STUDENT" (default) is the only
      * practically deliverable choice for backfill — the guardian's backfilled
-     * email is a synthetic, undeliverable @vacademy.com address. "GUARDIAN"
-     * is kept for symmetry with the non-backfill link flows.
+     * email is a synthetic, undeliverable @vacademy.com address. For the
+     * assignment-time link flows a guardian's email is usually real, so
+     * "GUARDIAN" is meaningful there.
      */
-    backfillCredentialRecipient: BackfillCredentialRecipient;
+    credentialRecipient: CredentialRecipient;
 }
 
 const DEFAULT_GUARDIAN_SETTINGS: GuardianSettingsData = {
     enabled: false,
-    sendCredentialsOnBackfill: false,
-    backfillCredentialRecipient: 'STUDENT',
+    sendCredentialEmail: true,
+    credentialRecipient: 'STUDENT',
 };
 
 const SETTING_KEY = 'PARENT_SETTING';
@@ -49,7 +60,14 @@ const BACKFILL_URL = `${BASE_URL}/admin-core-service/parent-link/v1/backfill`;
 const PENDING_URL = `${BASE_URL}/admin-core-service/parent-link/v1/backfill/pending`;
 const LEADS_BACKFILL_URL = `${BASE_URL}/admin-core-service/parent-link/v1/backfill-leads`;
 const LEADS_PENDING_URL = `${BASE_URL}/admin-core-service/parent-link/v1/backfill-leads/pending`;
+const CREDENTIAL_TEMPLATE_URL = `${BASE_URL}/admin-core-service/parent-link/v1/credential-template`;
 const PENDING_PREVIEW_LIMIT = 25;
+
+interface CredentialTemplateConfig {
+    template_id: string | null;
+    template_name: string | null;
+    template_subject: string | null;
+}
 
 interface BackfillResult {
     total_eligible: number;
@@ -148,6 +166,23 @@ const fetchPendingGuardianStudents = async (url: string): Promise<PendingGuardia
     return (response.data as PendingGuardianStudent[]) ?? [];
 };
 
+const fetchCredentialTemplateConfig = async (): Promise<CredentialTemplateConfig> => {
+    const instituteId = getCurrentInstituteId();
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: CREDENTIAL_TEMPLATE_URL,
+        params: { instituteId },
+    });
+    return response.data as CredentialTemplateConfig;
+};
+
+const saveCredentialTemplateConfig = async (templateId: string): Promise<void> => {
+    const instituteId = getCurrentInstituteId();
+    await authenticatedAxiosInstance.post(CREDENTIAL_TEMPLATE_URL, null, {
+        params: { instituteId, templateId },
+    });
+};
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function GuardianSettings() {
@@ -221,60 +256,64 @@ export default function GuardianSettings() {
                     </CardContent>
                 </Card>
 
-                {/* ── Backfill credential notification ── */}
+                {/* ── Guardian credential email (link / link-new-guardian / backfill) ── */}
                 {settings.enabled && (
                     <Card>
                         <CardHeader>
-                            <CardTitle>Backfill Credential Notification</CardTitle>
+                            <CardTitle>Guardian Credential Email</CardTitle>
                             <CardDescription>
-                                Optionally email the newly-created guardian&apos;s login credentials
-                                when a backfill creates them.
+                                Optionally email login credentials whenever a new guardian account is
+                                created — whether via bulk assignment, the student side-view&apos;s
+                                &quot;Add Guardian&quot; action, or a backfill run.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="flex flex-col gap-4">
                             <div className="flex items-center gap-3">
                                 <Switch
                                     id="guardian-send-credentials"
-                                    checked={settings.sendCredentialsOnBackfill}
-                                    onCheckedChange={(v) => update({ sendCredentialsOnBackfill: v })}
+                                    checked={settings.sendCredentialEmail}
+                                    onCheckedChange={(v) => update({ sendCredentialEmail: v })}
                                 />
                                 <Label htmlFor="guardian-send-credentials" className="cursor-pointer">
-                                    Send credential email during backfill
+                                    Send credential email when a guardian account is created
                                 </Label>
                             </div>
-                            {settings.sendCredentialsOnBackfill && (
-                                <div className="flex flex-col gap-2">
-                                    <Label>Send to</Label>
-                                    <div className="flex items-center gap-2">
-                                        <MyButton
-                                            buttonType={
-                                                settings.backfillCredentialRecipient === 'STUDENT'
-                                                    ? 'primary'
-                                                    : 'secondary'
-                                            }
-                                            scale="small"
-                                            onClick={() => update({ backfillCredentialRecipient: 'STUDENT' })}
-                                        >
-                                            Student
-                                        </MyButton>
-                                        <MyButton
-                                            buttonType={
-                                                settings.backfillCredentialRecipient === 'GUARDIAN'
-                                                    ? 'primary'
-                                                    : 'secondary'
-                                            }
-                                            scale="small"
-                                            onClick={() => update({ backfillCredentialRecipient: 'GUARDIAN' })}
-                                        >
-                                            Guardian
-                                        </MyButton>
+                            {settings.sendCredentialEmail && (
+                                <>
+                                    <div className="flex flex-col gap-2">
+                                        <Label>Send to</Label>
+                                        <div className="flex items-center gap-2">
+                                            <MyButton
+                                                buttonType={
+                                                    settings.credentialRecipient === 'STUDENT'
+                                                        ? 'primary'
+                                                        : 'secondary'
+                                                }
+                                                scale="small"
+                                                onClick={() => update({ credentialRecipient: 'STUDENT' })}
+                                            >
+                                                Student
+                                            </MyButton>
+                                            <MyButton
+                                                buttonType={
+                                                    settings.credentialRecipient === 'GUARDIAN'
+                                                        ? 'primary'
+                                                        : 'secondary'
+                                                }
+                                                scale="small"
+                                                onClick={() => update({ credentialRecipient: 'GUARDIAN' })}
+                                            >
+                                                Guardian
+                                            </MyButton>
+                                        </div>
+                                        <p className="text-caption text-neutral-500">
+                                            {settings.credentialRecipient === 'STUDENT'
+                                                ? "Sends to the student's own email. Recommended for backfill, since a backfilled guardian's email is a placeholder address that can't receive mail."
+                                                : "Sends to the guardian's own email — meaningful for link/add-guardian flows where a real guardian email was provided; not deliverable for backfilled (placeholder) guardians."}
+                                        </p>
                                     </div>
-                                    <p className="text-caption text-neutral-500">
-                                        {settings.backfillCredentialRecipient === 'STUDENT'
-                                            ? "Sends to the student's own email, since the backfilled guardian's email is a placeholder address that can't receive mail."
-                                            : "Sends to the guardian's own (placeholder @vacademy.com) address — kept for symmetry, but not actually deliverable for backfilled guardians."}
-                                    </p>
-                                </div>
+                                    <GuardianCredentialTemplateSelector />
+                                </>
                             )}
                         </CardContent>
                     </Card>
@@ -456,6 +495,104 @@ function BackfillSection({
                 heading={dialogHeading}
             />
         </>
+    );
+}
+
+// ─── Guardian credential email template picker ────────────────────────────────
+
+function GuardianCredentialTemplateSelector() {
+    const queryClient = useQueryClient();
+    const [selectedTemplate, setSelectedTemplate] = useState<MessageTemplate | null>(null);
+    const [isGenerating, setIsGenerating] = useState(false);
+
+    const { data: config, isLoading } = useQuery({
+        queryKey: ['guardian-credential-template-config'],
+        queryFn: fetchCredentialTemplateConfig,
+        staleTime: 60 * 1000,
+    });
+
+    useEffect(() => {
+        if (!config?.template_id) {
+            setSelectedTemplate(null);
+            return;
+        }
+        getMessageTemplate(config.template_id)
+            .then(setSelectedTemplate)
+            .catch(() => setSelectedTemplate(null));
+    }, [config?.template_id]);
+
+    const { mutate: selectTemplate } = useMutation({
+        mutationFn: (templateId: string) => saveCredentialTemplateConfig(templateId),
+        onSuccess: () => {
+            toast.success('Guardian credential email template updated');
+            queryClient.invalidateQueries({ queryKey: ['guardian-credential-template-config'] });
+        },
+        onError: () => {
+            toast.error('Failed to update guardian credential email template');
+        },
+    });
+
+    const handleTemplateSelect = (template: MessageTemplate | null) => {
+        setSelectedTemplate(template);
+        if (template) {
+            selectTemplate(template.id);
+        }
+    };
+
+    const handleGenerateSample = async () => {
+        setIsGenerating(true);
+        try {
+            const sample = buildSampleGuardianCredentialsTemplate();
+            const created = await createMessageTemplate({
+                name: sample.name,
+                type: 'EMAIL',
+                subject: sample.subject,
+                content: sample.content,
+                variables: sample.variables,
+                templateType: 'transactional',
+            });
+            setSelectedTemplate(created);
+            selectTemplate(created.id);
+            toast.success('Sample guardian credential template created');
+        } catch (error) {
+            console.error('Error generating sample guardian credential template:', error);
+            toast.error('Failed to generate sample template. Please try again.');
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
+    return (
+        <div className="flex flex-col gap-2 border-t border-neutral-100 pt-4">
+            <div className="flex items-center justify-between gap-2">
+                <Label>Credential Email Template</Label>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGenerateSample}
+                    disabled={isGenerating}
+                    title="Generate a sample guardian credential email template with placeholders pre-filled"
+                >
+                    {isGenerating ? (
+                        <SpinnerGap className="mr-2 size-4 animate-spin" />
+                    ) : (
+                        <Sparkle className="mr-2 size-4 text-warning-500" />
+                    )}
+                    {isGenerating ? 'Generating…' : 'Generate sample'}
+                </Button>
+            </div>
+            {isLoading ? (
+                <div className="text-body text-neutral-500">Loading template selection…</div>
+            ) : (
+                <TemplateSelector
+                    templateType="EMAIL"
+                    selectedTemplate={selectedTemplate}
+                    onTemplateSelect={handleTemplateSelect}
+                    variant="dropdown"
+                    placeholder="No template selected — credential emails are skipped until one is chosen"
+                />
+            )}
+        </div>
     );
 }
 

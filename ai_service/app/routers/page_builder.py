@@ -810,6 +810,8 @@ class EditPageRequest(BaseModel):
     # Prior turns for context (kept short by the FE).
     history: List[ChatTurn] = Field(default_factory=list)
     allow_chrome: bool = False
+    # Allow the copilot to request generated images via gen:<prompt> sentinels.
+    auto_images: bool = True
     preferred_model: Optional[str] = None
 
 
@@ -852,6 +854,13 @@ def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any]) -> str:
             f"## FOCUS\nThe admin has selected component id '{req.selected_component_id}'. "
             "If the request is about 'this'/'the selected' section, scope your ops to it."
         )
+    if req.auto_images:
+        parts.append(
+            "## IMAGE GENERATION\nWhen the request needs a NEW image (replace a photo, add a hero visual, "
+            "an illustration), set that image field to \"gen:<a vivid, specific photography/illustration "
+            "prompt>\" inside your op and it will be generated and filled in. Max 2 gen: fields per edit. "
+            "Never gen: real-brand logos or real people."
+        )
     parts.append("## REQUEST\n" + req.instruction.strip())
     parts.append(
         "## OUTPUT CONTRACT\nReturn ONLY JSON of this shape (no markdown, no commentary):\n"
@@ -869,7 +878,7 @@ def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any]) -> str:
     return "\n\n".join(parts)
 
 
-def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any]) -> tuple[List[Dict[str, Any]], str, List[str]]:
+def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any], extra_allowed: Optional[set] = None) -> tuple[List[Dict[str, Any]], str, List[str]]:
     warnings: List[str] = []
     try:
         data = json.loads(raw_json)
@@ -880,7 +889,7 @@ def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any]) 
 
     reply = str(data.get("reply") or "").strip()
     allowed_types = {c["type"] for c in catalog["components"]}
-    allowed_urls = {i.url for i in req.images}
+    allowed_urls = {i.url for i in req.images} | (extra_allowed or set())
     # Ids that exist on the page (top-level + slot children) — ops may only
     # reference these (inserts bring their own new id).
     existing_ids: set = set()
@@ -1010,7 +1019,20 @@ async def edit_page(
         logger.warning("[page-copilot] edit failed: %s", e)
         raise HTTPException(status_code=502, detail=f"Edit failed: {e}")
 
-    ops, reply, warnings = _sanitize_ops(raw_json, body, catalog)
+    # Generate any gen:<prompt> images the copilot requested in its ops
+    # (insert components / propsPatch) BEFORE sanitizing, so the fresh URLs
+    # pass the image allowlist.
+    generated_urls: set = set()
+    if body.auto_images:
+        try:
+            data = json.loads(raw_json)
+            if isinstance(data, dict) and isinstance(data.get("ops"), list):
+                generated_urls = await _autogen_images(data["ops"], db, institute_id, actor_user_id)
+                raw_json = json.dumps(data)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[page-copilot] auto-image pass skipped: %s", e)
+
+    ops, reply, warnings = _sanitize_ops(raw_json, body, catalog, extra_allowed=generated_urls)
 
     try:
         record_tool_billing(

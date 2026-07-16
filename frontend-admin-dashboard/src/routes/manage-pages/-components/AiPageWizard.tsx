@@ -22,6 +22,7 @@ import { getTerminology } from '@/components/common/layout-container/sidebar/uti
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { useEditorStore } from '../-stores/editor-store';
 import { ImageUploadField } from './ImageUploadField';
+import { renderComponentPreview } from './ComponentPreviews';
 import {
     generateAiPage, estimateAiPageCredits, generateAiImage,
     AiPageImage, GeneratePageResponse,
@@ -66,7 +67,11 @@ export const AiPageWizard = ({
     const [inspiration, setInspiration] = useState<string[]>([]);
     const [pendingInsp, setPendingInsp] = useState('');
     const [directionIdx, setDirectionIdx] = useState(-1); // -1 = model's own choice
-    const [result, setResult] = useState<GeneratePageResponse | null>(null);
+    // Every generation lands as a variant tab; the admin flips between them
+    // and accepts the one they like (regens never overwrite earlier drafts).
+    const [variants, setVariants] = useState<GeneratePageResponse[]>([]);
+    const [activeVariant, setActiveVariant] = useState(0);
+    const result = variants[activeVariant] ?? null;
     const [applyTheme, setApplyTheme] = useState(true);
     const [autoImages, setAutoImages] = useState(true);
     const [logoPrompt, setLogoPrompt] = useState('');
@@ -116,7 +121,10 @@ export const AiPageWizard = ({
                 auto_images: autoImages,
             }),
         onSuccess: (data) => {
-            setResult(data);
+            setVariants((v) => {
+                setActiveVariant(v.length);
+                return [...v, data];
+            });
             setStep('review');
         },
         onError: (err: any) => {
@@ -146,7 +154,8 @@ export const AiPageWizard = ({
         setInspiration([]);
         setPendingInsp('');
         setDirectionIdx(-1);
-        setResult(null);
+        setVariants([]);
+        setActiveVariant(0);
         setApplyTheme(true);
         setAutoImages(true);
         setLogoPrompt('');
@@ -431,17 +440,52 @@ export const AiPageWizard = ({
 
                 {step === 'review' && result && (
                     <div className="space-y-3">
+                        {/* Variant tabs — every regeneration is kept for comparison */}
+                        {variants.length > 1 && (
+                            <div className="flex gap-1.5">
+                                {variants.map((_, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => setActiveVariant(i)}
+                                        className={`rounded-full px-3 py-1 text-caption font-medium transition-colors ${
+                                            i === activeVariant
+                                                ? 'bg-primary-500 text-white'
+                                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                    >
+                                        Option {i + 1}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                         <p className="text-xs text-gray-500">
                             Draft ready — <span className="font-medium text-gray-800">{result.page.title || 'Untitled page'}</span>{' '}
-                            with {result.page.components.length} sections:
+                            · {result.page.components.length} sections
                         </p>
-                        <ol className="max-h-52 space-y-1 overflow-y-auto rounded border bg-gray-50 p-3">
-                            {result.page.components.map((c, i) => (
-                                <li key={c.id} className="text-xs text-gray-700">
-                                    {i + 1}. {String(c.type).replace(/([A-Z])/g, ' $1').trim()}
-                                </li>
-                            ))}
-                        </ol>
+                        {/* LIVE mini-preview: the actual component previews rendered
+                            with the proposed theme, scaled to fit the dialog. */}
+                        <div className="max-h-80 overflow-y-auto rounded-lg border bg-gray-100 p-2">
+                            <div className="origin-top-left" style={{ transform: 'scale(0.5)', width: '200%' /* design-lint-ignore: preview scaling */ }}>
+                                <div
+                                    className="bg-white shadow"
+                                    data-catalogue-theme={(result.global_settings as any)?.theme?.preset || 'default'}
+                                    data-heading-scale={(result.global_settings as any)?.theme?.headingScale || 'default'}
+                                    data-catalogue-atmosphere={(result.global_settings as any)?.theme?.atmosphere?.canvas || 'flat'}
+                                    data-catalogue-intensity={(result.global_settings as any)?.theme?.atmosphere?.intensity || 'subtle'}
+                                    style={{
+                                        fontFamily: (result.global_settings as any)?.fonts?.family,
+                                        ...((result.global_settings as any)?.fonts?.headingFamily
+                                            ? { ['--catalogue-heading-font' as any]: (result.global_settings as any).fonts.headingFamily }
+                                            : {}),
+                                        pointerEvents: 'none',
+                                    }}
+                                >
+                                    {result.page.components.map((c) => (
+                                        <React.Fragment key={c.id}>{renderComponentPreview(c as Component)}</React.Fragment>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
                         {result.warnings.length > 0 && (
                             <p className="text-caption text-warning-600">
                                 {result.warnings.length} item(s) were auto-cleaned during validation.

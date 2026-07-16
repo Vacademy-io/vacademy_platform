@@ -20,9 +20,11 @@
   --play-radius-badge: 999px;
   /* Tighter, quieter radius for the Dashboard's hand-built pastel widgets —
      additive only. The base --play-radius-card (20px) stays untouched since
-     it drives the shared .Card/.card rule used app-wide (assessment, study
-     library, live class, profile...); only Dashboard-scoped components opt
-     into this smaller value via rounded-play-card-sm. */
+     non-Dashboard Play surfaces consume it directly via rounded-play-card
+     classes (course details, assessment cards, profile, PlayBottomNav...);
+     only Dashboard-scoped components opt into this smaller value via
+     rounded-play-card-sm. (Note: the .ui-play .card/.Card rule below does
+     NOT match shadcn Cards — they emit no literal "card" class token.) */
   --play-radius-card-sm: 12px;
 
   /* Duolingo-style play palette (role -> base + deep "3D" shade). Promoted from
@@ -199,32 +201,22 @@
   }
 
   /* ── Dashboard Stat Cards: pastel tint backgrounds ────────────────
-     Softened from solid deep --play-c-* blocks to light -soft tints
-     (ink text/icons from the paired -soft-ink, set via JSX). A gentle
-     neutral lift replaces the old role-colored press-block shadow;
-     :active keeps a light press nudge for Play's tactile character. */
+     ONLY the pastel background lives here. Border, radius, shadow, and
+     press behavior are owned by the [.ui-play_&]:! utilities inside
+     DashboardStatCard.tsx — those land in the Tailwind utilities bucket,
+     which is emitted after this components bucket, so any equal-
+     specificity !important declarations added here would silently lose.
+     Do not re-add border/shadow rules to these selectors. */
   .ui-play .stat-card-courses {
     background-color: var(--play-c-info-soft) !important;
-    border-color: transparent !important;
-    box-shadow: 0 1px 2px rgba(60,60,60,0.05), 0 10px 26px -14px rgba(60,60,60,0.16) !important;
   }
 
   .ui-play .stat-card-live {
     background-color: var(--play-c-navy-soft) !important;
-    border-color: transparent !important;
-    box-shadow: 0 1px 2px rgba(60,60,60,0.05), 0 10px 26px -14px rgba(60,60,60,0.16) !important;
   }
 
   .ui-play .stat-card-assessments {
     background-color: var(--play-c-accent-soft) !important;
-    border-color: transparent !important;
-    box-shadow: 0 1px 2px rgba(60,60,60,0.05), 0 10px 26px -14px rgba(60,60,60,0.16) !important;
-  }
-
-  .ui-play .stat-card-courses:active,
-  .ui-play .stat-card-live:active,
-  .ui-play .stat-card-assessments:active {
-    transform: translateY(1px);
   }
 
   /* (Dead .stat-card-icon / .stat-card-title / .stat-card--* rules removed:

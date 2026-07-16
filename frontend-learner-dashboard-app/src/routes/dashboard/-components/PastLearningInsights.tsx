@@ -1,4 +1,3 @@
-// import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { usePastLearningInsights } from "../-hooks/usePastLearningInsights";
 import { LineChartComponent } from "./LineChartComponent";
 import { StudentProgressTable } from "./StudentProgressTable";

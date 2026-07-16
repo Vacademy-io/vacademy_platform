@@ -137,11 +137,14 @@ export function AttendanceWidget() {
 
   if (isPlay) {
     return (
-      <button
-        type="button"
+      // Non-interactive shell: the period toggles and the details chevron are
+      // real sibling <button>s (nesting them inside one big card-button is
+      // invalid HTML and hides them from screen readers). The card body still
+      // opens details on mouse click as a convenience; keyboard/SR users get
+      // the dedicated chevron button.
+      <div
         onClick={goToAttendance}
-        aria-label="View attendance details"
-        className="flex h-full w-full flex-col gap-4 rounded-play-card-sm border border-border bg-play-success-soft p-4 text-left shadow-play-soft-card"
+        className="flex h-full w-full cursor-pointer flex-col gap-4 rounded-play-card-sm border border-border bg-play-success-soft p-4 text-left shadow-play-soft-card"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -158,30 +161,33 @@ export function AttendanceWidget() {
           <div className="flex items-center gap-1">
             {!isEmpty &&
               (Object.keys(PERIOD_LABELS) as AttendancePeriod[]).map((p) => (
-                <span
+                <button
                   key={p}
-                  role="button"
-                  tabIndex={0}
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setPeriod(p);
                   }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      setPeriod(p);
-                    }
-                  }}
                   className={cn(
                     "rounded-full px-2.5 py-1 text-3xs font-black uppercase tracking-wide transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-play-ink/30",
                     period === p ? "bg-white text-play-success-soft-ink shadow-sm" : "text-play-ink/50"
                   )}
                 >
                   {PERIOD_LABELS[p]}
-                </span>
+                </button>
               ))}
-            <CaretRight size={14} weight="bold" className="ml-1 text-play-ink/50" />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                goToAttendance();
+              }}
+              aria-label="View attendance details"
+              className="ml-1 rounded-full p-1 text-play-ink/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-play-ink/30"
+            >
+              <CaretRight size={14} weight="bold" />
+            </button>
           </div>
         </div>
 
@@ -258,17 +264,17 @@ export function AttendanceWidget() {
             )}
           </>
         )}
-      </button>
+      </div>
     );
   }
 
   if (isCleanerPlay) {
     return (
-      <button
-        type="button"
+      // Same shell pattern as the Play branch above: non-interactive card,
+      // real sibling buttons for the toggles + details chevron.
+      <div
         onClick={goToAttendance}
-        aria-label="View attendance details"
-        className="cp-card flex h-full w-full flex-col gap-4 p-4 text-left"
+        className="cp-card flex h-full w-full cursor-pointer flex-col gap-4 p-4 text-left"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -283,30 +289,33 @@ export function AttendanceWidget() {
           <div className="flex items-center gap-1">
             {!isEmpty &&
               (Object.keys(PERIOD_LABELS) as AttendancePeriod[]).map((p) => (
-                <span
+                <button
                   key={p}
-                  role="button"
-                  tabIndex={0}
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setPeriod(p);
                   }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.stopPropagation();
-                      e.preventDefault();
-                      setPeriod(p);
-                    }
-                  }}
                   className={cn(
                     "rounded-full px-2.5 py-1 text-3xs font-semibold transition-colors",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
                     period === p ? "bg-cp-sage-tint text-cp-sage" : "cp-muted"
                   )}
                 >
                   {PERIOD_LABELS[p]}
-                </span>
+                </button>
               ))}
-            <CaretRight size={14} weight="bold" className="cp-muted ml-1" />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                goToAttendance();
+              }}
+              aria-label="View attendance details"
+              className="cp-muted ml-1 rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+            >
+              <CaretRight size={14} weight="bold" />
+            </button>
           </div>
         </div>
 
@@ -383,7 +392,7 @@ export function AttendanceWidget() {
             )}
           </>
         )}
-      </button>
+      </div>
     );
   }
 

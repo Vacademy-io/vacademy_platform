@@ -75,3 +75,26 @@ export function NavChatIcon({ className }: NavIconProps) {
     </svg>
   );
 }
+
+export function NavGiftIcon({ className }: NavIconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="4" y="8.5" width="16" height="4" rx="1" />
+      <path d="M5.5 12.5v6a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-6" />
+      <path d="M12 8.5v11" />
+      <path d="M12 8.5c-1.8 0-3.8-.6-3.8-2.2 0-1.1.8-1.8 1.8-1.8 1.4 0 2 1.7 2 4Z" />
+      <path d="M12 8.5c1.8 0 3.8-.6 3.8-2.2 0-1.1-.8-1.8-1.8-1.8-1.4 0-2 1.7-2 4Z" />
+    </svg>
+  );
+}
+
+export function NavCalendarCheckIcon({ className }: NavIconProps) {
+  return (
+    <svg {...base} className={className} aria-hidden="true">
+      <rect x="4.5" y="5.5" width="15" height="14" rx="1.5" />
+      <path d="M4.5 9.5h15" />
+      <path d="M8.5 3.5v3M15.5 3.5v3" />
+      <path d="M9.5 14l2 2 3.5-4" />
+    </svg>
+  );
+}

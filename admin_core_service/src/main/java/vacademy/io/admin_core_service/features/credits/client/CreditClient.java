@@ -209,8 +209,67 @@ public class CreditClient {
     }
 
     /**
+     * Deduct a PRECOMPUTED credit amount (the caller already priced the work — e.g.
+     * per-minute call metering) with an idempotency key. ai_service short-circuits a
+     * repeated key against credit_transactions.external_reference_id (V243 partial
+     * unique), so retries/replays charge exactly once. allow_negative because these are
+     * post-paid charges for already-delivered work (same convention as transcription /
+     * call_intelligence): the wallet may go negative rather than the charge dropping.
+     * No usage_log_id is sent, so the ai_token_usage request_type CHECK is never in play.
+     *
+     * @return true if ai_service acknowledged the deduction (or an idempotent replay)
+     */
+    public boolean deductPrecomputed(
+            String instituteId,
+            String requestType,
+            String description,
+            java.math.BigDecimal credits,
+            String idempotencyKey) {
+        try {
+            String url = aiServiceUrl + "/ai-service/credits/v1/deduct";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            Map<String, Object> body = new java.util.HashMap<>();
+            body.put("institute_id", instituteId);
+            body.put("request_type", requestType);
+            body.put("model", "system");
+            body.put("precomputed_credits", credits);
+            body.put("description", description);
+            body.put("idempotency_key", idempotencyKey);
+            body.put("allow_negative", true);
+            body.put("user_role", "SYSTEM");
+
+            HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+
+            @SuppressWarnings("unchecked")
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.POST,
+                    request,
+                    (Class<Map<String, Object>>) (Class<?>) Map.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Object success = response.getBody().get("success");
+                if (Boolean.TRUE.equals(success)) return true;
+                log.warn("Precomputed deduction not applied for institute {} key {}: {}",
+                        instituteId, idempotencyKey, response.getBody().get("message"));
+                return false;
+            }
+            log.warn("Precomputed deduction HTTP {} for institute {} key {}",
+                    response.getStatusCode(), instituteId, idempotencyKey);
+            return false;
+        } catch (RestClientException e) {
+            log.error("Error in precomputed deduction for institute {} key {}: {}",
+                    instituteId, idempotencyKey, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Get current credit balance for an institute.
-     * 
+     *
      * @param instituteId The institute ID
      * @return Map with balance info, or null if failed
      */

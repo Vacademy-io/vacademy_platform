@@ -93,7 +93,7 @@ export const ContinueLearningCard = ({
                     <button
                         type="button"
                         onClick={() => navigate({ to: "/study-library/courses" })}
-                        className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-body font-semibold text-primary-foreground shadow-sm transition-transform active:translate-y-0.5"
+                        className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-body font-semibold text-primary-foreground shadow-sm transition-transform active:translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2"
                     >
                         {isFirstRun ? (
                             <Play weight="fill" size={16} />
@@ -134,7 +134,7 @@ export const ContinueLearningCard = ({
                     <button
                         type="button"
                         onClick={() => navigate({ to: "/study-library/courses" })}
-                        className="inline-flex items-center gap-2 rounded-play-btn bg-play-success px-6 py-3 text-body font-black uppercase tracking-wide text-white shadow-play-2d-success transition-transform active:translate-y-0.5 active:shadow-none"
+                        className="inline-flex items-center gap-2 rounded-play-btn bg-play-success px-6 py-3 text-body font-black uppercase tracking-wide text-white shadow-play-2d-success transition-transform active:translate-y-0.5 active:shadow-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-play-ink/30"
                     >
                         {isFirstRun ? (
                             <Play weight="fill" size={16} />
@@ -223,10 +223,11 @@ export const ContinueLearningCard = ({
 
                 <div className="flex-1 space-y-2">
                     {data.slides.slice(0, 3).map((slide, index) => (
-                        <div
+                        <button
+                            type="button"
                             key={slide.slide_id}
                             onClick={() => onResumeClick(slide)}
-                            className="flex cursor-pointer items-center gap-3 rounded-xl border border-cp-border p-2.5 transition-colors hover:bg-cp-bg-deep"
+                            className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-cp-border p-2.5 text-left transition-colors hover:bg-cp-bg-deep focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                         >
                             <span
                                 className={cn(
@@ -247,14 +248,14 @@ export const ContinueLearningCard = ({
                                 </p>
                             </div>
                             <CaretRight size={14} weight="bold" className="cp-muted shrink-0" />
-                        </div>
+                        </button>
                     ))}
                 </div>
 
                 <button
                     type="button"
                     onClick={() => data.slides[0] && onResumeClick(data.slides[0])}
-                    className="flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-body font-semibold text-primary-foreground shadow-sm transition-transform active:translate-y-0.5"
+                    className="flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3 text-body font-semibold text-primary-foreground shadow-sm transition-transform active:translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2"
                 >
                     <Play weight="fill" size={16} />
                     Resume Learning
@@ -296,10 +297,11 @@ export const ContinueLearningCard = ({
 
                 <div className="flex-1 space-y-2">
                     {data.slides.slice(0, 3).map((slide, index) => (
-                        <div
+                        <button
+                            type="button"
                             key={slide.slide_id}
                             onClick={() => onResumeClick(slide)}
-                            className="flex cursor-pointer items-center gap-3 rounded-xl bg-white/60 p-2.5 transition-colors hover:bg-white"
+                            className="flex w-full cursor-pointer items-center gap-3 rounded-xl bg-white/60 p-2.5 text-left transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-play-ink/30"
                         >
                             <span
                                 className={cn(
@@ -320,14 +322,14 @@ export const ContinueLearningCard = ({
                                 </p>
                             </div>
                             <CaretRight size={14} weight="bold" className="shrink-0 text-play-ink/50" />
-                        </div>
+                        </button>
                     ))}
                 </div>
 
                 <button
                     type="button"
                     onClick={() => data.slides[0] && onResumeClick(data.slides[0])}
-                    className="flex w-full items-center justify-center gap-2 rounded-play-btn bg-play-navy py-3 text-body font-black uppercase tracking-wide text-white shadow-play-2d-navy transition-transform active:translate-y-0.5 active:shadow-none"
+                    className="flex w-full items-center justify-center gap-2 rounded-play-btn bg-play-navy py-3 text-body font-black uppercase tracking-wide text-white shadow-play-2d-navy transition-transform active:translate-y-0.5 active:shadow-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-play-ink/30"
                 >
                     <Play weight="fill" size={16} />
                     Resume Learning

@@ -698,7 +698,7 @@ export function DashboardComponent() {
         : Number.MAX_SAFE_INTEGER,
       visible: statCards.length > 0,
       render: (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 max-sm:[.ui-cleaner-play_&]:grid-cols-2 max-sm:[.ui-play_&]:grid-cols-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 max-sm:[.ui-cleaner-play_&]:grid-cols-2 max-sm:[.ui-play_&]:grid-cols-2 max-sm:[.ui-cleaner-play_&]:[&>*:last-child:nth-child(odd)]:col-span-2 max-sm:[.ui-play_&]:[&>*:last-child:nth-child(odd)]:col-span-2">
           {statCards.map((w) => (
             <div key={w.id}>{w.render}</div>
           ))}

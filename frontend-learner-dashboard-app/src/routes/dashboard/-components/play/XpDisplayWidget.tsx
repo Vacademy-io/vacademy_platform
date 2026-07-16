@@ -12,7 +12,9 @@ export const XpDisplayWidget: React.FC = () => {
 
   const xpPerLevel = 500;
   const xpInLevel = xpPerLevel - xpToNext;
-  const progress = Math.round((xpInLevel / xpPerLevel) * 100);
+  // Clamp like DashboardGamificationPanel: xpToNext > 500 would otherwise
+  // yield a negative width, which the browser drops → full-width gold bar.
+  const progress = Math.min(100, Math.max(0, Math.round((xpInLevel / xpPerLevel) * 100)));
   const hasXp = totalXp > 0;
 
   return (

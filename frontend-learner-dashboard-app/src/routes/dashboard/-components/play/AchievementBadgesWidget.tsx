@@ -1,5 +1,6 @@
 import React from "react";
 import { Lock, Star } from "@phosphor-icons/react";
+import { cn } from "@/lib/utils";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import type { PlayBadge } from "@/services/play-gamification";
 import iconBadges from "@/assets/cleaner-play/icon-badges.webp";
@@ -14,9 +15,10 @@ const BadgeItem: React.FC<{ badge: PlayBadge }> = ({ badge }) => {
   return (
     <div className="flex w-16 flex-col items-center gap-1" title={tooltip}>
       <div
-        className={`relative flex h-11 w-11 items-center justify-center rounded-full transition-all ${
+        className={cn(
+          "relative flex h-11 w-11 items-center justify-center rounded-full transition-all",
           unlocked ? "bg-white shadow-play-badge" : "bg-white/60 grayscale"
-        }`}
+        )}
       >
         <BadgeVisual
           icon={badge.icon}

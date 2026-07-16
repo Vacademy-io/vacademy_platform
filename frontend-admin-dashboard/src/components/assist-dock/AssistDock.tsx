@@ -1,13 +1,25 @@
+import { useState } from 'react';
 import { useRouterState } from '@tanstack/react-router';
-import { BookOpen, CaretLeft, CaretRight, GraduationCap, Question, Sparkle, X } from '@phosphor-icons/react';
+import {
+    BookOpen,
+    CaretLeft,
+    CaretRight,
+    GraduationCap,
+    Question,
+    RocketLaunch,
+    Sparkle,
+    X,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { getTokenFromCookie, isTokenExpired } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { useSupportConfig } from '@/services/support';
+import { useRoadmap } from '@/services/roadmap';
 import { SupportPanel } from '@/components/common/support/SupportPanel';
 import { useAssistDock } from './store';
 import { tutorialsForRoute } from './tutorials';
 import { TutorialViewer } from './TutorialViewer';
+import { RoadmapViewer } from './RoadmapViewer';
 
 // Keep in sync with routes/__root.tsx publicRoutes — the dock only shows inside
 // the authenticated shell.
@@ -23,6 +35,16 @@ const PUBLIC_PREFIXES = [
     '/vim/waitlist',
 ];
 
+const ROADMAP_SEEN_KEY = 'roadmapLastSeenAt';
+
+function readRoadmapSeenAt(): string | null {
+    try {
+        return localStorage.getItem(ROADMAP_SEEN_KEY);
+    } catch {
+        return null;
+    }
+}
+
 export function AssistDock() {
     const pathname = useRouterState({ select: (s) => s.location.pathname });
     const search = useRouterState({ select: (s) => s.location.search }) as { selectedTab?: string };
@@ -34,6 +56,8 @@ export function AssistDock() {
     const setMinimized = useAssistDock((s) => s.setMinimized);
     // Non-admin roles get a 403 here (retry disabled on the hook); the badge is simply omitted then.
     const supportConfig = useSupportConfig();
+    const roadmap = useRoadmap();
+    const [roadmapSeenAt, setRoadmapSeenAt] = useState<string | null>(readRoadmapSeenAt);
 
     const token = getTokenFromCookie(TokenKey.accessToken);
     const isAuthed = !!token && !isTokenExpired(token);
@@ -41,7 +65,20 @@ export function AssistDock() {
     if (!isAuthed || onPublicRoute) return null;
 
     const tutorials = tutorialsForRoute(pathname, search?.selectedTab);
+    const hasNewRoadmap = !!roadmap.data?.updatedAt && roadmap.data.updatedAt !== roadmapSeenAt;
     const totalBadge = tutorials.length + (supportConfig.data?.openTicketCount ?? 0);
+
+    const openRoadmap = () => {
+        togglePanel('roadmap');
+        if (roadmap.data?.updatedAt) {
+            try {
+                localStorage.setItem(ROADMAP_SEEN_KEY, roadmap.data.updatedAt);
+            } catch {
+                // private mode / storage disabled — the "new" badge just won't persist
+            }
+            setRoadmapSeenAt(roadmap.data.updatedAt);
+        }
+    };
 
     return (
         <>
@@ -59,6 +96,9 @@ export function AssistDock() {
                         <span className="flex size-4 items-center justify-center rounded-full bg-primary-500 text-caption font-semibold text-white">
                             {totalBadge}
                         </span>
+                    ) : null}
+                    {hasNewRoadmap ? (
+                        <span className="absolute -right-1 -top-1 size-2.5 rounded-full bg-primary-500 ring-2 ring-white" />
                     ) : null}
                 </button>
             ) : (
@@ -102,12 +142,29 @@ export function AssistDock() {
                     >
                         <Question size={20} weight={panel === 'support' ? 'fill' : 'regular'} />
                     </RailButton>
+
+                    <div className="my-1 h-px w-8 bg-neutral-100" />
+
+                    <RailButton
+                        label="What's new"
+                        active={panel === 'roadmap'}
+                        onClick={openRoadmap}
+                        dot={hasNewRoadmap}
+                    >
+                        <RocketLaunch size={20} weight={panel === 'roadmap' ? 'fill' : 'duotone'} />
+                    </RailButton>
                 </aside>
             )}
 
             <SupportPanel
                 open={panel === 'support'}
                 onOpenChange={(v) => setPanel(v ? 'support' : 'none')}
+            />
+
+            <RoadmapViewer
+                open={panel === 'roadmap'}
+                html={roadmap.data?.htmlContent ?? ''}
+                onClose={() => setPanel('none')}
             />
 
             {/* Tutorials panel (slides out left of the rail) */}
@@ -179,12 +236,15 @@ function RailButton({
     onClick,
     active,
     badge,
+    dot,
 }: {
     label: string;
     children: React.ReactNode;
     onClick: () => void;
     active?: boolean;
     badge?: number;
+    /** A small unread indicator, for when there's something new but no count to show. */
+    dot?: boolean;
 }) {
     return (
         <button
@@ -202,6 +262,9 @@ function RailButton({
                 <span className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-primary-500 text-caption font-semibold text-white">
                     {badge}
                 </span>
+            ) : null}
+            {dot ? (
+                <span className="absolute right-2 top-1.5 size-2 rounded-full bg-primary-500 ring-2 ring-white" />
             ) : null}
         </button>
     );

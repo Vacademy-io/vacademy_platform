@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 /** Which slide-out panel (if any) the right Assist Dock currently shows. */
-export type AssistPanel = 'none' | 'tutorials' | 'assistant' | 'support';
+export type AssistPanel = 'none' | 'tutorials' | 'assistant' | 'support' | 'roadmap';
 
 const MINIMIZED_KEY = 'assistDockMinimized';
 

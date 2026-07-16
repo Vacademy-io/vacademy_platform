@@ -51,6 +51,8 @@ import {
   NavNotepadIcon,
   NavClipboardCheckIcon,
   NavChatIcon,
+  NavGiftIcon,
+  NavCalendarCheckIcon,
 } from "./nav-icons";
 import type {
   SidebarItemsType,
@@ -167,6 +169,8 @@ export const MySidebar = ({
       homework: NavNotepadIcon,
       "assessment-center": NavClipboardCheckIcon,
       chat: NavChatIcon,
+      referral: NavGiftIcon,
+      attendance: NavCalendarCheckIcon,
     }),
     []
   );

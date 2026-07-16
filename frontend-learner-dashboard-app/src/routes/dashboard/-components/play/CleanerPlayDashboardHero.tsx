@@ -252,7 +252,9 @@ export function CleanerPlayDashboardHero(
               type="button"
               onClick={goToCta}
               aria-label={
-                resume ? `Continue ${resume.slideTitle}` : `${ctaLabel} learning`
+                // ctaLabel is already "Continue" / "Start learning" here —
+                // no " learning" suffix, unlike Play's "START"/"CONTINUE".
+                resume ? `Continue ${resume.slideTitle}` : ctaLabel
               }
               className={cn(
                 "w-full max-w-md rounded-full bg-primary px-8 py-4 text-primary-foreground",

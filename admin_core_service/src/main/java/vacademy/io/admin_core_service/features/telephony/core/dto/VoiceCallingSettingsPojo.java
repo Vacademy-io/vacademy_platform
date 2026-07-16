@@ -57,10 +57,26 @@ public class VoiceCallingSettingsPojo {
     @AllArgsConstructor
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class BillingConfig {
-        /** Per-billable-minute credit override; null = global price. */
+        /**
+         * Legacy blanket per-billable-minute override for the VOICE meters; the per-key
+         * fields below win when set. null = fall through to global credit_pricing.
+         */
         private Double perMinuteCreditOverride;
         /** Per-channel-per-day rental override; null = global price. */
         private Double perChannelDayCreditOverride;
+        // Per-meter credits-per-minute overrides, consumed by CallBillingService.
+        // null = fall through (voice keys → perMinuteCreditOverride → global
+        // credit_pricing; ai keys → global credit_pricing). Set today via a manual DB
+        // update on institutes.setting_json (VOICE_CALLING_SETTING.data.billing.*);
+        // settings UI later. 0 disables that meter for this institute.
+        /** Override: credits/min for outbound voice minutes (voice_call_out). */
+        private Double voiceCallOutPerMinuteCredits;
+        /** Override: credits/min for inbound voice minutes (voice_call_in). */
+        private Double voiceCallInPerMinuteCredits;
+        /** Override: credits/min for outbound AI-conversation minutes (ai_call_out). */
+        private Double aiCallOutPerMinuteCredits;
+        /** Override: credits/min for inbound AI-conversation minutes (ai_call_in). */
+        private Double aiCallInPerMinuteCredits;
         /** Concurrent channels this institute has purchased (hard dial cap). */
         private Integer purchasedChannels;
         /** The plan we sold them (free-text, for visibility in settings). */

@@ -110,11 +110,13 @@ export const StatCard = ({
                 "group relative overflow-hidden cursor-pointer transition-all duration-base ease-out-soft hover:shadow-md hover:border-primary/20 h-full",
                 // Vibrant: card stays white unless the caller passes the
                 // primary-50 wash + top-rail via className (tenant grammar)
-                // Play Mode Styles — overrides the global .ui-play .Card 20px
-                // radius/tinted-border/heavier-shadow with the Dashboard's
-                // quieter card-sm chrome (hairline border, near-flat shadow).
+                // Play Mode Styles — the Dashboard's quiet card-sm chrome
+                // (12px radius, hairline border, near-flat shadow). These
+                // !important utilities are the single source of truth for
+                // stat-card border/radius/shadow; play-theme.css's
+                // .stat-card-* rules only contribute the pastel background.
                 "[.ui-play_&]:!rounded-play-card-sm [.ui-play_&]:!border [.ui-play_&]:!border-border [.ui-play_&]:!shadow-play-soft-card",
-                "[.ui-play_&]:hover:-translate-y-1 [.ui-play_&]:active:translate-y-0.5 [.ui-play_&]:active:shadow-none",
+                "[.ui-play_&]:hover:-translate-y-1 [.ui-play_&]:active:translate-y-0.5 [.ui-play_&]:active:!shadow-none",
                 className
             )}
             tabIndex={0}

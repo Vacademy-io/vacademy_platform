@@ -16,7 +16,9 @@ export const StreakCounterWidget: React.FC = () => {
     <div
       className={cn(
         "flex h-full flex-col gap-3 rounded-play-card-sm border border-border p-4 shadow-play-soft-card",
-        hasStreak ? "bg-play-warn-soft" : "bg-play-surface"
+        // Inactive = quiet white (matches the pastel language) — the old
+        // flat-gray --play-c-surface fallback clashed with the -soft cards.
+        hasStreak ? "bg-play-warn-soft" : "bg-white"
       )}
     >
       <div className="flex items-center gap-3">
@@ -39,7 +41,9 @@ export const StreakCounterWidget: React.FC = () => {
             key={i}
             className={cn(
               "flex h-7 w-7 items-center justify-center rounded-full text-caption font-black",
-              dots[i] ? "bg-play-warn text-white" : "bg-white/70 text-play-ink/50"
+              // play-ink/5 reads on both the peach active card and the white
+              // inactive card (bg-white/70 was invisible on white).
+              dots[i] ? "bg-play-warn text-white" : "bg-play-ink/5 text-play-ink/50"
             )}
           >
             {dots[i] ? "✓" : label}

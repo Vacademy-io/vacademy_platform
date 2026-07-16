@@ -77,8 +77,12 @@ const addStudentVariables = (variableMap: Record<string, string>, student: any, 
     if (!student) return;
 
     // Basic student info (always try to map)
-    variableMap['{{name}}'] = getNestedValue(student, 'full_name', '');
-    variableMap['{{student_name}}'] = getNestedValue(student, 'full_name', '');
+    const fullName = getNestedValue(student, 'full_name', '');
+    const [firstName, ...restName] = fullName.split(' ');
+    variableMap['{{name}}'] = fullName;
+    variableMap['{{student_name}}'] = fullName;
+    variableMap['{{first_name}}'] = firstName || '';
+    variableMap['{{last_name}}'] = restName.join(' ');
     variableMap['{{email}}'] = getNestedValue(student, 'email', '');
     variableMap['{{student_email}}'] = getNestedValue(student, 'email', '');
     variableMap['{{mobile_number}}'] = getNestedValue(student, 'mobile_number', '');
@@ -273,10 +277,15 @@ export const getAvailableVariables = (context: MappingContext): string[] => {
     ];
 
     const contextVariables: Record<MappingContext, string[]> = {
+        // Kept in sync with the canonical TEMPLATE_VARIABLES catalog (message-template-types.ts)
+        // and bulkEmailService.ts's createStudentPlaceholders resolver — every entry here is a
+        // variable that actually gets substituted in the sent email, nothing dead.
         'student-management': [
             ...baseVariables,
             '{{name}}',
             '{{student_name}}',
+            '{{first_name}}',
+            '{{last_name}}',
             '{{email}}',
             '{{student_email}}',
             '{{mobile_number}}',
@@ -289,7 +298,6 @@ export const getAvailableVariables = (context: MappingContext): string[] => {
             '{{student_referral_code}}',
             '{{course_name}}',
             '{{course_description}}',
-            '{{course_duration}}',
             '{{course_price}}',
             '{{batch_name}}',
             '{{batch_id}}',
@@ -300,38 +308,39 @@ export const getAvailableVariables = (context: MappingContext): string[] => {
             '{{institute_phone}}',
             '{{institute_email}}',
             '{{institute_website}}',
+            '{{institute_logo}}',
             '{{attendance_status}}',
             '{{attendance_date}}',
             '{{attendance_percentage}}',
+            '{{attendance_total_classes}}',
+            '{{attendance_attended_classes}}',
+            '{{attendance_last_class_date}}',
+            '{{live_class_name}}',
             '{{live_class_title}}',
             '{{live_class_date}}',
+            '{{live_class_start_time}}',
+            '{{live_class_end_time}}',
             '{{live_class_time}}',
             '{{live_class_duration}}',
-            '{{live_class_instructor}}',
+            '{{live_class_link}}',
             '{{live_class_meeting_link}}',
-            '{{live_class_meeting_id}}',
-            '{{live_class_password}}',
+            '{{live_class_description}}',
+            '{{live_class_batch}}',
             '{{live_class_platform}}',
-            '{{live_class_room}}',
-            '{{live_class_notes}}',
-            '{{live_class_recording_link}}',
             '{{live_class_status}}',
             '{{next_live_class_date}}',
             '{{next_live_class_time}}',
-            '{{referral_code}}',
-            '{{referral_link}}',
             '{{referral_count}}',
             '{{referral_rewards}}',
             '{{referral_bonus}}',
             '{{referral_status}}',
-            '{{referred_by}}',
-            '{{referred_by_name}}',
-            '{{referral_program_start}}',
-            '{{referral_program_end}}',
-            '{{referral_terms}}',
+            '{{referral_date}}',
             '{{referral_benefits}}',
+            '{{referral_custom_content}}',
             '{{custom_field_1}}',
-            '{{custom_field_2}}'
+            '{{custom_field_2}}',
+            '{{support_email}}',
+            '{{support_link}}'
         ],
         'course': [
             ...baseVariables,

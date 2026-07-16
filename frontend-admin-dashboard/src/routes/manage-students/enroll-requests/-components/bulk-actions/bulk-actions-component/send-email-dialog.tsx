@@ -13,8 +13,7 @@ import {
 import { PaperPlaneTilt, Spinner, Eye } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useEnrollRequestsDialogStore } from '../bulk-actions-store';
-import { sendNotification, type UnifiedSendResponse } from '@/services/unified-send-service';
-import { getInstituteId } from '@/constants/helper';
+import { bulkEmailService, type BulkEmailResult } from '@/services/bulkEmailService';
 
 // Define email templates
 const EMAIL_TEMPLATES = [
@@ -50,7 +49,8 @@ interface StudentEmailStatus {
     error?: string;
 }
 
-// Define placeholder variables that users can insert
+// Placeholder variables users can insert — every one of these is actually resolved by
+// bulkEmailService.ts's per-student placeholder resolver at send time (no dead variables).
 const PLACEHOLDER_VARIABLES = [
     { label: 'Student Name', value: '{{name}}' },
     { label: 'Email Address', value: '{{email}}' },
@@ -58,7 +58,6 @@ const PLACEHOLDER_VARIABLES = [
     { label: 'Custom Message', value: '{{custom_message_text}}' },
     { label: 'Course Name', value: '{{course_name}}' },
     { label: 'Batch Name', value: '{{batch_name}}' },
-    { label: 'Session Name', value: '{{session_name}}' },
     { label: 'Login Username', value: '{{username}}' },
     { label: 'Registration Date', value: '{{registration_date}}' },
     { label: 'Current Date', value: '{{current_date}}' },
@@ -138,7 +137,6 @@ export const SendEmailDialog = () => {
             '{{custom_message_text}}': customMessage,
             '{{course_name}}': 'Mathematics Course', // You can get this from student data
             '{{batch_name}}': 'Batch A', // You can get this from student data
-            '{{session_name}}': 'Session 2024', // You can get this from student data
             '{{username}}': sampleStudent.email?.split('@')[0] || 'johndoe',
             '{{registration_date}}': '2024-01-15', // You can get this from student data
             '{{current_date}}': currentDate,
@@ -183,31 +181,23 @@ export const SendEmailDialog = () => {
             prevStatuses.map((s) => ({ ...s, status: 'sending' }))
         );
 
-        const students = isBulkAction
+        const allStudents = isBulkAction
             ? bulkActionInfo?.selectedStudents || []
             : selectedStudent
               ? [selectedStudent]
               : [];
 
-        const apiUsersPayload = studentEmailStatuses
+        // Only recipients we actually have an email-status entry for, with custom_message_text
+        // attached so bulkEmailService's resolver can populate {{custom_message_text}}.
+        const students = studentEmailStatuses
             .map((statusEntry) => {
-                const student = students.find((s) => s.user_id === statusEntry.userId);
+                const student = allStudents.find((s) => s.user_id === statusEntry.userId);
                 if (!student || !student.email) return null;
-
-                return {
-                    user_id: student.user_id,
-                    channel_id: student.email,
-                    placeholders: {
-                        name: student.full_name,
-                        email: student.email,
-                        mobile_number: student.mobile_number || '',
-                        custom_message_text: customMessage,
-                    },
-                };
+                return { ...student, custom_message_text: customMessage };
             })
-            .filter((p) => p !== null);
+            .filter((s): s is NonNullable<typeof s> => s !== null);
 
-        if (apiUsersPayload.length === 0) {
+        if (students.length === 0) {
             toast.error('Could not prepare payload for any student.');
             setIsBulkEmailSending(false);
             setStudentEmailStatuses((prevStatuses) =>
@@ -218,65 +208,40 @@ export const SendEmailDialog = () => {
 
         // Prepare email body (convert newlines to HTML breaks)
         const finalApiBody = trimmedEmailBody.replace(/\n/g, '<br />');
-        const instituteId = getInstituteId() || '';
 
         try {
-            // Build recipients for unified send API
-            const recipients = apiUsersPayload.map((u) => ({
-                email: u!.channel_id,
-                userId: u!.user_id,
-                variables: u!.placeholders as Record<string, string>,
-            }));
-
-            const response: UnifiedSendResponse = await sendNotification({
-                instituteId,
-                channel: 'EMAIL',
-                recipients,
-                options: {
-                    emailSubject: trimmedEmailSubject,
-                    emailBody: finalApiBody,
-                    emailType: 'UTILITY_EMAIL',
-                    source: 'STUDENT_MANAGEMENT_BULK_EMAIL',
-                },
+            // Delegate to bulkEmailService so every canonical variable in the picker
+            // ({{course_name}}, {{batch_name}}, {{username}}, {{registration_date}}, ...) is
+            // resolved per-student, not just the handful this dialog used to send manually.
+            const result: BulkEmailResult = await bulkEmailService.sendBulkEmail({
+                template: finalApiBody,
+                subject: trimmedEmailSubject,
+                students,
+                context: 'student-management',
+                notificationType: 'EMAIL',
+                source: 'STUDENT_MANAGEMENT_BULK_EMAIL',
+                sourceId: 'enroll-requests',
             });
 
-            if (response.status === 'COMPLETED' || response.status === 'PARTIAL') {
-                const successCount = response.accepted;
-                const failCount = response.failed;
-
-                if (failCount === 0) {
-                    toast.success(`Successfully sent ${successCount} email(s).`, {
+            if (result.success) {
+                if (result.failedStudents === 0) {
+                    toast.success(`Successfully sent ${result.processedStudents} email(s).`, {
                         id: 'bulk-email-progress',
                     });
                 } else {
-                    toast.warning(`Sent ${successCount}, failed ${failCount} email(s).`, {
-                        id: 'bulk-email-progress',
-                    });
+                    toast.warning(
+                        `Sent ${result.processedStudents - result.failedStudents}, failed ${result.failedStudents} email(s).`,
+                        { id: 'bulk-email-progress' }
+                    );
                 }
 
-                // Update per-student statuses from response results
-                if (response.results) {
-                    setStudentEmailStatuses((prev) =>
-                        prev.map((s) => {
-                            const result = response.results?.find((r) => r.email === s.email);
-                            return {
-                                ...s,
-                                status: result?.success ? 'sent' : result ? 'failed' : 'sent',
-                                error: result?.error,
-                            };
-                        })
-                    );
-                } else {
-                    setStudentEmailStatuses((prev) =>
-                        prev.map((s) => ({ ...s, status: 'sent' }))
-                    );
-                }
-            } else if (response.status === 'PROCESSING') {
-                toast.info(`Batch queued (${response.total} emails). Processing in background.`, {
-                    id: 'bulk-email-progress',
-                });
                 setStudentEmailStatuses((prev) =>
-                    prev.map((s) => ({ ...s, status: 'sent' }))
+                    prev.map((s) => {
+                        const failed = result.errors.find((e) => e.studentId === s.userId);
+                        return failed
+                            ? { ...s, status: 'failed', error: failed.error }
+                            : { ...s, status: 'sent' };
+                    })
                 );
             } else {
                 toast.error('Failed to send emails.', { id: 'bulk-email-progress' });

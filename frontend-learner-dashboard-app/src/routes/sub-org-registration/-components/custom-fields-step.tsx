@@ -17,6 +17,7 @@ import {
   getCountryCode,
   findCountryFieldKey,
 } from "@/components/common/enroll-by-invite/-utils/country-code-mapping";
+import { getCachedPreferredCountries } from "@/services/domain-routing";
 import { getDynamicSchema } from "@/routes/register/-utils/helper";
 import { AssessmentCustomFieldOpenRegistration } from "@/types/assessment-open-registration";
 import { capitalise } from "@/utils/custom-field";
@@ -136,15 +137,19 @@ const CustomFieldsStep = ({
 
   const watchedFormValues = useWatch({ control: form.control });
 
-  // Phone country code derives from a country field if one exists in the form
+  // Phone country code derives from a country field if one exists in the form,
+  // falling back to the institute's configured preferred country
+  // (commaSeparatedPreferredCountry) instead of a hardcoded default.
   const getPhoneCountryCode = () => {
+    const preferred = getCachedPreferredCountries();
+    const fallback = preferred[0] ?? "in";
     const formValues = form.getValues();
     const countryFieldKey = findCountryFieldKey(formValues);
     if (countryFieldKey) {
       const countryValue = formValues[countryFieldKey]?.value || "";
-      return getCountryCode(countryValue);
+      return getCountryCode(countryValue, fallback);
     }
-    return "in";
+    return fallback;
   };
 
   /** Collects values keyed by custom_field_id in the template's field order. */

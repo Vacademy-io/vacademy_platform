@@ -438,16 +438,14 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             // approvalStatusFilter already declared above
             // approvalStatusesToApply already declared above
 
-            // Handle custom field filters
-            const customFieldParams: Record<string, any> = {};
+            // Handle custom field filters — keyed by custom_field.id, matching the
+            // backend's StudentListFilter.customFieldFilters (Map<String, List<String>>).
+            const customFieldFilters: Record<string, string[]> = {};
             if (instituteDetails?.dropdown_custom_fields) {
-                let index = 0;
                 instituteDetails.dropdown_custom_fields.forEach((customField) => {
                     const filter = initialFilters.find((f) => f.id === customField.fieldKey);
                     if (filter && filter.value.length > 0) {
-                        customFieldParams[`customFieldId${index}`] = customField.id;
-                        customFieldParams[`customFieldValues${index}`] = filter.value.map((option) => option.id);
-                        index++;
+                        customFieldFilters[customField.id] = filter.value.map((option) => option.id);
                     }
                 });
             }
@@ -465,7 +463,9 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                 payment_statuses: paymentStatusesToApply,
                 type: learnerTypeToApply,
                 // approval_statuses is removed, merged into statuses
-                ...customFieldParams,
+                ...(Object.keys(customFieldFilters).length > 0
+                    ? { custom_field_filters: customFieldFilters }
+                    : { custom_field_filters: undefined }),
             }));
         }
     }, [instituteDetails, searchParams]);
@@ -607,16 +607,14 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         const paymentFilter = columnFilters.find((filter) => filter.id === 'payment_statuses');
         const paymentStatuses = paymentFilter ? paymentFilter.value.map((opt) => opt.id) : [];
 
-        // Handle custom field filters - convert to flat structure
-        const customFieldParams: Record<string, any> = {};
+        // Handle custom field filters — keyed by custom_field.id, matching the
+        // backend's StudentListFilter.customFieldFilters (Map<String, List<String>>).
+        const customFieldFilters: Record<string, string[]> = {};
         if (instituteDetails?.dropdown_custom_fields) {
-            let index = 0;
             instituteDetails.dropdown_custom_fields.forEach((customField) => {
                 const filter = columnFilters.find((f) => f.id === customField.fieldKey);
                 if (filter && filter.value.length > 0) {
-                    customFieldParams[`customFieldId${index}`] = customField.id;
-                    customFieldParams[`customFieldValues${index}`] = filter.value.map((option) => option.id);
-                    index++;
+                    customFieldFilters[customField.id] = filter.value.map((option) => option.id);
                 }
             });
         }
@@ -646,7 +644,9 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             ...(enrollInviteIds.length > 0 ? { enroll_invite_ids: enrollInviteIds } : {}),
             ...(audienceIds.length > 0 ? { audience_ids: audienceIds } : {}),
             ...(subOrgIds.length > 0 ? { sub_org_ids: subOrgIds } : {}),
-            ...customFieldParams,
+            ...(Object.keys(customFieldFilters).length > 0
+                ? { custom_field_filters: customFieldFilters }
+                : {}),
         };
 
         setAppliedFilters(newFilters);

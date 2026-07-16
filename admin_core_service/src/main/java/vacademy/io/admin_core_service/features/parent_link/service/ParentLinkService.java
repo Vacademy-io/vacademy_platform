@@ -1,10 +1,14 @@
 package vacademy.io.admin_core_service.features.parent_link.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
@@ -38,6 +42,15 @@ public class ParentLinkService {
 
     @Autowired
     private InstituteStudentRepository studentRepository;
+
+    @Autowired
+    private InstituteRepository instituteRepository;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @Autowired
+    private AudienceResponseRepository audienceResponseRepository;
 
     public UserDTO getParentOfStudent(String studentUserId) {
         if (!StringUtils.hasText(studentUserId)) {
@@ -194,13 +207,27 @@ public class ParentLinkService {
     }
 
     /**
-     * Students in this institute who don't have a guardian linked yet — the
-     * same eligibility check {@link #backfillGuardians} uses, exposed
-     * read-only so the settings page can show admins what a backfill run
-     * would actually touch before they confirm it.
+     * Enrolled students in this institute who don't have a guardian linked
+     * yet — the same eligibility check {@link #backfillGuardians} uses,
+     * exposed read-only so the settings page can show admins what a backfill
+     * run would actually touch before they confirm it.
      */
     public List<PendingGuardianStudentDTO> previewPendingGuardians(String instituteId) {
-        return computeEligibleStudents(instituteId).stream()
+        return toPendingDtos(computeEligibleFromUserIds(getEnrolledStudentUserIds(instituteId)));
+    }
+
+    /**
+     * Leads in this institute (any campaign, any status) whose student side
+     * already has a real user attached but no guardian linked yet — reaches
+     * leads that never got as far as an SSIGM enrollment row, unlike
+     * {@link #previewPendingGuardians}.
+     */
+    public List<PendingGuardianStudentDTO> previewPendingLeadGuardians(String instituteId) {
+        return toPendingDtos(computeEligibleFromUserIds(getLeadStudentUserIds(instituteId)));
+    }
+
+    private List<PendingGuardianStudentDTO> toPendingDtos(List<UserDTO> eligible) {
+        return eligible.stream()
                 .map(u -> PendingGuardianStudentDTO.builder()
                         .userId(u.getId())
                         .fullName(u.getFullName())
@@ -210,36 +237,49 @@ public class ParentLinkService {
                 .toList();
     }
 
-    /**
-     * Active-enrollment students in this institute with no guardian linked
-     * and who aren't themselves flagged as a guardian. Pre-filters via the
-     * local {@code student.guardian_user_id} column (cheap, no cross-service
-     * call) before the authoritative auth_service check — the local column is
-     * best-effort (see linkNewGuardian's CREATE_NEW branch), so auth_service's
-     * linked_parent_id/is_parent remains the source of truth for correctness;
-     * the local column only narrows the auth_service payload size.
-     */
-    private List<UserDTO> computeEligibleStudents(String instituteId) {
+    private List<String> getEnrolledStudentUserIds(String instituteId) {
         if (!StringUtils.hasText(instituteId)) {
             throw new VacademyException("instituteId is required");
         }
-
-        List<String> studentUserIds = ssigmRepository.findDistinctUserIdsByInstituteAndStatus(
+        return ssigmRepository.findDistinctUserIdsByInstituteAndStatus(
                 instituteId, List.of(LearnerSessionStatusEnum.ACTIVE.name()));
-        if (studentUserIds.isEmpty()) {
+    }
+
+    private List<String> getLeadStudentUserIds(String instituteId) {
+        if (!StringUtils.hasText(instituteId)) {
+            throw new VacademyException("instituteId is required");
+        }
+        return audienceResponseRepository.findDistinctStudentUserIdsByInstitute(instituteId);
+    }
+
+    /**
+     * Given a candidate id list from either source (enrolled students or
+     * leads), returns the ones with no guardian linked who also aren't
+     * themselves flagged as a guardian. Pre-filters via the local
+     * {@code student.guardian_user_id} column (cheap, no cross-service call)
+     * before the authoritative auth_service check — the local column is
+     * best-effort (see linkNewGuardian's CREATE_NEW branch), so auth_service's
+     * linked_parent_id/is_parent remains the source of truth for correctness;
+     * the local column only narrows the auth_service payload size. Leads with
+     * no local {@code student} row at all (never enrolled) simply always fall
+     * through to the auth_service check — the narrowing is a pure optimization,
+     * never a filter of correctness.
+     */
+    private List<UserDTO> computeEligibleFromUserIds(List<String> candidateUserIds) {
+        if (candidateUserIds.isEmpty()) {
             return List.of();
         }
 
-        Set<String> candidateUserIds = studentRepository.findByUserIdInAndGuardianUserIdIsNull(studentUserIds)
+        Set<String> narrowedUserIds = studentRepository.findByUserIdInAndGuardianUserIdIsNull(candidateUserIds)
                 .stream()
                 .map(Student::getUserId)
                 .collect(HashSet::new, Set::add, Set::addAll);
-        // Defensive: a student row might be missing locally (race with
-        // enrollment) — don't let that silently exclude someone auth_service
-        // would still consider eligible. Fall back to the full id list when
-        // the local narrowing found nothing, rather than trusting an empty
-        // local table.
-        List<String> lookupIds = candidateUserIds.isEmpty() ? studentUserIds : new ArrayList<>(candidateUserIds);
+        // Defensive: a student row might be missing locally (never enrolled, or
+        // a race with enrollment) — don't let that silently exclude someone
+        // auth_service would still consider eligible. Fall back to the full id
+        // list when the local narrowing found nothing, rather than trusting an
+        // empty/absent local table.
+        List<String> lookupIds = narrowedUserIds.isEmpty() ? candidateUserIds : new ArrayList<>(narrowedUserIds);
 
         List<UserDTO> students = authService.getUsersFromAuthServiceByUserIds(lookupIds);
         List<UserDTO> eligible = new ArrayList<>();
@@ -255,39 +295,91 @@ public class ParentLinkService {
     }
 
     public BackfillSummaryDTO backfillGuardians(String instituteId) {
-        List<UserDTO> eligibleStudents = computeEligibleStudents(instituteId);
-        if (eligibleStudents.isEmpty()) {
+        return runBackfill(instituteId, computeEligibleFromUserIds(getEnrolledStudentUserIds(instituteId)));
+    }
+
+    /** Same synthetic-guardian creation, sourced from leads instead of SSIGM enrollment. */
+    public BackfillSummaryDTO backfillLeadGuardians(String instituteId) {
+        return runBackfill(instituteId, computeEligibleFromUserIds(getLeadStudentUserIds(instituteId)));
+    }
+
+    /**
+     * Processes at most ONE batch ({@link #BACKFILL_CHUNK_SIZE}) per call —
+     * deliberately, so a single HTTP request can never run long enough to
+     * risk a reverse-proxy timeout, regardless of institute size. The
+     * frontend loops, calling this endpoint again until {@code totalEligible}
+     * comes back {@code <=} what this batch just processed. This is
+     * self-correcting rather than cursor-based: eligibility is recomputed
+     * fresh on every call, so a student processed in an earlier batch simply
+     * no longer appears (their linked_parent_id is now set) — no offset/page
+     * token needs to be threaded through by the caller.
+     *
+     * {@code totalEligible} in the response is the FULL outstanding count as
+     * of this call's snapshot (including the batch just processed), not just
+     * the batch size — that's what lets the frontend show real progress
+     * ("X of Y done") across the whole loop.
+     */
+    private BackfillSummaryDTO runBackfill(String instituteId, List<UserDTO> eligibleStudents) {
+        int totalEligible = eligibleStudents.size();
+        if (totalEligible == 0) {
             return BackfillSummaryDTO.builder().totalEligible(0).created(0).skipped(0).build();
         }
 
-        List<BackfillParentItemDTO> eligible = new ArrayList<>();
-        for (UserDTO student : eligibleStudents) {
+        List<UserDTO> batch = totalEligible > BACKFILL_CHUNK_SIZE
+                ? eligibleStudents.subList(0, BACKFILL_CHUNK_SIZE)
+                : eligibleStudents;
+
+        List<BackfillParentItemDTO> items = new ArrayList<>();
+        for (UserDTO student : batch) {
             String studentName = StringUtils.hasText(student.getFullName()) ? student.getFullName() : "Student";
-            eligible.add(BackfillParentItemDTO.builder()
+            items.add(BackfillParentItemDTO.builder()
                     .childUserId(student.getId())
                     .parentFullName(studentName + "'s Guardian")
                     .parentEmail(RandomStringUtils.randomAlphanumeric(10).toLowerCase() + "@vacademy.com")
                     .build());
         }
 
-        int created = 0;
-        int skipped = 0;
-        for (int i = 0; i < eligible.size(); i += BACKFILL_CHUNK_SIZE) {
-            List<BackfillParentItemDTO> chunk = eligible.subList(i, Math.min(i + BACKFILL_CHUNK_SIZE, eligible.size()));
-            BackfillParentsResultDTO result = authService.backfillParents(chunk, instituteId);
-            created += result.getCreated();
-            skipped += result.getSkipped();
-            if (result.getCreatedPairs() != null) {
-                for (BackfillCreatedPairDTO pair : result.getCreatedPairs()) {
-                    studentRepository.updateGuardianUserId(pair.getChildUserId(), pair.getParentUserId());
-                }
+        CredentialEmailConfig emailConfig = readCredentialEmailConfig(instituteId);
+        BackfillParentsResultDTO result = authService.backfillParents(
+                items, instituteId, emailConfig.sendCredentials(), emailConfig.recipient());
+        if (result.getCreatedPairs() != null) {
+            for (BackfillCreatedPairDTO pair : result.getCreatedPairs()) {
+                studentRepository.updateGuardianUserId(pair.getChildUserId(), pair.getParentUserId());
             }
         }
 
         return BackfillSummaryDTO.builder()
-                .totalEligible(eligible.size())
-                .created(created)
-                .skipped(skipped)
+                .totalEligible(totalEligible)
+                .created(result.getCreated())
+                .skipped(result.getSkipped())
                 .build();
+    }
+
+    private record CredentialEmailConfig(boolean sendCredentials, String recipient) {
+    }
+
+    /**
+     * Reads the Guardian Setting's backfill credential-email preference
+     * directly from the institute's setting blob — the same source the
+     * Settings page reads/writes (PARENT_SETTING), so there's a single
+     * source of truth rather than trusting a client-supplied flag on the
+     * backfill request itself.
+     */
+    private CredentialEmailConfig readCredentialEmailConfig(String instituteId) {
+        try {
+            String settingJson = instituteRepository.findById(instituteId)
+                    .map(institute -> institute.getSetting())
+                    .orElse(null);
+            if (!StringUtils.hasText(settingJson)) {
+                return new CredentialEmailConfig(false, "STUDENT");
+            }
+            JsonNode root = objectMapper.readTree(settingJson);
+            JsonNode data = root.path("setting").path("PARENT_SETTING").path("data");
+            boolean send = data.path("sendCredentialsOnBackfill").asBoolean(false);
+            String recipient = data.path("backfillCredentialRecipient").asText("STUDENT");
+            return new CredentialEmailConfig(send, recipient);
+        } catch (Exception e) {
+            return new CredentialEmailConfig(false, "STUDENT");
+        }
     }
 }

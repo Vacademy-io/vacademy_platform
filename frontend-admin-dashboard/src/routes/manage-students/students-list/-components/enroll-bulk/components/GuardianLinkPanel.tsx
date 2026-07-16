@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
+import { Form } from '@/components/ui/form';
 import { MyInput } from '@/components/design-system/input';
 import PhoneInputField from '@/components/design-system/phone-input-field';
 import { MagnifyingGlass, X } from '@phosphor-icons/react';
@@ -109,6 +110,7 @@ export const GuardianLinkPanel = ({ instituteId, personLabel, searchRoles, value
     };
 
     return (
+        <Form {...form}>
         <div className="rounded-md border border-neutral-200 bg-white p-3">
             <Tabs value={tab} onValueChange={(v) => setTab(v as 'create_new' | 'link_existing')}>
                 <TabsList className="h-8 w-full">
@@ -221,5 +223,6 @@ export const GuardianLinkPanel = ({ instituteId, personLabel, searchRoles, value
                 </TabsContent>
             </Tabs>
         </div>
+        </Form>
     );
 };

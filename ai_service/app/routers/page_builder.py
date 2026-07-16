@@ -218,6 +218,63 @@ async def _autogen_images(page: Any, db, institute_id: Optional[str], user_id: O
     return generated
 
 
+async def _import_site(url: str) -> str:
+    """Best-effort fetch of the institute's own site → a compact text corpus
+    (title, headings, paragraphs) so the rebuilt page keeps their REAL copy.
+    Returns '' on any failure — never blocks generation."""
+    if not url or not url.strip():
+        return ""
+    target = url.strip()
+    if not target.startswith(("http://", "https://")):
+        target = "https://" + target
+    # SSRF guard: only public http(s) hosts — block localhost / link-local /
+    # private ranges / non-http schemes so this can't probe internal services.
+    try:
+        import ipaddress
+        import socket
+        from urllib.parse import urlparse
+        host = (urlparse(target).hostname or "").lower()
+        if not host or host in ("localhost",) or host.endswith(".local") or host.endswith(".internal"):
+            return ""
+        try:
+            for info in socket.getaddrinfo(host, None):
+                ip = ipaddress.ip_address(info[4][0])
+                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                    logger.warning("[page-builder] site import blocked non-public host: %s", host)
+                    return ""
+        except socket.gaierror:
+            return ""
+    except Exception:  # noqa: BLE001 — never let the guard itself break generation
+        return ""
+    try:
+        # No redirect-following: a public URL could 30x to an internal one,
+        # sidestepping the DNS check above.
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
+            resp = await client.get(target, headers={"User-Agent": "Mozilla/5.0 (compatible; VacademyBot/1.0)"})
+        if resp.status_code != 200 or "text/html" not in resp.headers.get("content-type", ""):
+            return ""
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(resp.text[:800_000], "html.parser")
+        for tag in soup(["script", "style", "noscript", "svg", "iframe"]):
+            tag.decompose()
+        parts: List[str] = []
+        title = (soup.title.string if soup.title else "") or ""
+        if title.strip():
+            parts.append(f"TITLE: {title.strip()[:200]}")
+        for el in soup.find_all(["h1", "h2", "h3", "li", "p"]):
+            txt = " ".join(el.get_text(" ", strip=True).split())
+            if 3 <= len(txt) <= 400:
+                tag = el.name.upper()
+                parts.append(f"{tag}: {txt}" if tag.startswith("H") else txt)
+            if len(parts) >= 120:
+                break
+        corpus = "\n".join(parts)
+        return corpus[:6000]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-builder] site import failed: %s", e)
+        return ""
+
+
 async def _analyze_inspiration(image_urls: List[str], db, institute_id: Optional[str], user_id: Optional[str]) -> str:
     """Vision pass over inspiration screenshots → a short DESIGN brief (mood,
     palette direction, serif-vs-sans display, layout patterns). Structure/mood
@@ -269,6 +326,9 @@ class GeneratePageRequest(BaseModel):
     # Screenshots of sites the admin likes — analysed for LAYOUT/MOOD only
     # (never content), producing a design brief that steers the composer.
     inspiration_image_urls: List[str] = Field(default_factory=list)
+    # The institute's OWN existing website — we extract its real copy so the
+    # rebuilt page keeps their actual content ("rebuild my site").
+    source_url: Optional[str] = None
     # Compact snapshot of real courses, passed by the admin FE so copy and
     # data-bound components reference real offerings (no new cross-service call).
     courses: List[CourseSnapshotItem] = Field(default_factory=list)
@@ -408,7 +468,7 @@ _PREMIUM_DOCTRINE = [
 ]
 
 
-def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration_brief: str = "") -> str:
+def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration_brief: str = "", site_corpus: str = "", fixed_global: Optional[Dict[str, Any]] = None) -> str:
     parts: List[str] = []
     parts.append(
         "You are the page composer for Vacademy's catalogue website builder. You produce ONE page as "
@@ -454,6 +514,12 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
             "media images). Do NOT gen: logos of real brands or people. Keep total gen: fields ≤ 4. "
             "Leave an image field empty ('') rather than gen: when a real provided image fits or none is needed."
         )
+    if site_corpus:
+        parts.append(
+            "## EXISTING SITE CONTENT (the institute's OWN current website — REBUILD it in our system: "
+            "keep their real facts, program names, numbers and about-us copy; improve the writing and "
+            "structure, do NOT invent different facts)\n" + site_corpus
+        )
     if inspiration_brief:
         parts.append(
             "## INSPIRATION (the admin shared screenshots of sites they admire — a design DIRECTION for "
@@ -461,6 +527,13 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
         )
     if req.direction:
         parts.append(f"## DESIGN DIRECTION\n{req.direction}")
+
+    if fixed_global:
+        parts.append(
+            "## FIXED SITE THEME (this multi-page site already has a theme — reuse EXACTLY this "
+            "globalSettings for a consistent look; do NOT propose a different one)\n"
+            + json.dumps(fixed_global, ensure_ascii=False)
+        )
 
     page_type = req.page_type or "homepage"
     parts.append(
@@ -692,6 +765,77 @@ async def estimate_page_generation(
     return preflight_tool_credits(db, tool_key=_TOOL_KEY, tool_params={}, institute_id=institute_id)
 
 
+async def _compose_one_page(
+    body: GeneratePageRequest, catalog: Dict[str, Any], db, institute_id: str, actor_user_id: Optional[str],
+    fixed_global: Optional[Dict[str, Any]] = None,
+) -> tuple[Dict[str, Any], Optional[Dict[str, Any]], List[str], str, str]:
+    """Compose ONE page end-to-end: inspiration/site-import → prompt → LLM →
+    auto-images → sanitize → bill. Returns (page, global_settings, warnings,
+    model, run_id). Raises HTTPException(502) if the LLM call fails.
+    When fixed_global is set, the theme is pinned (multi-page consistency)."""
+    inspiration_brief = ""
+    if body.inspiration_image_urls:
+        try:
+            inspiration_brief = await _analyze_inspiration(
+                body.inspiration_image_urls, db, institute_id, actor_user_id
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[page-builder] inspiration analysis skipped: %s", e)
+
+    site_corpus = ""
+    if body.source_url:
+        try:
+            site_corpus = await _import_site(body.source_url)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[page-builder] site import skipped: %s", e)
+
+    prompt = _build_prompt(body, catalog, inspiration_brief, site_corpus, fixed_global)
+    run_id = uuid.uuid4().hex
+
+    primary, fallbacks = resolve_models(
+        db, "page_builder", preferred_model=body.preferred_model, hard_fallback=_DEFAULT_MODEL
+    )
+    try:
+        raw_json, model_used, usage = await generate_json(prompt, [primary, *fallbacks], label="page-builder")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-builder] generation failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"Page generation failed: {e}")
+
+    generated_urls: set = set()
+    if body.auto_images:
+        try:
+            data = json.loads(raw_json)
+            page_obj = data.get("page") if isinstance(data, dict) else None
+            if isinstance(page_obj, dict):
+                generated_urls = await _autogen_images(page_obj, db, institute_id, actor_user_id)
+                raw_json = json.dumps(data)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[page-builder] auto-image pass skipped: %s", e)
+
+    page, global_settings, warnings = _sanitize_page(raw_json, body, catalog, extra_allowed=generated_urls)
+    if fixed_global is not None:
+        global_settings = fixed_global  # pin the shared theme across the site
+
+    try:
+        record_tool_billing(
+            tool_key=_TOOL_KEY,
+            tool_params={"page_type": body.page_type or "homepage"},
+            request_type=RequestType.CONTENT,
+            model=model_used,
+            prompt_tokens=int((usage or {}).get("prompt_tokens") or 0),
+            completion_tokens=int((usage or {}).get("completion_tokens") or 0),
+            institute_id=institute_id,
+            user_id=actor_user_id,
+            user_role=None,
+            idempotency_key=f"{_TOOL_KEY}:{run_id}",
+            usage_markup=_USAGE_MARKUP,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-builder] billing skipped: %s", e)
+
+    return page, global_settings, warnings, model_used, run_id
+
+
 @router.post("/v1/generate", response_model=GeneratePageResponse)
 async def generate_page(
     body: GeneratePageRequest,
@@ -722,66 +866,9 @@ async def generate_page(
         )
 
     catalog = _load_catalog()
-    # Optional: turn inspiration screenshots into a design brief (best-effort —
-    # a vision hiccup must never fail the generation).
-    inspiration_brief = ""
-    if body.inspiration_image_urls:
-        try:
-            inspiration_brief = await _analyze_inspiration(
-                body.inspiration_image_urls, db, institute_id, actor_user_id
-            )
-        except Exception as e:  # noqa: BLE001
-            logger.warning("[page-builder] inspiration analysis skipped: %s", e)
-
-    prompt = _build_prompt(body, catalog, inspiration_brief)
-    # Billing id is minted server-side — a caller-supplied id could replay the
-    # idempotency key and make repeat generations free.
-    run_id = uuid.uuid4().hex
-
-    primary, fallbacks = resolve_models(
-        db, "page_builder", preferred_model=body.preferred_model, hard_fallback=_DEFAULT_MODEL
+    page, global_settings, warnings, model_used, run_id = await _compose_one_page(
+        body, catalog, db, institute_id, actor_user_id
     )
-    try:
-        raw_json, model_used, usage = await generate_json(
-            prompt, [primary, *fallbacks], label="page-builder"
-        )
-    except Exception as e:  # noqa: BLE001
-        logger.warning("[page-builder] generation failed: %s", e)
-        raise HTTPException(status_code=502, detail=f"Page generation failed: {e}")
-
-    # Auto-generate images the composer requested via "gen:<prompt>" sentinels
-    # (hero art, section visuals) — before sanitizing so the new URLs allowlist.
-    generated_urls: set = set()
-    if body.auto_images:
-        try:
-            data = json.loads(raw_json)
-            page_obj = data.get("page") if isinstance(data, dict) else None
-            if isinstance(page_obj, dict):
-                generated_urls = await _autogen_images(page_obj, db, institute_id, actor_user_id)
-                raw_json = json.dumps(data)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("[page-builder] auto-image pass skipped: %s", e)
-
-    page, global_settings, warnings = _sanitize_page(raw_json, body, catalog, extra_allowed=generated_urls)
-
-    # Best-effort post-paid billing; idempotency key dedups retried runs.
-    try:
-        record_tool_billing(
-            tool_key=_TOOL_KEY,
-            tool_params={"page_type": body.page_type or "homepage"},
-            request_type=RequestType.CONTENT,
-            model=model_used,
-            prompt_tokens=int((usage or {}).get("prompt_tokens") or 0),
-            completion_tokens=int((usage or {}).get("completion_tokens") or 0),
-            institute_id=institute_id,
-            user_id=actor_user_id,
-            user_role=None,
-            idempotency_key=f"{_TOOL_KEY}:{run_id}",
-            usage_markup=_USAGE_MARKUP,
-        )
-    except Exception as e:  # noqa: BLE001
-        logger.warning("[page-builder] billing skipped: %s", e)
-
     return GeneratePageResponse(
         page=page, global_settings=global_settings, run_id=run_id, model=model_used, warnings=warnings
     )
@@ -1253,3 +1340,116 @@ async def generate_page_image(
     if not urls:
         raise HTTPException(status_code=502, detail="Image generation failed — please try again.")
     return GenerateImageResponse(urls=urls, model=_IMAGE_MODEL)
+
+
+# ─── Multi-page site (one brief → several coherent pages) ────────────────────
+
+_SITE_PAGE_LABELS = {
+    "homepage": "the main landing page",
+    "about": "an about-us / our-story page",
+    "contact": "a contact page (address, form, map)",
+    "admissions": "an admissions / how-to-enroll page",
+    "courses": "a programs overview page",
+}
+
+
+class GenerateSiteRequest(BaseModel):
+    brief: str
+    page_types: List[str] = Field(default_factory=lambda: ["homepage", "about", "contact"])
+    institute_name: Optional[str] = None
+    images: List[PageImage] = Field(default_factory=list)
+    courses: List[CourseSnapshotItem] = Field(default_factory=list)
+    terminology: Optional[Dict[str, str]] = None
+    source_url: Optional[str] = None
+    auto_images: bool = True
+    preferred_model: Optional[str] = None
+
+
+class SitePageOut(BaseModel):
+    page_type: str
+    page: Dict[str, Any]
+
+
+class GenerateSiteResponse(BaseModel):
+    pages: List[SitePageOut]
+    global_settings: Optional[Dict[str, Any]] = None
+    model: str
+    warnings: List[str] = Field(default_factory=list)
+
+
+@router.post("/v1/site", response_model=GenerateSiteResponse)
+async def generate_site(
+    body: GenerateSiteRequest,
+    db: Session = Depends(db_dependency),
+    current_user=Depends(get_current_user),
+) -> GenerateSiteResponse:
+    if not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+    if not body.brief or not body.brief.strip():
+        raise HTTPException(status_code=400, detail="A brief describing the site is required.")
+    institute_id = getattr(current_user, "institute_id", None)
+    if not institute_id:
+        raise HTTPException(status_code=400, detail="No institute context on this session.")
+    actor_user_id = getattr(current_user, "user_id", None)
+
+    # De-dup, keep order, always lead with homepage, cap at 5 pages.
+    seen: set = set()
+    page_types: List[str] = []
+    for pt in ["homepage", *body.page_types]:
+        if pt not in seen and pt in _SITE_PAGE_LABELS:
+            seen.add(pt)
+            page_types.append(pt)
+    page_types = page_types[:5]
+
+    # Pre-flight for the whole run (N × the per-page flat cost).
+    estimate = preflight_tool_credits(
+        db, tool_key=_TOOL_KEY, tool_params={}, institute_id=institute_id
+    )
+    per_page = float(estimate.get("estimated_credits") or 0)
+    balance = float(estimate.get("current_balance") or 0)
+    if per_page * len(page_types) > balance:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"Insufficient credits: this {len(page_types)}-page site needs ~{per_page * len(page_types):.0f} "
+                f"credits but the balance is {balance:.0f}."
+            ),
+        )
+
+    catalog = _load_catalog()
+    pages: List[SitePageOut] = []
+    warnings: List[str] = []
+    shared_global: Optional[Dict[str, Any]] = None
+    model_used = _DEFAULT_MODEL
+
+    for i, pt in enumerate(page_types):
+        sub = GeneratePageRequest(
+            brief=f"{body.brief.strip()}\n\nThis is {_SITE_PAGE_LABELS[pt]} of the site.",
+            page_type=pt,
+            institute_name=body.institute_name,
+            images=body.images,
+            # Only import the source site + real courses on the homepage — other
+            # pages inherit the theme and brief (keeps cost/latency down).
+            source_url=body.source_url if i == 0 else None,
+            courses=body.courses if pt in ("homepage", "courses") else [],
+            terminology=body.terminology,
+            auto_images=body.auto_images,
+            preferred_model=body.preferred_model,
+        )
+        try:
+            page, gs, w, model_used, _ = await _compose_one_page(
+                sub, catalog, db, institute_id, actor_user_id, fixed_global=shared_global
+            )
+        except HTTPException:
+            if pages:
+                break  # keep what we have if a later page fails
+            raise
+        if shared_global is None:
+            shared_global = gs
+        page["route"] = pt if pt != "homepage" else (page.get("route") or "home")
+        pages.append(SitePageOut(page_type=pt, page=page))
+        warnings.extend(w)
+
+    if not pages:
+        raise HTTPException(status_code=502, detail="Site generation produced no pages — please retry.")
+    return GenerateSiteResponse(pages=pages, global_settings=shared_global, model=model_used, warnings=warnings)

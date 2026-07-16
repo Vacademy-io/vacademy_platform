@@ -5,6 +5,7 @@ import {
     AI_PAGE_BUILDER_EDIT,
     AI_PAGE_BUILDER_BRAND_KIT,
     AI_PAGE_BUILDER_IMAGE,
+    AI_PAGE_BUILDER_SITE,
 } from '@/constants/urls';
 import { CatalogueConfig, Component, Page } from '../-types/editor-types';
 import { CATALOGUE_FONTS } from '../-utils/catalogue-fonts';
@@ -30,6 +31,7 @@ export interface GeneratePagePayload {
     institute_name?: string;
     images?: AiPageImage[];
     inspiration_image_urls?: string[];
+    source_url?: string;
     courses?: AiCourseSnapshotItem[];
     terminology?: Record<string, string>;
     direction?: string;
@@ -139,6 +141,33 @@ export interface BrandKitResponse {
 /* ─── Image / logo generation ──────────────────────────────────────────── */
 
 export type AiImageKind = 'logo' | 'hero' | 'banner' | 'illustration' | 'photo' | 'image';
+
+export interface GenerateSitePayload {
+    brief: string;
+    page_types?: string[];
+    institute_name?: string;
+    images?: AiPageImage[];
+    courses?: AiCourseSnapshotItem[];
+    terminology?: Record<string, string>;
+    source_url?: string;
+    auto_images?: boolean;
+}
+
+export interface GenerateSiteResponse {
+    pages: { page_type: string; page: GeneratedPage }[];
+    global_settings?: Record<string, any> | null;
+    model: string;
+    warnings: string[];
+}
+
+export const generateAiSite = async (payload: GenerateSitePayload): Promise<GenerateSiteResponse> => {
+    const response = await authenticatedAxiosInstance.post<GenerateSiteResponse>(
+        AI_PAGE_BUILDER_SITE(),
+        payload,
+        { timeout: 600000 } // several pages, one large LLM call each
+    );
+    return response.data;
+};
 
 export const generateAiImage = async (payload: {
     prompt: string;

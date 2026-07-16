@@ -24,8 +24,8 @@ import { useEditorStore } from '../-stores/editor-store';
 import { ImageUploadField } from './ImageUploadField';
 import { renderComponentPreview } from './ComponentPreviews';
 import {
-    generateAiPage, estimateAiPageCredits, generateAiImage,
-    AiPageImage, GeneratePageResponse,
+    generateAiPage, estimateAiPageCredits, generateAiImage, generateAiSite,
+    AiPageImage, GeneratePageResponse, GenerateSiteResponse,
 } from '../-services/ai-page-service';
 import { Component, Page } from '../-types/editor-types';
 
@@ -65,6 +65,7 @@ export const AiPageWizard = ({
     const [images, setImages] = useState<AiPageImage[]>([]);
     const [pendingUrl, setPendingUrl] = useState('');
     const [inspiration, setInspiration] = useState<string[]>([]);
+    const [sourceUrl, setSourceUrl] = useState('');
     const [pendingInsp, setPendingInsp] = useState('');
     const [directionIdx, setDirectionIdx] = useState(-1); // -1 = model's own choice
     // Every generation lands as a variant tab; the admin flips between them
@@ -76,6 +77,8 @@ export const AiPageWizard = ({
     const [autoImages, setAutoImages] = useState(true);
     const [logoPrompt, setLogoPrompt] = useState('');
     const [logoOptions, setLogoOptions] = useState<string[]>([]);
+    const [wholeSite, setWholeSite] = useState(false);
+    const [siteResult, setSiteResult] = useState<GenerateSiteResponse | null>(null);
 
     // Compact snapshot of real offerings from institute details (no new API)
     const courseSnapshot = useMemo(() => {
@@ -115,6 +118,7 @@ export const AiPageWizard = ({
                 institute_name: (instituteDetails as any)?.institute_name || undefined,
                 images,
                 inspiration_image_urls: inspiration,
+                source_url: sourceUrl.trim() || undefined,
                 courses: useRealData ? courseSnapshot : [],
                 terminology,
                 direction,
@@ -146,12 +150,47 @@ export const AiPageWizard = ({
         },
     });
 
+    const siteMutation = useMutation({
+        mutationFn: () =>
+            generateAiSite({
+                brief,
+                page_types: ['homepage', 'about', 'contact'],
+                institute_name: (instituteDetails as any)?.institute_name || undefined,
+                images,
+                courses: useRealData ? courseSnapshot : [],
+                terminology,
+                source_url: sourceUrl.trim() || undefined,
+                auto_images: autoImages,
+            }),
+        onSuccess: (data) => { setSiteResult(data); setStep('review'); },
+        onError: (err: any) => {
+            const detail = err?.response?.data?.detail;
+            toast({ title: 'Site generation failed', description: typeof detail === 'string' ? detail : 'Please try again.', variant: 'destructive' });
+        },
+    });
+
+    const acceptSite = () => {
+        if (!siteResult || !config) return;
+        if (applyTheme && siteResult.global_settings) updateGlobalSettings(siteResult.global_settings);
+        const routes = new Set(config.pages.map((p) => p.route));
+        for (const sp of siteResult.pages) {
+            let route = sp.page.route || sp.page_type;
+            let n = 2;
+            while (routes.has(route)) route = `${sp.page.route}-${n++}`;
+            routes.add(route);
+            addPage({ id: sp.page.id, route, title: sp.page.title || undefined, components: sp.page.components as Component[] } as Page);
+        }
+        toast({ title: `${siteResult.pages.length} pages added`, description: 'Review on the canvas, then Save and Publish.' });
+        handleClose(false);
+    };
+
     const reset = () => {
         setStep('brief');
         setBrief('');
         setPageType('homepage');
         setImages([]);
         setInspiration([]);
+        setSourceUrl('');
         setPendingInsp('');
         setDirectionIdx(-1);
         setVariants([]);
@@ -160,6 +199,8 @@ export const AiPageWizard = ({
         setAutoImages(true);
         setLogoPrompt('');
         setLogoOptions([]);
+        setWholeSite(false);
+        setSiteResult(null);
     };
 
     const handleClose = (next: boolean) => {
@@ -201,7 +242,7 @@ export const AiPageWizard = ({
         handleClose(false);
     };
 
-    const busy = generateMutation.isPending;
+    const busy = generateMutation.isPending || siteMutation.isPending;
 
     return (
         <Dialog open={open} onOpenChange={handleClose}>
@@ -254,6 +295,15 @@ export const AiPageWizard = ({
                                 </p>
                             </div>
                             <Switch checked={useRealData} onCheckedChange={setUseRealData} />
+                        </div>
+                        <div className="flex items-center justify-between rounded border bg-gray-50 p-3">
+                            <div>
+                                <Label className="text-xs">Generate a whole site</Label>
+                                <p className="text-caption text-gray-400">
+                                    Home, About &amp; Contact with one consistent theme (uses more credits)
+                                </p>
+                            </div>
+                            <Switch checked={wholeSite} onCheckedChange={setWholeSite} />
                         </div>
                     </div>
                 )}
@@ -350,6 +400,19 @@ export const AiPageWizard = ({
                             )}
                         </div>
 
+                        {/* Rebuild from an existing website — import real copy */}
+                        <div className="mt-4 space-y-2 rounded-lg border border-dashed border-gray-200 p-3">
+                            <p className="text-xs font-medium text-gray-700">Rebuild from your current website (optional)</p>
+                            <p className="text-caption text-gray-400">
+                                We read your existing page&apos;s real copy and rebuild it here — import content you own.
+                            </p>
+                            <Input
+                                value={sourceUrl}
+                                onChange={(e) => setSourceUrl(e.target.value)}
+                                placeholder="https://your-current-site.com"
+                            />
+                        </div>
+
                         {/* Inspiration screenshots — analysed for layout/mood only */}
                         <div className="mt-4 space-y-2 rounded-lg border border-dashed border-gray-200 p-3">
                             <p className="text-xs font-medium text-gray-700">Screenshots of sites you like (optional)</p>
@@ -438,7 +501,38 @@ export const AiPageWizard = ({
                     </div>
                 )}
 
-                {step === 'review' && result && (
+                {step === 'review' && siteResult && (
+                    <div className="space-y-3">
+                        <p className="text-xs text-gray-500">
+                            Site ready — <span className="font-medium text-gray-800">{siteResult.pages.length} pages</span>, one shared theme:
+                        </p>
+                        <ul className="space-y-1.5 rounded border bg-gray-50 p-3">
+                            {siteResult.pages.map((sp) => (
+                                <li key={sp.page_type} className="flex items-center justify-between text-xs text-gray-700">
+                                    <span className="font-medium capitalize">{sp.page_type}</span>
+                                    <span className="text-caption text-gray-400">{sp.page.components.length} sections</span>
+                                </li>
+                            ))}
+                        </ul>
+                        {siteResult.global_settings && (
+                            <div className="flex items-center justify-between rounded-lg border border-primary-100 bg-primary-50 p-3">
+                                <div className="min-w-0">
+                                    <p className="text-xs font-medium text-primary-600">Apply the matching site theme</p>
+                                    <p className="text-caption text-gray-500">
+                                        {(siteResult.global_settings as any)?.theme?.preset || 'default'} ·{' '}
+                                        {String((siteResult.global_settings as any)?.fonts?.headingFamily || (siteResult.global_settings as any)?.fonts?.family || '').split(',')[0]}
+                                    </p>
+                                </div>
+                                <Switch checked={applyTheme} onCheckedChange={setApplyTheme} />
+                            </div>
+                        )}
+                        <p className="text-caption text-gray-400">
+                            Adds all pages as unsaved changes — review on the canvas, then Save and Publish.
+                        </p>
+                    </div>
+                )}
+
+                {step === 'review' && result && !siteResult && (
                     <div className="space-y-3">
                         {/* Variant tabs — every regeneration is kept for comparison */}
                         {variants.length > 1 && (
@@ -530,7 +624,7 @@ export const AiPageWizard = ({
                                 <ArrowLeft className="mr-1 size-4" /> Back
                             </Button>
                             <Button
-                                onClick={() => generateMutation.mutate(directionIdx >= 0 ? DIRECTIONS[directionIdx] : undefined)}
+                                onClick={() => (wholeSite ? siteMutation.mutate() : generateMutation.mutate(directionIdx >= 0 ? DIRECTIONS[directionIdx] : undefined))}
                                 disabled={busy || estimate?.sufficient === false}
                             >
                                 {busy ? (
@@ -538,11 +632,16 @@ export const AiPageWizard = ({
                                 ) : (
                                     <Sparkle className="mr-1 size-4" />
                                 )}
-                                Generate page
+                                {wholeSite ? 'Generate site' : 'Generate page'}
                             </Button>
                         </>
                     )}
-                    {step === 'review' && (
+                    {step === 'review' && siteResult && (
+                        <Button onClick={acceptSite} disabled={siteMutation.isPending}>
+                            <Plus className="mr-1 size-4" /> Add {siteResult.pages.length} pages to site
+                        </Button>
+                    )}
+                    {step === 'review' && !siteResult && (
                         <>
                             <Button variant="ghost" onClick={tryAnotherDirection} disabled={busy}>
                                 {busy ? (

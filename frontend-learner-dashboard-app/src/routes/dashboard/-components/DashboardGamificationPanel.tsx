@@ -326,8 +326,26 @@ function BadgesCard({ data }: { data: PlayGamificationData | null }) {
 
 export const DashboardGamificationPanel: React.FC = () => {
   const data = usePlayGamificationStore((s) => s.data);
+  const isLoading = usePlayGamificationStore((s) => s.isLoading);
   // Master toggle off → hide the badges card (XP + streak stay).
   const showBadges = data?.badgesEnabled !== false;
+
+  // No empty-state flash: skeletons until the store resolves (cache or fetch).
+  if (isLoading) {
+    return (
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className={cn(
+              "h-36 animate-pulse rounded-xl border border-border bg-muted/50",
+              "cp-card [.ui-cleaner-play_&]:bg-cp-bg-deep"
+            )}
+          />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

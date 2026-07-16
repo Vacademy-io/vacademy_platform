@@ -100,7 +100,13 @@ export function AttendanceWidget() {
 
   if (isLoading && isLoadingWeekly) {
     return (
-      <Card className="h-full">
+      <Card
+        className={cn(
+          "h-full",
+          "cp-card",
+          "[.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border-border [.ui-play_&]:bg-play-success-soft/50 [.ui-play_&]:shadow-play-soft-card"
+        )}
+      >
         <CardContent className="p-4 space-y-4">
           <Skeleton className="h-6 w-40" />
           <div className="flex gap-4">

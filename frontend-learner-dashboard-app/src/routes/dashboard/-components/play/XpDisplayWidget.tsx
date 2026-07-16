@@ -5,6 +5,7 @@ import iconPoints from "@/assets/cleaner-play/icon-points.webp";
 
 export const XpDisplayWidget: React.FC = () => {
   const data = usePlayGamificationStore((s) => s.data);
+  const isLoading = usePlayGamificationStore((s) => s.isLoading);
   const totalXp = data?.totalXp ?? 0;
   const level = data?.level ?? 1;
   const xpToNext = data?.xpToNextLevel ?? 500;
@@ -16,6 +17,12 @@ export const XpDisplayWidget: React.FC = () => {
   // yield a negative width, which the browser drops → full-width gold bar.
   const progress = Math.min(100, Math.max(0, Math.round((xpInLevel / xpPerLevel) * 100)));
   const hasXp = totalXp > 0;
+
+  if (isLoading) {
+    return (
+      <div className="h-full min-h-36 animate-pulse rounded-play-card-sm border border-border bg-play-gold-soft/50 shadow-play-soft-card" />
+    );
+  }
 
   return (
     <div className="flex h-full flex-col gap-3 rounded-play-card-sm border border-border bg-play-gold-soft p-4 shadow-play-soft-card">

@@ -67,13 +67,13 @@ function getVerdict(pct: number): {
     return {
       label: "Excellent",
       className:
-        "border-success-200 bg-success-50 text-success-700 [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-success [.ui-play_&]:font-black [.ui-play_&]:text-white",
+        "border-success-200 bg-success-50 text-success-700 [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-success-soft [.ui-play_&]:font-black [.ui-play_&]:text-play-success-soft-ink",
     };
   if (pct >= 60)
     return {
       label: "Good",
       className:
-        "border-success-200 bg-success-50 text-success-700 [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-success [.ui-play_&]:font-black [.ui-play_&]:text-white",
+        "border-success-200 bg-success-50 text-success-700 [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-success-soft [.ui-play_&]:font-black [.ui-play_&]:text-play-success-soft-ink",
     };
   if (pct >= 50)
     return {
@@ -422,7 +422,7 @@ export function ComparisonDashboard({
           primary-50 wash + top rail. Default rendering is unchanged. */}
       <Card
         className={cn(
-          "[.ui-play_&]:rounded-play-card [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:bg-play-highlight",
+          "[.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:bg-play-gold-soft",
           "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-vibrant_&]:bg-primary-50"
         )}
       >

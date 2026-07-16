@@ -138,7 +138,7 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
 
     if (initialLoading) {
         return (
-            <Card className={cn("border border-border shadow-sm bg-card", className)}>
+            <Card className={cn("border border-border shadow-sm bg-card", "cp-card", className)}>
                 <CardHeader className="p-4 pb-2">
                     <Skeleton className="h-5 w-32" />
                 </CardHeader>
@@ -155,7 +155,7 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
     }
 
     return (
-        <Card className={cn("border border-border shadow-sm bg-card", className)}>
+        <Card className={cn("border border-border shadow-sm bg-card", "cp-card", className)}>
             <CardHeader className="p-4 pb-2">
                 <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary uppercase">
                     <BookOpen className="w-5 h-5" />

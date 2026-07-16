@@ -7,10 +7,17 @@ const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
 export const StreakCounterWidget: React.FC = () => {
   const data = usePlayGamificationStore((s) => s.data);
+  const isLoading = usePlayGamificationStore((s) => s.isLoading);
   const streak = data?.currentStreak ?? 0;
   const best = data?.longestStreak ?? 0;
   const dots = data?.weeklyDots ?? Array(7).fill(false);
   const hasStreak = streak > 0;
+
+  if (isLoading) {
+    return (
+      <div className="h-full min-h-36 animate-pulse rounded-play-card-sm border border-border bg-play-warn-soft/50 shadow-play-soft-card" />
+    );
+  }
 
   return (
     <div

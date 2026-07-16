@@ -424,7 +424,7 @@ export default function ProfilePage() {
               <div
                 className={cn(
                   "bg-card rounded-xl border shadow overflow-hidden relative",
-                  "[.ui-play_&]:rounded-play-card [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:bg-play-highlight",
+                  "[.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:bg-play-gold-soft [.ui-play_&]:shadow-play-soft-card",
                   "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-vibrant_&]:bg-primary-50"
                 )}
               >

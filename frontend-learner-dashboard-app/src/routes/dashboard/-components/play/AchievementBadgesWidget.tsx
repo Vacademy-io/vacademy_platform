@@ -60,10 +60,17 @@ function isRecent(dateStr: string): boolean {
 
 export const AchievementBadgesWidget: React.FC = () => {
   const data = usePlayGamificationStore((s) => s.data);
+  const isLoading = usePlayGamificationStore((s) => s.isLoading);
   // Master toggle off → the institute disabled badges; render nothing.
   if (data?.badgesEnabled === false) return null;
   const badges = data?.badges ?? [];
   const unlockedCount = badges.filter((b) => b.unlocked).length;
+
+  if (isLoading) {
+    return (
+      <div className="h-full min-h-36 animate-pulse rounded-play-card-sm border border-border bg-play-accent-soft/50 shadow-play-soft-card" />
+    );
+  }
 
   return (
     <div className="flex h-full flex-col gap-3 rounded-play-card-sm border border-border bg-play-accent-soft p-4 shadow-play-soft-card">

@@ -16,7 +16,13 @@ import iconProgress from "@/assets/cleaner-play/icon-progress.webp";
 
 // Enhanced Loading Skeleton
 const AnalyticsLoadingSkeleton = () => (
-  <div className="space-y-6">
+  <div
+    className={cn(
+      "space-y-6",
+      "cp-card [.ui-cleaner-play_&]:p-4",
+      "[.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:bg-play-navy-soft/50 [.ui-play_&]:p-4 [.ui-play_&]:shadow-play-soft-card"
+    )}
+  >
     {/* Header Skeleton */}
     <div className="border rounded-lg p-5 flex flex-col sm:flex-row justify-between gap-4">
       <div className="flex items-center gap-4">

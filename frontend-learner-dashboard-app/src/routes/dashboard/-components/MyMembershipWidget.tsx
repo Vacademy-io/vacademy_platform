@@ -6,6 +6,8 @@ import { GET_BATCH_LIST, urlPublicCourseDetails, urlInstituteDetails } from "@/c
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { cn } from "@/lib/utils";
 import { Crown, BookOpen } from "@phosphor-icons/react";
+import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
+import iconShop from "@/assets/cleaner-play/icon-shop.webp";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 interface MyMembershipWidgetProps {
@@ -36,6 +38,7 @@ interface MembershipPackage {
 }
 
 export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ className }) => {
+    const isCleanerPlay = useCleanerPlayTheme();
     const [loading, setLoading] = useState(true);
     const [memberships, setMemberships] = useState<MembershipPackage[]>([]);
 
@@ -165,7 +168,7 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
 
     if (loading) {
         return (
-            <Card className={cn("border border-border shadow-sm bg-card", className)}>
+            <Card className={cn("border border-border shadow-sm bg-card", "cp-card", className)}>
                 <CardHeader className="pb-2">
                     <Skeleton className="h-5 w-32" />
                 </CardHeader>
@@ -182,10 +185,17 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
     }
 
     return (
-        <Card className={cn("border border-border shadow-sm bg-card", className)}>
+        <Card className={cn("border border-border shadow-sm bg-card", "cp-card", className)}>
             <CardHeader className="p-4 pb-2">
-                <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary uppercase">
-                    <Crown className="w-5 h-5" />
+                <CardTitle className={cn(
+                    "text-sm font-bold flex items-center gap-2 text-primary uppercase",
+                    "cp-heading [.ui-cleaner-play_&]:normal-case"
+                )}>
+                    {isCleanerPlay ? (
+                        <img src={iconShop} alt="" aria-hidden="true" className="h-9 w-9 object-contain" />
+                    ) : (
+                        <Crown className="w-5 h-5" />
+                    )}
                     My Membership
                 </CardTitle>
             </CardHeader>

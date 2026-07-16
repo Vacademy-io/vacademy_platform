@@ -982,7 +982,7 @@ function Slides() {
           <button
             type="button"
             onClick={() => toast.dismiss(t)}
-            className="flex items-center gap-3 rounded-play-card bg-play-success px-5 py-4 shadow-play-4d-success active:translate-y-0.5 active:shadow-none"
+            className="flex items-center gap-3 rounded-play-btn bg-play-success px-5 py-4 shadow-play-2d-success active:translate-y-0.5 active:shadow-none"
           >
             <playIllustrations.Winners className="h-12 w-auto shrink-0 text-white" />
             <span className="text-left">
@@ -1016,7 +1016,7 @@ function Slides() {
         <button
           type="button"
           onClick={() => toast.dismiss(t)}
-          className="flex items-center gap-3 rounded-play-card bg-play-success px-4 py-3 shadow-play-4d-success active:translate-y-0.5 active:shadow-none"
+          className="flex items-center gap-3 rounded-play-btn bg-play-success px-4 py-3 shadow-play-2d-success active:translate-y-0.5 active:shadow-none"
         >
           <playIllustrations.Completed className="h-10 w-auto shrink-0 text-white" />
           <span className="text-sm font-black text-play-ink">

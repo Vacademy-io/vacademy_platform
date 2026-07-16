@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { playIllustrations } from "@/assets/play-illustrations";
 
 interface StudentProgress {
     date: string;
@@ -78,11 +77,11 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
     const getStatusBadge = (status: string) => {
         switch (status) {
             case "Above":
-                return <Badge variant="outline" className="border-green-500/30 text-green-600 bg-green-500/5 hover:bg-green-500/10 [.ui-vibrant_&]:bg-green-100 [.ui-vibrant_&]:text-green-800 [.ui-play_&]:bg-play-success [.ui-play_&]:text-white [.ui-play_&]:border-0 [.ui-play_&]:font-black [.ui-play_&]:rounded-xl [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:shadow-play-2d-success"><TrendUp size={12} className="mr-1" /> Above</Badge>;
+                return <Badge variant="outline" className="border-green-500/30 text-green-600 bg-green-500/5 hover:bg-green-500/10 [.ui-vibrant_&]:bg-green-100 [.ui-vibrant_&]:text-green-800 [.ui-play_&]:bg-play-success-soft [.ui-play_&]:text-play-success-soft-ink [.ui-play_&]:border-0 [.ui-play_&]:font-bold [.ui-play_&]:rounded-full"><TrendUp size={12} className="mr-1" /> Above</Badge>;
             case "Below":
-                return <Badge variant="outline" className="border-red-500/30 text-red-600 bg-red-500/5 hover:bg-red-500/10 [.ui-vibrant_&]:bg-red-100 [.ui-vibrant_&]:text-red-800 [.ui-play_&]:bg-play-danger [.ui-play_&]:text-white [.ui-play_&]:border-0 [.ui-play_&]:font-black [.ui-play_&]:rounded-xl [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:shadow-play-2d-danger"><TrendDown size={12} className="mr-1" /> Below</Badge>;
+                return <Badge variant="outline" className="border-red-500/30 text-red-600 bg-red-500/5 hover:bg-red-500/10 [.ui-vibrant_&]:bg-red-100 [.ui-vibrant_&]:text-red-800 [.ui-play_&]:bg-play-danger-soft [.ui-play_&]:text-play-danger-soft-ink [.ui-play_&]:border-0 [.ui-play_&]:font-bold [.ui-play_&]:rounded-full"><TrendDown size={12} className="mr-1" /> Below</Badge>;
             default:
-                return <Badge variant="outline" className="text-muted-foreground [.ui-vibrant_&]:bg-gray-100 [.ui-vibrant_&]:text-gray-700 [.ui-play_&]:bg-play-muted [.ui-play_&]:text-white [.ui-play_&]:border-0 [.ui-play_&]:font-black [.ui-play_&]:rounded-xl [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:shadow-play-2d-muted"><Minus size={12} className="mr-1" /> Average</Badge>;
+                return <Badge variant="outline" className="text-muted-foreground [.ui-vibrant_&]:bg-gray-100 [.ui-vibrant_&]:text-gray-700 [.ui-play_&]:bg-play-ink/5 [.ui-play_&]:text-play-ink/60 [.ui-play_&]:border-0 [.ui-play_&]:font-bold [.ui-play_&]:rounded-full"><Minus size={12} className="mr-1" /> Average</Badge>;
         }
     };
 
@@ -97,7 +96,7 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
         <div className="space-y-6 relative overflow-hidden">
             {/* Summary Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative">
-                <Card className="shadow-none border-dashed bg-muted/30 [.ui-vibrant_&]:bg-gray-100/50 [.ui-play_&]:bg-play-surface [.ui-play_&]:border-2 [.ui-play_&]:border-play-muted [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-play-4d-muted [.ui-play_&]:font-bold">
+                <Card className="shadow-none border-dashed bg-muted/30 [.ui-vibrant_&]:bg-gray-100/50 [.ui-play_&]:bg-white [.ui-play_&]:border [.ui-play_&]:border-solid [.ui-play_&]:border-border [.ui-play_&]:rounded-play-card-sm [.ui-play_&]:shadow-play-soft-card [.ui-cleaner-play_&]:border-solid [.ui-cleaner-play_&]:border-cp-border">
                     <CardContent className="p-4 flex flex-col gap-1">
                         <span className="text-sm font-medium text-muted-foreground">Total Sessions</span>
                         <div className="text-2xl font-bold tracking-tight">
@@ -106,18 +105,18 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                     </CardContent>
                 </Card>
 
-                <Card className="shadow-none border-dashed bg-green-500/5 border-green-500/20 [.ui-vibrant_&]:bg-green-50 [.ui-vibrant_&]:border-green-200 [.ui-play_&]:bg-play-success [.ui-play_&]:border-2 [.ui-play_&]:border-play-success-deep [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-play-4d-success [.ui-play_&]:text-white [.ui-play_&]:font-bold">
+                <Card className="shadow-none border-dashed bg-green-500/5 border-green-500/20 [.ui-vibrant_&]:bg-green-50 [.ui-vibrant_&]:border-green-200 [.ui-play_&]:bg-play-success-soft [.ui-play_&]:border [.ui-play_&]:border-solid [.ui-play_&]:border-border [.ui-play_&]:rounded-play-card-sm [.ui-play_&]:shadow-play-soft-card [.ui-cleaner-play_&]:border-solid [.ui-cleaner-play_&]:border-cp-border">
                     <CardContent className="p-4 flex flex-col gap-1">
-                        <span className="text-sm font-medium text-green-600 [.ui-vibrant_&]:text-green-700 [.ui-play_&]:text-white [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">Above Average</span>
+                        <span className="text-sm font-medium text-green-600 [.ui-vibrant_&]:text-green-700 [.ui-play_&]:text-play-success-soft-ink [.ui-play_&]:font-black">Above Average</span>
                         <div className="text-2xl font-bold text-foreground">
                             {tableData.filter(row => row.status === "Above").length}
                         </div>
                     </CardContent>
                 </Card>
 
-                <Card className="shadow-none border-dashed bg-primary/5 border-primary/20 [.ui-vibrant_&]:bg-primary/10 [.ui-vibrant_&]:border-primary/30 [.ui-play_&]:bg-play-accent [.ui-play_&]:border-2 [.ui-play_&]:border-play-accent-deep [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-play-4d-accent [.ui-play_&]:text-white [.ui-play_&]:font-bold">
+                <Card className="shadow-none border-dashed bg-primary/5 border-primary/20 [.ui-vibrant_&]:bg-primary/10 [.ui-vibrant_&]:border-primary/30 [.ui-play_&]:bg-play-accent-soft [.ui-play_&]:border [.ui-play_&]:border-solid [.ui-play_&]:border-border [.ui-play_&]:rounded-play-card-sm [.ui-play_&]:shadow-play-soft-card [.ui-cleaner-play_&]:border-solid [.ui-cleaner-play_&]:border-cp-border">
                     <CardContent className="p-4 flex flex-col gap-1">
-                        <span className="text-sm font-medium text-primary [.ui-vibrant_&]:text-primary-700 [.ui-play_&]:text-white [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">Consistency</span>
+                        <span className="text-sm font-medium text-primary [.ui-vibrant_&]:text-primary-700 [.ui-play_&]:text-play-accent-soft-ink [.ui-play_&]:font-black">Consistency</span>
                         <div className="text-2xl font-bold text-foreground">
                             {Math.round((tableData.filter(row => row.user_millis > 0).length / tableData.length) * 100)}%
                         </div>
@@ -126,10 +125,10 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
             </div>
 
             {/* Desktop Table */}
-            <div className="hidden sm:block rounded-md border shadow-sm [.ui-vibrant_&]:border-primary/10 [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:rounded-2xl [.ui-play_&]:overflow-hidden [.ui-play_&]:shadow-play-4d-surface">
+            <div className="hidden sm:block rounded-md border shadow-sm [.ui-vibrant_&]:border-primary/10 [.ui-play_&]:bg-white [.ui-play_&]:border-border [.ui-play_&]:rounded-play-card-sm [.ui-play_&]:overflow-hidden [.ui-play_&]:shadow-play-soft-card [.ui-cleaner-play_&]:border-cp-border">
                 <Table>
                     <TableHeader>
-                        <TableRow className="bg-muted/40 hover:bg-muted/40 [.ui-vibrant_&]:bg-primary/5 [.ui-play_&]:bg-play-surface [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
+                        <TableRow className="bg-muted/40 hover:bg-muted/40 [.ui-vibrant_&]:bg-primary/5">
                             <TableHead className="w-44 font-semibold text-xs uppercase text-muted-foreground">Date</TableHead>
                             <TableHead className="font-semibold text-xs uppercase text-muted-foreground">Your Time</TableHead>
                             <TableHead className="font-semibold text-xs uppercase text-muted-foreground">Batch Avg</TableHead>
@@ -142,7 +141,7 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                             const isToday = dayjs(row.raw_date).isSame(dayjs(), 'day');
 
                             return (
-                                <TableRow key={index} className={cn("transition-colors", isToday && "bg-muted/30 [.ui-vibrant_&]:bg-blue-50/50 [.ui-play_&]:bg-play-highlight [.ui-play_&]:font-bold")}>
+                                <TableRow key={index} className={cn("transition-colors", isToday && "bg-muted/30 [.ui-vibrant_&]:bg-blue-50/50 [.ui-play_&]:bg-play-gold-soft")}>
                                     <TableCell>
                                         <div className="flex items-center gap-3">
                                             {isToday && <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />}

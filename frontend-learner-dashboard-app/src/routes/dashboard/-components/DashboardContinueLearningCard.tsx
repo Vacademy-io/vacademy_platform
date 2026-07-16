@@ -21,7 +21,13 @@ import emptyLearningIllustration from "@/assets/cleaner-play/empty-learning.webp
 
 // Skeleton mirroring the card layout to avoid layout shift while loading
 const ContinueLearningCardSkeleton = () => (
-    <Card className="h-full">
+    <Card
+        className={cn(
+            "h-full",
+            "cp-card",
+            "[.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border-border [.ui-play_&]:bg-play-navy-soft/50 [.ui-play_&]:shadow-play-soft-card"
+        )}
+    >
         <CardHeader className="pb-3 px-4 sm:px-6 flex flex-row items-center justify-between space-y-0">
             <div className="flex items-center gap-3">
                 <Skeleton className="h-9 w-9 rounded-md" />

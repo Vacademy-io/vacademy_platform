@@ -299,7 +299,7 @@ export const AssessmentCard = ({
       <Card
         className={cn(
           "w-full overflow-hidden transition-shadow duration-200",
-          "[.ui-play_&]:rounded-play-card [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface",
+          "[.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:shadow-play-soft-card",
           isLoudLive
             ? cn(
                 "border-danger-200 shadow-sm hover:shadow-md",
@@ -398,7 +398,7 @@ export const AssessmentCard = ({
                 </span>
               )}
               {showStartCountdown && msToStart !== null && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-0.5 text-caption font-medium tabular-nums text-primary-500 [.ui-play_&]:bg-play-highlight [.ui-play_&]:font-bold [.ui-play_&]:text-play-ink">
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-2.5 py-0.5 text-caption font-medium tabular-nums text-primary-500 [.ui-play_&]:bg-play-gold-soft [.ui-play_&]:font-bold [.ui-play_&]:text-play-ink">
                   <Timer size={14} aria-hidden="true" />
                   Starts in {formatCountdown(msToStart)}
                 </span>
@@ -409,7 +409,7 @@ export const AssessmentCard = ({
                     "inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-caption font-medium text-muted-foreground",
                     "[.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:bg-white [.ui-play_&]:font-bold [.ui-play_&]:text-play-ink",
                     isPractice &&
-                      "[.ui-play_&]:border-transparent [.ui-play_&]:bg-play-highlight",
+                      "[.ui-play_&]:border-transparent [.ui-play_&]:bg-play-gold-soft",
                   )}
                 >
                   {playModeLabel(assessmentInfo.play_mode)}
@@ -455,7 +455,7 @@ export const AssessmentCard = ({
                   isLoudLive &&
                     !attemptsExhausted &&
                     cn(
-                      "[.ui-play_&]:min-h-12 [.ui-play_&]:rounded-play-card [.ui-play_&]:border-0",
+                      "[.ui-play_&]:min-h-12 [.ui-play_&]:rounded-play-btn [.ui-play_&]:border-0",
                       "[.ui-play_&]:bg-play-danger [.ui-play_&]:hover:bg-play-danger",
                       "[.ui-play_&]:text-body [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:text-white",
                       "[.ui-play_&]:shadow-play-2d-danger [.ui-play_&]:active:translate-y-0.5 [.ui-play_&]:active:shadow-none",

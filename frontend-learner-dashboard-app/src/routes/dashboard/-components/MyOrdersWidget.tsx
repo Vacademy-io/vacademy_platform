@@ -367,7 +367,7 @@ export const MyOrdersWidget: React.FC<MyOrdersWidgetProps> = ({ className }) => 
 
     if (loading && orders.length === 0) {
         return (
-            <Card className={cn("border border-border shadow-sm bg-card", className)}>
+            <Card className={cn("border border-border shadow-sm bg-card", "cp-card", className)}>
                 <CardHeader className="p-4 pb-2">
                     <Skeleton className="h-5 w-32" />
                 </CardHeader>
@@ -388,7 +388,7 @@ export const MyOrdersWidget: React.FC<MyOrdersWidgetProps> = ({ className }) => 
     }
 
     return (
-        <Card className={cn("border border-border shadow-sm bg-card", className)}>
+        <Card className={cn("border border-border shadow-sm bg-card", "cp-card", className)}>
             <CardHeader className="p-4 pb-2">
                 <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary uppercase">
                     <ShoppingBag className="w-5 h-5" />

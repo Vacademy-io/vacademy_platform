@@ -17,6 +17,11 @@ interface AssistDockState {
     panel: AssistPanel;
     setPanel: (panel: AssistPanel) => void;
     togglePanel: (panel: Exclude<AssistPanel, 'none'>) => void;
+    /** A question handed to the assistant from elsewhere (e.g. the dashboard
+     *  launch bar) — the assistant panel consumes and sends it on open. */
+    pendingPrompt: string | null;
+    askAssistant: (prompt: string) => void;
+    clearPendingPrompt: () => void;
     /** The walkthrough currently open in the big viewer (null = closed). */
     activeTutorial: { file: string; title: string } | null;
     openTutorial: (file: string, title: string) => void;
@@ -30,6 +35,9 @@ export const useAssistDock = create<AssistDockState>((set) => ({
     panel: 'none',
     setPanel: (panel) => set({ panel }),
     togglePanel: (panel) => set((s) => ({ panel: s.panel === panel ? 'none' : panel })),
+    pendingPrompt: null,
+    askAssistant: (prompt) => set({ panel: 'assistant', pendingPrompt: prompt }),
+    clearPendingPrompt: () => set({ pendingPrompt: null }),
     activeTutorial: null,
     openTutorial: (file, title) => set({ activeTutorial: { file, title } }),
     closeTutorial: () => set({ activeTutorial: null }),

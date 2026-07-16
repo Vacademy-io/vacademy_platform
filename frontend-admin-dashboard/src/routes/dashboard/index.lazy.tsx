@@ -70,6 +70,7 @@ import DailyActivityTrendWidget from './-components/analytics-widgets/DailyActiv
 // Dashboard Widgets
 import MyPendingActionsWidget from './-components/MyPendingActionsWidget';
 import QuickActionsStrip from './-components/QuickActionsStrip';
+import { AssistantLaunchBar } from '@/components/vacademy-assistant/AssistantLaunchBar';
 import KpiBand from './-components/KpiBand';
 import FinanceSummaryWidget from './-components/FinanceSummaryWidget';
 import RecentTransactionsWidget from './-components/RecentTransactionsWidget';
@@ -538,6 +539,10 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                     </div>
                 </TrackedWidget>
             )}
+            {/* Assistant launch bar — self-gates on the institute's assistant settings */}
+            <div className="mt-3">
+                <AssistantLaunchBar />
+            </div>
             {getValue() && (
                 <>
                     <p className="mt-0.5 text-[11px] text-neutral-600 sm:text-xs">

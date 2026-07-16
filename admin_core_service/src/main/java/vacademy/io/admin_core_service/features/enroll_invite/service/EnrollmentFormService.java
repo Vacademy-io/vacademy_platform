@@ -44,8 +44,6 @@ public class EnrollmentFormService {
     @Autowired
     private CustomFieldValueService customFieldValueService;
 
-    @Autowired
-    private EnrollmentFormWhatsAppService enrollmentFormWhatsAppService;
 
     @Transactional
     public EnrollmentFormSubmitResponseDTO submitEnrollmentForm(EnrollmentFormSubmitDTO request) {
@@ -113,9 +111,8 @@ public class EnrollmentFormService {
         log.info("Enrollment form submitted successfully for user: {}, created {} ABANDONED_CART entries",
                 createdUser.getId(), abandonedCartEntryIds.size());
 
-        // Step 6: Thank-you WhatsApp. Async and self-contained — the learner is already
-        // registered, so a messaging failure must not surface as a form-submit failure.
-        enrollmentFormWhatsAppService.sendFormFillThankYou(createdUser, request.getInstituteId());
+        // Welcome/confirmation WhatsApp is handled by the workflow engine on the
+        // PAYMENT_SUCCESS trigger (per-invite, configurable), not from here.
 
         return EnrollmentFormSubmitResponseDTO.builder()
                 .userId(createdUser.getId())

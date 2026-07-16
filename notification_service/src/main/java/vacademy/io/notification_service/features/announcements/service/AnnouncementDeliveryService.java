@@ -908,7 +908,9 @@ public class AnnouncementDeliveryService {
             }
             processedContent = processedContent.replace("{{user_name}}", displayName);
             processedContent = processedContent.replace("{{name}}", displayName);
-            
+            // {{student_name}} → alias of {{name}}, for templates built with the canonical variable set
+            processedContent = processedContent.replace("{{student_name}}", displayName);
+
             // {{user_email}} and {{email}} → user.email
             String email = user.getEmail() != null ? user.getEmail() : "";
             processedContent = processedContent.replace("{{user_email}}", email);
@@ -919,8 +921,11 @@ public class AnnouncementDeliveryService {
             processedContent = processedContent.replace("{{password}}", password != null ? password : "");
 
             // {{user_phone}} → user.mobileNumber
-            processedContent = processedContent.replace("{{user_phone}}", 
-                user.getMobileNumber() != null ? user.getMobileNumber() : "");
+            String mobileNumber = user.getMobileNumber() != null ? user.getMobileNumber() : "";
+            processedContent = processedContent.replace("{{user_phone}}", mobileNumber);
+            // {{mobile_number}} / {{student_phone}} → aliases of {{user_phone}}, for the canonical variable set
+            processedContent = processedContent.replace("{{mobile_number}}", mobileNumber);
+            processedContent = processedContent.replace("{{student_phone}}", mobileNumber);
             
             // Extract first and last name from fullName
             String[] nameParts = fullName.split(" ", 2);
@@ -941,11 +946,14 @@ public class AnnouncementDeliveryService {
             processedContent = processedContent.replace("{{username}}", "");
             processedContent = processedContent.replace("{{user_name}}", "");
             processedContent = processedContent.replace("{{name}}", "");
+            processedContent = processedContent.replace("{{student_name}}", "");
             processedContent = processedContent.replace("{{full_name}}", "");
             processedContent = processedContent.replace("{{user_email}}", "");
             processedContent = processedContent.replace("{{email}}", "");
             processedContent = processedContent.replace("{{password}}", "");
             processedContent = processedContent.replace("{{user_phone}}", "");
+            processedContent = processedContent.replace("{{mobile_number}}", "");
+            processedContent = processedContent.replace("{{student_phone}}", "");
             processedContent = processedContent.replace("{{user_first_name}}", "");
             processedContent = processedContent.replace("{{user_last_name}}", "");
             processedContent = processedContent.replace("{{first_name}}", "");

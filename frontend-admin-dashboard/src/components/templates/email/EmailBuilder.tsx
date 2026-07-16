@@ -12,7 +12,7 @@ type FormApi<T, U> = {
     getState: () => { values: T };
 };
 import AssetPicker from './AssetPicker';
-import { MessageTemplate } from '@/types/message-template-types';
+import { MessageTemplate, TEMPLATE_VARIABLES } from '@/types/message-template-types';
 import { UploadFileInS3, getPublicUrl } from '@/services/upload_file';
 import { getUserId } from '@/utils/userDetails';
 import { getInstituteId } from '@/constants/helper';
@@ -57,24 +57,39 @@ const fontList = [
     { value: 'Poppins', label: 'Poppins' },
 ];
 
-// Merge tags configuration
-const defaultMergeTags = {
-    User: {
-        Name: '{{name}}',
-        Email: '{{email}}',
-        Phone: '{{phone}}',
-        ID: '{{user_id}}',
-    },
-    Company: {
-        'Company Name': '{{company_name}}',
-        Address: '{{company_address}}',
-        Website: '{{company_website}}',
-    },
-    Date: {
-        'Current Date': '{{date}}',
-        'Current Year': '{{year}}',
-    },
+// Human-readable label for a canonical {{snake_case}} variable, e.g. "{{student_name}}" -> "Student Name"
+const toMergeTagLabel = (variable: string): string =>
+    variable
+        .replace(/[{}]/g, '')
+        .split('_')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+
+// Display names for the TEMPLATE_VARIABLES categories, shown as merge-tag group headers.
+const TEMPLATE_VARIABLE_CATEGORY_LABELS: Record<keyof typeof TEMPLATE_VARIABLES, string> = {
+    student: 'Student',
+    course: 'Course',
+    batch: 'Batch',
+    institute: 'Institute',
+    attendance: 'Attendance',
+    'live class': 'Live Class',
+    referral: 'Referral',
+    custom: 'Custom',
+    general: 'Date & General',
 };
+
+// Merge tags configuration — every entry here is a variable that a real backend
+// resolver (bulkEmailService.ts / UnifiedSendService) actually replaces at send time.
+// Sourced from the canonical TEMPLATE_VARIABLES catalog so the picker can never drift
+// from what actually gets substituted in the sent email.
+const defaultMergeTags: Record<string, Record<string, string>> = Object.fromEntries(
+    (Object.keys(TEMPLATE_VARIABLES) as Array<keyof typeof TEMPLATE_VARIABLES>).map((category) => [
+        TEMPLATE_VARIABLE_CATEGORY_LABELS[category],
+        Object.fromEntries(
+            TEMPLATE_VARIABLES[category].map((variable) => [toMergeTagLabel(variable), variable])
+        ),
+    ])
+);
 
 // Invoice-specific merge tags (shown when template type is INVOICE or INVOICE_EMAIL).
 // These resolve in InvoiceService.replaceTemplatePlaceholders at generation time.

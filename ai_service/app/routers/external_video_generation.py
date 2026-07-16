@@ -257,6 +257,9 @@ def preview_video_cost(
         host=(payload.host.model_dump() if getattr(payload, "host", None) else None),
         ai_video_enabled=bool(getattr(payload, "ai_video_enabled", False)),
         ai_video_audio_enabled=bool(getattr(payload, "ai_video_audio_enabled", False)),
+        dialogue_scenes_enabled=bool(getattr(payload, "dialogue_scenes_enabled", False)),
+        dialogue_mode=str(getattr(payload, "dialogue_mode", "storybook") or "storybook"),
+        dialogue_clip_model=str(getattr(payload, "dialogue_clip_model", "seedance-2.0") or "seedance-2.0"),
     )
     return VideoCostPreviewResponse(**result)
 
@@ -1484,6 +1487,11 @@ async def save_cast_from_video_external(
             "voice_hint": str(c.get("voice_hint") or "")[:120],
             "voice_gender": _dialogue_voice_gender(c, i),
             "sheet_url": sheet_url,
+            # Voice casting + real-photo authority — persisted so a sequel
+            # video reuses the exact voice and keeps treating the portrait
+            # as an authoritative photo (see _build_dialogue_scene_prompt).
+            "voice_id": str(c.get("voice_id") or "")[:120] or None,
+            "user_photo": bool(c.get("user_photo")),
         })
 
     _default_name = f"Cast of “{(video_record.prompt or 'video')[:40].strip()}”"

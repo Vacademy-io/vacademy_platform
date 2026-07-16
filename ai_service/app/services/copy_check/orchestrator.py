@@ -132,12 +132,16 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                     logger.exception(
                         f"Retry also failed for question {q.get('question_id')}",
                     )
+                    # Never surface the raw exception (which can be a stack trace
+                    # or provider error) as the student's feedback. Keep the
+                    # detail in logs; give teacher/student a neutral, actionable
+                    # message. status=FAILED lets the reviewer spot it.
                     verdict = {
                         "question_id": q["question_id"],
                         "marks_awarded": 0.0,
                         "max_marks": float(q.get("max_marks") or 0),
                         "extracted_answer": "",
-                        "feedback": f"Grading failed after retry: {retry_err}",
+                        "feedback": "This answer could not be evaluated automatically and needs manual review.",
                         "confidence": 0.0,
                         "criteria_breakdown": [],
                         "annotations": [],

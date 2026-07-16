@@ -2829,6 +2829,11 @@ export interface VideoCostPreviewRequest {
      *  upper-bound row to the breakdown. Mirrors the runtime flag. */
     ai_video_enabled?: boolean;
     ai_video_audio_enabled?: boolean;
+    /** Dialogue scenes (storybook/drama) — adds the acted-clips cost row,
+     *  capped at the tier's dialogue budget. Mirrors the runtime flags. */
+    dialogue_scenes_enabled?: boolean;
+    dialogue_mode?: 'storybook' | 'drama';
+    dialogue_clip_model?: 'seedance-2.0' | 'omni-flash';
 }
 
 export interface VideoCostPreviewBreakdownRow {

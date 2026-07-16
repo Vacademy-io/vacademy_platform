@@ -1047,6 +1047,7 @@ export const TRIGGER_EVALUATION_URL = `${BASE_URL}/assessment-service/assessment
 export const STOP_EVALUATION_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/stop`;
 export const GET_EVALUATION_PROGRESS_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/progress`;
 export const GET_COMPLETED_QUESTIONS_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/completed-questions`;
+export const REVIEW_EVALUATION_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/review`;
 // Course Catalogue Editor
 export const CATALOGUE_BASE_URL = `${BASE_URL}/admin-core-service/v1/course-catalogue`;
 export const GET_CATALOGUE_TAGS = (instituteId: string) =>

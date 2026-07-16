@@ -21,6 +21,7 @@ import {
     getReleaseStudentResult,
     getRevaluateStudentResult,
     handleGetStudentReportExportPDF,
+    provideReattemptToParticipants,
     viewStudentReport,
 } from '../../-services/assessment-details-services';
 import { getPublicUrl } from '@/services/upload_file';
@@ -52,6 +53,32 @@ const ProvideReattemptComponent = ({
     student: AssessmentRevaluateStudentInterface;
     onClose: () => void;
 }) => {
+    const { assessmentId } = Route.useParams();
+    const instituteId = getInstituteId();
+
+    const provideReattemptMutation = useMutation({
+        mutationFn: (registrationId: string) =>
+            provideReattemptToParticipants(assessmentId, instituteId, [registrationId]),
+        onSuccess: () => {
+            toast.success(`Reattempt has been provided to ${student.full_name}.`, {
+                className: 'success-toast',
+                duration: 4000,
+            });
+            onClose();
+        },
+        onError: () => {
+            toast.error('Failed to provide reattempt. Please try again.');
+        },
+    });
+
+    const handleProvideReattempt = () => {
+        if (!student.registration_id) {
+            toast.error('Could not resolve this participant’s registration. Please try again.');
+            return;
+        }
+        provideReattemptMutation.mutate(student.registration_id);
+    };
+
     return (
         <DialogContent className="flex flex-col p-0">
             <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">Provide Reattempt</h1>
@@ -70,9 +97,10 @@ const ProvideReattemptComponent = ({
                         scale="large"
                         buttonType="primary"
                         className="mt-4 font-medium"
-                        onClick={onClose} // Close the dialog when clicked
+                        onClick={handleProvideReattempt}
+                        disabled={provideReattemptMutation.isPending}
                     >
-                        Yes
+                        {provideReattemptMutation.isPending ? 'Providing...' : 'Yes'}
                     </MyButton>
                 </div>
             </div>
@@ -102,13 +130,10 @@ const ReleaseResultComponent = ({
             selectedFilter: SelectedReleaseResultFilterInterface;
         }) => getReleaseStudentResult(assessmentId, instituteId, methodType, selectedFilter),
         onSuccess: () => {
-            toast.success(
-                'Your attempt for this assessment has been revaluated. Please check your email!',
-                {
-                    className: 'success-toast',
-                    duration: 4000,
-                }
-            );
+            toast.success('Result released successfully. The learner has been notified by email.', {
+                className: 'success-toast',
+                duration: 4000,
+            });
             onClose();
         },
         onError: (error: unknown) => {

@@ -39,6 +39,12 @@ class VideoCostPreviewRequest(BaseModel):
     # spend. Ultra/super_ultra tiers only — silently ignored otherwise.
     ai_video_enabled: bool = False
     ai_video_audio_enabled: bool = False
+    # Dialogue scenes (storybook/drama) — the dominant cost line when on.
+    # The estimator adds an expected-scenes × per-second-rate row, capped
+    # at the tier's dialogue budget.
+    dialogue_scenes_enabled: bool = False
+    dialogue_mode: str = "storybook"
+    dialogue_clip_model: str = "seedance-2.0"
 
 
 class VideoCostPreviewResponse(BaseModel):

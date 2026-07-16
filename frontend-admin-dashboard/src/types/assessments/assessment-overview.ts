@@ -150,6 +150,9 @@ export interface AssessmentRevaluateStudentInterface {
     id: string;
     full_name: string;
     attempt_id: string;
+    // Present on the submissions-table row at runtime (the bulk reattempt action
+    // reads it off the same row object); needed to grant an individual reattempt.
+    registration_id?: string;
     package_session_id: string;
     attempt_date: string; // Consider using Date if parsing is needed
     start_time: string;

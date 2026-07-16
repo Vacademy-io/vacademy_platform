@@ -2,6 +2,7 @@ import {
     BASE_URL,
     GET_COMPLETED_QUESTIONS_URL,
     GET_EVALUATION_PROGRESS_URL,
+    REVIEW_EVALUATION_URL,
     STOP_EVALUATION_URL,
     TRIGGER_EVALUATION_URL,
 } from '@/constants/urls';
@@ -58,6 +59,7 @@ export interface QuestionProgress {
     evaluation_details_json?: EvaluationDetailsJson;
     annotations?: QuestionAnnotation[];
     rubric_version?: number;
+    is_edited?: boolean;
     started_at?: string;
     completed_at?: string;
 }
@@ -228,6 +230,23 @@ export const useStopEvaluation = () => {
         mutationKey: ['STOP_EVALUATION'],
         mutationFn: (processId: string) => stopEvaluation(processId),
     };
+};
+
+/**
+ * Teacher review: override a single question's marks and/or feedback before the
+ * result is released. Turns the AI verdict into a draft the teacher approves.
+ */
+export const overrideQuestionEvaluation = async (
+    processId: string,
+    questionId: string,
+    payload: { marks_awarded: number; feedback?: string }
+): Promise<void> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'PUT',
+        url: `${REVIEW_EVALUATION_URL}/${processId}/question/${questionId}`,
+        data: payload,
+    });
+    return response?.data;
 };
 
 export interface EvaluationData {

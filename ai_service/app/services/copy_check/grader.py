@@ -171,6 +171,11 @@ class CopyCheckGrader:
                 max_tokens=2000,
                 institute_id=self.institute_id,
                 user_id=self.user_id,
+                # Must pin the same model: this retry's output IS the grade that
+                # gets returned. Omitting model= silently downgraded the actual
+                # grade to ChatLLMClient's free default even when the teacher
+                # explicitly picked a premium model.
+                model=model,
             )
             return _parse_json_or_retry_payload(retry.get("content") or "")
 

@@ -72,6 +72,12 @@ function buildPreviewPayload(
         // sub-ultra tiers.
         ai_video_enabled: options.ai_video_enabled,
         ai_video_audio_enabled: options.ai_video_audio_enabled,
+        // Dialogue scenes are the dominant cost line when on ($0.13-0.30 per
+        // second of acted clip) — without these the confirm modal priced a
+        // drama run 5-10x under reality.
+        dialogue_scenes_enabled: options.dialogue_scenes_enabled,
+        dialogue_mode: options.dialogue_mode,
+        dialogue_clip_model: options.dialogue_clip_model,
     };
 }
 

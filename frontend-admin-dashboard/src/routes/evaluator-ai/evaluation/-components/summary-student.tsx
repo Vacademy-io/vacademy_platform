@@ -66,8 +66,10 @@ interface IEvaluationData {
     summary: ISummary;
 }
 
-const DEFAULT_ACCESS_TOKEN =
-    'eyJhbGciOiJIUzI1NiJ9.eyJmdWxsbmFtZSI6IkRvZSBXYWxrZXIiLCJ1c2VyIjoiOTE3YjI1YWMtZjZhZi00ZjM5LTkwZGYtYmQxZDIxZTQyNTkzIiwiZW1haWwiOiJkb2VAZXhhbXBsZS5jb20iLCJpc19yb290X3VzZXIiOmZhbHNlLCJhdXRob3JpdGllcyI6eyI5ZDNmNGNjYi1hN2Y2LTQyM2YtYmM0Zi03NWM2ZDYxNzYzNDYiOnsicGVybWlzc2lvbnMiOltdLCJyb2xlcyI6WyJTVFVERU5UIl19fSwidXNlcm5hbWUiOiJkb2V3NjA2OSIsInN1YiI6ImRvZXc2MDY5IiwiaWF0IjoxNzQ1MzI2ODI2LCJleHAiOjE3NDU5MzE2MjZ9._O0T3Q0kxXLE9JnwC79IQCpwl-sAdFqR8nHa3MTpE5U';
+// Demo-only bearer for the deprecated Evaluator-AI tool. A real JWT used to be
+// checked in here — secrets must never live in source. Supply via env for the
+// demo; otherwise this is empty. (The old token/EmailJS keys must be rotated.)
+const DEFAULT_ACCESS_TOKEN = import.meta.env.VITE_EVALUATOR_DEMO_TOKEN ?? '';
 
 const reportSchema = z.object({
     email: z.string().email('Invalid email address'),
@@ -151,9 +153,11 @@ export default function EvaluationSummary() {
             const fileUrl = await getPublicUrl(uploadedFileId);
             console.log('File URL:', fileUrl);
             // Send Email via emailjs
+            // EmailJS service/template/public-key come from env — the previously
+            // checked-in values were live credentials and must be rotated.
             await emailjs.send(
-                'service_7lkigf5',
-                'template_iixl5pv',
+                import.meta.env.VITE_EMAILJS_SERVICE_ID ?? '',
+                import.meta.env.VITE_EMAILJS_TEMPLATE_ID ?? '',
                 {
                     to_email: data.email,
                     subject: data.subject || 'Evaluation Report',
@@ -163,7 +167,7 @@ export default function EvaluationSummary() {
                         studentSummary?.summary.evaluation_result.overall_description,
                     buttonLink: fileUrl,
                 },
-                'Ui2SejB0xwurTySXJ'
+                import.meta.env.VITE_EMAILJS_PUBLIC_KEY ?? ''
             );
 
             console.log('Email sent with PDF link:', fileUrl);

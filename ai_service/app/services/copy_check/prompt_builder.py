@@ -127,11 +127,16 @@ def _type_instructions(question_type: str) -> str:
             "the rubric. Spelling/OCR errors do NOT reduce marks."
         )
     if t == "CODING":
+        # This pipeline grades a scanned/handwritten copy: no sandbox execution
+        # results (verdict, pass counts, runtime, memory) are available. Do NOT
+        # ask the model to use data it cannot see — that invites hallucinated
+        # verdicts. Grade the written logic only.
         return (
-            "CODING: Use the verdict (ACCEPTED/PARTIAL/REJECTED), passedCount/totalCount, "
-            "and the source code itself. Infer Big-O from algorithm structure. Compare "
-            "totalTimeMs/peakMemoryKb against cpuSeconds*1000 and memoryKb limits. Award "
-            "proportional to pass rate, weighted by code quality and inferred complexity."
+            "CODING: No execution results (test verdicts, pass counts, runtime, or "
+            "memory) are available for this answer. Grade the written code's logic and "
+            "approach against the rubric: algorithm correctness, handling of the cases "
+            "described, and clarity. Infer complexity from the algorithm's structure. "
+            "Do NOT invent test outcomes, pass/fail counts, or runtime figures."
         )
     return ""
 
@@ -166,6 +171,7 @@ def build_grading_prompt(
 - Reference line_ids (e.g. "L1_32") in `annotations[].target`. NEVER output pixel coordinates.
 - Each annotation needs a `page_id` matching the line_id's page.
 - If the student didn't attempt this question, set `marks_awarded = 0`, `extracted_answer = ""`, and `annotations = []`.
+- `extracted_answer` must be a VERBATIM transcription of what the student actually wrote (preserve their errors) — do not correct, rephrase, or complete it. Judge intent/meaning when grading, but never rewrite the student's words here.
 - **Justify every cross/circle**: `text` MUST state what is wrong and why marks were lost. No null/empty text on cross or circle annotations.
 - **No silent mark cuts**: if `marks_awarded < {max_marks:.1f}`, add at least one annotation (cross/circle/margin_note) whose text explicitly states the deduction reason.
 - **No tick spam**: at most 3 ticks. For long correct chains, use a single `region_note` 'All steps correct' instead.
@@ -174,7 +180,7 @@ def build_grading_prompt(
 **Output: STRICT JSON only.**
 {{
   "marks_awarded": <float>,
-  "extracted_answer": "<verbatim or paraphrased student answer>",
+  "extracted_answer": "<verbatim transcription of the student's answer, errors and all>",
   "feedback": "<short feedback grounded in the rubric>",
   "confidence": <0..1 — how sure are you of this verdict>,
   "criteria_breakdown": [

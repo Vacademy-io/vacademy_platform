@@ -59,6 +59,7 @@ class GateType(str, Enum):
     CONTACT_SHEET = "contact_sheet"          # per-shot frame review AFTER HTML, before finalize
     ASSET_REQUEST = "asset_request"          # agent-initiated asks: real screenshots/photos/data
     CAST = "cast"                            # approve character portraits BEFORE filming clips
+    DAILIES = "dailies"                      # watch every filmed dialogue clip BEFORE final cut
     STYLEFRAME = "styleframe"                # approve the run's design identity + styleframe
     VOICE = "voice"                          # TTS voice (needs preview audio)   [phase 2]
     MUSIC = "music"                          # background music track (needs previews) [phase 2]
@@ -75,6 +76,7 @@ DEFAULT_ASSIST_GATES: List[str] = [
     GateType.ASSET_REQUEST.value,
     GateType.NARRATION.value,
     GateType.CAST.value,
+    GateType.DAILIES.value,
     GateType.VISUAL_CASTING.value,
     GateType.SHOT_LOOK.value,
     GateType.CONTACT_SHEET.value,
@@ -327,6 +329,17 @@ _SHOT_PLAN_FIELDS = (
     "pacing_role",
     "audio_policy",
     "narration_brief",
+    # DIALOGUE_SCENE fields — without these the gate rendered acted scenes as
+    # generic rows (a user approved a 12-shot no-dialogue plan without
+    # noticing dialogue was missing). Surfacing them also makes the lines
+    # editable at the plan gate.
+    "dialogue",
+    "scene_description",
+    "action_description",
+    "character_names",
+    "scene_continuity",
+    "emotional_beat",
+    "time_of_day",
 )
 
 
@@ -538,7 +551,7 @@ def build_cast_decision(
 
 
 def cast_gate_directives(answer: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
-    """{name_lower: {url?, note?}} from a cast ``edit`` answer."""
+    """{name_lower: {url?, note?, voice_id?}} from a cast ``edit`` answer."""
     out: Dict[str, Dict[str, Any]] = {}
     for c in ((answer or {}).get("characters") or []):
         if not isinstance(c, dict):
@@ -548,8 +561,58 @@ def cast_gate_directives(answer: Optional[Dict[str, Any]]) -> Dict[str, Dict[str
             continue
         url = sanitize_media_url(c.get("url"))
         note = str(c.get("regen_note") or "").strip()[:500] or None
-        if url or note:
-            out[name] = {"url": url, "note": note}
+        voice_id = str(c.get("voice_id") or "").strip()[:120] or None
+        if url or note or voice_id:
+            out[name] = {"url": url, "note": note, "voice_id": voice_id}
+    return out
+
+
+def build_dailies_decision(
+    video_id: str,
+    clips: List[Dict[str, Any]],
+    seq: int = 1,
+) -> Dict[str, Any]:
+    """Dailies gate — watch every filmed dialogue clip BEFORE the final cut.
+
+    Clips are the most expensive, most failure-prone asset in the pipeline;
+    until this gate the user first saw them inside the finished render.
+    ``clips`` = [{shot_index, clip_url, scene_description, lines,
+    duration_s, cost_usd, qc (optional _dialogue_qc_verdict)}]. Answer =
+    ``edit`` with ``clips: [{shot_index, redo_note}]`` — every clip WITHOUT a
+    directive is approved; a redo_note re-films that scene once with the note
+    woven into the prompt (same corrective mechanism as the QC gate).
+    """
+    n = len(clips)
+    return build_decision_payload(
+        video_id=video_id,
+        gate_type=GateType.DAILIES.value,
+        prompt=(
+            f"Dailies are in — {n} filmed scene{'s' if n != 1 else ''}. Watch "
+            "them and approve, or send any scene back with a note (one re-film "
+            "each, charged like the original)."
+        ),
+        options=[],
+        recommended_option_id=None,
+        allow_freeform=False,
+        allow_edit=True,
+        payload={"clips": clips},
+        seq=seq,
+    )
+
+
+def dailies_gate_directives(answer: Optional[Dict[str, Any]]) -> Dict[int, str]:
+    """{shot_index: redo_note} from a dailies ``edit`` answer."""
+    out: Dict[int, str] = {}
+    for c in ((answer or {}).get("clips") or []):
+        if not isinstance(c, dict):
+            continue
+        try:
+            idx = int(c.get("shot_index"))
+        except (TypeError, ValueError):
+            continue
+        note = str(c.get("redo_note") or "").strip()[:500]
+        if note:
+            out[idx] = note
     return out
 
 

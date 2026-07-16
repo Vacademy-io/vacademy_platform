@@ -85,9 +85,23 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             FROM student s
             JOIN student_session_institute_group_mapping ssigm
                 ON s.user_id = ssigm.user_id
-            LEFT JOIN institute_custom_fields icf
+            LEFT JOIN (
+                -- institute_custom_fields can carry multiple duplicate mapping
+                -- rows for the same (institute_id, custom_field_id) — some
+                -- institutes have 80+ duplicates for a single field. Joining
+                -- the raw table multiplies every learner row by every
+                -- duplicate (turning e.g. 465 learners into 470k+ intermediate
+                -- rows before the GROUP BY collapses them back down), which is
+                -- what made any filter that routes through this query (custom
+                -- field filters in particular) painfully slow. Dedup to one
+                -- row per (institute_id, custom_field_id) — the most recent —
+                -- before joining.
+                SELECT DISTINCT ON (institute_id, custom_field_id) *
+                FROM institute_custom_fields
+                WHERE (:customFieldStatus IS NULL OR status IN :customFieldStatus)
+                ORDER BY institute_id, custom_field_id, created_at DESC
+            ) icf
                 ON icf.institute_id = ssigm.institute_id
-                AND (:customFieldStatus IS NULL OR icf.status IN :customFieldStatus)
             LEFT JOIN custom_fields cf
                 ON cf.id = icf.custom_field_id
             LEFT JOIN custom_field_values cfv

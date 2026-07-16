@@ -8331,28 +8331,66 @@ class VideoGenerationPipeline:
             if not svc:
                 return
             run_name = getattr(self, "_run_name", None) or "run"
-            by_loc: Dict[str, str] = {}
+            # A location is a PLACE; time-of-day is LIGHTING, not a new set.
+            # The planner emitted maheshwari_office_night + _day as separate
+            # slugs in prod and the "same office next morning" came back as a
+            # different building (old study → glass corporate). Group scenes
+            # by the BASE slug; the first sheet defines the set; every other
+            # time-of-day gets an i2i RELIGHT of that same image (Seedream
+            # i2i preserves architecture/furniture the way it preserves faces).
+            _tod_suffix = re.compile(
+                r"[_-]?(late[_-]?)?(night|nighttime|day|daytime|morning|"
+                r"evening|afternoon|noon|dawn|dusk|sunset|sunrise)$"
+            )
+
+            def _base_of(slug: str) -> str:
+                b = _tod_suffix.sub("", slug).strip("_-")
+                return b or slug
+
+            # (base, tod) → url; base → anchor url (the set's first sheet).
+            variants: Dict[Tuple[str, str], str] = {}
+            anchor: Dict[str, str] = {}
             for s in dlg:
                 slug = str(s.get("location")).strip().lower()
+                base = _base_of(slug)
+                todk = str(s.get("time_of_day") or "").strip().lower() or "default"
                 if s.get("_location_sheet_url"):
-                    by_loc.setdefault(slug, str(s["_location_sheet_url"]))
+                    variants.setdefault((base, todk), str(s["_location_sheet_url"]))
+                    anchor.setdefault(base, str(s["_location_sheet_url"]))
             for s in dlg:
                 slug = str(s.get("location")).strip().lower()
-                if slug not in by_loc:
+                base = _base_of(slug)
+                todk = str(s.get("time_of_day") or "").strip().lower() or "default"
+                if (base, todk) not in variants:
                     desc = str(s.get("scene_description") or "").strip()[:250]
                     tod = str(s.get("time_of_day") or "").strip()
                     try:
-                        img_bytes, _ = self._call_image_generation_llm(
-                            f"Establishing shot of the SET for a film scene: {desc}. "
-                            + (f"Time of day: {tod}. " if tod else "")
-                            + "EMPTY of people — architecture, furniture, palette "
-                            "only. Photorealistic, cinematic.",
-                            width=self.video_width,
-                            height=self.video_height,
-                            model_override="bytedance-seed/seedream-4.5",
-                        )
+                        if base in anchor:
+                            # Same set, new time of day → RELIGHT the anchor.
+                            img_bytes, _ = self._call_image_generation_llm(
+                                "Re-light this EXACT set for a different time of "
+                                f"day: {tod or 'a new moment'}. Keep the SAME room, "
+                                "architecture, furniture, decor, and camera "
+                                "position IDENTICAL — change ONLY the lighting, "
+                                "window light and mood. EMPTY of people. "
+                                "Photorealistic, cinematic.",
+                                width=self.video_width,
+                                height=self.video_height,
+                                reference_image_url=anchor[base],
+                                model_override="bytedance-seed/seedream-4.5",
+                            )
+                        else:
+                            img_bytes, _ = self._call_image_generation_llm(
+                                f"Establishing shot of the SET for a film scene: {desc}. "
+                                + (f"Time of day: {tod}. " if tod else "")
+                                + "EMPTY of people — architecture, furniture, palette "
+                                "only. Photorealistic, cinematic.",
+                                width=self.video_width,
+                                height=self.video_height,
+                                model_override="bytedance-seed/seedream-4.5",
+                            )
                         if img_bytes:
-                            _safe = re.sub(r"[^a-z0-9_-]", "_", slug)[:40]
+                            _safe = re.sub(r"[^a-z0-9_-]", "_", f"{base}_{todk}")[:40]
                             _loc_local = run_dir / "dialogue_tts" / f"loc_{_safe}.png"
                             _loc_local.parent.mkdir(parents=True, exist_ok=True)
                             _loc_local.write_bytes(img_bytes)
@@ -8362,12 +8400,14 @@ class VideoGenerationPipeline:
                                 content_type="image/png",
                             )
                             if _u:
-                                by_loc[slug] = _u
-                                print(f"   🏠 Location sheet ready: {slug}")
+                                variants[(base, todk)] = _u
+                                anchor.setdefault(base, _u)
+                                _kind = "relit variant" if anchor[base] != _u else "anchor"
+                                print(f"   🏠 Location sheet ready: {base} @ {todk} ({_kind})")
                     except Exception as _loc_err:
-                        print(f"   ⚠️ location sheet failed ({slug}): {_loc_err}")
-                if slug in by_loc:
-                    s["_location_sheet_url"] = by_loc[slug]
+                        print(f"   ⚠️ location sheet failed ({base} @ {todk}): {_loc_err}")
+                if (base, todk) in variants:
+                    s["_location_sheet_url"] = variants[(base, todk)]
         except Exception as _ls_err:
             print(f"   ⚠️ location sheets unavailable: {_ls_err}")
 

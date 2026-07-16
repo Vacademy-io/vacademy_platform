@@ -6,6 +6,8 @@ import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import type { PlayBadge, PlayGamificationData } from "@/services/play-gamification";
 import { BadgeVisual } from "./badge-icons";
 import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import iconPoints from "@/assets/cleaner-play/icon-points.webp";
 import iconStreak from "@/assets/cleaner-play/icon-streak.webp";
 import iconBadges from "@/assets/cleaner-play/icon-badges.webp";
@@ -281,7 +283,7 @@ function BadgesCard({ data }: { data: PlayGamificationData | null }) {
             <p className="cp-muted text-caption">
               {unlockedCount > 0
                 ? `${unlockedCount}/${badges.length} unlocked`
-                : "Complete a lesson to unlock a badge"}
+                : `Complete a ${getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase()} to unlock a badge`}
             </p>
           </div>
         </div>
@@ -308,7 +310,7 @@ function BadgesCard({ data }: { data: PlayGamificationData | null }) {
             <p className="text-caption text-muted-foreground">
               {unlockedCount > 0
                 ? `${unlockedCount}/${badges.length} unlocked`
-                : "Complete a lesson to unlock a badge"}
+                : `Complete a ${getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase()} to unlock a badge`}
             </p>
           </div>
         </div>

@@ -63,6 +63,9 @@ export const ContinueLearningCard = ({
     const navigate = useNavigate();
     const isPlay = usePlayTheme();
     const isCleanerPlay = useCleanerPlayTheme();
+    // Institutes rename Slide (e.g. "Lesson"/"Topic") — keep the empty-state
+    // copy in the same vocabulary as the "N slides in progress" counter.
+    const slideTerm = getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase();
 
     if (isLoading) {
         return <ContinueLearningCardSkeleton />;
@@ -89,7 +92,7 @@ export const ContinueLearningCard = ({
                                 ? `Browse your ${getTerminologyPlural(
                                       ContentTerms.Course,
                                       SystemTerms.Course
-                                  )} and start your first lesson.`
+                                  )} and start your first ${slideTerm}.`
                                 : `You've completed all available ${getTerminologyPlural(
                                       ContentTerms.Slides,
                                       SystemTerms.Slides
@@ -106,7 +109,7 @@ export const ContinueLearningCard = ({
                         ) : (
                             <BookOpen weight="fill" size={16} />
                         )}
-                        {isFirstRun ? "Start your first lesson" : "Explore Content"}
+                        {isFirstRun ? `Start your first ${slideTerm}` : "Explore Content"}
                     </button>
                 </div>
             );
@@ -130,7 +133,7 @@ export const ContinueLearningCard = ({
                                 ? `Browse your ${getTerminologyPlural(
                                       ContentTerms.Course,
                                       SystemTerms.Course
-                                  )} and start your first lesson.`
+                                  )} and start your first ${slideTerm}.`
                                 : `You've completed all available ${getTerminologyPlural(
                                       ContentTerms.Slides,
                                       SystemTerms.Slides
@@ -147,7 +150,7 @@ export const ContinueLearningCard = ({
                         ) : (
                             <BookOpen weight="fill" size={16} />
                         )}
-                        {isFirstRun ? "Start your first lesson" : "Explore Content"}
+                        {isFirstRun ? `Start your first ${slideTerm}` : "Explore Content"}
                     </button>
                 </div>
             );
@@ -172,7 +175,7 @@ export const ContinueLearningCard = ({
                                 ? `Browse your ${getTerminologyPlural(
                                       ContentTerms.Course,
                                       SystemTerms.Course
-                                  )} and start your first lesson.`
+                                  )} and start your first ${slideTerm}.`
                                 : `You've completed all available ${getTerminologyPlural(
                                       ContentTerms.Slides,
                                       SystemTerms.Slides
@@ -189,7 +192,7 @@ export const ContinueLearningCard = ({
                         ) : (
                             <BookOpen weight="fill" size={16} />
                         )}
-                        {isFirstRun ? "Start your first lesson" : "Explore Content"}
+                        {isFirstRun ? `Start your first ${slideTerm}` : "Explore Content"}
                     </Button>
                 </CardContent>
             </Card>
@@ -388,11 +391,13 @@ export const ContinueLearningCard = ({
             <CardContent className="pt-0 px-4 sm:px-6 flex-1 flex flex-col gap-4">
                 <div className="space-y-2 flex-1">
                     {data.slides.slice(0, 3).map((slide, index) => (
-                        <div
+                        <button
+                            type="button"
                             key={slide.slide_id}
                             onClick={() => onResumeClick(slide)}
                             className={cn(
-                                "group/item flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/80 transition-colors cursor-pointer border border-transparent hover:border-border",
+                                "group/item flex w-full items-center gap-3 p-2.5 rounded-lg text-left hover:bg-muted/80 transition-colors cursor-pointer border border-transparent hover:border-border",
+                                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                 "[.ui-vibrant_&]:hover:bg-white/60 [.ui-vibrant_&]:hover:border-primary/20"
                             )}
                         >
@@ -415,7 +420,7 @@ export const ContinueLearningCard = ({
                                 </p>
                             </div>
                             <CaretRight size={14} weight="bold" className="text-muted-foreground group-hover/item:text-primary transition-colors" />
-                        </div>
+                        </button>
                     ))}
                 </div>
 

@@ -247,7 +247,7 @@ export function DashboardHero({
       {
         icon: BookOpen,
         label: `Browse your ${coursesPlural.toLocaleLowerCase()}`,
-        hint: "Open a topic and start your first lesson",
+        hint: `Open a topic and start your first ${getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase()}`,
         onClick: goToCourses,
         primary: true,
       },

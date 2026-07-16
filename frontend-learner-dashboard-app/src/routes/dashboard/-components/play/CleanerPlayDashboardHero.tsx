@@ -1,30 +1,17 @@
-import { useMemo } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { Fire, Play, VideoCamera } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import { ProgressRing } from "./ProgressRing";
-import {
-  getLatestResume,
-  resumeSearchParams,
-  RESUME_ROUTE,
-} from "@/services/resume-thread";
-import { SessionDetails } from "@/routes/study-library/live-class/-types/types";
-import {
-  isSessionLiveTimezoneAware,
-  convertSessionTimeToUserTimezone,
-} from "@/utils/timezone";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import heroGreeting from "@/assets/cleaner-play/hero-greeting.webp";
+import { SessionDetails } from "@/routes/study-library/live-class/-types/types";
+import { useDashboardHeroData } from "./useDashboardHeroData";
 
 /**
  * CleanerPlayDashboardHero — the "Cleaner Play" skin's hero band.
  *
- * Reuses PlayDashboardHero's data/logic (streak, daily goal, resume thread,
- * imminent session) verbatim; only the visual language differs — warm cream
- * surface, felted-clay mascot, and a brand-driven CTA (bg-primary) instead
- * of the fixed --play-c-success green, per institute theming.
+ * Same facts as PlayDashboardHero (via useDashboardHeroData); only the
+ * visual language differs — warm white surface, felted-clay mascot, and a
+ * brand-driven CTA (bg-primary) instead of the fixed play-success green,
+ * per institute theming.
  */
 export interface CleanerPlayDashboardHeroProps {
   userName: string | null;
@@ -33,48 +20,6 @@ export interface CleanerPlayDashboardHeroProps {
   hasAnyProgress: boolean;
   studyLibraryLoaded: boolean;
   onJoinSession: (session: SessionDetails) => void;
-}
-
-const DAILY_GOAL_XP = 50;
-const IMMINENT_WINDOW_MIN = 60;
-
-function getGreetingPeriod(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return "morning";
-  if (hour < 17) return "afternoon";
-  return "evening";
-}
-
-interface ImminentSession {
-  session: SessionDetails;
-  isLive: boolean;
-  minutesToStart: number;
-}
-
-function findImminentSession(
-  sessions: SessionDetails[] | undefined
-): ImminentSession | null {
-  if (!sessions || sessions.length === 0) return null;
-
-  const live = sessions.find((s) => isSessionLiveTimezoneAware(s));
-  if (live) return { session: live, isLive: true, minutesToStart: 0 };
-
-  const now = Date.now();
-  let best: ImminentSession | null = null;
-  for (const s of sessions) {
-    const start = convertSessionTimeToUserTimezone(
-      s.meeting_date,
-      s.start_time,
-      s.timezone
-    );
-    if (Number.isNaN(start.getTime())) continue;
-    const minutes = Math.ceil((start.getTime() - now) / 60000);
-    if (minutes < 0 || minutes > IMMINENT_WINDOW_MIN) continue;
-    if (!best || minutes < best.minutesToStart) {
-      best = { session: s, isLive: false, minutesToStart: minutes };
-    }
-  }
-  return best;
 }
 
 function HeroSkeleton(): JSX.Element {
@@ -109,52 +54,19 @@ export function CleanerPlayDashboardHero(
     onJoinSession,
   } = props;
 
-  const navigate = useNavigate();
-  const gamification = usePlayGamificationStore((s) => s.data);
+  const {
+    greeting,
+    streak,
+    goalPercent,
+    resume,
+    imminent,
+    liveClassTerm,
+    isContinue,
+    ctaCaption,
+    goToCta,
+  } = useDashboardHeroData({ userName, liveSessions, hasAnyProgress });
 
-  const resume = useMemo(() => getLatestResume(), []);
-  const imminent = useMemo(
-    () => findImminentSession(liveSessions),
-    [liveSessions]
-  );
-
-  const liveClassTerm = getTerminology(
-    ContentTerms.LiveSession,
-    SystemTerms.LiveSession
-  );
-
-  const period = getGreetingPeriod();
-  const firstName = userName?.trim().split(/\s+/)[0] ?? "";
-  const greeting = firstName
-    ? `Good ${period}, ${firstName}`
-    : `Good ${period}`;
-
-  const streak = gamification?.currentStreak ?? 0;
-  const todayXp = gamification?.todayXp ?? 0;
-  const weeklyDots = gamification?.weeklyDots ?? [];
-  const todayIndex = (new Date().getDay() + 6) % 7;
-  const todayActive = weeklyDots[todayIndex] === true;
-  const goalPercent = Math.max(
-    todayActive ? 100 : 0,
-    Math.min(100, Math.round((todayXp / DAILY_GOAL_XP) * 100))
-  );
-
-  const isContinue = resume !== null || hasAnyProgress;
   const ctaLabel = isContinue ? "Continue" : "Start learning";
-  const ctaCaption = resume
-    ? resume.slideTitle
-    : isContinue
-      ? "Pick up where you left off"
-      : "your first lesson";
-
-  const goToCta = () => {
-    if (resume) {
-      const to: string = RESUME_ROUTE;
-      navigate({ to, search: resumeSearchParams(resume) });
-    } else {
-      navigate({ to: "/study-library/courses" });
-    }
-  };
 
   if (!studyLibraryLoaded) {
     return <HeroSkeleton />;

@@ -2,6 +2,8 @@ import React from "react";
 import { Lightning } from "@phosphor-icons/react";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import iconPoints from "@/assets/cleaner-play/icon-points.webp";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 export const XpDisplayWidget: React.FC = () => {
   const data = usePlayGamificationStore((s) => s.data);
@@ -10,6 +12,7 @@ export const XpDisplayWidget: React.FC = () => {
   const level = data?.level ?? 1;
   const xpToNext = data?.xpToNextLevel ?? 500;
   const todayXp = data?.todayXp ?? 0;
+  const breakdown = data?.xpBreakdown ?? [];
 
   const xpPerLevel = 500;
   const xpInLevel = xpPerLevel - xpToNext;
@@ -39,6 +42,20 @@ export const XpDisplayWidget: React.FC = () => {
             </div>
           </div>
 
+          {breakdown.length > 0 && (
+            <div className="space-y-1 rounded-xl bg-white/60 p-2">
+              <p className="text-3xs font-bold uppercase tracking-wide text-play-ink/60">
+                How you earn points
+              </p>
+              {breakdown.map((b) => (
+                <div key={b.key} className="flex items-center justify-between text-caption">
+                  <span className="text-play-ink/60">{b.label}</span>
+                  <span className="font-bold text-play-ink">{b.points}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div>
             <div className="mb-1 flex justify-between text-3xs font-bold uppercase tracking-wide text-play-ink/60">
               <span>Lvl {level}</span>
@@ -61,7 +78,7 @@ export const XpDisplayWidget: React.FC = () => {
         <div className="flex items-center gap-3">
           <img src={iconPoints} alt="" aria-hidden="true" className="h-11 w-11 shrink-0 object-contain" />
           <p className="text-body font-black leading-tight text-play-ink">
-            Earn your first XP in a lesson today
+            {`Earn your first XP in a ${getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase()} today`}
           </p>
         </div>
       )}

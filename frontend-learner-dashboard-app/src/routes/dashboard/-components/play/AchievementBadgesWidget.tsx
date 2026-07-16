@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import type { PlayBadge } from "@/services/play-gamification";
 import iconBadges from "@/assets/cleaner-play/icon-badges.webp";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { BadgeVisual } from "../badge-icons";
 
 const BadgeItem: React.FC<{ badge: PlayBadge }> = ({ badge }) => {
@@ -81,7 +83,7 @@ export const AchievementBadgesWidget: React.FC = () => {
           <p className="text-caption font-bold text-play-ink/60">
             {unlockedCount > 0
               ? `${unlockedCount}/${badges.length} unlocked`
-              : "Complete your first lesson to unlock a badge"}
+              : `Complete your first ${getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase()} to unlock a badge`}
           </p>
         </div>
       </div>

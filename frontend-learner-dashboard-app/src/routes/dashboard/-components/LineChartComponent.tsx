@@ -24,6 +24,21 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
     const isCleanerPlay = useCleanerPlayTheme();
     const batchLabel = getTerminology(ContentTerms.Batch, SystemTerms.Batch);
 
+    // Truly empty (API returned no rows): a friendly note beats bare axes.
+    if (!userActivity.length) {
+        return (
+            <div className={cn(
+                "rounded-lg border border-border bg-muted/40 p-6 text-center sm:rounded-xl",
+                isCleanerPlay && "!border-cp-border !bg-cp-bg-deep",
+                isPlay && "!bg-white/60 !border-transparent"
+            )}>
+                <p className="text-sm font-medium text-muted-foreground">
+                    Your activity will appear here as you learn.
+                </p>
+            </div>
+        );
+    }
+
     // ONE data accent: the learner's own line. The batch comparison line is
     // neutral in every mode so the chart reads "you vs a quiet reference".
     const userLineColor = isPlay ? "var(--play-c-info)" : "hsl(var(--primary))";

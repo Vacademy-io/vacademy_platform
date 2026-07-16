@@ -111,6 +111,18 @@
 .play-float { animation: play-float 3s ease-in-out infinite; }
 .play-xp-pop { animation: play-xp-pop 0.4s ease-out; }
 
+/* Vestibular safety: park every play animation for users who asked the OS
+   for reduced motion (cleaner-play-theme.css guards its float the same way). */
+@media (prefers-reduced-motion: reduce) {
+  .play-wiggle,
+  .play-pulse,
+  .play-bounce-in,
+  .play-float,
+  .play-xp-pop {
+    animation: none;
+  }
+}
+
 /* ── Global Rounding & Solidity ───────────────────────────────────── */
 @layer components {
 

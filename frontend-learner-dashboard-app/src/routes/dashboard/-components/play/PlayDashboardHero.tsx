@@ -1,22 +1,9 @@
-import { useMemo } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { Fire, Play, VideoCamera } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
-import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import { ProgressRing } from "./ProgressRing";
 import heroGreeting from "@/assets/cleaner-play/hero-greeting.webp";
-import {
-  getLatestResume,
-  resumeSearchParams,
-  RESUME_ROUTE,
-} from "@/services/resume-thread";
 import { SessionDetails } from "@/routes/study-library/live-class/-types/types";
-import {
-  isSessionLiveTimezoneAware,
-  convertSessionTimeToUserTimezone,
-} from "@/utils/timezone";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useDashboardHeroData } from "./useDashboardHeroData";
 
 export interface PlayDashboardHeroProps {
   userName: string | null;
@@ -25,51 +12,6 @@ export interface PlayDashboardHeroProps {
   hasAnyProgress: boolean;
   studyLibraryLoaded: boolean;
   onJoinSession: (session: SessionDetails) => void;
-}
-
-/** XP a kid should earn in a day to fill the daily-goal ring. */
-const DAILY_GOAL_XP = 50;
-/** A session counts as "imminent" when it starts within this many minutes. */
-const IMMINENT_WINDOW_MIN = 60;
-
-function getGreetingPeriod(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return "morning";
-  if (hour < 17) return "afternoon";
-  return "evening";
-}
-
-interface ImminentSession {
-  session: SessionDetails;
-  isLive: boolean;
-  minutesToStart: number;
-}
-
-/** First live session, else the first one starting within the window. */
-function findImminentSession(
-  sessions: SessionDetails[] | undefined
-): ImminentSession | null {
-  if (!sessions || sessions.length === 0) return null;
-
-  const live = sessions.find((s) => isSessionLiveTimezoneAware(s));
-  if (live) return { session: live, isLive: true, minutesToStart: 0 };
-
-  const now = Date.now();
-  let best: ImminentSession | null = null;
-  for (const s of sessions) {
-    const start = convertSessionTimeToUserTimezone(
-      s.meeting_date,
-      s.start_time,
-      s.timezone
-    );
-    if (Number.isNaN(start.getTime())) continue;
-    const minutes = Math.ceil((start.getTime() - now) / 60000);
-    if (minutes < 0 || minutes > IMMINENT_WINDOW_MIN) continue;
-    if (!best || minutes < best.minutesToStart) {
-      best = { session: s, isLive: false, minutesToStart: minutes };
-    }
-  }
-  return best;
 }
 
 /** Playful pulsing placeholder shown while the study library loads. */
@@ -103,57 +45,19 @@ export function PlayDashboardHero(props: PlayDashboardHeroProps): JSX.Element {
     onJoinSession,
   } = props;
 
-  const navigate = useNavigate();
-  const gamification = usePlayGamificationStore((s) => s.data);
+  const {
+    greeting,
+    streak,
+    goalPercent,
+    resume,
+    imminent,
+    liveClassTerm,
+    isContinue,
+    ctaCaption,
+    goToCta,
+  } = useDashboardHeroData({ userName, liveSessions, hasAnyProgress });
 
-  const resume = useMemo(() => getLatestResume(), []);
-  const imminent = useMemo(
-    () => findImminentSession(liveSessions),
-    [liveSessions]
-  );
-
-  const liveClassTerm = getTerminology(
-    ContentTerms.LiveSession,
-    SystemTerms.LiveSession
-  );
-
-  // Greeting
-  const period = getGreetingPeriod();
-  const firstName = userName?.trim().split(/\s+/)[0] ?? "";
-  const greeting = firstName
-    ? `Good ${period}, ${firstName}!`
-    : `Good ${period}!`;
-
-  // Streak + daily goal
-  const streak = gamification?.currentStreak ?? 0;
-  const todayXp = gamification?.todayXp ?? 0;
-  const weeklyDots = gamification?.weeklyDots ?? [];
-  const todayIndex = (new Date().getDay() + 6) % 7; // Monday-first dots
-  const todayActive = weeklyDots[todayIndex] === true;
-  const goalPercent = Math.max(
-    todayActive ? 100 : 0,
-    Math.min(100, Math.round((todayXp / DAILY_GOAL_XP) * 100))
-  );
-
-  // CTA mode
-  const isContinue = resume !== null || hasAnyProgress;
   const ctaLabel = isContinue ? "CONTINUE" : "START";
-  const ctaCaption = resume
-    ? resume.slideTitle
-    : isContinue
-      ? "Pick up where you left off"
-      : "your first lesson";
-
-  // Existing app pattern: loosely-typed navigate (the resume route's search
-  // schema is validated by the destination route itself).
-  const goToCta = () => {
-    if (resume) {
-      const to: string = RESUME_ROUTE;
-      navigate({ to, search: resumeSearchParams(resume) });
-    } else {
-      navigate({ to: "/study-library/courses" });
-    }
-  };
 
   if (!studyLibraryLoaded) {
     return <HeroSkeleton />;
@@ -211,7 +115,7 @@ export function PlayDashboardHero(props: PlayDashboardHeroProps): JSX.Element {
               className="play-float h-24 w-auto shrink-0 sm:h-28"
             />
             <div className="min-w-0">
-              <h1 className="text-h2 font-bold text-play-ink">{greeting}</h1>
+              <h1 className="text-h2 font-bold text-play-ink">{greeting}!</h1>
               <div className="mt-2.5 flex flex-wrap items-center gap-2">
                 {/* Streak flame chip */}
                 <span className="inline-flex h-11 items-center gap-1.5 rounded-full bg-white px-3 shadow-play-soft">

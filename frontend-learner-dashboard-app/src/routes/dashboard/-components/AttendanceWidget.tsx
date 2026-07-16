@@ -406,22 +406,12 @@ export function AttendanceWidget() {
     <Card
       className={cn(
         "attendance-widget-card group relative overflow-hidden cursor-pointer transition-all duration-300 hover:shadow-md hover:border-primary/20 h-full",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         // Vibrant: tenant-primary wash + top rail; success/danger stay
         // reserved for the actual attendance statuses inside
         "[.ui-vibrant_&]:bg-primary-50/50 [.ui-vibrant_&]:border-primary-100",
         "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300"
       )}
-      role="button"
-      tabIndex={0}
-      aria-label="View attendance details"
       onClick={goToAttendance}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          goToAttendance();
-        }
-      }}
     >
       <CardHeader className="pb-2 px-4 pt-4">
         <div className="flex items-center justify-between">
@@ -452,11 +442,17 @@ export function AttendanceWidget() {
                   {PERIOD_LABELS[p]}
                 </Button>
               ))}
-            <CaretRight
-              size={14}
-              weight="bold"
-              className="ml-1 text-muted-foreground group-hover:text-primary transition-all duration-300 group-hover:translate-x-0.5"
-            />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                goToAttendance();
+              }}
+              aria-label="View attendance details"
+              className="ml-1 rounded-full p-1 text-muted-foreground transition-all duration-300 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:translate-x-0.5 group-hover:text-primary"
+            >
+              <CaretRight size={14} weight="bold" />
+            </button>
           </div>
         </div>
       </CardHeader>

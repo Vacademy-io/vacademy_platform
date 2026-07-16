@@ -127,24 +127,25 @@ export const PastLearningInsights = () => {
   const [totalSessions, setTotalSessions] = useState<number>(0);
   const [streakDays, setStreakDays] = useState<number>(0);
   const [activeView, setActiveView] = useState<"chart" | "table">("chart");
+  const [loadError, setLoadError] = useState(false);
 
   // Honesty gate: with zero recorded activity the header zero-stats are noise.
   const hasActivity = userActivity.some((day) => day.time_spent_by_user_millis > 0);
 
-  useEffect(() => {
-    const fetchUserActivity = async () => {
-      const { student } = await getStoredDetails();
-      pastLearningInsights(
-        {
-          user_id: student.user_id,
-          start_date: new Date(
-            new Date().setDate(new Date().getDate() - 6)
-          ).toISOString(),
-          end_date: new Date().toISOString(),
-        },
-        {
-          onSuccess: (data) => {
-            setUserActivity(data);
+  const fetchUserActivity = async () => {
+    setLoadError(false);
+    const { student } = await getStoredDetails();
+    pastLearningInsights(
+      {
+        user_id: student.user_id,
+        start_date: new Date(
+          new Date().setDate(new Date().getDate() - 6)
+        ).toISOString(),
+        end_date: new Date().toISOString(),
+      },
+      {
+        onSuccess: (data) => {
+          setUserActivity(data);
 
             if (data.length > 0) {
               // Calculate average time spent
@@ -177,17 +178,43 @@ export const PastLearningInsights = () => {
               }
               setStreakDays(streak);
             }
-          },
-          onError: (error) => {
-            console.error(error);
-          },
-        }
-      );
-    };
+        },
+        onError: (error) => {
+          console.error(error);
+          setLoadError(true);
+        },
+      }
+    );
+  };
+
+  useEffect(() => {
     fetchUserActivity();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (isPending) return <AnalyticsLoadingSkeleton />;
+
+  // Shared inner content for every skin branch: a recoverable error state,
+  // else the chart/table toggle (LineChartComponent handles the truly-empty
+  // case itself).
+  const insightsContent = loadError ? (
+    <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-muted/40 p-6 text-center">
+      <p className="text-sm font-medium text-muted-foreground">
+        Couldn't load your learning activity.
+      </p>
+      <button
+        type="button"
+        onClick={fetchUserActivity}
+        className="rounded-full bg-primary px-4 py-1.5 text-caption font-semibold text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      >
+        Try again
+      </button>
+    </div>
+  ) : activeView === "chart" ? (
+    <LineChartComponent userActivity={userActivity} />
+  ) : (
+    <StudentProgressTable userActivity={userActivity} />
+  );
 
   if (isPlay) {
     return (
@@ -243,11 +270,7 @@ export const PastLearningInsights = () => {
         </div>
 
         <div className="p-4">
-          {activeView === "chart" ? (
-            <LineChartComponent userActivity={userActivity} />
-          ) : (
-            <StudentProgressTable userActivity={userActivity} />
-          )}
+          {insightsContent}
         </div>
       </div>
     );
@@ -307,11 +330,7 @@ export const PastLearningInsights = () => {
         </div>
 
         <div className="p-4">
-          {activeView === "chart" ? (
-            <LineChartComponent userActivity={userActivity} />
-          ) : (
-            <StudentProgressTable userActivity={userActivity} />
-          )}
+          {insightsContent}
         </div>
       </div>
     );
@@ -381,11 +400,7 @@ export const PastLearningInsights = () => {
 
         {/* Content: chart or table based on toggle */}
         <CardContent className="p-4">
-          {activeView === "chart" ? (
-            <LineChartComponent userActivity={userActivity} />
-          ) : (
-            <StudentProgressTable userActivity={userActivity} />
-          )}
+          {insightsContent}
         </CardContent>
       </Card>
     </div>

@@ -12,6 +12,8 @@ import {
     CommandList,
 } from '@/components/ui/command';
 import { Separator } from '@/components/ui/separator';
+import { ChipsWrapper } from '@/components/design-system/chips';
+import { useCompactMode } from '@/hooks/use-compact-mode';
 import { cn } from '@/lib/utils';
 import { fetchLeadCustomFieldValues } from '@/routes/audience-manager/list/-services/get-lead-custom-field-values';
 
@@ -131,6 +133,7 @@ export function CustomFieldMultiSelectFilter({
 
     const count = selected.length;
     const triggerLabel = count > 0 ? `${fieldName} · ${count}` : fieldName;
+    const { isCompact } = useCompactMode();
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
@@ -141,23 +144,40 @@ export function CustomFieldMultiSelectFilter({
                         role="combobox"
                         aria-expanded={open}
                         aria-label={`Filter by ${fieldName}`}
-                        className={cn(
-                            'inline-flex h-8 flex-shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-neutral-300 px-3 py-1.5 text-body font-regular text-neutral-600 active:bg-primary-100',
-                            count > 0
-                                ? 'border-primary-500 bg-primary-100'
-                                : 'hover:border-primary-500 hover:bg-primary-50'
-                        )}
                     >
-                        <PlusCircle className="size-4 text-neutral-600" />
-                        <span>{fieldName}</span>
-                        {count > 0 && (
+                        <ChipsWrapper
+                            className={cn(
+                                count > 0
+                                    ? 'border-primary-500 bg-primary-100'
+                                    : 'hover:border-primary-500 hover:bg-primary-50'
+                            )}
+                        >
                             <div className="flex items-center gap-2">
-                                <Separator orientation="vertical" className="h-4 bg-neutral-500" />
-                                <div className="inline-flex items-center rounded-md bg-primary-200 px-2.5 py-0.5 text-caption font-normal">
-                                    {count} selected
+                                <PlusCircle
+                                    className={cn(isCompact ? 'size-3.5' : 'size-4', 'text-neutral-600')}
+                                />
+                                <div
+                                    className={cn(
+                                        'flex items-center',
+                                        isCompact ? 'text-xs' : 'text-body',
+                                        'text-neutral-600'
+                                    )}
+                                >
+                                    {fieldName}
                                 </div>
+                                {count > 0 && (
+                                    <div className="flex items-center gap-2">
+                                        <Separator
+                                            orientation="vertical"
+                                            className="mx-2 h-4 bg-neutral-500"
+                                        />
+                                        <div className="inline-flex items-center rounded-md bg-primary-200 px-2.5 py-0.5 text-caption font-normal">
+                                            {count} selected
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                        )}
+                        </ChipsWrapper>
                     </button>
                 ) : (
                     <Button

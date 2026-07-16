@@ -254,6 +254,7 @@ export const StudentFilters = ({
                                             )
                                         }
                                         fetchValues={fetchStudentCustomFieldValues}
+                                        variant="pill"
                                     />
                                 ) : (
                                     <Filters

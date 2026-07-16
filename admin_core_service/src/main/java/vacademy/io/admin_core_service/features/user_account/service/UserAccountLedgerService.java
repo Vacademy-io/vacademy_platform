@@ -10,6 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.user_account.dto.UserAccountLedgerEntryDTO;
 import vacademy.io.admin_core_service.features.user_account.dto.UserAccountSummaryDTO;
 import vacademy.io.admin_core_service.features.user_account.entity.UserAccountLedger;
+import vacademy.io.admin_core_service.features.invoice.repository.InvoiceRepository;
 import vacademy.io.admin_core_service.features.user_account.repository.UserAccountLedgerRepository;
 
 import java.math.BigDecimal;
@@ -21,6 +22,7 @@ import java.time.LocalDate;
 public class UserAccountLedgerService {
 
     private final UserAccountLedgerRepository repository;
+    private final InvoiceRepository invoiceRepository;
 
     // ── public event-recording API ────────────────────────────────────────────
 
@@ -86,6 +88,14 @@ public class UserAccountLedgerService {
         BigDecimal totalAccrued = repository.sumDebits(userId, instituteId);
         BigDecimal totalPaid    = repository.sumCredits(userId, instituteId);
         BigDecimal overdue      = repository.sumOverdue(userId, instituteId);
+
+        // Supplement with admin invoices that pre-date the ledger integration
+        // (invoices with no corresponding DEBIT_ACCRUAL entry yet)
+        BigDecimal extraAccruals = invoiceRepository.sumUnledgeredAdminInvoiceAccruals(userId, instituteId);
+        BigDecimal extraPayments = invoiceRepository.sumUnledgeredAdminInvoicePayments(userId, instituteId);
+        if (extraAccruals != null) totalAccrued = totalAccrued.add(extraAccruals);
+        if (extraPayments != null) totalPaid    = totalPaid.add(extraPayments);
+
         BigDecimal balance      = totalAccrued.subtract(totalPaid).max(BigDecimal.ZERO);
 
         return UserAccountSummaryDTO.builder()

@@ -199,6 +199,10 @@ public class VoiceBotInternalController {
         if (a.getMaxCallMinutes() != null && a.getMaxCallMinutes() > 0) {
             base.put("maxCallMinutes", a.getMaxCallMinutes());
         }
+        // Voice tuning (V379): consumed by the bot's build_tts. Absent = the bot's
+        // global TTS_PACE / Sarvam model default.
+        if (a.getPace() != null) base.put("pace", a.getPace());
+        if (a.getTemperature() != null) base.put("temperature", a.getTemperature());
         return base;
     }
 

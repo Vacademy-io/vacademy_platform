@@ -244,6 +244,16 @@ def _voice_gender(voice) -> str:
     return "male" if (voice or "priya").strip().lower() in _MALE_VOICES else "female"
 
 
+def _as_float(v) -> float | None:
+    """Tolerant numeric read for call-context JSON (numbers arrive as int/float/str)."""
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 # The agent's configured "language" (a UI value like "hinglish") → a Sarvam STT
 # BCP-47 tag to PIN transcription, plus a human label for the prompt. Pinning matters:
 # auto-detect drifts a Hindi/Hinglish caller into a neighbouring Indic language
@@ -485,7 +495,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     stt = build_stt(settings.sample_rate, language=stt_lang, bias=stt_bias)
     llm = build_llm()
     tts = build_tts(settings.sample_rate, voice=agent.get("voice"),
-                    aiohttp_session=aiohttp_session)
+                    aiohttp_session=aiohttp_session,
+                    pace=_as_float(agent.get("pace")),
+                    temperature=_as_float(agent.get("temperature")))
 
     llm_context = LLMContext(
         messages=[{"role": "system", "content": build_system_prompt(context)}]

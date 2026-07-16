@@ -20,6 +20,7 @@ import vacademy.io.auth_service.feature.notification.service.NotificationEmailBo
 import vacademy.io.auth_service.feature.notification.service.NotificationService;
 import vacademy.io.auth_service.feature.user.repository.PermissionRepository;
 import vacademy.io.auth_service.feature.util.UsernameGenerator;
+import vacademy.io.common.auth.dto.BackfillCreatedPairDTO;
 import vacademy.io.common.auth.dto.BackfillParentItemDTO;
 import vacademy.io.common.auth.dto.BackfillParentsResultDTO;
 import vacademy.io.common.auth.dto.UserDTO;
@@ -34,6 +35,7 @@ import vacademy.io.common.auth.service.RefreshTokenService;
 import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.notification.dto.GenericEmailRequest;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -699,6 +701,7 @@ public class AuthService {
         List<BackfillParentItemDTO> safeItems = items != null ? items : List.of();
         int created = 0;
         int skipped = 0;
+        List<BackfillCreatedPairDTO> createdPairs = new ArrayList<>();
         for (BackfillParentItemDTO item : safeItems) {
             Optional<User> childOpt = userRepository.findById(item.getChildUserId());
             if (childOpt.isEmpty()) {
@@ -723,11 +726,16 @@ public class AuthService {
             child.setLinkedParentId(parentUser.getId());
             userRepository.save(child);
             created++;
+            createdPairs.add(BackfillCreatedPairDTO.builder()
+                    .childUserId(child.getId())
+                    .parentUserId(parentUser.getId())
+                    .build());
         }
         return BackfillParentsResultDTO.builder()
                 .totalRequested(safeItems.size())
                 .created(created)
                 .skipped(skipped)
+                .createdPairs(createdPairs)
                 .build();
     }
 }

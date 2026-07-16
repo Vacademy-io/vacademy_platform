@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.parent_link.dto.BackfillSummaryDT
 import vacademy.io.admin_core_service.features.parent_link.dto.NewGuardianLinkRequestDTO;
 import vacademy.io.admin_core_service.features.parent_link.dto.ParentLinkActionRequestDTO;
 import vacademy.io.admin_core_service.features.parent_link.dto.ParentLinkActionResponseDTO;
+import vacademy.io.admin_core_service.features.parent_link.dto.PendingGuardianStudentDTO;
 import vacademy.io.admin_core_service.features.parent_link.service.ParentLinkService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -60,6 +61,13 @@ public class ParentLinkController {
             @RequestAttribute("user") CustomUserDetails userDetails,
             @RequestBody NewGuardianLinkRequestDTO request) {
         return ResponseEntity.ok(parentLinkService.linkNewGuardian(request));
+    }
+
+    @GetMapping("/backfill/pending")
+    public ResponseEntity<List<PendingGuardianStudentDTO>> getPendingGuardianStudents(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestParam("instituteId") String instituteId) {
+        return ResponseEntity.ok(parentLinkService.previewPendingGuardians(instituteId));
     }
 
     @PostMapping("/backfill")

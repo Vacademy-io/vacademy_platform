@@ -2,10 +2,12 @@ package vacademy.io.admin_core_service.features.institute_learner.repository;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.institute_learner.dto.projection.StudentListV2Projection;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 
@@ -25,6 +27,20 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
   List<String> findDistinctUserIdsByInstituteId(@Param("instituteId") String instituteId);
 
   List<Student> findByUserIdIn(List<String> userIds);
+
+  /** Guardian-linking backfill preview: students in this set with no guardian linked yet. */
+  List<Student> findByUserIdInAndGuardianUserIdIsNull(List<String> userIds);
+
+  /**
+   * Stamps the denormalized guardian pointer once a link succeeds (assignment-time
+   * link, link-new-guardian, or backfill). Bulk-by-userId since a user can have more
+   * than one student row (findByUserId returns a List, not Optional) — every row for
+   * this user gets the same guardian.
+   */
+  @Modifying
+  @Transactional
+  @Query("UPDATE Student s SET s.guardianUserId = :guardianUserId WHERE s.userId = :userId")
+  void updateGuardianUserId(@Param("userId") String userId, @Param("guardianUserId") String guardianUserId);
 
   @Query(value = "SELECT DISTINCT s.* FROM student s LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id "
       +

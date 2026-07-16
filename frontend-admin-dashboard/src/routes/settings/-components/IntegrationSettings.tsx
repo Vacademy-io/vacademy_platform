@@ -20,6 +20,7 @@ import {
     ArrowsClockwise,
     Warning,
     CircleNotch,
+    CloudArrowDown,
 } from '@phosphor-icons/react';
 import {
     Dialog,
@@ -41,6 +42,7 @@ import {
     updateConnector,
     checkConnectorHealth,
     resubscribeConnector,
+    pollConnectorNow,
     buildGoogleWebhookUrl,
     fetchAudienceCustomFields,
     buildFieldMappingJson,
@@ -333,7 +335,9 @@ function ConnectorTable({
     onEdit,
     onTest,
     onResubscribe,
+    onSyncNow,
     testingId,
+    syncingId,
 }: {
     connectors: ConnectorListItem[];
     audiences: AudienceOption[];
@@ -341,7 +345,9 @@ function ConnectorTable({
     onEdit: (connector: ConnectorListItem) => void;
     onTest: (id: string) => void;
     onResubscribe: (id: string) => void;
+    onSyncNow: (id: string) => void;
     testingId: string | null;
+    syncingId: string | null;
 }) {
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const audienceNameById = new Map(audiences.map((a) => [a.id, a.name]));
@@ -490,6 +496,20 @@ function ConnectorTable({
                                 </td>
                                 <td className="px-4 py-2.5">
                                     <div className="flex items-center gap-2">
+                                        {c.vendor === 'META_LEAD_ADS' && (
+                                            <button
+                                                onClick={() => onSyncNow(c.id)}
+                                                disabled={syncingId === c.id}
+                                                className="text-neutral-400 hover:text-primary-600 disabled:opacity-50"
+                                                title="Sync leads now (pull the last 24h from Meta)"
+                                            >
+                                                {syncingId === c.id ? (
+                                                    <CircleNotch className="size-4 animate-spin" />
+                                                ) : (
+                                                    <CloudArrowDown className="size-4" />
+                                                )}
+                                            </button>
+                                        )}
                                         {c.vendor === 'META_LEAD_ADS' && (
                                             <button
                                                 onClick={() => onTest(c.id)}
@@ -1191,6 +1211,36 @@ export default function IntegrationSettings() {
         },
     });
 
+    // "Sync leads now" — pull the last 24h from Meta on demand (the PULL fallback
+    // for pages where realtime webhook delivery is blocked / CRM access revoked).
+    const {
+        mutate: syncNow,
+        isPending: isSyncing,
+        variables: syncingVar,
+    } = useMutation({
+        mutationFn: (id: string) => pollConnectorNow(id),
+        onSuccess: (data) => {
+            if (data.truncated) {
+                // Backend surfaced a partial sync (window held more than one pull returns).
+                toast.warning(data.message);
+            } else if (data.fetched > 0) {
+                toast.success(
+                    `Synced ${data.fetched} lead${data.fetched === 1 ? '' : 's'} from Meta`
+                );
+            } else {
+                toast.info('No new leads from Meta in the last 24 hours');
+            }
+            queryClient.invalidateQueries({ queryKey: ['ad-connectors'] });
+        },
+        onError: (err: unknown) => {
+            const msg =
+                (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+                'Sync failed';
+            toast.error(msg);
+        },
+    });
+    const syncingId = isSyncing ? (syncingVar ?? null) : null;
+
     const [editingConnector, setEditingConnector] = useState<ConnectorListItem | null>(null);
 
     const { mutate: saveConnectorEdits, isPending: isSavingEdits } = useMutation({
@@ -1252,7 +1302,9 @@ export default function IntegrationSettings() {
                             onEdit={(c) => setEditingConnector(c)}
                             onTest={(id) => testConnector(id)}
                             onResubscribe={(id) => resubscribe(id)}
+                            onSyncNow={(id) => syncNow(id)}
                             testingId={testingId}
+                            syncingId={syncingId}
                         />
                     )}
                 </CardContent>

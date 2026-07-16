@@ -67,6 +67,10 @@ export const initiateMetaOAuth = async (
 ): Promise<{ oauth_url: string; session_key: string }> => {
     const params: Record<string, string> = { instituteId };
     if (audienceId) params.audienceId = audienceId;
+    // Tell the backend which origin started the flow so the OAuth callback returns
+    // the browser to THIS domain (works for white-label custom domains, not just
+    // dash.vacademy.io). The backend validates it against the institute's hosts.
+    if (typeof window !== 'undefined') params.frontendOrigin = window.location.origin;
     const res = await authenticatedAxiosInstance.post(`${BASE}/initiate`, null, { params });
     return res.data;
 };
@@ -209,6 +213,34 @@ export const resubscribeConnector = async (
 ): Promise<ConnectorSaveResult> => {
     const res = await authenticatedAxiosInstance.post(
         `${BASE}/connectors/${connectorId}/resubscribe`
+    );
+    return res.data;
+};
+
+export interface PollResult {
+    connector_id: string;
+    /** How many leads Meta returned for the window (before dedup). */
+    fetched: number;
+    since_minutes: number;
+    /** True if the window held more leads than one pull returns (older ones remain). */
+    truncated?: boolean;
+    message: string;
+}
+
+/**
+ * Pull leads on demand for a Meta connector (last `sinceMinutes`, default 24h).
+ * Use when realtime push is blocked (Meta CRM access revoked) to sync immediately,
+ * or pass a large window to backfill history. Already-delivered leads dedup, so
+ * it's safe to run repeatedly.
+ */
+export const pollConnectorNow = async (
+    connectorId: string,
+    sinceMinutes?: number
+): Promise<PollResult> => {
+    const res = await authenticatedAxiosInstance.post(
+        `${BASE}/connectors/${connectorId}/poll`,
+        null,
+        { params: sinceMinutes ? { sinceMinutes } : {} }
     );
     return res.data;
 };

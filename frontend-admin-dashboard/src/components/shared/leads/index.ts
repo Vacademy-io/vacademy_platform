@@ -11,7 +11,12 @@ export { LeadCounsellor } from './lead-counsellor';
 export { LeadActionsMenu } from './lead-actions-menu';
 export { LeadEmptyState } from './lead-empty-state';
 export { LeadSourcePill } from './lead-source-pill';
-export { LeadTable, type LeadTableExtraColumn } from './lead-table';
+export {
+    LeadTable,
+    type LeadTableExtraColumn,
+    type LeadSortKey,
+    type LeadSortDirection,
+} from './lead-table';
 export { LeadPagination } from './lead-pagination';
 export {
     LeadInlineSelect,

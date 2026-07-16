@@ -16,23 +16,45 @@ import { fetchLeadCustomFieldValues } from '@/routes/audience-manager/list/-serv
 
 const PAGE_SIZE = 20;
 
+/** One page of distinct values for a custom field (Spring Page<String>). */
+interface CustomFieldValuesPage {
+    content: string[];
+    number: number;
+    last: boolean;
+}
+
+interface FetchCustomFieldValuesParams {
+    instituteId: string;
+    customFieldId: string;
+    search?: string;
+    pageNo: number;
+    pageSize: number;
+}
+
 interface CustomFieldMultiSelectFilterProps {
     instituteId: string;
-    /** custom_field_id (uuid) — matches how lead rows key their values. */
+    /** custom_field_id (uuid) — matches how source rows key their values. */
     fieldId: string;
     /** Display label, e.g. "City". */
     fieldName: string;
     /** Currently selected values. */
     selected: string[];
     onChange: (values: string[]) => void;
+    /** Distinct-values lookup. Defaults to the leads endpoint; pass a
+     *  different fetcher (e.g. the Manage Students learner-scoped one) to
+     *  reuse this same combobox for other USER-scoped custom fields. */
+    fetchValues?: (params: FetchCustomFieldValuesParams) => Promise<CustomFieldValuesPage>;
 }
 
 /**
- * Searchable, paginated multi-select for a single custom field, used in the
- * leads filter bar. Distinct values are loaded lazily from the backend only
- * once the dropdown is opened (and re-fetched as the admin types), so a field
- * the admin hasn't interacted with never hits the API. Selecting values OR's
- * them within this field; the leads request AND's across fields.
+ * Searchable, paginated multi-select for a single free-text custom field.
+ * Originally built for the leads filter bar; `fetchValues` makes it reusable
+ * wherever a filter needs distinct values for a custom field with no fixed
+ * DROPDOWN option list (e.g. Manage Students' learner-scoped fields). Distinct
+ * values are loaded lazily from the backend only once the dropdown is opened
+ * (and re-fetched as the admin types), so a field the admin hasn't interacted
+ * with never hits the API. Selecting values OR's them within this field; the
+ * request AND's across fields.
  */
 export function CustomFieldMultiSelectFilter({
     instituteId,
@@ -40,6 +62,7 @@ export function CustomFieldMultiSelectFilter({
     fieldName,
     selected,
     onChange,
+    fetchValues = fetchLeadCustomFieldValues,
 }: CustomFieldMultiSelectFilterProps) {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -61,9 +84,9 @@ export function CustomFieldMultiSelectFilter({
 
     const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError } =
         useInfiniteQuery({
-            queryKey: ['leadCustomFieldValues', instituteId, fieldId, debouncedSearch],
+            queryKey: ['customFieldValues', instituteId, fieldId, debouncedSearch],
             queryFn: ({ pageParam }) =>
-                fetchLeadCustomFieldValues({
+                fetchValues({
                     instituteId,
                     customFieldId: fieldId,
                     search: debouncedSearch || undefined,

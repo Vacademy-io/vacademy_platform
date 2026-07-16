@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.common.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -97,4 +99,42 @@ public interface CustomFieldValuesRepository extends JpaRepository<CustomFieldVa
             @Param("sourceType") String sourceType,
             @Param("userIds") List<String> userIds,
             @Param("instituteId") String instituteId);
+
+    /**
+     * Distinct values a custom field holds across an institute's learners —
+     * powers the searchable, paginated multi-select dropdown for free-text
+     * (non-DROPDOWN) custom-field filters on Manage Students, e.g. VetEducation's
+     * "Practice Type". Scoped to the institute via
+     * custom_field_values(source_type='USER') → student_session_institute_group_mapping
+     * on user_id, mirroring how InstituteStudentRepositoryImpl's per-row custom-field
+     * EXISTS filter resolves USER-scoped values. `:search` is a case-insensitive
+     * substring (blank = all values).
+     */
+    @Query(value = """
+                SELECT DISTINCT cfv.value
+                FROM custom_field_values cfv
+                JOIN student_session_institute_group_mapping ssigm ON ssigm.user_id = cfv.source_id
+                WHERE cfv.source_type = 'USER'
+                  AND ssigm.institute_id = :instituteId
+                  AND cfv.custom_field_id = :customFieldId
+                  AND cfv.value IS NOT NULL
+                  AND cfv.value <> ''
+                  AND (COALESCE(:search, '') = '' OR cfv.value ILIKE CONCAT('%', :search, '%'))
+                ORDER BY cfv.value ASC
+            """, countQuery = """
+                SELECT COUNT(DISTINCT cfv.value)
+                FROM custom_field_values cfv
+                JOIN student_session_institute_group_mapping ssigm ON ssigm.user_id = cfv.source_id
+                WHERE cfv.source_type = 'USER'
+                  AND ssigm.institute_id = :instituteId
+                  AND cfv.custom_field_id = :customFieldId
+                  AND cfv.value IS NOT NULL
+                  AND cfv.value <> ''
+                  AND (COALESCE(:search, '') = '' OR cfv.value ILIKE CONCAT('%', :search, '%'))
+            """, nativeQuery = true)
+    Page<String> findDistinctStudentCustomFieldValues(
+            @Param("instituteId") String instituteId,
+            @Param("customFieldId") String customFieldId,
+            @Param("search") String search,
+            Pageable pageable);
 }

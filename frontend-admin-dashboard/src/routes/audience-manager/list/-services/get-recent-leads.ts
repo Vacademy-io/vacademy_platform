@@ -60,7 +60,8 @@ export interface RecentLeadsRequest {
     institute_id: string;
     // When set, the backend's `findLeadsWithFilters` runs scoped to this
     // audience. When omitted, `findInstituteLeadsWithFilters` returns leads
-    // across every audience for the institute. Both order by submitted_at DESC.
+    // across every audience for the institute. Both default to submitted_at DESC
+    // and honor sort_by/sort_direction below.
     audience_id?: string;
     submitted_from_local?: string; // ISO-8601 timestamp
     submitted_to_local?: string;
@@ -101,6 +102,9 @@ export interface RecentLeadsRequest {
      *  custom_field_values row for {field_id} matches one of {values} (OR within
      *  the entry); across entries the backend AND-combines them. Omitted = none. */
     custom_field_filters?: LeadCustomFieldFilter[];
+    /** Column to sort by — SUBMITTED_AT (default) | LEAD_SCORE | LEAD_TIER | STATUS. */
+    sort_by?: string;
+    sort_direction?: 'ASC' | 'DESC';
     page: number;
     size: number;
 }

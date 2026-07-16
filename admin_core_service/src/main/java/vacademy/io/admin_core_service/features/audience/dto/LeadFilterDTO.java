@@ -84,7 +84,7 @@ public class LeadFilterDTO {
     // Pagination
     private Integer page;
     private Integer size;
-    private String sortBy;                  // SUBMITTED_AT, LEAD_SCORE, PARENT_NAME
+    private String sortBy;                  // SUBMITTED_AT, LEAD_SCORE, LEAD_TIER, STATUS, PARENT_NAME
     private String sortDirection;           // ASC, DESC
 
     @Data

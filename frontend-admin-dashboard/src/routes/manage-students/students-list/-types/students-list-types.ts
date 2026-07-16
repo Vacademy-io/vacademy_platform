@@ -25,6 +25,13 @@ export interface FilterConfig {
     id: FilterId; // Change this line
     title: string;
     filterList: { id: string; label: string }[];
+    /** Default (undefined) renders a static multi-select from `filterList`.
+     *  'CUSTOM_FIELD_SEARCH' renders a searchable, lazily-fetched multi-select
+     *  instead — used for free-text custom fields with no fixed option list
+     *  (`filterList` is unused for this kind; see `customFieldId`). */
+    kind?: 'CUSTOM_FIELD_SEARCH';
+    /** custom_field.id — required when kind === 'CUSTOM_FIELD_SEARCH'. */
+    customFieldId?: string;
 }
 
 export interface StudentFiltersProps {

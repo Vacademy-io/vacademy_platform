@@ -2427,6 +2427,8 @@ public class AudienceService {
                     filterDTO.getSlaFilter(),
                     filterTatHours,
                     customFieldMatchedIdsCsv,
+                    filterDTO.getSortBy(),
+                    filterDTO.getSortDirection(),
                     pageable);
             return mapResponsesToLeadDetails(all, filterDTO.getInstituteId());
         }

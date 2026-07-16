@@ -2,6 +2,8 @@
 import { MyButton } from '@/components/design-system/button';
 import { Export, Plus, Funnel, X } from '@phosphor-icons/react';
 import { Filters } from './myFilter';
+import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
+import { fetchStudentCustomFieldValues } from '@/routes/manage-students/students-list/-services/get-student-custom-field-values';
 import { StudentSearchBox } from '../../../../../../components/common/student-search-box';
 import { StudentFiltersProps } from '@/routes/manage-students/students-list/-types/students-list-types';
 import { useMemo, useRef, useState } from 'react';
@@ -235,19 +237,39 @@ export const StudentFilters = ({
                                 className="animate-slideInRight"
                                 style={{ animationDelay: `${index * 0.1}s` }}
                             >
-                                <Filters
-                                    filterDetails={{
-                                        label: filter.title,
-                                        filters: filter.filterList.map((filter) => ({
-                                            id: filter.id,
-                                            label: filter.label,
-                                        })),
-                                    }}
-                                    onFilterChange={(values) => onFilterChange(filter.id, values)}
-                                    clearFilters={clearFilters}
-                                    filterId={filter.id}
-                                    columnFilters={columnFilters}
-                                />
+                                {filter.kind === 'CUSTOM_FIELD_SEARCH' && filter.customFieldId ? (
+                                    <CustomFieldMultiSelectFilter
+                                        instituteId={instituteDetails?.id || ''}
+                                        fieldId={filter.customFieldId}
+                                        fieldName={filter.title}
+                                        selected={
+                                            columnFilters
+                                                .find((f) => f.id === filter.id)
+                                                ?.value.map((v) => v.id) || []
+                                        }
+                                        onChange={(values) =>
+                                            onFilterChange(
+                                                filter.id,
+                                                values.map((v) => ({ id: v, label: v }))
+                                            )
+                                        }
+                                        fetchValues={fetchStudentCustomFieldValues}
+                                    />
+                                ) : (
+                                    <Filters
+                                        filterDetails={{
+                                            label: filter.title,
+                                            filters: filter.filterList.map((filter) => ({
+                                                id: filter.id,
+                                                label: filter.label,
+                                            })),
+                                        }}
+                                        onFilterChange={(values) => onFilterChange(filter.id, values)}
+                                        clearFilters={clearFilters}
+                                        filterId={filter.id}
+                                        columnFilters={columnFilters}
+                                    />
+                                )}
                             </div>
                         ))}
                     </div>

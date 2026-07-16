@@ -18,7 +18,12 @@ export interface StudentFilterRequest {
     enroll_invite_ids?: string[];
     audience_ids?: string[];
     sub_org_ids?: string[];
-    [key: string]: any; // Allow dynamic custom field properties like customFieldId0, customFieldValues0
+    // Dropdown custom-field filters — keyed by custom_field.id, values are the
+    // selected option ids. Matches the backend's StudentListFilter.customFieldFilters
+    // (Map<String, List<String>>), NOT the legacy flat customFieldId*/customFieldValues*
+    // shape (that shape was never read by the backend — see useStudentFilters.tsx).
+    custom_field_filters?: Record<string, string[]>;
+    [key: string]: any;
 }
 
 export interface StudentAssessmentTable {

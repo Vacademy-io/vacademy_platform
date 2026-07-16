@@ -81,6 +81,8 @@ import {
     useUpdateLeadTier,
     campaignRowToVM,
     type LeadActionHandlers,
+    type LeadSortKey,
+    type LeadSortDirection,
 } from '@/components/shared/leads';
 
 const ALL_VALUE = '__ALL__'; // every lead regardless of status (default — enrolled leads stay visible)
@@ -151,6 +153,13 @@ const CampaignUsersContent = ({
 
     // ── Filter state ─────────────────────────────────────────
     const [page, setPage] = useState(0);
+    const [sortBy, setSortBy] = useState<LeadSortKey>('SUBMITTED_AT');
+    const [sortDirection, setSortDirection] = useState<LeadSortDirection>('DESC');
+    const handleSortChange = (nextSortBy: LeadSortKey, nextSortDirection: LeadSortDirection) => {
+        setPage(0);
+        setSortBy(nextSortBy);
+        setSortDirection(nextSortDirection);
+    };
     const [searchInput, setSearchInput] = useState('');
     const [appliedSearch, setAppliedSearch] = useState('');
     // Multi-select arrays: empty = no filter (show all). Tier values: HOT/WARM/COLD.
@@ -363,8 +372,8 @@ const CampaignUsersContent = ({
             audience_id: campaignId,
             page,
             size: PAGE_SIZE,
-            sort_by: 'SUBMITTED_AT',
-            sort_direction: 'DESC' as const,
+            sort_by: sortBy,
+            sort_direction: sortDirection,
             submitted_from_local: startOfDayIso(appliedRange.from),
             submitted_to_local: endOfDayIso(appliedRange.to),
             search_query: appliedSearch || undefined,
@@ -389,6 +398,8 @@ const CampaignUsersContent = ({
     }, [
         campaignId,
         page,
+        sortBy,
+        sortDirection,
         appliedRange,
         appliedSearch,
         tierFilters,
@@ -1227,6 +1238,9 @@ const CampaignUsersContent = ({
                             selectedIds={new Set(selectedLeads.keys())}
                             onToggleRow={toggleLeadRow}
                             onToggleAll={toggleAllLeads}
+                            sortBy={sortBy}
+                            sortDirection={sortDirection}
+                            onSortChange={handleSortChange}
                             emptyState={
                                 <LeadEmptyState
                                     title={

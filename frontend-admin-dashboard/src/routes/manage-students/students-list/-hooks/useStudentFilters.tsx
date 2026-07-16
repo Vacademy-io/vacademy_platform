@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { StudentFilterRequest } from '@/types/student-table-types';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
@@ -10,6 +10,7 @@ import {
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { useCustomFieldSetup } from '@/routes/audience-manager/list/-hooks/useCustomFieldSetup';
 
 export const ALL_SESSIONS_ID = '__ALL__';
 
@@ -20,6 +21,16 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
     const INSTITUTE_ID = getCurrentInstituteId();
     const { getAllSessions, instituteDetails } = useInstituteDetailsStore();
     const { selectedSession, setSelectedSession } = useSelectedSessionStore();
+    // Free-text custom fields (e.g. VetEducation's "Practice Type") have no fixed
+    // DROPDOWN option list, so they aren't part of instituteDetails.dropdown_custom_fields
+    // — pull the full field catalog and keep only TEXT-type entries. Shares its
+    // React Query cache key with any other caller (e.g. the leads filter bar), so
+    // this never triggers a second network request.
+    const { data: customFieldSetup } = useCustomFieldSetup(INSTITUTE_ID || undefined);
+    const textCustomFields = useMemo(
+        () => (customFieldSetup ?? []).filter((f) => (f.field_type || '').toUpperCase() === 'TEXT'),
+        [customFieldSetup]
+    );
     const [columnFilters, setColumnFilters] = useState<
         { id: string; value: { id: string; label: string }[] }[]
     >([]);
@@ -358,6 +369,22 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             });
         }
 
+        // Free-text custom field filters from URL — no fixed option list to match
+        // against, so each stored value is its own id/label.
+        textCustomFields.forEach((customField) => {
+            const urlValues = searchParams[customField.field_key];
+            if (urlValues) {
+                const values = Array.isArray(urlValues) ? urlValues : [urlValues];
+                const options = [...new Set(values as string[])].map((value) => ({
+                    id: value,
+                    label: value,
+                }));
+                if (options.length > 0) {
+                    initialFilters.push({ id: customField.field_key, value: options });
+                }
+            }
+        });
+
         if (initialFilters.length > 0) {
             setColumnFilters(initialFilters);
             // Mark that filters have been loaded from URL so they appear as "applied"
@@ -438,19 +465,25 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             // approvalStatusFilter already declared above
             // approvalStatusesToApply already declared above
 
-            // Handle custom field filters
-            const customFieldParams: Record<string, any> = {};
+            // Handle custom field filters — keyed by custom_field.id, matching the
+            // backend's StudentListFilter.customFieldFilters (Map<String, List<String>>).
+            const customFieldFilters: Record<string, string[]> = {};
             if (instituteDetails?.dropdown_custom_fields) {
-                let index = 0;
                 instituteDetails.dropdown_custom_fields.forEach((customField) => {
                     const filter = initialFilters.find((f) => f.id === customField.fieldKey);
                     if (filter && filter.value.length > 0) {
-                        customFieldParams[`customFieldId${index}`] = customField.id;
-                        customFieldParams[`customFieldValues${index}`] = filter.value.map((option) => option.id);
-                        index++;
+                        customFieldFilters[customField.id] = filter.value.map((option) => option.id);
                     }
                 });
             }
+            textCustomFields.forEach((customField) => {
+                const filter = initialFilters.find((f) => f.id === customField.field_key);
+                if (filter && filter.value.length > 0) {
+                    customFieldFilters[customField.custom_field_id] = filter.value.map(
+                        (option) => option.id
+                    );
+                }
+            });
 
             setAppliedFilters((prev) => ({
                 ...prev,
@@ -465,7 +498,9 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                 payment_statuses: paymentStatusesToApply,
                 type: learnerTypeToApply,
                 // approval_statuses is removed, merged into statuses
-                ...customFieldParams,
+                ...(Object.keys(customFieldFilters).length > 0
+                    ? { custom_field_filters: customFieldFilters }
+                    : { custom_field_filters: undefined }),
             }));
         }
     }, [instituteDetails, searchParams]);
@@ -607,19 +642,25 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         const paymentFilter = columnFilters.find((filter) => filter.id === 'payment_statuses');
         const paymentStatuses = paymentFilter ? paymentFilter.value.map((opt) => opt.id) : [];
 
-        // Handle custom field filters - convert to flat structure
-        const customFieldParams: Record<string, any> = {};
+        // Handle custom field filters — keyed by custom_field.id, matching the
+        // backend's StudentListFilter.customFieldFilters (Map<String, List<String>>).
+        const customFieldFilters: Record<string, string[]> = {};
         if (instituteDetails?.dropdown_custom_fields) {
-            let index = 0;
             instituteDetails.dropdown_custom_fields.forEach((customField) => {
                 const filter = columnFilters.find((f) => f.id === customField.fieldKey);
                 if (filter && filter.value.length > 0) {
-                    customFieldParams[`customFieldId${index}`] = customField.id;
-                    customFieldParams[`customFieldValues${index}`] = filter.value.map((option) => option.id);
-                    index++;
+                    customFieldFilters[customField.id] = filter.value.map((option) => option.id);
                 }
             });
         }
+        textCustomFields.forEach((customField) => {
+            const filter = columnFilters.find((f) => f.id === customField.field_key);
+            if (filter && filter.value.length > 0) {
+                customFieldFilters[customField.custom_field_id] = filter.value.map(
+                    (option) => option.id
+                );
+            }
+        });
 
         const gendersToApply = columnFilters.find((filter) => filter.id === 'gender')?.value.map((option) => option.label) || [];
         const rolesToApply = columnFilters.find((filter) => filter.id === 'sub_org_user_types')?.value.map((option) => option.id) || [];
@@ -646,7 +687,9 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             ...(enrollInviteIds.length > 0 ? { enroll_invite_ids: enrollInviteIds } : {}),
             ...(audienceIds.length > 0 ? { audience_ids: audienceIds } : {}),
             ...(subOrgIds.length > 0 ? { sub_org_ids: subOrgIds } : {}),
-            ...customFieldParams,
+            ...(Object.keys(customFieldFilters).length > 0
+                ? { custom_field_filters: customFieldFilters }
+                : {}),
         };
 
         setAppliedFilters(newFilters);
@@ -673,6 +716,9 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                 currentParams.delete(customField.fieldKey);
             });
         }
+        textCustomFields.forEach((customField) => {
+            currentParams.delete(customField.field_key);
+        });
 
         // Keep session — but never write the synthetic "All" sentinel to the URL.
         if (currentSession?.id && currentSession.id !== ALL_SESSIONS_ID) {
@@ -744,6 +790,15 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                 }
             });
         }
+        textCustomFields.forEach((customField) => {
+            const filter = columnFilters.find((f) => f.id === customField.field_key);
+            if (filter && filter.value.length > 0) {
+                const uniqueValues = [...new Set(filter.value.map((opt) => opt.id))];
+                uniqueValues.forEach((value) => {
+                    currentParams.append(customField.field_key, value);
+                });
+            }
+        });
 
         const newUrl = `${window.location.pathname}?${currentParams.toString()}`;
         window.history.replaceState({}, '', newUrl);
@@ -783,6 +838,9 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                 currentParams.delete(customField.fieldKey);
             });
         }
+        textCustomFields.forEach((customField) => {
+            currentParams.delete(customField.field_key);
+        });
 
         // Keep session — but never write the synthetic "All" sentinel to the URL.
         if (currentSession?.id && currentSession.id !== ALL_SESSIONS_ID) {
@@ -893,5 +951,6 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         setAppliedFilters,
         handleSessionChange,
         setColumnFilters,
+        textCustomFields,
     };
 };

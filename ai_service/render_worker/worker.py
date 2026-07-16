@@ -105,6 +105,21 @@ class RenderWorker:
             self._download(audio_url, audio_path)
             self._download(timeline_url, timeline_path)
 
+            # ── Media prefetch (frame-stall fix) ─────────────────────────
+            # Embedded <video> clips used to stream from S3/fal DURING the
+            # frame-stepped Playwright render; buffer stalls froze the frame
+            # for seconds while the separately-muxed audio kept playing
+            # (prod drama render froze 15-18s and 36-44s — the renderer's
+            # seek loop skips unbuffered videos and permanently gives up
+            # after a 5s wall-clock budget). Downloading every clip ONCE and
+            # rewriting the local timeline copy to file:// srcs removes all
+            # network I/O from the capture path — seeks become instant. The
+            # S3 timeline is untouched (browser preview keeps remote URLs).
+            try:
+                self._prefetch_timeline_videos(timeline_path, work_dir)
+            except Exception as exc:
+                logger.warning(f"[MEDIA-PREFETCH] failed ({exc}) — rendering with remote URLs")
+
             words_path = work_dir / "narration.words.json"
             if words_url:
                 self._download(words_url, words_path)
@@ -1435,6 +1450,65 @@ class RenderWorker:
 
         cap.release()
 
+    def _prefetch_timeline_videos(self, timeline_path: Path, work_dir: Path) -> None:
+        """Download every remote <video src> in the timeline once and rewrite
+        the LOCAL timeline copy to file:// URLs. The page itself is loaded
+        via file:// (generate_video.py page.goto), so file:// subresources
+        are same-origin and seek instantly — no mid-render buffering, no
+        frozen frames. Per-URL failures keep the remote URL (old behavior)."""
+        import hashlib
+        import re as _re
+
+        data = json.loads(timeline_path.read_text())
+        entries = data.get("entries") if isinstance(data, dict) else data
+        if not isinstance(entries, list):
+            return
+        media_dir = work_dir / "media_cache"
+        media_dir.mkdir(parents=True, exist_ok=True)
+        _src_re = _re.compile(
+            r"""(<(?:video|source)\b[^>]*?\bsrc\s*=\s*["'])(https?://[^"']+)(["'])""",
+            _re.IGNORECASE | _re.DOTALL,
+        )
+        cache: "dict[str, str]" = {}
+        localized = 0
+
+        def _swap(m: "_re.Match") -> str:
+            nonlocal localized
+            url = m.group(2)
+            if url not in cache:
+                key = hashlib.md5(url.encode()).hexdigest()[:12]
+                ext = url.rsplit(".", 1)[-1].split("?")[0].lower()
+                if not ext or len(ext) > 5 or "/" in ext:
+                    ext = "mp4"
+                lp = media_dir / f"clip_{key}.{ext}"
+                try:
+                    self._download(url, lp)
+                    cache[url] = lp.resolve().as_uri()
+                except Exception as exc:
+                    logger.warning(f"[MEDIA-PREFETCH] {url[:110]}: {exc} — keeping remote")
+                    cache[url] = url
+            out = cache[url]
+            if out != url:
+                localized += 1
+            return m.group(1) + out + m.group(3)
+
+        changed = False
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            html = e.get("html")
+            if isinstance(html, str) and "<video" in html.lower():
+                new_html = _src_re.sub(_swap, html)
+                if new_html != html:
+                    e["html"] = new_html
+                    changed = True
+        if changed:
+            timeline_path.write_text(json.dumps(data, ensure_ascii=False))
+            logger.info(
+                f"[MEDIA-PREFETCH] localized {localized} <video> src(s) "
+                f"({len([v for v in cache.values() if v.startswith('file:')])} file(s)) into {media_dir}"
+            )
+
     def _collect_video_audio(self, tl_entries: list, work_dir: Path) -> "list[tuple[Path, dict]]":
         """Extract audio specs for every UNMUTED <video> in the timeline HTML.
 
@@ -1510,6 +1584,18 @@ class RenderWorker:
                             url_to_path[src] = _vp if self._has_audio_stream(_vp) else None
                             if url_to_path[src] is None:
                                 logger.info("[VIDEO-AUDIO] no audio stream in data: URI video — skipping")
+                    elif src.startswith("file://"):
+                        # Media-prefetch rewrote this src to a local file — use
+                        # it directly instead of re-downloading.
+                        from urllib.parse import unquote, urlparse
+                        _lp = Path(unquote(urlparse(src).path))
+                        if _lp.exists():
+                            url_to_path[src] = _lp if self._has_audio_stream(_lp) else None
+                            if url_to_path[src] is None:
+                                logger.info(f"[VIDEO-AUDIO] no audio stream in {_lp.name} — skipping")
+                        else:
+                            logger.warning(f"[VIDEO-AUDIO] prefetched file missing: {_lp}")
+                            url_to_path[src] = None
                     else:
                         _key = hashlib.md5(src.encode()).hexdigest()[:10]
                         _ext = src.rsplit(".", 1)[-1].split("?")[0].lower() or "mp4"

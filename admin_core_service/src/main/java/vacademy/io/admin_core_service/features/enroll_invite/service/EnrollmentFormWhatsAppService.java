@@ -96,14 +96,44 @@ public class EnrollmentFormWhatsAppService {
             WhatsappRequest request = new WhatsappRequest();
             request.setTemplateName(templateName);
             request.setLanguageCode(languageCode);
-            // {{1}} = learner name
-            request.setUserDetails(List.of(Map.of(phone, Map.of("1", name))));
+            // {{1}} = learner name, {{2}} = the upcoming Monday (trial start), e.g. "17th July".
+            // Sending both is harmless for single-variable templates — the provider only
+            // substitutes the placeholders the template actually declares.
+            request.setUserDetails(List.of(Map.of(phone, Map.of(
+                    "1", name,
+                    "2", nextMondayLabel()))));
 
             notificationService.sendWhatsappViaUnified(request, instituteId);
             log.info("Sent form-fill WhatsApp (template={}) to user {}", templateName, user.getId());
         } catch (Exception e) {
             log.error("Failed to send form-fill WhatsApp for user {} in institute {}: {}",
                     user != null ? user.getId() : null, instituteId, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * The next Monday on/after today, formatted like "17th July" for the trial-start
+     * line in the welcome template. If today is Monday, the trial starts today.
+     */
+    private String nextMondayLabel() {
+        java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
+        java.time.LocalDate monday = today.with(
+                java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+        int day = monday.getDayOfMonth();
+        String month = monday.getMonth().getDisplayName(
+                java.time.format.TextStyle.FULL, java.util.Locale.ENGLISH);
+        return day + ordinalSuffix(day) + " " + month;
+    }
+
+    private String ordinalSuffix(int day) {
+        if (day >= 11 && day <= 13) {
+            return "th";
+        }
+        switch (day % 10) {
+            case 1: return "st";
+            case 2: return "nd";
+            case 3: return "rd";
+            default: return "th";
         }
     }
 

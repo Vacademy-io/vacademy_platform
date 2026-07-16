@@ -10,9 +10,12 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.credits.client.CreditClient;
 import vacademy.io.admin_core_service.features.telephony.core.dto.VoiceCallingSettingsPojo;
 import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
+import vacademy.io.admin_core_service.features.telephony.persistence.repository.AiCallResultRepository;
+import vacademy.io.admin_core_service.features.telephony.persistence.repository.TelephonyCallLogRepository;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -21,35 +24,35 @@ import java.util.List;
  *
  * <p>Two independent meters can fire for one physical call:
  * <ul>
- *   <li><b>Voice leg</b> ({@code voice_call_out} / {@code voice_call_in}) — the
- *       telephony minutes of calls carried on VACADEMY-PROVIDED trunks: provider
- *       {@code PLIVO} (Vacademy Voice) and {@code VACADEMY_AI} (our AI dials on the
- *       same Plivo subaccounts). Airtel/Exotel/Vonage calls ride the INSTITUTE'S own
- *       carrier account, and MANUAL/MOCK aren't real carried calls — never billed.</li>
- *   <li><b>AI leg</b> ({@code ai_call_out} / {@code ai_call_in}) — the AI-conversation
- *       minutes (STT+LLM+TTS) of a completed AI call, billed off the verified
- *       ai_call_result. Fires for VACADEMY_AI and AAVTAAR, never MOCK. An outbound
- *       Vacademy-AI call therefore pays voice + AI; an inbound IVR call answered by a
- *       human pays voice only; the same inbound handled by the AI agent pays both.</li>
+ *   <li><b>Voice leg</b> ({@code voice_call_out} / {@code voice_call_in}) — telephony
+ *       minutes of calls carried on VACADEMY-PROVIDED trunks: provider {@code PLIVO}
+ *       (Vacademy Voice) and {@code VACADEMY_AI} (our AI dials on the same Plivo
+ *       subaccounts). Airtel/Exotel/Vonage ride the INSTITUTE'S own carrier account,
+ *       and MANUAL/MOCK aren't real carried calls — never billed.</li>
+ *   <li><b>AI leg</b> ({@code ai_call_out} / {@code ai_call_in}) — AI-conversation
+ *       minutes (STT+LLM+TTS) of a completed AI call, billed off the VERIFIED
+ *       ai_call_result (providers VACADEMY_AI and AAVTAAR, never MOCK). An outbound
+ *       Vacademy-AI call pays voice + AI; an inbound IVR call answered by a human
+ *       pays voice only; the same inbound handled by the AI agent pays both.</li>
  * </ul>
  *
  * <p><b>Rates</b>: per-institute override first ({@code VOICE_CALLING_SETTING.billing}
- * in institutes.setting_json — manually editable in the DB), then the global
- * {@code credit_pricing} row ({@code token_rate} = credits per minute,
- * {@code minimum_charge} = per-call floor; seeded in V378). A rate of 0 disables
- * that meter; a missing pricing row skips billing with a warn (never a default).
+ * — ops-managed via manual DB edit; the tenant settings endpoint refuses to persist
+ * it, see VoiceConfigController), then the global {@code credit_pricing} row
+ * ({@code token_rate} = credits/minute, {@code minimum_charge} = per-call floor;
+ * seeded in V378). A 0 rate disables that meter; a missing row skips with a warn.
  *
- * <p><b>Cost</b> = max(minimum_charge, ceil(duration/60) × perMinute) — same shape as
- * call_intelligence. The wallet write goes through ai_service ({@link CreditClient}
- * → POST /credits/v1/deduct) with {@code precomputed_credits} (so ai_service's
- * token-math never reinterprets our rate), {@code allow_negative=true} (the call
- * already happened — post-paid, balance may go negative like transcription does)
- * and an idempotency key ({@code voice_call:{callLogId}} / {@code ai_call:{callLogId}})
- * enforced by the V243 partial unique index — webhook retries and event replays
- * can invoke this any number of times and charge exactly once.
+ * <p><b>Cost</b> = max(minimum_charge, ceil(duration/60) × perMinute). The wallet
+ * write goes through ai_service ({@link CreditClient#deductPrecomputed} → the
+ * internal-token-gated POST /credits/v1/deduct) with {@code precomputed_credits},
+ * {@code allow_negative=true} (post-paid — the call already happened) and an
+ * idempotency key enforced by the V243 partial unique index, so any number of
+ * attempts charge exactly once.
  *
- * <p>Async + best-effort: never blocks or fails a webhook. A dropped HTTP call is
- * healed by the next webhook replay for the same row (same idempotency key).
+ * <p><b>At-least-once</b>: on an acknowledged deduction the source row is STAMPED
+ * ({@code credits_billed_at}); unstamped completed rows are re-attempted by
+ * {@link CallBillingReconciliationJob}, so a lost HTTP call (ai_service restart)
+ * is healed instead of silently leaking revenue. Async + never blocks a webhook.
  */
 @Service
 public class CallBillingService {
@@ -70,6 +73,8 @@ public class CallBillingService {
 
     @Autowired private CreditClient creditClient;
     @Autowired private VoiceCallingSettingsService voiceSettings;
+    @Autowired private TelephonyCallLogRepository callLogRepo;
+    @Autowired private AiCallResultRepository aiCallResultRepo;
     @PersistenceContext private EntityManager entityManager;
 
     public boolean isVoiceBillableProvider(String providerType) {
@@ -80,70 +85,101 @@ public class CallBillingService {
         return provider != null && AI_BILLABLE_PROVIDERS.contains(provider);
     }
 
+    /**
+     * Stable dedup identity for the AI-minutes charge of one PHYSICAL call — or null
+     * when no safe identity exists (then DO NOT bill: an unbindable report with no
+     * provider call id mints a brand-new ai_call_result + call-log row on every
+     * webhook re-delivery, so any row-derived key would charge once per delivery).
+     * Preference: the provider's own call id (re-POSTs with the same call_uuid upsert
+     * in place → stable) → the call-log id, but ONLY when the row provably pre-dates
+     * the report (correlationId = the id we minted at dial/answer time, or the report
+     * bound to an existing row) — never the id of a row the promotion itself created.
+     */
+    public static String aiIdempotencyKey(String provider, String callUuid,
+                                          String correlationId, String boundCallLogId) {
+        if (callUuid != null && !callUuid.isBlank()) {
+            return "ai_call:uuid:" + provider + ":" + callUuid.trim();
+        }
+        if (boundCallLogId != null && correlationId != null && !correlationId.isBlank()) {
+            return "ai_call:" + boundCallLogId;
+        }
+        return null;
+    }
+
     /** Telephony-minutes meter. Call only for COMPLETED rows with duration > 0. */
-    @Async
+    @Async("callBillingExecutor")
     public void billVoiceLeg(String callLogId, String instituteId, String providerType,
                              String direction, int durationSeconds) {
         try {
             String requestType = "INBOUND".equalsIgnoreCase(direction) ? RT_VOICE_IN : RT_VOICE_OUT;
-            bill(callLogId, instituteId, requestType, durationSeconds,
+            boolean ok = bill(callLogId, instituteId, requestType, durationSeconds,
                     "voice_call:" + callLogId,
                     "Call minutes (" + providerType + " " + direction + ")");
+            if (ok) callLogRepo.markCreditsBilled(callLogId, Instant.now());
         } catch (Exception e) {
             log.error("call-billing: voice leg failed call={} inst={}: {}",
                     callLogId, instituteId, e.getMessage());
         }
     }
 
-    /** AI-conversation-minutes meter. Call only for verified, completed AI results. */
-    @Async
-    public void billAiLeg(String callLogId, String instituteId, String provider,
-                          String direction, int durationSeconds) {
+    /**
+     * AI-conversation-minutes meter. {@code idempotencyKey} MUST come from
+     * {@link #aiIdempotencyKey}; {@code aiCallResultId} is stamped on success so the
+     * reconciliation sweep stops re-attempting.
+     */
+    @Async("callBillingExecutor")
+    public void billAiLeg(String idempotencyKey, String aiCallResultId, String instituteId,
+                          String provider, String direction, int durationSeconds) {
         try {
             String requestType = "INBOUND".equalsIgnoreCase(direction) ? RT_AI_IN : RT_AI_OUT;
-            bill(callLogId, instituteId, requestType, durationSeconds,
-                    "ai_call:" + callLogId,
+            boolean ok = bill(aiCallResultId, instituteId, requestType, durationSeconds,
+                    idempotencyKey,
                     "AI call minutes (" + provider + " " + direction + ")");
+            if (ok) aiCallResultRepo.markCreditsBilled(aiCallResultId, Instant.now());
         } catch (Exception e) {
-            log.error("call-billing: ai leg failed call={} inst={}: {}",
-                    callLogId, instituteId, e.getMessage());
+            log.error("call-billing: ai leg failed result={} inst={}: {}",
+                    aiCallResultId, instituteId, e.getMessage());
         }
     }
 
-    private void bill(String callLogId, String instituteId, String requestType,
-                      int durationSeconds, String idempotencyKey, String description) {
-        if (instituteId == null || instituteId.isBlank() || durationSeconds <= 0) return;
+    /** @return true when ai_service acknowledged the charge (or its idempotent replay). */
+    private boolean bill(String refId, String instituteId, String requestType,
+                         int durationSeconds, String idempotencyKey, String description) {
+        if (instituteId == null || instituteId.isBlank() || durationSeconds <= 0) return false;
 
         Rate rate = resolveRate(instituteId, requestType);
         if (rate == null) {
-            log.warn("call-billing: no rate for {} (no override, no credit_pricing row) — skipping call={}",
-                    requestType, callLogId);
-            return;
+            log.warn("call-billing: no rate for {} (no override, no credit_pricing row) — skipping ref={}",
+                    requestType, refId);
+            return false;
         }
-        if (rate.perMinute().signum() <= 0 && rate.minimum().signum() <= 0) {
-            return; // 0-rate = metering disabled for this key/institute
-        }
-
         long minutes = (durationSeconds + 59) / 60; // ceil, min 1 for any >0 duration
         BigDecimal cost = rate.perMinute().multiply(BigDecimal.valueOf(minutes))
                 .max(rate.minimum())
                 .setScale(4, RoundingMode.HALF_UP);
-        if (cost.signum() <= 0) return;
+        if (cost.signum() <= 0) {
+            // 0-rate = metering disabled (globally or per-institute): report success so
+            // the caller stamps the row and the sweeper doesn't retry forever.
+            return true;
+        }
 
         boolean ok = creditClient.deductPrecomputed(
                 instituteId, requestType, description + " · " + minutes + " min",
                 cost, idempotencyKey);
-        log.info("call-billing: {} call={} inst={} mins={} credits={} ok={}",
-                requestType, callLogId, instituteId, minutes, cost, ok);
+        log.info("call-billing: {} ref={} inst={} mins={} credits={} ok={}",
+                requestType, refId, instituteId, minutes, cost, ok);
+        return ok;
     }
 
     private record Rate(BigDecimal perMinute, BigDecimal minimum) {}
 
     /**
      * Per-institute override → global credit_pricing. Overrides live in
-     * VOICE_CALLING_SETTING.billing (institutes.setting_json) so ops can set them with a
-     * manual DB update today and a settings UI later; the legacy blanket
-     * perMinuteCreditOverride (pre-dates per-key fields) applies to the VOICE meters only.
+     * VOICE_CALLING_SETTING.billing (institutes.setting_json), which is OPS-ONLY: the
+     * tenant-facing voice-config save endpoint preserves the stored billing block
+     * (a tenant zeroing their own rates = free calls), so writes happen via manual DB
+     * update today and a root-admin surface later. The legacy blanket
+     * perMinuteCreditOverride applies to the VOICE meters only.
      */
     private Rate resolveRate(String instituteId, String requestType) {
         VoiceCallingSettingsPojo.BillingConfig billing = null;

@@ -178,8 +178,8 @@ public class CreditClient {
         try {
             String url = aiServiceUrl + "/ai-service/credits/v1/deduct";
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            // /deduct is internal-token-gated — see deductPrecomputed.
+            HttpHeaders headers = buildInternalHeaders();
 
             Map<String, Object> body = Map.of(
                     "institute_id", instituteId,
@@ -228,8 +228,9 @@ public class CreditClient {
         try {
             String url = aiServiceUrl + "/ai-service/credits/v1/deduct";
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            // /deduct is internal-token-gated (it honors precomputed_credits +
+            // allow_negative and the /ai-service/ prefix is publicly routed).
+            HttpHeaders headers = buildInternalHeaders();
 
             Map<String, Object> body = new java.util.HashMap<>();
             body.put("institute_id", instituteId);

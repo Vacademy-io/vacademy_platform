@@ -283,7 +283,26 @@ public class PlivoCallbackController {
         String dialStatus = lower(firstNonBlank(req.getParameter("DialStatus"), req.getParameter("DialBLegStatus")));
         boolean answered = parsePositive(req.getParameter("DialBLegDuration"))
                 || "completed".equals(dialStatus);
-        if (answered) return xml(HANGUP_XML);
+        if (answered) {
+            // Record the connect BEFORE hanging up: this action callback is the ONLY event
+            // that ever carries the human conversation's talk time (DialBLegDuration) for an
+            // inbound IVR <Dial> — Plivo's dial_callback events map to IN_PROGRESS with no
+            // duration, and there is no a-leg hangup ingestion wired for inbound. Without
+            // this the row stays IN_PROGRESS forever: invisible as a completed call AND
+            // structurally unbillable (the voice meter gates on COMPLETED + duration).
+            try {
+                Integer blegSecs = parseIntOrNull(req.getParameter("DialBLegDuration"));
+                callLogService.applyEvent(row, NormalizedCallEvent.builder()
+                        .correlationId(corr)
+                        .status(CallStatus.COMPLETED)
+                        .durationSeconds(blegSecs)
+                        .build());
+            } catch (Exception e) {
+                log.warn("plivo dial-next: could not record answered dial for corr={}: {}",
+                        corr, e.getMessage());
+            }
+            return xml(HANGUP_XML);
+        }
 
         // Nobody answered → follow the DIAL node's fallback (next person / voicemail), bounded
         // by a hop cap so a mis-configured cycle (A→B→A) can't ring forever.
@@ -334,6 +353,17 @@ public class PlivoCallbackController {
             return Integer.parseInt(s.trim());
         } catch (Exception e) {
             return fallback;
+        }
+    }
+
+    /** Positive int or null — applyEvent's duration is null-guarded first-write-wins. */
+    private static Integer parseIntOrNull(String s) {
+        if (s == null || s.isBlank()) return null;
+        try {
+            int v = Integer.parseInt(s.trim());
+            return v > 0 ? v : null;
+        } catch (Exception e) {
+            return null;
         }
     }
 

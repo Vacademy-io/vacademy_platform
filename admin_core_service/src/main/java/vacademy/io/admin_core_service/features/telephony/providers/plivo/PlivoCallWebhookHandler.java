@@ -73,9 +73,14 @@ public class PlivoCallWebhookHandler implements CallWebhookHandler {
         if (recordUrl != null) {
             // Recording arrives (often after hangup). Map to a terminal status so the
             // webhook controller's terminal+recordingUrl branch persists it; rank rules
-            // mean this never regresses a real terminal already on the row. Don't read
-            // duration here (RecordingDuration != call duration).
+            // mean this never regresses a real terminal already on the row. Duration:
+            // a hangup that ALSO carries the RecordUrl may be the ONLY event with the
+            // call's talk time — read the CALL duration params (Duration/BillDuration;
+            // NEVER RecordingDuration, which is the file length not the call) so the
+            // voice-minutes meter isn't starved. applyEvent's duration is first-write-
+            // wins, so a later/earlier hangup-only event still coexists safely.
             status = CallStatus.COMPLETED;
+            duration = firstParsedInt(env, "Duration", "BillDuration");
         } else if ("ring".equals(plivoEvent) || (callStatus != null && callStatus.contains("ringing"))) {
             status = CallStatus.COUNSELLOR_RINGING;
         } else if ("dial_callback".equals(plivoEvent)) {

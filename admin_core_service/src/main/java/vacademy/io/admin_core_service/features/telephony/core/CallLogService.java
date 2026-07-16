@@ -39,6 +39,20 @@ public class CallLogService {
 
     @Transactional
     public TelephonyCallLog applyEvent(TelephonyCallLog row, NormalizedCallEvent ev) {
+        return applyEvent(row, ev, true);
+    }
+
+    /**
+     * @param voiceBillable false suppresses the voice-minutes meter for this apply —
+     *        used by the AI-report promotion path when it MINTED the row itself: a
+     *        promotion-created row is a bookkeeping artifact of the report (no telephony
+     *        webhook will ever reference it), and metering it would voice-bill the same
+     *        physical call twice (the real inbound row already bills off the Plivo
+     *        hangup) or bill a row fabricated from a forged-but-authenticated report.
+     */
+    @Transactional
+    public TelephonyCallLog applyEvent(TelephonyCallLog row, NormalizedCallEvent ev,
+                                       boolean voiceBillable) {
         if (ev.getProviderCallId() != null && row.getProviderCallId() == null) {
             row.setProviderCallId(ev.getProviderCallId());
         }
@@ -81,7 +95,7 @@ public class CallLogService {
         if (ev.getRawPayload() != null) row.setRawPayloadJson(ev.getRawPayload());
 
         TelephonyCallLog saved = repo.save(row);
-        maybeBillVoiceLeg(saved, ev);
+        if (voiceBillable) maybeBillVoiceLeg(saved, ev);
         return saved;
     }
 
@@ -107,6 +121,7 @@ public class CallLogService {
         boolean eventContributed = (ev.getStatus() != null && ev.getStatus().isTerminal())
                 || ev.getDurationSeconds() != null;
         if (!eventContributed) return;
+        if (saved.getCreditsBilledAt() != null) return; // already charged (stamped on success)
         if (!billingService.isVoiceBillableProvider(saved.getProviderType())) return;
         if (!CallStatus.COMPLETED.name().equals(saved.getStatus())) return;
         Integer duration = saved.getDurationSeconds();

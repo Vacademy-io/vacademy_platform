@@ -190,7 +190,7 @@ _FONT_STACKS: Dict[str, str] = {
 _PREMIUM_EXEMPLAR = json.dumps({
     "globalSettings": {
         "theme": {"preset": "forest", "atmosphere": {"canvas": "mesh", "intensity": "medium"}, "headingScale": "editorial", "borderRadius": "rounded"},
-        "fonts": {"enabled": True, "family": "Playfair Display, serif"},
+        "fonts": {"enabled": True, "family": "Inter, sans-serif", "headingFamily": "Playfair Display, serif"},
         "motion": {"personality": "calm"},
     },
     "page": {
@@ -255,8 +255,10 @@ _PREMIUM_DOCTRINE = [
     "Compare your output to award-winning cohort/coaching landing pages: confident, editorial, spacious.",
     "ALWAYS return globalSettings that suit the brand: pick a theme preset (not 'default' unless the brand is truly neutral), "
     "an atmosphere (soft/mesh/aurora give the page depth — flat looks cheap), an editorial headingScale for premium/story brands, "
-    "and a font that fits the mood (serif like Playfair Display/Fraunces = editorial & premium; Space Grotesk/Outfit = modern & techy; "
-    "Inter/Mulish = clean & neutral). Motion: calm or balanced.",
+    "and a FONT PAIRING. For an editorial/premium feel, set fonts.headingFamily to a SERIF display face (Playfair Display / "
+    "Fraunces / DM Serif Display) and keep fonts.family a clean SANS body (Inter / Mulish / Outfit) — serif headlines over sans "
+    "paragraphs is the single biggest 'premium' signal. For a modern/techy brand use Space Grotesk/Outfit headings on an Inter body. "
+    "Motion: calm or balanced.",
     "OPEN with a rich heroSection: an eyebrow BADGE, a bold specific headline, 2 CTA buttons (primary+secondary), and 3 statChips "
     "for proof numbers. Put it on a section shell (style.layout.width 'wide') with minHeight '80vh' + contentAlign 'center' so it fills the fold.",
     "Use a sectionHeading with a highlight (style 'gradient' or 'underline') on ONE key phrase before each dense section — this accent is what makes pages feel designed.",
@@ -322,8 +324,9 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
     parts.append(
         "## OUTPUT CONTRACT\nReturn ONLY a JSON object of this exact shape (no markdown, no commentary):\n"
         '{"globalSettings": {"theme": {"preset": "...", "atmosphere": {"canvas": "...", "intensity": "..."}, '
-        '"headingScale": "...", "borderRadius": "..."}, "fonts": {"enabled": true, "family": "<one of the '
-        'allowed font labels>"}, "motion": {"personality": "..."}}, '
+        '"headingScale": "...", "borderRadius": "..."}, "fonts": {"enabled": true, "family": "<sans body font '
+        'label>", "headingFamily": "<serif/display heading font label — omit to reuse the body font>"}, '
+        '"motion": {"personality": "..."}}, '
         '"page": {"id": "<kebab-id>", "title": "<short page title>", "route": "<kebab-slug>", '
         '"components": [{"id": "<kebab-id>", "type": "<type>", "enabled": true, "props": {…}, "style": {…}?}, …]}}\n'
         "6–12 components. Do NOT include header or footer components — the site provides global ones. "
@@ -460,8 +463,16 @@ def _coerce_global_settings(raw: Any) -> Optional[Dict[str, Any]]:
     fonts_in = raw.get("fonts") if isinstance(raw.get("fonts"), dict) else {}
     motion_in = raw.get("motion") if isinstance(raw.get("motion"), dict) else {}
 
+    _known_stacks = set(_FONT_STACKS.values())
     fam = fonts_in.get("family")
-    font_stack = _FONT_STACKS.get(fam) or (fam if fam in set(_FONT_STACKS.values()) else "Inter, sans-serif")
+    font_stack = _FONT_STACKS.get(fam) or (fam if fam in _known_stacks else "Inter, sans-serif")
+    # Optional separate heading font (serif display over sans body).
+    head = fonts_in.get("headingFamily")
+    head_stack = _FONT_STACKS.get(head) or (head if head in _known_stacks else None)
+
+    fonts_out: Dict[str, Any] = {"enabled": True, "family": font_stack}
+    if head_stack and head_stack != font_stack:
+        fonts_out["headingFamily"] = head_stack
 
     return {
         "theme": {
@@ -473,7 +484,7 @@ def _coerce_global_settings(raw: Any) -> Optional[Dict[str, Any]]:
             "headingScale": theme_in.get("headingScale") if theme_in.get("headingScale") in _HEADING_SCALES else "default",
             "borderRadius": theme_in.get("borderRadius") if theme_in.get("borderRadius") in _RADII else "rounded",
         },
-        "fonts": {"enabled": True, "family": font_stack},
+        "fonts": fonts_out,
         "motion": {"personality": motion_in.get("personality") if motion_in.get("personality") in _MOTIONS else "calm"},
     }
 
@@ -892,7 +903,8 @@ class BrandKit(BaseModel):
     headingScale: str
     borderRadius: str
     motion: str
-    fontFamily: str
+    fontFamily: str          # body
+    headingFontFamily: str   # heading (may equal fontFamily = no separate heading font)
     rationale: str
 
 
@@ -917,6 +929,8 @@ def _coerce_kit(raw: Any) -> Optional[BrandKit]:
         borderRadius=raw.get("borderRadius") if raw.get("borderRadius") in _RADII else "rounded",
         motion=raw.get("motion") if raw.get("motion") in _MOTIONS else "calm",
         fontFamily=raw.get("fontFamily") if raw.get("fontFamily") in _FONT_FAMILIES else "Inter",
+        headingFontFamily=raw.get("headingFontFamily") if raw.get("headingFontFamily") in _FONT_FAMILIES
+        else (raw.get("fontFamily") if raw.get("fontFamily") in _FONT_FAMILIES else "Inter"),
         rationale=_clean_string(str(raw.get("rationale") or ""))[:240],
     )
 
@@ -950,15 +964,19 @@ async def derive_brand_kit(
         f"- themePreset: {sorted(_THEME_PRESETS)}\n"
         f"- atmosphere.canvas: {sorted(_ATMOSPHERES)}; atmosphere.intensity: {sorted(_INTENSITIES)}\n"
         f"- headingScale: {sorted(_HEADING_SCALES)}; borderRadius: {sorted(_RADII)}; motion: {sorted(_MOTIONS)}\n"
-        f"- fontFamily: {sorted(_FONT_FAMILIES)}\n"
+        f"- fontFamily (body) and headingFontFamily (headings): {sorted(_FONT_FAMILIES)}\n"
         "Make the three genuinely different (e.g. one editorial-serif, one bold-modern, one calm-minimal). "
+        "For editorial/premium options pair a SERIF headingFontFamily (Playfair Display / Fraunces / DM Serif "
+        "Display) with a SANS fontFamily body — serif headings over sans body reads premium. Set "
+        "headingFontFamily equal to fontFamily when no separate heading font is wanted. "
         "Pick presets/colors that suit the institute's subject and audience.\n\n"
         f"Institute: {body.institute_name or 'an education institute'}\n"
         f"Context: {(body.brief or '')[:600]}\n"
         f"Brand notes: {(body.brand_notes or 'none')[:300]}\n\n"
         'Return ONLY JSON: {"kits": [{"label": "...", "themePreset": "...", '
         '"atmosphere": {"canvas": "...", "intensity": "..."}, "headingScale": "...", '
-        '"borderRadius": "...", "motion": "...", "fontFamily": "...", "rationale": "one sentence"}]}'
+        '"borderRadius": "...", "motion": "...", "fontFamily": "...", "headingFontFamily": "...", '
+        '"rationale": "one sentence"}]}'
     )
     run_id = uuid.uuid4().hex
     primary, fallbacks = resolve_models(

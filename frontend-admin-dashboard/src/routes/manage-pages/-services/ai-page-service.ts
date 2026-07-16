@@ -124,6 +124,7 @@ export interface BrandKit {
     borderRadius: string;
     motion: string;
     fontFamily: string;
+    headingFontFamily?: string;
     rationale: string;
 }
 
@@ -149,8 +150,14 @@ export const deriveBrandKit = async (payload: {
 /** Maps a BrandKit into the globalSettings patch the renderers consume
  *  (theme.preset + atmosphere + radius + heading scale, motion, font stack). */
 export const brandKitToGlobalPatch = (kit: BrandKit): Record<string, any> => {
-    const fontStack =
+    const bodyStack =
         CATALOGUE_FONTS.find((f) => f.label === kit.fontFamily)?.stack || 'Inter, sans-serif';
+    const headStack = kit.headingFontFamily
+        ? CATALOGUE_FONTS.find((f) => f.label === kit.headingFontFamily)?.stack
+        : undefined;
+    const fonts: Record<string, any> = { enabled: true, family: bodyStack };
+    // Only a genuinely different heading font is worth storing.
+    if (headStack && headStack !== bodyStack) fonts.headingFamily = headStack;
     return {
         theme: {
             preset: kit.themePreset,
@@ -159,7 +166,7 @@ export const brandKitToGlobalPatch = (kit: BrandKit): Record<string, any> => {
             borderRadius: kit.borderRadius,
         },
         motion: { personality: kit.motion },
-        fonts: { enabled: true, family: fontStack },
+        fonts,
     };
 };
 

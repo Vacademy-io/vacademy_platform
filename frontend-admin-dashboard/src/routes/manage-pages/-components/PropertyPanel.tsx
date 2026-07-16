@@ -1,4 +1,5 @@
 import { useEditorStore } from '../-stores/editor-store';
+import { CATALOGUE_FONTS } from '../-utils/catalogue-fonts';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -763,18 +764,32 @@ const GlobalSettingsEditor = ({
                 </div>
                 {gs.fonts?.enabled && (
                     <div className="space-y-2">
-                        <Label className="text-xs">Font Family</Label>
+                        <Label className="text-xs">Body Font</Label>
                         <select
                             className="w-full rounded border px-3 py-1.5 text-sm"
                             value={gs.fonts?.family || 'Inter, sans-serif'}
                             onChange={(e) => updateField('fonts.family', e.target.value)}
                         >
-                            <option value="Inter, sans-serif">Inter</option>
-                            <option value="Roboto, sans-serif">Roboto</option>
-                            <option value="Mulish, sans-serif">Mulish</option>
-                            <option value="Outfit, sans-serif">Outfit</option>
-                            <option value="Poppins, sans-serif">Poppins</option>
+                            {CATALOGUE_FONTS.map((f) => (
+                                <option key={f.label} value={f.stack}>{f.label}</option>
+                            ))}
                         </select>
+                        <Label className="text-xs">Heading Font</Label>
+                        <select
+                            className="w-full rounded border px-3 py-1.5 text-sm"
+                            value={gs.fonts?.headingFamily || ''}
+                            onChange={(e) => updateField('fonts.headingFamily', e.target.value || undefined)}
+                        >
+                            <option value="">Same as body</option>
+                            {CATALOGUE_FONTS.map((f) => (
+                                <option key={f.label} value={f.stack}>
+                                    {f.label}{f.serif ? ' (serif)' : ''}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="text-caption text-gray-400">
+                            Pair a serif heading with a sans body for an editorial, premium feel.
+                        </p>
                     </div>
                 )}
             </div>

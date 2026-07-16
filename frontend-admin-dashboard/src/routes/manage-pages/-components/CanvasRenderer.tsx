@@ -295,6 +295,11 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                             config?.globalSettings?.fonts?.enabled && config?.globalSettings?.fonts?.family
                                 ? config.globalSettings.fonts.family
                                 : undefined,
+                        // Optional heading font — consumed by the catalogue heading
+                        // rule; unset ⇒ headings inherit the body font.
+                        ...(config?.globalSettings?.fonts?.enabled && config?.globalSettings?.fonts?.headingFamily
+                            ? { ['--catalogue-heading-font' as any]: config.globalSettings.fonts.headingFamily }
+                            : {}),
                     }}
                 >
                     {/* Global Header — appears on every page */}

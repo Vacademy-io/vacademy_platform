@@ -130,6 +130,7 @@ export const StudentsListSection = () => {
         setAppliedFilters,
         handleSessionChange,
         setColumnFilters,
+        textCustomFields,
     } = useStudentFilters({ allowAllSessions: true });
 
     // Fetch campaigns once so the audience filter chip can render its options.
@@ -214,10 +215,17 @@ export const StudentsListSection = () => {
     const customFieldIdByKey = useMemo(() => {
         const map = new Map<string, string>();
         instituteDetails?.dropdown_custom_fields?.forEach((f) => map.set(f.fieldKey, f.id));
+        textCustomFields.forEach((f) => map.set(f.field_key, f.custom_field_id));
         return map;
-    }, [instituteDetails]);
+    }, [instituteDetails, textCustomFields]);
 
-    const allFilters = GetFilterData(instituteDetails, currentSession.id, campaignsData?.content, subOrgsData);
+    const allFilters = GetFilterData(
+        instituteDetails,
+        currentSession.id,
+        campaignsData?.content,
+        subOrgsData,
+        textCustomFields
+    );
     const filters = allFilters.filter((f) => {
         const fixed = FILTER_TO_COLUMNS[f.id];
         if (fixed) return fixed.some((accessor) => !roleHiddenColumns.has(accessor));

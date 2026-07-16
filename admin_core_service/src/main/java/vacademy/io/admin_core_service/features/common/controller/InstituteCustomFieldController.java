@@ -124,6 +124,22 @@ public class InstituteCustomFieldController {
                 instituteCustomFiledService.findUniqueActiveCustomFieldsByInstituteId(instituteId));
     }
 
+    /**
+     * Distinct values a custom field holds across an institute's learners —
+     * powers the Manage Students filter bar's searchable multi-select for
+     * free-text (non-DROPDOWN) custom fields, which have no fixed option list.
+     */
+    @GetMapping("/student-values")
+    public ResponseEntity<org.springframework.data.domain.Page<String>> getStudentCustomFieldValues(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("customFieldId") String customFieldId,
+            @RequestParam(value = "search", required = false) String search,
+            @RequestParam(name = "pageNo", defaultValue = "0") int pageNo,
+            @RequestParam(name = "pageSize", defaultValue = "20") int pageSize) {
+        return ResponseEntity.ok(instituteCustomFiledService.getStudentCustomFieldValues(
+                instituteId, customFieldId, search, pageNo, pageSize));
+    }
+
     @PostMapping("/create")
     public ResponseEntity<String> createCustomFieldForInstitute(@RequestParam("user") CustomUserDetails userDetails,
                                                                 @RequestParam("instituteId") String instituteId,

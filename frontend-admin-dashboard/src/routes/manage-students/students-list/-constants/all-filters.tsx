@@ -4,12 +4,17 @@ import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingS
 import { InstituteDetailsType } from '@/schemas/student/student-list/institute-schema';
 import { removeDefaultPrefix } from '@/utils/helpers/removeDefaultPrefix';
 import { ALL_SESSIONS_ID } from '@/routes/manage-students/students-list/-hooks/useStudentFilters';
+import { CustomFieldSetupItem } from '@/routes/audience-manager/list/-services/get-custom-field-setup';
 
 export const GetFilterData = (
     instituteDetails: InstituteDetailsType,
     _currentSession: string,
     campaigns?: { id?: string; campaign_name: string }[],
-    subOrgs?: { id: string; name: string }[]
+    subOrgs?: { id: string; name: string }[],
+    // Free-text (non-DROPDOWN) custom fields, e.g. VetEducation's "Practice Type" —
+    // rendered as a searchable multi-select instead of a static option list, since
+    // they have no fixed `config` to draw options from.
+    textCustomFields?: CustomFieldSetupItem[]
 ) => {
     const statuses = instituteDetails?.student_statuses.map((status, index) => ({
         id: index.toString(),
@@ -148,6 +153,20 @@ export const GetFilterData = (
             } catch (error) {
                 console.error(`Error parsing custom field config for ${customField.fieldName}:`, error);
             }
+        });
+    }
+
+    // Add free-text custom field filters — searchable multi-select over the
+    // distinct values actually stored, since there's no fixed option list.
+    if (textCustomFields && textCustomFields.length > 0) {
+        textCustomFields.forEach((customField) => {
+            filterData.push({
+                id: customField.field_key,
+                title: customField.field_name,
+                filterList: [],
+                kind: 'CUSTOM_FIELD_SEARCH',
+                customFieldId: customField.custom_field_id,
+            });
         });
     }
 

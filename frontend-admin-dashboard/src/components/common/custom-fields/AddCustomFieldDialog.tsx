@@ -12,7 +12,12 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { CUSTOM_FIELD_TYPES, type CustomFieldType } from '@/services/custom-field-settings';
+import {
+    CUSTOM_FIELD_TYPES,
+    COMMON_FILE_TYPES,
+    ALL_FILES_VALUE,
+    type CustomFieldType,
+} from '@/services/custom-field-settings';
 
 export interface DropdownOption {
     id: number;
@@ -44,24 +49,6 @@ interface AddCustomFieldDialogProps {
     existingFieldNames: string[];
     supportedTypes?: CustomFieldType[];
 }
-
-const COMMON_FILE_TYPES = [
-    { value: 'pdf', label: 'PDF' },
-    { value: 'doc', label: 'DOC' },
-    { value: 'docx', label: 'DOCX' },
-    { value: 'xls', label: 'XLS' },
-    { value: 'xlsx', label: 'XLSX' },
-    { value: 'csv', label: 'CSV' },
-    { value: 'png', label: 'PNG' },
-    { value: 'jpg', label: 'JPG' },
-    { value: 'jpeg', label: 'JPEG' },
-    { value: 'gif', label: 'GIF' },
-    { value: 'svg', label: 'SVG' },
-    { value: 'mp4', label: 'MP4' },
-    { value: 'mp3', label: 'MP3' },
-    { value: 'zip', label: 'ZIP' },
-    { value: 'txt', label: 'TXT' },
-];
 
 const hasOptionsType = (type: CustomFieldType) =>
     type === 'dropdown' || type === 'radio' || type === 'multi_select';
@@ -110,11 +97,15 @@ export const AddCustomFieldDialog = ({
     };
 
     const toggleFileType = (fileType: string) => {
-        setAllowedFileTypes((prev) =>
-            prev.includes(fileType)
-                ? prev.filter((t) => t !== fileType)
-                : [...prev, fileType]
-        );
+        setAllowedFileTypes((prev) => {
+            if (fileType === ALL_FILES_VALUE) {
+                return prev.includes(ALL_FILES_VALUE) ? [] : [ALL_FILES_VALUE];
+            }
+            const withoutAll = prev.filter((t) => t !== ALL_FILES_VALUE);
+            return withoutAll.includes(fileType)
+                ? withoutAll.filter((t) => t !== fileType)
+                : [...withoutAll, fileType];
+        });
     };
 
     const resetForm = () => {
@@ -269,7 +260,7 @@ export const AddCustomFieldDialog = ({
                             placeholder="Enter default value"
                             value={defaultValue}
                             onChange={(e) => setDefaultValue(e.target.value)}
-                            className="min-h-[60px] w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
                             rows={3}
                         />
                     </div>
@@ -364,21 +355,27 @@ export const AddCustomFieldDialog = ({
                     <div className="mt-2 flex flex-col gap-3">
                         <div className="flex flex-col gap-1">
                             <Label className="text-sm font-medium">
-                                Allowed File Types (leave empty for all)
+                                Allowed File Types
                             </Label>
                             <div className="flex flex-wrap gap-2">
-                                {COMMON_FILE_TYPES.map((ft) => (
-                                    <label
-                                        key={ft.value}
-                                        className="flex cursor-pointer items-center gap-1"
-                                    >
-                                        <Checkbox
-                                            checked={allowedFileTypes.includes(ft.value)}
-                                            onCheckedChange={() => toggleFileType(ft.value)}
-                                        />
-                                        <span className="text-xs">{ft.label}</span>
-                                    </label>
-                                ))}
+                                {COMMON_FILE_TYPES.map((ft) => {
+                                    const isAll = ft.value === ALL_FILES_VALUE;
+                                    const disabledByAll =
+                                        !isAll && allowedFileTypes.includes(ALL_FILES_VALUE);
+                                    return (
+                                        <label
+                                            key={ft.value}
+                                            className="flex cursor-pointer items-center gap-1"
+                                        >
+                                            <Checkbox
+                                                checked={allowedFileTypes.includes(ft.value)}
+                                                onCheckedChange={() => toggleFileType(ft.value)}
+                                                disabled={disabledByAll}
+                                            />
+                                            <span className="text-xs">{ft.label}</span>
+                                        </label>
+                                    );
+                                })}
                             </div>
                         </div>
                         <div className="flex flex-col gap-1">
@@ -404,7 +401,7 @@ export const AddCustomFieldDialog = ({
     return (
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>{trigger}</DialogTrigger>
-            <DialogContent className="flex max-h-[80vh] flex-col p-0">
+            <DialogContent className="flex max-h-[80vh] flex-col p-0">{/* design-lint-ignore: vh-based dialog height matches MyDialog primitive */}
                 <h1 className="rounded-lg bg-primary-50 p-4 text-primary-500">
                     Add Custom Field
                 </h1>

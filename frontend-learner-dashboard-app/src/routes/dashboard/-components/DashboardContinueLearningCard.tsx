@@ -108,7 +108,7 @@ export const ContinueLearningCard = ({
 
         if (isPlay) {
             return (
-                <div className="flex h-full flex-col items-center justify-center gap-4 rounded-play-card bg-play-success-soft p-6 text-center shadow-play-soft-card">
+                <div className="flex h-full flex-col items-center justify-center gap-4 rounded-play-card-sm border border-border bg-play-success-soft p-6 text-center shadow-play-soft-card">
                     <img
                         src={emptyLearningIllustration}
                         alt=""
@@ -265,7 +265,7 @@ export const ContinueLearningCard = ({
 
     if (isPlay) {
         return (
-            <div className="flex h-full flex-col gap-4 rounded-play-card bg-play-navy-soft p-4 shadow-play-soft-card sm:p-5">
+            <div className="flex h-full flex-col gap-4 rounded-play-card-sm border border-border bg-play-navy-soft p-4 shadow-play-soft-card sm:p-5">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <img

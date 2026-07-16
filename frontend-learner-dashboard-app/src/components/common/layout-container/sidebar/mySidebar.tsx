@@ -37,10 +37,6 @@ import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { getChatEnabled } from "@/services/chat/getChatEnabled";
 import type { StudentSidebarTabConfig } from "@/types/student-display-settings";
 import {
-  House,
-  BookOpen,
-  NotePencil,
-  Scroll,
   SquaresFour,
   Globe,
   GooglePlayLogo,
@@ -48,8 +44,14 @@ import {
   WindowsLogo,
   AppleLogo,
   SignOut,
-  ChatCircle,
 } from "@phosphor-icons/react";
+import {
+  NavHouseIcon,
+  NavBookIcon,
+  NavNotepadIcon,
+  NavClipboardCheckIcon,
+  NavChatIcon,
+} from "./nav-icons";
 import type {
   SidebarItemsType,
   subItemsType,
@@ -160,11 +162,11 @@ export const MySidebar = ({
 
   const iconByTabId: Record<string, unknown> = useMemo(
     () => ({
-      dashboard: House,
-      "learning-center": BookOpen,
-      homework: NotePencil,
-      "assessment-center": Scroll,
-      chat: ChatCircle,
+      dashboard: NavHouseIcon,
+      "learning-center": NavBookIcon,
+      homework: NavNotepadIcon,
+      "assessment-center": NavClipboardCheckIcon,
+      chat: NavChatIcon,
     }),
     []
   );

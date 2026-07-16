@@ -75,7 +75,7 @@ function findImminentSession(
 /** Playful pulsing placeholder shown while the study library loads. */
 function HeroSkeleton(): JSX.Element {
   return (
-    <div className="rounded-play-card border-2 border-play-surface bg-play-highlight p-4 md:p-6">
+    <div className="rounded-play-card-sm border border-play-surface bg-play-highlight p-4 md:p-6">
       <div className="flex animate-pulse flex-col items-center gap-5 md:flex-row md:gap-8">
         <div className="flex items-center gap-4 self-start md:self-center">
           <div className="h-24 w-24 rounded-full bg-white/70" />
@@ -87,7 +87,7 @@ function HeroSkeleton(): JSX.Element {
             </div>
           </div>
         </div>
-        <div className="h-20 w-full rounded-play-card bg-white/70 md:flex-1" />
+        <div className="h-20 w-full rounded-play-card-sm bg-white/70 md:flex-1" />
       </div>
     </div>
   );
@@ -200,7 +200,7 @@ export function PlayDashboardHero(props: PlayDashboardHeroProps): JSX.Element {
       )}
 
       {/* Hero band */}
-      <div className="rounded-play-card border-2 border-play-surface bg-play-highlight p-4 md:p-6">
+      <div className="rounded-play-card-sm border border-play-surface bg-play-highlight p-4 md:p-6">
         <div className="flex flex-col items-stretch gap-5 md:flex-row md:items-center md:gap-8">
           {/* Left: mascot + greeting + chips */}
           <div className="flex items-center gap-4">

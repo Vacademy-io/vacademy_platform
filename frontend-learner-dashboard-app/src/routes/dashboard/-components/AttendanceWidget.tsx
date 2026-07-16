@@ -141,7 +141,7 @@ export function AttendanceWidget() {
         type="button"
         onClick={goToAttendance}
         aria-label="View attendance details"
-        className="flex h-full w-full flex-col gap-4 rounded-play-card bg-play-success-soft p-4 text-left shadow-play-soft-card"
+        className="flex h-full w-full flex-col gap-4 rounded-play-card-sm border border-border bg-play-success-soft p-4 text-left shadow-play-soft-card"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">

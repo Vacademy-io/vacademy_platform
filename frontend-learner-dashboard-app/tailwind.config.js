@@ -420,6 +420,7 @@ module.exports = {
         "3xl": "2rem",
         // Play (gamified) card + button radius tokens.
         "play-card": "var(--play-radius-card)",
+        "play-card-sm": "var(--play-radius-card-sm)",
         "play-btn": "var(--play-radius-btn)",
       },
       // Tinted shadow scale (tokens defined in src/index.css :root). Upgrades every
@@ -435,9 +436,10 @@ module.exports = {
         "play-press": "0 2px 0 hsl(var(--primary-200))",
         // Play badge inset 3D shadow.
         "play-badge": "0 2px 0 rgba(0,0,0,0.15)",
-        // Play pastel-card lift (Dashboard-only "soft" surfaces) — a gentle
-        // neutral elevation, no role-colored press block.
-        "play-soft-card": "0 1px 2px rgba(60,60,60,0.05), 0 10px 26px -14px rgba(60,60,60,0.16)",
+        // Play pastel-card lift (Dashboard-only "soft" surfaces) — a quiet,
+        // near-flat elevation; definition comes mainly from the hairline
+        // border, matching the cleaner reference look.
+        "play-soft-card": "0 1px 2px rgba(60,60,60,0.04), 0 4px 12px -8px rgba(60,60,60,0.10)",
         // Play (gamified) 3D drop shadows keyed to the Duolingo deep shades.
         "play-2d-success": "0 2px 0 0 var(--play-c-success-deep)",
         "play-2d-danger": "0 2px 0 0 var(--play-c-danger-deep)",

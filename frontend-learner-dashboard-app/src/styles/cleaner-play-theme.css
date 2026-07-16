@@ -47,9 +47,15 @@ html.ui-cleaner-play {
   --cp-gold: 42 62% 55%;         /* #D9A441 */
   --cp-gold-tint: 42 62% 94%;
 
-  --cp-radius-card: 20px;
+  /* Tightened from 20px — every current .cp-card consumer is the Dashboard
+     work built this session, so this reads as a direct "make it cleaner"
+     fix rather than a global-chrome change (see Play's --play-radius-card
+     for the case where that's NOT true and a parallel -sm token is used
+     instead). Quieter shadow to match: the hairline border above now does
+     more of the definition work, shadow is just a faint lift. */
+  --cp-radius-card: 12px;
   --cp-radius-btn: 999px;
-  --cp-shadow-card: 0 1px 2px rgba(57, 47, 39, 0.04), 0 8px 24px -12px rgba(57, 47, 39, 0.10);
+  --cp-shadow-card: 0 1px 2px rgba(57, 47, 39, 0.03), 0 4px 12px -8px rgba(57, 47, 39, 0.08);
 }
 
 /* Page canvas */

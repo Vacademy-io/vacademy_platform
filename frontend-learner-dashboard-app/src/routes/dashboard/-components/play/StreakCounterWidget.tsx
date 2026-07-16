@@ -15,7 +15,7 @@ export const StreakCounterWidget: React.FC = () => {
   return (
     <div
       className={cn(
-        "flex h-full flex-col gap-3 rounded-play-card p-4 shadow-play-soft-card",
+        "flex h-full flex-col gap-3 rounded-play-card-sm border border-border p-4 shadow-play-soft-card",
         hasStreak ? "bg-play-warn-soft" : "bg-play-surface"
       )}
     >

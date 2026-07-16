@@ -186,7 +186,7 @@ export const PastLearningInsights = () => {
 
   if (isPlay) {
     return (
-      <div className="animate-fade-in-up overflow-hidden rounded-play-card bg-play-navy-soft shadow-play-soft-card">
+      <div className="animate-fade-in-up overflow-hidden rounded-play-card-sm border border-border bg-play-navy-soft shadow-play-soft-card">
         <div className="flex flex-col gap-3 border-b border-white/60 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <img

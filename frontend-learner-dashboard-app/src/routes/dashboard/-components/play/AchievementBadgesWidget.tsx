@@ -64,7 +64,7 @@ export const AchievementBadgesWidget: React.FC = () => {
   const unlockedCount = badges.filter((b) => b.unlocked).length;
 
   return (
-    <div className="flex h-full flex-col gap-3 rounded-play-card bg-play-accent-soft p-4 shadow-play-soft-card">
+    <div className="flex h-full flex-col gap-3 rounded-play-card-sm border border-border bg-play-accent-soft p-4 shadow-play-soft-card">
       <div className="flex items-center gap-3">
         <img src={iconBadges} alt="" aria-hidden="true" className="h-11 w-11 shrink-0 object-contain" />
         <div>

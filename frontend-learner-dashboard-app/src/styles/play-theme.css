@@ -18,6 +18,12 @@
   --play-radius-card: 20px;
   --play-radius-btn: 14px;
   --play-radius-badge: 999px;
+  /* Tighter, quieter radius for the Dashboard's hand-built pastel widgets —
+     additive only. The base --play-radius-card (20px) stays untouched since
+     it drives the shared .Card/.card rule used app-wide (assessment, study
+     library, live class, profile...); only Dashboard-scoped components opt
+     into this smaller value via rounded-play-card-sm. */
+  --play-radius-card-sm: 12px;
 
   /* Duolingo-style play palette (role -> base + deep "3D" shade). Promoted from
      scattered arbitrary hex; exposed to Tailwind as the `play-*` color + shadow tokens. */

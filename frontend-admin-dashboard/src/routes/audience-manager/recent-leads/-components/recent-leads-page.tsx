@@ -519,7 +519,7 @@ const RecentLeadsContent = () => {
                 .filter((id): id is string => !!id),
         [data]
     );
-    const { profiles: leadProfiles } = useLeadProfiles(userIds, showOps);
+    const { profiles: leadProfiles } = useLeadProfiles(userIds, showOps, instituteId);
     const { notesByUserId } = useLatestNotesBatch(userIds, showOps);
 
     const invalidateKeys = [['recent-leads'], ['lead-profiles-batch']];
@@ -806,7 +806,7 @@ const RecentLeadsContent = () => {
                 selectedExportCols.has('notes_count') ||
                 selectedExportCols.has('lead_journey'));
         const [prof, nts, jny] = await Promise.all([
-            needsOps ? fetchBatchProfiles(ids) : Promise.resolve({}),
+            needsOps ? fetchBatchProfiles(ids, instituteId ?? '') : Promise.resolve({}),
             needsOps ? fetchLatestNotesBatch(ids) : Promise.resolve({}),
             needsOps ? fetchLeadJourneyBatch(ids) : Promise.resolve({}),
         ]);

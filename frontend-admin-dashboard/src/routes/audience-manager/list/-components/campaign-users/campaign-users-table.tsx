@@ -427,7 +427,7 @@ const CampaignUsersContent = ({
                 .filter((id: string): id is string => !!id),
         [usersResponse]
     );
-    const { profiles: leadProfiles } = useLeadProfiles(leadUserIds, showOps);
+    const { profiles: leadProfiles } = useLeadProfiles(leadUserIds, showOps, instituteId);
     const { notesByUserId } = useLatestNotesBatch(leadUserIds, showOps);
 
     // ── Transform server rows → CampaignUserTable[] ─────────────
@@ -771,7 +771,7 @@ const CampaignUsersContent = ({
             if (needsOps && exportUserIds.length > 0) {
                 try {
                     [exportProfiles, exportNotes, exportJourney] = await Promise.all([
-                        fetchBatchProfiles(exportUserIds),
+                        fetchBatchProfiles(exportUserIds, instituteId ?? ''),
                         fetchLatestNotesBatch(exportUserIds),
                         fetchLeadJourneyBatch(exportUserIds),
                     ]);

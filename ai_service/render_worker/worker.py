@@ -1483,6 +1483,14 @@ class RenderWorker:
                 lp = media_dir / f"clip_{key}.{ext}"
                 try:
                     self._download(url, lp)
+                    # AI-generated clips ship near-single-GOP streams
+                    # (keyframes 3-7s apart) — Chromium's frame-precise seeks
+                    # stall past the last early keyframe and the shot FREEZES
+                    # for the rest of its window (prod: identical freezes at
+                    # 14-19s + 36-44s across renders, anchored exactly on the
+                    # clips' sparse keyframes). Re-encode such files with a
+                    # dense keyframe grid before the render ever sees them.
+                    lp = self._normalize_for_seek(lp)
                     cache[url] = lp.resolve().as_uri()
                 except Exception as exc:
                     logger.warning(f"[MEDIA-PREFETCH] {url[:110]}: {exc} — keeping remote")
@@ -1508,6 +1516,63 @@ class RenderWorker:
                 f"[MEDIA-PREFETCH] localized {localized} <video> src(s) "
                 f"({len([v for v in cache.values() if v.startswith('file:')])} file(s)) into {media_dir}"
             )
+
+    def _normalize_for_seek(self, src_path: Path) -> Path:
+        """Re-encode a prefetched clip when its keyframe grid is too sparse
+        for frame-precise seeking (the renderer seeks every video to every
+        frame's timestamp; a >2s keyframe gap makes Chromium's precise seek
+        exceed the per-frame budget and the picture freezes). Keyframe every
+        12 frames (~0.5s @24fps) makes every seek decode ≤12 frames. Returns
+        the path to render from — the original on probe/encode failure."""
+        import subprocess
+        try:
+            probe = subprocess.run(
+                ["ffprobe", "-v", "error", "-select_streams", "v",
+                 "-show_entries", "frame=pts_time", "-of", "csv=p=0",
+                 "-skip_frame", "nokey", str(src_path)],
+                capture_output=True, text=True, timeout=60,
+            )
+            kts = []
+            for line in (probe.stdout or "").splitlines():
+                s = line.strip().rstrip(",")
+                if not s:
+                    continue
+                try:
+                    kts.append(float(s))
+                except ValueError:
+                    continue
+            durp = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "csv=p=0", str(src_path)],
+                capture_output=True, text=True, timeout=30,
+            )
+            dur = float((durp.stdout or "0").strip() or 0.0)
+            kts = sorted(set(kts))
+            gaps = [b - a for a, b in zip(kts, kts[1:])]
+            if kts and dur > 0:
+                gaps.append(dur - kts[-1])
+            max_gap = max(gaps) if gaps else dur
+            if max_gap <= 2.0 and kts:
+                return src_path  # dense enough — seeks are cheap already
+            out = src_path.with_name(src_path.stem + "_seekable.mp4")
+            subprocess.run(
+                ["ffmpeg", "-y", "-v", "error", "-i", str(src_path),
+                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                 "-g", "12", "-keyint_min", "12", "-sc_threshold", "0",
+                 "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                 "-c:a", "copy", str(out)],
+                check=True, capture_output=True, timeout=600,
+            )
+            logger.info(
+                f"[MEDIA-PREFETCH] re-encoded {src_path.name} for seekability "
+                f"(max keyframe gap was {max_gap:.1f}s)"
+            )
+            return out
+        except Exception as exc:
+            logger.warning(
+                f"[MEDIA-PREFETCH] seek-normalize failed for {src_path.name}: {exc} — using original"
+            )
+            return src_path
 
     def _collect_video_audio(self, tl_entries: list, work_dir: Path) -> "list[tuple[Path, dict]]":
         """Extract audio specs for every UNMUTED <video> in the timeline HTML.

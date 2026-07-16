@@ -9356,12 +9356,22 @@ class VideoGenerationPipeline:
                             )
                             if "audio" in (_aprobe.stdout or ""):
                                 _norm_local = run_dir / "dialogue_tts" / f"clip_{shot_idx:03d}_norm.mp4"
+                                # Re-ENCODE video (was -c:v copy): AI-gen clips
+                                # ship near-single-GOP streams (keyframes 3-7s
+                                # apart, some with broken pts) — the renderer's
+                                # frame-precise seeks stall past the last early
+                                # keyframe and the shot FREEZES mid-window
+                                # (prod: 8s frozen). -g 12 = keyframe every
+                                # 0.5s @24fps → every seek decodes ≤12 frames.
                                 subprocess.run(
                                     ["ffmpeg", "-y", "-v", "error", "-i", str(mp4_local),
                                      "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
-                                     "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+                                     "-g", "12", "-keyint_min", "12", "-sc_threshold", "0",
+                                     "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+                                     "-c:a", "aac", "-b:a", "192k",
                                      str(_norm_local)],
-                                    check=True, capture_output=True, timeout=180,
+                                    check=True, capture_output=True, timeout=600,
                                 )
                                 _nu = svc.upload_file(
                                     _norm_local,

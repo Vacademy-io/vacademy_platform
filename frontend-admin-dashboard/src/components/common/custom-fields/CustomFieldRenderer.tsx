@@ -18,7 +18,7 @@ import { format } from 'date-fns';
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { getTokenFromCookie, getTokenDecodedData } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
-import type { CustomFieldType } from '@/services/custom-field-settings';
+import { isUnrestrictedFileTypes, type CustomFieldType } from '@/services/custom-field-settings';
 
 interface CustomFieldRendererProps {
     type: CustomFieldType | string;
@@ -60,10 +60,11 @@ export const CustomFieldRenderer = ({
         const file = e.target.files?.[0];
         if (!file) return;
 
-        if (config?.allowedFileTypes && config.allowedFileTypes.length > 0) {
+        const allowedFileTypes = config?.allowedFileTypes;
+        if (!isUnrestrictedFileTypes(allowedFileTypes) && allowedFileTypes) {
             const ext = file.name.split('.').pop()?.toLowerCase() || '';
-            if (!config.allowedFileTypes.some((t) => t.toLowerCase() === ext)) {
-                alert(`File type .${ext} is not allowed. Allowed: ${config.allowedFileTypes.join(', ')}`);
+            if (!allowedFileTypes.some((t) => t.toLowerCase() === ext)) {
+                alert(`File type .${ext} is not allowed. Allowed: ${allowedFileTypes.join(', ')}`);
                 e.target.value = '';
                 return;
             }
@@ -314,9 +315,10 @@ export const CustomFieldRenderer = ({
         }
 
         case 'file': {
-            const acceptAttr = config?.allowedFileTypes?.length
-                ? config.allowedFileTypes.map((t) => `.${t}`).join(',')
-                : undefined;
+            const fileTypes = config?.allowedFileTypes;
+            const acceptAttr = isUnrestrictedFileTypes(fileTypes)
+                ? undefined
+                : fileTypes!.map((t) => `.${t}`).join(',');
             const isValidUrl = value && (value.startsWith('http://') || value.startsWith('https://'));
             return (
                 <div className="flex flex-col gap-2">
@@ -348,10 +350,10 @@ export const CustomFieldRenderer = ({
                             View current file
                         </a>
                     )}
-                    {config?.allowedFileTypes && config.allowedFileTypes.length > 0 && (
+                    {!isUnrestrictedFileTypes(fileTypes) && (
                         <p className="text-xs text-neutral-500">
-                            Allowed: {config.allowedFileTypes.join(', ')}
-                            {config.maxSizeMB && ` · Max ${config.maxSizeMB}MB`}
+                            Allowed: {fileTypes!.join(', ')}
+                            {config?.maxSizeMB && ` · Max ${config.maxSizeMB}MB`}
                         </p>
                     )}
                 </div>

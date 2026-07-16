@@ -59,6 +59,9 @@ const ALLOWED_TYPES_PREFIX = "types:"
 
 export const parseAllowedFileTypes = (raw?: string | null): AllowedFileType[] => {
   if (!raw || !raw.startsWith(ALLOWED_TYPES_PREFIX)) return []
+  // The admin's "All Files" option is encoded as the token "all", which isn't
+  // one of the AllowedFileType categories below, so it's filtered out here —
+  // leaving an empty array, which is exactly what "no restriction" means.
   return Array.from(
     new Set(
       raw

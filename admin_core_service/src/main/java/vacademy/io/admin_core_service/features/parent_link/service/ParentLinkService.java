@@ -9,11 +9,20 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
+import vacademy.io.admin_core_service.features.institute.entity.Template;
+import vacademy.io.admin_core_service.features.institute.repository.TemplateRepository;
+import vacademy.io.admin_core_service.features.notification.entity.NotificationEventConfig;
+import vacademy.io.admin_core_service.features.notification.enums.NotificationEventType;
+import vacademy.io.admin_core_service.features.notification.enums.NotificationSourceType;
+import vacademy.io.admin_core_service.features.notification.enums.NotificationTemplateType;
+import vacademy.io.admin_core_service.features.notification.repository.NotificationEventConfigRepository;
+import vacademy.io.admin_core_service.features.notification.service.DynamicNotificationService;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.parent_link.dto.BackfillSummaryDTO;
+import vacademy.io.admin_core_service.features.parent_link.dto.CredentialTemplateConfigDTO;
 import vacademy.io.admin_core_service.features.parent_link.dto.NewGuardianLinkRequestDTO;
 import vacademy.io.admin_core_service.features.parent_link.dto.ParentLinkActionRequestDTO;
 import vacademy.io.admin_core_service.features.parent_link.dto.ParentLinkActionResponseDTO;
@@ -52,6 +61,15 @@ public class ParentLinkService {
     @Autowired
     private AudienceResponseRepository audienceResponseRepository;
 
+    @Autowired
+    private NotificationEventConfigRepository notificationEventConfigRepository;
+
+    @Autowired
+    private TemplateRepository templateRepository;
+
+    @Autowired
+    private DynamicNotificationService dynamicNotificationService;
+
     public UserDTO getParentOfStudent(String studentUserId) {
         if (!StringUtils.hasText(studentUserId)) {
             return null;
@@ -77,6 +95,7 @@ public class ParentLinkService {
 
         boolean parentAddsStudent = "PARENT_ADDS_STUDENT".equalsIgnoreCase(request.getDirection());
         String otherPartyUserId;
+        UserDTO newlyCreatedGuardian = null;
 
         if ("LINK_EXISTING".equalsIgnoreCase(request.getMode())) {
             if (!StringUtils.hasText(request.getExistingUserId())) {
@@ -84,7 +103,14 @@ public class ParentLinkService {
             }
             otherPartyUserId = request.getExistingUserId();
         } else if ("CREATE_NEW".equalsIgnoreCase(request.getMode())) {
-            otherPartyUserId = createNewLinkedUser(request, parentAddsStudent);
+            UserDTO createdUser = createNewLinkedUser(request, parentAddsStudent);
+            otherPartyUserId = createdUser.getId();
+            // Only PARENT_ADDS_STUDENT=false (STUDENT_ADDS_PARENT) creates a brand-new
+            // guardian here; the other direction creates a new student instead, whose
+            // credentials are handled by the normal enrollment notification path.
+            if (!parentAddsStudent) {
+                newlyCreatedGuardian = createdUser;
+            }
         } else {
             throw new VacademyException("Unknown mode: " + request.getMode());
         }
@@ -95,17 +121,26 @@ public class ParentLinkService {
         authService.linkParentChild(parentUserId, studentUserId);
         studentRepository.updateGuardianUserId(studentUserId, parentUserId);
 
+        if (newlyCreatedGuardian != null) {
+            UserDTO student = firstOrNull(authService.getUsersFromAuthServiceByUserIds(List.of(studentUserId)));
+            notifyGuardianCreated(request.getInstituteId(), newlyCreatedGuardian, student);
+        }
+
         return ParentLinkActionResponseDTO.builder()
                 .parentUserId(parentUserId)
                 .studentUserId(studentUserId)
                 .build();
     }
 
+    private static UserDTO firstOrNull(List<UserDTO> users) {
+        return (users == null || users.isEmpty()) ? null : users.get(0);
+    }
+
     /**
      * Creates the new party (student or guardian, depending on direction),
      * blocking on a duplicate email/mobile match — no auto-link, no override.
      */
-    private String createNewLinkedUser(ParentLinkActionRequestDTO request, boolean parentAddsStudent) {
+    private UserDTO createNewLinkedUser(ParentLinkActionRequestDTO request, boolean parentAddsStudent) {
         checkNotAlreadyTaken(request.getNewEmail(), request.getNewMobileNumber());
 
         UserDTO newUser = new UserDTO();
@@ -115,8 +150,7 @@ public class ParentLinkService {
         // The new party being created is the opposite role of what the anchor already is.
         newUser.setRoles(parentAddsStudent ? List.of("STUDENT") : List.of("PARENT"));
 
-        UserDTO created = authService.createUserFromAuthService(newUser, request.getInstituteId(), false);
-        return created.getId();
+        return authService.createUserFromAuthService(newUser, request.getInstituteId(), false);
     }
 
     /**
@@ -145,6 +179,10 @@ public class ParentLinkService {
             UserDTO createdParent = authService.createUserFromAuthService(parentDTO, request.getInstituteId(), false);
             authService.linkParentChild(createdParent.getId(), request.getStudentExistingUserId());
             studentRepository.updateGuardianUserId(request.getStudentExistingUserId(), createdParent.getId());
+
+            UserDTO existingStudent = firstOrNull(
+                    authService.getUsersFromAuthServiceByUserIds(List.of(request.getStudentExistingUserId())));
+            notifyGuardianCreated(request.getInstituteId(), createdParent, existingStudent);
 
             return ParentLinkActionResponseDTO.builder()
                     .parentUserId(createdParent.getId())
@@ -181,6 +219,7 @@ public class ParentLinkService {
             // be double-backfilled — only the local "which one is missed" view
             // stays incomplete for this one edge case.
             studentRepository.updateGuardianUserId(newStudentId, newParentId);
+            notifyGuardianCreated(request.getInstituteId(), created.get(0), created.get(1));
 
             return ParentLinkActionResponseDTO.builder()
                     .parentUserId(newParentId)
@@ -256,30 +295,38 @@ public class ParentLinkService {
      * Given a candidate id list from either source (enrolled students or
      * leads), returns the ones with no guardian linked who also aren't
      * themselves flagged as a guardian. Pre-filters via the local
-     * {@code student.guardian_user_id} column (cheap, no cross-service call)
-     * before the authoritative auth_service check — the local column is
-     * best-effort (see linkNewGuardian's CREATE_NEW branch), so auth_service's
-     * linked_parent_id/is_parent remains the source of truth for correctness;
-     * the local column only narrows the auth_service payload size. Leads with
-     * no local {@code student} row at all (never enrolled) simply always fall
-     * through to the auth_service check — the narrowing is a pure optimization,
-     * never a filter of correctness.
+     * {@code student.guardian_user_id} column as an EXCLUDE-list only — never
+     * an allow-list — before the authoritative auth_service check.
+     *
+     * <p>This distinction matters: leads frequently have no local
+     * {@code student} row at all (a row is only created at enrollment, and a
+     * lead can have a real auth user + audience_response row without ever
+     * being enrolled). An allow-list approach ("only keep candidates whose
+     * local row shows guardian_user_id IS NULL") would silently drop those
+     * never-enrolled candidates the moment the batch also contains even one
+     * candidate that DOES have a local row — the previous version of this
+     * method had exactly that bug: new leads with no student row vanished
+     * from every backfill/preview call whenever older, already-enrolled
+     * candidates were also in scope. Subtracting only the PROVEN-linked ids
+     * (guardian_user_id IS NOT NULL) can never cause that: a missing local
+     * row simply falls through to the real auth_service check instead of
+     * being excluded.
      */
     private List<UserDTO> computeEligibleFromUserIds(List<String> candidateUserIds) {
         if (candidateUserIds.isEmpty()) {
             return List.of();
         }
 
-        Set<String> narrowedUserIds = studentRepository.findByUserIdInAndGuardianUserIdIsNull(candidateUserIds)
+        Set<String> knownAlreadyLinkedIds = studentRepository.findByUserIdInAndGuardianUserIdIsNotNull(candidateUserIds)
                 .stream()
                 .map(Student::getUserId)
                 .collect(HashSet::new, Set::add, Set::addAll);
-        // Defensive: a student row might be missing locally (never enrolled, or
-        // a race with enrollment) — don't let that silently exclude someone
-        // auth_service would still consider eligible. Fall back to the full id
-        // list when the local narrowing found nothing, rather than trusting an
-        // empty/absent local table.
-        List<String> lookupIds = narrowedUserIds.isEmpty() ? candidateUserIds : new ArrayList<>(narrowedUserIds);
+        List<String> lookupIds = knownAlreadyLinkedIds.isEmpty()
+                ? candidateUserIds
+                : candidateUserIds.stream().filter(id -> !knownAlreadyLinkedIds.contains(id)).toList();
+        if (lookupIds.isEmpty()) {
+            return List.of();
+        }
 
         List<UserDTO> students = authService.getUsersFromAuthServiceByUserIds(lookupIds);
         List<UserDTO> eligible = new ArrayList<>();
@@ -339,12 +386,22 @@ public class ParentLinkService {
                     .build());
         }
 
-        CredentialEmailConfig emailConfig = readCredentialEmailConfig(instituteId);
-        BackfillParentsResultDTO result = authService.backfillParents(
-                items, instituteId, emailConfig.sendCredentials(), emailConfig.recipient());
+        BackfillParentsResultDTO result = authService.backfillParents(items, instituteId);
         if (result.getCreatedPairs() != null) {
+            CredentialEmailConfig emailConfig = readCredentialEmailConfig(instituteId);
             for (BackfillCreatedPairDTO pair : result.getCreatedPairs()) {
                 studentRepository.updateGuardianUserId(pair.getChildUserId(), pair.getParentUserId());
+                if (emailConfig.sendCredentials()) {
+                    dynamicNotificationService.sendGuardianAccountCreatedNotification(
+                            instituteId,
+                            pair.getGuardianFullName(),
+                            pair.getGuardianUsername(),
+                            pair.getGuardianEmail(),
+                            pair.getGuardianPassword(),
+                            pair.getStudentFullName(),
+                            pair.getStudentEmail(),
+                            emailConfig.recipient());
+                }
             }
         }
 
@@ -359,11 +416,11 @@ public class ParentLinkService {
     }
 
     /**
-     * Reads the Guardian Setting's backfill credential-email preference
-     * directly from the institute's setting blob — the same source the
-     * Settings page reads/writes (PARENT_SETTING), so there's a single
-     * source of truth rather than trusting a client-supplied flag on the
-     * backfill request itself.
+     * Reads the Guardian Setting's credential-email preference directly from
+     * the institute's setting blob — the same source the Settings page
+     * reads/writes (PARENT_SETTING), so there's a single source of truth for
+     * every guardian-creation path (link, link-new-guardian, backfill)
+     * rather than trusting a client-supplied flag on any one request.
      */
     private CredentialEmailConfig readCredentialEmailConfig(String instituteId) {
         try {
@@ -371,15 +428,97 @@ public class ParentLinkService {
                     .map(institute -> institute.getSetting())
                     .orElse(null);
             if (!StringUtils.hasText(settingJson)) {
-                return new CredentialEmailConfig(false, "STUDENT");
+                return new CredentialEmailConfig(true, "STUDENT");
             }
             JsonNode root = objectMapper.readTree(settingJson);
             JsonNode data = root.path("setting").path("PARENT_SETTING").path("data");
-            boolean send = data.path("sendCredentialsOnBackfill").asBoolean(false);
-            String recipient = data.path("backfillCredentialRecipient").asText("STUDENT");
+            boolean send = data.path("sendCredentialEmail").asBoolean(true);
+            String recipient = data.path("credentialRecipient").asText("STUDENT");
             return new CredentialEmailConfig(send, recipient);
         } catch (Exception e) {
-            return new CredentialEmailConfig(false, "STUDENT");
+            return new CredentialEmailConfig(true, "STUDENT");
         }
+    }
+
+    /**
+     * The EMAIL template currently bound to GUARDIAN_ACCOUNT_CREATED for this
+     * institute, if the admin has picked one via the Guardian Setting's
+     * TemplateSelector. Null fields mean nothing is configured yet — the
+     * settings UI shows this as "no template selected", and notifications
+     * are silently skipped (see {@link DynamicNotificationService#sendGuardianAccountCreatedNotification}).
+     */
+    public CredentialTemplateConfigDTO getCredentialTemplateConfig(String instituteId) {
+        if (!StringUtils.hasText(instituteId)) {
+            throw new VacademyException("instituteId is required");
+        }
+        NotificationEventConfig config = notificationEventConfigRepository
+                .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
+                        NotificationEventType.GUARDIAN_ACCOUNT_CREATED,
+                        NotificationSourceType.INSTITUTE,
+                        instituteId,
+                        NotificationTemplateType.EMAIL)
+                .orElse(null);
+        if (config == null || !StringUtils.hasText(config.getTemplateId())) {
+            return CredentialTemplateConfigDTO.builder().build();
+        }
+        Template template = templateRepository.findById(config.getTemplateId()).orElse(null);
+        return CredentialTemplateConfigDTO.builder()
+                .templateId(config.getTemplateId())
+                .templateName(template != null ? template.getName() : null)
+                .templateSubject(template != null ? template.getSubject() : null)
+                .build();
+    }
+
+    /**
+     * Upserts the institute-scoped GUARDIAN_ACCOUNT_CREATED -> EMAIL template
+     * binding. One row per institute (never duplicated) — reactivates and
+     * repoints an existing row instead of inserting a new one each time the
+     * admin changes their selection.
+     */
+    public void setCredentialTemplate(String instituteId, String templateId) {
+        if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(templateId)) {
+            throw new VacademyException("instituteId and templateId are required");
+        }
+        templateRepository.findById(templateId)
+                .orElseThrow(() -> new VacademyException("Template not found: " + templateId));
+
+        NotificationEventConfig config = notificationEventConfigRepository
+                .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeOrderByUpdatedAtDesc(
+                        NotificationEventType.GUARDIAN_ACCOUNT_CREATED,
+                        NotificationSourceType.INSTITUTE,
+                        instituteId,
+                        NotificationTemplateType.EMAIL)
+                .orElseGet(() -> new NotificationEventConfig(
+                        NotificationEventType.GUARDIAN_ACCOUNT_CREATED,
+                        NotificationSourceType.INSTITUTE,
+                        instituteId,
+                        NotificationTemplateType.EMAIL,
+                        null));
+        config.setTemplateId(templateId);
+        config.setTemplateName(null);
+        config.setIsActive(true);
+        notificationEventConfigRepository.save(config);
+    }
+
+    /**
+     * Best-effort credential notification for a freshly-created guardian
+     * (link/link-new-guardian paths). Recipient choice ("STUDENT" vs
+     * "GUARDIAN") comes from the same Guardian Setting the backfill path
+     * uses, so all guardian-creation flows behave consistently.
+     */
+    private void notifyGuardianCreated(String instituteId, UserDTO guardian, UserDTO student) {
+        CredentialEmailConfig emailConfig = readCredentialEmailConfig(instituteId);
+        if (!emailConfig.sendCredentials()) {
+            return;
+        }
+        dynamicNotificationService.sendGuardianAccountCreatedNotification(
+                instituteId,
+                guardian != null ? guardian.getFullName() : null,
+                guardian != null ? guardian.getUsername() : null,
+                guardian != null ? guardian.getEmail() : null,
+                guardian != null ? guardian.getPassword() : null,
+                student != null ? student.getFullName() : null,
+                student != null ? student.getEmail() : null,
+                emailConfig.recipient());
     }
 }

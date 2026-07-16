@@ -539,22 +539,22 @@ def _compact(obj: Any, max_items: int = 15, max_str: int = 300) -> Any:
     return obj
 
 
-async def _admin_core_json(
+async def _service_json(
     ctx: ToolContext,
     method: str,
+    base_url: str,
     path: str,
     *,
     params: Optional[Dict[str, Any]] = None,
     body: Optional[Dict[str, Any]] = None,
     timeout: float = 20.0,
 ) -> Any:
-    """One JWT-authenticated call to admin_core; returns parsed JSON or an error dict."""
+    """One JWT-authenticated call to a backend service; returns parsed JSON or an error dict."""
     import httpx
-    from ..config import get_settings
 
     if not ctx.bearer_token:
         return {"error": "no_auth", "message": "This lookup is unavailable right now."}
-    url = f"{get_settings().admin_core_service_base_url}{path}"
+    url = f"{base_url}{path}"
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.request(
@@ -567,6 +567,21 @@ async def _admin_core_json(
     except Exception as e:
         logger.warning("assistant %s %s failed: %s", method, path, e)
         return {"error": "fetch_failed"}
+
+
+async def _admin_core_json(ctx: ToolContext, method: str, path: str, **kw: Any) -> Any:
+    from ..config import get_settings
+    return await _service_json(ctx, method, get_settings().admin_core_service_base_url, path, **kw)
+
+
+async def _assessment_json(ctx: ToolContext, method: str, path: str, **kw: Any) -> Any:
+    from ..config import get_settings
+    return await _service_json(ctx, method, get_settings().assessment_service_base_url, path, **kw)
+
+
+async def _notification_json(ctx: ToolContext, method: str, path: str, **kw: Any) -> Any:
+    from ..config import get_settings
+    return await _service_json(ctx, method, get_settings().notification_service_base_url, path, **kw)
 
 
 _GET_PAYMENT_HISTORY_SCHEMA: Dict[str, Any] = {
@@ -849,19 +864,22 @@ async def _execute_get_institute_overview(args: Dict[str, Any], ctx: ToolContext
     sections = [s for s in (args.get("sections") or []) if isinstance(s, str)]
     out: Dict[str, Any] = {}
     if "outstanding_fees" in sections:
-        rows = await _admin_core_json(
-            ctx, "POST", "/admin-core-service/v1/admin/student-fee/adjustment/pending",
-            params={"instituteId": ctx.principal.institute_id}, body={}, timeout=30.0,
+        # Audit fix 2026-07-16: the earlier source (adjustment/pending) only
+        # covered installments awaiting a concession/penalty decision, badly
+        # undercounting. The collection dashboard is the true institute total.
+        data = await _admin_core_json(
+            ctx, "POST", "/admin-core-service/v1/admin/student-fee/dashboard/collection",
+            body={"instituteId": ctx.principal.institute_id}, timeout=30.0,
         )
-        if isinstance(rows, list):
-            overdue = [r for r in rows if r.get("is_overdue") or r.get("status") == "OVERDUE"]
+        if isinstance(data, dict) and not data.get("error"):
             out["outstanding_fees"] = {
-                "overdue_total": round(sum(float(r.get("amount_due") or 0) for r in overdue), 2),
-                "overdue_installments": len(overdue),
-                "learners_affected": len({r.get("user_id") for r in overdue if r.get("user_id")}),
+                "overdue_total": data.get("totalOverdue"),
+                "collected_to_date": data.get("collectedToDate"),
+                "expected_to_date": data.get("expectedToDate"),
+                "note": "Use search_fee_records to list WHICH learners are overdue.",
             }
         else:
-            out["outstanding_fees"] = rows  # error dict
+            out["outstanding_fees"] = data  # error dict
     if "live_now" in sections:
         data = await _admin_core_json(
             ctx, "GET", "/admin-core-service/get-sessions/live",
@@ -937,6 +955,472 @@ async def _execute_trigger_full_report(args: Dict[str, Any], ctx: ToolContext) -
         "note": "Report generation started in the background — it will appear in the learner's "
                 "Reports tab and the requester is notified when it's ready.",
     })
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Audit roadmap 4–6 (2026-07-16): institute-wide LIST/aggregate reads.
+# ──────────────────────────────────────────────────────────────────────────
+
+_SEARCH_FEE_RECORDS_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "search_fee_records",
+        "description": (
+            "Institute-WIDE fee records, one row per learner+fee-plan with expected/"
+            "paid/due/overdue amounts and a status. Use for 'which learners have "
+            "overdue or unpaid fees', 'who hasn't paid this month', 'biggest "
+            "defaulters'. For ONE known learner use get_fee_dues instead."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "statuses": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["OVERDUE", "PENDING", "PARTIAL", "PAID"]},
+                    "description": "Filter by fee status. Default ['OVERDUE'].",
+                },
+                "batch_ids": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Optional package_session_ids (from find_batch).",
+                },
+                "due_start": {"type": "string", "description": "Optional due-date window start, YYYY-MM-DD."},
+                "due_end": {"type": "string", "description": "Optional due-date window end, YYYY-MM-DD."},
+                "name": {"type": "string", "description": "Optional learner name/text search."},
+                "sort_by": {
+                    "type": "string",
+                    "enum": ["dueDate", "overdueAmount", "dueAmount", "totalPaidAmount", "studentName"],
+                    "description": "Default dueDate.",
+                },
+                "page": {"type": "integer", "description": "0-based page (15 rows per page)."},
+            },
+            "required": [],
+        },
+    },
+}
+
+
+async def _execute_search_fee_records(args: Dict[str, Any], ctx: ToolContext) -> str:
+    filters: Dict[str, Any] = {
+        "statuses": [str(s) for s in (args.get("statuses") or ["OVERDUE"])][:4],
+    }
+    if args.get("batch_ids"):
+        filters["packageSessionIds"] = [str(b) for b in args["batch_ids"]][:10]
+    if args.get("due_start") or args.get("due_end"):
+        filters["dueDateRange"] = {
+            "startDate": str(args.get("due_start") or ""),
+            "endDate": str(args.get("due_end") or ""),
+        }
+    if args.get("name"):
+        filters["studentSearchQuery"] = str(args["name"])[:80]
+    # NB this endpoint's request body is camelCase (no @JsonNaming on the DTO);
+    # the response rows are snake_case.
+    body = {
+        "page": max(0, int(args.get("page") or 0)),
+        "size": 15,
+        "sortBy": str(args.get("sort_by") or "dueDate"),
+        "sortDirection": "DESC",
+        "filters": filters,
+    }
+    data = await _admin_core_json(
+        ctx, "POST", "/admin-core-service/v1/admin/student-fee/search",
+        params={"instituteId": ctx.principal.institute_id},  # forced
+        body=body, timeout=30.0,
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    rows = []
+    for r in (data.get("content") or [])[:15]:
+        rows.append({
+            "user_id": r.get("student_id"),
+            "name": r.get("student_name"),
+            "mobile": _mask_mobile(r.get("phone")),
+            "fee_plan": r.get("cpo_name"),
+            "expected": r.get("total_expected_amount"),
+            "paid": r.get("total_paid_amount"),
+            "due": r.get("due_amount"),
+            "overdue": r.get("overdue_amount"),
+            "status": r.get("status"),
+        })
+    total = data.get("totalElements", data.get("total_elements", len(rows)))
+    return json.dumps({"fee_records": rows, "total_matching": total,
+                       "note": "One row per learner + fee plan."})
+
+
+_GET_COLLECTIONS_SUMMARY_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "get_collections_summary",
+        "description": (
+            "Money COLLECTED. Without dates: cumulative collections dashboard "
+            "(projected/expected/collected to date, total overdue, per-batch and "
+            "per-gateway breakdown). With start_date+end_date: actual PAID "
+            "transactions in that window, summed. Use for 'how much did we collect "
+            "this week/month' (pass dates) or 'overall collections picture' (no dates)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "description": "YYYY-MM-DD (with end_date → windowed sum)."},
+                "end_date": {"type": "string", "description": "YYYY-MM-DD."},
+            },
+            "required": [],
+        },
+    },
+}
+
+
+async def _execute_get_collections_summary(args: Dict[str, Any], ctx: ToolContext) -> str:
+    start = str((args or {}).get("start_date") or "").strip()
+    end = str((args or {}).get("end_date") or "").strip()
+    if start and end:
+        # Windowed: page through PAID payment-logs and sum client-side (the
+        # endpoint returns transactions, not a server-side aggregate).
+        totals: Dict[str, float] = {}
+        count = 0
+        sample = []
+        for page in range(5):  # hard cap: 5 × 100 transactions
+            data = await _admin_core_json(
+                ctx, "POST", "/admin-core-service/v1/user-plan/payment-logs",
+                params={"pageNo": page, "pageSize": 100},
+                body={
+                    "institute_id": ctx.principal.institute_id,  # forced
+                    "payment_statuses": ["PAID"],
+                    "start_date_in_utc": f"{start}T00:00:00",
+                    "end_date_in_utc": f"{end}T23:59:59",
+                },
+                timeout=30.0,
+            )
+            if isinstance(data, dict) and data.get("error"):
+                return json.dumps(data)
+            content = data.get("content") or []
+            for row in content:
+                log_ = row.get("payment_log") or {}
+                cur = str(log_.get("currency") or "INR")
+                totals[cur] = round(totals.get(cur, 0) + float(log_.get("payment_amount") or 0), 2)
+                count += 1
+                if len(sample) < 5:
+                    sample.append({"date": log_.get("date"), "amount": log_.get("payment_amount"),
+                                   "currency": cur, "vendor": log_.get("vendor")})
+            if data.get("last") is True or not content:
+                break
+        capped = count >= 500
+        return json.dumps({
+            "window": {"start": start, "end": end},
+            "collected_by_currency": totals,
+            "paid_transactions": count,
+            "recent": sample,
+            **({"note": "500-transaction cap reached — totals may be partial."} if capped else {}),
+        })
+    # Cumulative dashboard (camelCase body + response).
+    data = await _admin_core_json(
+        ctx, "POST", "/admin-core-service/v1/admin/student-fee/dashboard/collection",
+        body={"instituteId": ctx.principal.institute_id}, timeout=30.0,
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    return json.dumps({
+        "projected_revenue": data.get("projectedRevenue"),
+        "expected_to_date": data.get("expectedToDate"),
+        "collected_to_date": data.get("collectedToDate"),
+        "total_overdue": data.get("totalOverdue"),
+        "by_batch": _compact(data.get("classWiseBreakdown"), max_items=10, max_str=120),
+        "by_payment_mode": _compact(data.get("paymentModeBreakdown"), max_items=8, max_str=80),
+    })
+
+
+_LIST_RECENT_ENROLLMENTS_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "list_recent_enrollments",
+        "description": (
+            "Learners who ENROLLED within a date range (newest first) — 'who joined "
+            "this month/week', 'new admissions since X'. Returns the matching count "
+            "plus the first page of learners."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "description": "Enrollment window start, YYYY-MM-DD."},
+                "end_date": {"type": "string", "description": "Enrollment window end, YYYY-MM-DD."},
+                "batch_id": {"type": "string", "description": "Optional package_session_id (from find_batch)."},
+            },
+            "required": ["start_date", "end_date"],
+        },
+    },
+}
+
+
+async def _execute_list_recent_enrollments(args: Dict[str, Any], ctx: ToolContext) -> str:
+    start = str((args or {}).get("start_date") or "").strip()
+    end = str((args or {}).get("end_date") or "").strip()
+    if not start or not end:
+        return json.dumps({"error": "missing_dates"})
+    body: Dict[str, Any] = {
+        "institute_ids": [ctx.principal.institute_id],  # forced
+        "statuses": ["ACTIVE"],
+        "start_date": start,  # filters ssigm.enrolled_date
+        "end_date": end,
+        "package_session_ids": [str(args["batch_id"])] if args.get("batch_id") else [],
+        "group_ids": [], "gender": [], "sort_columns": {},
+    }
+    data = await _admin_core_json(
+        ctx, "POST", "/admin-core-service/institute/institute_learner/get/v2/all",
+        params={"pageNo": 0, "pageSize": 15}, body=body, timeout=30.0,
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    rows = []
+    for r in (data.get("content") or [])[:15]:
+        rows.append({
+            "user_id": r.get("user_id"),
+            "name": r.get("full_name"),
+            "email": r.get("email"),
+            "batch_id": r.get("package_session_id"),
+            "status": r.get("status"),
+        })
+    total = data.get("totalElements", data.get("total_elements", len(rows)))
+    return json.dumps({"window": {"start": start, "end": end},
+                       "total_enrolled_in_window": total, "learners": rows})
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Assessments group — reads against assessment_service (caller's JWT).
+# ──────────────────────────────────────────────────────────────────────────
+
+_FIND_ASSESSMENT_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "find_assessment",
+        "description": (
+            "Find assessments/tests by name and window (live / upcoming / past). "
+            "Returns assessment_id + registration/attempt counts + start/end times. "
+            "ALWAYS resolve an assessment here before asking for its results or "
+            "leaderboard. For date questions ('tests this week') check the returned "
+            "bound_start_time yourself."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Name text to search (optional)."},
+                "window": {
+                    "type": "string", "enum": ["live", "upcoming", "past", "all"],
+                    "description": "Which set to list. Default 'all'.",
+                },
+            },
+            "required": [],
+        },
+    },
+}
+
+
+async def _execute_find_assessment(args: Dict[str, Any], ctx: ToolContext) -> str:
+    window = str((args or {}).get("window") or "all")
+    body: Dict[str, Any] = {
+        "name": str(args.get("name") or "").strip(),
+        "assessment_types": ["ASSESSMENT"],
+        "institute_ids": [ctx.principal.institute_id],  # forced — endpoint does NOT scope itself
+        "get_live_assessments": window in ("live", "all"),
+        "get_upcoming_assessments": window in ("upcoming", "all"),
+        "get_passed_assessments": window in ("past", "all"),
+        "batch_ids": [], "subjects_ids": [], "tag_ids": [], "evaluation_types": [],
+        "assessment_statuses": [], "assessment_modes": [], "access_statuses": [],
+        "sort_columns": {"created_at": "DESC"},
+    }
+    data = await _assessment_json(
+        ctx, "POST", "/assessment-service/assessment/admin/assessment-admin-list-filter",
+        params={"pageNo": 0, "pageSize": 10, "instituteId": ctx.principal.institute_id},
+        body=body, timeout=30.0,
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    rows = []
+    for r in (data.get("content") or [])[:10]:
+        rows.append({
+            "assessment_id": r.get("assessment_id"),
+            "name": r.get("name"),
+            "status": r.get("status"),
+            "visibility": r.get("assessment_visibility"),
+            "play_mode": r.get("play_mode"),
+            "starts": r.get("bound_start_time"),
+            "ends": r.get("bound_end_time"),
+            "registered": r.get("user_registrations"),
+            "attempted": r.get("user_attempt_count"),
+        })
+    total = data.get("totalElements", data.get("total_elements", len(rows)))
+    return json.dumps({"matches": rows, "total_matching": total})
+
+
+_GET_ASSESSMENT_RESULTS_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "get_assessment_results",
+        "description": (
+            "Participants of ONE assessment with attempt state, score, and evaluation "
+            "status. CRITICAL semantics: evaluation_status PENDING = attempted but NOT "
+            "YET GRADED (never report it as 'didn't attempt'); attempt_state 'pending' "
+            "= registered but not attempted. release_status shows whether the learner "
+            "can see their result. Use find_assessment first to get assessment_id and "
+            "visibility."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "assessment_id": {"type": "string"},
+                "visibility": {
+                    "type": "string",
+                    "description": "The assessment's visibility from find_assessment (e.g. PRIVATE/PUBLIC). Default PRIVATE.",
+                },
+                "attempt_state": {
+                    "type": "string", "enum": ["attempted", "not_attempted", "live"],
+                    "description": "attempted = finished attempts; not_attempted = registered but no attempt; live = attempting now.",
+                },
+                "evaluation_status": {
+                    "type": "string", "enum": ["PENDING", "COMPLETED"],
+                    "description": "PENDING = awaiting grading; COMPLETED = graded.",
+                },
+                "batch_ids": {"type": "array", "items": {"type": "string"}},
+                "name": {"type": "string", "description": "Optional learner-name search."},
+                "page": {"type": "integer"},
+            },
+            "required": ["assessment_id"],
+        },
+    },
+}
+
+_ATTEMPT_STATE_MAP = {"attempted": "ENDED", "not_attempted": "PENDING", "live": "LIVE"}
+
+
+async def _execute_get_assessment_results(args: Dict[str, Any], ctx: ToolContext) -> str:
+    assessment_id = str((args or {}).get("assessment_id") or "").strip()
+    if not assessment_id:
+        return json.dumps({"error": "missing_assessment_id"})
+    body: Dict[str, Any] = {
+        "name": str(args.get("name") or "").strip(),
+        "assessment_type": str(args.get("visibility") or "PRIVATE"),
+        "attempt_type": (
+            [_ATTEMPT_STATE_MAP[args["attempt_state"]]]
+            if args.get("attempt_state") in _ATTEMPT_STATE_MAP else []
+        ),
+        "evaluation_status": (
+            [str(args["evaluation_status"])]
+            if str(args.get("evaluation_status") or "") in ("PENDING", "COMPLETED") else []
+        ),
+        "batches": [str(b) for b in (args.get("batch_ids") or [])][:10],
+        "status": ["ACTIVE"],
+        "registration_source": [],
+        # NB: never sort by end_time — the WAF blocks it.
+        "sort_columns": {"attempt_date": "DESC"},
+    }
+    data = await _assessment_json(
+        ctx, "POST", "/assessment-service/assessment/admin-participants/all/registered-participants",
+        params={"instituteId": ctx.principal.institute_id, "assessmentId": assessment_id,
+                "pageNo": max(0, int(args.get("page") or 0)), "pageSize": 15},
+        body=body, timeout=30.0,
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    rows = []
+    for r in (data.get("content") or [])[:15]:
+        rows.append({
+            "user_id": r.get("user_id"),
+            "name": r.get("student_name"),
+            "batch_id": r.get("batch_id"),
+            "attempt_date": r.get("attempt_date"),
+            "score": r.get("score"),
+            "evaluation_status": r.get("evaluation_status"),
+            "release_status": r.get("report_release_result_status"),
+        })
+    total = data.get("totalElements", data.get("total_elements", len(rows)))
+    return json.dumps({
+        "participants": rows, "total_matching": total,
+        "note": "evaluation_status PENDING = attempted, awaiting grading (NOT a missed test).",
+    })
+
+
+_GET_ASSESSMENT_LEADERBOARD_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "get_assessment_leaderboard",
+        "description": (
+            "Ranked leaderboard for ONE assessment: rank, marks, percentile per "
+            "learner. Use for 'toppers / how did the batch do on test X'. Resolve "
+            "the assessment with find_assessment first."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "assessment_id": {"type": "string"},
+                "page": {"type": "integer", "description": "0-based page (10 rows per page)."},
+            },
+            "required": ["assessment_id"],
+        },
+    },
+}
+
+
+async def _execute_get_assessment_leaderboard(args: Dict[str, Any], ctx: ToolContext) -> str:
+    assessment_id = str((args or {}).get("assessment_id") or "").strip()
+    if not assessment_id:
+        return json.dumps({"error": "missing_assessment_id"})
+    data = await _assessment_json(
+        ctx, "POST", "/assessment-service/assessment/admin/get-leaderboard",
+        params={"assessmentId": assessment_id, "instituteId": ctx.principal.institute_id,
+                "pageNo": max(0, int(args.get("page") or 0)), "pageSize": 10},
+        body={"name": "", "status": ["ACTIVE"], "sort_columns": {}}, timeout=30.0,
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    rows = []
+    for r in (data.get("content") or [])[:10]:
+        rows.append({
+            "rank": r.get("rank"),
+            "name": r.get("student_name"),
+            "user_id": r.get("user_id"),
+            "marks": r.get("achieved_marks"),
+            "percentile": r.get("percentile"),
+            "time_seconds": r.get("completion_time_in_seconds"),
+        })
+    total = data.get("totalElements", data.get("total_elements", len(rows)))
+    return json.dumps({"leaderboard": rows, "total_participants": total})
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Announcements group.
+# ──────────────────────────────────────────────────────────────────────────
+
+_LIST_ANNOUNCEMENTS_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "list_announcements",
+        "description": (
+            "The institute's announcements — 'planned' (scheduled/upcoming) or "
+            "'past' (already delivered). Use to answer 'what announcements are "
+            "scheduled / did my announcement go out'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "scope": {"type": "string", "enum": ["planned", "past"],
+                          "description": "Default 'planned'."},
+            },
+            "required": [],
+        },
+    },
+}
+
+
+async def _execute_list_announcements(args: Dict[str, Any], ctx: ToolContext) -> str:
+    scope = "past" if str((args or {}).get("scope") or "") == "past" else "planned"
+    data = await _notification_json(
+        ctx, "GET",
+        f"/notification-service/v1/announcements/institute/{ctx.principal.institute_id}/{scope}",
+        params={"page": 0, "size": 10},
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return json.dumps(data)
+    content = data.get("content") if isinstance(data, dict) else data
+    return json.dumps({"scope": scope,
+                       "announcements": _compact(content, max_items=10, max_str=160)})
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -1192,10 +1676,142 @@ async def _perform_manage_enrollment(args: Dict[str, Any], ctx: ToolContext) -> 
     return {"ok": True, "detail": "enrollment updated"}
 
 
+_ANNOUNCEMENT_TARGET_ROLES = {"STUDENT", "TEACHER", "ADMIN"}
+
+_SEND_ANNOUNCEMENT_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "send_announcement",
+        "description": (
+            "PROPOSE sending an announcement to learners/staff (in-app alert, "
+            "optionally push notification). The user gets a confirmation card showing "
+            "exactly who receives it; NOTHING is sent until they press Confirm. "
+            "Target batches by package_session_id (resolve names with find_batch "
+            "first — never guess ids), or whole roles, or specific users."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Announcement title (short)."},
+                "message": {"type": "string", "description": "The announcement body (plain text)."},
+                "target_batch_ids": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "package_session_ids from find_batch.",
+                },
+                "target_roles": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": sorted(_ANNOUNCEMENT_TARGET_ROLES)},
+                    "description": "Send to everyone with a role, e.g. ['STUDENT'].",
+                },
+                "target_user_ids": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Specific user_ids (from find_learner).",
+                },
+                "push": {"type": "boolean",
+                         "description": "Also send a push notification. Default false."},
+            },
+            "required": ["title", "message"],
+        },
+    },
+}
+
+
+async def _execute_send_announcement(args: Dict[str, Any], ctx: ToolContext) -> str:
+    import html as html_mod
+
+    title = str((args or {}).get("title") or "").strip()
+    message = str(args.get("message") or "").strip()
+    if not title or not message:
+        return json.dumps({"error": "missing_fields", "message": "title and message are required."})
+    if len(title) > 500:
+        return json.dumps({"error": "title_too_long", "message": "Max 500 characters."})
+
+    batch_ids = [str(b).strip() for b in (args.get("target_batch_ids") or []) if str(b).strip()][:10]
+    roles = [str(r).strip().upper() for r in (args.get("target_roles") or [])]
+    user_ids = [str(u).strip() for u in (args.get("target_user_ids") or []) if str(u).strip()][:20]
+    bad_roles = [r for r in roles if r not in _ANNOUNCEMENT_TARGET_ROLES]
+    if bad_roles:
+        return json.dumps({"error": "bad_role",
+                           "message": f"Allowed roles: {', '.join(sorted(_ANNOUNCEMENT_TARGET_ROLES))}."})
+    if not batch_ids and not roles and not user_ids:
+        return json.dumps({"error": "no_targets",
+                           "message": "Give at least one target: batches, roles, or users."})
+
+    # Every model-supplied target id must belong to the pinned institute — the
+    # backend endpoint accepts ANY id, so this pre-check is the trust boundary.
+    target_desc: List[str] = []
+    for bid in batch_ids:
+        name = _batch_name_in_institute(ctx, bid)
+        if not name:
+            return json.dumps({
+                "error": "unknown_batch",
+                "message": "A target batch id doesn't exist in this institute. Use find_batch "
+                           "to resolve batch names first — never guess batch ids.",
+            })
+        target_desc.append(f"batch “{name}”")
+    for uid in user_ids:
+        if not _target_in_institute(ctx, uid):
+            return json.dumps({"error": "unknown_user",
+                               "message": "A target user has no enrollment in your institute."})
+    if user_ids:
+        target_desc.append(f"{len(user_ids)} specific learner{'s' if len(user_ids) > 1 else ''}")
+    target_desc.extend(f"all {r.lower()}s" for r in roles)
+
+    channels = "in-app alert + push notification" if args.get("push") else "in-app alert"
+    body_html = f"<p>{html_mod.escape(message)}</p>"
+    summary = (
+        f"Send announcement “{title}” to {', '.join(target_desc)} ({channels}). "
+        f"Message: “{message[:180]}{'…' if len(message) > 180 else ''}”"
+    )
+    return await _propose_action(
+        ctx, "send_announcement",
+        {"title": title, "message": message, "body_html": body_html,
+         "batch_ids": batch_ids, "roles": roles, "user_ids": user_ids,
+         "push": bool(args.get("push"))},
+        summary,
+    )
+
+
+async def _perform_send_announcement(args: Dict[str, Any], ctx: ToolContext) -> Dict[str, Any]:
+    # The create endpoint trusts instituteId/createdBy/createdByRole from the
+    # body (and createdByRole=ADMIN bypasses institute approval) — so every
+    # identity field here is forced from the verified principal, never the model.
+    recipients = (
+        [{"recipientType": "PACKAGE_SESSION", "recipientId": b} for b in args.get("batch_ids") or []]
+        + [{"recipientType": "ROLE", "recipientId": r} for r in args.get("roles") or []]
+        + [{"recipientType": "USER", "recipientId": u} for u in args.get("user_ids") or []]
+    )
+    caller_roles = ctx.principal.roles or []
+    payload: Dict[str, Any] = {
+        # NB: this service's wire format is camelCase, unlike the rest of the platform.
+        "title": args["title"],
+        "content": {"type": "html", "content": args.get("body_html") or args["message"]},
+        "instituteId": ctx.principal.institute_id,          # forced
+        "createdBy": ctx.principal.user_id,                 # forced
+        "createdByName": ctx.principal.full_name or ctx.principal.username or "Vacademy Assistant user",
+        "createdByRole": "ADMIN" if "ADMIN" in caller_roles else (caller_roles[0] if caller_roles else "ADMIN"),
+        "timezone": "Asia/Kolkata",
+        "recipients": recipients,
+        "modes": [{"modeType": "SYSTEM_ALERT", "settings": {}}],
+    }
+    if args.get("push"):
+        payload["mediums"] = [{
+            "mediumType": "PUSH_NOTIFICATION",
+            "config": {"title": args["title"], "body": args["message"][:500]},
+        }]
+    data = await _notification_json(
+        ctx, "POST", "/notification-service/v1/announcements", body=payload, timeout=30.0,
+    )
+    if isinstance(data, dict) and data.get("error"):
+        return {"ok": False, "detail": data}
+    return {"ok": True, "detail": "announcement created and delivery started"}
+
+
 #: perform-side dispatch used by the confirm endpoint (NOT reachable by the LLM).
 WRITE_PERFORMERS: Dict[str, Callable[[Dict[str, Any], ToolContext], Awaitable[Dict[str, Any]]]] = {
     "update_learner_profile": _perform_update_learner_profile,
     "manage_enrollment": _perform_manage_enrollment,
+    "send_announcement": _perform_send_announcement,
 }
 
 
@@ -1247,7 +1863,8 @@ ASSISTANT_TOOLS: Dict[str, ToolSpec] = {
         executor=_execute_find_batch,
         required_permission=None,
         setting_key="learner_data",
-        setting_keys_any=["learner_data", "batch_data", "learner_edits", "schedule"],
+        setting_keys_any=["learner_data", "batch_data", "learner_edits", "schedule",
+                          "assessments", "announcements", "payments"],
         default_enabled=False,
         default_roles=["ADMIN"],
         phase=2,
@@ -1360,6 +1977,97 @@ ASSISTANT_TOOLS: Dict[str, ToolSpec] = {
         phase=3,
         mode="WRITE",
     ),
+    # Audit roadmap 4–6 (2026-07-16): institute-wide lists, assessments,
+    # announcements. Reads default-ON for ADMIN like the rest of Phase 2; the
+    # announcement send is a WRITE behind the confirmation card.
+    "search_fee_records": ToolSpec(
+        name="search_fee_records",
+        schema=_SEARCH_FEE_RECORDS_SCHEMA,
+        executor=_execute_search_fee_records,
+        required_permission=None,
+        setting_key="payments",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "get_collections_summary": ToolSpec(
+        name="get_collections_summary",
+        schema=_GET_COLLECTIONS_SUMMARY_SCHEMA,
+        executor=_execute_get_collections_summary,
+        required_permission=None,
+        setting_key="payments",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "list_recent_enrollments": ToolSpec(
+        name="list_recent_enrollments",
+        schema=_LIST_RECENT_ENROLLMENTS_SCHEMA,
+        executor=_execute_list_recent_enrollments,
+        required_permission=None,
+        setting_key="learner_data",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "find_assessment": ToolSpec(
+        name="find_assessment",
+        schema=_FIND_ASSESSMENT_SCHEMA,
+        executor=_execute_find_assessment,
+        required_permission=None,
+        setting_key="assessments",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "get_assessment_results": ToolSpec(
+        name="get_assessment_results",
+        schema=_GET_ASSESSMENT_RESULTS_SCHEMA,
+        executor=_execute_get_assessment_results,
+        required_permission=None,
+        setting_key="assessments",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "get_assessment_leaderboard": ToolSpec(
+        name="get_assessment_leaderboard",
+        schema=_GET_ASSESSMENT_LEADERBOARD_SCHEMA,
+        executor=_execute_get_assessment_leaderboard,
+        required_permission=None,
+        setting_key="assessments",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "list_announcements": ToolSpec(
+        name="list_announcements",
+        schema=_LIST_ANNOUNCEMENTS_SCHEMA,
+        executor=_execute_list_announcements,
+        required_permission=None,
+        setting_key="announcements",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    "send_announcement": ToolSpec(
+        name="send_announcement",
+        schema=_SEND_ANNOUNCEMENT_SCHEMA,
+        executor=_execute_send_announcement,
+        required_permission=None,
+        setting_key="announcements",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=3,
+        mode="WRITE",
+    ),
 }
 
 #: Friendly names for the settings groups — used in denials and the capability
@@ -1372,6 +2080,8 @@ GROUP_LABELS: Dict[str, str] = {
     "schedule": "Class schedule",
     "institute_overview": "Institute stats",
     "learner_edits": "Learner edits (confirmed changes)",
+    "assessments": "Assessment results",
+    "announcements": "Announcements",
 }
 
 

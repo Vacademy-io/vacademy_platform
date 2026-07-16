@@ -88,6 +88,27 @@ export const ASSISTANT_TOOL_CATALOG: AssistantToolCatalogEntry[] = [
         defaultEnabled: false,
         defaultRoles: ['ADMIN'],
     },
+    {
+        key: 'assessments',
+        label: 'Assessment results',
+        description:
+            'Find assessments and answer questions about submissions, scores, pending ' +
+            'evaluations, and leaderboards. On by default for Admins.',
+        phase: 2,
+        defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
+    {
+        key: 'announcements',
+        label: 'Announcements',
+        description:
+            'See planned/past announcements, and PROPOSE sending one to batches, roles, or ' +
+            'specific learners — sending always requires pressing Confirm on a card. On by ' +
+            'default for Admins.',
+        phase: 3,
+        defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
 ];
 
 /** One-click role presets for the settings screen — sensible grants per role. */
@@ -98,10 +119,14 @@ export const ASSISTANT_ROLE_PRESETS: Array<{
 }> = [
     {
         role: 'TEACHER',
-        label: 'Teachers: learner data + class schedule',
-        tools: ['learner_data', 'schedule'],
+        label: 'Teachers: learner data + schedule + assessments',
+        tools: ['learner_data', 'schedule', 'assessments'],
     },
-    { role: 'EVALUATOR', label: 'Evaluators: learner data', tools: ['learner_data'] },
+    {
+        role: 'EVALUATOR',
+        label: 'Evaluators: learner data + assessments',
+        tools: ['learner_data', 'assessments'],
+    },
 ];
 
 // Non-learner system roles, by their JWT role-name. Custom roles are appended at

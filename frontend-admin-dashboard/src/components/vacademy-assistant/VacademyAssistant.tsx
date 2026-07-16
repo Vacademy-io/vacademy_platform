@@ -74,6 +74,14 @@ const CAPABILITY_COPY: Record<string, { blurb: string; suggestions: string[] }> 
         blurb: 'Make changes (with your confirmation)',
         suggestions: ["Extend a learner's access expiry"],
     },
+    assessments: {
+        blurb: 'Assessment results & pending evaluations',
+        suggestions: ['Which submissions are still pending evaluation?'],
+    },
+    announcements: {
+        blurb: 'Send announcements (with your confirmation)',
+        suggestions: ['Send an announcement to a batch'],
+    },
 };
 
 const FALLBACK_SUGGESTIONS = [

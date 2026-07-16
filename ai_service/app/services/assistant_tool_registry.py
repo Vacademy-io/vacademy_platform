@@ -93,6 +93,9 @@ class ToolSpec:
     executor: ToolExecutor
     required_permission: Optional[str] = None  # RBAC leg; None = no permission required
     setting_key: Optional[str] = None          # Settings-leg key; defaults to ``name``
+    # A resolver used by SEVERAL groups (e.g. find_batch) lists them here — the
+    # Settings leg passes if ANY of these groups is enabled for the caller.
+    setting_keys_any: Optional[List[str]] = None
     default_enabled: bool = False              # on for EVERY role when no ASSISTANT_TOOLS_SETTING
     default_roles: Optional[List[str]] = None  # on for THESE roles when no setting (e.g. ["ADMIN"])
     phase: int = 1                             # roadmap phase (1=help, 2=read, 3=write)
@@ -100,6 +103,9 @@ class ToolSpec:
 
     def key(self) -> str:
         return self.setting_key or self.name
+
+    def keys_any(self) -> List[str]:
+        return self.setting_keys_any or [self.key()]
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -196,11 +202,12 @@ _FIND_LEARNER_SCHEMA: Dict[str, Any] = {
     "function": {
         "name": "find_learner",
         "description": (
-            "Find learners in this institute by ONE free-text query — matches name, "
-            "email, phone number, username, or enrollment number. Use this FIRST "
-            "whenever the user names a learner and the page context does not already "
+            "Find ENROLLED learners/students in this institute by ONE free-text query — "
+            "matches name, email, phone number, username, or enrollment number. Use this "
+            "FIRST whenever the user names a learner and the page context does not already "
             "identify them. If more than one learner matches, list the matches and ask "
-            "the user which one they mean — never guess."
+            "the user which one they mean — never guess. NEVER use this for leads, "
+            "enquiries, or prospects — those are different records this tool cannot see."
         ),
         "parameters": {
             "type": "object",
@@ -338,6 +345,99 @@ async def _execute_find_learner(args: Dict[str, Any], ctx: ToolContext) -> str:
         "total_matches": data.get("total_elements", len(matches)),
         "note": "If more than one match, ask the user which learner they mean." if len(matches) > 1 else None,
     })
+
+
+_FIND_BATCH_SCHEMA: Dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "find_batch",
+        "description": (
+            "Resolve a batch / course / class NAME (e.g. 'NEET 2026 Morning', 'Class 10 "
+            "Science') to its batch id (package_session_id) plus the enrolled count. Use "
+            "this whenever a tool needs a batch id and the user gave a name. If several "
+            "batches match, list them and ask which one — never guess."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "The batch/course name as the user said it."},
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+#: batches of the pinned institute matching a name fragment, most-enrolled first.
+_FIND_BATCH_SQL = """
+SELECT ps.id,
+       TRIM(CONCAT(l.level_name, ' ', p.package_name, ' (', s.session_name, ')')) AS batch_name,
+       ps.status,
+       (SELECT COUNT(*) FROM student_session_institute_group_mapping ssigm
+         WHERE ssigm.package_session_id = ps.id
+           AND ssigm.institute_id = :inst AND ssigm.status = 'ACTIVE') AS enrolled
+FROM package_session ps
+JOIN package_institute pi ON ps.package_id = pi.package_id
+JOIN package p ON ps.package_id = p.id
+JOIN level l ON ps.level_id = l.id
+JOIN session s ON ps.session_id = s.id
+WHERE pi.institute_id = :inst
+  AND ps.status NOT IN ('DELETED')
+  AND (LOWER(p.package_name) LIKE :q OR LOWER(l.level_name) LIKE :q
+       OR LOWER(s.session_name) LIKE :q
+       OR LOWER(CONCAT(l.level_name, ' ', p.package_name, ' ', s.session_name)) LIKE :q)
+ORDER BY enrolled DESC
+LIMIT 10
+"""
+
+
+async def _execute_find_batch(args: Dict[str, Any], ctx: ToolContext) -> str:
+    """Name → package_session_id resolver over the shared admin_core DB (always
+    scoped to the pinned institute via the package_institute join)."""
+    from sqlalchemy import text as sql_text
+
+    query = str((args or {}).get("query") or "").strip().lower()
+    if not query:
+        return json.dumps({"matches": [], "note": "No batch name was provided."})
+    try:
+        rows = ctx.db.execute(
+            sql_text(_FIND_BATCH_SQL),
+            {"inst": ctx.principal.institute_id, "q": f"%{query}%"},
+        ).fetchall()
+    except Exception as e:
+        logger.warning("find_batch failed: %s", e)
+        return json.dumps({"error": "search_failed"})
+    matches = [
+        {"package_session_id": r[0], "batch_name": r[1], "status": r[2], "enrolled": int(r[3] or 0)}
+        for r in rows
+    ]
+    return json.dumps({
+        "matches": matches,
+        "note": ("If more than one match, ask the user which batch they mean." if len(matches) > 1
+                 else ("No batch matched — ask the user for the exact batch name." if not matches else None)),
+    })
+
+
+def _batch_name_in_institute(ctx: ToolContext, package_session_id: str) -> Optional[str]:
+    """The human-readable name of a batch IF it belongs to the pinned institute
+    (None otherwise) — used to validate + label write proposals."""
+    from sqlalchemy import text as sql_text
+    try:
+        row = ctx.db.execute(
+            sql_text(
+                "SELECT TRIM(CONCAT(l.level_name, ' ', p.package_name, ' (', s.session_name, ')')) "
+                "FROM package_session ps "
+                "JOIN package_institute pi ON ps.package_id = pi.package_id "
+                "JOIN package p ON ps.package_id = p.id "
+                "JOIN level l ON ps.level_id = l.id "
+                "JOIN session s ON ps.session_id = s.id "
+                "WHERE ps.id = :psid AND pi.institute_id = :inst LIMIT 1"
+            ),
+            {"psid": package_session_id, "inst": ctx.principal.institute_id},
+        ).first()
+        return row[0] if row else None
+    except Exception as e:
+        logger.warning("batch name lookup failed: %s", e)
+        return None
 
 
 def _prune_nulls(obj: Any) -> Any:
@@ -1045,12 +1145,24 @@ async def _execute_manage_enrollment(args: Dict[str, Any], ctx: ToolContext) -> 
     if not _target_in_institute(ctx, target):
         return json.dumps({"error": "not_found",
                            "message": "This learner has no enrollment in your institute."})
+    # Confirm cards must show human-readable batch NAMES, and a batch move must
+    # target a REAL batch of this institute — a guessed/hallucinated id is refused.
+    current_batch_name = _batch_name_in_institute(ctx, batch) or "their current batch"
+    target_batch_name = None
+    if operation == "UPDATE_BATCH":
+        target_batch_name = _batch_name_in_institute(ctx, new_state)
+        if not target_batch_name:
+            return json.dumps({
+                "error": "unknown_batch",
+                "message": "That batch id doesn't exist in this institute. Use find_batch "
+                           "to resolve the batch name first — never guess batch ids.",
+            })
     nice = {
-        "ADD_EXPIRY": f"Extend access expiry to {new_state}",
-        "UPDATE_BATCH": f"Move to batch {new_state}",
-        "MAKE_INACTIVE": "Mark INACTIVE in the current batch",
-        "MAKE_ACTIVE": "Mark ACTIVE in the current batch",
-        "UPDATE_STATUS": f"Set enrollment status to {new_state}",
+        "ADD_EXPIRY": f"Extend access expiry to {new_state} (in {current_batch_name})",
+        "UPDATE_BATCH": f"Move from {current_batch_name} to {target_batch_name}",
+        "MAKE_INACTIVE": f"Mark INACTIVE in {current_batch_name}",
+        "MAKE_ACTIVE": f"Mark ACTIVE in {current_batch_name}",
+        "UPDATE_STATUS": f"Set enrollment status to {new_state} (in {current_batch_name})",
     }[operation]
     summary = f"Enrollment change: {nice}"
     return await _propose_action(
@@ -1123,6 +1235,19 @@ ASSISTANT_TOOLS: Dict[str, ToolSpec] = {
         executor=_execute_get_student_360,
         required_permission=None,
         setting_key="learner_data",
+        default_enabled=False,
+        default_roles=["ADMIN"],
+        phase=2,
+        mode="READ",
+    ),
+    # Name→id resolver shared by several groups: available when ANY of them is on.
+    "find_batch": ToolSpec(
+        name="find_batch",
+        schema=_FIND_BATCH_SCHEMA,
+        executor=_execute_find_batch,
+        required_permission=None,
+        setting_key="learner_data",
+        setting_keys_any=["learner_data", "batch_data", "learner_edits", "schedule"],
         default_enabled=False,
         default_roles=["ADMIN"],
         phase=2,
@@ -1210,6 +1335,9 @@ ASSISTANT_TOOLS: Dict[str, ToolSpec] = {
     # writes are never default-on); grantable per-role via the "learner_edits"
     # settings group. Executors only PROPOSE; execution happens exclusively via
     # the nonce-confirmed /action endpoint.
+    # Audit fix 2026-07-07: edits default ON for ADMIN — the confirm card is the
+    # safety gate, and the owner should never be told they lack authority they
+    # can grant themselves. Other roles stay opt-in.
     "update_learner_profile": ToolSpec(
         name="update_learner_profile",
         schema=_UPDATE_LEARNER_PROFILE_SCHEMA,
@@ -1217,6 +1345,7 @@ ASSISTANT_TOOLS: Dict[str, ToolSpec] = {
         required_permission=None,
         setting_key="learner_edits",
         default_enabled=False,
+        default_roles=["ADMIN"],
         phase=3,
         mode="WRITE",
     ),
@@ -1227,9 +1356,22 @@ ASSISTANT_TOOLS: Dict[str, ToolSpec] = {
         required_permission=None,
         setting_key="learner_edits",
         default_enabled=False,
+        default_roles=["ADMIN"],
         phase=3,
         mode="WRITE",
     ),
+}
+
+#: Friendly names for the settings groups — used in denials and the capability
+#: disclosure so users hear "Fees & payments", not "payments".
+GROUP_LABELS: Dict[str, str] = {
+    "search_help_knowledge": "How-to help",
+    "learner_data": "Learner data lookups",
+    "payments": "Fees & payments",
+    "batch_data": "Batch rosters",
+    "schedule": "Class schedule",
+    "institute_overview": "Institute stats",
+    "learner_edits": "Learner edits (confirmed changes)",
 }
 
 
@@ -1332,8 +1474,9 @@ def is_tool_allowed(
         if not (principal.is_root_user or spec.required_permission in (principal.permissions or [])):
             return False
 
-    # Settings leg
-    return spec.key() in _effective_enabled_tools(setting, principal.roles)
+    # Settings leg — a multi-group resolver passes if ANY of its groups is enabled.
+    enabled = _effective_enabled_tools(setting, principal.roles)
+    return any(k in enabled for k in spec.keys_any())
 
 
 def build_offered_tools(
@@ -1366,10 +1509,16 @@ async def execute_tool(
             "Assistant denied tool '%s' for user=%s institute=%s (roles=%s)",
             tool_name, ctx.principal.user_id, ctx.principal.institute_id, ctx.principal.roles,
         )
+        spec_denied = ASSISTANT_TOOLS.get(tool_name)
+        group = GROUP_LABELS.get(spec_denied.key(), spec_denied.key()) if spec_denied else tool_name
         return json.dumps({
             "error": "tool_not_permitted",
             "tool": tool_name,
-            "message": "You are not permitted to use this tool. Do not retry it.",
+            "message": (
+                f"The '{group}' capability is not enabled for this user's role. Do not retry. "
+                "Tell the user an admin can enable it under "
+                "[Assistant settings](/settings?selectedTab=assistantTools)."
+            ),
         })
 
     spec = ASSISTANT_TOOLS[tool_name]

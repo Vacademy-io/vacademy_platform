@@ -83,10 +83,25 @@ export const ASSISTANT_TOOL_CATALOG: AssistantToolCatalogEntry[] = [
         description:
             'Let the assistant PROPOSE changes — edit a learner’s details, extend access, move ' +
             'batch, activate/deactivate. Every change requires the user to press Confirm on a card ' +
-            'before anything is applied. Off for everyone by default.',
+            'before anything is applied. On by default for Admins; other roles are opt-in.',
         phase: 3,
         defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
     },
+];
+
+/** One-click role presets for the settings screen — sensible grants per role. */
+export const ASSISTANT_ROLE_PRESETS: Array<{
+    role: string;
+    label: string;
+    tools: string[];
+}> = [
+    {
+        role: 'TEACHER',
+        label: 'Teachers: learner data + class schedule',
+        tools: ['learner_data', 'schedule'],
+    },
+    { role: 'EVALUATOR', label: 'Evaluators: learner data', tools: ['learner_data'] },
 ];
 
 // Non-learner system roles, by their JWT role-name. Custom roles are appended at

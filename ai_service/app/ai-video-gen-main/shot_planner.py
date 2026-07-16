@@ -248,7 +248,9 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "morning\", \"later\") or location change MUST be \"new\"; `emotional_beat` = the feeling the "
     "scene must land (e.g. 'weary frustration', 'relief breaking into a smile') — the actors are "
     "directed to play it; `time_of_day` = when it happens (e.g. 'late night', 'bright morning') — "
-    "the clip is lit for it. When you use DIALOGUE_SCENE anywhere, "
+    "the clip is lit for it; `location` = a short stable slug for the setting (e.g. "
+    "'maheshwari_office') — reuse the SAME slug whenever the story returns to that place, so the "
+    "set stays the same room across scenes. When you use DIALOGUE_SCENE anywhere, "
     "you MUST also emit a top-level `characters` array — [{name, visual_description, voice_hint}] — "
     "where `visual_description` is a REUSABLE VERBATIM portrait (age, build, hair, clothing, one "
     "distinctive detail) that stays IDENTICAL across the video, and `voice_hint` describes the "
@@ -987,6 +989,7 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
         "scene_continuity",
         "emotional_beat",
         "time_of_day",
+        "location",
         # Asset-request gate answers (assist): real user assets + figures.
         "user_asset_url",
         "user_asset_kind",

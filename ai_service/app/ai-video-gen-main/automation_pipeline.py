@@ -8263,10 +8263,113 @@ class VideoGenerationPipeline:
                             print(f"   🎭 Character sheet ready: {name}")
                     except Exception as cs_err:
                         print(f"   ⚠️ character sheet failed for {name}: {cs_err}")
+                # Alternate 3/4 view per character (identity-preserving i2i
+                # from the primary portrait) — a second angle measurably
+                # stabilizes the face across independently generated clips.
+                # Best-effort; user-photo portraits keep the photo alone
+                # (i2i on a real face risks drifting the likeness).
+                for i, c in enumerate(cast[:4]):
+                    name = str(c.get("name") or "").strip()
+                    _primary = str(c.get("sheet_url") or "").strip()
+                    if not name or not _primary or c.get("sheet_url_alt") \
+                            or c.get("user_photo"):
+                        continue
+                    try:
+                        alt_bytes, _ = self._call_image_generation_llm(
+                            f"The SAME person as the reference image — {name}. "
+                            "Three-quarter view, waist-up, identical face, hair "
+                            "and clothing, neutral studio background, "
+                            "photorealistic, single person only.",
+                            width=self.video_width,
+                            height=self.video_height,
+                            reference_image_url=_primary,
+                            model_override="bytedance-seed/seedream-4.5",
+                        )
+                        if not alt_bytes:
+                            continue
+                        _alt_local = run_dir / "dialogue_tts" / f"char_{i:02d}_alt.png"
+                        _alt_local.write_bytes(alt_bytes)
+                        _alt_url = svc.upload_file(
+                            _alt_local,
+                            s3_key=f"ai-videos/dialogue/{run_name}/char_{i:02d}_alt.png",
+                            content_type="image/png",
+                        )
+                        if _alt_url:
+                            c["sheet_url_alt"] = _alt_url
+                            print(f"   🎭 Alt view ready: {name}")
+                    except Exception as _alt_err:
+                        print(f"   ⚠️ alt view failed for {name}: {_alt_err}")
         except Exception as outer_err:
             print(f"   ⚠️ character sheets unavailable: {outer_err}")
         self._character_sheet_urls = sheets
         return sheets
+
+    def _ensure_location_sheets(
+        self, run_dir: Path, shots: List[Dict[str, Any]],
+    ) -> None:
+        """One people-free establishing image per distinct dialogue LOCATION
+        (planner emits a stable `location` slug per scene). The image rides
+        each scene as a set reference — without it, a time-jump scene
+        ("next morning", chain skipped) has ZERO set anchor and the office
+        reinvents itself. Stored on the shots (`_location_sheet_url`) so it
+        persists/restores with the plan across gate pauses."""
+        if not self._dialogue_scenes_enabled:
+            return
+        dlg = [
+            s for s in shots
+            if isinstance(s, dict)
+            and str(s.get("shot_type") or "").upper() == "DIALOGUE_SCENE"
+            and str(s.get("location") or "").strip()
+        ]
+        if not dlg:
+            return
+        try:
+            svc = getattr(self, "_ai_video_s3_service", None)
+            if not svc:
+                self._build_ai_video_uploaders()
+                svc = getattr(self, "_ai_video_s3_service", None)
+            if not svc:
+                return
+            run_name = getattr(self, "_run_name", None) or "run"
+            by_loc: Dict[str, str] = {}
+            for s in dlg:
+                slug = str(s.get("location")).strip().lower()
+                if s.get("_location_sheet_url"):
+                    by_loc.setdefault(slug, str(s["_location_sheet_url"]))
+            for s in dlg:
+                slug = str(s.get("location")).strip().lower()
+                if slug not in by_loc:
+                    desc = str(s.get("scene_description") or "").strip()[:250]
+                    tod = str(s.get("time_of_day") or "").strip()
+                    try:
+                        img_bytes, _ = self._call_image_generation_llm(
+                            f"Establishing shot of the SET for a film scene: {desc}. "
+                            + (f"Time of day: {tod}. " if tod else "")
+                            + "EMPTY of people — architecture, furniture, palette "
+                            "only. Photorealistic, cinematic.",
+                            width=self.video_width,
+                            height=self.video_height,
+                            model_override="bytedance-seed/seedream-4.5",
+                        )
+                        if img_bytes:
+                            _safe = re.sub(r"[^a-z0-9_-]", "_", slug)[:40]
+                            _loc_local = run_dir / "dialogue_tts" / f"loc_{_safe}.png"
+                            _loc_local.parent.mkdir(parents=True, exist_ok=True)
+                            _loc_local.write_bytes(img_bytes)
+                            _u = svc.upload_file(
+                                _loc_local,
+                                s3_key=f"ai-videos/dialogue/{run_name}/loc_{_safe}.png",
+                                content_type="image/png",
+                            )
+                            if _u:
+                                by_loc[slug] = _u
+                                print(f"   🏠 Location sheet ready: {slug}")
+                    except Exception as _loc_err:
+                        print(f"   ⚠️ location sheet failed ({slug}): {_loc_err}")
+                if slug in by_loc:
+                    s["_location_sheet_url"] = by_loc[slug]
+        except Exception as _ls_err:
+            print(f"   ⚠️ location sheets unavailable: {_ls_err}")
 
     def _persist_dialogue_plan(self, run_dir: Path, shots: Optional[List[Dict[str, Any]]] = None) -> None:
         """Write the CURRENT dialogue state (shots' _dialogue_* fields, cast
@@ -8429,7 +8532,9 @@ class VideoGenerationPipeline:
         ]
         video_id = getattr(self, "_current_video_id", None) or "video"
         decision = _dg.build_cast_decision(video_id, payload_chars)
-        if _vopts:
+        # Voice picker only when the clips actually USE our TTS voices —
+        # Omni is self-voiced, a picker there would be a lie.
+        if _vopts and self._dialogue_clip_model != "omni-flash":
             decision.setdefault("payload", {})["voice_options"] = _vopts
         self._emit_progress({"type": "decision_required", **decision})
         raise _dg.DecisionRequired(decision)
@@ -8734,6 +8839,18 @@ class VideoGenerationPipeline:
                 )
             elif rn == "the full cast":
                 bindings.append(f"{tag} shows the full cast — match every character exactly.")
+            elif rn == "__LOCATION__":
+                bindings.append(
+                    f"{tag} shows the SET for this scene — stage the action in this exact "
+                    "room/space: same architecture, furniture, and palette (people and the "
+                    "time-of-day light may differ)."
+                )
+            elif rn.endswith(" (alternate view)"):
+                _base = rn[: -len(" (alternate view)")].strip()
+                bindings.append(
+                    f"{tag} is another view of {_base} — the SAME person, same face, "
+                    "same clothing."
+                )
             else:
                 c = cast_by_name.get(str(rn).strip().lower())
                 if (c or {}).get("user_photo"):
@@ -8846,6 +8963,11 @@ class VideoGenerationPipeline:
                        "different location, lighting, time of day, or mood, IGNORE that "
                        "aspect and stage the scene as described here.")
                 )
+            # Wardrobe lock — independently generated clips redress people.
+            direction.append(
+                "Characters wear EXACTLY the clothing shown in their reference "
+                "portraits, in every scene."
+            )
         except Exception:
             pass
         # QC re-take: weave the vision judge's corrective note into the
@@ -9006,6 +9128,9 @@ class VideoGenerationPipeline:
         # Dailies gate, apply half: clear clips the user sent back so the
         # filming loop below re-films them with the redo note in the prompt.
         self._apply_dailies_answer(run_dir, dlg)
+        # Location/set sheets — one establishing image per distinct location
+        # slug, ridden by every scene there as a set reference.
+        self._ensure_location_sheets(run_dir, shots)
         try:
             from ai_video_orchestrator import _ffmpeg_extract_last_frame, _download_url_to_path
         except Exception:
@@ -9027,11 +9152,32 @@ class VideoGenerationPipeline:
             # Per-character refs for THIS scene, in cast order.
             image_urls: List[str] = []
             ref_names: List[str] = []
+            _cast_by_name = {
+                str(c.get("name") or "").strip().lower(): c
+                for c in (self._dialogue_characters or [])
+            }
             for n in (s.get("character_names") or []):
                 u = sheets.get(str(n).strip().lower())
                 if u and u not in image_urls:
                     image_urls.append(u)
                     ref_names.append(str(n).strip())
+            # Alternate 3/4 views — a second angle per character stabilizes
+            # identity across clips. Added only while the ref budget allows
+            # (≤6 so the location sheet + prev-frame chain still fit in 9).
+            for n in (s.get("character_names") or []):
+                if len(image_urls) >= 6:
+                    break
+                _c = _cast_by_name.get(str(n).strip().lower()) or {}
+                _alt = str(_c.get("sheet_url_alt") or "").strip()
+                if _alt and _alt not in image_urls:
+                    image_urls.append(_alt)
+                    ref_names.append(f"{str(n).strip()} (alternate view)")
+            # Location/set anchor — keeps a recurring location the SAME room
+            # even across time jumps where the frame chain is skipped.
+            _loc_url = str(s.get("_location_sheet_url") or "").strip()
+            if _loc_url and _loc_url not in image_urls and len(image_urls) < 8:
+                image_urls.append(_loc_url)
+                ref_names.append("__LOCATION__")
             if not image_urls:
                 grp = self._ensure_dialogue_cast_sheet(run_dir)
                 if grp:
@@ -9247,6 +9393,62 @@ class VideoGenerationPipeline:
             except Exception as _rc_err:
                 print(f"   ⚠️ dialogue window reconcile failed: {_rc_err}")
 
+    def _fallback_still_clip(
+        self, shot: Dict[str, Any], run_dir: Path, image_urls: List[str],
+    ) -> Optional[str]:
+        """Radio-play fallback for a SPEAKING scene whose fal clip failed:
+        ffmpeg a still portrait + the already-paid dialogue MP3 into a local
+        mp4 (slow zoom for life), upload to S3, return the URL. None when
+        there's no audio or no image — caller demotes as before."""
+        try:
+            audio_url = str(shot.get("_dialogue_audio_url") or "").strip()
+            img_url = (image_urls or [None])[0]
+            if not audio_url or not img_url:
+                return None
+            import subprocess as _sp
+            from ai_video_orchestrator import _download_url_to_path
+            shot_idx = int(shot.get("shot_index") or 0)
+            fb_dir = run_dir / "dialogue_tts"
+            fb_dir.mkdir(parents=True, exist_ok=True)
+            img_local = fb_dir / f"fb_{shot_idx:03d}.png"
+            mp3_local = fb_dir / f"fb_{shot_idx:03d}.mp3"
+            out_local = fb_dir / f"fb_{shot_idx:03d}.mp4"
+            if not _download_url_to_path(img_url, img_local) or \
+                    not _download_url_to_path(audio_url, mp3_local):
+                return None
+            _w = int(getattr(self, "video_width", 1080))
+            _h = int(getattr(self, "video_height", 1920))
+            _sp.run(
+                ["ffmpeg", "-y", "-v", "error", "-loop", "1", "-i", str(img_local),
+                 "-i", str(mp3_local),
+                 "-vf",
+                 (f"scale={_w}:{_h}:force_original_aspect_ratio=increase,"
+                  f"crop={_w}:{_h},"
+                  f"zoompan=z='min(zoom+0.0008,1.12)':d=1200:x='iw/2-(iw/zoom/2)'"
+                  f":y='ih/2-(ih/zoom/2)':s={_w}x{_h}:fps=25"),
+                 "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
+                 "-c:a", "aac", "-b:a", "192k", "-shortest", str(out_local)],
+                check=True, capture_output=True, timeout=180,
+            )
+            svc = getattr(self, "_ai_video_s3_service", None)
+            if not svc:
+                self._build_ai_video_uploaders()
+                svc = getattr(self, "_ai_video_s3_service", None)
+            if not svc:
+                return None
+            run_name = getattr(self, "_run_name", None) or "run"
+            url = svc.upload_file(
+                out_local,
+                s3_key=f"ai-videos/dialogue/{run_name}/fb_{shot_idx:03d}.mp4",
+                content_type="video/mp4",
+            )
+            if url:
+                print(f"   📻 Shot {shot_idx}: clip failed — shipped still+dialogue fallback")
+            return url
+        except Exception as _fb_err:
+            print(f"   ⚠️ still-clip fallback failed (shot {shot.get('shot_index')}): {_fb_err}")
+            return None
+
     def _generate_dialogue_scene_entry(
         self,
         shot: Dict[str, Any],
@@ -9288,10 +9490,19 @@ class VideoGenerationPipeline:
                     return None
                 result = self._call_seedance_dialogue_clip(shot, image_urls, ref_names)
                 if result is None:
-                    return None
-                video_url = result.video_url
-                cost_usd = float(result.cost_usd or 0.0)
-                elapsed_s = float(result.elapsed_s or 0.0)
+                    # Last resort — the clip failed for good, but a SPEAKING
+                    # shot's dialogue audio is already PAID for and on S3.
+                    # A locally-rendered still-portrait "radio play" clip
+                    # keeps the story beat audible instead of demoting to a
+                    # stock image over silence.
+                    _fb = self._fallback_still_clip(shot, run_dir, image_urls)
+                    if not _fb:
+                        return None
+                    video_url, cost_usd, elapsed_s = _fb, 0.0, 0.0
+                else:
+                    video_url = result.video_url
+                    cost_usd = float(result.cost_usd or 0.0)
+                    elapsed_s = float(result.elapsed_s or 0.0)
 
             # Audio routing per flavor (build_ai_video_html mutes the <video>
             # for every policy EXCEPT intrinsic_only):

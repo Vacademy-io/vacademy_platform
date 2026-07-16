@@ -13,6 +13,8 @@ Phase A scope: one page per run (wizard). Copilot ops come in Phase B.
 """
 from __future__ import annotations
 
+import asyncio
+import base64
 import json
 import logging
 import os
@@ -21,6 +23,8 @@ import uuid
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+import httpx
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -88,6 +92,132 @@ def _load_catalog() -> Dict[str, Any]:
         return json.load(fh)
 
 
+# ─── Image generation (logos / hero art / illustrations) ────────────────────
+
+_IMAGE_MODEL = os.getenv("PAGE_IMAGE_MODEL") or "google/gemini-3.1-flash-image"
+_IMAGE_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+_IMAGE_ASPECTS = {"16:9", "4:3", "1:1", "3:4", "9:16", "3:2", "2:3"}
+_MAX_AUTO_IMAGES = 5  # cap auto-generated images per page (cost/latency bound)
+# Value sentinel the composer uses in an image field to request generation.
+_GEN_PREFIX = "gen:"
+
+
+async def _openrouter_image(prompt: str, aspect: str) -> Optional[bytes]:
+    """One image via OpenRouter (same call the course/doc image path uses).
+    Returns raw PNG bytes or None."""
+    from ..config import get_settings
+    key = getattr(get_settings(), "openrouter_api_key", None)
+    if not key:
+        logger.warning("[page-image] no OpenRouter key")
+        return None
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        resp = await client.post(
+            _IMAGE_API_URL,
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={
+                "model": _IMAGE_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "modalities": ["image"],
+                "image_config": {"aspect_ratio": aspect if aspect in _IMAGE_ASPECTS else "16:9"},
+            },
+        )
+    if resp.status_code != 200:
+        logger.error("[page-image] OpenRouter %s: %s", resp.status_code, resp.text[:200])
+        return None
+    for choice in resp.json().get("choices") or []:
+        for image in (choice.get("message") or {}).get("images", []) or []:
+            url = (image.get("image_url") or {}).get("url", "")
+            if url:
+                b64 = url.split(",", 1)[1] if "," in url else url
+                try:
+                    return base64.b64decode(b64)
+                except Exception:  # noqa: BLE001
+                    return None
+    return None
+
+
+def _upload_image(data: bytes, kind: str) -> Optional[str]:
+    from ..services.s3_service import S3Service
+    try:
+        s3 = S3Service()
+        key = f"page-builder/{kind}-{uuid.uuid4().hex}.png"
+        return s3.upload_file_content(data, f"{kind}.png", s3_key=key, content_type="image/png")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-image] upload failed: %s", e)
+        return None
+
+
+def _bill_image(db, institute_id: Optional[str], user_id: Optional[str]) -> None:
+    if not institute_id:
+        return
+    try:
+        from ..services.token_usage_service import TokenUsageService
+        from ..models.ai_token_usage import ApiProvider
+        TokenUsageService(db).record_usage_and_deduct_credits(
+            api_provider=ApiProvider.OPENAI,  # via OpenRouter
+            prompt_tokens=0, completion_tokens=0, total_tokens=0,
+            request_type=RequestType.IMAGE,
+            institute_id=institute_id, user_id=user_id,
+            model=_IMAGE_MODEL, metadata={"feature": "page_builder_image"},
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-image] billing skipped: %s", e)
+
+
+async def _generate_and_upload_image(
+    prompt: str, aspect: str, kind: str, db, institute_id: Optional[str], user_id: Optional[str]
+) -> Optional[str]:
+    """Generate → upload → bill one image. Returns the public URL or None."""
+    data = await _openrouter_image(prompt, aspect)
+    if not data:
+        return None
+    url = _upload_image(data, kind)
+    if url:
+        _bill_image(db, institute_id, user_id)
+    return url
+
+
+# Scalar image keys the composer may fill with a "gen:<prompt>" sentinel.
+_GEN_KEYS = {"image", "src", "logo", "avatar", "photo", "backgroundimage", "posterimage", "thumbnail"}
+_GEN_ASPECT = {"logo": "1:1", "avatar": "1:1", "photo": "4:3", "backgroundimage": "16:9", "thumbnail": "4:3"}
+
+
+async def _autogen_images(page: Any, db, institute_id: Optional[str], user_id: Optional[str]) -> set:
+    """Walk the page for image fields set to 'gen:<prompt>', generate each
+    (concurrently, capped), upload, and replace the value with the real URL
+    (or '' on failure). Returns the set of generated URLs to allowlist."""
+    refs: List[tuple] = []  # (container_dict, key, prompt, aspect, kind)
+
+    def collect(node: Any) -> None:
+        if isinstance(node, dict):
+            for k, v in node.items():
+                lk = k.lower()
+                if lk in _GEN_KEYS and isinstance(v, str) and v.startswith(_GEN_PREFIX):
+                    prompt = v[len(_GEN_PREFIX):].strip()
+                    if prompt:
+                        refs.append((node, k, prompt, _GEN_ASPECT.get(lk, "16:9"), lk))
+                else:
+                    collect(v)
+        elif isinstance(node, list):
+            for item in node:
+                collect(item)
+
+    collect(page)
+    if not refs:
+        return set()
+    refs = refs[:_MAX_AUTO_IMAGES]
+    generated: set = set()
+
+    async def one(container: Dict[str, Any], key: str, prompt: str, aspect: str, kind: str) -> None:
+        url = await _generate_and_upload_image(prompt, aspect, kind, db, institute_id, user_id)
+        container[key] = url or ""
+        if url:
+            generated.add(url)
+
+    await asyncio.gather(*[one(*r) for r in refs], return_exceptions=True)
+    return generated
+
+
 async def _analyze_inspiration(image_urls: List[str], db, institute_id: Optional[str], user_id: Optional[str]) -> str:
     """Vision pass over inspiration screenshots → a short DESIGN brief (mood,
     palette direction, serif-vs-sans display, layout patterns). Structure/mood
@@ -150,6 +280,8 @@ class GeneratePageRequest(BaseModel):
     # Header/footer are site chrome; the composer may only emit them when the
     # caller explicitly opts in (Phase B copilot).
     allow_chrome: bool = False
+    # Auto-generate a hero image + a few section visuals during composition.
+    auto_images: bool = True
 
 
 class GeneratePageResponse(BaseModel):
@@ -210,6 +342,7 @@ _PREMIUM_EXEMPLAR = json.dumps({
                             {"text": "View branches", "action": "navigate", "target": "#branches", "variant": "secondary"},
                         ],
                     },
+                    "right": {"image": "gen:A warm, bright photograph of focused engineering students collaborating over laptops and circuit boards at a modern lab bench, natural window light, shallow depth of field"},
                     "statChips": [
                         {"value": "30K+", "label": "Students trained"},
                         {"value": "5K+", "label": "Placements / year"},
@@ -305,9 +438,16 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
         )
     if req.images:
         parts.append(
-            "## PROVIDED IMAGES (the ONLY image URLs you may use — place them where their caption fits; "
-            "leave image fields empty if nothing fits)\n"
+            "## PROVIDED IMAGES (real URLs you may use — place them where their caption fits)\n"
             + json.dumps([i.model_dump(exclude_none=True) for i in req.images], ensure_ascii=False)
+        )
+    if req.auto_images:
+        parts.append(
+            "## IMAGE GENERATION\nYou may request AI-generated images: set an image field to "
+            '"gen:<a vivid, specific photography/illustration prompt>" and it will be generated and '
+            "filled in for you. Use it for the HERO right.image and 1–3 key section visuals (feature/"
+            "media images). Do NOT gen: logos of real brands or people. Keep total gen: fields ≤ 4. "
+            "Leave an image field empty ('') rather than gen: when a real provided image fits or none is needed."
         )
     if inspiration_brief:
         parts.append(
@@ -489,7 +629,9 @@ def _coerce_global_settings(raw: Any) -> Optional[Dict[str, Any]]:
     }
 
 
-def _sanitize_page(raw_json: str, req: GeneratePageRequest, catalog: Dict[str, Any]) -> tuple[Dict[str, Any], Optional[Dict[str, Any]], List[str]]:
+def _sanitize_page(
+    raw_json: str, req: GeneratePageRequest, catalog: Dict[str, Any], extra_allowed: Optional[set] = None
+) -> tuple[Dict[str, Any], Optional[Dict[str, Any]], List[str]]:
     warnings: List[str] = []
     try:
         data = json.loads(raw_json)
@@ -504,7 +646,8 @@ def _sanitize_page(raw_json: str, req: GeneratePageRequest, catalog: Dict[str, A
         raise HTTPException(status_code=502, detail="Model output did not contain a page with components.")
 
     allowed_types = {c["type"] for c in catalog["components"]}
-    allowed_urls = {i.url for i in req.images}
+    # Provided images + any we auto-generated (already uploaded to our S3).
+    allowed_urls = {i.url for i in req.images} | (extra_allowed or set())
     seen_ids: set = set()
 
     components: List[Dict[str, Any]] = []
@@ -601,7 +744,20 @@ async def generate_page(
         logger.warning("[page-builder] generation failed: %s", e)
         raise HTTPException(status_code=502, detail=f"Page generation failed: {e}")
 
-    page, global_settings, warnings = _sanitize_page(raw_json, body, catalog)
+    # Auto-generate images the composer requested via "gen:<prompt>" sentinels
+    # (hero art, section visuals) — before sanitizing so the new URLs allowlist.
+    generated_urls: set = set()
+    if body.auto_images:
+        try:
+            data = json.loads(raw_json)
+            page_obj = data.get("page") if isinstance(data, dict) else None
+            if isinstance(page_obj, dict):
+                generated_urls = await _autogen_images(page_obj, db, institute_id, actor_user_id)
+                raw_json = json.dumps(data)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[page-builder] auto-image pass skipped: %s", e)
+
+    page, global_settings, warnings = _sanitize_page(raw_json, body, catalog, extra_allowed=generated_urls)
 
     # Best-effort post-paid billing; idempotency key dedups retried runs.
     try:
@@ -1014,3 +1170,59 @@ async def derive_brand_kit(
         logger.warning("[brand-kit] billing skipped: %s", e)
 
     return BrandKitResponse(kits=kits, run_id=run_id, model=model_used)
+
+
+# ─── On-demand image / logo generation ──────────────────────────────────────
+
+# kind → (prompt wrapper, default aspect). Logos get a clean, mark-focused brief.
+_IMAGE_KIND_STYLE = {
+    "logo": ("A clean, modern, minimal logo mark for {p}. Centered on a plain white background, "
+             "flat vector style, simple geometric forms, high contrast, no photorealism, no extra text.", "1:1"),
+    "hero": ("A polished, editorial hero photograph: {p}. Natural light, shallow depth of field, premium feel.", "16:9"),
+    "banner": ("A wide banner image: {p}. Clean composition with room for text overlay.", "16:9"),
+    "illustration": ("A modern flat vector illustration: {p}. Cohesive limited palette, friendly, professional.", "4:3"),
+    "photo": ("A high-quality photograph: {p}. Natural, authentic, well-lit.", "4:3"),
+    "image": ("{p}", "16:9"),
+}
+
+
+class GenerateImageRequest(BaseModel):
+    prompt: str
+    kind: str = "image"          # logo | hero | banner | illustration | photo | image
+    aspect_ratio: Optional[str] = None
+    count: int = 1               # 1–3 (logos often want a few options)
+
+
+class GenerateImageResponse(BaseModel):
+    urls: List[str]
+    model: str
+
+
+@router.post("/v1/image", response_model=GenerateImageResponse)
+async def generate_page_image(
+    body: GenerateImageRequest,
+    db: Session = Depends(db_dependency),
+    current_user=Depends(get_current_user),
+) -> GenerateImageResponse:
+    if not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+    if not body.prompt or not body.prompt.strip():
+        raise HTTPException(status_code=400, detail="An image prompt is required.")
+    institute_id = getattr(current_user, "institute_id", None)
+    if not institute_id:
+        raise HTTPException(status_code=400, detail="No institute context on this session.")
+    actor_user_id = getattr(current_user, "user_id", None)
+
+    wrapper, default_aspect = _IMAGE_KIND_STYLE.get(body.kind, _IMAGE_KIND_STYLE["image"])
+    prompt = wrapper.format(p=body.prompt.strip())
+    aspect = body.aspect_ratio if body.aspect_ratio in _IMAGE_ASPECTS else default_aspect
+    n = max(1, min(3, body.count))
+
+    results = await asyncio.gather(
+        *[_generate_and_upload_image(prompt, aspect, body.kind, db, institute_id, actor_user_id) for _ in range(n)],
+        return_exceptions=True,
+    )
+    urls = [r for r in results if isinstance(r, str) and r]
+    if not urls:
+        raise HTTPException(status_code=502, detail="Image generation failed — please try again.")
+    return GenerateImageResponse(urls=urls, model=_IMAGE_MODEL)

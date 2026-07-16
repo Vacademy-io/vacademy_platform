@@ -23,7 +23,7 @@ import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-compone
 import { useEditorStore } from '../-stores/editor-store';
 import { ImageUploadField } from './ImageUploadField';
 import {
-    generateAiPage, estimateAiPageCredits,
+    generateAiPage, estimateAiPageCredits, generateAiImage,
     AiPageImage, GeneratePageResponse,
 } from '../-services/ai-page-service';
 import { Component, Page } from '../-types/editor-types';
@@ -68,6 +68,9 @@ export const AiPageWizard = ({
     const [directionIdx, setDirectionIdx] = useState(-1); // -1 = model's own choice
     const [result, setResult] = useState<GeneratePageResponse | null>(null);
     const [applyTheme, setApplyTheme] = useState(true);
+    const [autoImages, setAutoImages] = useState(true);
+    const [logoPrompt, setLogoPrompt] = useState('');
+    const [logoOptions, setLogoOptions] = useState<string[]>([]);
 
     // Compact snapshot of real offerings from institute details (no new API)
     const courseSnapshot = useMemo(() => {
@@ -110,6 +113,7 @@ export const AiPageWizard = ({
                 courses: useRealData ? courseSnapshot : [],
                 terminology,
                 direction,
+                auto_images: autoImages,
             }),
         onSuccess: (data) => {
             setResult(data);
@@ -125,6 +129,15 @@ export const AiPageWizard = ({
         },
     });
 
+    const logoMutation = useMutation({
+        mutationFn: () => generateAiImage({ prompt: logoPrompt.trim(), kind: 'logo', count: 3 }),
+        onSuccess: (res) => setLogoOptions(res.urls),
+        onError: (err: any) => {
+            const detail = err?.response?.data?.detail;
+            toast({ title: 'Logo generation failed', description: typeof detail === 'string' ? detail : 'Please try again.', variant: 'destructive' });
+        },
+    });
+
     const reset = () => {
         setStep('brief');
         setBrief('');
@@ -135,6 +148,9 @@ export const AiPageWizard = ({
         setDirectionIdx(-1);
         setResult(null);
         setApplyTheme(true);
+        setAutoImages(true);
+        setLogoPrompt('');
+        setLogoOptions([]);
     };
 
     const handleClose = (next: boolean) => {
@@ -270,6 +286,7 @@ export const AiPageWizard = ({
                                     label="Add image"
                                     value={pendingUrl}
                                     onChange={setPendingUrl}
+                                    aiKind="photo"
                                 />
                                 {pendingUrl && (
                                     <Button
@@ -285,6 +302,44 @@ export const AiPageWizard = ({
                                 )}
                             </div>
                         )}
+
+                        {/* Logo generator */}
+                        <div className="mt-4 space-y-2 rounded-lg border border-dashed border-gray-200 p-3">
+                            <p className="text-xs font-medium text-gray-700">Need a logo?</p>
+                            <Input
+                                value={logoPrompt}
+                                onChange={(e) => setLogoPrompt(e.target.value)}
+                                placeholder="Describe your brand (e.g. a rocket for a coding academy)"
+                            />
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => logoMutation.mutate()}
+                                disabled={!logoPrompt.trim() || logoMutation.isPending}
+                            >
+                                {logoMutation.isPending
+                                    ? <><CircleNotch className="mr-1 size-4 animate-spin" /> Generating…</>
+                                    : <><Sparkle className="mr-1 size-4" weight="duotone" /> Generate 3 logo options</>}
+                            </Button>
+                            {logoOptions.length > 0 && (
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                    {logoOptions.map((url, i) => (
+                                        <button
+                                            key={i}
+                                            onClick={() => {
+                                                setImages((im) => [...im, { url, kind: 'logo', caption: 'Logo' }]);
+                                                setLogoOptions([]);
+                                                setLogoPrompt('');
+                                            }}
+                                            className="rounded border border-gray-200 p-1 hover:border-primary-400"
+                                            title="Use this logo"
+                                        >
+                                            <img src={url} alt="" className="size-16 rounded object-contain" />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
 
                         {/* Inspiration screenshots — analysed for layout/mood only */}
                         <div className="mt-4 space-y-2 rounded-lg border border-dashed border-gray-200 p-3">
@@ -341,6 +396,15 @@ export const AiPageWizard = ({
                                 {images.length === 1 ? '' : 's'} ·{' '}
                                 {useRealData ? `real ${terminology.course.toLowerCase()} data` : 'generic content'}
                             </p>
+                        </div>
+                        <div className="flex items-center justify-between rounded border bg-gray-50 p-3">
+                            <div>
+                                <Label className="text-xs">Generate images automatically</Label>
+                                <p className="text-caption text-gray-400">
+                                    AI creates a hero image + a few visuals (uses extra credits)
+                                </p>
+                            </div>
+                            <Switch checked={autoImages} onCheckedChange={setAutoImages} />
                         </div>
                         {estimate && (
                             <p className="text-xs text-gray-500">

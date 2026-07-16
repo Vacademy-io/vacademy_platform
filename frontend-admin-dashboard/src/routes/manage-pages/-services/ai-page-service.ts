@@ -4,6 +4,7 @@ import {
     AI_PAGE_BUILDER_ESTIMATE,
     AI_PAGE_BUILDER_EDIT,
     AI_PAGE_BUILDER_BRAND_KIT,
+    AI_PAGE_BUILDER_IMAGE,
 } from '@/constants/urls';
 import { CatalogueConfig, Component, Page } from '../-types/editor-types';
 import { CATALOGUE_FONTS } from '../-utils/catalogue-fonts';
@@ -32,6 +33,7 @@ export interface GeneratePagePayload {
     courses?: AiCourseSnapshotItem[];
     terminology?: Record<string, string>;
     direction?: string;
+    auto_images?: boolean;
     run_id?: string;
 }
 
@@ -133,6 +135,24 @@ export interface BrandKitResponse {
     run_id: string;
     model: string;
 }
+
+/* ─── Image / logo generation ──────────────────────────────────────────── */
+
+export type AiImageKind = 'logo' | 'hero' | 'banner' | 'illustration' | 'photo' | 'image';
+
+export const generateAiImage = async (payload: {
+    prompt: string;
+    kind?: AiImageKind;
+    aspect_ratio?: string;
+    count?: number;
+}): Promise<{ urls: string[]; model: string }> => {
+    const response = await authenticatedAxiosInstance.post<{ urls: string[]; model: string }>(
+        AI_PAGE_BUILDER_IMAGE(),
+        payload,
+        { timeout: 150000 } // image gen can take a while
+    );
+    return response.data;
+};
 
 export const deriveBrandKit = async (payload: {
     institute_name?: string;

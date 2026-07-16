@@ -43,6 +43,25 @@
   /* Deeper press shades for cards whose SURFACE is already the -deep tone. */
   --play-c-info-deeper: #11719f;
   --play-c-accent-deeper: #7d4d99;
+
+  /* Pastel "soft" pair per role: a light tint SURFACE + a saturated INK for
+     icons/text/accents on top of it — same tint+ink grammar as the Cleaner
+     Play skin's --cp-*-tint tokens. Additive only: the bold -deep tokens
+     above are untouched and still used by any non-Dashboard Play surface. */
+  --play-c-success-soft: #eff7e9;
+  --play-c-success-soft-ink: #417915;
+  --play-c-info-soft: #e9f6fb;
+  --play-c-info-soft-ink: #0e78aa;
+  --play-c-danger-soft: #feecec;
+  --play-c-danger-soft-ink: #db2424;
+  --play-c-warn-soft: #fef4e7;
+  --play-c-warn-soft-ink: #c2750a;
+  --play-c-accent-soft: #f6effb;
+  --play-c-accent-soft-ink: #9241c8;
+  --play-c-gold-soft: #fdf8e7;
+  --play-c-gold-soft-ink: #b6910c;
+  --play-c-navy-soft: #edf1f8;
+  --play-c-navy-soft-ink: #224777;
 }
 
 /* ── Animations ───────────────────────────────────────────────────── */
@@ -173,56 +192,33 @@
     box-shadow: none !important;
   }
 
-  /* ── Dashboard Stat Cards: SOLID colored backgrounds ──────────────
-     Surfaces use the canonical deep --play-c-* shades (white text from
-     the JSX [.ui-play_&]:text-white classes) and the Duolingo press
-     shadow grammar. The old .stat-card-inner rules were dead CSS — no
-     JSX emits that class; only the category classes below are real.
-     :hover/:active re-assert the press shadow so the generic
-     .ui-play .card:hover glow cannot replace it. */
+  /* ── Dashboard Stat Cards: pastel tint backgrounds ────────────────
+     Softened from solid deep --play-c-* blocks to light -soft tints
+     (ink text/icons from the paired -soft-ink, set via JSX). A gentle
+     neutral lift replaces the old role-colored press-block shadow;
+     :active keeps a light press nudge for Play's tactile character. */
   .ui-play .stat-card-courses {
-    background-color: var(--play-c-info-deep) !important;
+    background-color: var(--play-c-info-soft) !important;
     border-color: transparent !important;
-    box-shadow: 0 4px 0 var(--play-c-info-deeper) !important;
+    box-shadow: 0 1px 2px rgba(60,60,60,0.05), 0 10px 26px -14px rgba(60,60,60,0.16) !important;
   }
 
   .ui-play .stat-card-live {
-    background-color: var(--play-c-navy) !important;
+    background-color: var(--play-c-navy-soft) !important;
     border-color: transparent !important;
-    box-shadow: 0 4px 0 var(--play-c-navy-deep) !important;
+    box-shadow: 0 1px 2px rgba(60,60,60,0.05), 0 10px 26px -14px rgba(60,60,60,0.16) !important;
   }
 
   .ui-play .stat-card-assessments {
-    background-color: var(--play-c-accent-deep) !important;
+    background-color: var(--play-c-accent-soft) !important;
     border-color: transparent !important;
-    box-shadow: 0 4px 0 var(--play-c-accent-deeper) !important;
+    box-shadow: 0 1px 2px rgba(60,60,60,0.05), 0 10px 26px -14px rgba(60,60,60,0.16) !important;
   }
 
-  .ui-play .stat-card-courses:hover {
-    box-shadow: 0 4px 0 var(--play-c-info-deeper) !important;
-  }
-
-  .ui-play .stat-card-live:hover {
-    box-shadow: 0 4px 0 var(--play-c-navy-deep) !important;
-  }
-
-  .ui-play .stat-card-assessments:hover {
-    box-shadow: 0 4px 0 var(--play-c-accent-deeper) !important;
-  }
-
-  .ui-play .stat-card-courses:active {
-    transform: translateY(2px);
-    box-shadow: 0 1px 0 var(--play-c-info-deeper) !important;
-  }
-
-  .ui-play .stat-card-live:active {
-    transform: translateY(2px);
-    box-shadow: 0 1px 0 var(--play-c-navy-deep) !important;
-  }
-
+  .ui-play .stat-card-courses:active,
+  .ui-play .stat-card-live:active,
   .ui-play .stat-card-assessments:active {
-    transform: translateY(2px);
-    box-shadow: 0 1px 0 var(--play-c-accent-deeper) !important;
+    transform: translateY(1px);
   }
 
   /* (Dead .stat-card-icon / .stat-card-title / .stat-card--* rules removed:
@@ -297,16 +293,10 @@
     background-color: white !important;
   }
 
-  /* Dashboard surface: subtle dot pattern over a neutral warm tint —
-     stays out of the way so green/blue/pink hero cards can pop. */
+  /* Dashboard surface: plain white so the green/blue/pink hero cards pop. */
   .ui-play .dashboard-container {
-    background-color: hsl(220 14% 97%) !important; /* warm neutral */
-    background-image:
-      radial-gradient(circle at 1px 1px,
-        hsl(220 14% 80% / 0.5) 1px,
-        transparent 0);
-    background-size: 24px 24px;
-    background-position: 0 0;
+    background-color: white !important;
+    background-image: none !important;
   }
 
   /* Looser vertical rhythm — Tailwind space-y-4 (16px) feels cramped

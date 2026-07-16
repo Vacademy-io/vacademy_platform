@@ -3626,6 +3626,15 @@ public class InvoiceService {
         invoice.setInvoiceDataJson(mergeInvoiceDataJson(invoice.getInvoiceDataJson(), rejectAudit));
         invoice = invoiceRepository.save(invoice);
 
+        // Reverse the DEBIT_ACCRUAL that was posted when this invoice was raised
+        userAccountLedgerService.recordCreditAdjustment(
+                invoice.getUserId(), invoice.getInstituteId(),
+                invoice.getTotalAmount(),
+                StringUtils.hasText(invoice.getCurrency()) ? invoice.getCurrency() : "INR",
+                "ADMIN_INVOICE", invoice.getId(),
+                null,
+                "Invoice rejected" + (StringUtils.hasText(reason) ? ": " + reason : ""));
+
         log.info("[InvoiceReject] invoiceId={} invoiceNumber={} rejectedBy={} reason={}",
                 invoiceId, invoice.getInvoiceNumber(),
                 userDetails != null ? userDetails.getUserId() : "system", reason);

@@ -146,8 +146,8 @@ const AccountSummaryGrid = ({ summary }: { summary: UserAccountSummaryDTO }) => 
             {[
                 { label: 'Total accrued', value: fmt(summary.total_accrued), tone: 'neutral' },
                 { label: 'Total paid', value: fmt(summary.total_paid), tone: 'success' },
-                { label: 'Balance', value: fmt(summary.balance), tone: summary.balance > 0 ? 'danger' : 'neutral' },
-                { label: 'Overdue', value: fmt(summary.overdue), tone: summary.overdue > 0 ? 'danger' : 'neutral' },
+                { label: 'Due', value: fmt(summary.balance), tone: summary.balance > 0 ? 'danger' : 'neutral' },
+                { label: 'Past Due', value: fmt(summary.overdue), tone: summary.overdue > 0 ? 'danger' : 'neutral' },
             ].map(({ label, value, tone }) => (
                 <div key={label} className="rounded-lg border border-neutral-200 bg-white p-3">
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>

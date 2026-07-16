@@ -8392,6 +8392,29 @@ class VideoGenerationPipeline:
             if self._dialogue_characters:
                 plan["characters"] = self._dialogue_characters
             plan_path.write_text(json.dumps(plan, ensure_ascii=False, default=str))
+            # ALSO push to the S3 keys the resume leg actually downloads
+            # (script/ first, checkpoints/ fallback — service resume order).
+            # Without this, the first pause AFTER filming (the dailies gate)
+            # resumed against the pre-filming script-stage plan and
+            # RE-PURCHASED every clip: local run_dir persists don't survive
+            # the leg, and the generic pause path only re-uploads audio/words.
+            # This also makes each clip purchase crash-durable.
+            try:
+                svc = getattr(self, "_ai_video_s3_service", None)
+                if not svc:
+                    self._build_ai_video_uploaders()
+                    svc = getattr(self, "_ai_video_s3_service", None)
+                run_name = getattr(self, "_run_name", None) or "run"
+                if svc and run_name != "run":
+                    for _key in (
+                        f"ai-videos/{run_name}/script/shot_plan.json",
+                        f"ai-videos/{run_name}/checkpoints/shot_plan.json",
+                    ):
+                        svc.upload_file(
+                            plan_path, s3_key=_key, content_type="application/json",
+                        )
+            except Exception as _up_err:
+                print(f"   ⚠️ dialogue plan S3 sync failed (resume may redo work): {_up_err}")
         except Exception as _pp_err:
             print(f"   ⚠️ dialogue plan persist failed: {_pp_err}")
 
@@ -9067,19 +9090,35 @@ class VideoGenerationPipeline:
                 content.append({"type": "text", "text": f"REFERENCE PORTRAIT — {n}:"})
                 content.append({"type": "image_url", "image_url": {"url": u}})
             model = self._resolve_stage_model("vision_review") or "google/gemini-2.5-flash"
-            raw, _u = self.html_client.chat(
-                messages=[
-                    {"role": "system", "content": (
-                        "You QC AI-generated film clips. Respond with ONE JSON object "
-                        "and nothing else. First char `{`.")},
-                    {"role": "user", "content": content},
-                ],
-                temperature=0.1,
-                max_tokens=400,
-                response_format={"type": "json_object"},
-                model=model,
-            )
-            parsed = _extract_json_blob(raw)
+            _qc_messages = [
+                {"role": "system", "content": (
+                    "You QC AI-generated film clips. Respond with ONE JSON object "
+                    "and nothing else. First char `{`.")},
+                {"role": "user", "content": content},
+            ]
+            # max_tokens must cover THINKING models' reasoning burn — 400 came
+            # back empty from gemini-2.5-pro in prod (every clip "QC
+            # unavailable"). Failing that, one retry on Flash (non-thinking,
+            # reliable JSON emitter).
+            parsed: Any = None
+            for _attempt_model, _mt in ((model, 1500), ("google/gemini-2.5-flash", 800)):
+                try:
+                    raw, _u = self.html_client.chat(
+                        messages=_qc_messages,
+                        temperature=0.1,
+                        max_tokens=_mt,
+                        response_format={"type": "json_object"},
+                        model=_attempt_model,
+                    )
+                    parsed = _extract_json_blob(raw)
+                    if isinstance(parsed, dict) and "pass" in parsed:
+                        break
+                    parsed = None
+                except Exception as _qc_llm_err:
+                    print(f"   ⚠️ clip QC judge ({_attempt_model}) failed: {str(_qc_llm_err)[:120]}")
+                    parsed = None
+                if _attempt_model == "google/gemini-2.5-flash":
+                    break
             if not isinstance(parsed, dict) or "pass" not in parsed:
                 return None
             verdict = {

@@ -221,9 +221,9 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
         // Fallback: derive totals from the invoices list (covers old invoices / pre-migration installs)
         if (invoices.length === 0) return null;
         const currency = (invoices[0]?.currency as string | undefined) || 'INR';
-        const totalAccrued = invoices.reduce(
-            (s, inv) => s + ((inv.total_amount ?? inv.totalAmount ?? 0) as number), 0
-        );
+        const totalAccrued = invoices
+            .filter((inv) => String(inv.status || '').toUpperCase() !== 'REJECTED')
+            .reduce((s, inv) => s + ((inv.total_amount ?? inv.totalAmount ?? 0) as number), 0);
         const totalPaid = invoices
             .filter((inv) => String(inv.status || '').toUpperCase() === 'PAID')
             .reduce((s, inv) => s + ((inv.total_amount ?? inv.totalAmount ?? 0) as number), 0);
@@ -1395,8 +1395,8 @@ function AccountSummaryGrid({ summary }: { summary: UserAccountSummaryDTO }) {
     const cells = [
         { label: 'Total accrued', value: fmt(summary.total_accrued), danger: false },
         { label: 'Total paid', value: fmt(summary.total_paid), danger: false, success: true },
-        { label: 'Balance due', value: fmt(summary.balance), danger: summary.balance > 0 },
-        { label: 'Overdue', value: fmt(summary.overdue), danger: summary.overdue > 0 },
+        { label: 'Due', value: fmt(summary.balance), danger: summary.balance > 0 },
+        { label: 'Past Due', value: fmt(summary.overdue), danger: summary.overdue > 0 },
     ];
     return (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

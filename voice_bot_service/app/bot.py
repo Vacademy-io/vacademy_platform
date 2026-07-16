@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -304,6 +305,46 @@ def _lead_fields_line(context: Dict[str, Any]) -> str:
             + "; ".join(pairs) + ".")
 
 
+_PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-zA-Z0-9_ ]+?)\s*\}\}")
+
+
+def _lead_field(context: Dict[str, Any], *names: str) -> str | None:
+    """First non-blank lead custom field matching any of `names` (case-insensitive)."""
+    fields = context.get("leadFields") or {}
+    wanted = {n.strip().lower() for n in names}
+    for k, v in fields.items():
+        if str(k).strip().lower() in wanted and v is not None and str(v).strip():
+            return str(v).strip()
+    return None
+
+
+def _fill_placeholders(text: str, context: Dict[str, Any]) -> str:
+    """Substitute the author's {{placeholders}} with real call values BEFORE the model
+    sees the prompt. Left literal, `{{institute_name}}` etc. reach the model, which then
+    improvises or fills them wrong (observed: {{institute_name}} became our account's
+    legal name, not the brand). Unknown/empty → a graceful neutral, never a literal
+    '{{...}}'. NOTE: {{institute_name}} is the PROSPECT's institute — deliberately NOT
+    our instituteName (that mash-up is what produced the wrong-company opening)."""
+    if not text or "{{" not in text:
+        return text
+    lead_name = context.get("leadName")
+    values = {
+        "lead_name": lead_name or "aap",
+        "name": lead_name or "aap",
+        "institute_name": _lead_field(context, "institute", "institute name", "company",
+                                      "organisation", "organization") or "aapke institute",
+        "lead_source": _lead_field(context, "source", "lead source", "lead_source",
+                                   "enquiry source") or "apni enquiry",
+        "lead_source_line": "",
+        "booked_slot": _lead_field(context, "slot", "booked slot", "demo slot") or "",
+    }
+
+    def repl(m: "re.Match[str]") -> str:
+        return values.get(m.group(1).strip().lower(), "")
+
+    return _PLACEHOLDER_RE.sub(repl, text)
+
+
 def build_system_prompt(context: Dict[str, Any]) -> str:
     agent = context.get("agent") or {}
     lead_name = context.get("leadName")
@@ -408,56 +449,83 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         f"to switch; never switch language mid-answer."
     )
 
+    prompt = _fill_placeholders(agent.get("systemPrompt") or "", context)
+
+    # Pieces the bot knows that NO agent prompt can — kept in BOTH paths:
+    # the configured voice's grammatical gender, the TTS script rule (romanized Hindi
+    # synthesizes worse than Devanagari — Sarvam docs), the live lead facts, and the
+    # machine end/transfer MARKERS (the agent prompt has no idea these tokens exist).
+    script_rule = (
+        "- SCRIPT: Write Hindi words in DEVANAGARI (हिंदी लिपि), and keep common English business "
+        "words in English letters (demo, course, book, WhatsApp, offer, plan, confirm, link). "
+        "So write 'मैं आपको एक demo book कर देती हूँ' — NOT romanized 'main aapko ek demo book kar "
+        "deti hoon'. NEVER write Hindi words in Latin letters."
+    )
+    lead_name_line = f"The caller's name is {lead_name}." if lead_name else ""
+    fields_line = _lead_fields_line(context)
+    end_line = (f"- When the conversation has reached a natural end, say a short goodbye and "
+                f"append {END_MARKER}.")
+    human_line = (
+        f"- If the caller asks for a human, is upset, or you cannot help, say you are connecting "
+        f"them and append {TRANSFER_MARKER}."
+        if (context.get("handoff") or {}).get("enabled")
+        else f"- If the caller asks for a human, say a counsellor will call them right back, "
+             f"then append {END_MARKER}."
+    )
+    disposition_line = (("At the end you must be able to judge the caller's interest as one of: "
+                         + ", ".join(dispositions)) if dispositions else "")
+
+    # An agent whose author wrote a real prompt (opening choreography, identity rules,
+    # language + conversation rules) is AUTHORITATIVE. Piling the generic scaffolding on
+    # top DUPLICATES it and — via intent_line's "introduce yourself" vs a "confirm
+    # identity first" prompt — CONTRADICTS it, which is what produced the double/triple
+    # greeting on live calls. So defer: add ONLY the bot-only knowledge above, plus one
+    # line telling the model its own instructions own the opening.
+    if len(prompt.strip()) >= 600:
+        lines = [
+            prompt,
+            "Your instructions above are AUTHORITATIVE for the opening, identity, language, "
+            "pacing and conversation rules — follow them exactly. Greet and introduce yourself "
+            "ONCE as they specify; never add a second greeting or re-introduce yourself.",
+            f"{gender_line} {addressee_line}",
+            script_rule,
+            lead_name_line,
+            fields_line,
+            end_line,
+            human_line,
+            disposition_line,
+        ]
+        return "\n".join(l for l in lines if l)
+
+    # Thin / blank prompt → the full scaffolding it needs to behave at all.
     lines = [
-        agent.get("systemPrompt") or "You are a friendly, concise phone assistant.",
+        prompt or "You are a friendly, concise phone assistant.",
         non_negotiable,
         f"You are {name}. {gender_line}",
         addressee_line,
         intent_line,
-        f"The caller's name is {lead_name}." if lead_name else "",
-        _lead_fields_line(context),
+        lead_name_line,
+        fields_line,
         ("During the conversation, naturally find out: " + "; ".join(extraction))
         if extraction else "",
         "Rules:",
         "- 1-2 short sentences per reply. ONE question per turn. Never monologue.",
-        # SCRIPT: Sarvam Bulbul TTS pronounces ROMANIZED Hindi noticeably worse than native
-        # Devanagari (Sarvam's own docs: transliterated input 'significantly reduces output
-        # quality'). Write Hindi words in Devanagari and leave genuine English business words
-        # in Latin — exactly how Indians write Hinglish. This is the single biggest naturalness
-        # lever for a Hindi/Hinglish voice.
-        "- SCRIPT: Write Hindi words in DEVANAGARI (हिंदी लिपि), and keep common English business "
-        "words in English letters (demo, course, book, WhatsApp, offer, plan, confirm, link). "
-        "So write 'मैं आपको एक demo book कर देती हूँ' — NOT romanized 'main aapko ek demo book kar "
-        "deti hoon'. NEVER write Hindi words in Latin letters.",
-        # VARIETY: repeating the identical acknowledgment every turn is the #1 cumulative
-        # robotic tell — rotate them.
+        script_rule,
         "- Never repeat the same acknowledgment twice in a row. Rotate naturally — हाँ / अच्छा / "
         "ठीक है / जी बिल्कुल / समझ गई — don't say 'ji' every single turn.",
-        # REFLECT-BACK: acknowledge the caller's SPECIFIC point before answering, not a generic
-        # 'I understand'.
         "- Briefly reflect back the caller's specific point before you answer (e.g. 'अच्छा, आप "
         "timing को लेकर puchh rahe hain —') so they feel heard. Not a generic 'मैं समझती हूँ'.",
-        # ENERGY MATCH.
         "- Match the caller's energy: a brief, businesslike caller gets crisp efficiency; a "
         "chatty, warm caller gets a little more warmth. Don't be relentlessly peppy.",
-        # Numbers/times are the #1 audio break on Hinglish calls: the model mixes
-        # languages ('five baje') or spells digits ('two zero zero').
         "- Clock times: ALWAYS the English 12-hour format — 'five PM', 'ten thirty AM', 'twelve "
         "noon', 'quarter past six'. NEVER the Hindi 'baje' form and NEVER a mix — 'five baje' and "
         "'paanch baje' are both WRONG; say 'five PM'.",
         "- Other numbers and money: whole spoken words in the sentence's one language, never spelled "
         "out digit-by-digit — 'do sau rupaye' / 'two hundred rupees' (NEVER 'two zero zero' or 'do "
         "zero zero'), 'pandrah tarikh'. Exception: a 10-digit phone number is read digit by digit.",
-        f"- When the conversation has reached a natural end, say a short goodbye and append {END_MARKER}.",
-        f"- If the caller asks for a human, is upset, or you cannot help, say you are connecting them and append {TRANSFER_MARKER}."
-        if (context.get("handoff") or {}).get("enabled")
-        else f"- If the caller asks for a human, say a counsellor will call them right back, then append {END_MARKER}.",
-        ("At the end you must be able to judge the caller's interest as one of: "
-         + ", ".join(dispositions)) if dispositions else "",
-        # RECENCY anchor: the last thing the model reads before every generation. A long
-        # persona prompt states the name once near the top, which loses salience as the
-        # call grows — the model then hallucinates a different name (Anjali) or garbles it
-        # (Aarush/Aayushi). Restating the exact identity here, last, holds it steady.
+        end_line,
+        human_line,
+        disposition_line,
         f"IDENTITY LOCK (most important): your name is EXACTLY \"{name}\" — say it identically "
         f"every single time, and NEVER introduce yourself with any other name, spelling or "
         f"variation. Use the SAME company name you introduce yourself with for the whole call; "

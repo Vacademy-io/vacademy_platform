@@ -8508,6 +8508,38 @@ class VideoGenerationPipeline:
             print(f"   ⚠️ portrait regen failed for character {index}: {_rg_err}")
             return None
 
+    def _rehost_cast_upload(self, run_dir: Path, index: int, url: str) -> Optional[str]:
+        """Download a user-uploaded cast portrait and re-upload it to our
+        PUBLIC bucket. Returns the permanent URL, or None on any failure
+        (caller falls back to the original URL). Deterministic key per
+        character index so re-applying the same answer on a later leg
+        overwrites instead of multiplying objects."""
+        try:
+            from ai_video_orchestrator import _download_url_to_path
+            svc = getattr(self, "_ai_video_s3_service", None)
+            if not svc:
+                self._build_ai_video_uploaders()
+                svc = getattr(self, "_ai_video_s3_service", None)
+            if not svc:
+                return None
+            local = run_dir / "dialogue_tts" / f"char_upload_{index:02d}.png"
+            local.parent.mkdir(parents=True, exist_ok=True)
+            if not _download_url_to_path(url, local) or local.stat().st_size < 1024:
+                print(f"   ⚠️ cast upload fetch failed/too small — keeping original URL")
+                return None
+            run_name = getattr(self, "_run_name", None) or "run"
+            hosted = svc.upload_file(
+                local,
+                s3_key=f"ai-videos/dialogue/{run_name}/char_upload_{index:02d}.png",
+                content_type="image/png",
+            )
+            if hosted:
+                print(f"   🎭 Cast upload re-hosted permanently (char {index})")
+            return hosted
+        except Exception as _rh_err:
+            print(f"   ⚠️ cast upload re-host failed: {_rh_err}")
+            return None
+
     def _maybe_cast_gate(self, run_dir: Path) -> None:
         """Assist: approve the cast's portraits BEFORE any clip is filmed.
 
@@ -8540,12 +8572,24 @@ class VideoGenerationPipeline:
                 if not d:
                     continue
                 if d.get("url"):
-                    if c.get("sheet_url") != d["url"]:
-                        c["sheet_url"] = d["url"]
+                    if c.get("_cast_upload_src") != d["url"]:
+                        # Re-host the upload on OUR public bucket: the FE hands
+                        # us a presigned media-service URL (expiryDays=7) —
+                        # fal can fetch it today, but a saved cast / later
+                        # re-render would silently 403 and the face vanishes.
+                        _final_url = self._rehost_cast_upload(run_dir, i, d["url"]) or d["url"]
+                        c["_cast_upload_src"] = d["url"]
+                        c["sheet_url"] = _final_url
                         # The user's real photo is AUTHORITATIVE over the
                         # text description — clip prompts must not let a
                         # contradicting visual_description fight the face.
                         c["user_photo"] = True
+                        # PURGE the generated 3/4 alternate view: it was
+                        # derived from the TEXT description — a DIFFERENT
+                        # face. Shipping it alongside the real photo as "the
+                        # same person" made the model blend two people
+                        # (prod: uploaded faces didn't come through).
+                        c.pop("sheet_url_alt", None)
                         changed = True
                 elif d.get("note") and c.get("_cast_regen_applied") != d["note"]:
                     new_url = self._regen_character_sheet(run_dir, i, c, d["note"])

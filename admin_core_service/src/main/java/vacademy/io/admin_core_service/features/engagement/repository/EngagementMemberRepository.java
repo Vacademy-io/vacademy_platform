@@ -65,7 +65,7 @@ public interface EngagementMemberRepository extends JpaRepository<EngagementMemb
             VALUES (:id, :engineId, :instituteId, :userId, :audienceResponseId, 'ACTIVE', 2,
                     :nextActionAt, jsonb_build_object('reconcileRun', CAST(:runId AS text)),
                     -- non-negative 0..99 WITHOUT abs() — abs(hashtext) can hit abs(INT_MIN) which
-                    -- Postgres throws on ("integer out of range"), crashing that member's enroll.
+                    -- Postgres throws on (integer out of range), crashing the enrol for that member.
                     (((hashtext(:engineId || '|' || COALESCE(:userId, :audienceResponseId, :id)) % 100) + 100) % 100) < :holdoutPct)
             ON CONFLICT (engine_id, COALESCE(user_id, ''), COALESCE(audience_response_id, ''))
             DO UPDATE SET
@@ -125,7 +125,7 @@ public interface EngagementMemberRepository extends JpaRepository<EngagementMemb
                    -- next_action_at) keeps the idempotency guard — re-running the overlapping sweep
                    -- must not repeatedly reset the cadence or stomp a fresh in-flight lease, but it
                    -- MUST keep the window honest, else a human answering an escalation hours later is
-                   -- falsely rejected while Meta's real window is still open. (CASE/SET expressions
+                   -- falsely rejected while the real Meta window is still open. (CASE/SET expressions
                    -- all read the OLD row values, so the guard sees pre-update window_open_until.)
                    window_open_until = GREATEST(COALESCE(m.window_open_until, :windowUntil), :windowUntil),
                    updated_at = :now

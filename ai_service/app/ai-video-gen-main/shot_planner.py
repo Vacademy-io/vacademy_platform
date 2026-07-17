@@ -227,8 +227,10 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "of the CAST CHARACTERS on screen (storybook/drama beats), filmed against their locked "
     "reference faces. It comes in TWO flavors:\n"
     "    (a) SPEAKING — the characters talk. Set `dialogue` = ordered list of `{character, line}` "
-    "(1-3 short lines, total spoken time ≤ 12s); `audio_policy: \"intrinsic_only\"` (the clip "
-    "carries its own lip-synced audio, master narrator silent); `narration_brief: \"\"`.\n"
+    "(1-2 short lines, total spoken time ≤ 8s — the clip models hard-cap around 10s, so a "
+    "longer exchange MUST be split across consecutive scene_continuity=\"continuous\" scenes or "
+    "the last line is cut off); `audio_policy: \"intrinsic_only\"` (the clip carries its own "
+    "lip-synced audio, master narrator silent); `narration_brief: \"\"`.\n"
     "    (b) SILENT ACTION — a character acts but does NOT speak (e.g. slumped over papers, "
     "reacting, a wordless emotional beat). Set `dialogue: []` (empty); `action_description` = "
     "one vivid sentence of what the character is DOING (no speech); `character_names` = who "
@@ -243,7 +245,14 @@ SHOT_PLANNER_SYSTEM_PROMPT = (
     "\"continuous\" ONLY "
     "when this shot carries on the SAME moment and location as the immediately previous "
     "DIALOGUE_SCENE (it will be visually chained from its last frame) — any time-skip (\"next "
-    "morning\", \"later\") or location change MUST be \"new\". When you use DIALOGUE_SCENE anywhere, "
+    "morning\", \"later\") or location change MUST be \"new\"; `emotional_beat` = the feeling the "
+    "scene must land (e.g. 'weary frustration', 'relief breaking into a smile') — the actors are "
+    "directed to play it; `time_of_day` = when it happens (e.g. 'late night', 'bright morning') — "
+    "the clip is lit for it; `location` = a short stable slug for the PLACE only (e.g. "
+    "'maheshwari_office') — reuse the SAME slug whenever the story returns to that place, so the "
+    "set stays the same room across scenes. NEVER encode time-of-day or lighting in the slug "
+    "(NOT 'office_night'/'office_day' — same room at night and morning = SAME slug; time_of_day "
+    "carries the lighting and the set is re-lit, not rebuilt). When you use DIALOGUE_SCENE anywhere, "
     "you MUST also emit a top-level `characters` array — [{name, visual_description, voice_hint}] — "
     "where `visual_description` is a REUSABLE VERBATIM portrait (age, build, hair, clothing, one "
     "distinctive detail) that stays IDENTICAL across the video, and `voice_hint` describes the "
@@ -556,24 +565,37 @@ def build_shot_planner_user_prompt(
             "video. EVERY beat is a DIALOGUE_SCENE filmed against the cast's "
             "faces. Build a dramatic arc (setup → tension → turn → resolution) "
             "across 3-6 scenes.\n"
-            "ROUTING RULE — decide per beat by WHAT the character is doing:\n"
+            "ROUTING RULE — if a CHARACTER is on screen, it is a DIALOGUE_SCENE "
+            "clip. Full stop. This includes beats where a character shows or "
+            "uses a PRODUCT (a phone, a tablet, a laptop, a dashboard, an app): "
+            "the character HOLDS or USES it IN the clip — e.g. 'Anjali turns her "
+            "tablet toward Rohit, the app open on it'. Do NOT split the product "
+            "into a separate screen/mockup shot — that breaks the drama and the "
+            "visual continuity. A non-DIALOGUE_SCENE shot (DEVICE_MOCKUP / "
+            "IMAGE_HERO / graphics) is allowed ONLY for a beat with LITERALLY NO "
+            "PERSON in it, and in a character drama you should almost never need "
+            "one — prefer folding the product into a character's hands.\n"
+            "Decide each character beat by WHAT the character is doing:\n"
             "• A character SPEAKS → DIALOGUE_SCENE, speaking flavor (dialogue "
             "lines, audio_policy=intrinsic_only, narration_brief=\"\").\n"
             "• A character is SHOWN but not speaking (a wordless emotional beat — "
-            "an anxious look, working late, a relieved smile) → DIALOGUE_SCENE, "
-            "SILENT flavor (dialogue=[], action_description of what they DO, "
-            "character_names, audio_policy=intrinsic_only, narration_brief=\"\"). "
-            "The clip carries its OWN ambient sound — there is NO narrator.\n"
-            "Because there is NO narrator, the DIALOGUE must carry the story: "
-            "write enough spoken exchange to convey the plot, motivation, and "
-            "payoff. Use silent beats for wordless emotional punctuation, NOT to "
-            "carry plot. Do NOT emit any narrated (non-DIALOGUE_SCENE) shot and "
-            "do NOT write any narration_brief — every shot is a character clip. "
-            "NEVER cut to stock footage of a stranger.\n"
+            "an anxious look, working late, a relieved smile, showing a screen) → "
+            "DIALOGUE_SCENE, SILENT flavor (dialogue=[], action_description of "
+            "what they DO, character_names, audio_policy=intrinsic_only, "
+            "narration_brief=\"\"). The clip carries its OWN ambient — NO narrator.\n"
+            "DIALOGUE LENGTH — the clips are ~10 seconds MAX (hard model cap). "
+            "Keep each DIALOGUE_SCENE to AT MOST 2 short spoken lines (≈14 words "
+            "/ ≈8 seconds of natural delivery total) so the speech FITS the clip "
+            "and is never cut off mid-sentence. If an exchange needs more, SPLIT "
+            "it across consecutive scenes marked scene_continuity=\"continuous\" "
+            "(2 lines, then the next 2 lines) — never pack 3+ lines into one shot.\n"
+            "Because there is NO narrator, the DIALOGUE across the scenes must "
+            "carry the story. Use silent beats for wordless emotional "
+            "punctuation, NOT to carry plot. Do NOT write any narration_brief.\n"
             "Every beat MUST list its cast in `character_names` so it films "
             "against their faces. Mark consecutive shots continuing the SAME "
             "moment/location scene_continuity=\"continuous\" (visually chained); "
-            "any time-skip or location change \"new\". Emit the top-level "
+            "any real time-skip or location change \"new\". Emit the top-level "
             "`characters` cast array with VERBATIM-reusable visual descriptions — "
             "the SAME characters recur across every scene."
         )
@@ -676,16 +698,37 @@ def build_shot_planner_user_prompt(
 
         if _brand:
             lines.append("")
-            lines.append("🏷️  BRAND ANCHOR — reference assets the FIRST and LAST shots MUST embed:")
-            for a in _brand[:8]:
-                kind = a.get("kind") or a.get("type") or "asset"
-                name = a.get("name") or a.get("filename") or "unnamed"
-                desc = (a.get("description") or a.get("excerpt") or "").strip()
-                lines.append(f"  - [{kind}] {name}: {desc[:160]}")
-            lines.append(
-                "REMINDER: open/close shots MUST be asset-hosting types (PRODUCT_HERO, IMAGE_HERO, "
-                "ANIMATED_ASSET, INFOGRAPHIC_SVG, DEVICE_MOCKUP) — NOT text-only shots."
-            )
+            if dialogue_scenes_enabled:
+                # Story mode: user attachments are usually CAST face photos,
+                # and the hook must be a story cold-open — never an asset card
+                # (prod shipped a dark stranger-portrait hook this way).
+                lines.append("🏷️  REFERENCE ASSETS provided by the user:")
+                for a in _brand[:8]:
+                    kind = a.get("kind") or a.get("type") or "asset"
+                    name = a.get("name") or a.get("filename") or "unnamed"
+                    desc = (a.get("description") or a.get("excerpt") or "").strip()
+                    lines.append(f"  - [{kind}] {name}: {desc[:160]}")
+                lines.append(
+                    "STORY MODE RULES for these assets: any asset that depicts a PERSON or "
+                    "FACE is a CAST reference — the casting pipeline uses it for character "
+                    "portraits; do NOT embed it in any shot as an image. Only true brand "
+                    "assets (logo, product shot, app screenshot) may be embedded, ideally "
+                    "in the CLOSE shot. The HOOK (first shot) must be a cold-open STORY "
+                    "moment — a character mid-action or mid-feeling (a silent-action "
+                    "DIALOGUE_SCENE or a cinematic IMAGE_HERO of the story world) — never "
+                    "a static portrait card or logo card."
+                )
+            else:
+                lines.append("🏷️  BRAND ANCHOR — reference assets the FIRST and LAST shots MUST embed:")
+                for a in _brand[:8]:
+                    kind = a.get("kind") or a.get("type") or "asset"
+                    name = a.get("name") or a.get("filename") or "unnamed"
+                    desc = (a.get("description") or a.get("excerpt") or "").strip()
+                    lines.append(f"  - [{kind}] {name}: {desc[:160]}")
+                lines.append(
+                    "REMINDER: open/close shots MUST be asset-hosting types (PRODUCT_HERO, IMAGE_HERO, "
+                    "ANIMATED_ASSET, INFOGRAPHIC_SVG, DEVICE_MOCKUP) — NOT text-only shots."
+                )
 
         # Pillar 3 — pre-fetched reference image URLs for named entities.
         # Each entity has a real URL the per-shot HTML LLM can embed verbatim.
@@ -946,6 +989,9 @@ def _normalize_shot(raw: Dict[str, Any], idx: int) -> Dict[str, Any]:
         "action_description",
         "character_names",
         "scene_continuity",
+        "emotional_beat",
+        "time_of_day",
+        "location",
         # Asset-request gate answers (assist): real user assets + figures.
         "user_asset_url",
         "user_asset_kind",
@@ -1103,6 +1149,104 @@ def _check_concept_conformance(plan: Dict[str, Any]) -> List[str]:
             issues.append("beat_map energy curve is flat (no build) — vary energy toward a climax and drop on holds/close")
     elif len(shots) >= 4 and not bm:
         issues.append("missing beat_map (the energy/color script) for a multi-section video")
+    return issues
+
+
+_TIME_JUMP_RE = re.compile(
+    r"next (morning|day|evening|week|month)|the following|later that"
+    r"|that (evening|night|afternoon)|hours later|days later"
+    r"|weeks later|months later|meanwhile|elsewhere|back at",
+    re.IGNORECASE,
+)
+
+# ~8-9s of natural speech at ~2.5 words/s. Above this a DIALOGUE_SCENE's lines
+# cannot fit a single clip (the card caps spoken time at ~8s; Omni clips ≤10s).
+_DIALOGUE_MAX_WORDS = 24
+
+
+def _check_dialogue_conformance(plan: Dict[str, Any], dialogue_mode: str = "storybook") -> List[str]:
+    """Deterministic contract checks for DIALOGUE_SCENE plans. Every prod
+    dialogue defect traced to an LLM instruction with no code enforcement —
+    this is the code enforcement. Returns issue strings ([] = conformant).
+    Pure + side-effect-free → unit-testable."""
+    issues: List[str] = []
+    shots = plan.get("shots") if isinstance(plan.get("shots"), list) else []
+    dlg = [
+        s for s in shots
+        if isinstance(s, dict) and str(s.get("shot_type") or "").upper() == "DIALOGUE_SCENE"
+    ]
+    if not dlg:
+        return issues
+    chars = [
+        c for c in (plan.get("characters") or [])
+        if isinstance(c, dict) and str(c.get("name") or "").strip()
+    ]
+    if not chars:
+        issues.append(
+            "DIALOGUE_SCENE shots present but the top-level `characters` cast array is "
+            "missing/empty — emit it with a verbatim-reusable visual_description per character"
+        )
+    else:
+        known = {str(c["name"]).strip().lower() for c in chars}
+        missing = sorted({
+            str(n).strip()
+            for s in dlg for n in (s.get("character_names") or [])
+            if str(n).strip() and str(n).strip().lower() not in known
+        })
+        if missing:
+            issues.append(
+                f"characters array is missing entries for: {missing} — every name in "
+                "character_names must have a cast entry"
+            )
+    for s in dlg:
+        idx = s.get("shot_index")
+        cont = str(s.get("scene_continuity") or "").strip().lower()
+        if cont not in ("continuous", "new"):
+            issues.append(
+                f"shot {idx}: DIALOGUE_SCENE must set scene_continuity to \"continuous\" "
+                "(same moment+location as the previous dialogue shot) or \"new\""
+            )
+        scene = str(s.get("scene_description") or "")
+        if cont == "continuous" and _TIME_JUMP_RE.search(scene):
+            issues.append(
+                f"shot {idx}: scene_continuity is \"continuous\" but scene_description "
+                "implies a time/location jump — mark it \"new\""
+            )
+        words = sum(
+            len(str(l.get("line") or "").split())
+            for l in (s.get("dialogue") or []) if isinstance(l, dict)
+        )
+        if words > _DIALOGUE_MAX_WORDS:
+            issues.append(
+                f"shot {idx}: {words} words of dialogue cannot fit one clip — cut to "
+                f"≤{_DIALOGUE_MAX_WORDS} words or split the scene into two continuous shots"
+            )
+    if str(dialogue_mode or "").lower() == "drama" and len(dlg) >= 2:
+        # Ends-on-despair detector: the arc must MOVE. Compare the beat_map
+        # emotions covering the first and last dialogue scenes when available.
+        bm = plan.get("beat_map") if isinstance(plan.get("beat_map"), list) else []
+
+        def _emotion_for(shot_idx: Any) -> str:
+            try:
+                si = int(shot_idx)
+            except (TypeError, ValueError):
+                return ""
+            for seg in bm:
+                try:
+                    if int(seg.get("from_shot")) <= si <= int(seg.get("to_shot")):
+                        return str(seg.get("emotion") or "").strip().lower()
+                except (TypeError, ValueError):
+                    continue
+            return ""
+
+        first_e = _emotion_for(dlg[0].get("shot_index"))
+        last_e = _emotion_for(dlg[-1].get("shot_index"))
+        if first_e and last_e and first_e == last_e:
+            issues.append(
+                f"drama arc does not move: opening and closing dialogue scenes share the same "
+                f"beat_map emotion ('{first_e}') — the resolution must land on a DIFFERENT "
+                "emotional beat than the setup"
+            )
     return issues
 
 
@@ -1408,14 +1552,26 @@ def plan_shots(
 
     # ── Conformance gate (Phase B) ──────────────────────────────────────────
     # Verify the plan serves its own creative_concept and that the beat_map
-    # energy curve BUILDS (not a flat metronome). On a concrete structural miss,
-    # fire ONE corrective re-plan. Bounded, guarded, ship-original-on-regression.
-    if enforce_concept:
-        _issues = _check_concept_conformance(parsed)
+    # energy curve BUILDS (not a flat metronome). Dialogue runs additionally
+    # get the DIALOGUE_SCENE contract lint (cast present, scene_continuity,
+    # line budgets, arc movement) regardless of tier — every one of its rules
+    # exists because a prod video shipped broken without it. On a concrete
+    # structural miss, fire ONE corrective re-plan. Bounded, guarded,
+    # ship-original-on-regression.
+    def _conformance_issues(_p: Dict[str, Any]) -> List[str]:
+        out: List[str] = []
+        if enforce_concept:
+            out += _check_concept_conformance(_p)
+        if dialogue_scenes_enabled:
+            out += _check_dialogue_conformance(_p, dialogue_mode)
+        return out
+
+    if enforce_concept or dialogue_scenes_enabled:
+        _issues = _conformance_issues(parsed)
         if _issues:
             try:
                 _corrective = (
-                    "Your plan does not yet serve its own creative_concept:\n- "
+                    "Your plan violates these required contracts:\n- "
                     + "\n- ".join(_issues)
                     + "\n\nRevise the FULL plan JSON: keep the same shot count and durations unless a "
                     "change is required, but make every shot serve the controlling_idea, ensure the "
@@ -1438,7 +1594,7 @@ def plan_shots(
                 if (
                     _parsed2.get("shots")
                     and len(_parsed2["shots"]) >= max(1, len(parsed["shots"]) - 1)
-                    and len(_check_concept_conformance(_parsed2)) < len(_issues)
+                    and len(_conformance_issues(_parsed2)) < len(_issues)
                 ):
                     parsed = _parsed2
                     for _k in ("prompt_tokens", "completion_tokens", "total_tokens"):
@@ -1454,6 +1610,12 @@ def plan_shots(
         "recurring_motifs": parsed["recurring_motifs"],
         "music_plan": parsed.get("music_plan"),
         "audio_mood": parsed.get("audio_mood", ""),
+        # DIALOGUE_SCENE cast + agent asset asks — _parse_shot_plan normalizes
+        # both, but this return dict used to DROP them, which silently blanked
+        # the dialogue cast (prod: characters:[] on every v3 run) and starved
+        # the asset-request gate. Keep them flowing.
+        "characters": parsed.get("characters") or [],
+        "asset_requests": parsed.get("asset_requests") or [],
         "usage": usage or {},
         "raw": text or "",
         "wpm": DEFAULT_WPM,

@@ -2,15 +2,18 @@ package vacademy.io.admin_core_service.features.audience.strategy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.netty.channel.ChannelOption;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.netty.http.client.HttpClient;
 import vacademy.io.admin_core_service.features.audience.dto.NormalizedLeadData;
 import vacademy.io.admin_core_service.features.audience.dto.OAuthTokenResult;
 import vacademy.io.admin_core_service.features.audience.dto.PlatformFormField;
@@ -21,8 +24,10 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
+import java.net.URI;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 
@@ -82,6 +87,27 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
     private final WebClient.Builder webClientBuilder;
     private final ObjectMapper objectMapper;
     private final TokenEncryptionService tokenEncryptionService;
+
+    /**
+     * WebClient with explicit connect + response timeouts. Reactor Netty applies no
+     * read/response timeout by default, so a half-open graph.facebook.com socket
+     * would make a blocking .block() hang forever — which is especially dangerous
+     * for the scheduled poller (it would wedge the shared scheduler thread and stop
+     * ALL Meta polling until the pod restarts). The 20s response timeout surfaces as
+     * an exception the callers already handle (poll → per-connector catch preserves
+     * the cursor for retry).
+     */
+    private WebClient webClient;
+
+    @jakarta.annotation.PostConstruct
+    void initWebClient() {
+        HttpClient httpClient = HttpClient.create()
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 10000)
+                .responseTimeout(Duration.ofSeconds(20));
+        this.webClient = webClientBuilder.clone()
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .build();
+    }
 
     @Override
     public String getVendorCode() {
@@ -168,14 +194,27 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
         String url = GRAPH_API_BASE + "/" + leadgenId + "?access_token=" + pageToken
                 + "&fields=field_data,created_time,ad_id,form_id";
 
-        JsonNode leadNode = webClientBuilder.build()
+        JsonNode leadNode = webClient
                 .get().uri(url)
                 .retrieve()
                 .bodyToMono(JsonNode.class)
                 .block();
 
         if (leadNode == null) return null;
+        return buildNormalizedLead(leadgenId, leadNode, connector);
+    }
 
+    /**
+     * Build a NormalizedLeadData from a single Graph lead node. Shared by the
+     * webhook path (one lead fetched by leadgen_id) and the poller (each lead from
+     * the /{form_id}/leads edge) so BOTH normalize identically — same phone
+     * normalization, same platformLeadId. That identical normalization is exactly
+     * what makes running the poller alongside the webhook dedup-safe: the same
+     * person resolves to the same synthesized user, so the existing
+     * existsByAudienceIdAndUserId guard collapses the duplicate with no extra row.
+     */
+    private NormalizedLeadData buildNormalizedLead(String platformLeadId, JsonNode leadNode,
+            FormWebhookConnector connector) {
         Map<String, String> fields = new LinkedHashMap<>();
         for (JsonNode fieldData : leadNode.path("field_data")) {
             String name = fieldData.path("name").asText();
@@ -202,7 +241,7 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
         Map<String, String> mappedFields = applyFieldMapping(fields, connector.getFieldMappingJson());
 
         return NormalizedLeadData.builder()
-                .platformLeadId(leadgenId)
+                .platformLeadId(platformLeadId)
                 .fields(mappedFields)
                 .email(rawEmail)
                 .phone(rawPhone)
@@ -213,6 +252,91 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
                 .testLead(false)
                 .build();
     }
+
+    /**
+     * PULL leads for a form created after {@code sinceEpochSeconds} (Meta
+     * time_created filter, unix seconds). This is the poller's data source. It
+     * authorizes off the stored Page token's own leads_retrieval permission, NOT
+     * the CRM push assignment in Lead Access Manager, so it keeps working for pages
+     * where realtime webhook delivery is blocked ("CRM access revoked").
+     *
+     * Follows paging.next up to {@code maxPages}; if the cap is hit with more pages
+     * remaining the result is flagged {@code truncated} so the caller keeps its
+     * cursor (Meta returns newest-first, so the un-fetched pages are the OLDEST
+     * leads — advancing past them would strand them). Throws VacademyException if
+     * Meta returns an error (e.g. token expired/revoked); the caller keeps the
+     * cursor for retry and should surface the failure (log + Sentry alert).
+     */
+    public LeadPullResult fetchLeadsSince(FormWebhookConnector connector,
+            long sinceEpochSeconds, int maxPages) {
+        List<NormalizedLeadData> out = new ArrayList<>();
+        if (connector.getOauthAccessTokenEnc() == null) {
+            log.error("No access token for connector {} — cannot poll leads", connector.getId());
+            return new LeadPullResult(out, false);
+        }
+        String formId = connector.getPlatformFormId();
+        if (formId == null || formId.isBlank()) {
+            log.warn("Connector {} has no platform_form_id — cannot poll leads", connector.getId());
+            return new LeadPullResult(out, false);
+        }
+        String pageToken = tokenEncryptionService.decrypt(connector.getOauthAccessTokenEnc());
+
+        String filter = "[{\"field\":\"time_created\",\"operator\":\"GREATER_THAN\",\"value\":"
+                + sinceEpochSeconds + "}]";
+        // NOTE: build a URI ourselves and hand WebClient a java.net.URI (not a String).
+        // Passing a String to .uri(...) runs it through DefaultUriBuilderFactory, which
+        // RE-encodes our already-percent-encoded 'filtering' value (%5B → %255B). Meta
+        // then can't parse the filter, silently ignores it, and returns EVERY lead. A
+        // pre-built URI is sent verbatim — single-encoded — so the time filter sticks.
+        String url = GRAPH_API_BASE + "/" + formId + "/leads"
+                + "?access_token=" + pageToken
+                + "&fields=id,created_time,field_data,ad_id,form_id"
+                + "&limit=100"
+                + "&filtering=" + URLEncoder.encode(filter, StandardCharsets.UTF_8);
+
+        int pages = 0;
+        while (url != null && !url.isBlank() && pages < maxPages) {
+            final URI pageUri = URI.create(url);
+            JsonNode response = webClient
+                    .get().uri(pageUri)
+                    .exchangeToMono(resp -> resp.bodyToMono(JsonNode.class))
+                    .block();
+            pages++;
+            if (response == null) break;
+            if (response.has("error")) {
+                String msg = response.path("error").path("message").asText("unknown error");
+                throw new VacademyException("Meta lead poll failed for form " + formId + ": " + msg);
+            }
+            for (JsonNode leadNode : response.path("data")) {
+                String leadId = leadNode.path("id").asText(null);
+                if (leadId == null) continue;
+                try {
+                    out.add(buildNormalizedLead(leadId, leadNode, connector));
+                } catch (Exception ex) {
+                    log.error("Failed to normalize polled lead {} for connector {}",
+                            leadId, connector.getId(), ex);
+                }
+            }
+            // Meta's paging.next is a full, already-encoded URL — also handed to
+            // WebClient as a URI so it isn't re-encoded.
+            url = response.path("paging").path("next").asText(null);
+        }
+        // Truncated = we stopped because of the page cap while Meta still had a next
+        // page. Meta returns /leads newest-first, so the UN-fetched pages are the
+        // OLDEST leads — the caller must NOT advance its cursor past them, or they'd
+        // be stranded forever (a GREATER_THAN-only filter can never reach back to them).
+        boolean truncated = pages >= maxPages && url != null && !url.isBlank();
+        if (truncated) {
+            log.warn("Meta poll for connector {} hit page cap {} — {} lead(s) fetched, older "
+                    + "leads remain; cursor will NOT advance so they're retried",
+                    connector.getId(), maxPages, out.size());
+        }
+        return new LeadPullResult(out, truncated);
+    }
+
+    /** Result of a lead pull: the normalized leads plus whether the page cap cut it
+     *  short (older leads remain unfetched — see fetchLeadsSince). */
+    public record LeadPullResult(List<NormalizedLeadData> leads, boolean truncated) {}
 
     // ── OAuth flow ───────────────────────────────────────────────────────────
 
@@ -248,7 +372,7 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
         params.add("redirect_uri", redirectUri);
         params.add("code", code);
 
-        JsonNode response = webClientBuilder.build()
+        JsonNode response = webClient
                 .post().uri(META_TOKEN_URL)
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .body(BodyInserters.fromFormData(params))
@@ -270,7 +394,7 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
         params.add("client_secret", appSecret);
         params.add("fb_exchange_token", shortLivedToken);
 
-        JsonNode response = webClientBuilder.build()
+        JsonNode response = webClient
                 .post().uri(META_TOKEN_URL)
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .body(BodyInserters.fromFormData(params))
@@ -302,7 +426,7 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
         String url = GRAPH_API_BASE + "/me/accounts?access_token=" + accessToken
                 + "&fields=id,name,access_token,tasks&limit=200";
 
-        JsonNode response = webClientBuilder.build()
+        JsonNode response = webClient
                 .get().uri(url)
                 .retrieve()
                 .bodyToMono(JsonNode.class)
@@ -339,7 +463,7 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
             String url = GRAPH_API_BASE + "/" + formId
                     + "?access_token=" + pageAccessToken
                     + "&fields=name";
-            JsonNode response = webClientBuilder.build()
+            JsonNode response = webClient
                     .get().uri(url)
                     .retrieve()
                     .bodyToMono(JsonNode.class)
@@ -362,7 +486,7 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
                 + "?access_token=" + pageAccessToken
                 + "&fields=id,name,status";
 
-        JsonNode response = webClientBuilder.build()
+        JsonNode response = webClient
                 .get().uri(url)
                 .retrieve()
                 .bodyToMono(JsonNode.class)
@@ -386,7 +510,7 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
         String url = GRAPH_API_BASE + "/" + formId + "?access_token=" + accessToken
                 + "&fields=questions,name";
 
-        JsonNode response = webClientBuilder.build()
+        JsonNode response = webClient
                 .get().uri(url)
                 .retrieve()
                 .bodyToMono(JsonNode.class)
@@ -424,7 +548,7 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
 
         JsonNode response;
         try {
-            response = webClientBuilder.build()
+            response = webClient
                     .post().uri(url)
                     .exchangeToMono(resp -> resp.bodyToMono(JsonNode.class))
                     .block();
@@ -465,7 +589,7 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
         String url = GRAPH_API_BASE + "/" + pageId + "/subscribed_apps?access_token=" + pageToken;
         JsonNode response;
         try {
-            response = webClientBuilder.build()
+            response = webClient
                     .get().uri(url)
                     .exchangeToMono(resp -> resp.bodyToMono(JsonNode.class))
                     .block();
@@ -500,7 +624,7 @@ public class MetaLeadAdsStrategy implements AdPlatformStrategy {
         String url = GRAPH_API_BASE + "/" + formId + "/leads?limit=1&access_token=" + pageToken;
         JsonNode response;
         try {
-            response = webClientBuilder.build()
+            response = webClient
                     .get().uri(url)
                     .exchangeToMono(resp -> resp.bodyToMono(JsonNode.class))
                     .block();

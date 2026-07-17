@@ -1,0 +1,83 @@
+{
+  "pillar": "lms",
+  "demo": {
+    "intro": "Follow a course from the admin's course builder to a learner finishing a lesson on their phone.",
+    "screens": [
+      {
+        "id": "library",
+        "device": "desktop",
+        "title": "Study Library",
+        "nav": ["Dashboard", "Study Library*", "Learners", "Assessments", "Live Classes", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "lib-head", "title": "Courses", "subtitle": "24 published · 3 drafts", "actions": ["+ Create Course", "Bulk Upload"] },
+          { "type": "stats", "id": "lib-stats", "items": [
+            { "label": "Active learners", "value": "1,842", "delta": "+126 this month" },
+            { "label": "Courses", "value": "27" },
+            { "label": "Avg. completion", "value": "72%" },
+            { "label": "Avg. rating", "value": "4.6 ★" }
+          ]},
+          { "type": "cards", "id": "lib-cards", "items": [
+            { "title": "NEET 2027 — Physics", "sub": "3 levels · 214 slides", "chip": "Published", "tone": "green" },
+            { "title": "Class 10 Maths Foundation", "sub": "2 levels · 168 slides", "chip": "Published", "tone": "green" },
+            { "title": "IELTS Band 8 Sprint", "sub": "1 level · 96 slides", "chip": "Draft", "tone": "orange" },
+            { "title": "JEE Chemistry Crash Course", "sub": "2 levels · 143 slides", "chip": "In review", "tone": "blue" }
+          ]}
+        ]
+      },
+      {
+        "id": "authoring",
+        "device": "desktop",
+        "title": "Course Editor — NEET 2027 Physics",
+        "nav": ["Dashboard", "Study Library*", "Learners", "Assessments", "Live Classes", "Reports", "Settings"],
+        "widgets": [
+          { "type": "wizard", "id": "auth-crumbs", "steps": ["Course", "Level: Class 12", "Subject: Mechanics", "Chapter: Laws of Motion"], "active": 3 },
+          { "type": "player", "id": "auth-slides", "outline": [
+            { "title": "Laws of Motion", "items": [
+              { "t": "Intro video: Newton's laws", "done": true },
+              { "t": "Reading: Inertia & mass", "done": true },
+              { "t": "In-video quiz checkpoint", "on": true },
+              { "t": "Numericals worksheet (PDF)" },
+              { "t": "Homework: 12 problems" }
+            ]}
+          ], "slide": { "title": "In-video quiz checkpoint", "body": "Question appears at 04:32 of the video — learners must answer before the lesson continues. Supports MCQ, numeric and one-word answers, with instant explanations." } },
+          { "type": "form", "id": "auth-drip", "title": "Publish settings", "fields": [
+            { "label": "Visibility", "value": "Publish to NEET 2027 Batch A", "type": "select" },
+            { "label": "Drip schedule", "value": "Unlock chapter-by-chapter, every Monday", "type": "select" },
+            { "label": "Downloads allowed", "value": "on", "type": "toggle" }
+          ], "submit": "Publish" }
+        ]
+      },
+      {
+        "id": "learner",
+        "device": "phone",
+        "title": "Learner App",
+        "nav": ["Home*", "Courses", "Tests", "Doubts", "Profile"],
+        "widgets": [
+          { "type": "header", "id": "l-head", "title": "Hi Ananya 👋", "subtitle": "NEET 2027 Batch A" },
+          { "type": "video", "id": "l-video", "title": "Newton's Laws — Lesson 3", "time": "12:40" },
+          { "type": "list", "id": "l-next", "items": [
+            { "title": "Continue: Laws of Motion", "sub": "3 of 5 slides done", "right": "60%" },
+            { "title": "Homework due Friday", "sub": "12 numericals", "chip": "Due", "tone": "orange" },
+            { "title": "Chapter test unlocked", "sub": "Laws of Motion · 30 min", "chip": "New", "tone": "green" }
+          ]},
+          { "type": "stats", "id": "l-streak", "items": [
+            { "label": "Day streak", "value": "🔥 14" },
+            { "label": "XP this week", "value": "480" },
+            { "label": "Certificates", "value": "2" }
+          ]}
+        ]
+      }
+    ],
+    "steps": [
+      { "screen": "library", "target": null, "title": "One library for every course", "text": "Admins and teachers manage every offering here — courses, memberships, even one-off services. Live stats show enrollment, completion and ratings at a glance." },
+      { "screen": "library", "target": "lib-cards", "title": "Courses with a real lifecycle", "text": "Each course moves through draft, editorial review and publish. Batches, levels and academic sessions hang off the same card — no duplicate content per batch." },
+      { "screen": "library", "target": "lib-head", "title": "Create by hand or in bulk", "text": "Start a course with the guided wizard, or bulk-upload existing folders of videos and PDFs — Vacademy maps them into chapters and slides automatically." },
+      { "screen": "authoring", "target": "auth-crumbs", "title": "Structure that matches how you teach", "text": "Choose 2 to 5 levels of depth per course — from a flat chapter list up to Level → Session → Subject → Module → Chapter trees." },
+      { "screen": "authoring", "target": "auth-slides", "title": "A dozen slide types in one editor", "text": "Mix video with in-video questions, PDFs, quizzes, code labs, whiteboards and homework in a single chapter. Slides keep full version history with restore." },
+      { "screen": "authoring", "target": "auth-drip", "title": "Publish with drip and controls", "text": "Publish to specific batches, drip content on a schedule or after prerequisites, and control downloads and watermarking per course." },
+      { "screen": "learner", "target": "l-video", "title": "The learner side, on any device", "text": "Learners get the same course in a distraction-free player — web, Android app or desktop app — with resume, playback speed and offline-friendly viewing." },
+      { "screen": "learner", "target": "l-next", "title": "Progress that drives itself", "text": "True completion tracking (not just 'opened'), homework deadlines and newly unlocked tests surface right on the home screen." },
+      { "screen": "learner", "target": "l-streak", "title": "Momentum built in", "text": "Streaks, XP and certificates keep learners coming back — and every bit of this activity feeds the reports admins see." }
+    ]
+  }
+}

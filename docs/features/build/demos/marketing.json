@@ -1,0 +1,112 @@
+{
+  "pillar": "marketing",
+  "demo": {
+    "intro": "Follow a marketing funnel end to end: build the institute's website, sell a course with built-in checkout, grow through referrals and coupons, and watch ad leads flow straight into your CRM.",
+    "screens": [
+      {
+        "id": "builder",
+        "device": "desktop",
+        "title": "Website Builder — Prakash Career Academy",
+        "nav": ["Dashboard", "Marketing*", "Study Library", "Learners", "Assessments", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "wb-head", "title": "prakashacademy.in — Home", "subtitle": "Draft · last edited 10 min ago by Priya", "actions": ["Preview Mobile", "Publish"] },
+          { "type": "builder", "id": "wb-canvas", "tray": ["Hero", "Course Catalogue", "Pricing Table", "Testimonials", "FAQ Accordion", "Countdown Timer", "Contact Form", "Custom HTML"], "canvas": [
+            "Header — logo, nav, 'Book Free Counselling' CTA",
+            "Hero — NEET 2027 Admissions Open · Split layout",
+            "Course Catalogue Grid — pulls live courses",
+            "Testimonials — 6 parent reviews",
+            "FAQ Accordion — 8 questions",
+            "Footer — contact, policies, map"
+          ]},
+          { "type": "form", "id": "wb-publish", "title": "Design & publish", "fields": [
+            { "label": "Theme", "value": "Ocean · custom brand #1B5FA8", "type": "select" },
+            { "label": "Fonts", "value": "Playfair Display / Inter", "type": "select" },
+            { "label": "SEO title", "value": "NEET & JEE Coaching in Indore | Prakash Career Academy", "type": "text" },
+            { "label": "Sticky header", "value": "on", "type": "toggle" }
+          ], "submit": "Publish site" }
+        ]
+      },
+      {
+        "id": "salespage",
+        "device": "phone",
+        "title": "Course Page — Buyer View",
+        "nav": ["Courses*", "Search", "Cart", "Account"],
+        "widgets": [
+          { "type": "header", "id": "sp-head", "title": "Prakash Career Academy", "subtitle": "prakashacademy.in/neet-2027" },
+          { "type": "cards", "id": "sp-cards", "items": [
+            { "title": "NEET 2027 Batch A", "sub": "₹45,000/yr · 4.7 ★ · 18 seats left", "chip": "Bestseller", "tone": "green" },
+            { "title": "NEET 2027 Crash Course", "sub": "₹18,500 · starts 1 Aug", "chip": "New", "tone": "blue" },
+            { "title": "Class 10 Foundation", "sub": "₹24,000/yr · 4.6 ★", "chip": "Open", "tone": "gray" }
+          ]},
+          { "type": "form", "id": "sp-checkout", "title": "Checkout — NEET 2027 Batch A", "fields": [
+            { "label": "Name", "value": "Aarav Deshmukh", "type": "text" },
+            { "label": "Phone", "value": "+91 98230 41567", "type": "text" },
+            { "label": "Coupon", "value": "EARLYBIRD25 ✓ — you pay ₹33,750", "type": "text" },
+            { "label": "I accept the terms", "value": "on", "type": "toggle" }
+          ], "submit": "Pay ₹33,750" }
+        ]
+      },
+      {
+        "id": "growth",
+        "device": "desktop",
+        "title": "Referrals & Coupons",
+        "nav": ["Dashboard", "Marketing*", "Study Library", "Learners", "Assessments", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "gr-head", "title": "Growth", "subtitle": "Referral program: 'Bring a Friend 2026' (default)", "actions": ["+ New Coupon", "+ New Program"] },
+          { "type": "stats", "id": "gr-stats", "items": [
+            { "label": "Referral joins", "value": "142", "delta": "+31 this month" },
+            { "label": "Revenue via referrals", "value": "₹6.4L" },
+            { "label": "Coupon redemptions", "value": "389" },
+            { "label": "Top referrer", "value": "Ananya S. · 9" }
+          ]},
+          { "type": "table", "id": "gr-coupons", "columns": ["Code", "Discount", "Scope", "Used", "Status"], "rows": [
+            ["EARLYBIRD25", "25% (cap ₹12,000)", "NEET 2027 Batch A", "212 / 500", { "chip": "Active", "tone": "green" }],
+            ["TOPPER5000", "₹5,000 flat", "JEE Advanced Dropper", "64 / 100", { "chip": "Active", "tone": "green" }],
+            ["ALUMNI-ONLY", "40%", "12 invited emails", "9 / 12", { "chip": "Active", "tone": "blue" }],
+            ["DIWALI24", "15%", "All courses", "104 / 104", { "chip": "Expired", "tone": "gray" }]
+          ]}
+        ]
+      },
+      {
+        "id": "leads",
+        "device": "desktop",
+        "title": "Lead Ads Connectors",
+        "nav": ["Dashboard", "Marketing*", "Study Library", "Learners", "Assessments", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "ld-head", "title": "Lead Connectors", "subtitle": "3 active · last lead 40 sec ago", "actions": ["+ Connect Meta", "Sync leads now"] },
+          { "cols": [
+            { "type": "form", "id": "ld-connect", "title": "Meta Lead Ads — setup", "fields": [
+              { "label": "Facebook Page", "value": "Prakash Career Academy (verified)", "type": "select" },
+              { "label": "Lead form", "value": "NEET 2027 — Free Demo Class", "type": "select" },
+              { "label": "Map 'full_name' →", "value": "Student Name", "type": "select" },
+              { "label": "Route to", "value": "Audience list: NEET Enquiries · tag: Indore Centre", "type": "select" }
+            ], "submit": "Activate connector" },
+            { "type": "notify", "id": "ld-feed", "items": [
+              { "channel": "Meta Ads", "text": "New lead: Rohan Verma · +91 98765 20143 · NEET Demo form" },
+              { "channel": "Google Ads", "text": "New lead: Sneha Kulkarni · JEE lead form extension" },
+              { "channel": "Zoho Forms", "text": "New lead: Kabir Mehta · scholarship test signup" },
+              { "channel": "Website", "text": "Enquiry from course page: Class 10 Foundation" }
+            ]}
+          ]},
+          { "type": "list", "id": "ld-health", "items": [
+            { "title": "Meta · NEET Demo form", "sub": "Last lead 40 sec ago · token OK", "chip": "Healthy", "tone": "green" },
+            { "title": "Google · JEE lead form", "sub": "Webhook key active · 26 leads today", "chip": "Healthy", "tone": "green" },
+            { "title": "Meta · Old Diwali campaign", "sub": "Page permission revoked · 1-click re-subscribe", "chip": "Fix", "tone": "orange" }
+          ]}
+        ]
+      }
+    ],
+    "steps": [
+      { "screen": "builder", "target": null, "title": "Your website, without an agency", "text": "This is the visual site builder — an Elementor-style editor for your institute's public website and course catalogue. Sites are drafted, versioned and role-permissioned, and everything publishes to your own domain." },
+      { "screen": "builder", "target": "wb-canvas", "title": "Assemble pages from 40+ sections", "text": "Drag sections — hero, course catalogue grid, pricing table, FAQ, countdown timer — onto the canvas while a pixel-accurate live preview renders alongside. Check desktop, tablet and mobile widths before anything goes live." },
+      { "screen": "builder", "target": "wb-publish", "title": "Agency-grade design, one click live", "text": "Pick from 9 color themes or your exact brand color, pair fonts from a curated library, and set per-page SEO. Drafts stay invisible until you publish, and full version history restores any old revision in one click." },
+      { "screen": "salespage", "target": "sp-cards", "title": "A storefront that updates itself", "text": "The catalogue widget pulls your real published courses — prices, ratings, even live seat availability from seat inventory. Tag-based pages like /neet stay current automatically as courses change." },
+      { "screen": "salespage", "target": "sp-checkout", "title": "Checkout built into the page", "text": "Sales pages bundle courses and payment plans with a real checkout: coupons validate live and show the exact discounted amount, terms acceptance is enforced, and invoices go out automatically by email or WhatsApp." },
+      { "screen": "growth", "target": "gr-stats", "title": "Learners become your ad channel", "text": "Referral programs offer five reward types — discounts, bonus content, free membership days, points — with tiers, vesting against refunds, and automatic reward delivery via email or WhatsApp when a referral converts." },
+      { "screen": "growth", "target": "gr-coupons", "title": "Coupons with real controls", "text": "Percentage or flat discounts with caps, redemption windows, usage limits, email-restricted private offers and batch scoping. Every applied discount is recorded against the payment for auditing." },
+      { "screen": "leads", "target": "ld-connect", "title": "Connect Meta in one guided flow", "text": "Sign in once, pick the Page and lead form, and map every ad-form field to your campaign's custom fields — auto-matched by name. Route each connector to an audience list with default tags like branch or centre." },
+      { "screen": "leads", "target": "ld-feed", "title": "Every lead, in seconds", "text": "Meta leads arrive via push within seconds; Google lead forms, Zoho and website enquiries flow in through webhooks. Each lead is stamped with its source, and repeat submissions merge into the existing lead." },
+      { "screen": "leads", "target": "ld-health", "title": "Connectors that never fail silently", "text": "Per-connector health checks show last-lead-received time, refresh tokens automatically and offer a one-click re-subscribe fix. A backup poller and 'Sync leads now' re-fetch leads even if push delivery breaks." }
+    ]
+  }
+}

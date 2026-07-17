@@ -1148,6 +1148,20 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                     </DialogContent>
                                 </Dialog>
                                 <AssessmentGlobalLevelReleaseResultAssessment />
+                                <MyButton
+                                    type="button"
+                                    scale="small"
+                                    buttonType="secondary"
+                                    className="font-medium"
+                                    onClick={() =>
+                                        navigate({
+                                            to: '/assessment/evaluation-ai',
+                                            search: { assessmentId },
+                                        })
+                                    }
+                                >
+                                    AI Evaluations
+                                </MyButton>
                             </>
                         )}
                     </div>

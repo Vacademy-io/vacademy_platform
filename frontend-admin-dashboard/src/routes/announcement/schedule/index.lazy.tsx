@@ -263,6 +263,7 @@ function AnnouncementSchedulePage() {
                             <SelectItem value="ALL">All modes</SelectItem>
                             <SelectItem value="SYSTEM_ALERT">SYSTEM_ALERT</SelectItem>
                             <SelectItem value="DASHBOARD_PIN">DASHBOARD_PIN</SelectItem>
+                            <SelectItem value="APP_OVERLAY">APP_OVERLAY</SelectItem>
                             <SelectItem value="DM">DM</SelectItem>
                             <SelectItem value="STREAM">STREAM</SelectItem>
                             <SelectItem value="RESOURCES">RESOURCES</SelectItem>
@@ -750,6 +751,8 @@ function colorForAnnouncement(a: Announcement) {
             return 'bg-red-500';
         case 'DASHBOARD_PIN':
             return 'bg-amber-500';
+        case 'APP_OVERLAY':
+            return 'bg-primary-500';
         case 'DM':
             return 'bg-blue-500';
         case 'STREAM':

@@ -128,6 +128,14 @@ export interface CustomFieldFullConfig {
   maxLength?: number;
 }
 
+// Sentinel value for the admin's "All Files" option — equivalent to no
+// restriction at all, including formats outside the fixed category list
+// (e.g. .sb3 PictoBlox/Scratch projects).
+export const ALL_FILES_VALUE = "all";
+
+export const isUnrestrictedFileTypes = (allowed?: string[] | null): boolean =>
+  !allowed || allowed.length === 0 || allowed.includes(ALL_FILES_VALUE);
+
 /**
  * Parse the full config JSON (handles both legacy array and new object format)
  */

@@ -113,19 +113,35 @@ def build_llm():
     )
 
 
-def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session):
+def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session,
+              pace: float | None = None, temperature: float | None = None):
     """`aiohttp_session` is REQUIRED by SarvamTTSService (keyword-only, no
-    default) — the FastAPI lifespan owns one shared session (see main.py)."""
+    default) — the FastAPI lifespan owns one shared session (see main.py).
+
+    `pace`/`temperature` are the per-AGENT voice tuning (ai_agent.pace /
+    .temperature via the call context); None falls back to the global TTS_PACE /
+    Sarvam's model default. Clamped to Bulbul v3's documented ranges so a bad
+    stored value can't 400 the TTS mid-call. (InputParams DOES carry temperature
+    on pipecat 0.0.95 — verified against the installed package.)"""
     s = get_settings()
+    eff_pace = _clamp(pace if pace is not None else s.tts_pace, 0.5, 2.0)
+    kwargs = {"pace": eff_pace, "enable_preprocessing": True}
+    if temperature is not None:
+        kwargs["temperature"] = _clamp(temperature, 0.01, 2.0)
     # enable_preprocessing: bulbul normalizes numbers/dates/mixed-script text
-    # before synthesis — noticeably cleaner Hinglish (POC voice recipe). Its
-    # expressiveness `temperature` knob only exists on pipecat 1.x; port it
-    # when the pin is bumped.
+    # before synthesis — noticeably cleaner Hinglish (POC voice recipe).
     return SarvamTTSService(
         api_key=s.sarvam_api_key,
         model=s.sarvam_tts_model,
         voice_id=voice or s.sarvam_tts_voice,
         sample_rate=sample_rate,
         aiohttp_session=aiohttp_session,
-        params=SarvamTTSService.InputParams(pace=s.tts_pace, enable_preprocessing=True),
+        params=SarvamTTSService.InputParams(**kwargs),
     )
+
+
+def _clamp(v: float, lo: float, hi: float) -> float:
+    try:
+        return max(lo, min(hi, float(v)))
+    except (TypeError, ValueError):
+        return lo

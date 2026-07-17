@@ -1083,4 +1083,14 @@
     font-size: var(--catalogue-lead);
     line-height: var(--catalogue-line-relaxed);
   }
+
+  /* Optional separate heading font — a serif/display face for headings over a
+     sans body (the editorial premium look). --catalogue-heading-font is set on
+     the catalogue wrapper only when globalSettings.fonts.headingFamily is
+     configured; when unset the `inherit` fallback keeps headings on the body
+     font, byte-identical to before. Scoped to catalogue wrappers. */
+  [data-catalogue-theme] :is(h1, h2, h3),
+  [data-catalogue-theme] :is(.catalogue-display, .catalogue-h1, .catalogue-h2, .catalogue-h3) {
+    font-family: var(--catalogue-heading-font, inherit);
+  }
 }

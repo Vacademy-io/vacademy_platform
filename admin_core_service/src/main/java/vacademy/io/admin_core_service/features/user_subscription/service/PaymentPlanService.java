@@ -60,15 +60,17 @@ public class PaymentPlanService {
         }
         return toSave;
     }
+    // Callers (e.g. the Edit Payment Option dialog) may send only a subset of fields;
+    // a missing field deserializes as null and must not overwrite the existing value.
     private void updatePaymentPlan(PaymentPlan paymentPlan, PaymentPlanDTO paymentPlanDTO) {
-        paymentPlan.setName(paymentPlanDTO.getName());
-        paymentPlan.setStatus(paymentPlanDTO.getStatus());
-        paymentPlan.setValidityInDays(paymentPlanDTO.getValidityInDays());
+        if (paymentPlanDTO.getName() != null) paymentPlan.setName(paymentPlanDTO.getName());
+        if (paymentPlanDTO.getStatus() != null) paymentPlan.setStatus(paymentPlanDTO.getStatus());
+        if (paymentPlanDTO.getValidityInDays() != null) paymentPlan.setValidityInDays(paymentPlanDTO.getValidityInDays());
         paymentPlan.setActualPrice(paymentPlanDTO.getActualPrice());
         paymentPlan.setElevatedPrice(paymentPlanDTO.getElevatedPrice());
-        paymentPlan.setCurrency(paymentPlanDTO.getCurrency());
-        paymentPlan.setDescription(paymentPlanDTO.getDescription());
-        paymentPlan.setTag(paymentPlanDTO.getTag());
-        paymentPlan.setFeatureJson(paymentPlanDTO.getFeatureJson());
+        if (paymentPlanDTO.getCurrency() != null) paymentPlan.setCurrency(paymentPlanDTO.getCurrency());
+        if (paymentPlanDTO.getDescription() != null) paymentPlan.setDescription(paymentPlanDTO.getDescription());
+        if (paymentPlanDTO.getTag() != null) paymentPlan.setTag(paymentPlanDTO.getTag());
+        if (paymentPlanDTO.getFeatureJson() != null) paymentPlan.setFeatureJson(paymentPlanDTO.getFeatureJson());
     }
 }

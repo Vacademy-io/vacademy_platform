@@ -543,6 +543,7 @@ export type GateType =
     | 'contact_sheet'
     | 'asset_request'
     | 'cast'
+    | 'dailies'
     | 'voice'
     | 'music'
     | 'avatar';
@@ -591,6 +592,28 @@ export interface CastGateCharacter {
     voice_hint?: string;
     /** Reference portrait; null when generation failed (upload instead). */
     sheet_url?: string | null;
+    /** The voice currently assigned to this character; null/absent = auto. */
+    voice_id?: string | null;
+}
+
+/** One selectable dialogue voice (cast gate payload.voice_options[]). */
+export interface CastVoiceOption {
+    voice_id: string;
+    label: string;
+    gender: 'male' | 'female';
+}
+
+/** One filmed dialogue clip awaiting review (dailies gate payload.clips[]). */
+export interface DailiesClip {
+    shot_index: number;
+    clip_url: string;
+    scene_description: string;
+    /** The spoken lines in this clip (already concatenated by the BE). */
+    lines: string;
+    duration_s: number;
+    cost_usd: number;
+    /** Automated QC verdict; null when QC didn't run for this clip. */
+    qc: { pass: boolean; issues: string[] } | null;
 }
 
 /** One agent-initiated ask (asset_request gate payload.requests[]). */
@@ -656,6 +679,16 @@ export type ShotPlanRow = Partial<ShotPlanItem> & {
     shot_index: number;
     narration_text?: string;
     duration_estimate_s?: number;
+    // ── DIALOGUE_SCENE rows (acted scenes) ──
+    /** The acted exchange — one entry per spoken line. */
+    dialogue?: Array<{ character: string; line: string }>;
+    scene_description?: string;
+    action_description?: string;
+    character_names?: string[];
+    /** 'continuous' = same setting as the previous scene; 'new' = fresh setup. */
+    scene_continuity?: 'continuous' | 'new';
+    emotional_beat?: string;
+    time_of_day?: string;
 };
 
 /**
@@ -683,6 +716,10 @@ export interface DecisionPayload {
     requests?: AssetRequestItem[];
     /** cast: the characters awaiting portrait approval. */
     characters?: CastGateCharacter[];
+    /** cast: selectable dialogue voices (absent → no voice picker). */
+    voice_options?: CastVoiceOption[];
+    /** dailies: the filmed dialogue clips awaiting approval / re-film notes. */
+    clips?: DailiesClip[];
     /** styleframe: the drafted design identity awaiting approval. */
     identity?: DesignIdentity;
     /** styleframe: selectable font pairings. */
@@ -728,7 +765,13 @@ export type DecisionAnswer =
     | {
           kind: 'edit';
           gate_type: 'cast';
-          characters: Array<{ name: string; url?: string; regen_note?: string }>;
+          characters: Array<{ name: string; url?: string; regen_note?: string; voice_id?: string }>;
+      }
+    | {
+          kind: 'edit';
+          gate_type: 'dailies';
+          // Only the clips the user sent back — shot_index + what the re-take must fix.
+          clips: Array<{ shot_index: number; redo_note: string }>;
       }
     | {
           kind: 'edit';
@@ -1975,6 +2018,8 @@ export function decisionAnswerToBody(
                 payload = { responses: answer.responses };
             } else if (answer.gate_type === 'cast') {
                 payload = { characters: answer.characters };
+            } else if (answer.gate_type === 'dailies') {
+                payload = { clips: answer.clips };
             } else if (answer.gate_type === 'styleframe') {
                 payload = { identity: answer.identity };
             } else {
@@ -2829,6 +2874,11 @@ export interface VideoCostPreviewRequest {
      *  upper-bound row to the breakdown. Mirrors the runtime flag. */
     ai_video_enabled?: boolean;
     ai_video_audio_enabled?: boolean;
+    /** Dialogue scenes (storybook/drama) — adds the acted-clips cost row,
+     *  capped at the tier's dialogue budget. Mirrors the runtime flags. */
+    dialogue_scenes_enabled?: boolean;
+    dialogue_mode?: 'storybook' | 'drama';
+    dialogue_clip_model?: 'seedance-2.0' | 'omni-flash';
 }
 
 export interface VideoCostPreviewBreakdownRow {

@@ -67,6 +67,14 @@ public class AiAgent {
     @Column(name = "max_call_minutes")
     private Integer maxCallMinutes;
 
+    /** Bulbul speaking rate 0.5–2.0 (1.0 native); null = bot's global TTS_PACE. */
+    @Column(name = "pace")
+    private Double pace;
+
+    /** Bulbul v3 expressiveness 0.01–2.0 (~0.6 default); null = model default. */
+    @Column(name = "temperature")
+    private Double temperature;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 

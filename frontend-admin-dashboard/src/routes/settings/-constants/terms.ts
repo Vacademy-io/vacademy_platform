@@ -126,6 +126,7 @@ export const enum SettingsTabs {
     CrmIntelligence = 'crmIntelligence',
     AssistantTools = 'assistantTools',
     BadgesRewards = 'badgesRewards',
+    Language = 'language',
 }
 
 export const DAYS_IN_MONTH = 30;

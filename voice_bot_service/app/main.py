@@ -215,6 +215,68 @@ async def tts(
     return _serve_mp3(path)
 
 
+@router.get("/preview.mp3")
+async def preview(
+    text: str = Query(..., max_length=300),
+    voice: str = Query(..., max_length=32),
+    lang: str = Query("hi-IN", max_length=8),
+    pace: float = Query(1.0, ge=0.5, le=2.0),
+    temperature: float | None = Query(None, ge=0.01, le=2.0),
+):
+    """Voice tester for the admin AI-Agents editor: speak a short sample text in any
+    Bulbul speaker at a chosen pace/expressiveness, so admins can A/B voices before
+    saving an agent. SEPARATE from /tts on purpose: the IVR cache there is keyed by
+    sha1(text) ALONE (the admin-core play URL depends on that contract — see
+    VacademyAiAnswerUrls.ttsUrl), so previewing the same text in two voices through
+    /tts would collide and corrupt IVR playback. Preview caches under its own
+    voice+pace-aware key. Text is capped hard: this is a public endpoint spending
+    Sarvam credits — cache + cap bound the cost (same exposure class as /tts)."""
+    s = get_settings()
+    key = hashlib.sha1(
+        f"pv|{s.sarvam_tts_model}|{voice}|{lang}|{pace}|{temperature}|{text}".encode("utf-8")
+    ).hexdigest()
+    path = os.path.join(s.tts_cache_dir, f"pv-{key}.mp3")
+    if not os.path.exists(path):
+        session = app.state.http_session
+        body = {
+            "inputs": [text],
+            "target_language_code": lang,
+            "speaker": voice.strip().lower(),
+            "model": s.sarvam_tts_model,
+            "speech_sample_rate": s.tts_prompt_sample_rate,
+            "output_audio_codec": "mp3",
+            "pace": pace,
+        }
+        if temperature is not None:
+            body["temperature"] = temperature
+        try:
+            async with session.post(_SARVAM_TTS_URL, json=body,
+                                    headers={"api-subscription-key": s.sarvam_api_key},
+                                    timeout=aiohttp.ClientTimeout(total=20)) as resp:
+                if resp.status != 200:
+                    detail = (await resp.text())[:200]
+                    logger.warning("preview: sarvam %s voice=%s: %s", resp.status, voice, detail)
+                    return Response(status_code=502)
+                data = await resp.json()
+        except Exception:
+            logger.exception("preview: sarvam call failed")
+            return Response(status_code=502)
+        audios = data.get("audios") or []
+        raw = b"".join(base64.b64decode(b64) for b64 in audios)
+        if not raw:
+            return Response(status_code=502)
+        try:
+            os.makedirs(s.tts_cache_dir, exist_ok=True)
+            tmp = f"{path}.{os.getpid()}.tmp"
+            with open(tmp, "wb") as f:
+                f.write(raw)
+            os.replace(tmp, path)
+        except Exception:
+            logger.exception("preview: cache write failed")
+            return Response(content=raw, media_type="audio/mpeg")
+    return _serve_mp3(path)
+
+
 @router.api_route("/answer", methods=["GET", "POST"], response_class=PlainTextResponse)
 async def answer(
     corr: str = Query(...),

@@ -1,12 +1,13 @@
 import { createFileRoute, useNavigate, useRouter } from '@tanstack/react-router';
-import { ArrowLeft, Check, Circle, CheckCircle } from '@phosphor-icons/react';
+import { ArrowLeft, Check, Circle, CheckCircle, WarningCircle, PencilSimple } from '@phosphor-icons/react';
 import { useState, useEffect, useMemo, Suspense } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { MyButton } from '@/components/design-system/button';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     EvaluationData,
     getEvaluationProgress,
+    overrideQuestionEvaluation,
     useStopEvaluation,
 } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/ai-evaluation-services';
 import { getInstituteId } from '@/constants/helper';
@@ -91,12 +92,12 @@ function RouteComponent() {
         ...getAttemptDetails(attemptId),
     });
 
-    // Get section IDs from localStorage
+    // localStorage handoff is only a fallback now — assessment/section context
+    // comes from the progress API, so the page works cross-device and after a
+    // storage clear (runs triggered before this was wired still read storage).
     const evaluationData = getEvaluationDataFromStorage().find(
         (data: any) => data.processId === processId
     );
-    const sectionIds = evaluationData?.sectionIds?.join(',');
-    const assessmentId = evaluationData?.assessmentId;
 
     const {
         data: progress,
@@ -116,6 +117,9 @@ function RouteComponent() {
         staleTime: 0,
         enabled: !!processId && !isStopEvaluation,
     });
+
+    // Assessment context: server-provided (cross-device safe), storage fallback.
+    const assessmentId = progress?.assessment_id ?? evaluationData?.assessmentId;
 
     const stopEvaluationMutation = useMutation({
         ...useStopEvaluation(),
@@ -155,6 +159,12 @@ function RouteComponent() {
             type: 'EXAM',
         }),
     });
+
+    // Section IDs to fetch question content — derived from the assessment itself
+    // (same shape the trigger used), with the localStorage handoff as fallback.
+    const sectionIds =
+        assessmentData?.[1]?.saved_data?.sections?.map((section: any) => section.id).join(',') ??
+        evaluationData?.sectionIds?.join(',');
 
     const { data: totalMarks } = useQuery({
         queryKey: ['TOTAL_MARKS', assessmentId],
@@ -216,9 +226,14 @@ function RouteComponent() {
 
     const allSectionQuestions = questionsData ? Object.values(questionsData).flat() : [];
 
-    // Calculate total score
+    // Total score counts only successfully-graded questions; questions the AI
+    // couldn't grade (FAILED) are excluded until the teacher grades them.
     const totalScore =
-        progress?.completed_questions.reduce((sum, q) => sum + (q.marks_awarded || 0), 0) || 0;
+        progress?.completed_questions
+            .filter((q) => q.status === 'COMPLETED')
+            .reduce((sum, q) => sum + (q.marks_awarded || 0), 0) || 0;
+    const needsReviewCount =
+        progress?.completed_questions.filter((q) => q.status === 'FAILED').length || 0;
     const maxScore = totalMarks?.total_achievable_marks || 0;
     const allQuestions = progress
         ? [...progress.completed_questions, ...progress.pending_questions]
@@ -422,6 +437,29 @@ function RouteComponent() {
 
                     {/* Question List */}
                     <div className="space-y-4">
+                        {progress.overall_status === 'COMPLETED' && (
+                            <div className="mb-2 rounded-lg border border-primary-200 bg-primary-50 p-4">
+                                <p className="text-sm font-medium text-primary-700">
+                                    AI has drafted this evaluation. Review each question, adjust any
+                                    marks or feedback, then release the result.
+                                </p>
+                            </div>
+                        )}
+                        {needsReviewCount > 0 && (
+                            <div className="mb-2 flex items-start gap-2 rounded-lg border border-danger-200 bg-danger-50 p-4">
+                                <WarningCircle
+                                    size={18}
+                                    weight="fill"
+                                    className="mt-0.5 shrink-0 text-danger-600"
+                                />
+                                <p className="text-sm font-medium text-danger-700">
+                                    {needsReviewCount} question{needsReviewCount > 1 ? 's' : ''} could
+                                    not be graded automatically and need{needsReviewCount > 1 ? '' : 's'}{' '}
+                                    your review. Open {needsReviewCount > 1 ? 'them' : 'it'} below to
+                                    enter marks before releasing the result.
+                                </p>
+                            </div>
+                        )}
                         <div className="mb-6 rounded-lg bg-blue-50 p-4 text-center">
                             <p className="text-sm font-medium text-blue-700">
                                 {showStatusMessage(progress.overall_status)}
@@ -445,6 +483,7 @@ function RouteComponent() {
                                     <QuestionCard
                                         key={question.question_id}
                                         question={question}
+                                        processId={processId}
                                         isExpanded={expandedQuestion === question.question_id}
                                         onToggle={() => toggleQuestion(question.question_id)}
                                         questionDetails={questionDetails}
@@ -531,6 +570,7 @@ function RouteComponent() {
 
 interface QuestionCardProps {
     question: any;
+    processId: string;
     isExpanded: boolean;
     onToggle: () => void;
     questionDetails?: any;
@@ -539,15 +579,37 @@ interface QuestionCardProps {
 
 function QuestionCard({
     question,
+    processId,
     isExpanded,
     onToggle,
     questionDetails,
     currentRubricVersion,
 }: QuestionCardProps) {
+    const queryClient = useQueryClient();
     const isCompleted = question.status === 'COMPLETED';
+    const isFailed = question.status === 'FAILED';
     const completedTime = question.completed_at
         ? formatDistanceToNow(new Date(question.completed_at), { addSuffix: true })
         : '';
+
+    // Inline teacher override of this question's marks/feedback.
+    const [isEditing, setIsEditing] = useState(false);
+    const [marksInput, setMarksInput] = useState('');
+    const [feedbackInput, setFeedbackInput] = useState('');
+
+    const overrideMutation = useMutation({
+        mutationFn: () =>
+            overrideQuestionEvaluation(processId, question.question_id, {
+                marks_awarded: Number(marksInput) || 0,
+                feedback: feedbackInput,
+            }),
+        onSuccess: () => {
+            toast.success('Marks updated');
+            setIsEditing(false);
+            queryClient.invalidateQueries({ queryKey: ['EVALUATION_PROGRESS', processId] });
+        },
+        onError: () => toast.error('Failed to update marks. Please try again.'),
+    });
 
     // Parse evaluation_json to get correct option IDs
     const evaluationJson = questionDetails?.evaluation_json
@@ -569,7 +631,11 @@ function QuestionCard({
     return (
         <Card
             className={`overflow-hidden border-2 transition-all ${
-                isCompleted ? 'border-green-300 bg-green-50' : 'border-orange-300 bg-orange-50'
+                isCompleted
+                    ? 'border-green-300 bg-green-50'
+                    : isFailed
+                      ? 'border-red-300 bg-red-50'
+                      : 'border-orange-300 bg-orange-50'
             }`}
         >
             {/* Header */}
@@ -592,15 +658,28 @@ function QuestionCard({
                             </div>
                             {isCompleted && (
                                 <p className="text-sm text-neutral-600">
+                                    {question.is_edited ? 'Reviewed by you · ' : ''}
                                     Completed {completedTime}
                                 </p>
                             )}
-                            {!isCompleted && <p className="text-sm text-neutral-600">Pending</p>}
+                            {isFailed && (
+                                <p className="text-sm font-medium text-red-600">
+                                    AI could not grade this — needs your review
+                                </p>
+                            )}
+                            {!isCompleted && !isFailed && (
+                                <p className="text-sm text-neutral-600">Pending</p>
+                            )}
                         </div>
                     </div>
                     <div className="flex items-center gap-4">
                         {isCompleted ? (
                             <>
+                                {question.is_edited && (
+                                    <span className="rounded-full bg-primary-100 px-2 py-0.5 text-xs font-medium text-primary-700">
+                                        Edited
+                                    </span>
+                                )}
                                 <div className="text-right">
                                     <p className="text-2xl font-bold">
                                         {question.marks_awarded?.toFixed(1) || 0}
@@ -609,6 +688,11 @@ function QuestionCard({
                                 </div>
                                 <CheckCircle size={24} className="text-green-600" weight="fill" />
                             </>
+                        ) : isFailed ? (
+                            <span className="flex items-center gap-1 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
+                                <WarningCircle size={16} weight="fill" />
+                                Needs review
+                            </span>
                         ) : (
                             <Circle size={24} className="animate-spin text-orange-500" />
                         )}
@@ -619,6 +703,103 @@ function QuestionCard({
             {/* Expanded Content - Show for ALL questions (pending and completed) */}
             {isExpanded && (
                 <div className="space-y-6 border-t-2 border-green-300 bg-white p-6">
+                    {/* Teacher review: adjust marks/feedback before the result is released */}
+                    {(isCompleted || isFailed) && (
+                        <div
+                            className={`rounded-md border p-4 ${
+                                isFailed
+                                    ? 'border-red-200 bg-red-50'
+                                    : 'border-neutral-200 bg-neutral-50'
+                            }`}
+                        >
+                            {!isEditing ? (
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-medium text-neutral-800">
+                                            {isFailed
+                                                ? 'This question was not graded automatically.'
+                                                : 'AI-drafted marks'}
+                                        </p>
+                                        <p className="text-xs text-neutral-500">
+                                            {isFailed
+                                                ? 'Enter marks and feedback to grade it yourself.'
+                                                : 'Adjust the marks or feedback if you disagree with the AI.'}
+                                        </p>
+                                    </div>
+                                    <MyButton
+                                        type="button"
+                                        buttonType={isFailed ? 'primary' : 'secondary'}
+                                        scale="small"
+                                        onClick={() => {
+                                            setMarksInput(
+                                                question.marks_awarded != null
+                                                    ? String(question.marks_awarded)
+                                                    : ''
+                                            );
+                                            setFeedbackInput(question.feedback ?? '');
+                                            setIsEditing(true);
+                                        }}
+                                    >
+                                        <PencilSimple size={14} className="mr-1" />
+                                        {isFailed ? 'Grade manually' : 'Edit'}
+                                    </MyButton>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <label className="text-sm font-medium text-neutral-700">
+                                            Marks
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            max={maxMarks || undefined}
+                                            step="0.5"
+                                            value={marksInput}
+                                            onChange={(e) => setMarksInput(e.target.value)}
+                                            className="w-24 rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                                        />
+                                        <span className="text-sm text-neutral-500">
+                                            / {maxMarks}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <label className="mb-1 block text-sm font-medium text-neutral-700">
+                                            Feedback
+                                        </label>
+                                        <textarea
+                                            value={feedbackInput}
+                                            onChange={(e) => setFeedbackInput(e.target.value)}
+                                            rows={3}
+                                            className="w-full rounded-md border border-neutral-300 px-2 py-1 text-sm"
+                                            placeholder="Feedback for this question"
+                                        />
+                                    </div>
+                                    <div className="flex justify-end gap-2">
+                                        <MyButton
+                                            type="button"
+                                            buttonType="secondary"
+                                            scale="small"
+                                            onClick={() => setIsEditing(false)}
+                                            disabled={overrideMutation.isPending}
+                                        >
+                                            Cancel
+                                        </MyButton>
+                                        <MyButton
+                                            type="button"
+                                            buttonType="primary"
+                                            scale="small"
+                                            onClick={() => overrideMutation.mutate()}
+                                            disabled={overrideMutation.isPending}
+                                        >
+                                            {overrideMutation.isPending ? 'Saving...' : 'Save marks'}
+                                        </MyButton>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Question Text */}
                     {questionDetails?.question?.content && (
                         <div>

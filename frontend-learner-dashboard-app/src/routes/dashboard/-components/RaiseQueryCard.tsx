@@ -1,5 +1,9 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Question, CaretRight, ChatsCircle } from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
+import { usePlayTheme } from '@/hooks/use-play-theme';
+import { useCleanerPlayTheme } from '@/hooks/use-cleaner-play-theme';
+import iconHelp from '@/assets/cleaner-play/icon-help.webp';
 import { useDoubtManagementSetting } from '@/services/doubt-management-settings';
 import { useMyQueries } from '@/services/my-queries';
 import { useQueryDialogStore } from '@/stores/useQueryDialogStore';
@@ -11,6 +15,8 @@ import { useQueryDialogStore } from '@/stores/useQueryDialogStore';
  * QueryDialog — directly on the "My queries" tab when there are open cases.
  */
 export const RaiseQueryCard = () => {
+    const isPlay = usePlayTheme();
+    const isCleanerPlay = useCleanerPlayTheme();
     const { showDashboardCard } = useDoubtManagementSetting();
     const open = useQueryDialogStore((s) => s.open);
     // Only fetch when the card is actually shown; errors fall back to openCount 0.
@@ -23,15 +29,34 @@ export const RaiseQueryCard = () => {
     return (
         <Card
             onClick={() => open(hasOpen ? 'my-queries' : 'raise')}
-            className="cursor-pointer transition-shadow hover:shadow-md"
+            className={cn(
+                'cursor-pointer transition-shadow hover:shadow-md',
+                'cp-card',
+                '[.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border-border [.ui-play_&]:shadow-play-soft-card'
+            )}
         >
             <CardContent className="flex items-center justify-between gap-4 p-4">
                 <div className="flex items-center gap-3">
-                    <div className="flex size-10 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
-                        <Question weight="duotone" size={22} />
-                    </div>
+                    {isPlay || isCleanerPlay ? (
+                        <img
+                            src={iconHelp}
+                            alt=""
+                            aria-hidden="true"
+                            className="h-10 w-10 shrink-0 object-contain"
+                        />
+                    ) : (
+                        <div className="flex size-10 items-center justify-center rounded-lg bg-primary-50 text-primary-500">
+                            <Question weight="duotone" size={22} />
+                        </div>
+                    )}
                     <div>
-                        <h3 className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">
+                        <h3
+                            className={cn(
+                                'text-sm font-semibold text-neutral-800 dark:text-neutral-100',
+                                'cp-heading',
+                                '[.ui-play_&]:font-black [.ui-play_&]:text-play-ink'
+                            )}
+                        >
                             Need help? Raise a query
                         </h3>
                         <p className="text-xs text-muted-foreground">

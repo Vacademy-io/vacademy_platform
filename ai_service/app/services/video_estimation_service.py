@@ -253,6 +253,13 @@ def estimate_video_generation(
     # breaker in QUALITY_TIERS, not a per-shot guess.
     ai_video_enabled: bool = False,
     ai_video_audio_enabled: bool = False,
+    # Dialogue scenes (storybook/drama) — the dominant cost line when on:
+    # each scene is a fal video-gen call ($0.3034/s Seedance 720p, ~$0.13/s
+    # Omni). The estimator surfaces expected scenes × ~8s × rate, capped at
+    # the tier's dialogue budget ($6 storybook / $20 drama defaults).
+    dialogue_scenes_enabled: bool = False,
+    dialogue_mode: str = "storybook",
+    dialogue_clip_model: str = "seedance-2.0",
 ) -> Dict[str, Any]:
     """
     Estimate credits and USD cost for a video generation request, plus echo back
@@ -469,6 +476,30 @@ def estimate_video_generation(
                 ),
                 "cost_usd": round(_av_cap_usd, 4),
                 "credits": float(_credits_from_usd("ai_video", _av_cap_usd, rate_ratio)),
+            })
+
+        # Dialogue scenes (storybook/drama) — the dominant line item when on.
+        # Expected = typical scene count × ~8s clip × the model's per-second
+        # rate, honestly capped at the tier's dialogue budget (the runtime
+        # circuit breaker). Same number across low/expected/high — the cap,
+        # not the band, bounds this spend.
+        if dialogue_scenes_enabled:
+            _is_drama = str(dialogue_mode or "").lower() == "drama"
+            _is_omni = str(dialogue_clip_model or "").lower() == "omni-flash"
+            _rate = 0.13 if _is_omni else 0.3034          # $/s of 720p output
+            _scenes = 4.5 if _is_drama else 2.5           # planner: drama 3-6, storybook 1-4
+            _cap = 20.0 if _is_drama else 6.0             # dialogue_scene_cost_cap_usd defaults
+            _dlg_usd = min(_scenes * 8.0 * _rate, _cap)
+            _model_label = "Gemini Omni Flash" if _is_omni else "Seedance 2.0"
+            rows.append({
+                "component": "Dialogue scenes (acted clips)",
+                "detail": (
+                    f"{'Drama' if _is_drama else 'Storybook'} · {_model_label} · "
+                    f"~{int(_scenes)} scenes × ~8s × ${_rate:.2f}/s — hard-capped at "
+                    f"${_cap:.0f} by the tier's dialogue budget."
+                ),
+                "cost_usd": round(_dlg_usd, 4),
+                "credits": float(_credits_from_usd("ai_video", _dlg_usd, rate_ratio)),
             })
         return rows
 

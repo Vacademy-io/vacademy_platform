@@ -83,9 +83,49 @@ export const ASSISTANT_TOOL_CATALOG: AssistantToolCatalogEntry[] = [
         description:
             'Let the assistant PROPOSE changes — edit a learner’s details, extend access, move ' +
             'batch, activate/deactivate. Every change requires the user to press Confirm on a card ' +
-            'before anything is applied. Off for everyone by default.',
+            'before anything is applied. On by default for Admins; other roles are opt-in.',
         phase: 3,
         defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
+    {
+        key: 'assessments',
+        label: 'Assessment results',
+        description:
+            'Find assessments and answer questions about submissions, scores, pending ' +
+            'evaluations, and leaderboards. On by default for Admins.',
+        phase: 2,
+        defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
+    {
+        key: 'announcements',
+        label: 'Announcements',
+        description:
+            'See planned/past announcements, and PROPOSE sending one to batches, roles, or ' +
+            'specific learners — sending always requires pressing Confirm on a card. On by ' +
+            'default for Admins.',
+        phase: 3,
+        defaultEnabled: false,
+        defaultRoles: ['ADMIN'],
+    },
+];
+
+/** One-click role presets for the settings screen — sensible grants per role. */
+export const ASSISTANT_ROLE_PRESETS: Array<{
+    role: string;
+    label: string;
+    tools: string[];
+}> = [
+    {
+        role: 'TEACHER',
+        label: 'Teachers: learner data + schedule + assessments',
+        tools: ['learner_data', 'schedule', 'assessments'],
+    },
+    {
+        role: 'EVALUATOR',
+        label: 'Evaluators: learner data + assessments',
+        tools: ['learner_data', 'assessments'],
     },
 ];
 

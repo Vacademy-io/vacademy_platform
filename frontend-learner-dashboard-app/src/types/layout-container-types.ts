@@ -12,6 +12,12 @@ export interface subItemsType {
 
 export interface SidebarItemsType {
     icon: React.FC<IconProps>;
+    /**
+     * Stable machine identifier. Logic (permission filtering, lookups) must
+     * compare on this — never on `title`, which is display text and will be
+     * translated / renamed per institute.
+     */
+    id?: string;
     title: string;
     to?: string;
     subItems?: subItemsType[];

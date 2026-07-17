@@ -37,6 +37,7 @@ public class CsvToStudentDataMapper {
                     null,
                     null,
                     null,
+                    null,
                     null);
 
             StudentExtraDetails studentExtraDetails = new StudentExtraDetails(

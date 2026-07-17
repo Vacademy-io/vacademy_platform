@@ -1181,8 +1181,8 @@ export const CourseStructureDetails = ({
                       "[.ui-vibrant_&]:bg-gradient-to-r [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
                       "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:hover:border-primary/40",
                       // Play Styles — solid, bold, Duolingo-style
-                      "[.ui-play_&]:bg-play-navy [.ui-play_&]:border-play-navy-deep [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
-                      "[.ui-play_&]:shadow-play-3d-navy [.ui-play_&]:hover:bg-play-navy-deep [.ui-play_&]:hover:text-white"
+                      "[.ui-play_&]:bg-play-navy-soft [.ui-play_&]:border-border [.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
+                      "[.ui-play_&]:shadow-none [.ui-play_&]:hover:bg-play-navy-soft [.ui-play_&]:hover:text-play-navy-soft-ink"
                     )}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -1678,8 +1678,8 @@ export const CourseStructureDetails = ({
                       className={cn(
                         "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                         "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20",
-                        "[.ui-play_&]:bg-play-navy [.ui-play_&]:border-play-navy-deep [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
-                        "[.ui-play_&]:shadow-play-3d-navy [.ui-play_&]:hover:bg-play-navy-deep [.ui-play_&]:hover:text-white"
+                        "[.ui-play_&]:bg-play-navy-soft [.ui-play_&]:border-border [.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
+                        "[.ui-play_&]:shadow-none [.ui-play_&]:hover:bg-play-navy-soft [.ui-play_&]:hover:text-play-navy-soft-ink"
                       )}
                     >
                       <div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -2136,8 +2136,8 @@ export const CourseStructureDetails = ({
                       "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                       "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20",
                       // Play Styles — solid, bold, Duolingo-style
-                      "[.ui-play_&]:bg-play-navy [.ui-play_&]:border-play-navy-deep [.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
-                      "[.ui-play_&]:shadow-play-3d-navy [.ui-play_&]:hover:bg-play-navy-deep [.ui-play_&]:hover:text-white"
+                      "[.ui-play_&]:bg-play-navy-soft [.ui-play_&]:border-border [.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
+                      "[.ui-play_&]:shadow-none [.ui-play_&]:hover:bg-play-navy-soft [.ui-play_&]:hover:text-play-navy-soft-ink"
                     )}
                   >
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">

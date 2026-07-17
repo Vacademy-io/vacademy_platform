@@ -9,6 +9,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
@@ -61,6 +62,7 @@ public class InactivityOptOutScanner {
     /** Daily, server timezone. Runs before the 9 AM opt-out drip so newly-detected leads
      *  are anchored to tomorrow and picked up by the next morning's MSG1 workflow. */
     @Scheduled(cron = "${inactivity-scan.cron:0 0 7 * * ?}")
+    @SchedulerLock(name = "InactivityOptOutScanner", lockAtMostFor = "PT30M", lockAtLeastFor = "PT1M")
     public void scan() {
         if (!props.isEnabled() || props.getTargets().isEmpty()) {
             return;

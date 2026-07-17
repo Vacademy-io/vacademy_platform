@@ -361,7 +361,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                 <Badge
                                     key={tag}
                                     variant="secondary"
-                                    className="font-normal text-xs bg-muted/50 text-muted-foreground hover:bg-muted"
+                                    className="font-normal text-xs bg-tertiary-100 text-tertiary-500 hover:bg-tertiary-200"
                                 >
                                     {tag}
                                 </Badge>

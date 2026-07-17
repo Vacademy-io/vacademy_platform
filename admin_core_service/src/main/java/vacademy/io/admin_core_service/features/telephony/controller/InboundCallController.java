@@ -147,9 +147,14 @@ public class InboundCallController {
             HttpServletRequest req,
             @RequestBody(required = false) String body) {
 
-        String sid = firstNonBlank(req.getParameter("CallSid"), req.getParameter("Sid"));
+        // Join key per provider vocabulary: Exotel sends CallSid/Sid, Plivo sends
+        // CallUUID — accepting only CallSid silently dropped every Plivo inbound
+        // status/hangup (the a-leg hangup carries the call's total Duration, which
+        // the voice-minutes meter needs).
+        String sid = firstNonBlank(req.getParameter("CallSid"),
+                firstNonBlank(req.getParameter("Sid"), req.getParameter("CallUUID")));
         if (sid == null) {
-            log.warn("inbound /status: missing CallSid");
+            log.warn("inbound /status: missing CallSid/CallUUID");
             return ResponseEntity.badRequest().build();
         }
 

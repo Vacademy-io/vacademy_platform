@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.audience.job;
 
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -40,6 +41,7 @@ public class MetaTokenRefreshJob {
      * Runs daily at 02:00 UTC. Cron: second minute hour day-of-month month day-of-week
      */
     @Scheduled(cron = "${meta.token.refresh.cron:0 0 2 * * ?}")
+    @SchedulerLock(name = "MetaTokenRefreshJob_refreshTokens", lockAtMostFor = "PT30M", lockAtLeastFor = "PT1M")
     public void refreshExpiringMetaTokens() {
         log.info("MetaTokenRefreshJob: starting token refresh check");
 
@@ -70,6 +72,7 @@ public class MetaTokenRefreshJob {
      * from occupying space indefinitely.
      */
     @Scheduled(cron = "0 0 * * * ?")
+    @SchedulerLock(name = "MetaTokenRefreshJob_expireSessions", lockAtMostFor = "PT5M", lockAtLeastFor = "PT10S")
     @Transactional
     public void expireOldOAuthSessions() {
         int expired = oauthStateRepository.expireOldSessions(LocalDateTime.now());

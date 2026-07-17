@@ -1,13 +1,27 @@
+import { useState } from 'react';
 import { useRouterState } from '@tanstack/react-router';
-import { BookOpen, CaretRight, GraduationCap, Question, Sparkle, X } from '@phosphor-icons/react';
+import {
+    BookOpen,
+    CaretLeft,
+    CaretRight,
+    Compass,
+    GraduationCap,
+    Question,
+    RocketLaunch,
+    Sparkle,
+    X,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { getTokenFromCookie, isTokenExpired } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { useSupportConfig } from '@/services/support';
+import { useRoadmap } from '@/services/roadmap';
 import { SupportPanel } from '@/components/common/support/SupportPanel';
 import { useAssistDock } from './store';
 import { tutorialsForRoute } from './tutorials';
 import { TutorialViewer } from './TutorialViewer';
+import { RoadmapViewer } from './RoadmapViewer';
+import { ExploreViewer } from './ExploreViewer';
 
 // Keep in sync with routes/__root.tsx publicRoutes — the dock only shows inside
 // the authenticated shell.
@@ -23,6 +37,16 @@ const PUBLIC_PREFIXES = [
     '/vim/waitlist',
 ];
 
+const ROADMAP_SEEN_KEY = 'roadmapLastSeenAt';
+
+function readRoadmapSeenAt(): string | null {
+    try {
+        return localStorage.getItem(ROADMAP_SEEN_KEY);
+    } catch {
+        return null;
+    }
+}
+
 export function AssistDock() {
     const pathname = useRouterState({ select: (s) => s.location.pathname });
     const search = useRouterState({ select: (s) => s.location.search }) as { selectedTab?: string };
@@ -30,8 +54,12 @@ export function AssistDock() {
     const togglePanel = useAssistDock((s) => s.togglePanel);
     const setPanel = useAssistDock((s) => s.setPanel);
     const openTutorial = useAssistDock((s) => s.openTutorial);
+    const minimized = useAssistDock((s) => s.minimized);
+    const setMinimized = useAssistDock((s) => s.setMinimized);
     // Non-admin roles get a 403 here (retry disabled on the hook); the badge is simply omitted then.
     const supportConfig = useSupportConfig();
+    const roadmap = useRoadmap();
+    const [roadmapSeenAt, setRoadmapSeenAt] = useState<string | null>(readRoadmapSeenAt);
 
     const token = getTokenFromCookie(TokenKey.accessToken);
     const isAuthed = !!token && !isTokenExpired(token);
@@ -39,46 +67,117 @@ export function AssistDock() {
     if (!isAuthed || onPublicRoute) return null;
 
     const tutorials = tutorialsForRoute(pathname, search?.selectedTab);
+    const hasNewRoadmap = !!roadmap.data?.updatedAt && roadmap.data.updatedAt !== roadmapSeenAt;
+    const totalBadge = tutorials.length + (supportConfig.data?.openTicketCount ?? 0);
+
+    const openRoadmap = () => {
+        togglePanel('roadmap');
+        if (roadmap.data?.updatedAt) {
+            try {
+                localStorage.setItem(ROADMAP_SEEN_KEY, roadmap.data.updatedAt);
+            } catch {
+                // private mode / storage disabled — the "new" badge just won't persist
+            }
+            setRoadmapSeenAt(roadmap.data.updatedAt);
+        }
+    };
 
     return (
         <>
-            {/* Thin fixed rail — a full-height column flush to the right edge. The
-                layout (LayoutContainer main content) reserves w-14 so content never
-                slides under it. pt-20 clears the top navbar. Hidden by default on
-                mobile (< md): a right rail wastes horizontal space on phones, and
-                the layout drops its right gutter to match. */}
-            <aside className="fixed inset-y-0 right-0 z-30 hidden w-14 flex-col items-center gap-1 border-l border-neutral-200 bg-white pb-4 pt-20 md:flex">
-                <RailButton
-                    label="Guides"
-                    active={panel === 'tutorials'}
-                    onClick={() => togglePanel('tutorials')}
-                    badge={tutorials.length || undefined}
+            {minimized ? (
+                /* Collapsed pull-tab. Same edge/vertical anchor as the full rail so it
+                   doesn't jump around when toggled. */
+                <button
+                    type="button"
+                    aria-label="Expand guides & support"
+                    onClick={() => setMinimized(false)}
+                    className="fixed right-0 top-24 z-30 hidden items-center gap-1 rounded-l-lg border border-r-0 border-neutral-200 bg-white py-2 pl-2 pr-1.5 text-neutral-500 shadow-sm transition-colors hover:bg-neutral-100 md:flex"
                 >
-                    <BookOpen size={20} weight={panel === 'tutorials' ? 'fill' : 'regular'} />
-                </RailButton>
+                    <CaretLeft size={14} />
+                    {totalBadge > 0 ? (
+                        <span className="flex size-4 items-center justify-center rounded-full bg-primary-500 text-caption font-semibold text-white">
+                            {totalBadge}
+                        </span>
+                    ) : null}
+                    {hasNewRoadmap ? (
+                        <span className="absolute -right-1 -top-1 size-2.5 rounded-full bg-primary-500 ring-2 ring-white" />
+                    ) : null}
+                </button>
+            ) : (
+                /* Thin fixed rail — a full-height column flush to the right edge. The
+                    layout (LayoutContainer main content) reserves w-14 so content never
+                    slides under it. pt-20 clears the top navbar. Hidden by default on
+                    mobile (< md): a right rail wastes horizontal space on phones, and
+                    the layout drops its right gutter to match. */
+                <aside className="fixed inset-y-0 right-0 z-30 hidden w-14 flex-col items-center gap-1 border-l border-neutral-200 bg-white pb-4 pt-20 md:flex">
+                    <button
+                        type="button"
+                        aria-label="Minimize"
+                        onClick={() => setMinimized(true)}
+                        className="mb-1 flex size-6 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-neutral-100 hover:text-neutral-600"
+                    >
+                        <CaretRight size={14} />
+                    </button>
 
-                <RailButton
-                    label="Assist"
-                    active={panel === 'assistant'}
-                    onClick={() => togglePanel('assistant')}
-                >
-                    <Sparkle size={20} weight={panel === 'assistant' ? 'fill' : 'regular'} />
-                </RailButton>
+                    <RailButton
+                        label="Guides"
+                        active={panel === 'tutorials'}
+                        onClick={() => togglePanel('tutorials')}
+                        badge={tutorials.length || undefined}
+                    >
+                        <BookOpen size={20} weight={panel === 'tutorials' ? 'fill' : 'regular'} />
+                    </RailButton>
 
-                <RailButton
-                    label="Issues"
-                    active={panel === 'support'}
-                    onClick={() => togglePanel('support')}
-                    badge={supportConfig.data?.openTicketCount || undefined}
-                >
-                    <Question size={20} weight={panel === 'support' ? 'fill' : 'regular'} />
-                </RailButton>
-            </aside>
+                    <RailButton
+                        label="Assist"
+                        active={panel === 'assistant'}
+                        onClick={() => togglePanel('assistant')}
+                    >
+                        <Sparkle size={20} weight={panel === 'assistant' ? 'fill' : 'regular'} />
+                    </RailButton>
+
+                    <RailButton
+                        label="Issues"
+                        active={panel === 'support'}
+                        onClick={() => togglePanel('support')}
+                        badge={supportConfig.data?.openTicketCount || undefined}
+                    >
+                        <Question size={20} weight={panel === 'support' ? 'fill' : 'regular'} />
+                    </RailButton>
+
+                    <div className="my-1 h-px w-8 bg-neutral-100" />
+
+                    <RailButton
+                        label="What's new"
+                        active={panel === 'roadmap'}
+                        onClick={openRoadmap}
+                        dot={hasNewRoadmap}
+                    >
+                        <RocketLaunch size={20} weight={panel === 'roadmap' ? 'fill' : 'duotone'} />
+                    </RailButton>
+
+                    <RailButton
+                        label="Explore"
+                        active={panel === 'explore'}
+                        onClick={() => togglePanel('explore')}
+                    >
+                        <Compass size={20} weight={panel === 'explore' ? 'fill' : 'duotone'} />
+                    </RailButton>
+                </aside>
+            )}
 
             <SupportPanel
                 open={panel === 'support'}
                 onOpenChange={(v) => setPanel(v ? 'support' : 'none')}
             />
+
+            <RoadmapViewer
+                open={panel === 'roadmap'}
+                html={roadmap.data?.htmlContent ?? ''}
+                onClose={() => setPanel('none')}
+            />
+
+            <ExploreViewer open={panel === 'explore'} onClose={() => setPanel('none')} />
 
             {/* Tutorials panel (slides out left of the rail) */}
             {panel === 'tutorials' && (
@@ -149,12 +248,15 @@ function RailButton({
     onClick,
     active,
     badge,
+    dot,
 }: {
     label: string;
     children: React.ReactNode;
     onClick: () => void;
     active?: boolean;
     badge?: number;
+    /** A small unread indicator, for when there's something new but no count to show. */
+    dot?: boolean;
 }) {
     return (
         <button
@@ -172,6 +274,9 @@ function RailButton({
                 <span className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-primary-500 text-caption font-semibold text-white">
                     {badge}
                 </span>
+            ) : null}
+            {dot ? (
+                <span className="absolute right-2 top-1.5 size-2 rounded-full bg-primary-500 ring-2 ring-white" />
             ) : null}
         </button>
     );

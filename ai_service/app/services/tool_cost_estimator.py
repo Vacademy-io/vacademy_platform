@@ -53,6 +53,18 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "questions",
         "params": {"image_unit_credits": "0.5"},
     },
+    # AI evaluation of one uploaded answer copy (copy-check): OCR + per-question
+    # rubric-grounded grading. Priced per graded question for a predictable
+    # preview ("8 questions = 8 credits"); the actual charge is
+    # max(this, real token cost), so premium models (Opus/GPT) add overage on
+    # long answers while flash-lite copies stay at the flat per-question rate.
+    "copy_check_evaluation": {
+        "request_type": "evaluation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("1"),
+        "unit_field": "questions",
+        "params": {},
+    },
     "coding_question": {
         # One AI-authored coding question (problem + test cases + starter code
         # per language + a reference solution). A single LLM call — priced flat

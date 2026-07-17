@@ -15,8 +15,11 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
+from ...models.ai_token_usage import RequestType
+from ..ai_billing import record_tool_billing
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
+from ...repositories.copy_check_rubric_repository import CopyCheckRubricRepository
 from . import callbacks, cancellation
 from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria
 from .mathpix_fallback import MathpixFallback
@@ -74,14 +77,56 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
             llm, system, user, model, institute_id, token_sink=grader,
         )
 
-    # Pre-load all rubric state into memory and close the DB session before
-    # the long-running OCR/LLM calls so the pool isn't pinned for minutes (#17).
+    # Pre-load all rubric state into memory. The DB session is closed after the
+    # up-front rubric step below, before the long-running OCR/grading calls so
+    # the pool isn't pinned for minutes (#17).
     rubric_snapshot = load_snapshot(db, assessment_id)
-    rubric_version = rubric_snapshot.rubric_version
     rubric_resolver = RubricResolver(rubric_snapshot, _llm_for_criteria)
-    db.close()
 
     try:
+        # 0. Rubric coherence: generate any missing rubrics ONCE, persist them,
+        # and reuse for every student — so two students on the same question are
+        # graded against identical criteria, not a fresh per-copy invention.
+        cancellation.check(job_id, process_id)
+        missing = [q for q in questions if not rubric_resolver.has_rubric(q["question_id"])]
+        if missing:
+            generated: dict[str, Any] = {}
+            for q in missing:
+                cancellation.check(job_id, process_id)
+                try:
+                    generated[q["question_id"]] = await rubric_resolver.generate(q, preferred_model)
+                except cancellation.Cancelled:
+                    raise
+                except Exception:
+                    logger.exception("Rubric generation failed for question %s", q.get("question_id"))
+            if generated and institute_id:
+                try:
+                    rubric_repo = CopyCheckRubricRepository(db)
+                    authoritative = rubric_repo.merge_generated_rubrics(
+                        assessment_id, institute_id, generated,
+                    )
+                    rubric_snapshot.fixed_rubric.update(authoritative)
+                    stored = rubric_repo.get(assessment_id)
+                    if stored is not None:
+                        rubric_snapshot.rubric_version = stored.rubric_version
+                except Exception:
+                    logger.exception(
+                        "Persisting generated rubrics failed; grading this copy with in-memory rubrics",
+                    )
+                    rubric_snapshot.fixed_rubric.update(generated)
+            elif generated:
+                # No institute_id → can't persist (column is NOT NULL); still use
+                # the generated rubrics for this copy.
+                rubric_snapshot.fixed_rubric.update(generated)
+
+        rubric_version = rubric_snapshot.rubric_version
+        # Attach teacher model answers so the grader can use them as a reference.
+        for q in questions:
+            model_answer = rubric_snapshot.model_answers.get(q["question_id"])
+            if model_answer:
+                q["model_answer"] = model_answer
+        db.close()
+
         # 1. OCR via render_worker.
         cancellation.check(job_id, process_id)
         render = _render_client()
@@ -132,12 +177,16 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
                     logger.exception(
                         f"Retry also failed for question {q.get('question_id')}",
                     )
+                    # Never surface the raw exception (which can be a stack trace
+                    # or provider error) as the student's feedback. Keep the
+                    # detail in logs; give teacher/student a neutral, actionable
+                    # message. status=FAILED lets the reviewer spot it.
                     verdict = {
                         "question_id": q["question_id"],
                         "marks_awarded": 0.0,
                         "max_marks": float(q.get("max_marks") or 0),
                         "extracted_answer": "",
-                        "feedback": f"Grading failed after retry: {retry_err}",
+                        "feedback": "This answer could not be evaluated automatically and needs manual review.",
                         "confidence": 0.0,
                         "criteria_breakdown": [],
                         "annotations": [],
@@ -160,6 +209,24 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         logger.info(
             "copy-check job %s complete: %s/%s, %d Mathpix crops used, %d tokens",
             job_id, total_awarded, total_max, mathpix.used, grader.tokens_used,
+        )
+
+        # Meter the copy: charge the institute's credits once per completed
+        # evaluation. Priced per graded question with real-token overage
+        # (see tool_cost_estimator "copy_check_evaluation"). Idempotent on
+        # process_id so a retried complete callback never double-charges, and
+        # best-effort so a billing error never fails a delivered evaluation.
+        # Cancelled/failed copies are intentionally not charged.
+        record_tool_billing(
+            tool_key="copy_check_evaluation",
+            tool_params={"num_questions": evaluated},
+            request_type=RequestType.EVALUATION,
+            model=(preferred_model or DEFAULT_MODEL),
+            prompt_tokens=grader.prompt_tokens,
+            completion_tokens=grader.completion_tokens,
+            institute_id=institute_id,
+            request_id=job_id,
+            idempotency_key=process_id,
         )
     except (cancellation.Cancelled, OcrCancelled):
         logger.info(f"copy-check job {job_id} cancelled")

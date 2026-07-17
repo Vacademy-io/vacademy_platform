@@ -86,19 +86,19 @@ export const BadgesRankCard: React.FC = () => {
           </p>
         </div>
         {bestRank != null && (
-          <div className="flex items-center gap-1.5 rounded-lg bg-primary-50 px-3 py-2">
+          <div className="flex items-center gap-1.5 rounded-lg bg-secondary-50 px-3 py-2">
             <Crown weight="fill" className="h-4 w-4 text-warning-500" />
             <div>
-              <p className="text-body font-bold text-primary-600">#{bestRank}</p>
+              <p className="text-body font-bold text-secondary-500">#{bestRank}</p>
               <p className="text-caption text-muted-foreground">best rank</p>
             </div>
           </div>
         )}
         {instituteRank != null && (
-          <div className="flex items-center gap-1.5 rounded-lg bg-primary-50 px-3 py-2">
-            <Buildings weight="fill" className="h-4 w-4 text-primary-500" />
+          <div className="flex items-center gap-1.5 rounded-lg bg-tertiary-50 px-3 py-2">
+            <Buildings weight="fill" className="h-4 w-4 text-tertiary-500" />
             <div>
-              <p className="text-body font-bold text-primary-600">#{instituteRank}</p>
+              <p className="text-body font-bold text-tertiary-500">#{instituteRank}</p>
               <p className="text-caption text-muted-foreground">institute rank</p>
             </div>
           </div>

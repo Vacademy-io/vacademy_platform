@@ -4,6 +4,9 @@ import type { InternalAxiosRequestConfig } from 'axios';
 import * as Sentry from '@sentry/react';
 import { getInstituteId } from '@/constants/helper';
 import { AI_SERVICE_BASE_URL } from '@/constants/urls';
+// Locale helper only (reads the zustand store lazily at request time) — no
+// import cycle: formatters → language store → i18n/locales, none touch axios.
+import { getActiveLocale } from '@/lib/formatters';
 import {
     getTokenFromCookie,
     isTokenExpired,
@@ -119,6 +122,12 @@ authenticatedAxiosInstance.interceptors.request.use(
             if (instituteId) {
                 request.headers.clientId = instituteId;
             }
+        }
+
+        // Advertise the user's UI locale so backend services can localize
+        // responses (validation messages, notifications) as i18n rolls out.
+        if (!request.headers['Accept-Language']) {
+            request.headers['Accept-Language'] = getActiveLocale();
         }
 
         return request;

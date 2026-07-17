@@ -178,16 +178,25 @@ def check_credits(
 @router.post(
     "/deduct",
     response_model=CreditDeductResponse,
-    summary="Deduct credits after AI operation",
-    description="Deduct credits after an AI operation completes.",
+    summary="Deduct credits after AI operation (internal)",
+    description=(
+        "Deduct credits after an AI operation completes. Requires "
+        "X-Internal-Service-Token: this endpoint honors request-supplied "
+        "precomputed_credits and allow_negative, and the /ai-service/ prefix is "
+        "publicly routed — left unauthenticated, anyone on the internet could drain "
+        "or overdraw ANY institute's wallet. Only trusted services may call it "
+        "(admin_core CreditClient sends the token). The only HTTP caller is "
+        "admin_core's CreditClient — verified repo-wide before gating."
+    ),
 )
 def deduct_credits(
     request: CreditDeductRequest,
     service: CreditService = Depends(get_credit_service),
+    _: None = Depends(require_internal_service_token),
 ):
     """
     Deduct credits after an AI operation.
-    
+
     This is called after the AI operation completes with actual token counts.
     """
     return service.deduct_credits(request)

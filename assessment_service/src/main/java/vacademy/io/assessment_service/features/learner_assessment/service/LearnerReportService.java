@@ -59,6 +59,9 @@ public class LearnerReportService {
     private QuestionWiseMarksRepository questionWiseMarksRepository;
 
     @Autowired
+    private vacademy.io.assessment_service.features.assessment.repository.CopyCheckLayoutRepository copyCheckLayoutRepository;
+
+    @Autowired
     private HtmlBuilderService htmlBuilderService;
 
     @Autowired
@@ -80,6 +83,57 @@ public class LearnerReportService {
     /**
      * Validates that the current user owns the given attempt and report is released.
      */
+    /**
+     * The AI-annotated copy for the learner: the OCR layout map + every
+     * annotation (tick/cross/circle/margin note) across all questions, so the
+     * learner app can overlay them on the student's own submitted answer sheet.
+     * Ownership-checked; returns empty layout/annotations when the attempt was
+     * not AI-evaluated.
+     */
+    public LearnerAnnotatedCopyDto getAnnotatedCopy(CustomUserDetails user, String assessmentId, String attemptId) {
+        validateOwnershipAndAccess(user.getUserId(), assessmentId, attemptId);
+
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
+        com.fasterxml.jackson.databind.JsonNode layoutMap = copyCheckLayoutRepository.findByAttemptId(attemptId)
+                .map(layout -> {
+                    try {
+                        return layout.getLayoutJson() != null ? mapper.readTree(layout.getLayoutJson()) : null;
+                    } catch (Exception e) {
+                        log.warn("Bad layout_json for attempt {}: {}", attemptId, e.getMessage());
+                        return null;
+                    }
+                })
+                .orElse(null);
+
+        List<com.fasterxml.jackson.databind.JsonNode> annotations = new ArrayList<>();
+        for (QuestionWiseMarks marks : questionWiseMarksRepository.findByStudentAttemptId(attemptId)) {
+            String aiJson = marks.getAiEvaluationDetailsJson();
+            if (aiJson == null || aiJson.isBlank()) {
+                continue;
+            }
+            try {
+                com.fasterxml.jackson.databind.JsonNode node = mapper.readTree(aiJson);
+                if (node.has("annotations") && node.get("annotations").isArray()) {
+                    String questionId = marks.getQuestion() != null ? marks.getQuestion().getId() : null;
+                    for (com.fasterxml.jackson.databind.JsonNode ann : node.get("annotations")) {
+                        if (ann.isObject() && questionId != null) {
+                            ((com.fasterxml.jackson.databind.node.ObjectNode) ann).put("question_id", questionId);
+                        }
+                        annotations.add(ann);
+                    }
+                }
+            } catch (Exception ignored) {
+                // Skip questions whose verdict JSON can't be parsed.
+            }
+        }
+
+        return LearnerAnnotatedCopyDto.builder()
+                .layoutMap(layoutMap)
+                .annotations(annotations)
+                .build();
+    }
+
     private AssessmentUserRegistration validateOwnershipAndAccess(String userId, String assessmentId, String attemptId) {
         Optional<AssessmentUserRegistration> registration = registrationRepository
                 .findTopByUserIdAndAssessmentId(userId, assessmentId);

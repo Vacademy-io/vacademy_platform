@@ -53,6 +53,10 @@ export const GATE_META: Record<GateType, GateMeta> = {
         title: 'Your cast',
         blurb: 'The characters\' portraits — approved before any scene is filmed.',
     },
+    dailies: {
+        title: 'Dailies',
+        blurb: 'Watch each filmed scene — approve it or send it back for a re-take.',
+    },
     voice: { title: 'Voice', blurb: 'The narration voice.' },
     music: { title: 'Background music', blurb: 'The background music track.' },
     avatar: { title: 'Host', blurb: 'The on-screen host / avatar.' },
@@ -73,6 +77,7 @@ const GATE_PROMPT: Record<GateType, string> = {
     contact_sheet: 'All shots are built — approve the contact sheet or send shots back.',
     asset_request: 'I could make a few shots more real with things only you have.',
     cast: 'Meet your cast — approve the portraits before I film the scenes.',
+    dailies: 'The scenes are filmed — watch the dailies and approve or send back.',
     voice: 'Which voice should we use?',
     music: 'Which background music fits?',
     avatar: 'Which host should present?',
@@ -106,6 +111,10 @@ function summarizeLedger(gate: GateType, mode: string, answer: Record<string, un
             if (gate === 'cast') {
                 const n = ((answer as { characters?: unknown[] })?.characters ?? []).length;
                 return n > 0 ? `Updated ${n} portrait(s)` : 'Approved the cast';
+            }
+            if (gate === 'dailies') {
+                const n = ((answer as { clips?: unknown[] })?.clips ?? []).length;
+                return n > 0 ? `Sent ${n} scene(s) back for a re-take` : 'Approved the dailies';
             }
             return 'Picked the visuals';
         default:
@@ -169,6 +178,8 @@ export function buildTurnSummary(decision: DecisionRequest, answer: DecisionAnsw
             }
             if (answer.gate_type === 'cast')
                 return `Updated ${answer.characters.length} portrait(s) before filming`;
+            if (answer.gate_type === 'dailies')
+                return `Sent ${answer.clips.length} scene(s) back for a re-take`;
             return `Picked visuals for ${answer.selections.length} shot(s)`;
         default:
             return `Resolved ${label.toLowerCase()}`;

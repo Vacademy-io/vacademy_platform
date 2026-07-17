@@ -693,10 +693,9 @@ export const ChapterSidebarSlides = () => {
           <div className="mb-3 flex w-10 h-10 animate-gentle-pulse items-center justify-center rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 shadow-sm [.ui-play_&]:hidden">
             <File className="w-5 h-5 text-gray-400" weight="duotone" />
           </div>
-          <img
-            src={playIllustrations.bookLover}
-            alt="No slides"
-            className="hidden [.ui-play_&]:!block w-24 h-24 mb-3"
+          <playIllustrations.BookLover
+            aria-hidden="true"
+            className="hidden [.ui-play_&]:!block w-24 h-24 mb-3 text-primary-300"
           />
           <h3 className="mb-1 text-sm font-bold text-gray-900">
             No slides available

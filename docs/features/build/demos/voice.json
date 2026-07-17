@@ -1,0 +1,101 @@
+{
+  "pillar": "voice",
+  "demo": {
+    "intro": "Watch an admissions phone line run itself — from the team call log to a live AI agent call, the IVR menu behind it, and the coaching insights AI extracts from every conversation.",
+    "screens": [
+      {
+        "id": "call-log",
+        "device": "desktop",
+        "title": "Call Log",
+        "nav": ["Dashboard", "Leads", "Call Log*", "Automations", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "log-head", "title": "Call Log", "subtitle": "All providers · Last 7 days", "actions": ["Export CSV", "Filters"] },
+          { "type": "stats", "id": "log-kpis", "items": [
+            { "label": "Total calls", "value": "1,284", "delta": "+18% vs prev 7d" },
+            { "label": "Connect rate", "value": "71%" },
+            { "label": "Talk time", "value": "38h 12m" },
+            { "label": "Missed inbound", "value": "6", "delta": "call back now" }
+          ]},
+          { "type": "table", "id": "log-table", "columns": ["Lead", "Direction", "Type", "Counsellor / Agent", "Duration", "Outcome"], "rows": [
+            ["Ananya Sharma", "Outbound", { "chip": "AI · Attempt 1", "tone": "purple" }, "Diya (AI Agent)", "3:42", { "chip": "Interested", "tone": "green" }],
+            ["Rohan Verma", "Outbound", "Human", "Priya Nair", "6:15", { "chip": "Demo booked", "tone": "green" }],
+            ["+91 98••• ••210", "Inbound", { "chip": "AI · Inbound", "tone": "purple" }, "Diya (AI Agent)", "2:58", { "chip": "New lead created", "tone": "blue" }],
+            ["Aarav Gupta", "Outbound", { "chip": "AI · Attempt 2", "tone": "purple" }, "Diya (AI Agent)", "0:00", { "chip": "Retry at 4 PM", "tone": "orange" }],
+            ["Meera Iyer", "Inbound", "Human", "Kabir Singh", "4:03", { "chip": "Callback Fri 11 AM", "tone": "orange" }]
+          ]}
+        ]
+      },
+      {
+        "id": "live-call",
+        "device": "desktop",
+        "title": "AI Call — Ananya Sharma",
+        "nav": ["Dashboard", "Leads", "Call Log*", "Automations", "Reports", "Settings"],
+        "widgets": [
+          { "type": "call", "id": "ai-call", "name": "Ananya Sharma", "number": "+91 98765 43210", "status": "Live", "time": "01:47", "lines": [
+            { "from": "agent", "text": "Namaste! Main Diya bol rahi hoon, Aakash Career Institute se. Aapne NEET 2027 Batch A ke liye enquiry ki thi?" },
+            { "from": "user", "text": "Haan, actually I wanted to know the fees and batch timing." },
+            { "from": "agent", "text": "Sure! Weekend batch Sat–Sun 9 AM, fee ₹85,000 per year with scholarship test option. Aap Class 11 mein hain?" },
+            { "from": "user", "text": "Yes, Class 11. Can I talk to a counsellor about the scholarship?" },
+            { "from": "agent", "text": "Bilkul — main aapko Priya ma'am se connect kar rahi hoon, ek second..." }
+          ]},
+          { "type": "form", "id": "agent-config", "title": "Agent: Diya — Admissions", "fields": [
+            { "label": "Language", "value": "Hinglish (auto-switch)", "type": "select" },
+            { "label": "Voice", "value": "Kavya · 1.1x pace", "type": "select" },
+            { "label": "Extract answers", "value": "Class, budget, timeline", "type": "text" },
+            { "label": "Handoff to counsellor", "value": "on", "type": "toggle" },
+            { "label": "Max call length", "value": "8 min", "type": "select" }
+          ], "submit": "Save Agent" }
+        ]
+      },
+      {
+        "id": "ivr",
+        "device": "desktop",
+        "title": "Calling Settings — IVR Builder",
+        "nav": ["Dashboard", "Leads", "Call Log", "Automations", "Reports", "Settings*"],
+        "widgets": [
+          { "type": "header", "id": "ivr-head", "title": "IVR Menu: Admissions Line", "subtitle": "Attached to +91 80471 22334 · Live", "actions": ["+ Add Step", "Save Menu"] },
+          { "type": "tree", "id": "ivr-tree", "nodes": [
+            { "label": "Play: 'Welcome to Aakash Career Institute'", "children": [
+              { "label": "Press 1 — Admissions → ring Priya, Kabir" },
+              { "label": "Press 2 — Fees & payments → ring Accounts desk" },
+              { "label": "Press 3 — Talk to Diya (AI admissions assistant)" },
+              { "label": "Press 9 — After hours → voicemail" }
+            ]}
+          ]},
+          { "type": "form", "id": "ivr-number", "title": "Number settings", "fields": [
+            { "label": "Inbound number", "value": "+91 80471 22334 (Admissions)", "type": "select" },
+            { "label": "Unknown caller → create lead", "value": "on", "type": "toggle" },
+            { "label": "Record all calls", "value": "on", "type": "toggle" }
+          ], "submit": "Apply" }
+        ]
+      },
+      {
+        "id": "coaching",
+        "device": "desktop",
+        "title": "Team Call Intelligence",
+        "nav": ["Dashboard", "Leads", "Call Log", "Automations", "Reports*", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "coach-head", "title": "Counsellor Coaching", "subtitle": "Last 30 days · vs previous 30 days", "actions": ["7d", "30d", "90d"] },
+          { "type": "list", "id": "coach-list", "items": [
+            { "title": "Priya Nair", "sub": "84 calls analyzed · Coach on: next step secured", "right": "8.4 / 10", "chip": "+0.6", "tone": "green" },
+            { "title": "Kabir Singh", "sub": "71 calls analyzed · Coach on: objection handling", "right": "7.1 / 10", "chip": "+0.2", "tone": "green" },
+            { "title": "Sneha Kulkarni", "sub": "63 calls analyzed · Coach on: needs discovery", "right": "6.2 / 10", "chip": "-0.4", "tone": "red" },
+            { "title": "Diya (AI Agent)", "sub": "412 calls analyzed · 38% rated Interested", "right": "7.8 / 10", "chip": "+0.3", "tone": "green" }
+          ]},
+          { "type": "chart", "id": "coach-chart", "kind": "bars", "label": "Top objections this month (mentions)", "values": [46, 38, 27, 19, 11] }
+        ]
+      }
+    ],
+    "steps": [
+      { "screen": "call-log", "target": null, "title": "Every call, one log", "text": "Human and AI, inbound and outbound, across Exotel, Plivo, Airtel IQ or Vacademy's own telephony — the whole team's calling lands in one log, scoped by reporting line so managers see their team and counsellors see their own." },
+      { "screen": "call-log", "target": "log-kpis", "title": "Know the line's pulse instantly", "text": "Headline KPIs for any period — total calls, connect rate, talk time — plus worklist chips like Missed Inbound and Callbacks Due, so promised follow-ups actually happen." },
+      { "screen": "call-log", "target": "log-table", "title": "Filter, replay, export", "text": "Filter by counsellor, disposition, provider or call type, play any recording in-app, and export up to 25,000 rows to CSV or Excel. Phone numbers stay masked unless a staff member holds the view-numbers permission." },
+      { "screen": "live-call", "target": "ai-call", "title": "An AI that phones leads in Hinglish", "text": "New enquiries are dialled within about 60 seconds by Vacademy's AI voice agent, which converses naturally in Hindi, English or mixed Hinglish — and hands the live call to a human counsellor the moment the caller asks." },
+      { "screen": "live-call", "target": "agent-config", "title": "Author your own agent personas", "text": "Each named agent gets its own script, one of 37 Indian voices with pace control, the questions to extract (class, budget, timeline) and a call-length cap. Answers, outcome and a lead rating are written onto the lead record after every call." },
+      { "screen": "ivr", "target": "ivr-tree", "title": "Build phone menus visually", "text": "Design 'Press 1 for admissions' trees to any depth — spoken prompts, forward-to-team, voicemail, even a menu key that hands the caller to your AI agent — with no telecom vendor involved. Attach a menu to a number and it's live." },
+      { "screen": "ivr", "target": "ivr-number", "title": "No inbound enquiry ever lost", "text": "Unknown callers can auto-create a de-duplicated lead by phone number, known callers route back to the counsellor who last spoke to them, and recording plus India-compliance guardrails (DND scrubbing, 9 AM–9 PM window) are enforced per institute." },
+      { "screen": "coaching", "target": "coach-list", "title": "Coach from evidence, not hunches", "text": "Every recording is transcribed (Hindi, English, Hinglish) and AI-scored against your own rubric. Roll-ups show each counsellor's weakest skill and recurring coaching tips, with the actual calls one click away." },
+      { "screen": "coaching", "target": "coach-chart", "title": "See what your market objects to", "text": "Objections, sentiment and conversion likelihood are extracted from thousands of calls, with deltas against the previous period — so managers fix the script, not just the rep. Analysis is credit-metered with an on/off switch." }
+    ]
+  }
+}

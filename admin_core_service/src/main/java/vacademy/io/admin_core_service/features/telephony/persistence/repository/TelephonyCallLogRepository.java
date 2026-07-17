@@ -26,6 +26,12 @@ public interface TelephonyCallLogRepository extends JpaRepository<TelephonyCallL
     @Query("UPDATE TelephonyCallLog t SET t.ivrSelection = :selection WHERE t.id = :id")
     void updateIvrSelection(@Param("id") String id, @Param("selection") String selection);
 
+    /** Stamp a successful voice-minutes charge — guarded so it never un-stamps. */
+    @Modifying
+    @Transactional
+    @Query("UPDATE TelephonyCallLog t SET t.creditsBilledAt = :at WHERE t.id = :id AND t.creditsBilledAt IS NULL")
+    int markCreditsBilled(@Param("id") String id, @Param("at") java.time.Instant at);
+
     /**
      * Dispositioned calls for a batch of lead users — the CSV export's lead
      * journey merges these in, because a counsellor's quick disposition only

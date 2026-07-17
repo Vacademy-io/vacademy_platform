@@ -106,6 +106,7 @@ function EmailCampaigningPage() {
     const [modeSettings, setModeSettings] = useState<Record<ModeType, Record<string, unknown>>>({
         SYSTEM_ALERT: { priority: 'MEDIUM', expiresAt: '' },
         DASHBOARD_PIN: {},
+        APP_OVERLAY: {},
         DM: {},
         STREAM: {},
         RESOURCES: {},
@@ -1200,6 +1201,7 @@ function EmailCampaigningPage() {
                 setModeSettings({
                     SYSTEM_ALERT: { priority: 'MEDIUM', expiresAt: '' },
                     DASHBOARD_PIN: {},
+                    APP_OVERLAY: {},
                     DM: {},
                     STREAM: {},
                     RESOURCES: {},

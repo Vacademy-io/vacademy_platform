@@ -10,7 +10,8 @@ import {
     DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
 import { MyButton } from '@/components/design-system/button';
-import { DotsThree, WarningCircle } from '@phosphor-icons/react';
+import { DotsThree, WarningCircle, Info, Coins } from '@phosphor-icons/react';
+import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
 import { AssessmentRevaluateStudentInterface } from '@/types/assessments/assessment-overview';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { StudentRevaluateQuestionWiseComponent } from './student-revaluate-question-wise-component';
@@ -21,6 +22,7 @@ import {
     getReleaseStudentResult,
     getRevaluateStudentResult,
     handleGetStudentReportExportPDF,
+    provideReattemptToParticipants,
     viewStudentReport,
 } from '../../-services/assessment-details-services';
 import { getPublicUrl } from '@/services/upload_file';
@@ -52,6 +54,32 @@ const ProvideReattemptComponent = ({
     student: AssessmentRevaluateStudentInterface;
     onClose: () => void;
 }) => {
+    const { assessmentId } = Route.useParams();
+    const instituteId = getInstituteId();
+
+    const provideReattemptMutation = useMutation({
+        mutationFn: (registrationId: string) =>
+            provideReattemptToParticipants(assessmentId, instituteId, [registrationId]),
+        onSuccess: () => {
+            toast.success(`Reattempt has been provided to ${student.full_name}.`, {
+                className: 'success-toast',
+                duration: 4000,
+            });
+            onClose();
+        },
+        onError: () => {
+            toast.error('Failed to provide reattempt. Please try again.');
+        },
+    });
+
+    const handleProvideReattempt = () => {
+        if (!student.registration_id) {
+            toast.error('Could not resolve this participant’s registration. Please try again.');
+            return;
+        }
+        provideReattemptMutation.mutate(student.registration_id);
+    };
+
     return (
         <DialogContent className="flex flex-col p-0">
             <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">Provide Reattempt</h1>
@@ -70,9 +98,10 @@ const ProvideReattemptComponent = ({
                         scale="large"
                         buttonType="primary"
                         className="mt-4 font-medium"
-                        onClick={onClose} // Close the dialog when clicked
+                        onClick={handleProvideReattempt}
+                        disabled={provideReattemptMutation.isPending}
                     >
-                        Yes
+                        {provideReattemptMutation.isPending ? 'Providing...' : 'Yes'}
                     </MyButton>
                 </div>
             </div>
@@ -102,13 +131,10 @@ const ReleaseResultComponent = ({
             selectedFilter: SelectedReleaseResultFilterInterface;
         }) => getReleaseStudentResult(assessmentId, instituteId, methodType, selectedFilter),
         onSuccess: () => {
-            toast.success(
-                'Your attempt for this assessment has been revaluated. Please check your email!',
-                {
-                    className: 'success-toast',
-                    duration: 4000,
-                }
-            );
+            toast.success('Result released successfully. The learner has been notified by email.', {
+                className: 'success-toast',
+                duration: 4000,
+            });
             onClose();
         },
         onError: (error: unknown) => {
@@ -221,6 +247,13 @@ const StudentEvaluateWithAIComponent = ({
     const navigate = useNavigate();
     const [selectedModel, setSelectedModel] = useState<string>('google/gemini-3.1-pro-preview');
 
+    // Credit cost preview for this evaluation (per graded question).
+    const numQuestions: number = (assessmentData?.[1]?.saved_data?.sections ?? []).reduce(
+        (sum: number, section: any) => sum + (section?.questions?.length || 0),
+        0
+    );
+    const cost = useToolCostPreview('copy_check_evaluation', { num_questions: numQuestions });
+
     // Trigger AI evaluation mutation
     const triggerEvaluationMutation = useMutation({
         mutationFn: ({
@@ -308,6 +341,45 @@ const StudentEvaluateWithAIComponent = ({
                     </p>
                 </div>
 
+                <div className="flex items-start gap-2 rounded-md bg-primary-50 p-3 text-xs text-primary-700">
+                    <Info size={16} className="mt-0.5 shrink-0" />
+                    <p>
+                        For any question without a rubric, the AI generates grading criteria the
+                        first time and reuses them for every student, so everyone is graded the same
+                        way. Set rubrics on the assessment for full control over how marks are
+                        awarded.
+                    </p>
+                </div>
+
+                {numQuestions > 0 && cost.credits != null && (
+                    <div className="flex items-center justify-between rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                        <div className="flex items-center gap-2 text-sm text-neutral-700">
+                            <Coins size={16} className="text-primary-500" />
+                            <span>
+                                Estimated cost:{' '}
+                                <span className="font-semibold text-neutral-900">
+                                    {cost.credits} credits
+                                </span>
+                            </span>
+                        </div>
+                        {cost.currentBalance != null && (
+                            <span className="text-xs text-neutral-500">
+                                Balance: {cost.currentBalance}
+                            </span>
+                        )}
+                    </div>
+                )}
+
+                {cost.sufficient === false && (
+                    <div className="flex items-start gap-2 rounded-md bg-danger-50 p-3 text-xs text-danger-600">
+                        <WarningCircle size={16} className="mt-0.5 shrink-0" />
+                        <p>
+                            Not enough credits for this evaluation. Add credits to your institute to
+                            continue.
+                        </p>
+                    </div>
+                )}
+
                 <div className="flex justify-end gap-2">
                     <MyButton
                         type="button"
@@ -321,7 +393,7 @@ const StudentEvaluateWithAIComponent = ({
                         type="button"
                         buttonType="primary"
                         onClick={handleEvaluateWithAIStudent}
-                        disabled={triggerEvaluationMutation.isPending}
+                        disabled={triggerEvaluationMutation.isPending || cost.sufficient === false}
                     >
                         {triggerEvaluationMutation.isPending ? 'Starting...' : 'Start'}
                     </MyButton>

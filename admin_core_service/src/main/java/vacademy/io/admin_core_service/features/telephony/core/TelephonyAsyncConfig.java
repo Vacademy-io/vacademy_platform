@@ -77,6 +77,28 @@ public class TelephonyAsyncConfig {
     }
 
     /**
+     * Bounded pool for per-minute call-credit charges (CallBillingService): one DB
+     * rate lookup + one HTTP POST to ai_service per completed call. Bounded so a
+     * webhook storm can't spawn a thread per event (unqualified @Async would fall
+     * back to SimpleAsyncTaskExecutor — thread-per-task — because this app defines
+     * multiple executor beans). Dropping on saturation is SAFE: unbilled rows carry
+     * no credits_billed_at stamp and the reconciliation sweep re-attempts them.
+     */
+    @Bean(name = "callBillingExecutor")
+    public Executor callBillingExecutor() {
+        ThreadPoolTaskExecutor ex = new ThreadPoolTaskExecutor();
+        ex.setCorePoolSize(2);
+        ex.setMaxPoolSize(4);
+        ex.setQueueCapacity(500);
+        ex.setThreadNamePrefix("call-billing-");
+        ex.setRejectedExecutionHandler((task, exec) ->
+                LoggerFactory.getLogger(TelephonyAsyncConfig.class)
+                        .warn("callBillingExecutor saturated — charge deferred to the reconciliation sweep"));
+        ex.initialize();
+        return ex;
+    }
+
+    /**
      * Dedicated pool for AI-call recording copies (fetch + pre-signed PUT). Kept
      * SEPARATE from telephonyRecordingExecutor because the Exotel recording path
      * sleeps a worker thread for up to ~165s between CDN retries — sharing one pool

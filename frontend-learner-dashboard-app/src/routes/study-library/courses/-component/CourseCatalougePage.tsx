@@ -614,12 +614,12 @@ const CourseCatalougePage: React.FC = () => {
                       // Play Styles — solid, bold, Duolingo-style
                       "[.ui-play_&]:rounded-full [.ui-play_&]:font-bold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:text-xs",
                       t.value === "COMPLETED" &&
-                      "[.ui-play_&]:data-[state=active]:!bg-play-success [.ui-play_&]:data-[state=active]:!text-white [.ui-play_&]:data-[state=active]:!shadow-play-3-success",
+                      "[.ui-play_&]:data-[state=active]:!bg-play-success-soft [.ui-play_&]:data-[state=active]:!text-play-success-soft-ink [.ui-play_&]:data-[state=active]:!shadow-none",
                       t.value === "PROGRESS" &&
-                      "[.ui-play_&]:data-[state=active]:!bg-play-info [.ui-play_&]:data-[state=active]:!text-white [.ui-play_&]:data-[state=active]:!shadow-play-3-info",
+                      "[.ui-play_&]:data-[state=active]:!bg-play-info-soft [.ui-play_&]:data-[state=active]:!text-play-info-soft-ink [.ui-play_&]:data-[state=active]:!shadow-none",
                       t.value !== "COMPLETED" &&
                       t.value !== "PROGRESS" &&
-                      "[.ui-play_&]:data-[state=active]:!bg-play-accent [.ui-play_&]:data-[state=active]:!text-white [.ui-play_&]:data-[state=active]:!shadow-play-3-accent"
+                      "[.ui-play_&]:data-[state=active]:!bg-play-accent-soft [.ui-play_&]:data-[state=active]:!text-play-accent-soft-ink [.ui-play_&]:data-[state=active]:!shadow-none"
                     )}
                   >
                     <span className="inline-flex items-center gap-1.5">

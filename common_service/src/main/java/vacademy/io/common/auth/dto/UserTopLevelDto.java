@@ -28,6 +28,8 @@ public class UserTopLevelDto {
     private String gender;
     private boolean isRootUser;
     private String profilePicFileId;
+    // BCP-47 language tag (serialized as preferred_locale); null = no preference
+    private String preferredLocale;
     private List<UserRoleDTO> roles;
     private List<String> deleteUserRoleRequest;
     private List<String> addUserRoleRequest;

@@ -58,6 +58,17 @@ public class AiQuestionEvaluation {
         @Column(name = "rubric_version")
         private Integer rubricVersion;
 
+        // Teacher-override provenance (Phase 1 review gate). is_edited=true means a
+        // human adjusted this verdict; a late/retried AI callback must not clobber it.
+        @Column(name = "is_edited")
+        private Boolean isEdited;
+
+        @Column(name = "edited_by")
+        private String editedBy;
+
+        @Column(name = "edited_at")
+        private Date editedAt;
+
         // Timestamps
         @Column(name = "started_at")
         private Date startedAt;

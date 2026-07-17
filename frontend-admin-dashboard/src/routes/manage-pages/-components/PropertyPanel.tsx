@@ -1,4 +1,5 @@
 import { useEditorStore } from '../-stores/editor-store';
+import { CATALOGUE_FONTS } from '../-utils/catalogue-fonts';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -763,18 +764,32 @@ const GlobalSettingsEditor = ({
                 </div>
                 {gs.fonts?.enabled && (
                     <div className="space-y-2">
-                        <Label className="text-xs">Font Family</Label>
+                        <Label className="text-xs">Body Font</Label>
                         <select
                             className="w-full rounded border px-3 py-1.5 text-sm"
                             value={gs.fonts?.family || 'Inter, sans-serif'}
                             onChange={(e) => updateField('fonts.family', e.target.value)}
                         >
-                            <option value="Inter, sans-serif">Inter</option>
-                            <option value="Roboto, sans-serif">Roboto</option>
-                            <option value="Mulish, sans-serif">Mulish</option>
-                            <option value="Outfit, sans-serif">Outfit</option>
-                            <option value="Poppins, sans-serif">Poppins</option>
+                            {CATALOGUE_FONTS.map((f) => (
+                                <option key={f.label} value={f.stack}>{f.label}</option>
+                            ))}
                         </select>
+                        <Label className="text-xs">Heading Font</Label>
+                        <select
+                            className="w-full rounded border px-3 py-1.5 text-sm"
+                            value={gs.fonts?.headingFamily || ''}
+                            onChange={(e) => updateField('fonts.headingFamily', e.target.value || undefined)}
+                        >
+                            <option value="">Same as body</option>
+                            {CATALOGUE_FONTS.map((f) => (
+                                <option key={f.label} value={f.stack}>
+                                    {f.label}{f.serif ? ' (serif)' : ''}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="text-caption text-gray-400">
+                            Pair a serif heading with a sans body for an editorial, premium feel.
+                        </p>
                     </div>
                 )}
             </div>
@@ -3260,7 +3275,7 @@ const ImageGalleryEditor = ({ component, pageId, updateComponent }: any) => {
                             <span className="text-xs font-medium">Image {i + 1}</span>
                             <Button size="sm" variant="ghost" onClick={() => deleteImage(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
                         </div>
-                        <ImageUploadField label="Image" value={img.src || ''} onChange={(url) => updateImage(i, 'src', url)} />
+                        <ImageUploadField label="Image" value={img.src || ''} onChange={(url) => updateImage(i, 'src', url)} aiKind="photo" />
                         <Input placeholder="Alt text" value={img.alt || ''} onChange={(e) => updateImage(i, 'alt', e.target.value)} />
                         {props.showCaptions && <Input placeholder="Caption" value={img.caption || ''} onChange={(e) => updateImage(i, 'caption', e.target.value)} />}
                     </div>
@@ -3646,7 +3661,7 @@ const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
                                 <span className="text-xs font-medium">Logo {i + 1}</span>
                                 <Button variant="ghost" size="sm" onClick={() => deleteLogo(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
                             </div>
-                            <ImageUploadField label="Image" value={logo.image || ''} onChange={(url) => updateLogo(i, 'image', url)} />
+                            <ImageUploadField label="Image" value={logo.image || ''} onChange={(url) => updateLogo(i, 'image', url)} aiKind="logo" />
                             <Input placeholder="Alt text" value={logo.alt || ''} onChange={(e) => updateLogo(i, 'alt', e.target.value)} />
                             <Input placeholder="Label (company name, shown in labeled modes)" value={logo.label || ''} onChange={(e) => updateLogo(i, 'label', e.target.value)} />
                             <Input placeholder="Link URL (optional)" value={logo.url || ''} onChange={(e) => updateLogo(i, 'url', e.target.value)} />
@@ -3926,7 +3941,7 @@ const ImageBlockEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <ImageUploadField label="Image" value={props.src || ''} onChange={(url) => updateProp('src', url)} />
+            <ImageUploadField label="Image" value={props.src || ''} onChange={(url) => updateProp('src', url)} aiKind="image" />
             <Input value={props.alt || ''} onChange={(e) => updateProp('alt', e.target.value)} placeholder="Alt text" />
             <Input value={props.caption || ''} onChange={(e) => updateProp('caption', e.target.value)} placeholder="Caption (optional)" />
             <LinkPicker

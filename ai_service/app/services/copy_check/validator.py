@@ -35,7 +35,20 @@ def validate_and_cap(
     question: dict[str, Any],
     layout_map: dict[str, Any],
 ) -> dict[str, Any]:
-    max_marks = float(question.get("max_marks") or 10)
+    # Do NOT silently grade against a fictitious denominator. This used to
+    # default to 10 whenever max_marks was missing, which quietly misgraded
+    # every student of a mis-configured question. A question with no valid max
+    # is a configuration problem: raise so the orchestrator routes it to manual
+    # review instead of releasing a wrong mark.
+    try:
+        max_marks = float(question.get("max_marks"))
+    except (TypeError, ValueError):
+        max_marks = 0.0
+    if max_marks <= 0:
+        raise ValueError(
+            f"question {question.get('question_id')} has no valid max_marks "
+            f"({question.get('max_marks')!r})"
+        )
 
     marks_awarded = float(raw.get("marks_awarded") or 0)
     breakdown_raw = raw.get("criteria_breakdown") or []
@@ -46,6 +59,16 @@ def validate_and_cap(
             "marks": float(item.get("marks") or 0),
             "reason": str(item.get("reason") or ""),
         })
+
+    # Clamp to [0, max]. LLMs occasionally emit negative marks; floor them.
+    if marks_awarded < 0:
+        logger.warning(
+            "Q%s: LLM awarded negative %.2f — flooring to 0",
+            question["question_id"], marks_awarded,
+        )
+        marks_awarded = 0.0
+        for it in breakdown:
+            it["marks"] = 0.0
 
     # Cap + proportionally scale breakdown if total exceeds max_marks.
     if marks_awarded > max_marks:
@@ -58,6 +81,19 @@ def validate_and_cap(
             for it in breakdown:
                 it["marks"] = round(it["marks"] * factor, 2)
         marks_awarded = max_marks
+    else:
+        # Under max, reconcile a breakdown that doesn't add up to the awarded
+        # total so the teacher isn't shown per-criterion marks that contradict
+        # the headline mark. marks_awarded stays authoritative (it feeds totals).
+        bsum = round(sum(it["marks"] for it in breakdown), 2)
+        if breakdown and bsum > 0 and abs(bsum - marks_awarded) > 0.01:
+            logger.info(
+                "Q%s: breakdown sum %.2f != awarded %.2f — rescaling breakdown",
+                question["question_id"], bsum, marks_awarded,
+            )
+            factor = marks_awarded / bsum
+            for it in breakdown:
+                it["marks"] = round(it["marks"] * factor, 2)
 
     # Filter annotations to those whose target actually exists in the layout.
     idx = _layout_target_index(layout_map)

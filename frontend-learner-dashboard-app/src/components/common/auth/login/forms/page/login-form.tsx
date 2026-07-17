@@ -31,6 +31,7 @@ import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { usePublicDoubtConfig } from "@/services/public-doubt-config";
 import { GuestQueryDialog } from "@/components/common/queries/GuestQueryDialog";
 import { AuthPageBranding } from "@/components/common/institute-branding";
+import { LanguageDropdown } from "@/components/common/localization/language-dropdown";
 import { identifyUser } from "@/lib/analytics";
 import { useEffect as useEffectTheme } from "react";
 import {
@@ -982,6 +983,11 @@ export function LoginForm({
     >
       {/* Subtle Background Pattern (gradients removed) */}
       <div className="absolute inset-0 -z-10" />
+
+      {/* Language switcher — full-page login only (not the embedded variant).
+          Options come from the institute's enabled locales; defaults to just
+          English until an institute enables more. */}
+      {!type && <LanguageDropdown />}
 
       {/* Centered container */}
       <div className="w-full min-h-screen-60 flex items-center justify-center p-4">

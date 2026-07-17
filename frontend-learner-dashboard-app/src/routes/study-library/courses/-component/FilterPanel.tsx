@@ -55,7 +55,7 @@ const FilterList: React.FC<FilterListProps> = ({
                             title={item.name}
                             className={cn(
                                 "text-sm cursor-pointer leading-none truncate peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
-                                selectedItems.includes(item.id) ? "font-medium text-primary [.ui-vibrant_&]:font-semibold [.ui-play_&]:font-extrabold [.ui-play_&]:text-play-success" : "font-normal [.ui-play_&]:font-bold"
+                                selectedItems.includes(item.id) ? "font-medium text-primary [.ui-vibrant_&]:font-semibold [.ui-play_&]:font-extrabold [.ui-play_&]:text-play-success-soft-ink" : "font-normal [.ui-play_&]:font-bold"
                             )}
                         >
                             {item.name}
@@ -174,7 +174,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
             "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
             "[.ui-vibrant_&]:shadow-md",
             // Play Styles — deep navy panel with soft layered shadow
-            "[.ui-play_&]:bg-play-navy [.ui-play_&]:rounded-2xl [.ui-play_&]:text-white [.ui-play_&]:border-transparent",
+            "[.ui-play_&]:bg-play-navy-soft [.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border-border",
             "[.ui-play_&]:shadow-play-glow-navy"
         )}>
             {/* Desktop Header */}
@@ -187,8 +187,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                 "[.ui-play_&]:border-white/20"
             )}>
                 <div className="flex items-center gap-2">
-                    <Funnel size={18} className={cn("text-muted-foreground", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-play-gold")} />
-                    <h2 className={cn("text-lg font-semibold", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide")}>Filters</h2>
+                    <Funnel size={18} className={cn("text-muted-foreground", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-play-navy-soft-ink")} />
+                    <h2 className={cn("text-lg font-semibold", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:font-extrabold")}>Filters</h2>
                 </div>
                 <div className="flex items-center gap-1">
                     {hasActiveFilters && (
@@ -330,8 +330,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                 "[.ui-vibrant_&]:shadow-sm",
                                 "[.ui-vibrant_&]:bg-primary-50/50 dark:[.ui-vibrant_&]:bg-primary-500/10",
                                 // Play Styles — bright green CTA with soft colored glow
-                                "[.ui-play_&]:bg-play-success [.ui-play_&]:text-white [.ui-play_&]:border-transparent [.ui-play_&]:rounded-full [.ui-play_&]:font-bold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide",
-                                "[.ui-play_&]:shadow-play-glow-success-sm [.ui-play_&]:hover:bg-play-success-deep [.ui-play_&]:hover:shadow-play-glow-success"
+                                "[.ui-play_&]:bg-play-success-soft [.ui-play_&]:text-play-success-soft-ink [.ui-play_&]:border-transparent [.ui-play_&]:rounded-full [.ui-play_&]:font-bold",
+                                "[.ui-play_&]:hover:bg-play-success-soft"
                             )}
                         >
                             <div className="flex items-center gap-2">

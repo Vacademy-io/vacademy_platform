@@ -14,6 +14,7 @@ import {
     type CustomRole,
 } from '@/routes/manage-custom-teams/-services/custom-team-services';
 import {
+    ASSISTANT_ROLE_PRESETS,
     ASSISTANT_TOOL_CATALOG,
     ASSISTANT_TOOLS_SETTING_KEY,
     NON_LEARNER_SYSTEM_ROLES,
@@ -126,6 +127,22 @@ export default function AssistantToolsSettings() {
     const isToolEnabledForRole = (role: string, key: string) =>
         settings.role_overrides[role]?.enabled_tools.includes(key) ?? false;
 
+    /** One-click preset: grant the given tool groups to a role (additive). */
+    const applyPreset = (role: string, tools: string[]) => {
+        setSettings((prev) => {
+            const current = prev.role_overrides[role]?.enabled_tools ?? [];
+            return {
+                ...prev,
+                role_overrides: {
+                    ...prev.role_overrides,
+                    [role]: { enabled_tools: Array.from(new Set([...current, ...tools])) },
+                },
+            };
+        });
+        setHasChanges(true);
+        toast.info('Preset applied — click Save settings to confirm.');
+    };
+
     const toggleToolForRole = (role: string, key: string, on: boolean) => {
         setSettings((prev) => {
             const current = prev.role_overrides[role]?.enabled_tools ?? [];
@@ -200,6 +217,21 @@ export default function AssistantToolsSettings() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-2 rounded-lg bg-neutral-50 p-3">
+                        <span className="text-caption font-medium text-neutral-600">
+                            Suggested presets:
+                        </span>
+                        {ASSISTANT_ROLE_PRESETS.map((preset) => (
+                            <MyButton
+                                key={preset.role}
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={() => applyPreset(preset.role, preset.tools)}
+                            >
+                                {preset.label}
+                            </MyButton>
+                        ))}
+                    </div>
                     {roleNames.map((role) => {
                         const customized = isRoleCustomized(role);
                         return (

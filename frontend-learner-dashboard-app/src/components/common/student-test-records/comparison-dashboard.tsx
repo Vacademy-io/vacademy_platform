@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PdfDownloadButton } from "./pdf-download-button";
 import { EvaluatedReportDialog } from "./evaluated-report-dialog";
+import { AnnotatedCopyDialog } from "./annotated-copy-dialog";
 import { MarksDistributionChart } from "./marks-distribution-chart";
 import { SectionComparisonTable } from "./section-comparison-table";
 import { MarksStatusIndicator } from "./marks-chip";
@@ -50,6 +51,7 @@ import {
   DownloadSimple,
   Eye,
   FileArrowDown,
+  Sparkle,
 } from "@phosphor-icons/react";
 import { formatDateTime, formatTime } from "@/lib/format-date";
 import { EmptyState } from "@/components/design-system/states";
@@ -67,13 +69,13 @@ function getVerdict(pct: number): {
     return {
       label: "Excellent",
       className:
-        "border-success-200 bg-success-50 text-success-700 [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-success [.ui-play_&]:font-black [.ui-play_&]:text-white",
+        "border-success-200 bg-success-50 text-success-700 [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-success-soft [.ui-play_&]:font-black [.ui-play_&]:text-play-success-soft-ink",
     };
   if (pct >= 60)
     return {
       label: "Good",
       className:
-        "border-success-200 bg-success-50 text-success-700 [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-success [.ui-play_&]:font-black [.ui-play_&]:text-white",
+        "border-success-200 bg-success-50 text-success-700 [.ui-play_&]:border-transparent [.ui-play_&]:bg-play-success-soft [.ui-play_&]:font-black [.ui-play_&]:text-play-success-soft-ink",
     };
   if (pct >= 50)
     return {
@@ -236,6 +238,7 @@ export function ComparisonDashboard({
       setDownloadingReport(false);
     }
   };
+  const [annotatedOpen, setAnnotatedOpen] = useState(false);
   const [answerReviewOpen, setAnswerReviewOpen] = useState(false);
   const [answerReviewLoading, setAnswerReviewLoading] = useState(false);
   const [reportDetail, setReportDetail] = useState<any>(null);
@@ -405,6 +408,12 @@ export function ComparisonDashboard({
                 <FileArrowDown className="mr-2 h-4 w-4" />
                 View submitted
               </DropdownMenuItem>
+              {reportFiles.submitted && (
+                <DropdownMenuItem onClick={() => setAnnotatedOpen(true)}>
+                  <Sparkle className="mr-2 h-4 w-4" />
+                  View annotated copy
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
@@ -422,7 +431,7 @@ export function ComparisonDashboard({
           primary-50 wash + top rail. Default rendering is unchanged. */}
       <Card
         className={cn(
-          "[.ui-play_&]:rounded-play-card [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:bg-play-highlight",
+          "[.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:bg-play-gold-soft",
           "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-vibrant_&]:bg-primary-50"
         )}
       >
@@ -628,8 +637,9 @@ export function ComparisonDashboard({
         </Card>
       )}
 
-      {/* Answer Review — lazy loaded; hidden for MANUAL assessments (no responses) */}
-      {isManual ? null : !answerReviewOpen ? (
+      {/* Answer Review — lazy loaded. Shown for MANUAL attempts too so learners
+          see their per-question marks, AI/teacher feedback and criteria. */}
+      {!answerReviewOpen ? (
         <Card>
           <CardContent className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
@@ -751,6 +761,74 @@ export function ComparisonDashboard({
                         </div>
                       )}
 
+                      {/* Feedback + grading breakdown (AI evaluation / teacher remark) */}
+                      {(review.evaluator_feedback || review.ai_feedback || review.ai_criteria_breakdown) && (
+                        <div className="space-y-3 pt-2 border-t border-slate-100">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-slate-700">Feedback</span>
+                            {(review.evaluation_source === "AI" ||
+                              review.evaluation_source === "AI_REVIEWED") && (
+                              <Badge variant="secondary" className="text-xs gap-1">
+                                <Sparkle size={12} weight="fill" />
+                                {review.evaluation_source === "AI_REVIEWED"
+                                  ? "AI-assisted, teacher-reviewed"
+                                  : "AI-assisted"}
+                              </Badge>
+                            )}
+                          </div>
+                          {(review.evaluator_feedback || review.ai_feedback) && (
+                            <Alert className="border-l-4 border-l-violet-500 bg-violet-50/50 border-violet-200">
+                              <AlertDescription className="text-sm text-slate-700 whitespace-pre-line">
+                                {review.evaluator_feedback || review.ai_feedback}
+                              </AlertDescription>
+                            </Alert>
+                          )}
+                          {(() => {
+                            let criteria: any[] = [];
+                            try {
+                              criteria = review.ai_criteria_breakdown
+                                ? JSON.parse(review.ai_criteria_breakdown)
+                                : [];
+                            } catch {
+                              criteria = [];
+                            }
+                            if (!Array.isArray(criteria) || criteria.length === 0) return null;
+                            return (
+                              <div className="rounded-md border border-slate-200 overflow-hidden">
+                                <table className="w-full text-sm">
+                                  <thead className="bg-slate-50">
+                                    <tr>
+                                      <th className="text-left p-2 text-xs font-semibold text-slate-600 uppercase">
+                                        Criteria
+                                      </th>
+                                      <th className="text-left p-2 text-xs font-semibold text-slate-600 uppercase">
+                                        Reason
+                                      </th>
+                                      <th className="text-right p-2 text-xs font-semibold text-slate-600 uppercase">
+                                        Marks
+                                      </th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100">
+                                    {criteria.map((c: any, i: number) => (
+                                      <tr key={i}>
+                                        <td className="p-2 font-medium text-slate-800">
+                                          {c.criteria_name}
+                                        </td>
+                                        <td className="p-2 text-slate-600">{c.reason}</td>
+                                        <td className="p-2 text-right font-semibold text-slate-800">
+                                          {typeof c.marks === "number" ? c.marks.toFixed(1) : c.marks}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+
                       {/* Option Distribution */}
                       {optionDistribution && review.question_id && optionDistribution[review.question_id] &&
                         ["MCQS", "MCQM", "TRUE_FALSE"].includes(review.question_type) && (
@@ -826,6 +904,14 @@ export function ComparisonDashboard({
         fileType={viewerFileType}
         remark={viewerRemark}
         title={viewerTitle}
+      />
+
+      <AnnotatedCopyDialog
+        open={annotatedOpen}
+        onOpenChange={setAnnotatedOpen}
+        assessmentId={assessmentId}
+        attemptId={attemptId}
+        submittedFileId={reportFiles.submitted}
       />
     </div>
   );

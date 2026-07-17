@@ -1,0 +1,55 @@
+{
+    "login": {
+        "heading": "आपका वापस आना हमारे लिए खुशी की बात है!",
+        "subheading": "लॉगिन करें और जिम्मेदारी संभालें - आपके प्रशासनिक उपकरण आपकी प्रतीक्षा कर रहे हैं!",
+        "emailPlaceholder": "you@email.com",
+        "passwordPlaceholder": "पासवर्ड",
+        "forgotPasswordLink": "पासवर्ड भूल गए?",
+        "loginButton": "लॉगिन करें",
+        "forgotPasswordHeading": "पासवर्ड भूल गए",
+        "forgotPasswordSubheading": "अपना ईमेल दर्ज करें, हम आपका पासवर्ड आपके इनबॉक्स में भेज देंगे",
+        "forgotPasswordEmailPlaceholder": "you@email.com",
+        "forgotPasswordButton": "रीसेट लिंक भेजें",
+        "forgotPasswordBottomText": "पासवर्ड याद आ गया?",
+        "setPasswordHeading": "नया पासवर्ड सेट करें",
+        "setPasswordSubheading": "नए पासवर्ड से अपना खाता सुरक्षित करें",
+        "setPasswordNewPlaceholder": "नया पासवर्ड",
+        "setPasswordConfirmPlaceholder": "नए पासवर्ड की पुष्टि करें",
+        "setPasswordButton": "पासवर्ड रीसेट करें",
+        "setPasswordBottomText": "लॉगिन पर वापस जाएँ?"
+    },
+    "actions": {
+        "save": "सहेजें",
+        "cancel": "रद्द करें",
+        "delete": "हटाएँ"
+    },
+    "table": {
+        "noResults": "कोई परिणाम नहीं मिला"
+    },
+    "common": {
+        "loading": "लोड हो रहा है..."
+    },
+    "settings": {
+        "language": {
+            "title": "भाषा",
+            "description": "चुनें कि इस संस्थान का पोर्टल कौन-सी भाषाएँ प्रदान करता है और सामग्री का स्थानीयकरण कैसे होता है।",
+            "defaultLabel": "डिफ़ॉल्ट भाषा",
+            "defaultHelp": "वह भाषा जो उपयोगकर्ताओं को स्वयं भाषा चुनने से पहले दिखाई देती है।",
+            "enabledLabel": "सक्षम भाषाएँ",
+            "enabledHelp": "वे भाषाएँ जिनमें उपयोगकर्ता स्विच कर सकते हैं। डिफ़ॉल्ट भाषा हमेशा शामिल रहती है।",
+            "enabledPlaceholder": "भाषाएँ चुनें",
+            "enabledRequired": "कम से कम एक भाषा सक्षम करें",
+            "contentSourceLabel": "सामग्री की स्रोत भाषा",
+            "contentSourceHelp": "वह भाषा जिसमें आपकी सामग्री मूल रूप से लिखी गई है।",
+            "timezoneLabel": "संस्थान का समय क्षेत्र",
+            "timezoneHelp": "पोर्टल में दिनांक और समय दिखाने के लिए उपयोग होता है।",
+            "timezonePlaceholder": "समय क्षेत्र चुनें",
+            "selectPlaceholder": "भाषा चुनें",
+            "loading": "भाषा सेटिंग्स लोड हो रही हैं…",
+            "save": "भाषा सेटिंग्स सहेजें",
+            "saving": "सहेजा जा रहा है…",
+            "saved": "भाषा सेटिंग्स सहेज ली गईं",
+            "saveFailed": "भाषा सेटिंग्स सहेजने में विफल"
+        }
+    }
+}

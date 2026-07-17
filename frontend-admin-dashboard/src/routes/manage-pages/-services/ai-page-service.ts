@@ -4,6 +4,8 @@ import {
     AI_PAGE_BUILDER_ESTIMATE,
     AI_PAGE_BUILDER_EDIT,
     AI_PAGE_BUILDER_BRAND_KIT,
+    AI_PAGE_BUILDER_IMAGE,
+    AI_PAGE_BUILDER_SITE,
 } from '@/constants/urls';
 import { CatalogueConfig, Component, Page } from '../-types/editor-types';
 import { CATALOGUE_FONTS } from '../-utils/catalogue-fonts';
@@ -28,9 +30,12 @@ export interface GeneratePagePayload {
     route_slug?: string;
     institute_name?: string;
     images?: AiPageImage[];
+    inspiration_image_urls?: string[];
+    source_url?: string;
     courses?: AiCourseSnapshotItem[];
     terminology?: Record<string, string>;
     direction?: string;
+    auto_images?: boolean;
     run_id?: string;
 }
 
@@ -43,6 +48,8 @@ export interface GeneratedPage {
 
 export interface GeneratePageResponse {
     page: GeneratedPage;
+    /** A matching site theme the composer chose — apply for a premium render. */
+    global_settings?: Record<string, any> | null;
     run_id: string;
     model: string;
     warnings: string[];
@@ -121,6 +128,7 @@ export interface BrandKit {
     borderRadius: string;
     motion: string;
     fontFamily: string;
+    headingFontFamily?: string;
     rationale: string;
 }
 
@@ -129,6 +137,51 @@ export interface BrandKitResponse {
     run_id: string;
     model: string;
 }
+
+/* ─── Image / logo generation ──────────────────────────────────────────── */
+
+export type AiImageKind = 'logo' | 'hero' | 'banner' | 'illustration' | 'photo' | 'image';
+
+export interface GenerateSitePayload {
+    brief: string;
+    page_types?: string[];
+    institute_name?: string;
+    images?: AiPageImage[];
+    courses?: AiCourseSnapshotItem[];
+    terminology?: Record<string, string>;
+    source_url?: string;
+    auto_images?: boolean;
+}
+
+export interface GenerateSiteResponse {
+    pages: { page_type: string; page: GeneratedPage }[];
+    global_settings?: Record<string, any> | null;
+    model: string;
+    warnings: string[];
+}
+
+export const generateAiSite = async (payload: GenerateSitePayload): Promise<GenerateSiteResponse> => {
+    const response = await authenticatedAxiosInstance.post<GenerateSiteResponse>(
+        AI_PAGE_BUILDER_SITE(),
+        payload,
+        { timeout: 600000 } // several pages, one large LLM call each
+    );
+    return response.data;
+};
+
+export const generateAiImage = async (payload: {
+    prompt: string;
+    kind?: AiImageKind;
+    aspect_ratio?: string;
+    count?: number;
+}): Promise<{ urls: string[]; model: string }> => {
+    const response = await authenticatedAxiosInstance.post<{ urls: string[]; model: string }>(
+        AI_PAGE_BUILDER_IMAGE(),
+        payload,
+        { timeout: 150000 } // image gen can take a while
+    );
+    return response.data;
+};
 
 export const deriveBrandKit = async (payload: {
     institute_name?: string;
@@ -146,8 +199,14 @@ export const deriveBrandKit = async (payload: {
 /** Maps a BrandKit into the globalSettings patch the renderers consume
  *  (theme.preset + atmosphere + radius + heading scale, motion, font stack). */
 export const brandKitToGlobalPatch = (kit: BrandKit): Record<string, any> => {
-    const fontStack =
+    const bodyStack =
         CATALOGUE_FONTS.find((f) => f.label === kit.fontFamily)?.stack || 'Inter, sans-serif';
+    const headStack = kit.headingFontFamily
+        ? CATALOGUE_FONTS.find((f) => f.label === kit.headingFontFamily)?.stack
+        : undefined;
+    const fonts: Record<string, any> = { enabled: true, family: bodyStack };
+    // Only a genuinely different heading font is worth storing.
+    if (headStack && headStack !== bodyStack) fonts.headingFamily = headStack;
     return {
         theme: {
             preset: kit.themePreset,
@@ -156,7 +215,7 @@ export const brandKitToGlobalPatch = (kit: BrandKit): Record<string, any> => {
             borderRadius: kit.borderRadius,
         },
         motion: { personality: kit.motion },
-        fonts: { enabled: true, family: fontStack },
+        fonts,
     };
 };
 

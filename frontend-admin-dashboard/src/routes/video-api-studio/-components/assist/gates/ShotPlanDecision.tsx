@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 import { Check, Sparkle, FilmSlate } from '@phosphor-icons/react';
 import type {
     DecisionAnswer,
@@ -34,6 +36,12 @@ const BACKGROUNDS = ['brand_solid', 'brand_textured', 'brand_gradient', 'media_h
 const selectCls =
     'h-8 rounded-md border bg-background px-2 text-xs text-foreground outline-none focus:border-violet-500';
 
+const sceneChipCls =
+    'inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground';
+
+/** True when this row is an acted (lip-synced dialogue) scene. */
+const isActedScene = (r: Row) => (r.shot_type ?? '').toUpperCase() === 'DIALOGUE_SCENE';
+
 /**
  * Shot-plan gate — an editable table of the drafted shots. The user can tweak
  * each shot's type, duration, and brief, then approve; or let the AI keep its
@@ -56,6 +64,24 @@ export function ShotPlanDecision({ decision, isSubmitting, onSubmit }: ShotPlanD
         setDirty(true);
     };
 
+    const updateDialogueLine = (rowIdx: number, lineIdx: number, line: string) => {
+        setRows((prev) =>
+            prev.map((r, i) =>
+                i === rowIdx
+                    ? {
+                          ...r,
+                          dialogue: (r.dialogue ?? []).map((d, di) =>
+                              di === lineIdx ? { ...d, line } : d
+                          ),
+                      }
+                    : r
+            )
+        );
+        setDirty(true);
+    };
+
+    const actedCount = rows.filter(isActedScene).length;
+
     const approve = () => {
         if (dirty) {
             onSubmit({ kind: 'edit', gate_type: 'shot_plan', shots: rows });
@@ -73,6 +99,16 @@ export function ShotPlanDecision({ decision, isSubmitting, onSubmit }: ShotPlanD
                 <div className="text-sm font-semibold text-foreground">
                     {rows.length}-shot plan
                 </div>
+                <span
+                    className={cn(
+                        'ml-auto text-xs',
+                        actedCount === 0
+                            ? 'font-medium text-amber-600'
+                            : 'text-muted-foreground'
+                    )}
+                >
+                    {actedCount} acted scene{actedCount === 1 ? '' : 's'}
+                </span>
             </div>
 
             <div className="max-h-96 divide-y overflow-y-auto">
@@ -140,6 +176,84 @@ export function ShotPlanDecision({ decision, isSubmitting, onSubmit }: ShotPlanD
                                     ))}
                                 </select>
                             </div>
+                            {isActedScene(r) && (
+                                <div className="space-y-2 rounded-lg border border-violet-200 bg-violet-50/50 p-2.5 dark:border-violet-900/40 dark:bg-violet-900/10">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
+                                            <FilmSlate weight="fill" className="size-3" />
+                                            Acted scene
+                                        </span>
+                                        {(r.character_names ?? []).map((name) => (
+                                            <span
+                                                key={name}
+                                                className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground"
+                                            >
+                                                {name}
+                                            </span>
+                                        ))}
+                                    </div>
+                                    {(r.dialogue ?? []).length > 0 && (
+                                        <div className="space-y-1.5">
+                                            {(r.dialogue ?? []).map((d, di) => (
+                                                <div
+                                                    key={di}
+                                                    className="flex items-start gap-2"
+                                                >
+                                                    <span className="mt-1.5 shrink-0 text-xs font-medium text-foreground">
+                                                        {d.character}:
+                                                    </span>
+                                                    <Textarea
+                                                        value={d.line}
+                                                        disabled={isSubmitting}
+                                                        onChange={(e) =>
+                                                            updateDialogueLine(
+                                                                i,
+                                                                di,
+                                                                e.target.value
+                                                            )
+                                                        }
+                                                        className="min-h-9 flex-1 text-xs"
+                                                        aria-label={`Line for ${d.character}`}
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {r.scene_description ? (
+                                        <p className="text-xs text-muted-foreground">
+                                            {r.scene_description}
+                                        </p>
+                                    ) : null}
+                                    {r.action_description ? (
+                                        <p className="text-xs italic text-muted-foreground">
+                                            {r.action_description}
+                                        </p>
+                                    ) : null}
+                                    {(r.scene_continuity ||
+                                        r.time_of_day ||
+                                        r.emotional_beat) && (
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {r.scene_continuity && (
+                                                <span className={sceneChipCls}>
+                                                    {r.scene_continuity === 'continuous'
+                                                        ? 'continues previous scene'
+                                                        : 'new scene'}
+                                                </span>
+                                            )}
+                                            {r.time_of_day && (
+                                                <span className={sceneChipCls}>
+                                                    {r.time_of_day}
+                                                </span>
+                                            )}
+                                            {r.emotional_beat && (
+                                                <span className={sceneChipCls}>
+                                                    {r.emotional_beat}
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 ))}

@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.audience.job;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -44,6 +45,7 @@ public class MetaConnectorMonitorJob {
     private boolean enabled;
 
     @Scheduled(cron = "${meta.connector.monitor.cron:0 30 2 * * ?}")
+    @SchedulerLock(name = "MetaConnectorMonitorJob", lockAtMostFor = "PT30M", lockAtLeastFor = "PT1M")
     public void monitorMetaConnectors() {
         if (!enabled) {
             log.info("MetaConnectorMonitorJob: disabled, skipping");

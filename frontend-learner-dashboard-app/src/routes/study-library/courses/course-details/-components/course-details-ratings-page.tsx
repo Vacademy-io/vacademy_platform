@@ -442,7 +442,7 @@ export function CourseDetailsRatingsComponent({
             "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:shadow-md",
             // Play Styles — quiet white rail card (one rail language)
             "[.ui-play_&]:bg-white [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface",
-            "[.ui-play_&]:rounded-play-card [.ui-play_&]:text-play-ink",
+            "[.ui-play_&]:rounded-play-card-sm [.ui-play_&]:text-play-ink",
             "[.ui-play_&]:shadow-none [.ui-play_&]:hover:shadow-none"
         )}>
             {/* Background gradient overlay */}
@@ -467,7 +467,7 @@ export function CourseDetailsRatingsComponent({
                     <div className={cn(
                         "p-1 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-md shadow-sm",
                         // Play Styles
-                        "[.ui-play_&]:bg-play-gold [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-play-2d-gold"
+                        "[.ui-play_&]:bg-play-gold-soft [.ui-play_&]:rounded-xl"
                     )}>
                         <Star
                             size={14}
@@ -594,8 +594,8 @@ export function CourseDetailsRatingsComponent({
                             "[.ui-vibrant_&]:bg-none [.ui-vibrant_&]:bg-primary-50/50 dark:[.ui-vibrant_&]:bg-primary-500/10",
                             "[.ui-vibrant_&]:border-primary-100 dark:[.ui-vibrant_&]:border-primary-500/30",
                             // Play Styles — solid, bold, Duolingo-style
-                            "[.ui-play_&]:bg-play-gold [.ui-play_&]:border-play-gold-deep [.ui-play_&]:rounded-2xl [.ui-play_&]:text-play-ink [.ui-play_&]:font-bold",
-                            "[.ui-play_&]:shadow-play-3d-gold"
+                            "[.ui-play_&]:bg-play-gold-soft [.ui-play_&]:border-border [.ui-play_&]:rounded-play-card-sm [.ui-play_&]:text-play-ink [.ui-play_&]:font-bold",
+                            "[.ui-play_&]:shadow-play-soft-card"
                         )}>
                             {/* Background pattern */}
                             <div className={cn(

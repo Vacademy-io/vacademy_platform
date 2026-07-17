@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -612,6 +613,7 @@ public class UserLeadProfileService {
      * Catches up with any changes missed by real-time updates (e.g. percentile recalcs).
      */
     @Scheduled(fixedRate = 30 * 60 * 1000)
+    @SchedulerLock(name = "UserLeadProfileService_batchRebuildProfiles", lockAtMostFor = "PT29M", lockAtLeastFor = "PT1M")
     public void batchRebuildProfiles() {
         log.info("Starting batch user_lead_profile rebuild...");
 

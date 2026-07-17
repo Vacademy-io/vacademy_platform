@@ -22,6 +22,7 @@ import {
   FieldRenderType,
   parseFieldConfig,
   parseDropdownOptions,
+  isUnrestrictedFileTypes,
   type CustomFieldFullConfig,
 } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 
@@ -94,10 +95,10 @@ export const CustomFieldRenderer = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (allowedFileTypes && allowedFileTypes.length > 0) {
+    if (!isUnrestrictedFileTypes(allowedFileTypes)) {
       const ext = file.name.split(".").pop()?.toLowerCase() || "";
-      if (!allowedFileTypes.some((t) => t.toLowerCase() === ext)) {
-        alert(`File type .${ext} is not allowed. Allowed: ${allowedFileTypes.join(", ")}`);
+      if (!allowedFileTypes!.some((t) => t.toLowerCase() === ext)) {
+        alert(`File type .${ext} is not allowed. Allowed: ${allowedFileTypes!.join(", ")}`);
         e.target.value = "";
         return;
       }
@@ -356,9 +357,9 @@ export const CustomFieldRenderer = ({
     }
 
     case FieldRenderType.FILE: {
-      const acceptAttr = allowedFileTypes?.length
-        ? allowedFileTypes.map((t) => `.${t}`).join(",")
-        : undefined;
+      const acceptAttr = isUnrestrictedFileTypes(allowedFileTypes)
+        ? undefined
+        : allowedFileTypes!.map((t) => `.${t}`).join(",");
       const isValidUrl =
         value && (value.startsWith("http://") || value.startsWith("https://"));
       return (
@@ -389,9 +390,9 @@ export const CustomFieldRenderer = ({
               View current file
             </a>
           )}
-          {allowedFileTypes && allowedFileTypes.length > 0 && (
+          {!isUnrestrictedFileTypes(allowedFileTypes) && (
             <p className="text-xs text-neutral-500">
-              Allowed: {allowedFileTypes.join(", ")}
+              Allowed: {allowedFileTypes!.join(", ")}
               {maxSizeMB && ` · Max ${maxSizeMB}MB`}
             </p>
           )}

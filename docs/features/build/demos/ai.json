@@ -1,0 +1,116 @@
+{
+  "pillar": "ai",
+  "demo": {
+    "intro": "Watch AI draft a full NEET course from one prompt, turn a PDF into an exam paper, and tutor a learner at 11pm — all inside Vacademy.",
+    "screens": [
+      {
+        "id": "builder",
+        "device": "desktop",
+        "title": "AI Course Builder",
+        "nav": ["Dashboard", "AI Studio*", "Study Library", "Assessments", "Learners", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "b-head", "title": "Create a course with AI", "subtitle": "Powered by CourseCrafter AI — your white-labeled builder", "actions": ["Resume saved draft", "My AI Tasks"] },
+          { "type": "form", "id": "b-form", "title": "Describe your course", "fields": [
+            { "label": "Prompt", "value": "NEET 2027 Physics — Ray Optics for droppers, exam-focused with numericals", "type": "text" },
+            { "label": "Reference material", "value": "HC-Verma-Optics.pdf · allencareer.in/ray-optics", "type": "text" },
+            { "label": "Audience", "value": "Age 17-19 · Advanced · English", "type": "select" },
+            { "label": "AI videos & slide decks", "value": "on", "type": "toggle" },
+            { "label": "Quizzes, homework & solutions", "value": "on", "type": "toggle" },
+            { "label": "AI model", "value": "Auto (recommended)", "type": "select" }
+          ], "submit": "Generate course · 220 credits" },
+          { "type": "cards", "id": "b-cost", "items": [
+            { "title": "Cost preview", "sub": "220 credits · balance 4,180", "chip": "Before you run", "tone": "blue" },
+            { "title": "Grounded in your PDFs", "sub": "Real figures pulled from HC-Verma-Optics.pdf", "chip": "OCR", "tone": "purple" }
+          ]}
+        ]
+      },
+      {
+        "id": "outline",
+        "device": "desktop",
+        "title": "Review AI Outline — Ray Optics",
+        "nav": ["Dashboard", "AI Studio*", "Study Library", "Assessments", "Learners", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "o-head", "title": "Ray Optics — NEET 2027 Droppers", "subtitle": "3 chapters · 22 pages · generating in background (14/22 done)", "actions": ["Regenerate with feedback", "Create course"] },
+          { "type": "tree", "id": "o-tree", "nodes": [
+            { "label": "Ch 1 · Reflection & Spherical Mirrors", "children": [
+              { "label": "Learning objectives" },
+              { "label": "Topic: Mirror formula & magnification" },
+              { "label": "AI video: Sign convention in 6 min" },
+              { "label": "Quiz: 10 MCQs" }
+            ]},
+            { "label": "Ch 2 · Refraction & Lenses", "children": [
+              { "label": "Topic: Lensmaker's equation" },
+              { "label": "AI slide deck: Total internal reflection" },
+              { "label": "Homework: 12 numericals + solutions" }
+            ]},
+            { "label": "Ch 3 · Optical Instruments" }
+          ]},
+          { "type": "player", "id": "o-page", "outline": [
+            { "title": "Page prompt", "items": [
+              { "t": "Derive mirror formula step-by-step", "done": true },
+              { "t": "Use Fig 18.3 from HC-Verma-Optics.pdf", "done": true },
+              { "t": "End with 3 NEET-style numericals", "on": true }
+            ]}
+          ], "slide": { "title": "Topic: Mirror formula & magnification", "body": "Every planned page carries an editable AI prompt. Refine it, regenerate just this page, or drag it to a new chapter — the course is created in exactly the order you arrange." } }
+        ]
+      },
+      {
+        "id": "vsmart",
+        "device": "desktop",
+        "title": "Vsmart Question Paper Generator",
+        "nav": ["Dashboard", "AI Studio*", "Study Library", "Assessments", "Learners", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "v-head", "title": "Vsmart Upload", "subtitle": "Paper from PDF, photo, audio or a plain prompt", "actions": ["My Resources", "My AI Tasks"] },
+          { "type": "form", "id": "v-form", "title": "Generate from document", "fields": [
+            { "label": "Source file", "value": "Class-11-Thermodynamics-Notes.pdf", "type": "select" },
+            { "label": "Questions", "value": "20 · Medium difficulty", "type": "select" },
+            { "label": "Question type", "value": "MCQ single-correct + True/False", "type": "select" },
+            { "label": "Language", "value": "English", "type": "select" }
+          ], "submit": "Generate paper" },
+          { "type": "list", "id": "v-questions", "items": [
+            { "title": "Q1. An ideal gas expands isothermally...", "sub": "MCQ · 4 options · answer key attached", "chip": "Ready", "tone": "green" },
+            { "title": "Q2. First law of thermodynamics states...", "sub": "True/False · with explanation", "chip": "Ready", "tone": "green" },
+            { "title": "Q3. Work done in an adiabatic process...", "sub": "MCQ · numerical", "chip": "Ready", "tone": "green" },
+            { "title": "17 more questions", "sub": "Auto-grouped by topic via Vsmart Organizer", "right": "20/20" }
+          ]},
+          { "type": "chat", "id": "v-chat", "messages": [
+            { "from": "user", "text": "Add 5 higher-order questions on entropy and make Q3 easier" },
+            { "from": "ai", "text": "Done — added 5 HOTS questions on entropy and simplified Q3 to a single-step calculation. Paper is now 25 questions." }
+          ], "composer": "Refine the paper..." }
+        ]
+      },
+      {
+        "id": "tutor",
+        "device": "phone",
+        "title": "Learner AI Tutor",
+        "nav": ["Home", "Courses", "AI Tutor*", "Tests", "Profile"],
+        "widgets": [
+          { "type": "header", "id": "t-head", "title": "Shiksha Buddy", "subtitle": "Your 24/7 tutor · knows this lesson" },
+          { "type": "chat", "id": "t-chat", "messages": [
+            { "from": "user", "text": "I don't get sign convention in mirrors 😩" },
+            { "from": "ai", "text": "Think of the mirror as origin: distances measured against incoming light are negative. So for a concave mirror, object distance u is always negative. Want a quick check?" },
+            { "from": "user", "text": "Quiz me" },
+            { "from": "ai", "text": "Timed quiz: 5 questions on sign convention, 5 minutes. Q1: An object is 30 cm in front of a concave mirror of f = 20 cm. What is u?" }
+          ], "composer": "Ask anything · 🎤 voice" },
+          { "type": "list", "id": "t-modes", "items": [
+            { "title": "Explain this · Summarize · Hint", "sub": "One-tap actions on the open lesson" },
+            { "title": "Voice doubt-solving", "sub": "Speak in Hindi or English", "chip": "Voice", "tone": "purple" },
+            { "title": "AI mock interview & oral test", "sub": "Scored, with feedback", "chip": "New", "tone": "green" }
+          ]}
+        ]
+      }
+    ],
+    "steps": [
+      { "screen": "builder", "target": null, "title": "A course from one prompt", "text": "Describe what you want to teach and the AI drafts the whole course — structure, lesson pages, diagrams, videos, quizzes and homework. Admins can even white-label the builder under their own name." },
+      { "screen": "builder", "target": "b-form", "title": "Grounded in YOUR syllabus", "text": "Attach reference PDFs and website URLs — math-aware OCR pulls real figures and equations from your material, so lessons reflect your actual syllabus, not generic AI knowledge. Set audience age, level and language too." },
+      { "screen": "builder", "target": "b-cost", "title": "See the cost before you commit", "text": "Every generation shows its exact credit price up front, drawn from a prepaid institute balance. Pick a specific AI model or bring your own OpenAI or Gemini keys." },
+      { "screen": "outline", "target": "o-tree", "title": "Review every page before it exists", "text": "The draft lands as an interactive outline: chapters and pages spanning topic pages, AI videos, slide decks, quizzes, homework and solutions. Rename, delete or drag anything into a new order." },
+      { "screen": "outline", "target": "o-page", "title": "Edit the prompt behind each page", "text": "Every planned page carries an editable AI prompt. Refine it, regenerate a single page, or give course-wide corrective feedback — content fills in via background generation while you keep editing, then publishes to your study library in one click." },
+      { "screen": "vsmart", "target": "v-form", "title": "Question papers from anything", "text": "Vsmart builds editable papers from a PDF or PPT, a photographed printed paper, an audio lecture, or a plain topic prompt — with control over count, difficulty, question type and language." },
+      { "screen": "vsmart", "target": "v-questions", "title": "Straight into your question bank", "text": "Generated questions land ready with answer keys, auto-grouped by topic for chapter-wise tests. Export as a formatted PDF or DOC paper, or push directly into a live assessment." },
+      { "screen": "vsmart", "target": "v-chat", "title": "Refine the paper by chatting", "text": "Not happy? Just tell Vsmart Chat: add more MCQs, add higher-order questions, simplify Q3. Jobs run in the background with a task tracker, so you can navigate away and come back." },
+      { "screen": "tutor", "target": "t-chat", "title": "A 24/7 tutor that knows the lesson", "text": "On every learner screen, a branded tutor aware of the open course and lesson. Ananya asks a doubt at 11pm, says 'Quiz me', and gets a timed practice quiz graded with per-question feedback." },
+      { "screen": "tutor", "target": "t-modes", "title": "Voice tutoring, on your terms", "text": "Voice doubt-solving, AI-led mock interviews and oral tests in the learner's language. Admins design the persona, hard rules, voices and exactly which pages the tutor appears on." }
+    ]
+  }
+}

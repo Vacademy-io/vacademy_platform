@@ -26,7 +26,8 @@ export function NotifcationCard({
         isNew && "[.ui-vibrant_&]:bg-gradient-to-br [.ui-vibrant_&]:from-primary/5 [.ui-vibrant_&]:to-primary/10",
         // Play Styles — bg/shadow/border handled by .ui-play .card rule (and notification-card-new for new state)
         "[.ui-play_&]:font-bold",
-        isNew && "notification-card-new [.ui-play_&]:text-white"
+        // info-soft unread surface (play-theme.css) carries ink text now
+        isNew && "notification-card-new [.ui-play_&]:text-play-info-soft-ink"
       )}
     >
       <CardContent className="p-4 sm:p-5">

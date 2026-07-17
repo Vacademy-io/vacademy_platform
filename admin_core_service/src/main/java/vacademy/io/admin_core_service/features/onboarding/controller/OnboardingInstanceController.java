@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingInstanceDTO;
-import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingStepInstanceDTO;
 import vacademy.io.admin_core_service.features.onboarding.dto.StartOnboardingInstanceRequest;
 import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingInstance;
 import vacademy.io.admin_core_service.features.onboarding.enums.OnboardingStartedBy;
@@ -57,10 +56,8 @@ public class OnboardingInstanceController {
 
     private OnboardingInstanceDTO toDto(OnboardingInstance instance) {
         OnboardingInstanceDTO dto = OnboardingInstanceDTO.fromEntity(instance);
-        List<OnboardingStepInstanceDTO> stepInstances = onboardingStepInstanceService
-                .listStepInstances(instance.getId()).stream()
-                .map(OnboardingStepInstanceDTO::fromEntity).toList();
-        dto.setStepInstances(stepInstances);
+        dto.setStepInstances(onboardingStepInstanceService.toDtos(
+                onboardingStepInstanceService.listStepInstances(instance.getId())));
         return dto;
     }
 }

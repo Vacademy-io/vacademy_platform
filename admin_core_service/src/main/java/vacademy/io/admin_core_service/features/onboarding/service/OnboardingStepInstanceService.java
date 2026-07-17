@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingStepInstanceDTO;
 import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingInstance;
 import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingStep;
 import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingStepInstance;
@@ -25,6 +26,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * Advances a single onboarding_step_instance through PENDING -> IN_PROGRESS -> COMPLETED/SKIPPED,
@@ -194,5 +196,23 @@ public class OnboardingStepInstanceService {
 
     public List<OnboardingStepInstance> listStepInstances(String onboardingInstanceId) {
         return stepInstanceRepository.findByOnboardingInstanceId(onboardingInstanceId);
+    }
+
+    /** Enriches a single step instance with its step's name/type -- prefer this over the bare DTO mapper. */
+    public OnboardingStepInstanceDTO toDto(OnboardingStepInstance stepInstance) {
+        OnboardingStep step = onboardingStepRepository.findById(stepInstance.getStepId()).orElse(null);
+        return OnboardingStepInstanceDTO.fromEntity(stepInstance, step);
+    }
+
+    /** Batch variant of {@link #toDto} -- one step lookup query regardless of list size. */
+    public List<OnboardingStepInstanceDTO> toDtos(List<OnboardingStepInstance> stepInstances) {
+        if (stepInstances.isEmpty()) return List.of();
+        Map<String, OnboardingStep> stepsById = onboardingStepRepository
+                .findAllById(stepInstances.stream().map(OnboardingStepInstance::getStepId).distinct().toList())
+                .stream()
+                .collect(Collectors.toMap(OnboardingStep::getId, s -> s));
+        return stepInstances.stream()
+                .map(si -> OnboardingStepInstanceDTO.fromEntity(si, stepsById.get(si.getStepId())))
+                .toList();
     }
 }

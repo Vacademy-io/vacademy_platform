@@ -36,7 +36,7 @@ public class LearnerOnboardingController {
             @RequestParam("instituteId") String instituteId) {
         List<OnboardingInstanceDTO> instances = onboardingInstanceService
                 .listBySubject(userDetails.getUserId(), instituteId).stream()
-                .map(OnboardingInstanceDTO::fromEntity).toList();
+                .map(this::toDto).toList();
         return ResponseEntity.ok(instances);
     }
 
@@ -46,7 +46,7 @@ public class LearnerOnboardingController {
             @PathVariable("stepInstanceId") String stepInstanceId) {
         OnboardingStepInstance stepInstance = onboardingStepInstanceService.getStepInstance(stepInstanceId);
         assertOwnsStepInstance(userDetails, stepInstance);
-        return ResponseEntity.ok(OnboardingStepInstanceDTO.fromEntity(stepInstance));
+        return ResponseEntity.ok(onboardingStepInstanceService.toDto(stepInstance));
     }
 
     @PostMapping("/step-instances/{stepInstanceId}/submit")
@@ -56,7 +56,7 @@ public class LearnerOnboardingController {
             @RequestBody CompleteStepInstanceRequest request) {
         OnboardingStepInstance stepInstance = onboardingStepInstanceService.getStepInstance(stepInstanceId);
         assertOwnsStepInstance(userDetails, stepInstance);
-        return ResponseEntity.ok(OnboardingStepInstanceDTO.fromEntity(
+        return ResponseEntity.ok(onboardingStepInstanceService.toDto(
                 onboardingStepInstanceService.completeStep(stepInstanceId, request.getPayload(),
                         OnboardingRoleKey.STUDENT.name(), userDetails.getUserId())));
     }
@@ -66,5 +66,12 @@ public class LearnerOnboardingController {
         if (!instance.getSubjectUserId().equals(userDetails.getUserId())) {
             throw new ForbiddenException("Not authorized to access this onboarding step");
         }
+    }
+
+    private OnboardingInstanceDTO toDto(OnboardingInstance instance) {
+        OnboardingInstanceDTO dto = OnboardingInstanceDTO.fromEntity(instance);
+        dto.setStepInstances(onboardingStepInstanceService.toDtos(
+                onboardingStepInstanceService.listStepInstances(instance.getId())));
+        return dto;
     }
 }

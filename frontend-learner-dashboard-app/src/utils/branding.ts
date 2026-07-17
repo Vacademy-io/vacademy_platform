@@ -100,7 +100,29 @@ let currentFaviconUrl: string | null = null;
 let faviconMonitorInterval: NodeJS.Timeout | null = null;
 let lastFaviconRefreshMs = 0;
 const FAVICON_REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
-const FALLBACK_FAVICON_URL = "/icons/icon-48.webp"; // Static fallback
+const FALLBACK_FAVICON_URL = "/icons/icon-48.webp"; // Static Vacademy fallback (Vacademy hosts only)
+
+// A 1x1 transparent SVG. Used as the favicon fallback on white-labelled
+// (non-Vacademy) hosts so a failed/absent institute icon never flashes the
+// Vacademy "V" in the tab. Mirrors the cold-cache behaviour of the inline
+// bootstrap script in index.html.
+const BLANK_FAVICON =
+  "data:image/svg+xml," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>'
+  );
+
+// Vacademy-owned hosts may legitimately show the Vacademy mark; every other
+// (white-labelled) host must not.
+const isVacademyHost = (): boolean => {
+  const h = typeof location !== "undefined" ? location.hostname : "";
+  return /(^|\.)vacademy\.io$/.test(h) || h === "localhost" || h === "127.0.0.1";
+};
+
+// The favicon to show when no institute icon is available: the Vacademy mark on
+// Vacademy hosts, a blank icon everywhere else.
+const getFallbackFavicon = (): string =>
+  isVacademyHost() ? FALLBACK_FAVICON_URL : BLANK_FAVICON;
 
 // Helper: create favicon link elements
 const createFaviconLink = (href: string, rel: string, sizes?: string, type?: string) => {
@@ -122,11 +144,14 @@ const removeAllFaviconLinks = () => {
 
 // Helper: apply favicon links for a given URL (creates common sizes and apple touch)
 const applyFaviconLinks = (iconUrl: string) => {
-  // Do NOT cache-bust signed URLs (e.g., S3 pre-signed) or the signature will break
-  const isSignedUrl = /[?&]X-Amz-/.test(iconUrl) || /[?&]Signature=/.test(iconUrl);
-  const hrefToUse = isSignedUrl
-    ? iconUrl
-    : (iconUrl.includes('?') ? `${iconUrl}&v=${Date.now()}` : `${iconUrl}?v=${Date.now()}`);
+  // Use the URL as-is — do NOT append a `?v=Date.now()` cache-buster. The icon
+  // is a stable asset (a public S3 object, the local fallback, or a signed URL
+  // whose signature must be preserved). A per-load cache-buster gives the
+  // browser a brand-new URL every load, defeating its cache and forcing a
+  // network re-fetch each time; whenever that fetch is slow or fails the
+  // browser falls back to /favicon.ico (the Vacademy mark) until the next
+  // refresh. Keeping the URL stable lets the browser reuse the cached icon.
+  const hrefToUse = iconUrl;
 
   removeAllFaviconLinks();
   createFaviconLink(hrefToUse, 'icon', '16x16');
@@ -134,17 +159,6 @@ const applyFaviconLinks = (iconUrl: string) => {
   createFaviconLink(hrefToUse, 'icon');
   createFaviconLink(hrefToUse, 'shortcut icon');
   createFaviconLink(hrefToUse, 'apple-touch-icon', '180x180');
-  // Nudge browsers to refresh the favicon
-  setTimeout(() => {
-    const links = document.querySelectorAll<HTMLLinkElement>('link[rel*="icon"]');
-    links.forEach((link) => {
-      const originalHref = link.href;
-      link.href = '';
-      setTimeout(() => {
-        link.href = originalHref;
-      }, 1);
-    });
-  }, 100);
 };
 
 // Apply tab title and favicon from stored Preferences. Optional fallbackTitle used if no tabText stored.
@@ -188,9 +202,11 @@ export const applyTabBranding = async (
       // Ignore font family errors
     }
 
-    // Ensure we always have some icon to show
+    // Ensure we always have some icon to show. On a white-labelled host fall
+    // back to a blank icon rather than the Vacademy mark, so a missing/failed
+    // institute icon never flashes a competitor's "V".
     if (!iconUrl) {
-      iconUrl = FALLBACK_FAVICON_URL;
+      iconUrl = getFallbackFavicon();
     }
 
     // Update favicon via DOM - but only if it's different from current
@@ -254,7 +270,7 @@ const startFaviconMonitoring = () => {
         allFaviconLinks.forEach(link => link.remove());
         
         // Reapply favicon using the last known URL or fallback
-        applyFaviconLinks(currentFaviconUrl || FALLBACK_FAVICON_URL);
+        applyFaviconLinks(currentFaviconUrl || getFallbackFavicon());
         lastFaviconRefreshMs = Date.now();
       } else if (isTimeToRefresh) {
         console.log('[Branding] Periodic favicon refresh');
@@ -274,20 +290,20 @@ const startFaviconMonitoring = () => {
             }
           }
           if (!nextUrl) {
-            nextUrl = FALLBACK_FAVICON_URL;
+            nextUrl = getFallbackFavicon();
           }
+          // Only touch the DOM when the URL actually changed (e.g. a rotated
+          // signed URL). Reapplying an identical, stable URL would needlessly
+          // re-request the icon — the very churn this fix removes.
           if (nextUrl !== currentFaviconUrl) {
             currentFaviconUrl = nextUrl;
-            applyFaviconLinks(nextUrl);
-          } else {
-            // Even if unchanged, reapply to bust cache in case URL has expired server-side
             applyFaviconLinks(nextUrl);
           }
         } catch (e) {
           console.warn('[Branding] Error refreshing favicon URL:', e);
           // Apply fallback on error
-          currentFaviconUrl = FALLBACK_FAVICON_URL;
-          applyFaviconLinks(FALLBACK_FAVICON_URL);
+          currentFaviconUrl = getFallbackFavicon();
+          applyFaviconLinks(currentFaviconUrl);
         }
         lastFaviconRefreshMs = Date.now();
       }

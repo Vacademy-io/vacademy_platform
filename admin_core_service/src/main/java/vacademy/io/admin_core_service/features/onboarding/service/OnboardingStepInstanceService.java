@@ -123,7 +123,9 @@ public class OnboardingStepInstanceService {
         OnboardingStep step = onboardingStepRepository.findById(stepInstance.getStepId())
                 .orElseThrow(() -> new ResourceNotFoundException("Onboarding step not found: " + stepInstance.getStepId()));
         if (!Boolean.TRUE.equals(step.getIsOptional())) {
-            throw new IllegalStateException("Step is not optional and cannot be skipped: " + step.getId());
+            // InvalidRequestException -> 400 via GlobalExceptionHandler; see FormStepTypeHandler
+            // for the same fix on the mandatory-field-validation path.
+            throw new InvalidRequestException("Step is not optional and cannot be skipped: " + step.getId());
         }
         OnboardingInstance instance = onboardingInstanceRepository.findById(stepInstance.getOnboardingInstanceId())
                 .orElseThrow(() -> new ResourceNotFoundException("Onboarding instance not found: " + stepInstance.getOnboardingInstanceId()));

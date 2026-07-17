@@ -37,8 +37,8 @@ const sheetVariants = cva(
             side: {
                 top: "inset-x-0 top-0 border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
                 bottom: "inset-x-0 bottom-0 border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
-                left: "inset-y-0 left-0 h-full w-3/4 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm",
-                right: "inset-y-0 right-0 h-full w-3/4 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm",
+                left: "inset-y-0 start-0 h-full w-3/4 border-e data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm",
+                right: "inset-y-0 end-0 h-full w-3/4 border-s data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm",
             },
         },
         defaultVariants: {
@@ -71,7 +71,7 @@ const SheetContent = React.forwardRef<
             >
                 {!shouldHideCloseButton && (
                     <SheetPrimitive.Close
-                        className="absolute right-4 left-auto top-4 grid h-9 w-9 place-items-center rounded-md bg-white/90 text-foreground shadow-md ring-1 ring-black/10 backdrop-blur-sm opacity-95 transition hover:opacity-100 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none data-[state=open]:bg-secondary dark:bg-neutral-800/90 dark:ring-white/10"
+                        className="absolute end-4 start-auto top-4 grid h-9 w-9 place-items-center rounded-md bg-white/90 text-foreground shadow-md ring-1 ring-black/10 backdrop-blur-sm opacity-95 transition hover:opacity-100 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none data-[state=open]:bg-secondary dark:bg-neutral-800/90 dark:ring-white/10"
                         style={{ position: "absolute", right: "1rem", top: "1rem", left: "auto" }}
                     >
                         <Cross2Icon className="size-4" />
@@ -86,7 +86,7 @@ const SheetContent = React.forwardRef<
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
 const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-    <div className={cn("flex flex-col space-y-2 text-center sm:text-left", className)} {...props} />
+    <div className={cn("flex flex-col space-y-2 text-center sm:text-start", className)} {...props} />
 );
 SheetHeader.displayName = "SheetHeader";
 

@@ -158,9 +158,9 @@ export const PaymentForm = ({
       
       {/* Security Message */}
       <div className="text-xs text-gray-500 text-center flex items-center justify-center gap-1">
-        <Lock size={14} className="inline-block mr-1" />
+        <Lock size={14} className="inline-block me-1" />
         Secure payment powered by
-        <span className="font-semibold flex items-center gap-1 ml-1">
+        <span className="font-semibold flex items-center gap-1 ms-1">
           <SiStripe size={16} className="text-indigo-600" /> 
           Stripe
         </span>

@@ -111,7 +111,7 @@ export const StripeCardUpdate = ({
         >
           {isSaving ? (
             <>
-              <SpinnerGap className="mr-2 size-4 animate-spin" />
+              <SpinnerGap className="me-2 size-4 animate-spin" />
               Saving...
             </>
           ) : (

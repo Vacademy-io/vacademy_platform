@@ -76,7 +76,7 @@ export const DonationSuccessStep = ({
                       </svg>
                     </div>
                   </div>
-                  <div className="flex-1 text-left">
+                  <div className="flex-1 text-start">
                     <h4 className="text-sm font-semibold text-red-800 mb-2">
                       Payment Issue
                     </h4>
@@ -100,7 +100,7 @@ export const DonationSuccessStep = ({
             buttonType="primary"
             layoutVariant="default"
           >
-            <ArrowsClockwise className="w-4 h-4 mr-2" />
+            <ArrowsClockwise className="w-4 h-4 me-2" />
             Try Again
           </MyButton>
         )}

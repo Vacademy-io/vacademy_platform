@@ -41,9 +41,9 @@ export function ChildSelectionScreen({
     >
       {/* Background Ambient Glow - Lightened */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 -left-20 w-80 h-80 bg-primary/10 rounded-full blur-3xl opacity-60" />
-        <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-violet-400/10 rounded-full blur-3xl opacity-60" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-col-600 h-96 bg-blue-400/5 rounded-full blur-3xl opacity-60" />
+        <div className="absolute top-1/4 -start-20 w-80 h-80 bg-primary/10 rounded-full blur-3xl opacity-60" />
+        <div className="absolute bottom-1/4 -end-20 w-96 h-96 bg-violet-400/10 rounded-full blur-3xl opacity-60" />
+        <div className="absolute top-1/2 start-1/2 -translate-x-1/2 -translate-y-1/2 w-col-600 h-96 bg-blue-400/5 rounded-full blur-3xl opacity-60" />
       </div>
 
       {/* Header */}
@@ -147,7 +147,7 @@ function ChildProfileCard({
           )}
 
           {/* Emoji Badge */}
-          <div className="absolute -bottom-1 -right-1 w-9 h-9 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center text-lg shadow-md">
+          <div className="absolute -bottom-1 -end-1 w-9 h-9 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center text-lg shadow-md">
             {emoji}
           </div>
         </div>

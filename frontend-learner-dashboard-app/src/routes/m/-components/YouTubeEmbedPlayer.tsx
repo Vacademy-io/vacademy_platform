@@ -71,7 +71,7 @@ export const YouTubeEmbedPlayer: React.FC<YouTubeEmbedPlayerProps> = ({
 
                 {/* Overlay to block timeline and YouTube branding at the bottom */}
                 <div
-                    className="absolute bottom-0 left-0 right-0 h-12 sm:h-14 z-10 cursor-default"
+                    className="absolute bottom-0 start-0 end-0 h-12 sm:h-14 z-10 cursor-default"
                     style={{ background: 'transparent' }}
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => e.stopPropagation()}
@@ -79,7 +79,7 @@ export const YouTubeEmbedPlayer: React.FC<YouTubeEmbedPlayerProps> = ({
 
                 {/* Overlay to block "Watch on YouTube" button in top-right corner */}
                 <div
-                    className="absolute top-0 right-0 w-28 h-10 sm:w-36 sm:h-12 z-10 cursor-default"
+                    className="absolute top-0 end-0 w-28 h-10 sm:w-36 sm:h-12 z-10 cursor-default"
                     style={{ background: 'transparent' }}
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => e.stopPropagation()}

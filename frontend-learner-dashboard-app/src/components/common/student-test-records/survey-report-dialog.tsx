@@ -126,7 +126,7 @@ export const SurveyReportDialog = ({
   return (
     <div className="w-full max-w-6xl mx-auto p-6 space-y-8">
       {/* Survey Title */}
-      <div className="text-left">
+      <div className="text-start">
         <h1 className="text-xl font-semibold text-gray-900">{surveyName}</h1>
       </div>
 
@@ -149,7 +149,7 @@ export const SurveyReportDialog = ({
                           <div className="text-base text-gray-900 leading-relaxed flex-1">
                             {parseHtmlToString(question.question_text.content)}
                           </div>
-                          <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full ml-4">
+                          <span className="px-2 py-1 text-xs font-medium bg-blue-100 text-blue-800 rounded-full ms-4">
                             {question.question_type}
                           </span>
                         </div>
@@ -165,7 +165,7 @@ export const SurveyReportDialog = ({
                   </div>
 
                   {/* Response */}
-                  <div className="ml-12">
+                  <div className="ms-12">
                     <h4 className="text-xs font-medium text-gray-600 mb-2">Your Response</h4>
                     {renderQuestionResponse(question)}
                   </div>

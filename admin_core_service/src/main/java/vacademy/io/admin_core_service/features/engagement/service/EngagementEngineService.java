@@ -1,0 +1,278 @@
+package vacademy.io.admin_core_service.features.engagement.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.engagement.dto.CreateEngineRequest;
+import vacademy.io.admin_core_service.features.engagement.dto.PromptEditRequest;
+import vacademy.io.admin_core_service.features.engagement.entity.EngagementEngine;
+import vacademy.io.admin_core_service.features.engagement.entity.EngagementPromptVersion;
+import vacademy.io.admin_core_service.features.engagement.repository.EngagementEngineRepository;
+import vacademy.io.admin_core_service.features.engagement.repository.EngagementMemberRepository;
+import vacademy.io.admin_core_service.features.engagement.repository.EngagementPromptVersionRepository;
+import vacademy.io.common.exceptions.VacademyException;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Engine lifecycle: create (brief → prompt v1) → enroll audience (jittered, idempotent)
+ * → activate. Prompt edits append deltas — base_text is immutable (design §8).
+ */
+@Service
+@Slf4j
+@RequiredArgsConstructor
+public class EngagementEngineService {
+
+    private final EngagementEngineRepository engineRepository;
+    private final EngagementMemberRepository memberRepository;
+    private final EngagementPromptVersionRepository promptRepository;
+    private final EngagementReadDao dao;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Transactional
+    public EngagementEngine create(CreateEngineRequest req, String instituteId, String createdBy) {
+        if (req.getName() == null || req.getName().isBlank()) {
+            throw new VacademyException("Engine name is required");
+        }
+        if (req.getBrief() == null || req.getBrief().isBlank()) {
+            throw new VacademyException("The engine brief (prompt) is required");
+        }
+
+        EngagementEngine engine = new EngagementEngine();
+        engine.setInstituteId(instituteId);
+        engine.setName(req.getName());
+        engine.setObjective(req.getObjective());
+        engine.setStatus("DRAFT");
+        engine.setLanguage(validLanguage(req.getLanguage()));
+        engine.setDataPoints(writeJson(req.getDataPoints() != null ? req.getDataPoints() : List.of()));
+        // Validate the raw JSON strings up front so a malformed payload fails with a clear message
+        // here, not as an opaque jsonb INSERT error (or a silently-broken audience at sweep time).
+        engine.setChannels(validObjectJson(req.getChannels(), "channels", "{}"));
+        engine.setAudience(validAudienceJson(req.getAudience()));
+        engine.setQuietHours(validObjectJson(req.getQuietHours(), "quietHours", "{}"));
+        if (req.getCadenceHours() != null && req.getCadenceHours() > 0) {
+            engine.setCadenceHours(req.getCadenceHours());
+        }
+        engine.setCreatedBy(createdBy);
+        engine = engineRepository.save(engine);
+
+        EngagementPromptVersion v1 = new EngagementPromptVersion();
+        v1.setEngineId(engine.getId());
+        v1.setInstituteId(instituteId);
+        v1.setVersion(1);
+        v1.setBaseText(req.getBrief());
+        v1.setCompiledText(req.getBrief());
+        v1.setSource("ADMIN");
+        v1.setStatus("ACTIVE");
+        v1.setCreatedBy(createdBy);
+        promptRepository.save(v1);
+
+        return engine;
+    }
+
+    /**
+     * The prompt that grows: append the delta, deterministically recompile
+     * (base + all deltas in order), supersede the old version. Never re-summarize.
+     */
+    @Transactional
+    public EngagementPromptVersion editPrompt(String engineId, String instituteId,
+                                              PromptEditRequest req, String editedBy) {
+        EngagementEngine engine = requireEngine(engineId, instituteId);
+        if (req.getDeltaText() == null || req.getDeltaText().isBlank()) {
+            throw new VacademyException("deltaText is required");
+        }
+
+        List<EngagementPromptVersion> history = promptRepository.findByEngineIdOrderByVersionDesc(engine.getId());
+        if (history.isEmpty()) throw new VacademyException("Engine has no prompt to edit");
+        EngagementPromptVersion latest = history.get(0);
+
+        // Deterministic recompile: immutable base + every prior delta + the new one.
+        StringBuilder compiled = new StringBuilder(findBase(history));
+        List<String> deltas = new ArrayList<>();
+        for (int i = history.size() - 1; i >= 0; i--) {           // oldest → newest
+            String d = history.get(i).getDeltaText();
+            if (d != null && !d.isBlank()) deltas.add(d);
+        }
+        deltas.add(req.getDeltaText());
+        int i = 1;
+        for (String d : deltas) {
+            compiled.append("\n\nAMENDMENT ").append(i++).append(" (later amendments override earlier ones):\n").append(d);
+        }
+
+        EngagementPromptVersion next = new EngagementPromptVersion();
+        next.setEngineId(engine.getId());
+        next.setInstituteId(instituteId);
+        next.setVersion(latest.getVersion() + 1);
+        next.setBaseText(findBase(history));
+        next.setDeltaText(req.getDeltaText());
+        next.setCompiledText(compiled.toString());
+        next.setSource("ADMIN");
+        next.setStatus("ACTIVE");
+        next.setCreatedBy(editedBy);
+
+        latest.setStatus("SUPERSEDED");
+        promptRepository.save(latest);
+        return promptRepository.save(next);
+        // Deliberately NO member re-wake here: the new prompt applies at each member's next
+        // natural wake. Re-deciding everyone on every edit is the cost-control-disarms-itself trap.
+    }
+
+    /**
+     * Resolve the audience selectors and enroll (idempotent via ux_em_subject; jittered so
+     * activation is a flat line, not a thundering herd). Also EXITs members who left the
+     * audience. Selectors supported in 1a: PACKAGE_SESSION, AUDIENCE, USER — the three the
+     * founder named (batch, campaign/audience list, specific users).
+     */
+    @Transactional
+    public EnrollmentResult enrollAndReconcile(String engineId, String instituteId) {
+        EngagementEngine engine = requireEngine(engineId, instituteId);
+
+        record Target(String userId, String audienceResponseId) {}
+        List<Target> raw = new ArrayList<>();
+        java.util.Set<String> userSelectorIds = new java.util.LinkedHashSet<>();
+        try {
+            JsonNode selectors = objectMapper.readTree(engine.getAudience());
+            for (JsonNode sel : selectors) {
+                String type = sel.path("type").asText("");
+                String id = sel.path("id").asText("");
+                switch (type) {
+                    case "PACKAGE_SESSION" -> dao.userIdsByPackageSession(id, instituteId)
+                            .forEach(uid -> raw.add(new Target(uid, null)));
+                    case "AUDIENCE" -> dao.leadsByAudience(id, instituteId)
+                            .forEach(row -> raw.add(new Target((String) row[1], (String) row[0])));
+                    case "USER" -> userSelectorIds.add(id);   // validated below against the institute
+                    default -> log.warn("Engine {}: unsupported audience selector type '{}' — skipped (ROLE/TAG/CUSTOM_FIELD_FILTER arrive in a later phase)",
+                            engineId, type);
+                }
+            }
+        } catch (Exception e) {
+            throw new VacademyException("Unparseable audience selectors: " + e.getMessage());
+        }
+
+        // USER selectors must belong to THIS institute (else an admin could name another
+        // institute's user id and exfiltrate their PII through the engine's data-point reads).
+        if (!userSelectorIds.isEmpty()) {
+            java.util.Set<String> valid = dao.validInstituteUserIds(userSelectorIds, instituteId);
+            userSelectorIds.stream().filter(valid::contains).forEach(uid -> raw.add(new Target(uid, null)));
+            userSelectorIds.stream().filter(uid -> !valid.contains(uid))
+                    .forEach(uid -> log.warn("Engine {}: USER selector {} is not a member of institute {} — dropped",
+                            engineId, uid, instituteId));
+        }
+
+        // Dedup: the same person can arrive via PACKAGE_SESSION as (userId,null) AND via AUDIENCE
+        // as (userId, respId) — distinct ux_em_subject keys → double enrollment → double messages.
+        // Collapse to a single canonical subject: prefer the user_id-only form when a user_id exists.
+        java.util.Map<String, Target> canonical = new java.util.LinkedHashMap<>();
+        for (Target t : raw) {
+            String key = t.userId() != null ? "u:" + t.userId() : "l:" + t.audienceResponseId();
+            Target existing = canonical.get(key);
+            if (existing == null || (existing.audienceResponseId() != null && t.audienceResponseId() == null)) {
+                canonical.put(key, t.userId() != null ? new Target(t.userId(), null) : t);
+            }
+        }
+
+        String runId = UUID.randomUUID().toString();
+        int enrolledNew = 0;
+        for (Target t : canonical.values()) {
+            enrolledNew += memberRepository.enrollOrStamp(
+                    UUID.randomUUID().toString(), engine.getId(), instituteId,
+                    t.userId(), t.audienceResponseId(),
+                    EngagementDecisionService.jitteredFirstWake(engine.getCadenceHours(), Instant.now()),
+                    runId);
+        }
+        // Exit anyone not stamped by this run — unconditional, so an emptied audience exits all.
+        int exited = memberRepository.exitNotStampedBy(engine.getId(), runId);
+
+        log.info("Engine {}: audience {} (deduped from {}), {} newly enrolled, {} exited",
+                engineId, canonical.size(), raw.size(), enrolledNew, exited);
+        return new EnrollmentResult(canonical.size(), enrolledNew, exited);
+    }
+
+    public record EnrollmentResult(int audienceSize, int newlyEnrolled, int exited) {}
+
+    @Transactional
+    public EngagementEngine transition(String engineId, String instituteId, String toStatus) {
+        EngagementEngine engine = requireEngine(engineId, instituteId);
+        List<String> allowed = List.of("DRAFT", "DRY_RUN", "ACTIVE", "PAUSED", "ARCHIVED");
+        if (!allowed.contains(toStatus)) throw new VacademyException("Unknown status: " + toStatus);
+        if (("ACTIVE".equals(toStatus) || "DRY_RUN".equals(toStatus))
+                && memberRepository.countByEngineIdAndStatus(engineId, "ACTIVE") == 0) {
+            throw new VacademyException("Enroll an audience before activating the engine");
+        }
+        engine.setStatus(toStatus);
+        if (("ACTIVE".equals(toStatus) || "DRY_RUN".equals(toStatus)) && engine.getNextDueAt() == null) {
+            engine.setNextDueAt(Instant.now());
+        }
+        return engineRepository.save(engine);
+    }
+
+    public EngagementEngine requireEngine(String engineId, String instituteId) {
+        EngagementEngine engine = engineRepository.findById(engineId)
+                .orElseThrow(() -> new VacademyException("Engine not found"));
+        if (!engine.getInstituteId().equals(instituteId)) {
+            throw new VacademyException("Engine does not belong to this institute");
+        }
+        return engine;
+    }
+
+    private static String findBase(List<EngagementPromptVersion> historyDesc) {
+        return historyDesc.get(historyDesc.size() - 1).getBaseText(); // version 1 holds the immutable base
+    }
+
+    private String writeJson(Object o) {
+        try {
+            return objectMapper.writeValueAsString(o);
+        } catch (Exception e) {
+            throw new VacademyException("Invalid JSON payload: " + e.getMessage());
+        }
+    }
+
+    private static String validLanguage(String lang) {
+        String l = lang != null ? lang : "en";
+        if (!List.of("en", "hi", "hinglish").contains(l)) {
+            throw new VacademyException("language must be one of en|hi|hinglish");
+        }
+        return l;
+    }
+
+    private String validObjectJson(String raw, String field, String fallback) {
+        if (raw == null || raw.isBlank()) return fallback;
+        try {
+            JsonNode n = objectMapper.readTree(raw);
+            if (!n.isObject()) throw new VacademyException(field + " must be a JSON object");
+            return raw;
+        } catch (VacademyException ve) {
+            throw ve;
+        } catch (Exception e) {
+            throw new VacademyException(field + " is not valid JSON: " + e.getMessage());
+        }
+    }
+
+    private String validAudienceJson(String raw) {
+        if (raw == null || raw.isBlank()) return "[]";
+        try {
+            JsonNode arr = objectMapper.readTree(raw);
+            if (!arr.isArray()) throw new VacademyException("audience must be a JSON array of selectors");
+            for (JsonNode sel : arr) {
+                String type = sel.path("type").asText("");
+                if (!List.of("PACKAGE_SESSION", "AUDIENCE", "USER").contains(type)) {
+                    throw new VacademyException("audience selector type must be PACKAGE_SESSION|AUDIENCE|USER, got '" + type + "'");
+                }
+                if (sel.path("id").asText("").isBlank()) {
+                    throw new VacademyException("each audience selector needs an id");
+                }
+            }
+            return raw;
+        } catch (VacademyException ve) {
+            throw ve;
+        } catch (Exception e) {
+            throw new VacademyException("audience is not valid JSON: " + e.getMessage());
+        }
+    }
+}

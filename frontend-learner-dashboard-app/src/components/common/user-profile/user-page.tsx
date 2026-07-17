@@ -446,7 +446,7 @@ export default function ProfilePage() {
                 )}
               >
                 <playIllustrations.FeelingHappy
-                  className="pointer-events-none absolute right-3 top-3 hidden h-16 w-auto text-play-accent [.ui-play_&]:!block"
+                  className="pointer-events-none absolute end-3 top-3 hidden h-16 w-auto text-play-accent [.ui-play_&]:!block"
                   aria-hidden="true"
                 />
                 <div className="p-6 flex flex-col items-center">

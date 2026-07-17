@@ -417,15 +417,15 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
               {!isFullScreen && (
                 <>
                   {/* Corner handles */}
-                  <ResizeHandle direction="nw" className="top-0 left-0 w-3 h-3 cursor-nwse-resize" />
-                  <ResizeHandle direction="ne" className="top-0 right-0 w-3 h-3 cursor-nesw-resize" />
-                  <ResizeHandle direction="sw" className="bottom-0 left-0 w-3 h-3 cursor-nesw-resize" />
-                  <ResizeHandle direction="se" className="bottom-0 right-0 w-3 h-3 cursor-nwse-resize" />
+                  <ResizeHandle direction="nw" className="top-0 start-0 w-3 h-3 cursor-nwse-resize" />
+                  <ResizeHandle direction="ne" className="top-0 end-0 w-3 h-3 cursor-nesw-resize" />
+                  <ResizeHandle direction="sw" className="bottom-0 start-0 w-3 h-3 cursor-nesw-resize" />
+                  <ResizeHandle direction="se" className="bottom-0 end-0 w-3 h-3 cursor-nwse-resize" />
                   {/* Edge handles */}
-                  <ResizeHandle direction="n" className="top-0 left-3 right-3 h-1 cursor-ns-resize" />
-                  <ResizeHandle direction="s" className="bottom-0 left-3 right-3 h-1 cursor-ns-resize" />
-                  <ResizeHandle direction="w" className="left-0 top-3 bottom-3 w-1 cursor-ew-resize" />
-                  <ResizeHandle direction="e" className="right-0 top-3 bottom-3 w-1 cursor-ew-resize" />
+                  <ResizeHandle direction="n" className="top-0 start-3 end-3 h-1 cursor-ns-resize" />
+                  <ResizeHandle direction="s" className="bottom-0 start-3 end-3 h-1 cursor-ns-resize" />
+                  <ResizeHandle direction="w" className="start-0 top-3 bottom-3 w-1 cursor-ew-resize" />
+                  <ResizeHandle direction="e" className="end-0 top-3 bottom-3 w-1 cursor-ew-resize" />
                 </>
               )}
 
@@ -468,7 +468,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                 </div>
 
                 {/* Header Actions */}
-                <div className="flex items-center space-x-0.5 shrink-0 ml-2">
+                <div className="flex items-center space-x-0.5 shrink-0 ms-2">
                   <Button
                     variant="ghost"
                     size="icon"
@@ -542,7 +542,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     {messages.map((msg) => {
                       if (msg.role === "quiz" && msg.metadata?.quiz_data) {
                         return (
-                          <div key={msg.id} className="w-full max-w-pct-95 mr-auto">
+                          <div key={msg.id} className="w-full max-w-pct-95 me-auto">
                            {/* Add avatar for quiz messages too */}
                             <div className="flex gap-2">
                                 <Avatar className="h-7 w-7 mt-1 shrink-0">
@@ -581,7 +581,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
                       if (msg.role === "quiz_feedback" && msg.metadata?.feedback) {
                         return (
-                          <div key={msg.id} className="w-full max-w-pct-95 mr-auto">
+                          <div key={msg.id} className="w-full max-w-pct-95 me-auto">
                              <div className="flex gap-2">
                                 <Avatar className="h-7 w-7 mt-1 shrink-0">
                                   {avatarUrl ? (
@@ -612,12 +612,12 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                         className={cn(
                           "flex w-full max-w-pct-90",
                           msg.role === "user"
-                            ? "ml-auto justify-end"
-                            : "mr-auto justify-start"
+                            ? "ms-auto justify-end"
+                            : "me-auto justify-start"
                         )}
                       >
                         {msg.role === "assistant" && (
-                          <Avatar className="h-7 w-7 mr-2 mt-1 shrink-0">
+                          <Avatar className="h-7 w-7 me-2 mt-1 shrink-0">
                             {avatarUrl ? (
                               <AvatarImage
                                 src={avatarUrl}
@@ -637,8 +637,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                             className={cn(
                               "rounded-2xl px-4 py-2.5 text-sm shadow-sm break-words",
                               msg.role === "user"
-                                ? "bg-primary text-primary-foreground rounded-br-sm ml-2"
-                                : "bg-muted/80 backdrop-blur-sm text-foreground rounded-bl-sm mr-2"
+                                ? "bg-primary text-primary-foreground rounded-ee-sm ms-2"
+                                : "bg-muted/80 backdrop-blur-sm text-foreground rounded-es-sm me-2"
                             )}
                           >
                             {msg.role === "user" ? (
@@ -649,14 +649,14 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                 <p className="whitespace-pre-wrap">
                                   {msg.content}
                                   {msg.status === "pending" && (
-                                    <span className="text-xs text-primary-foreground/60 ml-1" title="Queued - will send when online">&#x23F3;</span>
+                                    <span className="text-xs text-primary-foreground/60 ms-1" title="Queued - will send when online">&#x23F3;</span>
                                   )}
                                 </p>
                               </div>
                             ) : (
                               <div className="max-w-none group relative">
                                 <button
-                                  className="absolute -top-0.5 -right-0.5 p-1 rounded-md bg-muted/80 z-10 shrink-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="absolute -top-0.5 -end-0.5 p-1 rounded-md bg-muted/80 z-10 shrink-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
                                   onClick={() =>
                                     handleCopyMessage(msg.content, msg.id)
                                   }
@@ -714,7 +714,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                       />
                                     ),
                                     li: ({ ...props }) => (
-                                      <li className="ml-2" {...props} />
+                                      <li className="ms-2" {...props} />
                                     ),
                                     code: ({ children, className, ...rest }: React.HTMLAttributes<HTMLElement>) => {
                                       const isInline = !className?.includes('language-');
@@ -732,7 +732,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                                     },
                                     blockquote: ({ ...props }) => (
                                       <blockquote
-                                        className="border-l-4 border-primary pl-3 py-1 my-3 italic text-muted-foreground text-sm"
+                                        className="border-s-4 border-primary ps-3 py-1 my-3 italic text-muted-foreground text-sm"
                                         {...props}
                                       />
                                     ),
@@ -752,7 +752,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
 
                     {/* Streaming response */}
                     {isStreaming && streamingContent && (
-                      <div className="flex items-start gap-2.5 mr-auto max-w-pct-90">
+                      <div className="flex items-start gap-2.5 me-auto max-w-pct-90">
                         <Avatar className="size-7 shrink-0 border border-primary/20">
                           {avatarUrl ? (
                             <AvatarImage
@@ -765,14 +765,14 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                             {chatbotSettings.assistant_name.substring(0, 2).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
-                        <div className="rounded-2xl px-4 py-2.5 text-sm shadow-sm break-words bg-muted/80 backdrop-blur-sm text-foreground rounded-bl-sm mr-2">
+                        <div className="rounded-2xl px-4 py-2.5 text-sm shadow-sm break-words bg-muted/80 backdrop-blur-sm text-foreground rounded-es-sm me-2">
                           <ReactMarkdown
                             remarkPlugins={[remarkBreaks, remarkGfm, remarkMath]}
                             rehypePlugins={[rehypeKatex]}
                           >
                             {streamingContent}
                           </ReactMarkdown>
-                          <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ml-0.5" />
+                          <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ms-0.5" />
                         </div>
                       </div>
                     )}
@@ -782,8 +782,8 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                     </AnimatePresence>
 
                     {!isStreaming && (isLoading || aiStatus === "thinking" || aiStatus === "generating_quiz") && (
-                      <div className="mr-auto flex max-w-pct-80 items-end space-x-2">
-                        <Avatar className="h-7 w-7 mr-2 shrink-0">
+                      <div className="me-auto flex max-w-pct-80 items-end space-x-2">
+                        <Avatar className="h-7 w-7 me-2 shrink-0">
                           {avatarUrl ? (
                             <AvatarImage
                               src={avatarUrl}
@@ -881,7 +881,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                         title="Start a voice conversation"
                         className="inline-flex items-center h-7 px-3 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-full border border-amber-200 transition-colors disabled:opacity-50"
                       >
-                        <Microphone className="h-3 w-3 mr-1.5" />
+                        <Microphone className="h-3 w-3 me-1.5" />
                         Voice Chat
                       </button>
                     )}
@@ -900,7 +900,7 @@ export const ChatbotPanel: React.FC<ChatbotPanelProps> = ({ onOpenChange }) => {
                           </div>
                         )}
                         <button
-                          className="absolute -top-0.5 -right-0.5 size-4 rounded-full bg-destructive text-destructive-foreground text-caption flex items-center justify-center"
+                          className="absolute -top-0.5 -end-0.5 size-4 rounded-full bg-destructive text-destructive-foreground text-caption flex items-center justify-center"
                           onClick={() => {
                             if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
                             setPendingAttachments(prev => prev.filter((_, idx) => idx !== i));

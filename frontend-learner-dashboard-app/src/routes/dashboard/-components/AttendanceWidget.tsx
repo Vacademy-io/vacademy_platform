@@ -150,7 +150,7 @@ export function AttendanceWidget() {
       // the dedicated chevron button.
       <div
         onClick={goToAttendance}
-        className="flex h-full w-full cursor-pointer flex-col gap-4 rounded-play-card-sm border border-border bg-play-success-soft p-4 text-left shadow-play-soft-card"
+        className="flex h-full w-full cursor-pointer flex-col gap-4 rounded-play-card-sm border border-border bg-play-success-soft p-4 text-start shadow-play-soft-card"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -190,7 +190,7 @@ export function AttendanceWidget() {
                 goToAttendance();
               }}
               aria-label="View attendance details"
-              className="ml-1 rounded-full p-1 text-play-ink/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-play-ink/30"
+              className="ms-1 rounded-full p-1 text-play-ink/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-play-ink/30"
             >
               <CaretRight size={14} weight="bold" />
             </button>
@@ -280,7 +280,7 @@ export function AttendanceWidget() {
       // real sibling buttons for the toggles + details chevron.
       <div
         onClick={goToAttendance}
-        className="cp-card flex h-full w-full cursor-pointer flex-col gap-4 p-4 text-left"
+        className="cp-card flex h-full w-full cursor-pointer flex-col gap-4 p-4 text-start"
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -318,7 +318,7 @@ export function AttendanceWidget() {
                 goToAttendance();
               }}
               aria-label="View attendance details"
-              className="cp-muted ml-1 rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+              className="cp-muted ms-1 rounded-full p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
               <CaretRight size={14} weight="bold" />
             </button>
@@ -449,7 +449,7 @@ export function AttendanceWidget() {
                 goToAttendance();
               }}
               aria-label="View attendance details"
-              className="ml-1 rounded-full p-1 text-muted-foreground transition-all duration-300 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:translate-x-0.5 group-hover:text-primary"
+              className="ms-1 rounded-full p-1 text-muted-foreground transition-all duration-300 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:translate-x-0.5 group-hover:text-primary"
             >
               <CaretRight size={14} weight="bold" />
             </button>

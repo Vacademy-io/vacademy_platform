@@ -38,7 +38,7 @@ export const DefaultClassCard = ({
                             window.open(defaultClassLink, "_blank");
                         }}
                     >
-                        <ArrowSquareOut size={16} className="mr-1.5 text-white" />
+                        <ArrowSquareOut size={16} className="me-1.5 text-white" />
                         <span className="text-white">View Session</span>
                     </Button>
                 </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getInstituteId } from "@/constants/helper";
@@ -38,6 +39,7 @@ interface MembershipPackage {
 }
 
 export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ className }) => {
+    const { t } = useTranslation("dashboard");
     const isCleanerPlay = useCleanerPlayTheme();
     const [loading, setLoading] = useState(true);
     const [memberships, setMemberships] = useState<MembershipPackage[]>([]);
@@ -196,7 +198,7 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                     ) : (
                         <Crown className="w-5 h-5" />
                     )}
-                    My Membership
+                    {t("membership.title")}
                 </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0 space-y-3">
@@ -204,17 +206,21 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                         <div key={membership.id || idx} className="space-y-3">
                             {/* Membership Item */}
                             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-card shadow-sm">
-                                <div className="flex-1 min-w-0 pr-2">
+                                <div className="flex-1 min-w-0 pe-2">
                                     <h3 className="font-bold text-base text-foreground truncate">
                                         {membership.package_name}
                                     </h3>
-                                    <span className="text-caption text-primary/70 font-bold uppercase tracking-widest mt-0.5 inline-block">Plan Active</span>
+                                    <span className="text-caption text-primary/70 font-bold uppercase tracking-widest mt-0.5 inline-block">
+                                        {t("membership.planActive")}
+                                    </span>
                                 </div>
                                 <div className="flex flex-col items-center justify-center min-w-12 p-1.5 rounded-md bg-primary/5 border border-primary/10">
                                     <span className="text-lg font-bold text-primary leading-none">
                                         {membership.validity_in_days || 0}
                                     </span>
-                                    <span className="text-caption font-bold text-primary/70 uppercase">Days Remaining</span>
+                                    <span className="text-caption font-bold text-primary/70 uppercase">
+                                        {t("membership.daysRemaining")}
+                                    </span>
                                 </div>
                             </div>
 

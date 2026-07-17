@@ -181,7 +181,7 @@ const TextBlockComp = ({ props }: { props: Record<string, unknown> }) => {
     >
       <div
         style={{ maxWidth: (props.maxWidth as string) || "800px", margin: alignment === "center" ? "0 auto" : alignment === "right" ? "0 0 0 auto" : undefined }}
-        className="prose prose-sm max-w-none text-gray-700 [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:text-xl [&_h2]:font-bold [&_h3]:text-lg [&_h3]:font-semibold [&_p]:mb-3 [&_a]:text-blue-600 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1"
+        className="prose prose-sm max-w-none text-gray-700 [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:text-xl [&_h2]:font-bold [&_h3]:text-lg [&_h3]:font-semibold [&_p]:mb-3 [&_a]:text-blue-600 [&_a]:underline [&_ul]:list-disc [&_ul]:ps-5 [&_ol]:list-decimal [&_ol]:ps-5 [&_li]:mb-1"
         dangerouslySetInnerHTML={{ __html: content }}
       />
     </div>
@@ -339,7 +339,7 @@ const HighlightAccordion: React.FC<{
   return (
     <div className="rounded-lg border border-gray-200 overflow-hidden">
       <button type="button" onClick={() => setOpen(v => !v)}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-gray-50 transition-colors">
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-start hover:bg-gray-50 transition-colors">
         <span className="flex items-center gap-2 text-sm font-semibold text-gray-900">
           {icon}{title}
         </span>
@@ -443,7 +443,7 @@ const CourseDetailSheet = ({
 
         {/* Close */}
         <button type="button" onClick={onClose}
-          className="absolute right-3 top-3 z-10 flex size-8 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60">
+          className="absolute end-3 top-3 z-10 flex size-8 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60">
           <X className="size-4" />
         </button>
 
@@ -658,12 +658,12 @@ const CourseCard = ({
             <BookOpen className="size-10 transition-transform duration-200 group-hover:scale-110" style={{ color: primaryColor, opacity: 0.75 }} />
           )}
           {hasDiscount && discountPct > 0 && (
-            <div className="absolute left-2.5 top-2.5 rounded-full bg-orange-500 px-2 py-0.5 text-caption font-bold text-white shadow">
+            <div className="absolute start-2.5 top-2.5 rounded-full bg-orange-500 px-2 py-0.5 text-caption font-bold text-white shadow">
               {discountPct}% OFF
             </div>
           )}
           {selected && (
-            <div className="absolute right-2.5 top-2.5 flex size-6 items-center justify-center rounded-full shadow" style={{ backgroundColor: primaryColor }}>
+            <div className="absolute end-2.5 top-2.5 flex size-6 items-center justify-center rounded-full shadow" style={{ backgroundColor: primaryColor }}>
               <CheckCircle className="size-3.5 text-white" />
             </div>
           )}
@@ -682,7 +682,7 @@ const CourseCard = ({
                 </span>
               )}
             </div>
-            <div className="shrink-0 text-right">
+            <div className="shrink-0 text-end">
               {isFree ? (
                 <span className="text-xs font-bold text-emerald-600">Free</span>
               ) : (
@@ -691,7 +691,7 @@ const CourseCard = ({
                     {currency} {plan!.actual_price.toLocaleString()}
                   </span>
                   {hasDiscount && (
-                    <span className="ml-1 text-caption text-gray-400 line-through">{plan!.elevated_price.toLocaleString()}</span>
+                    <span className="ms-1 text-caption text-gray-400 line-through">{plan!.elevated_price.toLocaleString()}</span>
                   )}
                 </div>
               )}
@@ -920,13 +920,13 @@ const CourseGridBlock = ({
           {/* Search + filter toggle row */}
           <div className="mb-4 flex items-center gap-3">
             <div className="relative flex-1">
-              <MagnifyingGlass className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+              <MagnifyingGlass className="absolute start-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(0); }}
                 placeholder="Search courses…"
-                className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-9 pr-3 text-sm shadow-sm placeholder:text-gray-400 focus:border-gray-400 focus:outline-none"
+                className="w-full rounded-xl border border-gray-200 bg-white py-2.5 ps-9 pe-3 text-sm shadow-sm placeholder:text-gray-400 focus:border-gray-400 focus:outline-none"
               />
             </div>
             {/* Mobile filter button */}
@@ -1243,7 +1243,7 @@ export const NewHeaderBlock = ({
         </div>
 
         {navigation.length > 0 && (
-          <nav className="ml-6 hidden items-center gap-6 md:flex">
+          <nav className="ms-6 hidden items-center gap-6 md:flex">
             {navigation.map((nav, i) => (
               <a
                 key={i}
@@ -1258,7 +1258,7 @@ export const NewHeaderBlock = ({
         )}
 
         {ctaButton.enabled && ctaButton.text && (
-          <div className="ml-auto shrink-0">
+          <div className="ms-auto shrink-0">
             <a
               href={ctaButton.url || "#"}
               className="inline-block rounded-lg px-5 py-2 text-sm font-semibold transition-opacity hover:opacity-90"
@@ -1408,7 +1408,7 @@ const FaqSectionBlock = ({ props }: { props: Record<string, unknown> }) => {
             <button
               type="button"
               onClick={() => setOpenIdx(openIdx === i ? null : i)}
-              className="flex w-full items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition-colors"
+              className="flex w-full items-center justify-between px-5 py-4 text-start hover:bg-gray-50 transition-colors"
             >
               <span className="text-sm font-semibold" style={{ color: fg }}>{faq.question}</span>
               <CaretDown className={cn("size-4 shrink-0 text-gray-400 transition-transform", openIdx === i && "rotate-180")} />
@@ -1677,7 +1677,7 @@ const MarqueeBlock = ({ props }: { props: Record<string, unknown> }) => {
             style={{ color: fg, fontSize, padding: '12px 32px' }}
           >
             {item.icon && (
-              <span className="mr-2" style={{ color: iconColor }}>{item.icon}</span>
+              <span className="me-2" style={{ color: iconColor }}>{item.icon}</span>
             )}
             {item.text}
           </span>

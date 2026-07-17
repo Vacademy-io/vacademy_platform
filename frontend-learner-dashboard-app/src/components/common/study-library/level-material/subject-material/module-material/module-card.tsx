@@ -8,9 +8,11 @@ import { CompletionStatusComponent } from "@/components/common/completion-status
 import { toTitleCase } from "@/lib/utils";
 import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useTranslation } from "react-i18next";
 
 export const ModuleCard = ({ module }: { module: ModulesWithChapters}) => {
 
+    const { t } = useTranslation("studyContent");
     const router = useRouter();
     const { open } = useSidebar();
     const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
@@ -86,7 +88,7 @@ export const ModuleCard = ({ module }: { module: ModulesWithChapters}) => {
                     </div>
                     <div className="flex items-center gap-2">
                         <CompletionStatusComponent completionPercentage={module.percentage_completed} />
-                        <p className="text-neutral-500 text-body">{module.percentage_completed.toFixed(2)}% completed</p>
+                        <p className="text-neutral-500 text-body">{t("progress.percentCompleted", { percent: module.percentage_completed.toFixed(2) })}</p>
                     </div>
                 </div>
             </div>

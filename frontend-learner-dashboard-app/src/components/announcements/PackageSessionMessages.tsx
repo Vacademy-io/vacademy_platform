@@ -122,7 +122,7 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
     <Card 
       key={message.messageId}
       className={`mb-4 cursor-pointer transition-all hover:shadow-md ${
-        !message.isRead ? 'border-l-4 border-l-blue-500 bg-blue-50' : ''
+        !message.isRead ? 'border-s-4 border-s-blue-500 bg-blue-50' : ''
       }`}
       ref={(el) => {
         if (el) {
@@ -241,12 +241,12 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
                           >
                             {isPostingReply ? (
                               <>
-                                <SpinnerGap className="h-4 w-4 animate-spin mr-2" />
+                                <SpinnerGap className="h-4 w-4 animate-spin me-2" />
                                 Posting...
                               </>
                             ) : (
                               <>
-                                <PaperPlaneTilt className="h-4 w-4 mr-2" />
+                                <PaperPlaneTilt className="h-4 w-4 me-2" />
                                 Post Reply
                               </>
                             )}
@@ -310,7 +310,7 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
           {stream.loading && stream.items.length === 0 ? (
             <div className="flex items-center justify-center py-8">
               <SpinnerGap className="h-6 w-6 animate-spin text-gray-400" />
-              <span className="ml-2 text-sm text-gray-500">Loading stream messages...</span>
+              <span className="ms-2 text-sm text-gray-500">Loading stream messages...</span>
             </div>
           ) : stream.items.length === 0 ? (
             <div className="text-center py-8">
@@ -331,7 +331,7 @@ export const PackageSessionMessages: React.FC<PackageSessionMessagesProps> = ({
                   >
                     {stream.loading ? (
                       <>
-                        <SpinnerGap className="h-4 w-4 animate-spin mr-2" />
+                        <SpinnerGap className="h-4 w-4 animate-spin me-2" />
                         Loading...
                       </>
                     ) : (

@@ -15,9 +15,11 @@ import { getPublicUrl } from "@/services/upload_file";
 import { formatTime } from "../../youtube-player";
 import { SmallDummyProfile } from "@/assets/svgs";
     import { useMediaRefsStore } from "@/stores/mediaRefsStore";
+import { useTranslation } from "react-i18next";
 
 export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, refetch: () => void}) => {
-    
+
+    const { t } = useTranslation("studyContent");
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     // const imageUrl: string | null = null;
     const [userId, setUserId] = useState<string | null>(null);
@@ -103,7 +105,7 @@ export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, ref
                                         </div>
                                     )}
                                 </div>
-                                <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${doubt.status === "RESOLVED" ? "bg-green-500" : "bg-amber-500"}`}></div>
+                                <div className={`absolute -bottom-1 -end-1 w-4 h-4 rounded-full border-2 border-white ${doubt.status === "RESOLVED" ? "bg-green-500" : "bg-amber-500"}`}></div>
                             </div>
                             <div className="flex flex-col min-w-0 flex-1">
                                 <h4 className="font-semibold text-gray-900 text-sm leading-tight truncate">
@@ -116,13 +118,13 @@ export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, ref
                         </div>
                         <div className="flex flex-shrink-0 flex-col items-end gap-1">
                             <StatusChip
-                                text={doubt.status === "RESOLVED" ? "Resolved" : "Pending"}
+                                text={doubt.status === "RESOLVED" ? t("doubts.statusResolved") : t("doubts.statusPending")}
                                 textSize="text-xs"
                                 status={doubt.status === "RESOLVED" ? "SUCCESS" : "INFO"}
                             />
                             {doubt.status !== "RESOLVED" && doubt.replies.length > 0 && (
                                 <span className="rounded-full bg-green-50 px-2 py-0.5 text-3xs font-semibold uppercase tracking-wide text-green-700">
-                                    Teacher answered
+                                    {t("doubts.teacherAnswered")}
                                 </span>
                             )}
                         </div>
@@ -137,12 +139,12 @@ export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, ref
                                     className="flex items-center gap-2 px-3 py-2 bg-gray-50 hover:bg-gray-100 rounded-lg border border-gray-200 cursor-pointer transition-all duration-200 hover:shadow-sm group/timestamp"
                                 >
                                     <div className="text-sm font-medium text-gray-700">
-                                        {activeItem?.source_type=="VIDEO"? "Timestamp" : "Page"}: 
+                                        {activeItem?.source_type=="VIDEO"? t("doubts.timestampLabel") : t("doubts.pageLabel")}: 
                                     </div>
                                     <div className="text-sm font-semibold text-primary-600">
                                         {activeItem?.source_type=="VIDEO" 
                                             ? formatTime(parseInt(doubt.content_position || "0")/1000) 
-                                            : `Page ${parseInt(doubt.content_position || "0") + 1}`
+                                            : t("doubts.pageNumber", { page: parseInt(doubt.content_position || "0") + 1 })
                                         }
                                     </div>
                                     <ArrowSquareOut 
@@ -180,7 +182,7 @@ export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, ref
                             className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded-lg transition-colors w-fit group/replies"
                         >
                             <p className="text-sm font-semibold text-gray-700">
-                                Replies <span className="text-primary-500 bg-primary-50 px-2 py-0.5 rounded-full text-xs ml-1">{doubt.replies.length}</span>
+                                {t("doubts.replies")} <span className="text-primary-500 bg-primary-50 px-2 py-0.5 rounded-full text-xs ms-1">{doubt.replies.length}</span>
                             </p>
                             {showReplies ? (
                                 <CaretUp size={16} className="text-gray-500 group-hover/replies:text-gray-700 transition-colors"/>
@@ -189,7 +191,7 @@ export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, ref
                             )}
                         </button>
                         {showReplies && (
-                            <div className="space-y-4 pl-4 border-l-2 border-gray-200 ml-2 animate-in slide-in-from-top-2 duration-200">
+                            <div className="space-y-4 ps-4 border-s-2 border-gray-200 ms-2 animate-in slide-in-from-top-2 duration-200">
                                 {doubt.replies.map((reply, key) => (
                                     <div key={key} className="animate-in fade-in slide-in-from-left-4 duration-300" style={{ animationDelay: `${key * 100}ms` }}>
                                         <Reply reply={reply} raiserUserId={doubt.user_id} />

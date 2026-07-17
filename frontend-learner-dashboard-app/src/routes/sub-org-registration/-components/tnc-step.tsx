@@ -105,7 +105,7 @@ const TncStep = ({
         isTncUrlLoading ? (
           <div className="flex h-40 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50">
             <SpinnerGap className="size-6 animate-spin text-neutral-400" />
-            <span className="ml-2 text-sm text-neutral-500">
+            <span className="ms-2 text-sm text-neutral-500">
               Loading document...
             </span>
           </div>
@@ -197,7 +197,7 @@ const TncStep = ({
             disable={isSubmitting}
             className="w-full sm:w-auto"
           >
-            <ArrowLeft className="mr-2 size-4" />
+            <ArrowLeft className="me-2 size-4" />
             Back
           </MyButton>
         ) : (
@@ -214,7 +214,7 @@ const TncStep = ({
         >
           {isSubmitting ? (
             <>
-              <SpinnerGap className="mr-2 size-4 animate-spin" />
+              <SpinnerGap className="me-2 size-4 animate-spin" />
               Submitting...
             </>
           ) : (

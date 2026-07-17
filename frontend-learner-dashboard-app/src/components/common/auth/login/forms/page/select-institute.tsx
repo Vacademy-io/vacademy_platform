@@ -1,6 +1,6 @@
 "use client";
 import { Preferences } from "@capacitor/preferences";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearch } from "@tanstack/react-router";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -25,6 +25,8 @@ import { INSTITUTE_DETAIL, SELECT_INSTITUTE_SESSION } from "@/constants/urls";
 import { SessionLimitDialog } from "@/components/common/auth/login/components/SessionLimitDialog";
 import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
 import axios from "axios";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 
 import {
     Select,
@@ -34,13 +36,24 @@ import {
     SelectItem,
 } from "@/components/ui/select"; // radix-style select
 
-const instituteSelectionSchema = z.object({
-    instituteId: z.string().nonempty("Please select an institute"),
-});
+/**
+ * Built per-render (not a module constant) so the validation message follows
+ * the active language instead of freezing at import time.
+ */
+const makeInstituteSelectionSchema = () =>
+    z.object({
+        instituteId: z.string().nonempty(i18n.t("auth:validation.selectInstitute")),
+    });
 
-type FormValues = z.infer<typeof instituteSelectionSchema>;
+type FormValues = z.infer<ReturnType<typeof makeInstituteSelectionSchema>>;
 
 export function InstituteSelection() {
+    const { t, i18n: i18nInstance } = useTranslation("auth");
+    const instituteSelectionSchema = useMemo(
+        () => makeInstituteSelectionSchema(),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [i18nInstance.language]
+    );
     const location = useLocation();
     const { type, courseId } = (location.state as { type?: string; courseId?: string }) || {};
     const navigate = useNavigate();
@@ -68,14 +81,14 @@ export function InstituteSelection() {
             try {
                 const token = await getTokenFromStorage(TokenKey.accessToken);
                 if (!token)
-                    return toast.error("No token found - Please login first");
+                    return toast.error(i18n.t("auth:instituteSelection.noToken"));
 
                 const decodedData = await getTokenDecodedData(token);
                 const authorities = decodedData?.authorities;
                 const userId = decodedData?.user;
 
                 if (!authorities || !userId)
-                    return toast.error("Invalid token  Please login again");
+                    return toast.error(i18n.t("auth:instituteSelection.invalidToken"));
 
                 const instituteIds = Object.keys(authorities);
                 
@@ -113,7 +126,8 @@ export function InstituteSelection() {
     }, []);
 
     const onSubmit = async (data: FormValues) => {
-        if (!data.instituteId) return toast.error("Please select an institute");
+        if (!data.instituteId)
+            return toast.error(i18n.t("auth:validation.selectInstitute"));
 
         setIsSubmitting(true);
         try {
@@ -128,7 +142,7 @@ export function InstituteSelection() {
                 .then((data) => data?.user);
 
             if (!userId) {
-                toast.error("User not found");
+                toast.error(i18n.t("auth:instituteSelection.userNotFound"));
                 return;
             }
 
@@ -193,7 +207,7 @@ export function InstituteSelection() {
             // Skip session selection and go straight to the institute's landing route
             await navigateAfterLogin(navigate);
         } catch (error) {
-            toast.error("Submission failed");
+            toast.error(i18n.t("auth:instituteSelection.submissionFailed"));
         } finally {
             setIsSubmitting(false);
         }
@@ -223,7 +237,7 @@ export function InstituteSelection() {
             <motion.div
                 animate={{ x: [0, 20, 0], y: [0, -10, 0], rotate: [0, 2, 0] }}
                 transition={{ duration: 12, repeat: Infinity }}
-                className="absolute top-20 left-20 w-48 h-48 bg-gradient-to-br from-gray-200/10 to-gray-300/10 rounded-full blur-3xl"
+                className="absolute top-20 start-20 w-48 h-48 bg-gradient-to-br from-gray-200/10 to-gray-300/10 rounded-full blur-3xl"
             />
             <motion.div
                 initial={{ opacity: 0, y: 20, scale: 0.98 }}
@@ -250,8 +264,8 @@ export function InstituteSelection() {
                         </div>
 
                         <Heading
-                            heading="Select Your Institute"
-                            subHeading="Choose your institute to continue"
+                            heading={t("instituteSelection.title")}
+                            subHeading={t("instituteSelection.subtitle")}
                         />
                     </div>
 
@@ -271,7 +285,11 @@ export function InstituteSelection() {
                                                 onValueChange={field.onChange}
                                             >
                                                 <SelectTrigger className="w-full bg-white border border-gray-300 text-gray-700 focus:ring-1 focus:ring-gray-900 rounded-md px-3.5 py-2.5 text-sm">
-                                                    <SelectValue placeholder="Select your institute" />
+                                                    <SelectValue
+                                                        placeholder={t(
+                                                            "instituteSelection.placeholder"
+                                                        )}
+                                                    />
                                                 </SelectTrigger>
                                                 <SelectContent className="bg-white text-sm rounded-md shadow-md">
                                                     {dropdownList.map(
@@ -314,14 +332,14 @@ export function InstituteSelection() {
                                             <ArrowsClockwise className="w-4 h-4" />
                                         </motion.div>
                                         <span className="text-sm">
-                                            Processing...
+                                            {t("common.processing")}
                                         </span>
                                     </div>
                                 ) : (
                                     <div className="flex items-center justify-center space-x-2">
                                         <Shield className="w-4 h-4" />
                                         <span className="text-sm">
-                                            Login to Institute
+                                            {t("instituteSelection.loginToInstitute")}
                                         </span>
                                     </div>
                                 )}
@@ -331,20 +349,20 @@ export function InstituteSelection() {
 
                     <div className="text-center mt-6 text-sm">
                         <span className="text-neutral-500">
-                            Want to login with another account?
+                            {t("instituteSelection.anotherAccount")}
                         </span>
                         <MyButton
                             type="button"
                             scale="medium"
                             buttonType="text"
                             layoutVariant="default"
-                            className="text-gray-700 hover:text-black hover:underline ml-1"
+                            className="text-gray-700 hover:text-black hover:underline ms-1"
                             onClick={() =>
                                 navigate({ to: "/login", search: { redirect: redirect || "/dashboard/" } })
                             }
                             disabled={isSubmitting}
                         >
-                            Back to Login
+                            {t("common.backToLogin")}
                         </MyButton>
                     </div>
 
@@ -378,9 +396,11 @@ export function InstituteSelection() {
                                     <circle cx="17" cy="7" r="4" />
                                 </svg>
                             </div>
-                            <p className="font-medium">Multi-Institute</p>
+                            <p className="font-medium">
+                                {t("instituteSelection.multiInstitute")}
+                            </p>
                             <p className="text-xs text-gray-500">
-                                Access multiple institutes
+                                {t("instituteSelection.accessMultiple")}
                             </p>
                         </div>
                         <div className="text-center p-4 bg-white border rounded-md">
@@ -399,9 +419,11 @@ export function InstituteSelection() {
                                     />
                                 </svg>
                             </div>
-                            <p className="font-medium">Secure Access</p>
+                            <p className="font-medium">
+                                {t("instituteSelection.secureAccess")}
+                            </p>
                             <p className="text-xs text-gray-500">
-                                Protected data
+                                {t("instituteSelection.protectedData")}
                             </p>
                         </div>
                     </motion.div>

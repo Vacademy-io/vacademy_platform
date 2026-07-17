@@ -1,0 +1,136 @@
+package vacademy.io.admin_core_service.features.engagement.controller;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import vacademy.io.admin_core_service.features.engagement.dto.CreateEngineRequest;
+import vacademy.io.admin_core_service.features.engagement.dto.PromptEditRequest;
+import vacademy.io.admin_core_service.features.engagement.entity.EngagementEngine;
+import vacademy.io.admin_core_service.features.engagement.entity.EngagementPromptVersion;
+import vacademy.io.admin_core_service.features.engagement.repository.EngagementEngineRepository;
+import vacademy.io.admin_core_service.features.engagement.repository.EngagementMemberRepository;
+import vacademy.io.admin_core_service.features.engagement.repository.EngagementPromptVersionRepository;
+import vacademy.io.admin_core_service.features.engagement.service.EngagementEngineService;
+import vacademy.io.admin_core_service.features.engagement.spi.DataPointRegistry;
+import vacademy.io.admin_core_service.features.engagement.spi.DataPointSpec;
+import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
+import vacademy.io.common.auth.model.CustomUserDetails;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Engine CRUD — JWT, institute-admin surface (unlike notification_service, admin_core's
+ * /v1/** endpoints authenticate; identity comes from the JWT, never the request body).
+ * Every endpoint validates institute membership: instituteId is a request param, so without
+ * this check any authenticated JWT could read/mutate another institute's engines and inbox.
+ */
+@RestController
+@RequestMapping("/admin-core-service/v1/engagement/engines")
+@RequiredArgsConstructor
+public class EngagementEngineController {
+
+    private final EngagementEngineService engineService;
+    private final EngagementEngineRepository engineRepository;
+    private final EngagementMemberRepository memberRepository;
+    private final EngagementPromptVersionRepository promptRepository;
+    private final DataPointRegistry dataPointRegistry;
+    private final InstituteAccessValidator instituteAccessValidator;
+
+    @PostMapping
+    public ResponseEntity<EngagementEngine> create(@RequestParam String instituteId,
+                                                   @RequestBody CreateEngineRequest request,
+                                                   @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(engineService.create(request, instituteId, user.getUserId()));
+    }
+
+    @GetMapping
+    public ResponseEntity<List<EngagementEngine>> list(@RequestParam String instituteId,
+                                                       @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(engineRepository.findByInstituteIdOrderByCreatedAtDesc(instituteId));
+    }
+
+    @GetMapping("/{engineId}")
+    public ResponseEntity<Map<String, Object>> get(@PathVariable String engineId,
+                                                   @RequestParam String instituteId,
+                                                   @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        EngagementEngine engine = engineService.requireEngine(engineId, instituteId);
+        return ResponseEntity.ok(Map.of(
+                "engine", engine,
+                "activeMembers", memberRepository.countByEngineIdAndStatus(engineId, "ACTIVE"),
+                "prompt", promptRepository.findTopByEngineIdAndStatusOrderByVersionDesc(engineId, "ACTIVE").orElse(null)));
+    }
+
+    /** Resolve audience selectors → enroll (idempotent, jittered) + exit leavers. */
+    @PostMapping("/{engineId}/enroll")
+    public ResponseEntity<EngagementEngineService.EnrollmentResult> enroll(
+            @PathVariable String engineId,
+            @RequestParam String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(engineService.enrollAndReconcile(engineId, instituteId));
+    }
+
+    /** DRAFT → DRY_RUN/ACTIVE → PAUSED → ARCHIVED. Activation requires an enrolled audience. */
+    @PutMapping("/{engineId}/status")
+    public ResponseEntity<EngagementEngine> transition(@PathVariable String engineId,
+                                                       @RequestParam String instituteId,
+                                                       @RequestParam String toStatus,
+                                                       @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(engineService.transition(engineId, instituteId, toStatus));
+    }
+
+    /** The prompt that grows: append an amendment; base_text is immutable. */
+    @PostMapping("/{engineId}/prompt")
+    public ResponseEntity<EngagementPromptVersion> editPrompt(@PathVariable String engineId,
+                                                              @RequestParam String instituteId,
+                                                              @RequestBody PromptEditRequest request,
+                                                              @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(engineService.editPrompt(engineId, instituteId, request, user.getUserId()));
+    }
+
+    @GetMapping("/{engineId}/prompt/history")
+    public ResponseEntity<List<EngagementPromptVersion>> promptHistory(
+            @PathVariable String engineId,
+            @RequestParam String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        engineService.requireEngine(engineId, instituteId);
+        return ResponseEntity.ok(promptRepository.findByEngineIdOrderByVersionDesc(engineId));
+    }
+
+    /** The wizard's data-point picker — served by the registry catalog (declare()). */
+    @GetMapping("/data-points")
+    public ResponseEntity<List<DataPointSpec>> dataPointCatalog(
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(dataPointRegistry.all().stream()
+                .map(p -> {
+                    DataPointSpec spec = p.declare();
+                    spec.setKey(p.key());
+                    return spec;
+                }).toList());
+    }
+
+    @DeleteMapping("/{engineId}")
+    public ResponseEntity<Void> archive(@PathVariable String engineId,
+                                        @RequestParam String instituteId,
+                                        @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        engineService.transition(engineId, instituteId, "ARCHIVED");
+        return ResponseEntity.noContent().build();
+    }
+}

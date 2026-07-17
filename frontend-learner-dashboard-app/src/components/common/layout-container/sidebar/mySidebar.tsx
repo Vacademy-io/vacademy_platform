@@ -342,7 +342,7 @@ export const MySidebar = ({
               type="button"
               onClick={toggleSidebar}
               aria-label="Close sidebar"
-              className="absolute top-4 mt-6 right-4 z-10 size-8 flex items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="absolute top-4 mt-6 end-4 z-10 size-8 flex items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <X size={18} />
             </button>
@@ -384,7 +384,7 @@ export const MySidebar = ({
                       )}
                     </div>
                     {isExpanded && (
-                      <div className="flex items-center gap-1.5 pl-11">
+                      <div className="flex items-center gap-1.5 ps-11">
                         <span className="text-caption text-muted-foreground whitespace-nowrap">Powered by</span>
                         {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
                           <img src={instituteLogoFileUrl} alt={instituteName} className="h-4 w-auto max-w-20 object-contain" />
@@ -430,7 +430,7 @@ export const MySidebar = ({
                       )}
                     </div>
                     {!hideInstituteName && (
-                      <div className="grid h-10 flex-1 content-center text-left leading-tight">
+                      <div className="grid h-10 flex-1 content-center text-start leading-tight">
                         <span className="truncate text-subtitle font-semibold">
                           {instituteName}
                         </span>
@@ -492,7 +492,7 @@ export const MySidebar = ({
               learnerPortalUrl) &&
             ((state === "expanded" || isMobile) ? (
               <div className="flex flex-col gap-2 px-2">
-                <span className="text-caption font-semibold uppercase text-muted-foreground tracking-wider pl-1 [.ui-play_&]:font-black [.ui-play_&]:text-primary-500">
+                <span className="text-caption font-semibold uppercase text-muted-foreground tracking-wider ps-1 [.ui-play_&]:font-black [.ui-play_&]:text-primary-500">
                   Apps & Portals
                 </span>
                 <div className="flex flex-wrap gap-1">
@@ -635,7 +635,7 @@ export const MySidebar = ({
                   <button
                     type="button"
                     onClick={() => navigate({ to: "/user-profile" })}
-                    className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-lg px-2 text-left hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [.ui-play_&]:rounded-xl"
+                    className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-lg px-2 text-start hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [.ui-play_&]:rounded-xl"
                   >
                     <span
                       aria-hidden

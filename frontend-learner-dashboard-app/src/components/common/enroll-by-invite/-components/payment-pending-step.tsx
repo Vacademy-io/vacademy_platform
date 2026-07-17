@@ -177,7 +177,7 @@ const PaymentPendingStep = ({
             className="w-full sm:w-auto bg-primary-500 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
           >
             Complete Payment
-            <ArrowRight className="w-5 h-5 ml-2" />
+            <ArrowRight className="w-5 h-5 ms-2" />
           </MyButton>
         )}
         <MyButton
@@ -194,7 +194,7 @@ const PaymentPendingStep = ({
           className="w-full sm:w-auto bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
         >
           View Invoice
-          <ArrowSquareOut className="w-5 h-5 ml-2" />
+          <ArrowSquareOut className="w-5 h-5 ms-2" />
         </MyButton>
       </div>
 

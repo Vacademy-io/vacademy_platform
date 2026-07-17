@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 interface ZoomEmbedPlayerProps {
   recordingUrl: string;
   /**
@@ -14,6 +16,7 @@ const ZoomEmbedPlayer: React.FC<ZoomEmbedPlayerProps> = ({
   recordingUrl = "https://zoom.us/rec/play/YOUR_RECORDING_ID",
   expiresAt = null,
 }) => {
+  const { t } = useTranslation("studyContent");
   const expiryDate = expiresAt ? new Date(expiresAt) : null;
   const showExpiry =
     expiryDate !== null && !Number.isNaN(expiryDate.getTime()) && expiryDate.getTime() > Date.now();
@@ -27,13 +30,13 @@ const ZoomEmbedPlayer: React.FC<ZoomEmbedPlayerProps> = ({
         allow="autoplay; fullscreen"
         allowFullScreen
         frameBorder={0}
-        title="Zoom Recording"
+        title={t("liveClass.zoomRecordingTitle")}
       />
 
       {/* Retention note — recording lives on Zoom Cloud and will expire */}
       {showExpiry && (
-        <span className="absolute bottom-3 left-3 z-10 rounded bg-black/70 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm">
-          Available until {expiryDate!.toLocaleDateString()}
+        <span className="absolute bottom-3 start-3 z-10 rounded bg-black/70 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm">
+          {t("liveClass.availableUntil", { date: expiryDate!.toLocaleDateString() })}
         </span>
       )}
     </div>

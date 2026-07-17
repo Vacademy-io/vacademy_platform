@@ -1,0 +1,138 @@
+{
+    "catalog": {
+        "tab": {
+            "all": "सभी {{courses}}",
+            "inProgress": "जारी",
+            "completed": "पूर्ण"
+        },
+        "toast": {
+            "loadError": "{{courses}} लोड करते समय कुछ गलत हो गया। कृपया पुनः प्रयास करें।",
+            "loadTabError": "इस टैब के लिए {{courses}} लोड नहीं हो सके। कृपया पुनः प्रयास करें।",
+            "loadFallbackError": "{{courses}} लोड नहीं हो सके। कृपया पुनः प्रयास करें।"
+        },
+        "search": {
+            "placeholder": "{{courses}} खोजें..."
+        },
+        "sort": {
+            "label": "क्रमबद्ध करें:",
+            "ariaLabel": "{{courses}} क्रमबद्ध करें",
+            "placeholder": "क्रम",
+            "newest": "नवीनतम पहले",
+            "oldest": "सबसे पुराने पहले",
+            "highestRated": "सर्वोच्च रेटेड",
+            "shortest": "सबसे छोटे पहले"
+        },
+        "empty": {
+            "title": "कोई {{courses}} नहीं मिले",
+            "description": "आपकी खोज से मेल खाता कुछ नहीं मिला। अलग कीवर्ड आज़माएँ, फ़िल्टर बदलें, या उन्हें हटाकर सभी उपलब्ध {{courses}} देखें।"
+        },
+        "results": {
+            "summary": "{{total}} {{courses}} • पृष्ठ {{page}}/{{totalPages}} • {{total}} में से {{showing}} दिखाए जा रहे हैं"
+        },
+        "card": {
+            "untitledPackage": "बिना शीर्षक का पैकेज"
+        }
+    },
+    "filters": {
+        "title": "फ़िल्टर",
+        "clearAll": "सभी हटाएँ",
+        "close": "बंद करें",
+        "show": "दिखाएँ",
+        "apply": "फ़िल्टर लागू करें",
+        "applyShort": "लागू करें",
+        "applyWithCount": "लागू करें ({{selected}})",
+        "appliedCount_one": "{{count}} फ़िल्टर लागू",
+        "appliedCount_other": "{{count}} फ़िल्टर लागू",
+        "noOptions": "कोई विकल्प उपलब्ध नहीं",
+        "unavailable": "अनुपलब्ध",
+        "unnamedLevel": "बिना नाम का {{level}}",
+        "unnamedInstructor": "बिना नाम का {{instructor}}"
+    },
+    "pagination": {
+        "ariaLabel": "पृष्ठ क्रमांकन",
+        "previous": "पिछला",
+        "next": "अगला"
+    },
+    "dialog": {
+        "close": "बंद करें"
+    },
+    "enrollment": {
+        "success": {
+            "title": "नामांकन सफल!",
+            "welcome": "{{courseTitle}} में आपका स्वागत है!",
+            "description": "आपका नामांकन सफलतापूर्वक हो गया है — {{course}}. अब आप सभी {{slides}} देख सकते हैं और सीखना शुरू कर सकते हैं।",
+            "exploreCourse": "{{course}} देखें"
+        },
+        "pending": {
+            "title": "नामांकन अनुरोध भेजा गया",
+            "heading": "अनुरोध सफलतापूर्वक भेजा गया",
+            "nextTitle": "आगे क्या होगा?",
+            "step1": "{{admin}} आपके नामांकन अनुरोध की समीक्षा करेंगे",
+            "step2": "स्वीकृति मिलते ही आपको सूचना मिलेगी",
+            "step3": "{{course}} के {{slides}} तक पहुँच दी जाएगी"
+        }
+    },
+    "approval": {
+        "success": {
+            "srTitle": "स्वीकृति सफल",
+            "srDescription": "आपका नामांकन स्वीकृत हो गया है और अब आपके पास पहुँच है — {{course}}",
+            "heading": "स्वीकृति सफल!",
+            "readyTitle": "सीखने के लिए तैयार!",
+            "readyMessage": "अब आप {{course}} की सामग्री देख सकते हैं और सीखना शुरू कर सकते हैं।",
+            "startLearning": "सीखना शुरू करें"
+        }
+    },
+    "payment": {
+        "success": {
+            "srTitle": "भुगतान सफल",
+            "srDescription": "आपका भुगतान सफलतापूर्वक संसाधित हो गया",
+            "heading": "भुगतान सफल!",
+            "approvalTitle": "{{admin}} की स्वीकृति आवश्यक",
+            "approvalStep1": "प्रशासक आपके नामांकन अनुरोध की समीक्षा करेंगे",
+            "approvalStep2": "स्वीकृति मिलते ही आपको ईमेल सूचना मिलेगी",
+            "approvalStep3": "{{course}} तक पहुँच स्वतः दे दी जाएगी",
+            "accessMessage": "अब आप {{course}} की सामग्री देख सकते हैं और सीखना शुरू कर सकते हैं।",
+            "exploreCourse": "{{course}} देखें"
+        },
+        "failed": {
+            "srTitle": "भुगतान विफल",
+            "srDescription": "आपका भुगतान संसाधित नहीं हो सका",
+            "heading": "भुगतान विफल",
+            "description": "आपका भुगतान संसाधित नहीं हो सका। कृपया पुनः प्रयास करें।",
+            "nextTitle": "अब क्या करें?",
+            "step1": "अपना भुगतान माध्यम जाँचें और पुनः प्रयास करें",
+            "step2": "समस्या बनी रहे तो सहायता टीम से संपर्क करें",
+            "step3": "आप नामांकन प्रक्रिया दोबारा शुरू कर सकते हैं",
+            "tryAgain": "पुनः प्रयास करें"
+        }
+    },
+    "hero": {
+        "resume": {
+            "eyebrow": "वहीं से शुरू करें",
+            "continue": "जारी रखें"
+        },
+        "catalogEyebrow": "{{course}} सूची",
+        "title": "एक्सप्लोर करें और खोजें",
+        "description": "शैक्षिक सामग्री को एक ही जगह आसानी से व्यवस्थित करें, अपलोड करें और ट्रैक करें।",
+        "createCourse": "{{course}}: बनाएं"
+    },
+    "card": {
+        "unknownInstructor": "अज्ञात {{instructor}}",
+        "cta": {
+            "review": "समीक्षा करें",
+            "continue": "जारी रखें",
+            "startLearning": "सीखना शुरू करें",
+            "view": "{{course}} देखें"
+        },
+        "tagsMore_one": "+{{count}} और",
+        "tagsMore_other": "+{{count}} और",
+        "status": {
+            "notStarted": "शुरू नहीं हुआ",
+            "percentComplete": "{{percent}}% पूर्ण",
+            "keepGoing": "लगे रहें!"
+        },
+        "nextSlide": "अगला: {{title}}",
+        "overview": "अवलोकन",
+        "overviewAriaLabel": "{{course}} अवलोकन देखें"
+    }
+}

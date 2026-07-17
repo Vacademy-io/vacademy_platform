@@ -247,7 +247,7 @@ const HeroTrust: React.FC<{
   const rating = trust.rating ? Math.max(0, Math.min(5, trust.rating)) : 0;
   return (
     <div className={`flex ${justify} pt-3`}>
-      <div className="inline-flex items-center gap-3 rounded-full border border-catalogue-border-subtle bg-catalogue-bg-subtle py-1.5 pl-2 pr-4">
+      <div className="inline-flex items-center gap-3 rounded-full border border-catalogue-border-subtle bg-catalogue-bg-subtle py-1.5 ps-2 pe-4">
         {!!trust.avatars?.length && (
           <div className="flex -space-x-2">
             {trust.avatars.slice(0, 4).map((src, i) => (
@@ -607,7 +607,7 @@ const HeroCarousel: React.FC<{
           setIndex((i) => (i - 1 + images.length) % images.length)
         }
         aria-label="Previous slide"
-        className="absolute left-2 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-gray-700 opacity-0 shadow-sm transition hover:bg-white group-hover:opacity-100"
+        className="absolute start-2 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-gray-700 opacity-0 shadow-sm transition hover:bg-white group-hover:opacity-100"
       >
         <CaretLeft size={16} weight="bold" />
       </button>
@@ -615,7 +615,7 @@ const HeroCarousel: React.FC<{
         type="button"
         onClick={() => setIndex((i) => (i + 1) % images.length)}
         aria-label="Next slide"
-        className="absolute right-2 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-gray-700 opacity-0 shadow-sm transition hover:bg-white group-hover:opacity-100"
+        className="absolute end-2 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/80 text-gray-700 opacity-0 shadow-sm transition hover:bg-white group-hover:opacity-100"
       >
         <CaretRight size={16} weight="bold" />
       </button>

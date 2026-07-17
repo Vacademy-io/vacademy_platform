@@ -37,7 +37,7 @@ export function ParentPortalSidebar({
 
   return (
     <Sidebar side="left" collapsible="icon">
-      <SidebarContent className="flex flex-col bg-white dark:bg-neutral-900 border-r border-gray-200 dark:border-neutral-800 py-2 transition-all duration-200 ease-in-out max-w-full w-full overflow-x-hidden">
+      <SidebarContent className="flex flex-col bg-white dark:bg-neutral-900 border-e border-gray-200 dark:border-neutral-800 py-2 transition-all duration-200 ease-in-out max-w-full w-full overflow-x-hidden">
         {/* Header — institute logo or child initials */}
         <SidebarHeader>
           <SidebarMenu className="px-2">
@@ -61,7 +61,7 @@ export function ParentPortalSidebar({
                     </div>
                   )}
                 </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
+                <div className="grid flex-1 text-start text-sm leading-tight">
                   <span className="truncate font-semibold">
                     {instituteName || child.full_name}
                   </span>

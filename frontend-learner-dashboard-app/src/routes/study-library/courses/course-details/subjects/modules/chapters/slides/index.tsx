@@ -153,7 +153,7 @@ const ModuleAccordionItem = ({
       {/* Module header — tap to expand/collapse */}
       <button
         onClick={() => setIsExpanded((v) => !v)}
-        className={`w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors ${
+        className={`w-full flex items-center justify-between px-3 py-2.5 text-start transition-colors ${
           isInitiallyExpanded ? "bg-primary-50/40" : "hover:bg-gray-50"
         }`}
       >
@@ -172,7 +172,7 @@ const ModuleAccordionItem = ({
           )}
         </div>
         <ChevronRightIcon
-          className={`w-3 h-3 flex-shrink-0 ml-2 transition-transform duration-200 ${
+          className={`w-3 h-3 flex-shrink-0 ms-2 transition-transform duration-200 ${
             isExpanded ? "rotate-90 text-primary-500" : "text-gray-400"
           }`}
         />
@@ -188,7 +188,7 @@ const ModuleAccordionItem = ({
               <button
                 key={chapter.id}
                 onClick={() => onChapterSelect(modData.module.id, chapter.id)}
-                className={`w-full text-left px-5 py-1.5 text-caption transition-colors flex items-center gap-2 ${
+                className={`w-full text-start px-5 py-1.5 text-caption transition-colors flex items-center gap-2 ${
                   isCurrent
                     ? "bg-primary-50 text-primary-700 font-semibold"
                     : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"
@@ -985,7 +985,7 @@ function Slides() {
             className="flex items-center gap-3 rounded-play-btn bg-play-success px-5 py-4 shadow-play-2d-success active:translate-y-0.5 active:shadow-none"
           >
             <playIllustrations.Winners className="h-12 w-auto shrink-0 text-white" />
-            <span className="text-left">
+            <span className="text-start">
               <span className="block text-base font-black text-play-ink">
                 {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)}{" "}
                 complete!
@@ -1238,7 +1238,7 @@ function Slides() {
   }, [previousChapter, navigate, courseId, subjectId, sessionId]);
 
   const SidebarComponent = (
-    <div className="flex flex-col h-full bg-white border-r border-gray-100">
+    <div className="flex flex-col h-full bg-white border-e border-gray-100">
       {/* --- Header Section: Title & Breadcrumbs --- */}
       <div className="flex-none px-3 py-2.5 space-y-2 border-b border-gray-100 bg-white z-10">
         {/* Course Info Row */}
@@ -1339,7 +1339,7 @@ function Slides() {
                               key={s.id}
                               disabled={!!switchingSubjectId && !isSwitching}
                               onClick={() => handleSubjectSelect(s.id)}
-                              className={`w-full text-left px-3 py-2 text-caption transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed ${
+                              className={`w-full text-start px-3 py-2 text-caption transition-colors flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed ${
                                 isCurrent
                                   ? "bg-primary-50 text-primary-700 font-semibold"
                                   : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
@@ -1521,7 +1521,7 @@ function Slides() {
             <button
               onClick={handlePreviousChapter}
               title={`Previous: ${toTitleCase(previousChapter.chapter.chapter_name)}`}
-              className="w-full flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1.5 hover:bg-neutral-100 hover:border-neutral-300 transition-colors group/prev text-left [.ui-play_&]:rounded-lg [.ui-play_&]:border-2"
+              className="w-full flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1.5 hover:bg-neutral-100 hover:border-neutral-300 transition-colors group/prev text-start [.ui-play_&]:rounded-lg [.ui-play_&]:border-2"
             >
               <CaretLeft
                 size={12}
@@ -1541,7 +1541,7 @@ function Slides() {
             <button
               onClick={handleNextChapter}
               title={`Up next: ${toTitleCase(nextChapter.chapter.chapter_name)}`}
-              className="w-full flex items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-2 py-1.5 hover:bg-primary-100 hover:border-primary-300 transition-colors group/next text-left [.ui-play_&]:rounded-lg [.ui-play_&]:border-2"
+              className="w-full flex items-center gap-1.5 rounded-md border border-primary-200 bg-primary-50 px-2 py-1.5 hover:bg-primary-100 hover:border-primary-300 transition-colors group/next text-start [.ui-play_&]:rounded-lg [.ui-play_&]:border-2"
             >
               <span className="text-caption font-bold text-primary-500 uppercase tracking-wider shrink-0">
                 Up next
@@ -1663,7 +1663,7 @@ function Slides() {
         <button
           onClick={toggleFocusMode}
           aria-label="Exit focus mode"
-          className="fixed bottom-6 left-4 z-30 hidden sm:flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 shadow-md transition-colors hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900 [.ui-play_&]:border-2 [.ui-play_&]:font-bold"
+          className="fixed bottom-6 start-4 z-30 hidden sm:flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 shadow-md transition-colors hover:border-gray-300 hover:bg-gray-50 hover:text-gray-900 [.ui-play_&]:border-2 [.ui-play_&]:font-bold"
         >
           <ArrowsIn size={14} weight="bold" />
           <span>Exit focus</span>

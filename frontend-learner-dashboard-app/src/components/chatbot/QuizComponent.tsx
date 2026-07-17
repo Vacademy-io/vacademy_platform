@@ -171,7 +171,7 @@ export const QuizComponent: React.FC<QuizComponentProps> = ({
                 onClick={() => handleOptionSelect(currentQ.id, optIdx)}
                 disabled={isSubmitted || disabled}
                 className={cn(
-                  "w-full text-left p-3 rounded-lg border-2 transition-all",
+                  "w-full text-start p-3 rounded-lg border-2 transition-all",
                   "hover:border-primary/50 hover:bg-primary/5",
                   isSelected
                     ? "border-primary bg-primary/10"
@@ -231,7 +231,7 @@ export const QuizComponent: React.FC<QuizComponentProps> = ({
               onClick={goToNextQuestion}
               className="h-8"
             >
-              Next <CaretRight className="h-4 w-4 ml-1" />
+              Next <CaretRight className="h-4 w-4 ms-1" />
             </Button>
           ) : (
             <Button

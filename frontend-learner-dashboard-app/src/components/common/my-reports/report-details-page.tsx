@@ -35,7 +35,7 @@ const markdownComponents = {
   thead: ({ ...props }) => <thead className="bg-slate-50" {...props} />,
   th: ({ ...props }) => (
     <th
-      className="border border-slate-200 px-4 py-2.5 text-left font-bold text-slate-900"
+      className="border border-slate-200 px-4 py-2.5 text-start font-bold text-slate-900"
       {...props}
     />
   ),
@@ -186,7 +186,7 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
                 scrollToSection(section.id);
                 if (isMobile) setIsMobileNavOpen(false);
               }}
-              className={`w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
+              className={`w-full text-start px-3 py-2 text-sm rounded-md transition-colors ${
                 activeSection === section.id
                   ? "bg-blue-50 text-blue-700 font-medium"
                   : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
@@ -251,7 +251,7 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
               isNavCollapsed ? "w-12" : "w-64"
             } flex-shrink-0`}
           >
-            <div className="sticky top-24 left-0 bg-white rounded-lg border shadow-sm overflow-hidden">
+            <div className="sticky top-24 start-0 bg-white rounded-lg border shadow-sm overflow-hidden">
               {isNavCollapsed ? (
                 <div className="p-2 flex justify-center">
                   <Button
@@ -272,7 +272,7 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
           {/* Main Content */}
           <div
             className={`flex-1 min-w-0 transition-all duration-300 ${
-              isNavCollapsed ? "lg:ml-0" : ""
+              isNavCollapsed ? "lg:ms-0" : ""
             }`}
           >
             <div className="space-y-6">
@@ -318,7 +318,7 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
             onClick={() => setIsMobileNavOpen(false)}
           />
           {/* Bottom Sheet */}
-          <div className="fixed bottom-0 left-0 right-0 bg-white rounded-t-xl shadow-2xl z-50 xl:hidden max-h-screen-70 overflow-hidden">
+          <div className="fixed bottom-0 start-0 end-0 bg-white rounded-t-xl shadow-2xl z-50 xl:hidden max-h-screen-70 overflow-hidden">
             <div className="p-4 border-b">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-900">
@@ -343,7 +343,7 @@ export default function ReportDetailsPage({ report }: ReportDetailsPageProps) {
 
       {/* Mobile Navigation Toggle Button */}
       <div className="block xl:hidden">
-        <div className="fixed bottom-6 right-6 z-60">
+        <div className="fixed bottom-6 end-6 z-60">
           <Button
             onClick={() => setIsMobileNavOpen(!isMobileNavOpen)}
             className="rounded-full size-12 shadow-2xl bg-primary-400 text-white flex items-center justify-center"

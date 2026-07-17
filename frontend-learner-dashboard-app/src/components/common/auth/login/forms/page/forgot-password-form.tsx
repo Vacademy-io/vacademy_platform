@@ -16,10 +16,14 @@ import { useTheme } from "@/providers/theme/theme-provider";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
 import { Preferences } from "@capacitor/preferences";
+import { resolveFontStack } from "@/utils/branding";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 
 type FormValues = z.infer<typeof forgotPasswordSchema>;
 
 export function ForgotPassword() {
+  const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const { setPrimaryColor } = useTheme();
   const { setInstituteId } = useInstituteFeatureStore();
@@ -39,16 +43,7 @@ export function ForgotPassword() {
           setPrimaryColor(parsed.theme);
         }
         if (parsed?.fontFamily) {
-          const mapFamily = (f: string) => {
-            const key = String(f).toUpperCase();
-            if (key === "INTER") return 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "CAIRO") return 'Cairo, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "PLAYPEN SANS") return 'Playpen Sans, cursive, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "WORK SANS") return 'Work Sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "LEXEND") return 'Lexend, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            return f;
-          };
-          const family = mapFamily(parsed.fontFamily);
+          const family = resolveFontStack(parsed.fontFamily);
           document.documentElement.style.setProperty("--app-font-family", family);
           document.body.style.fontFamily = family;
         }
@@ -103,11 +98,11 @@ export function ForgotPassword() {
     onSuccess: async (response) => {
       if (response.status === "success") {
         setEmailSent(true);
-        toast.success("Credentials sent successfully", { duration: 2000 });
+        toast.success(i18n.t("auth:toasts.credentialsSent"), { duration: 2000 });
         sendResetLinkMutation.mutate();
       } else {
-        toast.error("Account not found", {
-          description: "This email address is not registered",
+        toast.error(i18n.t("auth:toasts.accountNotFound"), {
+          description: i18n.t("auth:forgotPassword.emailNotRegisteredDesc"),
           duration: 2000,
         });
         form.reset();
@@ -116,8 +111,8 @@ export function ForgotPassword() {
     },
     onError: () => {
       setIsLoading(false);
-      toast.error("Account not found", {
-        description: "This email address is not registered",
+      toast.error(i18n.t("auth:toasts.accountNotFound"), {
+        description: i18n.t("auth:forgotPassword.emailNotRegisteredDesc"),
         duration: 2000,
       });
     },
@@ -127,11 +122,15 @@ export function ForgotPassword() {
     mutationFn: sendResetLink,
     onSuccess: (response) => {
       if (response.status !== "success") {
-        toast.error("Failed to reset the password", { duration: 3000 });
+        toast.error(i18n.t("auth:toasts.failedResetPassword"), {
+          duration: 3000,
+        });
       }
     },
     onError: () => {
-      toast.error("Failed to reset the password", { duration: 3000 });
+      toast.error(i18n.t("auth:toasts.failedResetPassword"), {
+        duration: 3000,
+      });
     },
   });
 
@@ -161,7 +160,7 @@ export function ForgotPassword() {
           repeat: Infinity,
           ease: "easeInOut" 
         }}
-        className="absolute top-20 left-20 w-48 h-48 bg-primary-100/40 rounded-full blur-3xl" 
+        className="absolute top-20 start-20 w-48 h-48 bg-primary-100/40 rounded-full blur-3xl" 
       />
       <motion.div
         animate={{
@@ -175,7 +174,7 @@ export function ForgotPassword() {
           ease: "easeInOut",
           delay: 3,
         }}
-        className="absolute bottom-20 right-20 w-64 h-64 bg-primary-100/40 rounded-full blur-3xl" 
+        className="absolute bottom-20 end-20 w-64 h-64 bg-primary-100/40 rounded-full blur-3xl" 
       />
 
       {/* Centered container */}
@@ -197,7 +196,7 @@ export function ForgotPassword() {
               className="flex items-center space-x-2 text-gray-600 hover:text-gray-800 transition-colors duration-200 mb-6 group"
             >
               <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform duration-200" />
-              <span className="text-sm font-medium">Back to Login</span>
+              <span className="text-sm font-medium">{t("common.backToLogin")}</span>
             </motion.button>
 
             <AnimatePresence mode="wait">
@@ -220,10 +219,10 @@ export function ForgotPassword() {
                       <Key className="w-6 h-6 text-white" />
                     </div>
                     <h2 className="text-xl lg:text-2xl font-bold text-gray-900 mb-2">
-                      Forgot Your Password?
+                      {t("forgotPassword.title")}
                     </h2>
                     <p className="text-gray-600 text-sm">
-                      Enter your email address and we'll send you your login credentials
+                      {t("forgotPassword.subtitle")}
                     </p>
                   </motion.div>
 
@@ -246,17 +245,17 @@ export function ForgotPassword() {
                               <div className="relative">
                                 <MyInput
                                   inputType="email"
-                                  inputPlaceholder="Enter your email address"
+                                  inputPlaceholder={t("common.enterEmailAddress")}
                                   input={value}
                                   onChangeFunction={onChange}
                                   error={form.formState.errors.email?.message}
                                   required={true}
                                   size="large"
-                                  label="Email Address"
+                                  label={t("common.emailAddressLabel")}
                                   {...field}
-                                  className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
+                                  className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pe-10"
                                 />
-                                <Envelope className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
+                                <Envelope className="absolute end-3 bottom-3 w-4 h-4 text-gray-400" />
                               </div>
                             </FormControl>
                           </FormItem>
@@ -279,12 +278,12 @@ export function ForgotPassword() {
                             >
                               <ArrowsClockwise className="w-4 h-4" />
                             </motion.div>
-                              <span>Sending...</span>
+                              <span>{t("forgotPassword.sending")}</span>
                           </div>
                         ) : (
                           <div className="flex items-center justify-center space-x-2">
                             <Envelope className="w-4 h-4" />
-                              <span>Send Credentials</span>
+                              <span>{t("forgotPassword.sendCredentials")}</span>
                               <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                           </div>
                         )}
@@ -303,10 +302,10 @@ export function ForgotPassword() {
                       <Shield className="w-4 h-4 text-gray-600 mt-0.5 flex-shrink-0" />
                       <div>
                         <p className="text-xs font-medium text-gray-800 mb-1">
-                          Account Security
+                          {t("forgotPassword.accountSecurity")}
                         </p>
                         <p className="text-xs text-gray-600">
-                          We'll send your credentials securely to your registered email address.
+                          {t("forgotPassword.securityNote")}
                         </p>
                       </div>
                     </div>
@@ -339,16 +338,16 @@ export function ForgotPassword() {
                     className="mb-6"
                   >
                     <h2 className="text-xl font-bold text-gray-900 mb-2">
-                      Email Sent Successfully!
+                      {t("forgotPassword.emailSentTitle")}
                     </h2>
                     <p className="text-gray-600 text-sm mb-2">
-                      We've sent your login credentials to
+                      {t("forgotPassword.emailSentBody")}
                     </p>
                     <p className="font-medium text-gray-900 text-sm">
                       {form.getValues().email}
                     </p>
                     <p className="text-xs text-gray-500 mt-2">
-                      Please check your inbox and spam folder
+                      {t("forgotPassword.checkSpam")}
                     </p>
                   </motion.div>
 
@@ -367,7 +366,7 @@ export function ForgotPassword() {
                     >
                       <div className="flex items-center justify-center space-x-2">
                         <ArrowLeft className="w-4 h-4" />
-                          <span>Back to Login</span>
+                          <span>{t("common.backToLogin")}</span>
                           <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                       </div>
                     </motion.button>
@@ -377,7 +376,7 @@ export function ForgotPassword() {
                       onClick={handleTryAgain}
                       className="w-full text-gray-600 hover:text-gray-800 font-medium py-2 transition-colors duration-200 text-sm"
                     >
-                      Try different email
+                      {t("forgotPassword.tryDifferentEmail")}
                     </motion.button>
                   </motion.div>
 
@@ -389,8 +388,9 @@ export function ForgotPassword() {
                     className="mt-6 p-3 bg-gray-50/80 border border-gray-200/60 rounded-lg"
                   >
                     <p className="text-xs text-gray-600">
-                      <strong>Didn't receive the email?</strong><br />
-                      Check your spam folder or contact support if the issue persists.
+                      <strong>{t("forgotPassword.didntReceiveTitle")}</strong>
+                      <br />
+                      {t("forgotPassword.didntReceiveBody")}
                     </p>
                   </motion.div>
                 </motion.div>
@@ -406,9 +406,9 @@ export function ForgotPassword() {
             className="mt-6 text-center text-xs text-gray-600"
           >
             <p>
-              Need help? Contact{" "}
+              {t("forgotPassword.needHelpContact")}{" "}
               <a href="#" className="text-gray-800 hover:text-gray-900 font-medium underline">
-                support
+                {t("forgotPassword.support")}
               </a>
             </p>
           </motion.div>

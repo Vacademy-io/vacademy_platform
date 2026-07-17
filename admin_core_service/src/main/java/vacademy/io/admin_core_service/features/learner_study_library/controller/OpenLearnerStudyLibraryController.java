@@ -26,39 +26,39 @@ public class OpenLearnerStudyLibraryController {
     private StudyLibraryService studyLibraryService;
 
     @GetMapping("/init-details")
-    @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PUBLIC, varyHeaders = {"X-Package-Session-Id"})
+    @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PUBLIC, varyHeaders = {"Accept-Language", "X-Package-Session-Id"})
     public ResponseEntity<List<LearnerSubjectProjection>> getLearnerStudyLibraryInitDetails(
         @RequestParam String packageSessionId) {
         return ResponseEntity.ok(learnerStudyLibraryService.getSubjectsByPackageSessionId(packageSessionId));
     }
 
     @GetMapping("/modules-with-chapters")
-    @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PUBLIC, varyHeaders = {"X-Package-Session-Id"})
+    @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PUBLIC, varyHeaders = {"Accept-Language", "X-Package-Session-Id"})
     public ResponseEntity<List<LearnerModuleDTOWithDetails>> modulesWithChapters(@RequestParam("subjectId") String subjectId, @RequestParam("packageSessionId") String packageSessionId) {
         return ResponseEntity.ok(learnerStudyLibraryService.getModulesDetailsWithChapters(subjectId, packageSessionId));
     }
 
 
     @GetMapping("/slides")
-    @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PUBLIC)
+    @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PUBLIC, varyHeaders = {"Accept-Language"})
     public ResponseEntity<List<LearnerSlidesDetailDTO>> getLearnerSlidesByChapterId(@RequestParam String chapterId) {
         return ResponseEntity.ok(learnerStudyLibraryService.getLearnerSlides(chapterId));
     }
 
     @GetMapping("/init")
-    @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PUBLIC)
+    @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PUBLIC, varyHeaders = {"Accept-Language"})
     public ResponseEntity<List<CourseDTOWithDetails>> initStudyLibrary(String instituteId) {
         return ResponseEntity.ok(studyLibraryService.getStudyLibraryInitDetails(instituteId));
     }
 
     @GetMapping("/course-init")
-    @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PUBLIC)
+    @ClientCacheable(maxAgeSeconds = 300, scope = CacheScope.PUBLIC, varyHeaders = {"Accept-Language"})
     public ResponseEntity<List<CourseDTOWithDetails>> initStudyLibrary(String courseId, String instituteId) {
         return ResponseEntity.ok(studyLibraryService.getCourseInitDetails(courseId, instituteId));
     }
 
     @GetMapping("/chapters-with-slides")
-    @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PUBLIC, varyHeaders = {"X-Package-Session-Id"})
+    @ClientCacheable(maxAgeSeconds = 120, scope = CacheScope.PUBLIC, varyHeaders = {"Accept-Language", "X-Package-Session-Id"})
     public ResponseEntity<List<ChapterDTOWithDetails>>getChaptersWithSlides(@RequestParam("moduleId") String subjectId, @RequestParam("packageSessionId") String packageSessionId) {
         return ResponseEntity.ok(studyLibraryService.getChaptersWithSlides(subjectId, packageSessionId, null));
     }

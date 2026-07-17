@@ -29,7 +29,7 @@ const QueryItem = ({ doubt, typeLabel }: { doubt: Doubt; typeLabel: string }) =>
             <button
                 type="button"
                 onClick={() => setExpanded((v) => !v)}
-                className="flex w-full flex-col gap-1.5 p-3 text-left"
+                className="flex w-full flex-col gap-1.5 p-3 text-start"
             >
                 <div className="flex items-center gap-2">
                     <span
@@ -45,7 +45,7 @@ const QueryItem = ({ doubt, typeLabel }: { doubt: Doubt; typeLabel: string }) =>
                     <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-caption font-medium text-neutral-600">
                         {typeLabel}
                     </span>
-                    <span className="ml-auto shrink-0 text-caption text-neutral-400">
+                    <span className="ms-auto shrink-0 text-caption text-neutral-400">
                         {formatWhen(doubt.raised_time)}
                     </span>
                 </div>
@@ -120,7 +120,7 @@ export const MyQueriesList = () => {
     }
 
     return (
-        <div className="flex max-h-96 flex-col gap-2 overflow-y-auto pr-1">
+        <div className="flex max-h-96 flex-col gap-2 overflow-y-auto pe-1">
             {queries.map((q) => (
                 <QueryItem key={q.id} doubt={q} typeLabel={typeLabel(q)} />
             ))}

@@ -82,14 +82,14 @@ const ModernButton = forwardRef<HTMLButtonElement, ModernButtonProps>(
       >
         {isLoading ? (
           <>
-            <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            <div className="me-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
             Loading...
           </>
         ) : (
           <>
-            {leftIcon && <span className="mr-2 flex-shrink-0">{leftIcon}</span>}
+            {leftIcon && <span className="me-2 flex-shrink-0">{leftIcon}</span>}
             {children}
-            {rightIcon && <span className="ml-2 flex-shrink-0">{rightIcon}</span>}
+            {rightIcon && <span className="ms-2 flex-shrink-0">{rightIcon}</span>}
           </>
         )}
       </Comp>

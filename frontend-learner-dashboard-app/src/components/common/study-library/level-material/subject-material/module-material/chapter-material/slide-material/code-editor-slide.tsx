@@ -881,7 +881,7 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
     <div className="h-full p-1 relative">
       {/* Verification overlay */}
       {showVerification && (
-        <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-50 animate-in fade-in slide-in-from-top duration-300">
+        <div className="absolute top-2 start-1/2 transform -translate-x-1/2 w-full max-w-xs z-50 animate-in fade-in slide-in-from-top duration-300">
           <div className="bg-yellow-50 border bg-primary-500 rounded-lg shadow-lg overflow-hidden">
             <div className="p-2">
               <div className="mt-1">
@@ -946,7 +946,7 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
             <div className="flex items-center gap-2">
               <Code className="size-5" />
               <span className="text-lg font-semibold">Code Editor</span>
-              <span className="ml-2 rounded-full bg-gray-100 px-2 py-1 text-xs font-normal text-gray-600">
+              <span className="ms-2 rounded-full bg-gray-100 px-2 py-1 text-xs font-normal text-gray-600">
                 {editorState.viewMode === "edit" ? "Edit Mode" : "View Mode"}
               </span>
             </div>
@@ -958,7 +958,7 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
                 size="sm"
                 className="bg-green-600 text-white hover:bg-green-700"
               >
-                <Play className="mr-1 size-4" />
+                <Play className="me-1 size-4" />
                 {isRunning ? "Running..." : "Run"}
               </Button>
 
@@ -969,9 +969,9 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
                     size="sm"
                     onClick={handleUserActivity}
                   >
-                    <Gear className="mr-1 size-4" />
+                    <Gear className="me-1 size-4" />
                     Settings
-                    <CaretDown className="ml-1 size-3" />
+                    <CaretDown className="ms-1 size-3" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
@@ -984,12 +984,12 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
                   >
                     {editorState.theme === "light" ? (
                       <>
-                        <Moon className="mr-2 size-4" />
+                        <Moon className="me-2 size-4" />
                         Switch to Dark Theme
                       </>
                     ) : (
                       <>
-                        <Sun className="mr-2 size-4" />
+                        <Sun className="me-2 size-4" />
                         Switch to Light Theme
                       </>
                     )}
@@ -1003,7 +1003,7 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
                       handleUserActivity();
                     }}
                   >
-                    <Copy className="mr-2 size-4" />
+                    <Copy className="me-2 size-4" />
                     Copy Code
                   </DropdownMenuItem>
 
@@ -1014,7 +1014,7 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
                         handleUserActivity();
                       }}
                     >
-                      <DownloadSimple className="mr-2 size-4" />
+                      <DownloadSimple className="me-2 size-4" />
                       Download Code
                     </DropdownMenuItem>
                   )}
@@ -1126,7 +1126,7 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
                   size="sm"
                   onClick={toggleOutputExpanded}
                 >
-                  <CaretUp className="mr-1 size-4" />
+                  <CaretUp className="me-1 size-4" />
                   Show Output
                 </Button>
               </div>

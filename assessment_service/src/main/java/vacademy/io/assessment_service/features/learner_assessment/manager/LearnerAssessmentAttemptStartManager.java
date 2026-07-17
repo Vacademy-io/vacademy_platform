@@ -56,6 +56,9 @@ public class LearnerAssessmentAttemptStartManager {
     @Autowired
     vacademy.io.assessment_service.features.assessment.service.WorkflowTriggerClient workflowTriggerClient;
 
+    @Autowired
+    vacademy.io.assessment_service.features.translation.service.TranslationService translationService;
+
 
     @Transactional
     public ResponseEntity<LearnerAssessmentStartPreviewResponse> startAssessmentPreview(CustomUserDetails user, String assessmentId, String instituteId, String batchIds, BasicParticipantDTO basicParticipantDTO) {
@@ -93,7 +96,12 @@ public class LearnerAssessmentAttemptStartManager {
         learnerAssessmentStartPreviewResponse.setAssessmentUserRegistrationId(newAssessmentUserRegistration.getId());
         learnerAssessmentStartPreviewResponse.setAttemptId(newStudentAttempt.getId());
         learnerAssessmentStartPreviewResponse.setPreviewTotalTime(assessment.get().getPreviewTime());
-        learnerAssessmentStartPreviewResponse.setSectionDtos(createSectionDtoList(assessment.get()));
+        // i18n: swap servable (PUBLISHED/STALE) sidecar translations into the
+        // preview DTOs for the request locale. No-op for "en"; per-item
+        // fallback to canonical content; never throws (DTO shape unchanged).
+        List<SectionDto> sectionDtos = createSectionDtoList(assessment.get());
+        translationService.localizeSectionDtos(sectionDtos);
+        learnerAssessmentStartPreviewResponse.setSectionDtos(sectionDtos);
         return ResponseEntity.ok(learnerAssessmentStartPreviewResponse);
     }
 
@@ -238,6 +246,9 @@ public class LearnerAssessmentAttemptStartManager {
         studentAttempt.get().setStartTime(startTime);
         Date endTime = DateUtil.addMinutes(startTime, studentAttempt.get().getMaxTime());
         studentAttempt.get().setStatus(AssessmentAttemptEnum.LIVE.name());
+        // i18n: stamp which content locale this attempt is being served in
+        // (?lang > Accept-Language > JWT claim > "en"). Purely additive.
+        studentAttempt.get().setContentLocale(translationService.resolveRequestLocale());
 
         studentAttemptRepository.save(studentAttempt.get());
 

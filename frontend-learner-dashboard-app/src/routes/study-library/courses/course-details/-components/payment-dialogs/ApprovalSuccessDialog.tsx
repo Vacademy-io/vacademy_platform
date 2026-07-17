@@ -2,7 +2,10 @@ import React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { CheckCircle } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { MyButton } from "@/components/design-system/button";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 interface ApprovalSuccessDialogProps {
   open: boolean;
@@ -19,6 +22,12 @@ export const ApprovalSuccessDialog: React.FC<ApprovalSuccessDialogProps> = ({
   onExploreCourse,
   onClose,
 }) => {
+  const { t } = useTranslation("study");
+  const courseLower = getTerminology(
+    ContentTerms.Course,
+    SystemTerms.Course
+  ).toLocaleLowerCase();
+
   const handleClose = () => {
     onOpenChange(false);
     onClose?.();
@@ -34,17 +43,17 @@ export const ApprovalSuccessDialog: React.FC<ApprovalSuccessDialogProps> = ({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
         <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none"
+          className="fixed start-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none"
         >
-          <DialogPrimitive.Title className="sr-only">Approval Successful</DialogPrimitive.Title>
+          <DialogPrimitive.Title className="sr-only">{t("approval.success.srTitle")}</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">
-            Your enrollment has been approved and you now have access to the course
+            {t("approval.success.srDescription", { course: courseLower })}
           </DialogPrimitive.Description>
-          
+
           <button
-            className="absolute right-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
+            className="absolute end-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
             onClick={handleClose}
-            aria-label="Close"
+            aria-label={t("dialog.close")}
           >
             <Cross2Icon className="h-4 w-4" />
           </button>
@@ -56,7 +65,7 @@ export const ApprovalSuccessDialog: React.FC<ApprovalSuccessDialogProps> = ({
                 <div className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-200 rounded-full flex items-center justify-center shadow-lg">
                   <CheckCircle className="w-10 h-10 text-green-600" />
                 </div>
-                <div className="absolute -top-1 -right-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                <div className="absolute -top-1 -end-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
                   <CheckCircle className="w-3 h-3 text-white" />
                 </div>
               </div>
@@ -65,7 +74,7 @@ export const ApprovalSuccessDialog: React.FC<ApprovalSuccessDialogProps> = ({
             {/* Main Content */}
             <div className="space-y-4">
               <h3 className="text-2xl font-bold text-gray-900">
-                Approval Successful!
+                {t("approval.success.heading")}
               </h3>
             </div>
             
@@ -77,12 +86,12 @@ export const ApprovalSuccessDialog: React.FC<ApprovalSuccessDialogProps> = ({
                     <CheckCircle className="w-4 h-4 text-white" />
                   </div>
                 </div>
-                <div className="flex-1 text-left">
+                <div className="flex-1 text-start">
                   <h4 className="text-sm font-semibold text-green-900 mb-1">
-                    Ready to Learn!
+                    {t("approval.success.readyTitle")}
                   </h4>
                   <p className="text-sm text-green-800">
-                    You can now access the course content and start learning.
+                    {t("approval.success.readyMessage", { course: courseLower })}
                   </p>
                 </div>
               </div>
@@ -96,7 +105,7 @@ export const ApprovalSuccessDialog: React.FC<ApprovalSuccessDialogProps> = ({
                 onClick={handleExploreCourse}
                 className="w-full h-12 text-base font-semibold"
               >
-                Start Learning
+                {t("approval.success.startLearning")}
               </MyButton>
             </div>
           </div>

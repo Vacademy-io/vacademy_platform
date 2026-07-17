@@ -1,5 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Question, CaretRight, ChatsCircle } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { usePlayTheme } from '@/hooks/use-play-theme';
 import { useCleanerPlayTheme } from '@/hooks/use-cleaner-play-theme';
@@ -15,6 +16,7 @@ import { useQueryDialogStore } from '@/stores/useQueryDialogStore';
  * QueryDialog — directly on the "My queries" tab when there are open cases.
  */
 export const RaiseQueryCard = () => {
+    const { t } = useTranslation('dashboard');
     const isPlay = usePlayTheme();
     const isCleanerPlay = useCleanerPlayTheme();
     const { showDashboardCard } = useDoubtManagementSetting();
@@ -57,12 +59,12 @@ export const RaiseQueryCard = () => {
                                 '[.ui-play_&]:font-black [.ui-play_&]:text-play-ink'
                             )}
                         >
-                            Need help? Raise a query
+                            {t('raiseQuery.title')}
                         </h3>
                         <p className="text-xs text-muted-foreground">
                             {hasOpen
-                                ? `${openCount} open ${openCount === 1 ? 'query' : 'queries'} · view replies`
-                                : 'Ask a doubt or report a technical / payment issue.'}
+                                ? t('raiseQuery.openQueries', { count: openCount })
+                                : t('raiseQuery.subtitle')}
                         </p>
                     </div>
                 </div>

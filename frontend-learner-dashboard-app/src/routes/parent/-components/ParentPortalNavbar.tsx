@@ -94,7 +94,7 @@ export function ParentPortalNavbar({
           <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center">
             <Users className="h-3 w-3 text-primary" weight="duotone" />
           </div>
-          <span className="text-xs font-medium text-foreground pr-1">
+          <span className="text-xs font-medium text-foreground pe-1">
             {parentName}
           </span>
         </div>
@@ -102,7 +102,7 @@ export function ParentPortalNavbar({
         {/* Notification bell */}
         <button className="relative flex items-center justify-center w-8 h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 transition-all duration-200">
           <Bell className="h-4 w-4 text-muted-foreground" weight="duotone" />
-          <span className="absolute top-2 right-2 h-1.5 w-1.5 bg-orange-500 rounded-full border border-white" />
+          <span className="absolute top-2 end-2 h-1.5 w-1.5 bg-orange-500 rounded-full border border-white" />
         </button>
       </div>
     </header>

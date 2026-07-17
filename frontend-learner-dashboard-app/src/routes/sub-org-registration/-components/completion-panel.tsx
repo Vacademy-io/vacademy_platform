@@ -126,7 +126,7 @@ const CompletionPanel = ({
                 </p>
               )}
               {adminEmail && (
-                <div className="mx-auto flex max-w-md items-start justify-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-left">
+                <div className="mx-auto flex max-w-md items-start justify-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-start">
                   <EnvelopeSimple className="mt-0.5 size-5 flex-shrink-0 text-primary-500" />
                   <p className="text-sm text-neutral-600">
                     Login credentials have been sent to{" "}
@@ -140,7 +140,7 @@ const CompletionPanel = ({
             </>
           ) : (
             // Default completion copy
-            <div className="mx-auto flex max-w-md items-start justify-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-left">
+            <div className="mx-auto flex max-w-md items-start justify-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-start">
               <EnvelopeSimple className="mt-0.5 size-5 flex-shrink-0 text-primary-500" />
               <p className="text-sm text-neutral-600">
                 Your organization is registered. Login credentials have been
@@ -166,7 +166,7 @@ const CompletionPanel = ({
             className="min-w-32"
           >
             {buttonLabel}
-            <ArrowSquareOut className="ml-2 size-4" />
+            <ArrowSquareOut className="ms-2 size-4" />
           </MyButton>
         ) : message ? null : (
           <MyButton
@@ -180,7 +180,7 @@ const CompletionPanel = ({
             className="min-w-32"
           >
             Go to Admin Portal
-            <ArrowSquareOut className="ml-2 size-4" />
+            <ArrowSquareOut className="ms-2 size-4" />
           </MyButton>
         )}
       </div>

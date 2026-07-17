@@ -95,7 +95,7 @@ function UnsubscribeCommunicationPage() {
       <BackgroundPattern />
       <div className="relative flex min-h-screen w-full flex-col items-center justify-center px-4 py-8 sm:px-8 lg:px-12 xl:px-16">
         <motion.header
-          className="w-full max-w-3xl space-y-2 text-center sm:text-left"
+          className="w-full max-w-3xl space-y-2 text-center sm:text-start"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
@@ -145,7 +145,7 @@ const BackgroundGlow = ({ hasTheme }: { hasTheme: boolean }) => (
       animate={{ opacity: hasTheme ? 0.35 : 0.2 }}
       transition={{ duration: 0.8 }}
       className={cn(
-        "pointer-events-none absolute left-[-12%] top-[-25%] h-72 w-72 rounded-full blur-3xl sm:h-96 sm:w-96", // design-lint-ignore: decorative positioning
+        "pointer-events-none absolute start-[-12%] top-[-25%] h-72 w-72 rounded-full blur-3xl sm:h-96 sm:w-96", // design-lint-ignore: decorative positioning
         hasTheme ? "bg-primary-300/70" : "bg-slate-200/80"
       )}
     />
@@ -154,7 +154,7 @@ const BackgroundGlow = ({ hasTheme }: { hasTheme: boolean }) => (
       animate={{ opacity: hasTheme ? 0.3 : 0.15 }}
       transition={{ delay: 0.2, duration: 0.8 }}
       className={cn(
-        "pointer-events-none absolute bottom-[-12%] right-[-15%] h-80 w-80 rounded-full blur-3xl sm:h-reg-420 sm:w-reg-420", // design-lint-ignore: decorative positioning
+        "pointer-events-none absolute bottom-[-12%] end-[-15%] h-80 w-80 rounded-full blur-3xl sm:h-reg-420 sm:w-reg-420", // design-lint-ignore: decorative positioning
         hasTheme ? "bg-primary-100/80" : "bg-slate-200/70"
       )}
     />
@@ -164,8 +164,8 @@ const BackgroundGlow = ({ hasTheme }: { hasTheme: boolean }) => (
 const BackgroundPattern = () => (
   <div className="pointer-events-none absolute inset-0 opacity-40">
     <div className="absolute inset-0 bg-gradient-to-br from-white/50 via-transparent to-white/40" />
-    <div className="absolute inset-y-0 right-[-30%] hidden h-[120%] w-[60%] rounded-full bg-white/20 blur-3xl sm:block" /> {/* design-lint-ignore: decorative positioning */}
-    <div className="absolute inset-y-0 left-[-35%] hidden h-[120%] w-[55%] rounded-full bg-white/20 blur-3xl sm:block" /> {/* design-lint-ignore: decorative positioning */}
+    <div className="absolute inset-y-0 end-[-30%] hidden h-[120%] w-[60%] rounded-full bg-white/20 blur-3xl sm:block" /> {/* design-lint-ignore: decorative positioning */}
+    <div className="absolute inset-y-0 start-[-35%] hidden h-[120%] w-[55%] rounded-full bg-white/20 blur-3xl sm:block" /> {/* design-lint-ignore: decorative positioning */}
   </div>
 );
 

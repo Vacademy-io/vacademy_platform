@@ -369,7 +369,7 @@ export const CustomFieldRenderer = ({
             accept={acceptAttr}
             disabled={disabled || isUploading}
             onChange={handleFileChange}
-            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm file:mr-4 file:rounded file:border-0 file:bg-primary-50 file:px-4 file:py-1 file:text-sm file:font-medium file:text-primary-700 hover:file:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm file:me-4 file:rounded file:border-0 file:bg-primary-50 file:px-4 file:py-1 file:text-sm file:font-medium file:text-primary-700 hover:file:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50"
           />
           {isUploading && (
             <div className="flex items-center gap-2 text-sm text-neutral-600">

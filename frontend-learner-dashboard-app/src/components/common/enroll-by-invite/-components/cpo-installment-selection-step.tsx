@@ -237,7 +237,7 @@ const CpoInstallmentSelectionStep = ({
                           )}
                           {due.is_overdue && !isPaid && (
                             <Badge variant="destructive" className="text-xs py-0 h-4">
-                              <AlertCircle className="w-2.5 h-2.5 mr-1" />
+                              <AlertCircle className="w-2.5 h-2.5 me-1" />
                               {due.days_overdue ? `${due.days_overdue}d overdue` : "Overdue"}
                             </Badge>
                           )}
@@ -278,9 +278,9 @@ const CpoInstallmentSelectionStep = ({
           </div>
 
           {useCustomAmount && (
-            <div className="pl-6 space-y-1">
+            <div className="ps-6 space-y-1">
               <div className="relative max-w-xs">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
+                <span className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
                   {currencySymbol}
                 </span>
                 <Input
@@ -288,7 +288,7 @@ const CpoInstallmentSelectionStep = ({
                   value={customAmountStr}
                   onChange={(e) => handleCustomAmountChange(e.target.value)}
                   placeholder="0.00"
-                  className="pl-7"
+                  className="ps-7"
                   min={0}
                   step="0.01"
                 />

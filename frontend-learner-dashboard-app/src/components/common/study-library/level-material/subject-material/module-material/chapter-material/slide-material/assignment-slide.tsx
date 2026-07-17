@@ -478,7 +478,7 @@ const AttachmentPreview = ({
             onClick={() => url && onPreviewPdf({ url, fileName })}
             className="h-9"
           >
-            <Eye className="mr-1.5 size-4" />
+            <Eye className="me-1.5 size-4" />
             Preview
           </Button>
         )}
@@ -491,7 +491,7 @@ const AttachmentPreview = ({
           }
           className="h-9"
         >
-          <ArrowSquareOut className="mr-1.5 size-4" />
+          <ArrowSquareOut className="me-1.5 size-4" />
           Open
         </Button>
         {allowDownload && (
@@ -502,7 +502,7 @@ const AttachmentPreview = ({
             onClick={triggerDownload}
             className="h-9"
           >
-            <DownloadSimple className="mr-1.5 size-4" />
+            <DownloadSimple className="me-1.5 size-4" />
             Download
           </Button>
         )}
@@ -1150,7 +1150,7 @@ const AssignmentSlide = ({
             <HtmlWithKatex html={question.text_data.content} />
           </h3>
           {qType && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500 sm:ml-4 sm:min-w-fit sm:flex-col sm:items-end sm:gap-y-0 sm:text-sm">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500 sm:ms-4 sm:min-w-fit sm:flex-col sm:items-end sm:gap-y-0 sm:text-sm">
               <span>Type: {getQuestionTypeDisplay(qType)}</span>
               {question.re_attempt_count != null && (
                 <span>Attempts: {question.re_attempt_count || "Unlimited"}</span>
@@ -1563,7 +1563,7 @@ const AssignmentSlide = ({
               <CardDescription className="text-sm sm:text-base text-gray-600">
                 Upload any required files for this assignment
                 {maxAttempts > 0 && (
-                  <span className="ml-1">
+                  <span className="ms-1">
                     (Attempt {submissionCount + 1} of {maxAttempts})
                   </span>
                 )}
@@ -1634,7 +1634,7 @@ const AssignmentSlide = ({
         >
           {/* Header — note: Radix DialogContent renders its own close button
               at top-right, so we leave the right side padded for it. */}
-          <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 pr-12">
+          <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 pe-12">
             <DialogTitle className="truncate text-sm font-medium text-gray-900 sm:text-base">
               {pdfPreview?.fileName || "Document preview"}
             </DialogTitle>
@@ -1647,7 +1647,7 @@ const AssignmentSlide = ({
                 }
                 className="h-9 shrink-0"
               >
-                <ArrowSquareOut className="mr-1.5 size-4" />
+                <ArrowSquareOut className="me-1.5 size-4" />
                 <span className="hidden sm:inline">Open in new tab</span>
               </Button>
             )}

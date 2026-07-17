@@ -81,7 +81,7 @@ function Row({ entry }: { entry: LeaderboardEntry }) {
         {entry.name}
       </span>
       <BadgeIcons entry={entry} />
-      <span className="w-16 text-right text-caption font-semibold tabular-nums text-neutral-600">
+      <span className="w-16 text-end text-caption font-semibold tabular-nums text-neutral-600">
         {entry.points} pts
       </span>
     </div>
@@ -100,7 +100,7 @@ function YourStanding({ me }: { me: LeaderboardEntry }) {
             {me.rank != null ? `#${me.rank}` : "Unranked"}
           </p>
         </div>
-        <div className="text-right">
+        <div className="text-end">
           <div className="flex items-center justify-end gap-1">
             <Trophy weight="fill" className="h-4 w-4 text-warning-600" />
             <span className="text-body font-bold text-neutral-700">
@@ -207,7 +207,7 @@ export const CourseLeaderboard: React.FC<{
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 bg-card p-3 text-left transition-colors hover:bg-neutral-50"
+        className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 bg-card p-3 text-start transition-colors hover:bg-neutral-50"
       >
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-50">
           <Crown weight="fill" className="h-5 w-5 text-warning-500" />
@@ -230,7 +230,7 @@ export const CourseLeaderboard: React.FC<{
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <div className="flex items-center justify-between gap-2 pr-7">
+            <div className="flex items-center justify-between gap-2 pe-7">
               <DialogTitle className="flex items-center gap-2">
                 <Crown weight="fill" className="h-5 w-5 text-warning-500" />
                 Course Leaderboard

@@ -67,7 +67,7 @@ export default function TimelineLogCard({
         {/* Actions - ONLY VIEW BUTTON FOR LEARNERS */}
         <div className="flex gap-2 pt-2">
           <Button variant="outline" size="sm" onClick={() => onView(log)}>
-            <Eye className="mr-2 size-4" />
+            <Eye className="me-2 size-4" />
             View Details
           </Button>
         </div>

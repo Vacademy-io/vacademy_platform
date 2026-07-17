@@ -4,20 +4,32 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentAttemptHistoryProjection;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.UserAssessmentHistorySummaryProjection;
 import vacademy.io.assessment_service.features.assessment.repository.StudentAttemptRepository;
 import vacademy.io.assessment_service.features.learner_assessment.dto.SectionComparisonDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.StudentComparisonDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.internal.AssessmentHistoryItemDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.internal.AssessmentHistorySummaryDto;
 import vacademy.io.assessment_service.features.learner_assessment.dto.internal.AssessmentSectionSummaryDto;
+import vacademy.io.assessment_service.features.learner_assessment.dto.internal.BatchAssessmentHistoryRequest;
+import vacademy.io.assessment_service.features.learner_assessment.dto.internal.BatchAssessmentHistoryResponse;
 import vacademy.io.assessment_service.features.learner_assessment.dto.internal.StudentAssessmentHistoryResponse;
+import vacademy.io.assessment_service.features.learner_assessment.dto.internal.UserAssessmentSummaryDto;
+import vacademy.io.common.exceptions.VacademyException;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Backing service for the internal student-analysis endpoint.
@@ -43,6 +55,12 @@ public class StudentAnalysisInternalService {
      * Configurable via a constant here; could be externalised to application properties.
      */
     static final int MAX_ASSESSMENTS_PER_REPORT = 25;
+
+    /** Maximum cohort size accepted by the batch endpoint; larger requests are rejected with 400. */
+    static final int MAX_BATCH_USERS = 500;
+
+    /** Default look-back window (days) for the batch endpoint when sinceDays is omitted. */
+    static final int DEFAULT_SINCE_DAYS = 90;
 
     @Autowired
     private StudentAttemptRepository studentAttemptRepository;
@@ -104,9 +122,82 @@ public class StudentAnalysisInternalService {
                 .build();
     }
 
+    /**
+     * BATCHED sibling of {@link #fetchAssessmentHistory}: per-user summaries for a cohort of up
+     * to {@value #MAX_BATCH_USERS} users in ONE repository query (no per-user loop).  Consumed by
+     * the Engagement Engine in admin_core_service.
+     *
+     * <p>The response map contains an entry ONLY for userIds with at least one ENDED attempt in
+     * the window — absence means "no data"; a user is never emitted as zeros.  {@code avgPercentage}
+     * is null whenever marks data does not allow a reliable computation (see repository javadoc).
+     *
+     * @throws VacademyException 400 on missing instituteId/userIds, more than
+     *                           {@value #MAX_BATCH_USERS} userIds, or non-positive sinceDays
+     */
+    public BatchAssessmentHistoryResponse fetchAssessmentHistoryBatch(BatchAssessmentHistoryRequest request) {
+        if (request == null || request.getInstituteId() == null || request.getInstituteId().isBlank()) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "instituteId is required");
+        }
+        if (request.getUserIds() == null || request.getUserIds().isEmpty()) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "userIds is required and must be non-empty");
+        }
+        if (request.getUserIds().size() > MAX_BATCH_USERS) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST,
+                    "userIds exceeds the maximum of " + MAX_BATCH_USERS + " per call");
+        }
+        int sinceDays = request.getSinceDays() != null ? request.getSinceDays() : DEFAULT_SINCE_DAYS;
+        if (sinceDays < 1) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "sinceDays must be a positive integer");
+        }
+
+        // De-duplicate and drop null/blank ids so the IN-list stays tight.
+        Set<String> distinctUserIds = new LinkedHashSet<>();
+        for (String id : request.getUserIds()) {
+            if (id != null && !id.isBlank()) {
+                distinctUserIds.add(id);
+            }
+        }
+        if (distinctUserIds.isEmpty()) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "userIds contains no usable ids");
+        }
+
+        Date since = Date.from(Instant.now().minus(sinceDays, ChronoUnit.DAYS));
+
+        List<UserAssessmentHistorySummaryProjection> rows = studentAttemptRepository
+                .findAssessmentHistorySummaryForUsersSince(
+                        request.getInstituteId(), new ArrayList<>(distinctUserIds), since);
+
+        Map<String, UserAssessmentSummaryDto> byUserId = new HashMap<>(Math.max(16, rows.size() * 2));
+        for (UserAssessmentHistorySummaryProjection row : rows) {
+            byUserId.put(row.getUserId(), UserAssessmentSummaryDto.builder()
+                    .attemptCount(row.getAttemptCount())
+                    .lastAttemptAt(row.getLastAttemptAt() != null
+                            ? row.getLastAttemptAt().toInstant().toString()
+                            : null)
+                    .avgPercentage(roundToOneDecimal(row.getAvgPercentage()))
+                    .lastAssessmentName(row.getLastAssessmentName())
+                    .build());
+        }
+
+        log.info("student-analysis/batch: instituteId={} requestedUsers={} distinctUsers={} " +
+                 "usersWithData={} sinceDays={}",
+                 request.getInstituteId(), request.getUserIds().size(), distinctUserIds.size(),
+                 byUserId.size(), sinceDays);
+
+        return BatchAssessmentHistoryResponse.builder()
+                .byUserId(byUserId)
+                .build();
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
+
+    /** Same one-decimal rounding the per-user endpoint applies to percentages. Null-safe. */
+    private static Double roundToOneDecimal(Double value) {
+        if (value == null) return null;
+        return Math.round(value * 10.0) / 10.0;
+    }
 
     /**
      * Widens a date-only upper bound to the last instant of that same day, so that

@@ -35,7 +35,7 @@ export function DripConditionWrapper({
     return (
       <div className="relative">
         <div className="opacity-60 pointer-events-none">{children}</div>
-        <div className="absolute top-2 right-2 z-10">
+        <div className="absolute top-2 end-2 z-10">
           <LockedBadge size="sm" />
         </div>
         {showUnlockRequirements && evaluation.unlockMessage && (

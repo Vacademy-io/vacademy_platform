@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { useSlideContentProtection } from "@/hooks/useSlideContentProtection";
+import { useTranslation } from "react-i18next";
 
 /**
  * Renders the slide content protection while a slide is open (per-institute,
@@ -18,6 +19,7 @@ import { useSlideContentProtection } from "@/hooks/useSlideContentProtection";
  * needs backend signed/streamed content.
  */
 export function SlideProtectionGuard() {
+  const { t } = useTranslation("studyContent");
   const { protectionEnabled } = useSlideContentProtection();
   const [devtoolsOpen, setDevtoolsOpen] = useState(false);
 
@@ -81,9 +83,9 @@ export function SlideProtectionGuard() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-white p-6 text-center">
       <div className="max-w-md space-y-2">
-        <p className="text-lg font-semibold text-neutral-800">Content hidden</p>
+        <p className="text-lg font-semibold text-neutral-800">{t("protection.contentHidden")}</p>
         <p className="text-sm text-neutral-600">
-          Please close developer tools to continue viewing this slide.
+          {t("protection.closeDevTools")}
         </p>
       </div>
     </div>

@@ -117,7 +117,7 @@ function ReferralComponent() {
             </Card>
           </CardContent>
 
-          <div className="flex justify-center lg:justify-end pr-4 w-full">
+          <div className="flex justify-center lg:justify-end pe-4 w-full">
             <div className="relative w-full max-w-lg">
               <img
                 src="/referral-image.jpg"

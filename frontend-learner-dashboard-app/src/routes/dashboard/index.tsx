@@ -1118,7 +1118,7 @@ export function DashboardComponent() {
                   size="sm"
                   onClick={() => navigate({ to: "/study-library/live-class" })}
                 >
-                  View All <CaretRight size={14} className="ml-1" />
+                  View All <CaretRight size={14} className="ms-1" />
                 </Button>
               </CardHeader>
               <CardContent>

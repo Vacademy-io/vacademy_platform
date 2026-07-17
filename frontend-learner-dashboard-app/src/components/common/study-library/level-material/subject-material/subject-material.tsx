@@ -6,7 +6,7 @@ import { fetchStudyLibraryDetails } from "@/services/study-library/getStudyLibra
 import { toTitleCase } from "@/lib/utils";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { TabType, tabs } from "./-constants/constant";
+import { TabType, getTabs } from "./-constants/constant";
 import {
   CaretDown,
   CaretRight,
@@ -32,8 +32,12 @@ import {
 import { getIcon } from "./module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { useRouter } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import {
+  getTerminology,
+  getTerminologyPlural,
+} from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { useTranslation } from "react-i18next";
 
 export interface Chapter {
   id: string;
@@ -68,6 +72,7 @@ export interface ModuleWithChapters {
 export type SubjectModulesMap = { [subjectId: string]: ModuleWithChapters[] };
 
 export const SubjectMaterial = () => {
+  const { t } = useTranslation("studyContent");
   const router = useRouter();
   const { setNavHeading } = useNavHeadingStore();
   const { studyLibraryData, setStudyLibraryData } = useStudyLibraryStore();
@@ -200,10 +205,15 @@ export const SubjectMaterial = () => {
   useEffect(() => {
     setNavHeading(
       <div className="flex items-center gap-2">
-        <div>Course Details</div>
+        <div>
+          {t("subjectMaterial.courseDetails", {
+            course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+          })}
+        </div>
       </div>
     );
-  }, []);
+    // Re-publish the heading when the language (or a rename) changes it.
+  }, [t]);
 
   const refreshData = async () => {
     const PackageSessionId = await getPackageSessionId();
@@ -293,13 +303,13 @@ export const SubjectMaterial = () => {
             >
               {isAllExpanded ? (
                 <>
-                  <FolderOpen size={14} className="mr-1.5" />
-                  Collapse All
+                  <FolderOpen size={14} className="me-1.5" />
+                  {t("subjectMaterial.collapseAll")}
                 </>
               ) : (
                 <>
-                  <Folder size={14} className="mr-1.5" />
-                  Expand All
+                  <Folder size={14} className="me-1.5" />
+                  {t("subjectMaterial.expandAll")}
                 </>
               )}
             </Button>
@@ -309,8 +319,8 @@ export const SubjectMaterial = () => {
         <div className="max-w-2xl space-y-1.5">
           {studyLibraryData?.map((subject, idx) => {
             const isSubjectOpen = openSubjects.has(subject.id);
-            const baseIndent = "pl-[calc(18px+0.5rem+18px+0.5rem)]"; // design-lint-ignore: viewport math
-            const subjectContentIndent = `${baseIndent} pl-6`;
+            const baseIndent = "ps-[calc(18px+0.5rem+18px+0.5rem)]"; // design-lint-ignore: viewport math
+            const subjectContentIndent = `${baseIndent} ps-6`;
 
             return (
               <Collapsible
@@ -318,7 +328,7 @@ export const SubjectMaterial = () => {
                 open={isSubjectOpen}
                 onOpenChange={() => toggleSubject(subject.id)}
               >
-                <CollapsibleTrigger className="group flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-semibold text-neutral-700 transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 hover:border-primary-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1">
+                <CollapsibleTrigger className="group flex w-full items-center rounded-lg px-3 py-2 text-start text-sm font-semibold text-neutral-700 transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 hover:border-primary-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1">
                   <div className="flex min-w-0 flex-1 items-center gap-2.5">
                     {isSubjectOpen ? (
                       <CaretDown
@@ -352,7 +362,7 @@ export const SubjectMaterial = () => {
                   </div>
                   <ArrowSquareOut
                     size={18}
-                    className="ml-2 shrink-0 cursor-pointer text-neutral-400 hover:text-primary-600 transition-all duration-200 hover:scale-110"
+                    className="ms-2 shrink-0 cursor-pointer text-neutral-400 hover:text-primary-600 transition-all duration-200 hover:scale-110"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleSubjectNavigation(subject.id);
@@ -362,19 +372,19 @@ export const SubjectMaterial = () => {
                 <CollapsibleContent
                   className={`pb-1 pt-2 ${subjectContentIndent}`}
                 >
-                  <div className="space-y-1 border-l-2 border-gradient-to-b from-primary-200/60 to-neutral-200/40 pl-3 relative">
-                    <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-primary-300/80 to-transparent"></div>
+                  <div className="space-y-1 border-s-2 border-gradient-to-b from-primary-200/60 to-neutral-200/40 ps-3 relative">
+                    <div className="absolute start-0 top-0 w-0.5 h-full bg-gradient-to-b from-primary-300/80 to-transparent"></div>
                     {(subjectModulesMap[subject.id] ?? []).map(
                       (mod, modIdx) => {
                         const isModuleOpen = openModules.has(mod.module.id);
-                        const moduleContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`; // design-lint-ignore: viewport math
+                        const moduleContentIndent = `ps-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`; // design-lint-ignore: viewport math
                         return (
                           <Collapsible
                             key={mod.module.id}
                             open={isModuleOpen}
                             onOpenChange={() => toggleModule(mod.module.id)}
                           >
-                            <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-indigo-50/50 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
+                            <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-start text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-indigo-50/50 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
                               <div className="flex min-w-0 flex-1 items-center gap-2">
                                 {isModuleOpen ? (
                                   <CaretDown
@@ -402,7 +412,7 @@ export const SubjectMaterial = () => {
                               </div>
                               <ArrowSquareOut
                                 size={16}
-                                className="ml-1.5 shrink-0 cursor-pointer text-neutral-400 hover:text-blue-600 transition-all duration-200 hover:scale-110"
+                                className="ms-1.5 shrink-0 cursor-pointer text-neutral-400 hover:text-blue-600 transition-all duration-200 hover:scale-110"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleModuleNavigation(
@@ -416,8 +426,8 @@ export const SubjectMaterial = () => {
                             <CollapsibleContent
                               className={`py-1 ${moduleContentIndent}`}
                             >
-                              <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
-                                <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-blue-300/60 to-transparent"></div>
+                              <div className="space-y-0.5 border-s-2 border-blue-200/40 ps-2.5 relative">
+                                <div className="absolute start-0 top-0 w-0.5 h-full bg-gradient-to-b from-blue-300/60 to-transparent"></div>
                                 {(mod.chapters ?? []).map((ch, chIdx) => {
                                   const isChapterOpen = openChapters.has(ch.id);
 
@@ -430,7 +440,7 @@ export const SubjectMaterial = () => {
                                         getSlidesWithChapterId(ch.id);
                                       }}
                                     >
-                                      <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
+                                      <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-start text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
                                         <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                           {isChapterOpen ? (
                                             <CaretDown
@@ -458,7 +468,7 @@ export const SubjectMaterial = () => {
                                         </div>
                                         <ArrowSquareOut
                                           size={14}
-                                          className="ml-1 shrink-0 cursor-pointer text-neutral-400 hover:text-green-600 transition-all duration-200 hover:scale-110"
+                                          className="ms-1 shrink-0 cursor-pointer text-neutral-400 hover:text-green-600 transition-all duration-200 hover:scale-110"
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             handleChapterNavigation(
@@ -470,12 +480,14 @@ export const SubjectMaterial = () => {
                                         />
                                       </CollapsibleTrigger>
                                       <CollapsibleContent>
-                                        <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
-                                          <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
+                                        <div className="space-y-px ms-5 border-s border-green-200/50 py-1 ps-2 relative">
+                                          <div className="absolute start-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
                                           {(slidesMap[ch.id] ?? []).length ===
                                           0 ? (
                                             <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                              No slides in this chapter.
+                                              {t(
+                                                "subjectMaterial.noSlidesInChapter"
+                                              )}
                                             </div>
                                           ) : (
                                             (slidesMap[ch.id] ?? []).map(
@@ -534,12 +546,16 @@ export const SubjectMaterial = () => {
             <span className="text-white text-xs font-bold">T</span>
           </div>
           <span className="font-medium text-neutral-700">
-            {getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}s
+            {getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}
           </span>
         </div>
         <p className="text-neutral-500">
-          {getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}s content
-          coming soon.
+          {t("subjectMaterial.teachersComingSoon", {
+            teachers: getTerminologyPlural(
+              RoleTerms.Teacher,
+              SystemTerms.Teacher
+            ),
+          })}
         </p>
       </div>
     ),
@@ -549,9 +565,13 @@ export const SubjectMaterial = () => {
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
             <span className="text-white text-xs font-bold">A</span>
           </div>
-          <span className="font-medium text-neutral-700">Assessments</span>
+          <span className="font-medium text-neutral-700">
+            {t("subjectMaterial.assessments")}
+          </span>
         </div>
-        <p className="text-neutral-500">Assessment content coming soon.</p>
+        <p className="text-neutral-500">
+          {t("subjectMaterial.assessmentComingSoon")}
+        </p>
       </div>
     ),
   };
@@ -565,7 +585,7 @@ export const SubjectMaterial = () => {
           className="w-full overflow-scroll"
         >
           <TabsList className="h-auto border-b border-neutral-200/80 bg-transparent p-0">
-            {tabs.map((tab) => (
+            {getTabs().map((tab) => (
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}

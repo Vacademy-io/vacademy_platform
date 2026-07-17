@@ -396,21 +396,21 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
 
   // Inline SVG for checkmark
   const CheckIcon = ({ className = "text-green-600" }: { className?: string } = {}) => (
-    <svg className={`inline-block mr-1 ${className}`} width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg className={`inline-block me-1 ${className}`} width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M5 10.5L9 14.5L15 7.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 
   // Inline SVG for cross / X
   const CrossIcon = ({ className = "text-red-600" }: { className?: string } = {}) => (
-    <svg className={`inline-block mr-1 ${className}`} width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg className={`inline-block me-1 ${className}`} width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M6 6L14 14M14 6L6 14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 
   // Inline SVG for user icon
   const UserIcon = () => (
-    <svg className="inline-block mr-1 text-blue-600" width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <svg className="inline-block me-1 text-blue-600" width="16" height="16" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
       <circle cx="10" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
       <path d="M2 18c0-2.21 3.582-4 8-4s8 1.79 8 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
@@ -463,7 +463,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                 : effectiveScoreCardWithCounts.earned.toFixed(2)}
             </span>
             <span className="text-lg text-primary-500">/ {effectiveScoreCardWithCounts.totalMarks} marks</span>
-            <span className="ml-auto rounded-full bg-primary-100 px-3 py-1 text-sm font-semibold text-primary-700">
+            <span className="ms-auto rounded-full bg-primary-100 px-3 py-1 text-sm font-semibold text-primary-700">
               {effectiveScoreCardWithCounts.totalMarks > 0
                 ? Math.round((effectiveScoreCardWithCounts.earned / effectiveScoreCardWithCounts.totalMarks) * 100)
                 : 0}%
@@ -556,7 +556,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                       key={log.id}
                       type="button"
                       onClick={() => setSelectedAttemptId(log.id)}
-                      className={`flex w-full items-center justify-between gap-3 rounded px-3 py-2 text-left text-sm shadow-sm transition-colors ${
+                      className={`flex w-full items-center justify-between gap-3 rounded px-3 py-2 text-start text-sm shadow-sm transition-colors ${
                         isActive
                           ? 'border border-primary-300 bg-primary-50'
                           : 'border border-transparent bg-white hover:border-primary-200 hover:bg-primary-50'
@@ -597,7 +597,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
               ? 'Viewing a past attempt.'
               : 'This attempt has no recorded responses — all questions are shown as Skipped.'}
             {activeAttempt.end_time && (
-              <span className="ml-1 text-xs text-primary-600">
+              <span className="ms-1 text-xs text-primary-600">
                 ({new Date(activeAttempt.end_time).toLocaleString()})
               </span>
             )}
@@ -743,7 +743,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                     ) : isMCQ && userAnswerWithIndex
                       ? userAnswerWithIndex.map(({ id, idx }) => (
                           <span key={id as string} className={`text-sm flex items-center ${yourAnswerStyles.text}`}>
-                            <span className="font-bold mr-1">{getOptionLabel(idx)}</span>
+                            <span className="font-bold me-1">{getOptionLabel(idx)}</span>
                             <span dangerouslySetInnerHTML={{ __html: getOptionHtml(q, id) }} />
                           </span>
                         ))
@@ -765,7 +765,7 @@ export const QuizReview: React.FC<QuizReviewProps> = ({ questions, userAnswers, 
                       {isMCQ && correctAnswerWithIndex
                         ? correctAnswerWithIndex.map(({ id, idx }) => (
                             <span key={id as string} className="text-green-900 text-sm flex items-center">
-                              <span className="font-bold mr-1">{getOptionLabel(idx)}</span>
+                              <span className="font-bold me-1">{getOptionLabel(idx)}</span>
                               <span dangerouslySetInnerHTML={{ __html: getOptionHtml(q, id) }} />
                             </span>
                           ))

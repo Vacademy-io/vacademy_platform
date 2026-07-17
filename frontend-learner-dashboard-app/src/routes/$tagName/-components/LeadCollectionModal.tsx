@@ -541,7 +541,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
               value={fieldValue}
               onChange={(value) => handleInputChange(field.name, value)}
               inputClass="!w-full !h-11 !rounded-md !border-gray-300"
-              buttonClass="!rounded-l-md !border-gray-300"
+              buttonClass="!rounded-s-md !border-gray-300"
               containerClass="!w-full"
               placeholder="Enter your phone number"
               countryCodeEditable={false}
@@ -727,7 +727,7 @@ export const LeadCollectionModal: React.FC<LeadCollectionModalProps> = ({
                     onClick={handlePreviousStep}
                     className="flex items-center px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
                   >
-                    <CaretLeft className="w-4 h-4 mr-1" />
+                    <CaretLeft className="w-4 h-4 me-1" />
                     Previous
                   </button>
                 )}

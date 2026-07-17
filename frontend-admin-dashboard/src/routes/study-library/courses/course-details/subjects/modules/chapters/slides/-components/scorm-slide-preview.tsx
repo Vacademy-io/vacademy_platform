@@ -215,7 +215,7 @@ const ScormSlidePreview = ({ activeItem, isLearnerView = false }: ScormSlidePrev
     return (
         <div
             key={`scorm-${activeItem.id}`}
-            className="flex w-full flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm"
+            className="flex size-full flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-sm"
         >
             {/* SCORM Info Header */}
             <div className="flex items-center justify-between border-b border-neutral-100 bg-gradient-to-r from-teal-50 to-cyan-50 px-6 py-4">
@@ -291,12 +291,19 @@ const ScormSlidePreview = ({ activeItem, isLearnerView = false }: ScormSlidePrev
                         </div>
                     )}
 
-                    {/* Embedded SCORM iframe - shown for both admin and learner */}
-                    <div className="relative flex-1" style={{ minHeight: '600px' }}>
+                    {/* Embedded SCORM iframe - shown for both admin and learner.
+                        min-h-0 lets this flex child shrink below the iframe's
+                        intrinsic height so it tracks the card instead of
+                        overflowing the parent's overflow-hidden on short viewports. */}
+                    <div className="relative min-h-0 flex-1">
                         <iframe
                             ref={iframeRef}
                             src={launchUrl}
-                            className="size-full border-0"
+                            // Absolute rather than size-full: iOS WKWebView
+                            // collapses height:100% iframes to their intrinsic
+                            // content height (same fix as the learner app's
+                            // scorm-slide).
+                            className="absolute inset-0 block size-full border-0"
                             title={activeItem.title || 'SCORM Content'}
                             allow="fullscreen"
                             onLoad={() => {

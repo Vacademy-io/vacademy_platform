@@ -418,7 +418,7 @@ export const AssessmentCard = ({
               {showPlayModeChip && isLoudLive && (
                 <span
                   className={cn(
-                    "ml-auto inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-caption font-medium text-muted-foreground",
+                    "ms-auto inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-caption font-medium text-muted-foreground",
                     "[.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:bg-white [.ui-play_&]:font-bold [.ui-play_&]:text-play-ink",
                   )}
                 >

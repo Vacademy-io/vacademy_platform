@@ -3066,7 +3066,7 @@ const EnrollByInvite = ({
               {paymentType !== "FREE" &&
                 paymentType !== "CPO" &&
                 enrollmentData.selectedPayment && (
-                  <div className="flex-shrink-0 text-right">
+                  <div className="flex-shrink-0 text-end">
                     <div className="text-lg font-semibold text-gray-900">
                       {enrollmentData.selectedPayment.currency?.toUpperCase()}{" "}
                       {getSelectedPaymentPrice(enrollmentData.selectedPayment)}
@@ -3222,7 +3222,7 @@ const EnrollByInvite = ({
                               key={session.packageSessionId}
                               value={session.packageSessionId}
                               title={label}
-                              className="h-auto w-full items-start justify-start whitespace-normal break-words rounded-md border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium leading-snug text-gray-600 transition-colors hover:border-gray-300 data-[state=active]:border-primary-500 data-[state=active]:bg-primary-50 data-[state=active]:text-primary-600 data-[state=active]:shadow-none"
+                              className="h-auto w-full items-start justify-start whitespace-normal break-words rounded-md border border-gray-200 bg-white px-3 py-2 text-start text-xs font-medium leading-snug text-gray-600 transition-colors hover:border-gray-300 data-[state=active]:border-primary-500 data-[state=active]:bg-primary-50 data-[state=active]:text-primary-600 data-[state=active]:shadow-none"
                             >
                               <span className="line-clamp-2">{label}</span>
                             </TabsTrigger>
@@ -3308,7 +3308,7 @@ const EnrollByInvite = ({
                     style={{ paddingBottom: "56.25%" }}
                   >
                     <iframe
-                      className="absolute top-0 left-0 w-full h-full"
+                      className="absolute top-0 start-0 w-full h-full"
                       src={`https://www.youtube.com/embed/${getYouTubeVideoId(courseData.courseMediaId.id)}`}
                       title={courseData.course}
                       frameBorder="0"

@@ -88,6 +88,33 @@ class CopyCheckGrader:
                 self._tokens_used, WARN_TOKENS_PER_COPY,
             )
 
+    def add_usage(self, usage: dict[str, Any]) -> None:
+        """Same warn-threshold accounting as add_tokens, but also splits
+        prompt vs completion tokens (calculate_credits prices input/output
+        tokens differently for billing). Self-contained — does NOT delegate
+        to add_tokens, since that method attributes its whole count to the
+        prompt side and would double-count here. Falls back to counting an
+        unsplit total entirely as prompt tokens when the provider doesn't
+        report the split — grading calls are dominated by the resent
+        OCR+rubric context anyway, so this is a conservative under-charge
+        rather than an over-charge."""
+        usage = usage or {}
+        prompt = usage.get("prompt_tokens")
+        completion = usage.get("completion_tokens")
+        if prompt is None and completion is None:
+            prompt = usage.get("total_tokens") or usage.get("totalTokenCount") or 0
+            completion = 0
+        prompt = max(0, int(prompt or 0))
+        completion = max(0, int(completion or 0))
+        self._prompt_tokens += prompt
+        self._completion_tokens += completion
+        self._tokens_used += prompt + completion
+        if self._tokens_used > WARN_TOKENS_PER_COPY:
+            logger.warning(
+                "copy-check token usage high: %d (warn threshold %d)",
+                self._tokens_used, WARN_TOKENS_PER_COPY,
+            )
+
     @property
     def tokens_used(self) -> int:
         return self._tokens_used
@@ -154,23 +181,7 @@ class CopyCheckGrader:
             raise
 
         # Token bookkeeping (best-effort — providers report usage differently).
-        usage = response.get("usage") or {}
-        prompt = int(usage.get("prompt_tokens") or usage.get("promptTokenCount") or 0)
-        completion = int(usage.get("completion_tokens") or usage.get("candidatesTokenCount") or 0)
-        used = (
-            usage.get("total_tokens")
-            or usage.get("totalTokenCount")
-            or (prompt + completion)
-            or 0
-        )
-        self._tokens_used += int(used)
-        self._prompt_tokens += prompt
-        self._completion_tokens += completion
-        if self._tokens_used > WARN_TOKENS_PER_COPY:
-            logger.warning(
-                "copy-check token usage high: %d (warn threshold %d)",
-                self._tokens_used, WARN_TOKENS_PER_COPY,
-            )
+        self.add_usage(response.get("usage"))
 
         content = response.get("content") or ""
         try:
@@ -224,12 +235,5 @@ async def call_llm_for_criteria(
         model=preferred_model,
     )
     if token_sink is not None:
-        usage = response.get("usage") or {}
-        used = (
-            usage.get("total_tokens")
-            or usage.get("totalTokenCount")
-            or ((usage.get("prompt_tokens") or 0) + (usage.get("completion_tokens") or 0))
-            or 0
-        )
-        token_sink.add_tokens(int(used))
+        token_sink.add_usage(response.get("usage"))
     return _parse_json_or_retry_payload(response.get("content") or "")

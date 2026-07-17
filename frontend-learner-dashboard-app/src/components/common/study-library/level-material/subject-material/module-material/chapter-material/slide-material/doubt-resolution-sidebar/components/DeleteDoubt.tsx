@@ -13,8 +13,10 @@ import { useState } from "react";
 import { useAddDoubt } from "../services/AddDoubt";
 import { Doubt as DoubtType } from "../types/get-doubts-type";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 export const DeleteDoubt = ({doubt, refetch}: {doubt: DoubtType, refetch: () => void}) => {
+    const { t } = useTranslation("studyContent");
     const [showDeleteDialog, setShowDeleteDialog] = useState<boolean>(false);
     const addDoubt = useAddDoubt();
 
@@ -31,7 +33,7 @@ export const DeleteDoubt = ({doubt, refetch}: {doubt: DoubtType, refetch: () => 
                 }
             },
             onError: () => {
-                toast.error("Error deleting doubt")
+                toast.error(t("doubts.errorDeleting"))
             }
         })
         setShowDeleteDialog(false);
@@ -45,20 +47,20 @@ export const DeleteDoubt = ({doubt, refetch}: {doubt: DoubtType, refetch: () => 
                 className="flex items-center gap-2 px-3 py-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all duration-200 border border-red-200/60 hover:border-red-300 group"
             >
                 <TrashSimple size={16} className="text-red-500 group-hover:text-red-600 transition-colors" />
-                <span className="font-medium">Delete</span>
+                <span className="font-medium">{t("doubts.delete")}</span>
             </button>
             <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Delete Doubt</AlertDialogTitle>
+                        <AlertDialogTitle>{t("doubts.deleteDialogTitle")}</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Are you sure you want to delete this doubt? This action cannot be undone.
+                            {t("doubts.deleteDialogDescription")}
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogCancel>{t("doubts.cancel")}</AlertDialogCancel>
                         <AlertDialogAction onClick={handleDeleteDoubt} className="bg-danger-500 text-white">
-                            Delete
+                            {t("doubts.delete")}
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

@@ -170,7 +170,7 @@ export const CourseHeader = ({
         )}
       </div>
 
-      <playIllustrations.Learning className="pointer-events-none absolute bottom-2 right-2 z-20 hidden h-28 w-auto text-primary-300 opacity-30 [.ui-play_&]:!block" />
+      <playIllustrations.Learning className="pointer-events-none absolute bottom-2 end-2 z-20 hidden h-28 w-auto text-primary-300 opacity-30 [.ui-play_&]:!block" />
     </div>
   );
 };

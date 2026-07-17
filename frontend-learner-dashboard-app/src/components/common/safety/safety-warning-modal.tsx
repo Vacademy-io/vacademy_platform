@@ -37,11 +37,11 @@ export function SafetyWarningModal({ open, onAccept, onReject }: SafetyWarningMo
             <AlertDialogContent>
                 <AlertDialogHeader>
                     <AlertDialogTitle>Safety First</AlertDialogTitle>
-                    <AlertDialogDescription className="space-y-4 text-left">
+                    <AlertDialogDescription className="space-y-4 text-start">
                         <p className="font-semibold text-red-600">
                             Please read carefully before proceeding:
                         </p>
-                        <ul className="list-disc pl-5 space-y-2">
+                        <ul className="list-disc ps-5 space-y-2">
                             <li>
                                 <strong>Be Safe Online:</strong> Never share personal information (like your phone number, address, or school) with strangers.
                             </li>

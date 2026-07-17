@@ -27,7 +27,7 @@ export const MyDropdown = ({
 
     const DropdownError = ({ errorMessage }: { errorMessage: string }) => {
         return (
-            <div className="flex items-center gap-1 pl-1 text-body font-regular text-danger-600">
+            <div className="flex items-center gap-1 ps-1 text-body font-regular text-danger-600">
                 <span>
                     <XCircle />
                 </span>
@@ -86,7 +86,7 @@ export const MyDropdown = ({
                         <div className={`truncate ${!currentValue ? "text-neutral-400" : ""}`}>
                             {currentValue || placeholder}
                         </div>
-                        <div className="ml-2 flex-shrink-0">
+                        <div className="ms-2 flex-shrink-0">
                             <CaretDown className={`${isOpen ? "hidden" : "visible"} size-5`} />
                             <CaretUp className={`${isOpen ? "visible" : "hidden"} size-5`} />
                         </div>

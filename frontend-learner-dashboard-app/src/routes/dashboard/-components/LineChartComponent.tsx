@@ -164,7 +164,7 @@ export const LineChartComponent = ({ userActivity }: { userActivity: UserActivit
                     <div className="w-3 sm:w-4 h-0.5 sm:h-1 rounded-full bg-muted-foreground [.ui-play_&]:bg-play-muted"></div>
                     <span className="text-xs sm:text-sm font-medium text-foreground [.ui-play_&]:text-play-ink">{batchLabel} Average</span>
                 </div>
-                <div className="ml-auto flex items-center space-x-1 text-xs text-muted-foreground">
+                <div className="ms-auto flex items-center space-x-1 text-xs text-muted-foreground">
                     <Clock size={10} className="sm:w-3 sm:h-3" />
                     <span>Real-time data</span>
                 </div>

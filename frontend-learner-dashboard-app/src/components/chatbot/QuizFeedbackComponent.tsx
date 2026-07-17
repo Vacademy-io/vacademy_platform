@@ -71,7 +71,7 @@ export const QuizFeedbackComponent: React.FC<QuizFeedbackComponentProps> = ({
             </div>
           </div>
 
-          <div className="text-right">
+          <div className="text-end">
             <div className={cn("text-3xl font-bold", getScoreColor())}>
               {feedback.score}/{feedback.total}
             </div>
@@ -122,11 +122,11 @@ export const QuizFeedbackComponent: React.FC<QuizFeedbackComponentProps> = ({
         >
           {showDetails ? (
             <>
-              Hide Question Details <CaretUp className="h-3 w-3 ml-1" />
+              Hide Question Details <CaretUp className="h-3 w-3 ms-1" />
             </>
           ) : (
             <>
-              Show Question Details <CaretDown className="h-3 w-3 ml-1" />
+              Show Question Details <CaretDown className="h-3 w-3 ms-1" />
             </>
           )}
         </Button>
@@ -145,7 +145,7 @@ export const QuizFeedbackComponent: React.FC<QuizFeedbackComponentProps> = ({
                   <div
                     key={qf.question_id}
                     className={cn(
-                      "p-3 rounded-lg border-l-4",
+                      "p-3 rounded-lg border-s-4",
                       qf.correct
                         ? "bg-green-500/5 border-green-500"
                         : "bg-red-500/5 border-red-500"

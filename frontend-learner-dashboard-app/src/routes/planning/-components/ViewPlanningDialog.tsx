@@ -59,11 +59,11 @@ export default function ViewPlanningDialog({
       <DialogContent className="max-h-screen-90 max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <span className="ml-2">{log.title}</span>
+            <span className="ms-2">{log.title}</span>
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="max-h-view-dialog pr-4">
+        <ScrollArea className="max-h-view-dialog pe-4">
           <div className="space-y-4">
             {/* Metadata Section */}
             <div className="grid gap-3 rounded-lg border bg-muted/30 p-4">
@@ -150,7 +150,7 @@ export default function ViewPlanningDialog({
                           ) : (
                             <ArrowSquareOut className="size-4" />
                           )}
-                          <span className="ml-2">View</span>
+                          <span className="ms-2">View</span>
                         </Button>
                       </div>
                     </div>

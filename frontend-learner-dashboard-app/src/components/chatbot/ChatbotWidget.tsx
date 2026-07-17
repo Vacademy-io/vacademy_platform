@@ -69,7 +69,7 @@ const markdownComponents = {
     ),
   blockquote: ({ ...props }) => (
     <blockquote
-      className="border-l-4 border-gray-300 pl-4 italic text-gray-600 my-4"
+      className="border-s-4 border-gray-300 ps-4 italic text-gray-600 my-4"
       {...props}
     />
   ),
@@ -120,7 +120,7 @@ export const ChatbotWidget = () => {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end space-y-4">
+    <div className="fixed bottom-6 end-6 z-50 flex flex-col items-end space-y-4">
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -131,7 +131,7 @@ export const ChatbotWidget = () => {
             className={cn(
               "origin-bottom-right transition-all duration-300 ease-in-out",
               isExpanded
-                ? "fixed bottom-24 right-6 w-vw-90 h-screen-80 z-50"
+                ? "fixed bottom-24 end-6 w-vw-90 h-screen-80 z-50"
                 : "w-panel-sm sm:w-96"
             )}
           >
@@ -214,12 +214,12 @@ export const ChatbotWidget = () => {
                         className={cn(
                           "flex w-full max-w-pct-90",
                           msg.role === "user"
-                            ? "ml-auto justify-end"
-                            : "mr-auto justify-start"
+                            ? "ms-auto justify-end"
+                            : "me-auto justify-start"
                         )}
                       >
                         {msg.role === "assistant" && (
-                          <Avatar className="h-8 w-8 mr-2 mt-1 shrink-0">
+                          <Avatar className="h-8 w-8 me-2 mt-1 shrink-0">
                             {avatarUrl ? (
                               <AvatarImage
                                 src={avatarUrl}
@@ -324,8 +324,8 @@ export const ChatbotWidget = () => {
                     ))}
 
                     {(isLoading || aiStatus === "thinking") && (
-                      <div className="mr-auto flex max-w-pct-80 items-end space-x-2">
-                        <Avatar className="h-8 w-8 mr-2 shrink-0">
+                      <div className="me-auto flex max-w-pct-80 items-end space-x-2">
+                        <Avatar className="h-8 w-8 me-2 shrink-0">
                           {avatarUrl ? (
                             <AvatarImage
                               src={avatarUrl}

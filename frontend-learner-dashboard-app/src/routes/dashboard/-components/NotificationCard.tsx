@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Bell, CaretRight, Clock } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 interface NotifcationCardProps {
@@ -16,6 +17,7 @@ export function NotifcationCard({
   date,
   isNew = true,
 }: NotifcationCardProps) {
+  const { t } = useTranslation("dashboard");
   return (
     <Card
       className={cn(
@@ -44,7 +46,7 @@ export function NotifcationCard({
               </h3>
               {isNew && (
                 <Badge variant="secondary" className="bg-primary/10 text-primary text-caption px-1.5 h-5 flex-shrink-0">
-                  New
+                  {t("notifications.newBadge")}
                 </Badge>
               )}
             </div>
@@ -60,7 +62,9 @@ export function NotifcationCard({
               </div>
 
               <div className="flex items-center gap-1 group-hover:text-primary transition-colors">
-                <span className="opacity-0 group-hover:opacity-100 transition-opacity">View Details</span>
+                <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+                  {t("notifications.viewDetails")}
+                </span>
                 <CaretRight size={14} weight="bold" className="transform group-hover:translate-x-1 transition-transform" />
               </div>
             </div>

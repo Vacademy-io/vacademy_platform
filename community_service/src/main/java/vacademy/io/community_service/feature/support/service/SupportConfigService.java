@@ -72,7 +72,7 @@ public class SupportConfigService {
     @Transactional(readOnly = true)
     public SupportConfigDto getAdminConfig(String instituteId) {
         SupportPlan plan = resolvePlan(instituteId);
-        long openCount = ticketRepository.countByInstituteIdAndStatusIn(instituteId, ACTIVE_STATUSES);
+        long openCount = ticketRepository.countByInstituteIdAndStatusInAndInternalOnlyFalse(instituteId, ACTIVE_STATUSES);
         return SupportConfigDto.builder()
                 .instituteId(instituteId)
                 .plan(SupportPlanDto.from(plan))
@@ -95,6 +95,7 @@ public class SupportConfigService {
                 .planDetail(SupportPlanDto.from(plan))
                 .alertEmails(config.map(c -> parseStringList(c.getAlertEmails())).orElse(Collections.emptyList()))
                 .engineers(assignedEngineerDtos(instituteId))
+                // Support's own view of the institute — internal-only tickets count here.
                 .openTicketCount(ticketRepository.countByInstituteIdAndStatusIn(instituteId, ACTIVE_STATUSES))
                 .build();
     }

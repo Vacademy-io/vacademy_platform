@@ -217,7 +217,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
       {(!introPage.fullScreen || introPage.showHeader) && (
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-30 text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-full hover:bg-gray-100"
+          className="absolute top-4 end-4 z-30 text-gray-400 hover:text-gray-600 transition-colors p-2 rounded-full hover:bg-gray-100"
           aria-label="Close"
           title="Close"
         >
@@ -228,8 +228,8 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
       {/* Logo - Use institute logo from domainRouting */}
       {instituteLogoUrl && (
         <div className={`flex-shrink-0 py-4 pt-10 md:pt-4 ${
-          introPage.logo?.alignment === 'left' ? 'self-start pl-4' : 
-          introPage.logo?.alignment === 'right' ? 'self-end pr-4' : 
+          introPage.logo?.alignment === 'left' ? 'self-start ps-4' : 
+          introPage.logo?.alignment === 'right' ? 'self-end pe-4' : 
           'self-center'
         }`}>
           <img
@@ -263,7 +263,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
             }`}
           >
             {/* Image Caption - Above the image with proper spacing */}
-            <div className="absolute top-4 left-0 right-0 text-center px-4 z-10 mb-4">
+            <div className="absolute top-4 start-0 end-0 text-center px-4 z-10 mb-4">
               <p className="text-gray-800 text-lg sm:text-xl md:text-2xl lg:text-3xl font-semibold">
                 {image.caption}
               </p>
@@ -303,7 +303,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
             <button
               onClick={prevImage}
               disabled={currentImageIndex === 0}
-              className={`hidden md:block absolute left-4 top-1/2 transform -translate-y-1/2 transition-colors p-2 rounded-full ${
+              className={`hidden md:block absolute start-4 top-1/2 transform -translate-y-1/2 transition-colors p-2 rounded-full ${
                 currentImageIndex === 0 
                   ? 'text-gray-400 cursor-not-allowed' 
                   : 'text-gray-700 hover:text-gray-900 hover:bg-gray-200'
@@ -314,7 +314,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
             </button>
             <button
               onClick={nextImage}
-              className="hidden md:block absolute right-4 top-1/2 transform -translate-y-1/2 transition-colors p-2 rounded-full text-gray-700 hover:text-gray-900 hover:bg-gray-200"
+              className="hidden md:block absolute end-4 top-1/2 transform -translate-y-1/2 transition-colors p-2 rounded-full text-gray-700 hover:text-gray-900 hover:bg-gray-200"
               title="Next image"
             >
               <CaretRight className="w-8 h-8" />
@@ -368,7 +368,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
                           <div key={field.name} className="space-y-2">
                             <label className="block text-sm font-medium text-gray-700">
                               {field.label}
-                              {field.required && <span className="text-red-500 ml-1">*</span>}
+                              {field.required && <span className="text-red-500 ms-1">*</span>}
                             </label>
                             
                             {field.type === 'text' || field.type === 'email' || field.type === 'tel' ? (
@@ -488,7 +488,7 @@ export const IntroPageComponent: React.FC<IntroPageComponentProps> = ({
 
       {/* Mobile Action Buttons - Fixed at bottom */}
       {!showLeadForm && (
-        <div className={`md:hidden fixed bottom-0 left-0 right-0 z-60 bg-white border-t border-gray-200 p-4 ${isAndroid || isIOS ? 'mb-8' : ''}`}>
+        <div className={`md:hidden fixed bottom-0 start-0 end-0 z-60 bg-white border-t border-gray-200 p-4 ${isAndroid || isIOS ? 'mb-8' : ''}`}>
           <div className="flex flex-col gap-3">
             {/* Login Button - Mobile */}
             {introPage.actions.buttons.some(btn => btn.action === 'navigateToLogin') && (

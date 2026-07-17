@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
+import i18n from '@/i18n';
 import { Preferences } from '@capacitor/preferences';
 import { registerUser, checkUserEnrollment, loginEnrolledUser, parseInstituteSettings, type RegisterUserRequest, type RegisterUserResponse } from '@/services/signup-api';
 import { TokenKey } from '@/constants/auth/tokens';
@@ -201,7 +202,7 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
             
             // Show success message
             if (showSuccessMessage) {
-              toast.success("Welcome! You are already enrolled in this institute.");
+              toast.success(i18n.t("auth:enrollment.welcomeAlreadyEnrolled"));
             }
             
             // Handle post-login flow
@@ -298,7 +299,7 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
           } catch (loginError: any) {
             // Show error message
             if (showSuccessMessage) {
-              toast.error('You are already enrolled in this institute. Please use the login page with your correct credentials.');
+              toast.error(i18n.t("auth:enrollment.alreadyEnrolledUseLogin"));
             }
             
             // Re-throw the original registration error
@@ -312,7 +313,7 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
 
       // Show success message
       if (showSuccessMessage) {
-        toast.success("Account created successfully!");
+        toast.success(i18n.t("auth:enrollment.accountCreated"));
       }
 
       // After register, call login with the username the backend actually stored (often same as email).
@@ -381,7 +382,7 @@ export function useUnifiedRegistration(): UseUnifiedRegistrationReturn {
       return response;
 
     } catch (error) {
-      toast.error('Registration failed. Please try again.');
+      toast.error(i18n.t("auth:enrollment.registrationFailed"));
       throw error;
     } finally {
       setIsRegistering(false);

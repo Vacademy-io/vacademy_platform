@@ -439,8 +439,8 @@ export function CourseDetailsRatingsComponent({
             <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-md"></div>
 
             {/* Floating orb effects */}
-            <div className="absolute top-0 right-0 w-16 h-16 bg-primary-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 -translate-y-3 translate-x-6"></div>
-            <div className="absolute bottom-0 left-0 w-20 h-20 bg-yellow-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 translate-y-3 -translate-x-6"></div>
+            <div className="absolute top-0 end-0 w-16 h-16 bg-primary-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 -translate-y-3 translate-x-6"></div>
+            <div className="absolute bottom-0 start-0 w-20 h-20 bg-yellow-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 translate-y-3 -translate-x-6"></div>
 
             <div className="relative space-y-4 lg:space-y-6">
                 {/* Enhanced Header */}
@@ -505,7 +505,7 @@ export function CourseDetailsRatingsComponent({
                                     />
                                 </button>
                             ))}
-                            <span className="ml-2 text-sm text-neutral-500">
+                            <span className="ms-2 text-sm text-neutral-500">
                                 {selectedRating
                                     ? `${selectedRating} Star${selectedRating > 1 ? "s" : ""}`
                                     : ""}
@@ -539,7 +539,7 @@ export function CourseDetailsRatingsComponent({
 
                             <div className="relative grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-6">
                                 {/* Rating Score */}
-                                <div className="lg:col-span-2 text-center lg:text-left space-y-3">
+                                <div className="lg:col-span-2 text-center lg:text-start space-y-3">
                                     <div className="inline-flex flex-col items-center lg:items-start space-y-2">
                                         <div className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-900">
                                             {overallRatingData?.average_rating !==
@@ -613,7 +613,7 @@ export function CourseDetailsRatingsComponent({
                                                         className="h-1.5 bg-gray-200 rounded-full overflow-hidden group-hover/bar:h-2 transition-all duration-300"
                                                     />
                                                 </div>
-                                                <span className="text-xs font-bold text-gray-900 min-w-10 text-right">
+                                                <span className="text-xs font-bold text-gray-900 min-w-10 text-end">
                                                     {percent}%
                                                 </span>
                                             </div>

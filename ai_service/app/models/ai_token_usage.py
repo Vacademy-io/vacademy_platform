@@ -122,6 +122,7 @@ class RequestType(str, enum.Enum):
     NOTES = "notes"                  # Auto study-notes from a lecture transcript
     TRANSCRIPTION = "transcription"  # Live-recording speech-to-text (per audio-minute)
     CALL_INTELLIGENCE = "call_intelligence"  # CRM call recording transcription + LLM analysis (per minute)
+    TRANSLATION = "translation"      # Content/UI translation (i18n Phase 1) — parametric via ai_tool_pricing (V384)
 
 
 class AiTokenUsage(Base):

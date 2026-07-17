@@ -177,7 +177,7 @@ export const BuyRentSectionComponent: React.FC<BuyRentSectionProps> = ({
           <div className="bg-white rounded-lg max-w-sm w-full p-4 relative">
             <button
               onClick={handleRentCancel}
-              className="absolute top-3 right-3 text-gray-400 hover:text-gray-600 transition-colors"
+              className="absolute top-3 end-3 text-gray-400 hover:text-gray-600 transition-colors"
               aria-label="Close"
             >
               <X className="h-4 w-4" />

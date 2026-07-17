@@ -61,7 +61,7 @@ export function OtaUpdateBanner() {
 
   // Optional update: dismissible top banner
   return (
-    <div className="fixed left-0 right-0 top-0 z-40 flex items-center justify-between bg-primary/90 px-4 py-2 text-white backdrop-blur-sm">
+    <div className="fixed start-0 end-0 top-0 z-40 flex items-center justify-between bg-primary/90 px-4 py-2 text-white backdrop-blur-sm">
       <span className="text-sm">
         Update {otaVersion} available
         {otaReleaseNotes ? ` — ${otaReleaseNotes}` : ""}

@@ -51,6 +51,7 @@ from .routers.audio_questions import router as audio_questions_router
 from .routers.chat_with_pdf import router as chat_with_pdf_router
 from .routers.evaluation import router as evaluation_router
 from .routers.retry import router as retry_router
+from .routers.translation import router as translation_router
 
 from .db import db_session
 from .repositories.ai_task_repository import ensure_ai_task_schema
@@ -259,6 +260,10 @@ def create_app() -> FastAPI:
     app.include_router(chat_with_pdf_router, prefix=settings.api_base_path)
     app.include_router(evaluation_router, prefix=settings.api_base_path)
     app.include_router(retry_router, prefix=settings.api_base_path)
+    # i18n Phase 1 — content translation pipeline (estimate / course job /
+    # strings / review-approve / job status). Router declares its own
+    # /translation/v1 prefix. Final paths: {api_base_path}/translation/v1/*.
+    app.include_router(translation_router, prefix=settings.api_base_path)
     # Reels-from-long-video — three-gate funnel (scan/preview/render) +
     # /frame/{add,update,delete} for the editor's `kind=reel` save loop.
     # The router declares its own `/external/reels/v1` prefix; we only add

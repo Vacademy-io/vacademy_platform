@@ -211,7 +211,7 @@ const CustomFieldsStep = ({
                 onClick={() => onBack([])}
                 disable={isSubmitting}
               >
-                <ArrowLeft className="mr-2 size-4" />
+                <ArrowLeft className="me-2 size-4" />
                 Back
               </MyButton>
             )}
@@ -312,7 +312,7 @@ const CustomFieldsStep = ({
                   disable={isSubmitting}
                   className="w-full sm:w-auto"
                 >
-                  <ArrowLeft className="mr-2 size-4" />
+                  <ArrowLeft className="me-2 size-4" />
                   Back
                 </MyButton>
               ) : (
@@ -328,7 +328,7 @@ const CustomFieldsStep = ({
               >
                 {isSubmitting ? (
                   <>
-                    <SpinnerGap className="mr-2 size-4 animate-spin" />
+                    <SpinnerGap className="me-2 size-4 animate-spin" />
                     Submitting...
                   </>
                 ) : isFinalStep ? (

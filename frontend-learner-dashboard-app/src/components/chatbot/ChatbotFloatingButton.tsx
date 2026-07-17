@@ -107,7 +107,7 @@ export const ChatbotFloatingButton = () => {
 
   return (
     <div className={cn(
-      "fixed right-6 z-50 flex flex-col items-end gap-3 pointer-events-none",
+      "fixed end-6 z-50 flex flex-col items-end gap-3 pointer-events-none",
       // While a quiz is being taken, float higher so the button never covers
       // the quiz Next/Finish controls in the bottom-right corner
       isQuizActive ? "bottom-40" : isOnVideoPage ? "bottom-20" : "bottom-6",
@@ -121,13 +121,13 @@ export const ChatbotFloatingButton = () => {
             initial={{ opacity: 0, y: 10, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 10, scale: 0.9 }}
-            className="bg-background border border-border shadow-lg rounded-xl p-3 max-w-48 pointer-events-auto relative mr-2"
+            className="bg-background border border-border shadow-lg rounded-xl p-3 max-w-48 pointer-events-auto relative me-2"
           >
             <div className="text-sm font-medium text-foreground relative z-10">
                {LONG_PROMPT}
             </div>
             {/* Arrow */}
-            <div className="absolute -bottom-2 right-6 w-4 h-4 bg-background border-b border-r border-border transform rotate-45"></div>
+            <div className="absolute -bottom-2 end-6 w-4 h-4 bg-background border-b border-e border-border transform rotate-45"></div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -199,7 +199,7 @@ export const ChatbotFloatingButton = () => {
                       initial={{ opacity: 0, width: 0 }}
                       animate={{ opacity: 1, width: "auto" }}
                       exit={{ opacity: 0, width: 0 }}
-                      className="whitespace-nowrap font-medium pr-5 pl-1 overflow-hidden h-full flex items-center"
+                      className="whitespace-nowrap font-medium pe-5 ps-1 overflow-hidden h-full flex items-center"
                     >
                       {ROTATING_MESSAGES[activeMessageIndex].text}
                     </motion.span>
@@ -210,7 +210,7 @@ export const ChatbotFloatingButton = () => {
           
           {/* Notification Dot (Optional - just visual flair) */}
           <motion.div 
-            className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white z-10"
+            className="absolute top-0 end-0 w-3 h-3 bg-red-500 rounded-full border-2 border-white z-10"
             initial={{ scale: 0 }}
             animate={{ scale: (showPill || isHovered) ? 0 : 1 }}
           />

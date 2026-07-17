@@ -38,15 +38,15 @@ const modernInputVariants = {
   },
   
   withLeftIcon: {
-    sm: "pl-9",
-    md: "pl-10",
-    lg: "pl-11",
+    sm: "ps-9",
+    md: "ps-10",
+    lg: "ps-11",
   },
   
   withRightIcon: {
-    sm: "pr-9",
-    md: "pr-10",
-    lg: "pr-11",
+    sm: "pe-9",
+    md: "pe-10",
+    lg: "pe-11",
   },
 };
 
@@ -84,9 +84,9 @@ const ModernInput = forwardRef<HTMLInputElement, ModernInputProps>(
     }[inputSize];
 
     const iconPosition = {
-      sm: { left: "left-2.5", right: "right-2.5" },
-      md: { left: "left-3", right: "right-3" },
-      lg: { left: "left-3", right: "right-3" },
+      sm: { left: "start-2.5", right: "end-2.5" },
+      md: { left: "start-3", right: "end-3" },
+      lg: { left: "start-3", right: "end-3" },
     }[inputSize];
 
     return (

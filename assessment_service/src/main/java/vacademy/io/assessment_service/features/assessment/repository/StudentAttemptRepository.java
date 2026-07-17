@@ -12,6 +12,7 @@ import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.resp
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.ParticipantsQuestionOverallDetailDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentAttemptHistoryProjection;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.StudentReportDto;
+import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.response.UserAssessmentHistorySummaryProjection;
 import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.ManualAttemptResponseDto;
 import vacademy.io.assessment_service.features.assessment.entity.StudentAttempt;
 
@@ -652,6 +653,72 @@ public interface StudentAttemptRepository extends CrudRepository<StudentAttempt,
             @Param("startDate") Date startDate,
             @Param("endDate") Date endDate,
             Pageable pageable);
+
+    /**
+     * BATCHED sibling of {@link #findAssessmentHistoryForUserInDateRange}: one query for a whole
+     * cohort.  Returns one row per userId that has at least one ENDED attempt since {@code since}
+     * (users with no attempts simply have no row — never zeros).  Used by the internal
+     * student-analysis batch endpoint consumed by admin_core_service's Engagement Engine.
+     *
+     * <p>Counting/marks semantics mirror the per-user endpoint:
+     * <ul>
+     *   <li>Only {@code sa.status = 'ENDED'} attempts on PUBLISHED, institute-mapped assessments.
+     *   <li>Per-attempt percentage = {@code sa.total_marks / SUM(section.total_marks)} * 100,
+     *       where achievable marks are summed over non-DELETED sections of the assessment —
+     *       the same basis {@code LearnerReportService.buildComparisonData} uses.  Attempts whose
+     *       marks cannot be computed reliably (null earned marks or achievable sum <= 0) are
+     *       excluded from the average via CASE→NULL (AVG ignores NULLs); if none are computable
+     *       the average itself is NULL — never the 100-marks fallback the comparison path uses.
+     * </ul>
+     */
+    @Query(value = """
+            WITH attempts AS (
+                SELECT
+                    aur.user_id     AS user_id,
+                    sa.id           AS attempt_id,
+                    sa.created_at   AS attempt_at,
+                    sa.total_marks  AS earned_marks,
+                    a.id            AS assessment_id,
+                    a.name          AS assessment_name
+                FROM public.student_attempt sa
+                JOIN public.assessment_user_registration aur
+                    ON aur.id = sa.registration_id
+                    AND aur.user_id IN (:userIds)
+                JOIN public.assessment a
+                    ON a.id = aur.assessment_id
+                    AND a.status = 'PUBLISHED'
+                JOIN public.assessment_institute_mapping aim
+                    ON aim.assessment_id = a.id
+                    AND aim.institute_id = :instituteId
+                WHERE sa.status = 'ENDED'
+                  AND sa.created_at >= :since
+            ),
+            achievable AS (
+                SELECT s.assessment_id       AS assessment_id,
+                       SUM(s.total_marks)    AS total_achievable
+                FROM public.section s
+                WHERE s.status <> 'DELETED'
+                  AND s.assessment_id IN (SELECT DISTINCT assessment_id FROM attempts)
+                GROUP BY s.assessment_id
+            )
+            SELECT
+                t.user_id           AS userId,
+                COUNT(*)            AS attemptCount,
+                MAX(t.attempt_at)   AS lastAttemptAt,
+                AVG(CASE
+                        WHEN t.earned_marks IS NOT NULL AND ach.total_achievable > 0
+                        THEN (t.earned_marks / ach.total_achievable) * 100.0
+                    END)            AS avgPercentage,
+                (ARRAY_AGG(t.assessment_name ORDER BY t.attempt_at DESC, t.attempt_id DESC))[1]
+                                    AS lastAssessmentName
+            FROM attempts t
+            LEFT JOIN achievable ach ON ach.assessment_id = t.assessment_id
+            GROUP BY t.user_id
+            """, nativeQuery = true)
+    List<UserAssessmentHistorySummaryProjection> findAssessmentHistorySummaryForUsersSince(
+            @Param("instituteId") String instituteId,
+            @Param("userIds") List<String> userIds,
+            @Param("since") Date since);
 
     @Query(value = """
             SELECT sa.* FROM student_attempt sa

@@ -307,12 +307,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             cs.slide_order,
                             json_build_object(
                                 'id', s.id,
-                                'title', s.title,
+                                'title', COALESCE(eft_title.content, s.title),
                                 'status', s.status,
                                 'is_loaded', true,
                                 'new_slide', true,
                                 'source_id', s.source_id,
-                                'description', s.description,
+                                'description', COALESCE(eft_desc.content, s.description),
                                 'slide_order', cs.slide_order,
                                 'source_type', s.source_type,
                                 'drip_condition', s.drip_condition_json,
@@ -340,21 +340,23 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                                 'can_skip', q.can_skip,
                                                 'auto_evaluation_json', q.auto_evaluation_json,
                                                 'evaluation_type', q.evaluation_type,
-                                                'text_data', json_build_object('id', rt_text.id, 'type', rt_text.type, 'content', rt_text.content),
-                                                'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', rt_parent.type, 'content', rt_parent.content) ELSE NULL END,
-                                                'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', rt_exp.type, 'content', rt_exp.content) ELSE NULL END,
+                                                'text_data', json_build_object('id', rt_text.id, 'type', rt_text.type, 'content', COALESCE(rtt_text.content, rt_text.content)),
+                                                'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', rt_parent.type, 'content', COALESCE(rtt_parent.content, rt_parent.content)) ELSE NULL END,
+                                                'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', rt_exp.type, 'content', COALESCE(rtt_exp.content, rt_exp.content)) ELSE NULL END,
                                                 'options', COALESCE((
                                                     SELECT json_agg(
                                                         json_build_object(
                                                             'id', o.id,
                                                             'media_id', o.media_id,
-                                                            'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', rt_opt.type, 'content', rt_opt.content) ELSE NULL END,
-                                                            'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', rt_opt_exp.type, 'content', rt_opt_exp.content) ELSE NULL END
+                                                            'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', rt_opt.type, 'content', COALESCE(rtt_opt.content, rt_opt.content)) ELSE NULL END,
+                                                            'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', rt_opt_exp.type, 'content', COALESCE(rtt_opt_exp.content, rt_opt_exp.content)) ELSE NULL END
                                                         )
                                                     )
                                                     FROM video_slide_question_options o
                                                     LEFT JOIN rich_text_data rt_opt ON rt_opt.id = o.text_id
+                                                    LEFT JOIN rich_text_translation rtt_opt ON rtt_opt.rich_text_id = rt_opt.id AND rtt_opt.locale = :lang AND rtt_opt.state IN ('PUBLISHED','STALE')
                                                     LEFT JOIN rich_text_data rt_opt_exp ON rt_opt_exp.id = o.explanation_text_id
+                                                    LEFT JOIN rich_text_translation rtt_opt_exp ON rtt_opt_exp.rich_text_id = rt_opt_exp.id AND rtt_opt_exp.locale = :lang AND rtt_opt_exp.state IN ('PUBLISHED','STALE')
                                                     WHERE o.video_slide_question_id = q.id
                                                 ), CAST('[]' AS json))
                                             )
@@ -362,8 +364,11 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                         )
                                         FROM video_slide_question q
                                         LEFT JOIN rich_text_data rt_text ON rt_text.id = q.text_id
+                                        LEFT JOIN rich_text_translation rtt_text ON rtt_text.rich_text_id = rt_text.id AND rtt_text.locale = :lang AND rtt_text.state IN ('PUBLISHED','STALE')
                                         LEFT JOIN rich_text_data rt_parent ON rt_parent.id = q.parent_rich_text_id
+                                        LEFT JOIN rich_text_translation rtt_parent ON rtt_parent.rich_text_id = rt_parent.id AND rtt_parent.locale = :lang AND rtt_parent.state IN ('PUBLISHED','STALE')
                                         LEFT JOIN rich_text_data rt_exp ON rt_exp.id = q.explanation_text_id
+                                        LEFT JOIN rich_text_translation rtt_exp ON rtt_exp.rich_text_id = rt_exp.id AND rtt_exp.locale = :lang AND rtt_exp.state IN ('PUBLISHED','STALE')
                                         WHERE q.video_slide_id = v.id
                                         AND q.status IN (:videoSlideQuestionStatus)
                                     ), CAST('[]' AS json))
@@ -372,6 +377,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         FROM slide s
                         JOIN chapter_to_slides cs ON cs.slide_id = s.id
                         JOIN chapter c ON c.id = cs.chapter_id
+                        LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                        LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                         JOIN video v ON v.id = s.source_id
                         WHERE s.source_type = 'VIDEO' AND c.id = :chapterId
                         AND s.status IN (:slideStatus)
@@ -385,12 +392,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             cs.slide_order,
                             json_build_object(
                                 'id', s.id,
-                                'title', s.title,
+                                'title', COALESCE(eft_title.content, s.title),
                                 'status', s.status,
                                 'is_loaded', true,
                                 'new_slide', true,
                                 'source_id', s.source_id,
-                                'description', s.description,
+                                'description', COALESCE(eft_desc.content, s.description),
                                 'slide_order', cs.slide_order,
                                 'source_type', s.source_type,
                                 'drip_condition', s.drip_condition_json,
@@ -408,6 +415,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         FROM slide s
                         JOIN chapter_to_slides cs ON cs.slide_id = s.id
                         JOIN chapter c ON c.id = cs.chapter_id
+                        LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                        LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                         JOIN document_slide d ON d.id = s.source_id
                         WHERE s.source_type = 'DOCUMENT' AND c.id = :chapterId
                         AND s.status IN (:slideStatus)
@@ -421,10 +430,10 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             cs.slide_order,
                             json_build_object(
                                 'id', s.id,
-                                'title', s.title,
+                                'title', COALESCE(eft_title.content, s.title),
                                 'status', s.status,
                                 'source_id', s.source_id,
-                                'description', s.description,
+                                'description', COALESCE(eft_desc.content, s.description),
                                 'slide_order', cs.slide_order,
                                 'source_type', s.source_type,
                                 'drip_condition', s.drip_condition_json,
@@ -440,22 +449,24 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                     'evaluation_type', q.evaluation_type,
                                     'media_id', q.media_id,
                                     'source_type', q.source_type,
-                                    'text_data', json_build_object('id', rt_text.id, 'type', rt_text.type, 'content', rt_text.content),
-                                    'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', rt_parent.type, 'content', rt_parent.content) ELSE NULL END,
-                                    'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', rt_exp.type, 'content', rt_exp.content) ELSE NULL END,
+                                    'text_data', json_build_object('id', rt_text.id, 'type', rt_text.type, 'content', COALESCE(rtt_text.content, rt_text.content)),
+                                    'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', rt_parent.type, 'content', COALESCE(rtt_parent.content, rt_parent.content)) ELSE NULL END,
+                                    'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', rt_exp.type, 'content', COALESCE(rtt_exp.content, rt_exp.content)) ELSE NULL END,
                                     'options', COALESCE((
                                         SELECT json_agg(
                                             json_build_object(
                                                 'id', o.id,
                                                 'media_id', o.media_id,
-                                                'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', rt_opt.type, 'content', rt_opt.content) ELSE NULL END,
-                                                'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', rt_opt_exp.type, 'content', rt_opt_exp.content) ELSE NULL END
+                                                'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', rt_opt.type, 'content', COALESCE(rtt_opt.content, rt_opt.content)) ELSE NULL END,
+                                                'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', rt_opt_exp.type, 'content', COALESCE(rtt_opt_exp.content, rt_opt_exp.content)) ELSE NULL END
                                             )
                                             ORDER BY o.created_on
                                         )
                                         FROM option o
                                         LEFT JOIN rich_text_data rt_opt ON rt_opt.id = o.text_id
+                                        LEFT JOIN rich_text_translation rtt_opt ON rtt_opt.rich_text_id = rt_opt.id AND rtt_opt.locale = :lang AND rtt_opt.state IN ('PUBLISHED','STALE')
                                         LEFT JOIN rich_text_data rt_opt_exp ON rt_opt_exp.id = o.explanation_text_id
+                                        LEFT JOIN rich_text_translation rtt_opt_exp ON rtt_opt_exp.rich_text_id = rt_opt_exp.id AND rtt_opt_exp.locale = :lang AND rtt_opt_exp.state IN ('PUBLISHED','STALE')
                                         WHERE o.question_id = q.id
                                     ), CAST('[]' AS json))
                                 )
@@ -463,10 +474,15 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         FROM slide s
                         JOIN chapter_to_slides cs ON cs.slide_id = s.id
                         JOIN chapter c ON c.id = cs.chapter_id
+                        LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                        LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                         JOIN question_slide q ON q.id = s.source_id
                         LEFT JOIN rich_text_data rt_text ON rt_text.id = q.text_id
+                        LEFT JOIN rich_text_translation rtt_text ON rtt_text.rich_text_id = rt_text.id AND rtt_text.locale = :lang AND rtt_text.state IN ('PUBLISHED','STALE')
                         LEFT JOIN rich_text_data rt_parent ON rt_parent.id = q.parent_rich_text_id
+                        LEFT JOIN rich_text_translation rtt_parent ON rtt_parent.rich_text_id = rt_parent.id AND rtt_parent.locale = :lang AND rtt_parent.state IN ('PUBLISHED','STALE')
                         LEFT JOIN rich_text_data rt_exp ON rt_exp.id = q.explanation_text_id
+                        LEFT JOIN rich_text_translation rtt_exp ON rtt_exp.rich_text_id = rt_exp.id AND rtt_exp.locale = :lang AND rtt_exp.state IN ('PUBLISHED','STALE')
                         WHERE s.source_type = 'QUESTION' AND c.id = :chapterId
                         AND s.status IN (:slideStatus)
                         AND cs.status IN (:chapterToSlidesStatus)
@@ -479,12 +495,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             cs.slide_order,
                             json_build_object(
                                 'id', s.id,
-                                'title', s.title,
+                                'title', COALESCE(eft_title.content, s.title),
                                 'status', s.status,
                                 'is_loaded', true,
                                 'new_slide', true,
                                 'source_id', s.source_id,
-                                'description', s.description,
+                                'description', COALESCE(eft_desc.content, s.description),
                                 'slide_order', cs.slide_order,
                                 'source_type', s.source_type,
                                 'drip_condition', s.drip_condition_json,
@@ -498,14 +514,14 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                         WHEN a.text_id IS NOT NULL THEN json_build_object(
                                             'id', rt_text.id,
                                             'type', rt_text.type,
-                                            'content', rt_text.content
+                                            'content', COALESCE(rtt_text.content, rt_text.content)
                                         ) ELSE NULL
                                     END,
                                     'parent_rich_text', CASE
                                         WHEN a.parent_rich_text_id IS NOT NULL THEN json_build_object(
                                             'id', rt_parent.id,
                                             'type', rt_parent.type,
-                                            'content', rt_parent.content
+                                            'content', COALESCE(rtt_parent.content, rt_parent.content)
                                         ) ELSE NULL
                                     END,
                                     'questions', COALESCE((
@@ -518,7 +534,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                                     WHEN q.text_id IS NOT NULL THEN json_build_object(
                                                         'id', rtq.id,
                                                         'type', rtq.type,
-                                                        'content', rtq.content
+                                                        'content', COALESCE(rtt_rtq.content, rtq.content)
                                                     ) ELSE NULL
                                                 END
                                             )
@@ -526,6 +542,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                         )
                                         FROM assignment_slide_question q
                                         LEFT JOIN rich_text_data rtq ON rtq.id = q.text_id
+                                        LEFT JOIN rich_text_translation rtt_rtq ON rtt_rtq.rich_text_id = rtq.id AND rtt_rtq.locale = :lang AND rtt_rtq.state IN ('PUBLISHED','STALE')
                                         WHERE q.assignment_slide_id = a.id AND q.status IN (:videoSlideQuestionStatus)
                                     ), CAST('[]' AS json))
                                 )
@@ -533,9 +550,13 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         FROM slide s
                         JOIN chapter_to_slides cs ON cs.slide_id = s.id
                         JOIN chapter c ON c.id = cs.chapter_id
+                        LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                        LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                         JOIN assignment_slide a ON a.id = s.source_id
                         LEFT JOIN rich_text_data rt_text ON rt_text.id = a.text_id
+                        LEFT JOIN rich_text_translation rtt_text ON rtt_text.rich_text_id = rt_text.id AND rtt_text.locale = :lang AND rtt_text.state IN ('PUBLISHED','STALE')
                         LEFT JOIN rich_text_data rt_parent ON rt_parent.id = a.parent_rich_text_id
+                        LEFT JOIN rich_text_translation rtt_parent ON rtt_parent.rich_text_id = rt_parent.id AND rtt_parent.locale = :lang AND rtt_parent.state IN ('PUBLISHED','STALE')
                         WHERE s.source_type = 'ASSIGNMENT' AND c.id = :chapterId
                         AND s.status IN (:slideStatus)
                         AND cs.status IN (:chapterToSlidesStatus)
@@ -548,19 +569,19 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             cs.slide_order,
                             json_build_object(
                                 'id', s.id,
-                                'title', s.title,
+                                'title', COALESCE(eft_title.content, s.title),
                                 'status', s.status,
                                 'is_loaded', true,
                                 'new_slide', true,
                                 'source_id', s.source_id,
-                                'description', s.description,
+                                'description', COALESCE(eft_desc.content, s.description),
                                 'slide_order', cs.slide_order,
                                 'source_type', s.source_type,
                                 'drip_condition', s.drip_condition_json,
                                 'quiz_slide', json_build_object(
                                     'id', qs.id,
                                     'title', qs.title,
-                                    'description', CASE WHEN qs_description_rt.id IS NOT NULL THEN json_build_object('id', qs_description_rt.id, 'type', qs_description_rt.type, 'content', qs_description_rt.content) ELSE NULL END,
+                                    'description', CASE WHEN qs_description_rt.id IS NOT NULL THEN json_build_object('id', qs_description_rt.id, 'type', qs_description_rt.type, 'content', COALESCE(rtt_qs_desc.content, qs_description_rt.content)) ELSE NULL END,
                                     'time_limit_in_minutes', qs.time_limit_in_minutes,
                                     'marks_per_question', qs.marks_per_question,
                                     'negative_marking', qs.negative_marking,
@@ -581,21 +602,23 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                                 'evaluation_type', q.evaluation_type,
                                                 'marks', q.marks,
                                                 'negative_marking', q.negative_marking,
-                                                'text', json_build_object('id', q_text_rt.id, 'type', q_text_rt.type, 'content', q_text_rt.content),
-                                                'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', q_parent_rt.id, 'type', q_parent_rt.type, 'content', q_parent_rt.content) ELSE NULL END,
-                                                'explanation_text', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', q_exp_rt.id, 'type', q_exp_rt.type, 'content', q_exp_rt.content) ELSE NULL END,
+                                                'text', json_build_object('id', q_text_rt.id, 'type', q_text_rt.type, 'content', COALESCE(rtt_q_text.content, q_text_rt.content)),
+                                                'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', q_parent_rt.id, 'type', q_parent_rt.type, 'content', COALESCE(rtt_q_parent.content, q_parent_rt.content)) ELSE NULL END,
+                                                'explanation_text', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', q_exp_rt.id, 'type', q_exp_rt.type, 'content', COALESCE(rtt_q_exp.content, q_exp_rt.content)) ELSE NULL END,
                                                 'options', COALESCE((
                                                     SELECT json_agg(
                                                         json_build_object(
                                                             'id', o.id,
                                                             'media_id', o.media_id,
-                                                            'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', o_text_rt.id, 'type', o_text_rt.type, 'content', o_text_rt.content) ELSE NULL END,
-                                                            'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', o_exp_rt.id, 'type', o_exp_rt.type, 'content', o_exp_rt.content) ELSE NULL END
+                                                            'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', o_text_rt.id, 'type', o_text_rt.type, 'content', COALESCE(rtt_o_text.content, o_text_rt.content)) ELSE NULL END,
+                                                            'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', o_exp_rt.id, 'type', o_exp_rt.type, 'content', COALESCE(rtt_o_exp.content, o_exp_rt.content)) ELSE NULL END
                                                         )
                                                     )
                                                     FROM quiz_slide_question_options o
                                                     LEFT JOIN rich_text_data o_text_rt ON o_text_rt.id = o.text_id
+                                                    LEFT JOIN rich_text_translation rtt_o_text ON rtt_o_text.rich_text_id = o_text_rt.id AND rtt_o_text.locale = :lang AND rtt_o_text.state IN ('PUBLISHED','STALE')
                                                     LEFT JOIN rich_text_data o_exp_rt ON o_exp_rt.id = o.explanation_text_id
+                                                    LEFT JOIN rich_text_translation rtt_o_exp ON rtt_o_exp.rich_text_id = o_exp_rt.id AND rtt_o_exp.locale = :lang AND rtt_o_exp.state IN ('PUBLISHED','STALE')
                                                     WHERE o.quiz_slide_question_id = q.id
                                                 ), CAST('[]' AS json))
                                             )
@@ -603,8 +626,11 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                         )
                                         FROM quiz_slide_question q
                                         LEFT JOIN rich_text_data q_text_rt ON q_text_rt.id = q.text_id
+                                        LEFT JOIN rich_text_translation rtt_q_text ON rtt_q_text.rich_text_id = q_text_rt.id AND rtt_q_text.locale = :lang AND rtt_q_text.state IN ('PUBLISHED','STALE')
                                         LEFT JOIN rich_text_data q_parent_rt ON q_parent_rt.id = q.parent_rich_text_id
+                                        LEFT JOIN rich_text_translation rtt_q_parent ON rtt_q_parent.rich_text_id = q_parent_rt.id AND rtt_q_parent.locale = :lang AND rtt_q_parent.state IN ('PUBLISHED','STALE')
                                         LEFT JOIN rich_text_data q_exp_rt ON q_exp_rt.id = q.explanation_text_id
+                                        LEFT JOIN rich_text_translation rtt_q_exp ON rtt_q_exp.rich_text_id = q_exp_rt.id AND rtt_q_exp.locale = :lang AND rtt_q_exp.state IN ('PUBLISHED','STALE')
                                         WHERE q.quiz_slide_id = qs.id
                                         AND q.status IN (:videoSlideQuestionStatus)
                                     ), CAST('[]' AS json))
@@ -613,8 +639,11 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         FROM slide s
                         JOIN chapter_to_slides cs ON cs.slide_id = s.id
                         JOIN chapter c ON c.id = cs.chapter_id
+                        LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                        LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                         JOIN quiz_slide qs ON qs.id = s.source_id
                         LEFT JOIN rich_text_data qs_description_rt ON qs_description_rt.id = qs.description
+                        LEFT JOIN rich_text_translation rtt_qs_desc ON rtt_qs_desc.rich_text_id = qs_description_rt.id AND rtt_qs_desc.locale = :lang AND rtt_qs_desc.state IN ('PUBLISHED','STALE')
                         WHERE s.source_type = 'QUIZ' AND c.id = :chapterId
                         AND s.status IN (:slideStatus)
                         AND cs.status IN (:chapterToSlidesStatus)
@@ -627,12 +656,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             cs.slide_order,
                             json_build_object(
                                 'id', s.id,
-                                'title', s.title,
+                                'title', COALESCE(eft_title.content, s.title),
                                 'status', s.status,
                                 'is_loaded', true,
                                 'new_slide', true,
                                 'source_id', s.source_id,
-                                'description', s.description,
+                                'description', COALESCE(eft_desc.content, s.description),
                                 'slide_order', cs.slide_order,
                                 'source_type', s.source_type,
                                 'drip_condition', s.drip_condition_json,
@@ -647,6 +676,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         FROM slide s
                         JOIN chapter_to_slides cs ON cs.slide_id = s.id
                         JOIN chapter c ON c.id = cs.chapter_id
+                        LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                        LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                         JOIN html_video_slide h ON h.id = s.source_id
                         WHERE s.source_type = 'HTML_VIDEO' AND c.id = :chapterId
                         AND s.status IN (:slideStatus)
@@ -661,12 +692,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             cs.slide_order,
                             json_build_object(
                                 'id', s.id,
-                                'title', s.title,
+                                'title', COALESCE(eft_title.content, s.title),
                                 'status', s.status,
                                 'is_loaded', true,
                                 'new_slide', true,
                                 'source_id', s.source_id,
-                                'description', s.description,
+                                'description', COALESCE(eft_desc.content, s.description),
                                 'slide_order', cs.slide_order,
                                 'source_type', s.source_type,
                                 'drip_condition', s.drip_condition_json,
@@ -681,6 +712,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         FROM slide s
                         JOIN chapter_to_slides cs ON cs.slide_id = s.id
                         JOIN chapter c ON c.id = cs.chapter_id
+                        LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                        LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                         JOIN scorm_slide sc ON sc.id = s.source_id
                         WHERE s.source_type = 'SCORM' AND c.id = :chapterId
                         AND s.status IN (:slideStatus)
@@ -694,12 +727,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             cs.slide_order,
                             json_build_object(
                                 'id', s.id,
-                                'title', s.title,
+                                'title', COALESCE(eft_title.content, s.title),
                                 'status', s.status,
                                 'is_loaded', true,
                                 'new_slide', true,
                                 'source_id', s.source_id,
-                                'description', s.description,
+                                'description', COALESCE(eft_desc.content, s.description),
                                 'slide_order', cs.slide_order,
                                 'source_type', s.source_type,
                                 'drip_condition', s.drip_condition_json,
@@ -720,6 +753,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         FROM slide s
                         JOIN chapter_to_slides cs ON cs.slide_id = s.id
                         JOIN chapter c ON c.id = cs.chapter_id
+                        LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                        LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                         JOIN audio_slide a ON a.id = s.source_id
                         WHERE s.source_type = 'AUDIO' AND c.id = :chapterId
                         AND s.status IN (:slideStatus)
@@ -733,12 +768,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             cs.slide_order,
                             json_build_object(
                                 'id', s.id,
-                                'title', s.title,
+                                'title', COALESCE(eft_title.content, s.title),
                                 'status', s.status,
                                 'is_loaded', true,
                                 'new_slide', true,
                                 'source_id', s.source_id,
-                                'description', s.description,
+                                'description', COALESCE(eft_desc.content, s.description),
                                 'slide_order', cs.slide_order,
                                 'source_type', s.source_type,
                                 'drip_condition', s.drip_condition_json,
@@ -752,6 +787,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         FROM slide s
                         JOIN chapter_to_slides cs ON cs.slide_id = s.id
                         JOIN chapter c ON c.id = cs.chapter_id
+                        LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                        LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                         JOIN assessment_slide asl ON asl.id = s.source_id
                         WHERE s.source_type = 'ASSESSMENT' AND c.id = :chapterId
                         AND s.status IN (:slideStatus)
@@ -762,7 +799,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             @Param("chapterId") String chapterId,
             @Param("slideStatus") List<String> slideStatus,
             @Param("chapterToSlidesStatus") List<String> chapterToSlidesStatus,
-            @Param("videoSlideQuestionStatus") List<String> videoSlideQuestionStatus);
+            @Param("videoSlideQuestionStatus") List<String> videoSlideQuestionStatus,
+            @Param("lang") String lang);
 
     @Query(value = """
                 SELECT json_agg(slide_data ORDER BY slide_order IS NOT NULL, slide_order, created_at DESC) AS slides
@@ -773,12 +811,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         cs.slide_order,
                         json_build_object(
                             'id', s.id,
-                            'title', s.title,
+                            'title', COALESCE(eft_title.content, s.title),
                             'status', s.status,
                             'is_loaded', true,
                             'new_slide', true,
                             'source_id', s.source_id,
-                            'description', s.description,
+                            'description', COALESCE(eft_desc.content, s.description),
                             'slide_order', cs.slide_order,
                             'source_type', s.source_type,
                             'drip_condition', s.drip_condition_json,
@@ -811,21 +849,23 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                             'media_id', q.media_id,
                                             'auto_evaluation_json', q.auto_evaluation_json,
                                             'evaluation_type', q.evaluation_type,
-                                            'text_data', json_build_object('id', rt_text.id, 'type', rt_text.type, 'content', rt_text.content),
-                                            'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', rt_parent.type, 'content', rt_parent.content) ELSE NULL END,
-                                            'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', rt_exp.type, 'content', rt_exp.content) ELSE NULL END,
+                                            'text_data', json_build_object('id', rt_text.id, 'type', rt_text.type, 'content', COALESCE(rtt_text.content, rt_text.content)),
+                                            'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', rt_parent.type, 'content', COALESCE(rtt_parent.content, rt_parent.content)) ELSE NULL END,
+                                            'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', rt_exp.type, 'content', COALESCE(rtt_exp.content, rt_exp.content)) ELSE NULL END,
                                             'options', COALESCE((
                                                 SELECT json_agg(
                                                     json_build_object(
                                                         'id', o.id,
                                                         'media_id', o.media_id,
-                                                        'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', rt_opt.type, 'content', rt_opt.content) ELSE NULL END,
-                                                        'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', rt_opt_exp.type, 'content', rt_opt_exp.content) ELSE NULL END
+                                                        'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', rt_opt.type, 'content', COALESCE(rtt_opt.content, rt_opt.content)) ELSE NULL END,
+                                                        'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', rt_opt_exp.type, 'content', COALESCE(rtt_opt_exp.content, rt_opt_exp.content)) ELSE NULL END
                                                     )
                                                 )
                                                 FROM video_slide_question_options o
                                                 LEFT JOIN rich_text_data rt_opt ON rt_opt.id = o.text_id
+                                                LEFT JOIN rich_text_translation rtt_opt ON rtt_opt.rich_text_id = rt_opt.id AND rtt_opt.locale = :lang AND rtt_opt.state IN ('PUBLISHED','STALE')
                                                 LEFT JOIN rich_text_data rt_opt_exp ON rt_opt_exp.id = o.explanation_text_id
+                                                LEFT JOIN rich_text_translation rtt_opt_exp ON rtt_opt_exp.rich_text_id = rt_opt_exp.id AND rtt_opt_exp.locale = :lang AND rtt_opt_exp.state IN ('PUBLISHED','STALE')
                                                 WHERE o.video_slide_question_id = q.id
                                             ), CAST('[]' AS json))
                                         )
@@ -833,8 +873,11 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                     )
                                     FROM video_slide_question q
                                     LEFT JOIN rich_text_data rt_text ON rt_text.id = q.text_id
+                                    LEFT JOIN rich_text_translation rtt_text ON rtt_text.rich_text_id = rt_text.id AND rtt_text.locale = :lang AND rtt_text.state IN ('PUBLISHED','STALE')
                                     LEFT JOIN rich_text_data rt_parent ON rt_parent.id = q.parent_rich_text_id
+                                    LEFT JOIN rich_text_translation rtt_parent ON rtt_parent.rich_text_id = rt_parent.id AND rtt_parent.locale = :lang AND rtt_parent.state IN ('PUBLISHED','STALE')
                                     LEFT JOIN rich_text_data rt_exp ON rt_exp.id = q.explanation_text_id
+                                    LEFT JOIN rich_text_translation rtt_exp ON rtt_exp.rich_text_id = rt_exp.id AND rtt_exp.locale = :lang AND rtt_exp.state IN ('PUBLISHED','STALE')
                                     WHERE q.video_slide_id = v.id AND q.status IN (:videoSlideQuestionStatus)
                                 ), CAST('[]' AS json))
                             )
@@ -842,6 +885,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     FROM slide s
                     JOIN chapter_to_slides cs ON cs.slide_id = s.id
                     JOIN chapter c ON c.id = cs.chapter_id
+                    LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                    LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                     JOIN video v ON v.id = s.source_id
                     LEFT JOIN learner_operation lo_video_marker ON lo_video_marker.source = 'SLIDE' AND lo_video_marker.source_id = s.id AND lo_video_marker.user_id = :userId AND lo_video_marker.operation = 'VIDEO_LAST_TIMESTAMP'
                     LEFT JOIN learner_operation lo_video_percent ON lo_video_percent.source = 'SLIDE' AND lo_video_percent.source_id = s.id AND lo_video_percent.user_id = :userId AND lo_video_percent.operation = 'PERCENTAGE_VIDEO_WATCHED'
@@ -857,12 +902,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         cs.slide_order,
                         json_build_object(
                             'id', s.id,
-                            'title', s.title,
+                            'title', COALESCE(eft_title.content, s.title),
                             'status', s.status,
                             'is_loaded', true,
                             'new_slide', true,
                             'source_id', s.source_id,
-                            'description', s.description,
+                            'description', COALESCE(eft_desc.content, s.description),
                             'slide_order', cs.slide_order,
                             'source_type', s.source_type,
                             'drip_condition', s.drip_condition_json,
@@ -885,6 +930,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     FROM slide s
                     JOIN chapter_to_slides cs ON cs.slide_id = s.id
                     JOIN chapter c ON c.id = cs.chapter_id
+                    LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                    LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                     JOIN document_slide d ON d.id = s.source_id
                     LEFT JOIN learner_operation lo_doc_marker ON lo_doc_marker.source = 'SLIDE' AND lo_doc_marker.source_id = s.id AND lo_doc_marker.user_id = :userId AND lo_doc_marker.operation = 'DOCUMENT_LAST_PAGE'
                     LEFT JOIN learner_operation lo_doc_percent ON lo_doc_percent.source = 'SLIDE' AND lo_doc_percent.source_id = s.id AND lo_doc_percent.user_id = :userId AND lo_doc_percent.operation = 'PERCENTAGE_DOCUMENT_COMPLETED'
@@ -900,10 +947,10 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         cs.slide_order,
                         json_build_object(
                             'id', s.id,
-                            'title', s.title,
+                            'title', COALESCE(eft_title.content, s.title),
                             'status', s.status,
                             'source_id', s.source_id,
-                            'description', s.description,
+                            'description', COALESCE(eft_desc.content, s.description),
                             'slide_order', cs.slide_order,
                             'source_type', s.source_type,
                             'drip_condition', s.drip_condition_json,
@@ -924,22 +971,24 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                 'evaluation_type', q.evaluation_type,
                                 'media_id', q.media_id,
                                 'source_type', q.source_type,
-                                'text_data', json_build_object('id', rt_text.id, 'type', rt_text.type, 'content', rt_text.content),
-                                'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', rt_parent.type, 'content', rt_parent.content) ELSE NULL END,
-                                'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', rt_exp.type, 'content', rt_exp.content) ELSE NULL END,
+                                'text_data', json_build_object('id', rt_text.id, 'type', rt_text.type, 'content', COALESCE(rtt_text.content, rt_text.content)),
+                                'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', rt_parent.type, 'content', COALESCE(rtt_parent.content, rt_parent.content)) ELSE NULL END,
+                                'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', rt_exp.type, 'content', COALESCE(rtt_exp.content, rt_exp.content)) ELSE NULL END,
                                 'options', COALESCE((
                                     SELECT json_agg(
                                         json_build_object(
                                             'id', o.id,
                                             'media_id', o.media_id,
-                                            'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', rt_opt.type, 'content', rt_opt.content) ELSE NULL END,
-                                            'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', rt_opt_exp.type, 'content', rt_opt_exp.content) ELSE NULL END
+                                            'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', rt_opt.type, 'content', COALESCE(rtt_opt.content, rt_opt.content)) ELSE NULL END,
+                                            'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', rt_opt_exp.type, 'content', COALESCE(rtt_opt_exp.content, rt_opt_exp.content)) ELSE NULL END
                                     )
                                     ORDER BY o.created_on
                                 )
                                 FROM option o
                                 LEFT JOIN rich_text_data rt_opt ON rt_opt.id = o.text_id
+                                LEFT JOIN rich_text_translation rtt_opt ON rtt_opt.rich_text_id = rt_opt.id AND rtt_opt.locale = :lang AND rtt_opt.state IN ('PUBLISHED','STALE')
                                 LEFT JOIN rich_text_data rt_opt_exp ON rt_opt_exp.id = o.explanation_text_id
+                                LEFT JOIN rich_text_translation rtt_opt_exp ON rtt_opt_exp.rich_text_id = rt_opt_exp.id AND rtt_opt_exp.locale = :lang AND rtt_opt_exp.state IN ('PUBLISHED','STALE')
                                 WHERE o.question_id = q.id
                             ), CAST('[]' AS json))
                         )
@@ -947,10 +996,15 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 FROM slide s
                 JOIN chapter_to_slides cs ON cs.slide_id = s.id
                 JOIN chapter c ON c.id = cs.chapter_id
+                LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                 JOIN question_slide q ON q.id = s.source_id
                 LEFT JOIN rich_text_data rt_text ON rt_text.id = q.text_id
+                LEFT JOIN rich_text_translation rtt_text ON rtt_text.rich_text_id = rt_text.id AND rtt_text.locale = :lang AND rtt_text.state IN ('PUBLISHED','STALE')
                 LEFT JOIN rich_text_data rt_parent ON rt_parent.id = q.parent_rich_text_id
+                LEFT JOIN rich_text_translation rtt_parent ON rtt_parent.rich_text_id = rt_parent.id AND rtt_parent.locale = :lang AND rtt_parent.state IN ('PUBLISHED','STALE')
                 LEFT JOIN rich_text_data rt_exp ON rt_exp.id = q.explanation_text_id
+                LEFT JOIN rich_text_translation rtt_exp ON rtt_exp.rich_text_id = rt_exp.id AND rtt_exp.locale = :lang AND rtt_exp.state IN ('PUBLISHED','STALE')
                 LEFT JOIN learner_operation lo_ques_percent ON lo_ques_percent.source = 'SLIDE' AND lo_ques_percent.source_id = s.id AND lo_ques_percent.user_id = :userId AND lo_ques_percent.operation = 'PERCENTAGE_QUESTION_COMPLETED'
                 WHERE s.source_type = 'QUESTION' AND c.id = :chapterId
                 AND s.status IN (:slideStatus)
@@ -964,12 +1018,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     cs.slide_order,
                     json_build_object(
                         'id', s.id,
-                        'title', s.title,
+                        'title', COALESCE(eft_title.content, s.title),
                         'status', s.status,
                         'is_loaded', true,
                         'new_slide', true,
                         'source_id', s.source_id,
-                        'description', s.description,
+                        'description', COALESCE(eft_desc.content, s.description),
                         'slide_order', cs.slide_order,
                         'source_type', s.source_type,
                         'drip_condition', s.drip_condition_json,
@@ -988,14 +1042,14 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                 WHEN a.text_id IS NOT NULL THEN json_build_object(
                                     'id', rt_text.id,
                                     'type', rt_text.type,
-                                    'content', rt_text.content
+                                    'content', COALESCE(rtt_text.content, rt_text.content)
                                 ) ELSE NULL
                             END,
                             'parent_rich_text', CASE
                                 WHEN a.parent_rich_text_id IS NOT NULL THEN json_build_object(
                                     'id', rt_parent.id,
                                     'type', rt_parent.type,
-                                    'content', rt_parent.content
+                                    'content', COALESCE(rtt_parent.content, rt_parent.content)
                                 ) ELSE NULL
                             END,
                             'questions', COALESCE((
@@ -1008,7 +1062,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                             WHEN q.text_id IS NOT NULL THEN json_build_object(
                                                 'id', rtq.id,
                                                 'type', rtq.type,
-                                                'content', rtq.content
+                                                'content', COALESCE(rtt_rtq.content, rtq.content)
                                             ) ELSE NULL
                                         END
                                     )
@@ -1016,6 +1070,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                 )
                                 FROM assignment_slide_question q
                                 LEFT JOIN rich_text_data rtq ON rtq.id = q.text_id
+                                LEFT JOIN rich_text_translation rtt_rtq ON rtt_rtq.rich_text_id = rtq.id AND rtt_rtq.locale = :lang AND rtt_rtq.state IN ('PUBLISHED','STALE')
                                 WHERE q.assignment_slide_id = a.id AND q.status IN (:videoSlideQuestionStatus)
                             ), CAST('[]' AS json))
                         )
@@ -1023,9 +1078,13 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 FROM slide s
                 JOIN chapter_to_slides cs ON cs.slide_id = s.id
                 JOIN chapter c ON c.id = cs.chapter_id
+                LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                 JOIN assignment_slide a ON a.id = s.source_id
                 LEFT JOIN rich_text_data rt_text ON rt_text.id = a.text_id
+                LEFT JOIN rich_text_translation rtt_text ON rtt_text.rich_text_id = rt_text.id AND rtt_text.locale = :lang AND rtt_text.state IN ('PUBLISHED','STALE')
                 LEFT JOIN rich_text_data rt_parent ON rt_parent.id = a.parent_rich_text_id
+                LEFT JOIN rich_text_translation rtt_parent ON rtt_parent.rich_text_id = rt_parent.id AND rtt_parent.locale = :lang AND rtt_parent.state IN ('PUBLISHED','STALE')
                 LEFT JOIN learner_operation lo_assign_percent ON lo_assign_percent.source = 'SLIDE' AND lo_assign_percent.source_id = s.id AND lo_assign_percent.user_id = :userId AND lo_assign_percent.operation = 'PERCENTAGE_ASSIGNMENT_COMPLETED'
                 WHERE s.source_type = 'ASSIGNMENT' AND c.id = :chapterId
                 AND s.status IN (:slideStatus)
@@ -1039,12 +1098,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     cs.slide_order,
                     json_build_object(
                         'id', s.id,
-                        'title', s.title,
+                        'title', COALESCE(eft_title.content, s.title),
                         'status', s.status,
                         'is_loaded', true,
                         'new_slide', true,
                         'source_id', s.source_id,
-                        'description', s.description,
+                        'description', COALESCE(eft_desc.content, s.description),
                         'slide_order', cs.slide_order,
                         'source_type', s.source_type,
                         'drip_condition', s.drip_condition_json,
@@ -1056,7 +1115,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         'quiz_slide', json_build_object(
                             'id', qs.id,
                             'title', qs.title,
-                            'description', CASE WHEN qs_description_rt.id IS NOT NULL THEN json_build_object('id', qs_description_rt.id, 'type', qs_description_rt.type, 'content', qs_description_rt.content) ELSE NULL END,
+                            'description', CASE WHEN qs_description_rt.id IS NOT NULL THEN json_build_object('id', qs_description_rt.id, 'type', qs_description_rt.type, 'content', COALESCE(rtt_qs_desc.content, qs_description_rt.content)) ELSE NULL END,
                             'time_limit_in_minutes', qs.time_limit_in_minutes,
                             'marks_per_question', qs.marks_per_question,
                             'negative_marking', qs.negative_marking,
@@ -1077,21 +1136,23 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                                         'evaluation_type', q.evaluation_type,
                                                         'marks', q.marks,
                                                         'negative_marking', q.negative_marking,
-                                                        'text', json_build_object('id', q_text_rt.id, 'type', q_text_rt.type, 'content', q_text_rt.content),
-                                                        'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', q_parent_rt.id, 'type', q_parent_rt.type, 'content', q_parent_rt.content) ELSE NULL END,
-                                                        'explanation_text', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', q_exp_rt.id, 'type', q_exp_rt.type, 'content', q_exp_rt.content) ELSE NULL END,
+                                                        'text', json_build_object('id', q_text_rt.id, 'type', q_text_rt.type, 'content', COALESCE(rtt_q_text.content, q_text_rt.content)),
+                                                        'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', q_parent_rt.id, 'type', q_parent_rt.type, 'content', COALESCE(rtt_q_parent.content, q_parent_rt.content)) ELSE NULL END,
+                                                        'explanation_text', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', q_exp_rt.id, 'type', q_exp_rt.type, 'content', COALESCE(rtt_q_exp.content, q_exp_rt.content)) ELSE NULL END,
                                                         'options', COALESCE((
                                                             SELECT json_agg(
                                                                 json_build_object(
                                                                     'id', o.id,
                                                                     'media_id', o.media_id,
-                                                                    'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', o_text_rt.id, 'type', o_text_rt.type, 'content', o_text_rt.content) ELSE NULL END,
-                                                                    'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', o_exp_rt.id, 'type', o_exp_rt.type, 'content', o_exp_rt.content) ELSE NULL END
+                                                                    'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', o_text_rt.id, 'type', o_text_rt.type, 'content', COALESCE(rtt_o_text.content, o_text_rt.content)) ELSE NULL END,
+                                                                    'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', o_exp_rt.id, 'type', o_exp_rt.type, 'content', COALESCE(rtt_o_exp.content, o_exp_rt.content)) ELSE NULL END
                                                                 )
                                                             )
                                                             FROM quiz_slide_question_options o
                                                             LEFT JOIN rich_text_data o_text_rt ON o_text_rt.id = o.text_id
+                                                            LEFT JOIN rich_text_translation rtt_o_text ON rtt_o_text.rich_text_id = o_text_rt.id AND rtt_o_text.locale = :lang AND rtt_o_text.state IN ('PUBLISHED','STALE')
                                                             LEFT JOIN rich_text_data o_exp_rt ON o_exp_rt.id = o.explanation_text_id
+                                                            LEFT JOIN rich_text_translation rtt_o_exp ON rtt_o_exp.rich_text_id = o_exp_rt.id AND rtt_o_exp.locale = :lang AND rtt_o_exp.state IN ('PUBLISHED','STALE')
                                                             WHERE o.quiz_slide_question_id = q.id
                                                         ), CAST('[]' AS json))
                                                     )
@@ -1099,8 +1160,11 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                                 )
                                                 FROM quiz_slide_question q
                                                 LEFT JOIN rich_text_data q_text_rt ON q_text_rt.id = q.text_id
+                                                LEFT JOIN rich_text_translation rtt_q_text ON rtt_q_text.rich_text_id = q_text_rt.id AND rtt_q_text.locale = :lang AND rtt_q_text.state IN ('PUBLISHED','STALE')
                                                 LEFT JOIN rich_text_data q_parent_rt ON q_parent_rt.id = q.parent_rich_text_id
+                                                LEFT JOIN rich_text_translation rtt_q_parent ON rtt_q_parent.rich_text_id = q_parent_rt.id AND rtt_q_parent.locale = :lang AND rtt_q_parent.state IN ('PUBLISHED','STALE')
                                                 LEFT JOIN rich_text_data q_exp_rt ON q_exp_rt.id = q.explanation_text_id
+                                                LEFT JOIN rich_text_translation rtt_q_exp ON rtt_q_exp.rich_text_id = q_exp_rt.id AND rtt_q_exp.locale = :lang AND rtt_q_exp.state IN ('PUBLISHED','STALE')
                                                 WHERE q.quiz_slide_id = qs.id
                                                 AND q.status IN (:videoSlideQuestionStatus)
                                             ), CAST('[]' AS json))
@@ -1109,8 +1173,11 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 FROM slide s
                 JOIN chapter_to_slides cs ON cs.slide_id = s.id
                 JOIN chapter c ON c.id = cs.chapter_id
+                LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                 JOIN quiz_slide qs ON qs.id = s.source_id
                 LEFT JOIN rich_text_data qs_description_rt ON qs_description_rt.id = qs.description
+                LEFT JOIN rich_text_translation rtt_qs_desc ON rtt_qs_desc.rich_text_id = qs_description_rt.id AND rtt_qs_desc.locale = :lang AND rtt_qs_desc.state IN ('PUBLISHED','STALE')
                 LEFT JOIN learner_operation lo_quiz_percent ON lo_quiz_percent.source = 'SLIDE' AND lo_quiz_percent.source_id = s.id AND lo_quiz_percent.user_id = :userId AND lo_quiz_percent.operation = 'PERCENTAGE_QUIZ_COMPLETED'
                 WHERE s.source_type = 'QUIZ' AND c.id = :chapterId
                 AND s.status IN (:slideStatus)
@@ -1124,12 +1191,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     cs.slide_order,
                     json_build_object(
                         'id', s.id,
-                        'title', s.title,
+                        'title', COALESCE(eft_title.content, s.title),
                         'status', s.status,
                         'is_loaded', true,
                         'new_slide', true,
                         'source_id', s.source_id,
-                        'description', s.description,
+                        'description', COALESCE(eft_desc.content, s.description),
                         'slide_order', cs.slide_order,
                         'source_type', s.source_type,
                         'drip_condition', s.drip_condition_json,
@@ -1146,6 +1213,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 FROM slide s
                 JOIN chapter_to_slides cs ON cs.slide_id = s.id
                 JOIN chapter c ON c.id = cs.chapter_id
+                LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                 JOIN html_video_slide h ON h.id = s.source_id
                 WHERE s.source_type = 'HTML_VIDEO' AND c.id = :chapterId
                 AND s.status IN (:slideStatus)
@@ -1159,12 +1228,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     cs.slide_order,
                     json_build_object(
                         'id', s.id,
-                        'title', s.title,
+                        'title', COALESCE(eft_title.content, s.title),
                         'status', s.status,
                         'is_loaded', true,
                         'new_slide', true,
                         'source_id', s.source_id,
-                        'description', s.description,
+                        'description', COALESCE(eft_desc.content, s.description),
                         'slide_order', cs.slide_order,
                         'source_type', s.source_type,
                         'drip_condition', s.drip_condition_json,
@@ -1184,6 +1253,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 FROM slide s
                 JOIN chapter_to_slides cs ON cs.slide_id = s.id
                 JOIN chapter c ON c.id = cs.chapter_id
+                LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                 JOIN scorm_slide sc ON sc.id = s.source_id
                 LEFT JOIN learner_operation lo_scorm_percent ON lo_scorm_percent.source = 'SLIDE' AND lo_scorm_percent.source_id = s.id AND lo_scorm_percent.user_id = :userId AND lo_scorm_percent.operation = 'PERCENTAGE_SCORM_COMPLETED'
                 WHERE s.source_type = 'SCORM' AND c.id = :chapterId
@@ -1198,12 +1269,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     cs.slide_order,
                     json_build_object(
                         'id', s.id,
-                        'title', s.title,
+                        'title', COALESCE(eft_title.content, s.title),
                         'status', s.status,
                         'is_loaded', true,
                         'new_slide', true,
                         'source_id', s.source_id,
-                        'description', s.description,
+                        'description', COALESCE(eft_desc.content, s.description),
                         'slide_order', cs.slide_order,
                         'source_type', s.source_type,
                         'drip_condition', s.drip_condition_json,
@@ -1229,6 +1300,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 FROM slide s
                 JOIN chapter_to_slides cs ON cs.slide_id = s.id
                 JOIN chapter c ON c.id = cs.chapter_id
+                LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                 JOIN audio_slide a ON a.id = s.source_id
                 LEFT JOIN learner_operation lo_audio_marker ON lo_audio_marker.source = 'SLIDE' AND lo_audio_marker.source_id = s.id AND lo_audio_marker.user_id = :userId AND lo_audio_marker.operation = 'AUDIO_LAST_TIMESTAMP'
                 LEFT JOIN learner_operation lo_audio_percent ON lo_audio_percent.source = 'SLIDE' AND lo_audio_percent.source_id = s.id AND lo_audio_percent.user_id = :userId AND lo_audio_percent.operation = 'PERCENTAGE_AUDIO_LISTENED'
@@ -1244,12 +1317,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     cs.slide_order,
                     json_build_object(
                         'id', s.id,
-                        'title', s.title,
+                        'title', COALESCE(eft_title.content, s.title),
                         'status', s.status,
                         'is_loaded', true,
                         'new_slide', true,
                         'source_id', s.source_id,
-                        'description', s.description,
+                        'description', COALESCE(eft_desc.content, s.description),
                         'slide_order', cs.slide_order,
                         'source_type', s.source_type,
                         'drip_condition', s.drip_condition_json,
@@ -1268,6 +1341,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                 FROM slide s
                 JOIN chapter_to_slides cs ON cs.slide_id = s.id
                 JOIN chapter c ON c.id = cs.chapter_id
+                LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                 JOIN assessment_slide asl ON asl.id = s.source_id
                 LEFT JOIN learner_operation lo_assessment_percent ON lo_assessment_percent.source = 'SLIDE' AND lo_assessment_percent.source_id = s.id AND lo_assessment_percent.user_id = :userId AND lo_assessment_percent.operation = 'PERCENTAGE_ASSESSMENT_DONE'
                 WHERE s.source_type = 'ASSESSMENT' AND c.id = :chapterId
@@ -1280,7 +1355,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             @Param("userId") String userId,
             @Param("slideStatus") List<String> slideStatus,
             @Param("chapterToSlidesStatus") List<String> chapterToSlidesStatus,
-            @Param("videoSlideQuestionStatus") List<String> videoSlideQuestionStatus);
+            @Param("videoSlideQuestionStatus") List<String> videoSlideQuestionStatus,
+            @Param("lang") String lang);
 
     @Query(value = """
             SELECT
@@ -1545,12 +1621,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         cs.slide_order,
                         json_build_object(
                             'id', s.id,
-                            'title', s.title,
+                            'title', COALESCE(eft_title.content, s.title),
                             'status', s.status,
                             'is_loaded', true,
                             'new_slide', true,
                             'source_id', s.source_id,
-                            'description', s.description,
+                            'description', COALESCE(eft_desc.content, s.description),
                             'slide_order', cs.slide_order,
                             'source_type', s.source_type,
                             'drip_condition', s.drip_condition_json,
@@ -1580,21 +1656,23 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                             'media_id', q.media_id,
                                             'auto_evaluation_json', q.auto_evaluation_json,
                                             'evaluation_type', q.evaluation_type,
-                                            'text_data', json_build_object('id', rt_text.id, 'type', rt_text.type, 'content', rt_text.content),
-                                            'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', rt_parent.type, 'content', rt_parent.content) ELSE NULL END,
-                                            'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', rt_exp.type, 'content', rt_exp.content) ELSE NULL END,
+                                            'text_data', json_build_object('id', rt_text.id, 'type', rt_text.type, 'content', COALESCE(rtt_text.content, rt_text.content)),
+                                            'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', rt_parent.type, 'content', COALESCE(rtt_parent.content, rt_parent.content)) ELSE NULL END,
+                                            'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', rt_exp.type, 'content', COALESCE(rtt_exp.content, rt_exp.content)) ELSE NULL END,
                                             'options', COALESCE((
                                                 SELECT json_agg(
                                                     json_build_object(
                                                         'id', o.id,
                                                         'media_id', o.media_id,
-                                                        'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', rt_opt.type, 'content', rt_opt.content) ELSE NULL END,
-                                                        'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', rt_opt_exp.type, 'content', rt_opt_exp.content) ELSE NULL END
+                                                        'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', rt_opt.type, 'content', COALESCE(rtt_opt.content, rt_opt.content)) ELSE NULL END,
+                                                        'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', rt_opt_exp.type, 'content', COALESCE(rtt_opt_exp.content, rt_opt_exp.content)) ELSE NULL END
                                                     )
                                                 )
                                                 FROM video_slide_question_options o
                                                 LEFT JOIN rich_text_data rt_opt ON rt_opt.id = o.text_id
+                                                LEFT JOIN rich_text_translation rtt_opt ON rtt_opt.rich_text_id = rt_opt.id AND rtt_opt.locale = :lang AND rtt_opt.state IN ('PUBLISHED','STALE')
                                                 LEFT JOIN rich_text_data rt_opt_exp ON rt_opt_exp.id = o.explanation_text_id
+                                                LEFT JOIN rich_text_translation rtt_opt_exp ON rtt_opt_exp.rich_text_id = rt_opt_exp.id AND rtt_opt_exp.locale = :lang AND rtt_opt_exp.state IN ('PUBLISHED','STALE')
                                                 WHERE o.video_slide_question_id = q.id
                                             ), CAST('[]' AS json))
                                         )
@@ -1602,8 +1680,11 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                     )
                                     FROM video_slide_question q
                                     LEFT JOIN rich_text_data rt_text ON rt_text.id = q.text_id
+                                    LEFT JOIN rich_text_translation rtt_text ON rtt_text.rich_text_id = rt_text.id AND rtt_text.locale = :lang AND rtt_text.state IN ('PUBLISHED','STALE')
                                     LEFT JOIN rich_text_data rt_parent ON rt_parent.id = q.parent_rich_text_id
+                                    LEFT JOIN rich_text_translation rtt_parent ON rtt_parent.rich_text_id = rt_parent.id AND rtt_parent.locale = :lang AND rtt_parent.state IN ('PUBLISHED','STALE')
                                     LEFT JOIN rich_text_data rt_exp ON rt_exp.id = q.explanation_text_id
+                                    LEFT JOIN rich_text_translation rtt_exp ON rtt_exp.rich_text_id = rt_exp.id AND rtt_exp.locale = :lang AND rtt_exp.state IN ('PUBLISHED','STALE')
                                     WHERE q.video_slide_id = v.id AND q.status IN (:videoSlideQuestionStatus)
                                 ), CAST('[]' AS json))
                             )
@@ -1611,6 +1692,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     FROM slide s
                     JOIN chapter_to_slides cs ON cs.slide_id = s.id
                     JOIN chapter c ON c.id = cs.chapter_id
+                    LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                    LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                     JOIN video v ON v.id = s.source_id
                     WHERE s.source_type = 'VIDEO' AND c.id = :chapterId
                     AND s.status IN (:slideStatus)
@@ -1624,12 +1707,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         cs.slide_order,
                         json_build_object(
                             'id', s.id,
-                            'title', s.title,
+                            'title', COALESCE(eft_title.content, s.title),
                             'status', s.status,
                             'is_loaded', true,
                             'new_slide', true,
                             'source_id', s.source_id,
-                            'description', s.description,
+                            'description', COALESCE(eft_desc.content, s.description),
                             'slide_order', cs.slide_order,
                             'source_type', s.source_type,
                             'drip_condition', s.drip_condition_json,
@@ -1649,6 +1732,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     FROM slide s
                     JOIN chapter_to_slides cs ON cs.slide_id = s.id
                     JOIN chapter c ON c.id = cs.chapter_id
+                    LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                    LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                     JOIN document_slide d ON d.id = s.source_id
                     WHERE s.source_type = 'DOCUMENT' AND c.id = :chapterId
                     AND s.status IN (:slideStatus)
@@ -1662,10 +1747,10 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         cs.slide_order,
                         json_build_object(
                             'id', s.id,
-                            'title', s.title,
+                            'title', COALESCE(eft_title.content, s.title),
                             'status', s.status,
                             'source_id', s.source_id,
-                            'description', s.description,
+                            'description', COALESCE(eft_desc.content, s.description),
                             'slide_order', cs.slide_order,
                             'source_type', s.source_type,
                             'drip_condition', s.drip_condition_json,
@@ -1683,22 +1768,24 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                 'evaluation_type', q.evaluation_type,
                                 'media_id', q.media_id,
                                 'source_type', q.source_type,
-                                'text_data', json_build_object('id', rt_text.id, 'type', rt_text.type, 'content', rt_text.content),
-                                'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', rt_parent.type, 'content', rt_parent.content) ELSE NULL END,
-                                'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', rt_exp.type, 'content', rt_exp.content) ELSE NULL END,
+                                'text_data', json_build_object('id', rt_text.id, 'type', rt_text.type, 'content', COALESCE(rtt_text.content, rt_text.content)),
+                                'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', rt_parent.id, 'type', rt_parent.type, 'content', COALESCE(rtt_parent.content, rt_parent.content)) ELSE NULL END,
+                                'explanation_text_data', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_exp.id, 'type', rt_exp.type, 'content', COALESCE(rtt_exp.content, rt_exp.content)) ELSE NULL END,
                                 'options', COALESCE((
                                     SELECT json_agg(
                                         json_build_object(
                                             'id', o.id,
                                             'media_id', o.media_id,
-                                            'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', rt_opt.type, 'content', rt_opt.content) ELSE NULL END,
-                                            'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', rt_opt_exp.type, 'content', rt_opt_exp.content) ELSE NULL END
+                                            'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', rt_opt.id, 'type', rt_opt.type, 'content', COALESCE(rtt_opt.content, rt_opt.content)) ELSE NULL END,
+                                            'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', rt_opt_exp.id, 'type', rt_opt_exp.type, 'content', COALESCE(rtt_opt_exp.content, rt_opt_exp.content)) ELSE NULL END
                                         )
                                         ORDER BY o.created_on
                                     )
                                     FROM option o
                                     LEFT JOIN rich_text_data rt_opt ON rt_opt.id = o.text_id
+                                    LEFT JOIN rich_text_translation rtt_opt ON rtt_opt.rich_text_id = rt_opt.id AND rtt_opt.locale = :lang AND rtt_opt.state IN ('PUBLISHED','STALE')
                                     LEFT JOIN rich_text_data rt_opt_exp ON rt_opt_exp.id = o.explanation_text_id
+                                    LEFT JOIN rich_text_translation rtt_opt_exp ON rtt_opt_exp.rich_text_id = rt_opt_exp.id AND rtt_opt_exp.locale = :lang AND rtt_opt_exp.state IN ('PUBLISHED','STALE')
                                     WHERE o.question_id = q.id
                                 ), CAST('[]' AS json))
                             )
@@ -1706,10 +1793,15 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     FROM slide s
                     JOIN chapter_to_slides cs ON cs.slide_id = s.id
                     JOIN chapter c ON c.id = cs.chapter_id
+                    LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                    LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                     JOIN question_slide q ON q.id = s.source_id
                     LEFT JOIN rich_text_data rt_text ON rt_text.id = q.text_id
+                    LEFT JOIN rich_text_translation rtt_text ON rtt_text.rich_text_id = rt_text.id AND rtt_text.locale = :lang AND rtt_text.state IN ('PUBLISHED','STALE')
                     LEFT JOIN rich_text_data rt_parent ON rt_parent.id = q.parent_rich_text_id
+                    LEFT JOIN rich_text_translation rtt_parent ON rtt_parent.rich_text_id = rt_parent.id AND rtt_parent.locale = :lang AND rtt_parent.state IN ('PUBLISHED','STALE')
                     LEFT JOIN rich_text_data rt_exp ON rt_exp.id = q.explanation_text_id
+                    LEFT JOIN rich_text_translation rtt_exp ON rtt_exp.rich_text_id = rt_exp.id AND rtt_exp.locale = :lang AND rtt_exp.state IN ('PUBLISHED','STALE')
                     WHERE s.source_type = 'QUESTION' AND c.id = :chapterId
                     AND s.status IN (:slideStatus)
                     AND cs.status IN (:chapterToSlidesStatus)
@@ -1722,12 +1814,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         cs.slide_order,
                         json_build_object(
                             'id', s.id,
-                            'title', s.title,
+                            'title', COALESCE(eft_title.content, s.title),
                             'status', s.status,
                             'is_loaded', true,
                             'new_slide', true,
                             'source_id', s.source_id,
-                            'description', s.description,
+                            'description', COALESCE(eft_desc.content, s.description),
                             'slide_order', cs.slide_order,
                             'source_type', s.source_type,
                             'drip_condition', s.drip_condition_json,
@@ -1741,12 +1833,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                 're_attempt_count', a.re_attempt_count,
                                 'text_data', CASE
                                     WHEN a.text_id IS NOT NULL THEN json_build_object(
-                                        'id', rt_text.id, 'type', rt_text.type, 'content', rt_text.content
+                                        'id', rt_text.id, 'type', rt_text.type, 'content', COALESCE(rtt_text.content, rt_text.content)
                                     ) ELSE NULL
                                 END,
                                 'parent_rich_text', CASE
                                     WHEN a.parent_rich_text_id IS NOT NULL THEN json_build_object(
-                                        'id', rt_parent.id, 'type', rt_parent.type, 'content', rt_parent.content
+                                        'id', rt_parent.id, 'type', rt_parent.type, 'content', COALESCE(rtt_parent.content, rt_parent.content)
                                     ) ELSE NULL
                                 END,
                                 'questions', COALESCE((
@@ -1757,7 +1849,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                             'status', q.status,
                                             'text_data', CASE
                                                 WHEN q.text_id IS NOT NULL THEN json_build_object(
-                                                    'id', rtq.id, 'type', rtq.type, 'content', rtq.content
+                                                    'id', rtq.id, 'type', rtq.type, 'content', COALESCE(rtt_rtq.content, rtq.content)
                                                 ) ELSE NULL
                                             END
                                         )
@@ -1765,6 +1857,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                     )
                                     FROM assignment_slide_question q
                                     LEFT JOIN rich_text_data rtq ON rtq.id = q.text_id
+                                    LEFT JOIN rich_text_translation rtt_rtq ON rtt_rtq.rich_text_id = rtq.id AND rtt_rtq.locale = :lang AND rtt_rtq.state IN ('PUBLISHED','STALE')
                                     WHERE q.assignment_slide_id = a.id AND q.status IN (:videoSlideQuestionStatus)
                                 ), CAST('[]' AS json))
                             )
@@ -1772,9 +1865,13 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     FROM slide s
                     JOIN chapter_to_slides cs ON cs.slide_id = s.id
                     JOIN chapter c ON c.id = cs.chapter_id
+                    LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                    LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                     JOIN assignment_slide a ON a.id = s.source_id
                     LEFT JOIN rich_text_data rt_text ON rt_text.id = a.text_id
+                    LEFT JOIN rich_text_translation rtt_text ON rtt_text.rich_text_id = rt_text.id AND rtt_text.locale = :lang AND rtt_text.state IN ('PUBLISHED','STALE')
                     LEFT JOIN rich_text_data rt_parent ON rt_parent.id = a.parent_rich_text_id
+                    LEFT JOIN rich_text_translation rtt_parent ON rtt_parent.rich_text_id = rt_parent.id AND rtt_parent.locale = :lang AND rtt_parent.state IN ('PUBLISHED','STALE')
                     WHERE s.source_type = 'ASSIGNMENT' AND c.id = :chapterId
                     AND s.status IN (:slideStatus)
                     AND cs.status IN (:chapterToSlidesStatus)
@@ -1787,12 +1884,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         cs.slide_order,
                         json_build_object(
                             'id', s.id,
-                            'title', s.title,
+                            'title', COALESCE(eft_title.content, s.title),
                             'status', s.status,
                             'is_loaded', true,
                             'new_slide', true,
                             'source_id', s.source_id,
-                            'description', s.description,
+                            'description', COALESCE(eft_desc.content, s.description),
                             'slide_order', cs.slide_order,
                             'source_type', s.source_type,
                             'drip_condition', s.drip_condition_json,
@@ -1801,7 +1898,7 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                             'quiz_slide', json_build_object(
                                 'id', qs.id,
                                 'title', qs.title,
-                                'description', CASE WHEN qs_description_rt.id IS NOT NULL THEN json_build_object('id', qs_description_rt.id, 'type', qs_description_rt.type, 'content', qs_description_rt.content) ELSE NULL END,
+                                'description', CASE WHEN qs_description_rt.id IS NOT NULL THEN json_build_object('id', qs_description_rt.id, 'type', qs_description_rt.type, 'content', COALESCE(rtt_qs_desc.content, qs_description_rt.content)) ELSE NULL END,
                                 'time_limit_in_minutes', qs.time_limit_in_minutes,
                                 'marks_per_question', qs.marks_per_question,
                                 'negative_marking', qs.negative_marking,
@@ -1822,21 +1919,23 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                             'evaluation_type', q.evaluation_type,
                                             'marks', q.marks,
                                             'negative_marking', q.negative_marking,
-                                            'text', json_build_object('id', q_text_rt.id, 'type', q_text_rt.type, 'content', q_text_rt.content),
-                                            'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', q_parent_rt.id, 'type', q_parent_rt.type, 'content', q_parent_rt.content) ELSE NULL END,
-                                            'explanation_text', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', q_exp_rt.id, 'type', q_exp_rt.type, 'content', q_exp_rt.content) ELSE NULL END,
+                                            'text', json_build_object('id', q_text_rt.id, 'type', q_text_rt.type, 'content', COALESCE(rtt_q_text.content, q_text_rt.content)),
+                                            'parent_rich_text', CASE WHEN q.parent_rich_text_id IS NOT NULL THEN json_build_object('id', q_parent_rt.id, 'type', q_parent_rt.type, 'content', COALESCE(rtt_q_parent.content, q_parent_rt.content)) ELSE NULL END,
+                                            'explanation_text', CASE WHEN q.explanation_text_id IS NOT NULL THEN json_build_object('id', q_exp_rt.id, 'type', q_exp_rt.type, 'content', COALESCE(rtt_q_exp.content, q_exp_rt.content)) ELSE NULL END,
                                             'options', COALESCE((
                                                 SELECT json_agg(
                                                     json_build_object(
                                                         'id', o.id,
                                                         'media_id', o.media_id,
-                                                        'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', o_text_rt.id, 'type', o_text_rt.type, 'content', o_text_rt.content) ELSE NULL END,
-                                                        'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', o_exp_rt.id, 'type', o_exp_rt.type, 'content', o_exp_rt.content) ELSE NULL END
+                                                        'text', CASE WHEN o.text_id IS NOT NULL THEN json_build_object('id', o_text_rt.id, 'type', o_text_rt.type, 'content', COALESCE(rtt_o_text.content, o_text_rt.content)) ELSE NULL END,
+                                                        'explanation_text_data', CASE WHEN o.explanation_text_id IS NOT NULL THEN json_build_object('id', o_exp_rt.id, 'type', o_exp_rt.type, 'content', COALESCE(rtt_o_exp.content, o_exp_rt.content)) ELSE NULL END
                                                     )
                                                 )
                                                 FROM quiz_slide_question_options o
                                                 LEFT JOIN rich_text_data o_text_rt ON o_text_rt.id = o.text_id
+                                                LEFT JOIN rich_text_translation rtt_o_text ON rtt_o_text.rich_text_id = o_text_rt.id AND rtt_o_text.locale = :lang AND rtt_o_text.state IN ('PUBLISHED','STALE')
                                                 LEFT JOIN rich_text_data o_exp_rt ON o_exp_rt.id = o.explanation_text_id
+                                                LEFT JOIN rich_text_translation rtt_o_exp ON rtt_o_exp.rich_text_id = o_exp_rt.id AND rtt_o_exp.locale = :lang AND rtt_o_exp.state IN ('PUBLISHED','STALE')
                                                 WHERE o.quiz_slide_question_id = q.id
                                             ), CAST('[]' AS json))
                                         )
@@ -1844,8 +1943,11 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                                     )
                                     FROM quiz_slide_question q
                                     LEFT JOIN rich_text_data q_text_rt ON q_text_rt.id = q.text_id
+                                    LEFT JOIN rich_text_translation rtt_q_text ON rtt_q_text.rich_text_id = q_text_rt.id AND rtt_q_text.locale = :lang AND rtt_q_text.state IN ('PUBLISHED','STALE')
                                     LEFT JOIN rich_text_data q_parent_rt ON q_parent_rt.id = q.parent_rich_text_id
+                                    LEFT JOIN rich_text_translation rtt_q_parent ON rtt_q_parent.rich_text_id = q_parent_rt.id AND rtt_q_parent.locale = :lang AND rtt_q_parent.state IN ('PUBLISHED','STALE')
                                     LEFT JOIN rich_text_data q_exp_rt ON q_exp_rt.id = q.explanation_text_id
+                                    LEFT JOIN rich_text_translation rtt_q_exp ON rtt_q_exp.rich_text_id = q_exp_rt.id AND rtt_q_exp.locale = :lang AND rtt_q_exp.state IN ('PUBLISHED','STALE')
                                     WHERE q.quiz_slide_id = qs.id
                                     AND q.status IN (:videoSlideQuestionStatus)
                                 ), CAST('[]' AS json))
@@ -1854,8 +1956,11 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     FROM slide s
                     JOIN chapter_to_slides cs ON cs.slide_id = s.id
                     JOIN chapter c ON c.id = cs.chapter_id
+                    LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                    LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                     JOIN quiz_slide qs ON qs.id = s.source_id
                     LEFT JOIN rich_text_data qs_description_rt ON qs_description_rt.id = qs.description
+                    LEFT JOIN rich_text_translation rtt_qs_desc ON rtt_qs_desc.rich_text_id = qs_description_rt.id AND rtt_qs_desc.locale = :lang AND rtt_qs_desc.state IN ('PUBLISHED','STALE')
                     WHERE s.source_type = 'QUIZ' AND c.id = :chapterId
                     AND s.status IN (:slideStatus)
                     AND cs.status IN (:chapterToSlidesStatus)
@@ -1868,12 +1973,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         cs.slide_order,
                         json_build_object(
                             'id', s.id,
-                            'title', s.title,
+                            'title', COALESCE(eft_title.content, s.title),
                             'status', s.status,
                             'is_loaded', true,
                             'new_slide', true,
                             'source_id', s.source_id,
-                            'description', s.description,
+                            'description', COALESCE(eft_desc.content, s.description),
                             'slide_order', cs.slide_order,
                             'source_type', s.source_type,
                             'drip_condition', s.drip_condition_json,
@@ -1890,6 +1995,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     FROM slide s
                     JOIN chapter_to_slides cs ON cs.slide_id = s.id
                     JOIN chapter c ON c.id = cs.chapter_id
+                    LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                    LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                     JOIN html_video_slide h ON h.id = s.source_id
                     WHERE s.source_type = 'HTML_VIDEO' AND c.id = :chapterId
                     AND s.status IN (:slideStatus)
@@ -1903,12 +2010,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         cs.slide_order,
                         json_build_object(
                             'id', s.id,
-                            'title', s.title,
+                            'title', COALESCE(eft_title.content, s.title),
                             'status', s.status,
                             'is_loaded', true,
                             'new_slide', true,
                             'source_id', s.source_id,
-                            'description', s.description,
+                            'description', COALESCE(eft_desc.content, s.description),
                             'slide_order', cs.slide_order,
                             'source_type', s.source_type,
                             'drip_condition', s.drip_condition_json,
@@ -1925,6 +2032,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     FROM slide s
                     JOIN chapter_to_slides cs ON cs.slide_id = s.id
                     JOIN chapter c ON c.id = cs.chapter_id
+                    LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                    LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                     JOIN scorm_slide sc ON sc.id = s.source_id
                     WHERE s.source_type = 'SCORM' AND c.id = :chapterId
                     AND s.status IN (:slideStatus)
@@ -1938,12 +2047,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         cs.slide_order,
                         json_build_object(
                             'id', s.id,
-                            'title', s.title,
+                            'title', COALESCE(eft_title.content, s.title),
                             'status', s.status,
                             'is_loaded', true,
                             'new_slide', true,
                             'source_id', s.source_id,
-                            'description', s.description,
+                            'description', COALESCE(eft_desc.content, s.description),
                             'slide_order', cs.slide_order,
                             'source_type', s.source_type,
                             'drip_condition', s.drip_condition_json,
@@ -1966,6 +2075,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     FROM slide s
                     JOIN chapter_to_slides cs ON cs.slide_id = s.id
                     JOIN chapter c ON c.id = cs.chapter_id
+                    LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                    LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                     JOIN audio_slide a ON a.id = s.source_id
                     WHERE s.source_type = 'AUDIO' AND c.id = :chapterId
                     AND s.status IN (:slideStatus)
@@ -1979,12 +2090,12 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                         cs.slide_order,
                         json_build_object(
                             'id', s.id,
-                            'title', s.title,
+                            'title', COALESCE(eft_title.content, s.title),
                             'status', s.status,
                             'is_loaded', true,
                             'new_slide', true,
                             'source_id', s.source_id,
-                            'description', s.description,
+                            'description', COALESCE(eft_desc.content, s.description),
                             'slide_order', cs.slide_order,
                             'source_type', s.source_type,
                             'drip_condition', s.drip_condition_json,
@@ -2000,6 +2111,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
                     FROM slide s
                     JOIN chapter_to_slides cs ON cs.slide_id = s.id
                     JOIN chapter c ON c.id = cs.chapter_id
+                    LEFT JOIN entity_field_translation eft_title ON eft_title.entity_type = 'SLIDE' AND eft_title.entity_id = s.id AND eft_title.field = 'title' AND eft_title.locale = :lang AND eft_title.state IN ('PUBLISHED','STALE')
+                    LEFT JOIN entity_field_translation eft_desc ON eft_desc.entity_type = 'SLIDE' AND eft_desc.entity_id = s.id AND eft_desc.field = 'description' AND eft_desc.locale = :lang AND eft_desc.state IN ('PUBLISHED','STALE')
                     JOIN assessment_slide asl ON asl.id = s.source_id
                     WHERE s.source_type = 'ASSESSMENT' AND c.id = :chapterId
                     AND s.status IN (:slideStatus)
@@ -2010,7 +2123,8 @@ public interface SlideRepository extends JpaRepository<Slide, String> {
             @Param("chapterId") String chapterId,
             @Param("slideStatus") List<String> slideStatus,
             @Param("chapterToSlidesStatus") List<String> chapterToSlidesStatus,
-            @Param("videoSlideQuestionStatus") List<String> videoSlideQuestionStatus);
+            @Param("videoSlideQuestionStatus") List<String> videoSlideQuestionStatus,
+            @Param("lang") String lang);
 
     @Query(value = """
             -- CTE to count active questions for each assignment slide

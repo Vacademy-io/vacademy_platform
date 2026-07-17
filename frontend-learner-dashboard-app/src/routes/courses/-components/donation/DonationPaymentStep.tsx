@@ -116,7 +116,7 @@ export const DonationPaymentStep = ({
           <span className="font-semibold text-gray-900">{email}</span>
         </div>
         <button
-          className="text-xs font-medium ml-auto block rounded border border-neutral-300 bg-white text-neutral-600 px-3 py-1 focus:outline-none transition-colors duration-200 hover:bg-blue-50/50 hover:border-blue-300"
+          className="text-xs font-medium ms-auto block rounded border border-neutral-300 bg-white text-neutral-600 px-3 py-1 focus:outline-none transition-colors duration-200 hover:bg-blue-50/50 hover:border-blue-300"
           onClick={onBack}
           style={{ boxShadow: "none", textDecoration: "none" }}
         >

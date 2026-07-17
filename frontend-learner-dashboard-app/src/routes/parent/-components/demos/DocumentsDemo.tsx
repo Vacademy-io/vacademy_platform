@@ -67,7 +67,7 @@ function DocCard({ doc }: { doc: DocumentRequirement }) {
               <input ref={ref} type="file" className="hidden" accept={doc.allowed_formats.map(f => `.${f}`).join(",")} onChange={() => toast.success("File selected (demo)")} />
               <Button variant="outline" size="sm" className="gap-1.5 h-8 text-xs" onClick={() => ref.current?.click()}><UploadSimple size={12} />{rejected ? "Re-upload" : "Upload"}</Button>
               <Button variant="ghost" size="sm" className="gap-1.5 h-8 text-xs text-muted-foreground" onClick={() => toast.info("Camera capture (demo)")}><Camera size={12} />Camera</Button>
-              <span className="text-caption text-muted-foreground ml-auto">Max {doc.max_size_mb}MB • {doc.allowed_formats.join(", ").toUpperCase()}</span>
+              <span className="text-caption text-muted-foreground ms-auto">Max {doc.max_size_mb}MB • {doc.allowed_formats.join(", ").toUpperCase()}</span>
             </div>)}
           </div>
         </div>

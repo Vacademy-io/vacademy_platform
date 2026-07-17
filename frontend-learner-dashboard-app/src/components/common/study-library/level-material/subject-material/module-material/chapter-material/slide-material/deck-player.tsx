@@ -225,7 +225,7 @@ export default function DeckPlayer({ baseUrl }: DeckPlayerProps) {
       <div
         onMouseEnter={revealControls}
         className={cn(
-          "absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-neutral-900/70 px-2 py-1 shadow-lg backdrop-blur-sm transition-opacity duration-300",
+          "absolute bottom-4 start-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-neutral-900/70 px-2 py-1 shadow-lg backdrop-blur-sm transition-opacity duration-300",
           controlsVisible ? "opacity-100" : "pointer-events-none opacity-0"
         )}
       >

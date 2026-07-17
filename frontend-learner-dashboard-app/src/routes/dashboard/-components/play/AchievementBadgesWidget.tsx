@@ -1,5 +1,6 @@
 import React from "react";
 import { Lock, Star } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import type { PlayBadge } from "@/services/play-gamification";
@@ -9,11 +10,17 @@ import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { BadgeVisual } from "../badge-icons";
 
 const BadgeItem: React.FC<{ badge: PlayBadge }> = ({ badge }) => {
+  const { t } = useTranslation("dashboard");
   const unlocked = badge.unlocked;
   const awarded = badge.isAdminAwarded;
   const tooltip = awarded
-    ? `${badge.name} — Awarded by your institute${badge.awardReason ? `: ${badge.awardReason}` : ""}`
-    : `${badge.name}: ${badge.description}`;
+    ? badge.awardReason
+      ? t("badges.awardedTooltipWithReason", {
+          name: badge.name,
+          reason: badge.awardReason,
+        })
+      : t("badges.awardedTooltip", { name: badge.name })
+    : t("badges.tooltip", { name: badge.name, description: badge.description });
   return (
     <div className="flex w-16 flex-col items-center gap-1" title={tooltip}>
       <div
@@ -33,16 +40,16 @@ const BadgeItem: React.FC<{ badge: PlayBadge }> = ({ badge }) => {
           <Lock
             weight="fill"
             size={10}
-            className="absolute -bottom-0.5 -right-0.5 rounded-full bg-white p-0.5 text-play-ink"
+            className="absolute -bottom-0.5 -end-0.5 rounded-full bg-white p-0.5 text-play-ink"
           />
         )}
         {awarded ? (
-          <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-play-gold ring-2 ring-white">
+          <span className="absolute -top-1 -end-1 flex h-4 w-4 items-center justify-center rounded-full bg-play-gold ring-2 ring-white">
             <Star weight="fill" size={10} className="text-play-ink" />
           </span>
         ) : (
           unlocked && badge.unlockedAt && isRecent(badge.unlockedAt) && (
-            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+            <span className="absolute -top-1 -end-1 flex h-3.5 w-3.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-play-gold opacity-75" />
               <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-play-gold text-play-badge text-play-ink font-black items-center justify-center">!</span>
             </span>
@@ -61,6 +68,7 @@ function isRecent(dateStr: string): boolean {
 }
 
 export const AchievementBadgesWidget: React.FC = () => {
+  const { t } = useTranslation("dashboard");
   const data = usePlayGamificationStore((s) => s.data);
   const isLoading = usePlayGamificationStore((s) => s.isLoading);
   // Master toggle off → the institute disabled badges; render nothing.
@@ -79,11 +87,15 @@ export const AchievementBadgesWidget: React.FC = () => {
       <div className="flex items-center gap-3">
         <img src={iconBadges} alt="" aria-hidden="true" className="h-11 w-11 shrink-0 object-contain" />
         <div>
-          <p className="text-body font-black uppercase tracking-wide text-play-accent-soft-ink">Badges</p>
+          <p className="text-body font-black uppercase tracking-wide text-play-accent-soft-ink">
+            {t("badges.title")}
+          </p>
           <p className="text-caption font-bold text-play-ink/60">
             {unlockedCount > 0
-              ? `${unlockedCount}/${badges.length} unlocked`
-              : `Complete your first ${getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase()} to unlock a badge`}
+              ? t("badges.unlockedCount", { unlocked: unlockedCount, total: badges.length })
+              : t("badges.emptyPrompt", {
+                  slide: getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase(),
+                })}
           </p>
         </div>
       </div>

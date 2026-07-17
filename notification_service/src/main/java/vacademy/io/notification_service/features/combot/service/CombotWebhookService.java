@@ -118,6 +118,7 @@ public class CombotWebhookService {
         String notificationType = CombotNotificationType.fromStatus(status).getType();
 
         Optional<NotificationLog> originalOpt = findOutgoingByMessageId(messageId);
+        boolean exactJoin = originalOpt.isPresent();
         if (originalOpt.isEmpty() && phone != null) {
             originalOpt = findOutgoingByPhone(phone);
         }
@@ -135,6 +136,12 @@ public class CombotWebhookService {
             // Preserve sender channel ID + institute for context
             statusLog.setSenderBusinessChannelId(original.getSenderBusinessChannelId());
             statusLog.setInstituteId(original.getInstituteId());
+            // Carry the correlation key ONLY on the exact message-id join. The phone fallback
+            // returns "most recent outbound to this phone" — stamping ITS correlation here would
+            // attribute this status to a different decision (e.g. an old Engagement Engine send).
+            if (exactJoin) {
+                statusLog.setCorrelationId(original.getCorrelationId());
+            }
         });
 
         notificationLogRepository.save(statusLog);
@@ -158,6 +165,7 @@ public class CombotWebhookService {
             String notificationType = CombotNotificationType.fromStatus(statusValue).getType();
 
             Optional<NotificationLog> originalOpt = findOutgoingByMessageId(messageId);
+            boolean exactJoin = originalOpt.isPresent();
             if (originalOpt.isEmpty()) {
                 originalOpt = findOutgoingByPhone(recipientId);
             }
@@ -174,6 +182,12 @@ public class CombotWebhookService {
                 st.setUserId(original.getUserId());
                 st.setSenderBusinessChannelId(original.getSenderBusinessChannelId());
                 st.setInstituteId(original.getInstituteId());
+                // Carry the correlation key ONLY on the exact message-id join. The phone fallback
+                // returns "most recent outbound to this phone" — stamping ITS correlation here
+                // would attribute this status to a different decision.
+                if (exactJoin) {
+                    st.setCorrelationId(original.getCorrelationId());
+                }
             });
 
             notificationLogRepository.save(st);
@@ -220,6 +234,8 @@ public class CombotWebhookService {
             fail.setUserId(original.getUserId());
             fail.setSenderBusinessChannelId(original.getSenderBusinessChannelId());
             fail.setInstituteId(original.getInstituteId());
+            // Carry the caller's correlation key so ledger reads can join failure → decision directly
+            fail.setCorrelationId(original.getCorrelationId());
         });
 
         notificationLogRepository.save(fail);

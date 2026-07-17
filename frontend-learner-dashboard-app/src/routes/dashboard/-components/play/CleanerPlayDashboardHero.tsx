@@ -1,4 +1,5 @@
 import { Fire, Play, VideoCamera } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { ProgressRing } from "./ProgressRing";
 import heroGreeting from "@/assets/cleaner-play/hero-greeting.webp";
@@ -45,6 +46,7 @@ function HeroSkeleton(): JSX.Element {
 export function CleanerPlayDashboardHero(
   props: CleanerPlayDashboardHeroProps
 ): JSX.Element {
+  const { t } = useTranslation("dashboard");
   const {
     userName,
     liveSessions,
@@ -66,7 +68,7 @@ export function CleanerPlayDashboardHero(
     goToCta,
   } = useDashboardHeroData({ userName, liveSessions, hasAnyProgress });
 
-  const ctaLabel = isContinue ? "Continue" : "Start learning";
+  const ctaLabel = isContinue ? t("hero.ctaContinue") : t("hero.ctaStartLearning");
 
   if (!studyLibraryLoaded) {
     return <HeroSkeleton />;
@@ -79,7 +81,7 @@ export function CleanerPlayDashboardHero(
         <div className="h-11 w-full max-w-md animate-pulse self-start rounded-full bg-cp-bg-deep" />
       ) : (
         imminent && (
-          <div className="flex items-center gap-3 rounded-full bg-danger-50 py-2 pl-4 pr-2">
+          <div className="flex items-center gap-3 rounded-full bg-danger-50 py-2 ps-4 pe-2">
             <span className="relative flex h-3 w-3 shrink-0">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-danger-500/60 motion-reduce:animate-none" />
               <span className="relative inline-flex h-3 w-3 rounded-full bg-danger-500" />
@@ -87,8 +89,11 @@ export function CleanerPlayDashboardHero(
             <div className="min-w-0 flex-1">
               <p className="truncate text-caption font-semibold uppercase tracking-wide text-danger-600">
                 {imminent.isLive
-                  ? `${liveClassTerm} live now`
-                  : `${liveClassTerm} in ${imminent.minutesToStart} min`}
+                  ? t("hero.liveNow", { liveClass: liveClassTerm })
+                  : t("hero.startsInMinutes", {
+                      liveClass: liveClassTerm,
+                      count: imminent.minutesToStart,
+                    })}
               </p>
               <p className="cp-heading truncate text-body leading-tight">
                 {imminent.session.title}
@@ -105,7 +110,7 @@ export function CleanerPlayDashboardHero(
             >
               <span className="inline-flex items-center gap-1.5">
                 <VideoCamera weight="fill" size={18} />
-                Join
+                {t("hero.join")}
               </span>
             </button>
           </div>
@@ -137,7 +142,7 @@ export function CleanerPlayDashboardHero(
                     {streak}
                   </span>
                   <span className="cp-muted text-caption font-medium">
-                    day streak
+                    {t("hero.dayStreakChip")}
                   </span>
                 </span>
                 {/* Daily goal ring chip */}
@@ -151,7 +156,7 @@ export function CleanerPlayDashboardHero(
                     showLabel={false}
                   />
                   <span className="cp-muted text-caption font-medium">
-                    Daily goal
+                    {t("hero.dailyGoal")}
                   </span>
                 </span>
               </div>
@@ -166,7 +171,9 @@ export function CleanerPlayDashboardHero(
               aria-label={
                 // ctaLabel is already "Continue" / "Start learning" here —
                 // no " learning" suffix, unlike Play's "START"/"CONTINUE".
-                resume ? `Continue ${resume.slideTitle}` : ctaLabel
+                resume
+                  ? t("hero.continueAria", { title: resume.slideTitle })
+                  : ctaLabel
               }
               className={cn(
                 "w-full max-w-md rounded-full bg-primary px-8 py-4 text-primary-foreground",

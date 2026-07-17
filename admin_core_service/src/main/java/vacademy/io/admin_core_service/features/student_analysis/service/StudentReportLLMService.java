@@ -13,6 +13,7 @@ import reactor.util.retry.Retry;
 import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
+import vacademy.io.admin_core_service.features.credits.client.CreditClient;
 import vacademy.io.admin_core_service.features.student_analysis.dto.StudentAnalysisData;
 import vacademy.io.admin_core_service.features.student_analysis.dto.StudentReportData;
 import vacademy.io.admin_core_service.features.student_analysis.entity.UserLinkedData;
@@ -43,17 +44,20 @@ public class StudentReportLLMService {
         private final UserLinkedDataRepository userLinkedDataRepository;
         private final AiTokenUsageService aiTokenUsageService;
         private final AIModelRegistryService aiModelRegistryService;
+        private final CreditClient creditClient;
 
         public StudentReportLLMService(
                         @Value("${openrouter.api.key}") String apiKey,
                         ObjectMapper objectMapper,
                         UserLinkedDataRepository userLinkedDataRepository,
                         AiTokenUsageService aiTokenUsageService,
-                        AIModelRegistryService aiModelRegistryService) {
+                        AIModelRegistryService aiModelRegistryService,
+                        CreditClient creditClient) {
                 this.objectMapper = objectMapper;
                 this.userLinkedDataRepository = userLinkedDataRepository;
                 this.aiTokenUsageService = aiTokenUsageService;
                 this.aiModelRegistryService = aiModelRegistryService;
+                this.creditClient = creditClient;
 
                 this.webClient = WebClient.builder()
                                 .baseUrl(API_URL)
@@ -66,7 +70,7 @@ public class StudentReportLLMService {
          * Generate comprehensive student report from aggregated data
          * Implements fallback mechanism across multiple models
          */
-        public Mono<StudentReportData> generateStudentReport(StudentAnalysisData data) {
+        public Mono<StudentReportData> generateStudentReport(StudentAnalysisData data, String instituteId) {
                 log.info("[Student-Report-LLM] Generating report for date range: {} to {}",
                                 data.getStartDateIso(), data.getEndDateIso());
 
@@ -82,7 +86,7 @@ public class StudentReportLLMService {
                 }
 
                 // Try each model in priority order with retries
-                return tryModelsWithFallback(prompt, modelPriority, 0, data.getUserId());
+                return tryModelsWithFallback(prompt, modelPriority, 0, data.getUserId(), instituteId);
         }
 
         /**
@@ -94,7 +98,7 @@ public class StudentReportLLMService {
          * @param userId     The user ID for the report
          * @return Mono containing the report or error
          */
-        private Mono<StudentReportData> tryModelsWithFallback(String prompt, List<String> modelPriority, int modelIndex, String userId) {
+        private Mono<StudentReportData> tryModelsWithFallback(String prompt, List<String> modelPriority, int modelIndex, String userId, String instituteId) {
                 if (modelIndex >= modelPriority.size()) {
                         log.error("[Student-Report-LLM] All models failed after retries");
                         return Mono.error(new RuntimeException("All LLM models failed. Tried: " + modelPriority));
@@ -102,7 +106,7 @@ public class StudentReportLLMService {
 
                 String currentModel = modelPriority.get(modelIndex);
 
-                return generateWithModel(prompt, currentModel, userId)
+                return generateWithModel(prompt, currentModel, userId, instituteId)
                                 .retryWhen(Retry.fixedDelay(MAX_RETRIES_PER_MODEL, Duration.ofSeconds(2))
                                                 .doBeforeRetry(signal -> log.warn(
                                                                 "[Student-Report-LLM] Retry {}/{} for model: {}",
@@ -116,14 +120,14 @@ public class StudentReportLLMService {
                                 .onErrorResume(error -> {
                                         log.error("[Student-Report-LLM] Model {} failed: {}. Trying next model...",
                                                         currentModel, error.getMessage());
-                                        return tryModelsWithFallback(prompt, modelPriority, modelIndex + 1, userId);
+                                        return tryModelsWithFallback(prompt, modelPriority, modelIndex + 1, userId, instituteId);
                                 });
         }
 
         /**
          * Generate report with specific model
          */
-        private Mono<StudentReportData> generateWithModel(String prompt, String model, String userId) {
+        private Mono<StudentReportData> generateWithModel(String prompt, String model, String userId, String instituteId) {
                 Map<String, Object> payload = Map.of(
                                 "model", model,
                                 "messages", List.of(
@@ -140,14 +144,14 @@ public class StudentReportLLMService {
                                 .retrieve()
                                 .bodyToMono(String.class)
                                 .timeout(Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS))
-                                .doOnNext(response -> logTokenUsage(response, model, userId))
+                                .doOnNext(response -> logTokenUsage(response, model, userId, instituteId))
                                 .flatMap(response -> parseResponse(response, model, userId));
         }
 
         /**
          * Log token usage from API response
          */
-        private void logTokenUsage(String responseBody, String model, String userId) {
+        private void logTokenUsage(String responseBody, String model, String userId, String instituteId) {
                 try {
                         JsonNode root = objectMapper.readTree(responseBody);
                         JsonNode usage = root.get("usage");
@@ -166,6 +170,14 @@ public class StudentReportLLMService {
                                 } catch (IllegalArgumentException e) {
                                         // userId is not a valid UUID, leave as null
                                 }
+                                UUID instituteUuid = null;
+                                try {
+                                        if (instituteId != null) {
+                                                instituteUuid = UUID.fromString(instituteId);
+                                        }
+                                } catch (IllegalArgumentException e) {
+                                        // instituteId is not a valid UUID, leave as null
+                                }
 
                                 aiTokenUsageService.recordUsageAsync(
                                                 ApiProvider.OPENAI,
@@ -173,8 +185,14 @@ public class StudentReportLLMService {
                                                 model,
                                                 promptTokens,
                                                 completionTokens,
-                                                null, // No institute ID in this context
+                                                instituteUuid,
                                                 userUuid);
+
+                                if (instituteId != null && !instituteId.isBlank()) {
+                                        creditClient.deductCreditsAsync(
+                                                        instituteId, "analytics", model,
+                                                        promptTokens, completionTokens, null);
+                                }
                         }
                 } catch (Exception e) {
                         log.warn("[Student-Report-LLM] Failed to log token usage: {}", e.getMessage());

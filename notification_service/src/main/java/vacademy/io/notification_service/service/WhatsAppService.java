@@ -80,6 +80,25 @@ public class WhatsAppService {
             Map<String, String> buttonUrlParams,
             Map<String, String> buttonIndexParams,
             String languageCode, String headerType, String instituteId) {
+        return sendWhatsappMessagesExtended(templateName, bodyParams, headerParams,
+                headerVideoParams, buttonUrlParams, buttonIndexParams,
+                languageCode, headerType, instituteId, null, null);
+    }
+
+    /**
+     * Full signature with caller attribution. {@code source} lands in notification_log.source
+     * (defaults to "whatsapp-service" when null) and {@code correlationId} in
+     * notification_log.correlation_id — the Engagement Engine stamps its action id there so the
+     * read/reply ledger can answer "did THIS decision land / get read?" exactly.
+     */
+    public List<Map<String, Boolean>> sendWhatsappMessagesExtended(String templateName,
+            List<Map<String, Map<String, String>>> bodyParams,
+            Map<String, Map<String, String>> headerParams,
+            Map<String, String> headerVideoParams,
+            Map<String, String> buttonUrlParams,
+            Map<String, String> buttonIndexParams,
+            String languageCode, String headerType, String instituteId,
+            String source, String correlationId) {
 
         if (instituteId == null) {
             log.error("Missing instituteId for WhatsApp message sending");
@@ -120,22 +139,27 @@ public class WhatsAppService {
             log.info("WhatsApp provider for institute {}: {}, recipients={}", instituteId, provider, bodyParams.size());
 
             List<Map<String, Boolean>> results;
+            List<String> messageIds = null; // index-aligned with results; provider message ids (wamids)
             String senderChannelId = null;
 
             if ("WATI".equals(provider)) {
                 senderChannelId = resolveWatiChannelId(whatsappSetting);
                 results = sendViaWati(templateName, bodyParams, languageCode, whatsappSetting);
+                // WATI bulk responses carry no per-message ids; status joins stay phone-based
             } else {
                 // COMBOT and META both go through CombotMessageProvider
                 senderChannelId = resolveSenderChannelId(whatsappSetting, provider);
-                results = sendViaCombotProvider(templateName, bodyParams, headerParams,
+                SendOutcome outcome = sendViaCombotProvider(templateName, bodyParams, headerParams,
                         headerVideoParams, buttonUrlParams, buttonIndexParams,
                         languageCode, headerType, instituteId);
+                results = outcome.results();
+                messageIds = outcome.messageIds();
             }
 
             // Log to notification_log
             logWhatsAppMessages(templateName, bodyParams, headerParams, languageCode,
-                    headerType, provider, results, senderChannelId);
+                    headerType, provider, results, messageIds, senderChannelId,
+                    source, correlationId);
 
             return results;
 
@@ -157,11 +181,18 @@ public class WhatsAppService {
     // ==================== Provider Delegates ====================
 
     /**
+     * Per-send outcome: success flags (the legacy public return shape) plus the provider
+     * message ids, index-aligned. The wamid is what lets the sent/delivered/read webhooks
+     * join back to the exact outbound row instead of "most recent send to that phone".
+     */
+    private record SendOutcome(List<Map<String, Boolean>> results, List<String> messageIds) {}
+
+    /**
      * Delegates to CombotMessageProvider for both COMBOT and META providers.
      * Converts the legacy format (List<Map<phone, Map<key,value>>>) to the
      * provider's templatePayload format, one message at a time.
      */
-    private List<Map<String, Boolean>> sendViaCombotProvider(String templateName,
+    private SendOutcome sendViaCombotProvider(String templateName,
             List<Map<String, Map<String, String>>> bodyParams,
             Map<String, Map<String, String>> headerParams,
             Map<String, String> headerVideoParams,
@@ -170,6 +201,7 @@ public class WhatsAppService {
             String languageCode, String headerType, String instituteId) {
 
         List<Map<String, Boolean>> results = new ArrayList<>();
+        List<String> messageIds = new ArrayList<>();
 
         for (Map<String, Map<String, String>> userDetail : bodyParams) {
             String phoneNumber = userDetail.keySet().iterator().next();
@@ -211,19 +243,30 @@ public class WhatsAppService {
                 }
 
                 // Delegate to CombotMessageProvider
-                combotMessageProvider.sendTemplate(phoneNumber, templatePayload, instituteId, null);
+                String messageId = combotMessageProvider.sendTemplate(phoneNumber, templatePayload, instituteId, null);
                 results.add(Map.of(phoneNumber, true));
-
-                // Rate limit
-                Thread.sleep(100);
+                messageIds.add(messageId);
 
             } catch (Exception e) {
                 log.error("Failed to send to {} via provider: {}", phoneNumber, e.getMessage());
                 results.add(Map.of(phoneNumber, false));
+                messageIds.add(null);
+            }
+
+            // Rate limit — OUTSIDE the send try/catch. An interrupt during the sleep must not
+            // double-add entries for the recipient that already succeeded (that would shift the
+            // wamid↔recipient alignment for every later row and credit read receipts to the
+            // wrong person). Stop the batch cleanly instead; rows so far stay aligned.
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                log.warn("WhatsApp batch send interrupted after {} of {} recipients", results.size(), bodyParams.size());
+                break;
             }
         }
 
-        return results;
+        return new SendOutcome(results, messageIds);
     }
 
     /**
@@ -430,7 +473,10 @@ public class WhatsAppService {
                                     String headerType,
                                     String provider,
                                     List<Map<String, Boolean>> results,
-                                    String senderBusinessChannelId) {
+                                    List<String> messageIds,
+                                    String senderBusinessChannelId,
+                                    String source,
+                                    String correlationId) {
         try {
             List<NotificationLog> logs = new ArrayList<>();
 
@@ -470,12 +516,18 @@ public class WhatsAppService {
                 String bodyMessage = String.format("WhatsApp Template: %s | Provider: %s | Status: %s | Params: %s",
                         templateName, provider, success ? "SUCCESS" : "FAILED", params);
 
+                // Provider message id (Meta wamid). With it, source_id lets the status webhooks
+                // (findOutgoingByMessageId) join sent/delivered/read events to THIS exact row.
+                // Without it (WATI, send failures), fall back to the legacy templateName value.
+                String messageId = (messageIds != null && i < messageIds.size()) ? messageIds.get(i) : null;
+
                 NotificationLog notifLog = new NotificationLog();
                 notifLog.setNotificationType("WHATSAPP_MESSAGE_OUTGOING");
                 notifLog.setChannelId(phoneNumber);
                 notifLog.setBody(bodyMessage);
-                notifLog.setSource("whatsapp-service");
-                notifLog.setSourceId(templateName);
+                notifLog.setSource(source != null && !source.isBlank() ? source : "whatsapp-service");
+                notifLog.setSourceId(messageId != null ? messageId : templateName);
+                notifLog.setCorrelationId(correlationId);
                 notifLog.setUserId(userId);
                 notifLog.setNotificationDate(Instant.now());
                 notifLog.setMessagePayload(payloadJson);

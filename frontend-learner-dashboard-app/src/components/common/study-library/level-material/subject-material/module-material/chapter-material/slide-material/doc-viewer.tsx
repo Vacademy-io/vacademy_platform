@@ -594,7 +594,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({
         <div className="relative h-full w-full">
             {/* Verification overlay */}
             {showVerification && (
-                <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-50 animate-in fade-in slide-in-from-top duration-300">
+                <div className="absolute top-2 start-1/2 transform -translate-x-1/2 w-full max-w-xs z-50 animate-in fade-in slide-in-from-top duration-300">
                     <div className="bg-yellow-50 border bg-primary-500 rounded-lg shadow-lg overflow-hidden">
                         <div className="p-2">
                             <div className="mt-1">

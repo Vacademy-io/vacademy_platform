@@ -63,4 +63,13 @@ public class NotificationLog {
 
     @Column(name = "institute_id", length = 255)
     private String instituteId;
+
+    /**
+     * Caller-supplied correlation key (e.g. an Engagement Engine action id) stamped at send time
+     * and copied onto the status/read rows the webhooks write for the same message. Distinct from
+     * source_id, which carries the provider message id (WhatsApp wamid / email Message-ID) that
+     * webhook joins depend on — the two must never share a column. Added V31.
+     */
+    @Column(name = "correlation_id", length = 255)
+    private String correlationId;
 }

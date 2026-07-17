@@ -164,7 +164,7 @@ export const OfferBadge = ({ actual, elevated, className }: OfferBadgeProps) => 
     return (
       <span
         className={cn(
-          "inline-flex items-center gap-1 rounded-full bg-green-600 py-1 pl-2 pr-2.5 text-3xs font-bold uppercase tracking-wide text-white shadow-sm",
+          "inline-flex items-center gap-1 rounded-full bg-green-600 py-1 ps-2 pe-2.5 text-3xs font-bold uppercase tracking-wide text-white shadow-sm",
           className
         )}
       >

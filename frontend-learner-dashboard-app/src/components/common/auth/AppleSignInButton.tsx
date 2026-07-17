@@ -1,4 +1,5 @@
 import { AppleLogo } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
 /**
@@ -13,13 +14,16 @@ export function AppleSignInButton({
   onClick,
   disabled,
   className,
-  label = "Continue with Apple",
+  label,
 }: {
   onClick: () => void;
   disabled?: boolean;
   className?: string;
   label?: string;
 }) {
+  const { t } = useTranslation("auth");
+  const resolvedLabel = label ?? t("common.continueWithApple");
+
   return (
     <button
       type="button"
@@ -31,7 +35,7 @@ export function AppleSignInButton({
       )}
     >
       <AppleLogo weight="fill" className="h-5 w-5" />
-      <span className="text-sm">{label}</span>
+      <span className="text-sm">{resolvedLabel}</span>
     </button>
   );
 }

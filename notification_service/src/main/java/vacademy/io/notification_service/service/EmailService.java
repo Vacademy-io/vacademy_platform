@@ -134,6 +134,10 @@ public class EmailService {
     }
 
     private void saveEmailNotificationLog(String to, String subject, String body, String source, String sourceId, String userId, String fromEmail, String instituteId) {
+        saveEmailNotificationLog(to, subject, body, source, sourceId, userId, fromEmail, instituteId, null);
+    }
+
+    private void saveEmailNotificationLog(String to, String subject, String body, String source, String sourceId, String userId, String fromEmail, String instituteId, String correlationId) {
         try {
             NotificationLog notificationLog = new NotificationLog();
             notificationLog.setId(UUID.randomUUID().toString());
@@ -154,6 +158,9 @@ public class EmailService {
             if (instituteId != null && !instituteId.isBlank()) {
                 notificationLog.setInstituteId(instituteId);
             }
+            // Caller correlation key (e.g. Engagement Engine action id). sourceId stays the
+            // JavaMail Message-ID — inbound reply linking joins on it and must not be displaced.
+            notificationLog.setCorrelationId(correlationId);
             notificationLog.setNotificationDate(Instant.now());
 
             notificationLogRepository.save(notificationLog);
@@ -658,6 +665,18 @@ public class EmailService {
 
     public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId,
             String customFromEmail, String customFromName, String emailType) {
+        sendHtmlEmail(to, subject, service, body, instituteId, customFromEmail, customFromName, emailType, null, null);
+    }
+
+    /**
+     * Full overload with ledger attribution: {@code correlationId} lands in
+     * notification_log.correlation_id (Engagement Engine action id → exact send/read joins)
+     * and {@code userId} attributes the row to a platform user (the other overloads write
+     * userId=null, which makes per-user ledger queries blind to those sends).
+     */
+    public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId,
+            String customFromEmail, String customFromName, String emailType,
+            String correlationId, String userId) {
         try {
             // Check if email is blocked (domain blocklist or bounced email blocklist)
             if (isEmailBlocked(to)) {
@@ -718,7 +737,7 @@ public class EmailService {
 
                     String messageId = null;
                     try { messageId = message.getMessageID(); } catch (Exception ignored) {}
-                    saveEmailNotificationLog(to, emailSubject, body, service != null ? service : "HTML_EMAIL_SERVICE", messageId, null, finalFromEmail, instituteId);
+                    saveEmailNotificationLog(to, emailSubject, body, service != null ? service : "HTML_EMAIL_SERVICE", messageId, userId, finalFromEmail, instituteId, correlationId);
 
                 } catch (Exception e) {
                     logger.error("Failed to send HTML email to: {}", to, e);

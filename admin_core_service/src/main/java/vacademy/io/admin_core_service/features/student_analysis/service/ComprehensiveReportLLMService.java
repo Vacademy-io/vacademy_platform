@@ -14,6 +14,7 @@ import vacademy.io.admin_core_service.features.ai_models.service.AIModelRegistry
 import vacademy.io.admin_core_service.features.ai_usage.enums.ApiProvider;
 import vacademy.io.admin_core_service.features.ai_usage.enums.RequestType;
 import vacademy.io.admin_core_service.features.ai_usage.service.AiTokenUsageService;
+import vacademy.io.admin_core_service.features.credits.client.CreditClient;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.AiInsightsSection;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.ComprehensiveStudentReport;
 import vacademy.io.admin_core_service.features.student_analysis.dto.comprehensive.NarrativeSection;
@@ -55,17 +56,20 @@ public class ComprehensiveReportLLMService {
     private final AIModelRegistryService aiModelRegistryService;
     private final AiTokenUsageService aiTokenUsageService;
     private final SubjectResolver subjectResolver;
+    private final CreditClient creditClient;
 
     public ComprehensiveReportLLMService(
             @Value("${openrouter.api.key}") String apiKey,
             ObjectMapper objectMapper,
             AIModelRegistryService aiModelRegistryService,
             AiTokenUsageService aiTokenUsageService,
-            SubjectResolver subjectResolver) {
+            SubjectResolver subjectResolver,
+            CreditClient creditClient) {
         this.objectMapper = objectMapper;
         this.aiModelRegistryService = aiModelRegistryService;
         this.aiTokenUsageService = aiTokenUsageService;
         this.subjectResolver = subjectResolver;
+        this.creditClient = creditClient;
         this.webClient = WebClient.builder()
                 .baseUrl(API_URL)
                 .defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
@@ -78,7 +82,7 @@ public class ComprehensiveReportLLMService {
      * Returns {@code null} on complete failure so the processor can still persist
      * the deterministic section without blocking.
      */
-    public Mono<AiInsightsSection> narrate(ComprehensiveStudentReport facts, String userId) {
+    public Mono<AiInsightsSection> narrate(ComprehensiveStudentReport facts, String userId, String instituteId) {
         log.info("[ComprehensiveReportLLM] Generating ai_insights for userId={}", userId);
 
         // §13.2 rule: try dedicated key first, fall back to "analytics" read-only
@@ -93,7 +97,7 @@ public class ComprehensiveReportLLMService {
         }
 
         String prompt = buildPrompt(facts);
-        return tryModelsWithFallback(prompt, modelPriority, 0, userId);
+        return tryModelsWithFallback(prompt, modelPriority, 0, userId, instituteId);
     }
 
     /**
@@ -107,7 +111,7 @@ public class ComprehensiveReportLLMService {
      * Percentage is always recomputed in Java from the returned marks, never trusted from the LLM.
      */
     public Mono<List<SubjectMarksSection.SubjectMarks>> clusterSubjectMarks(
-            List<SubjectMarksSection.GradedItem> items, String userId) {
+            List<SubjectMarksSection.GradedItem> items, String userId, String instituteId) {
         if (items == null || items.isEmpty()) {
             return Mono.just(List.of());
         }
@@ -123,28 +127,28 @@ public class ComprehensiveReportLLMService {
         }
 
         String prompt = buildSubjectMarksPrompt(items);
-        return trySubjectMarksModelsWithFallback(prompt, modelPriority, 0, userId);
+        return trySubjectMarksModelsWithFallback(prompt, modelPriority, 0, userId, instituteId);
     }
 
     private Mono<List<SubjectMarksSection.SubjectMarks>> trySubjectMarksModelsWithFallback(
-            String prompt, List<String> models, int idx, String userId) {
+            String prompt, List<String> models, int idx, String userId, String instituteId) {
         if (idx >= models.size()) {
             return Mono.error(new RuntimeException("All LLM models failed for subject-marks clustering. Tried: " + models));
         }
         String model = models.get(idx);
-        return generateSubjectMarksWithModel(prompt, model, userId)
+        return generateSubjectMarksWithModel(prompt, model, userId, instituteId)
                 .retryWhen(Retry.fixedDelay(MAX_RETRIES_PER_MODEL, Duration.ofSeconds(2))
                         .doBeforeRetry(s -> log.warn("[ComprehensiveReportLLM] Subject-marks retry {}/{} for model={}",
                                 s.totalRetries() + 1, MAX_RETRIES_PER_MODEL, model))
                         .onRetryExhaustedThrow((spec, signal) -> signal.failure()))
                 .onErrorResume(err -> {
                     log.error("[ComprehensiveReportLLM] Subject-marks model {} failed: {}. Trying next.", model, err.getMessage());
-                    return trySubjectMarksModelsWithFallback(prompt, models, idx + 1, userId);
+                    return trySubjectMarksModelsWithFallback(prompt, models, idx + 1, userId, instituteId);
                 });
     }
 
     private Mono<List<SubjectMarksSection.SubjectMarks>> generateSubjectMarksWithModel(
-            String prompt, String model, String userId) {
+            String prompt, String model, String userId, String instituteId) {
         Map<String, Object> payload = Map.of(
                 "model", model,
                 "messages", List.of(
@@ -162,7 +166,7 @@ public class ComprehensiveReportLLMService {
                 .retrieve()
                 .bodyToMono(String.class)
                 .timeout(Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS))
-                .doOnNext(response -> logTokenUsage(response, model, userId))
+                .doOnNext(response -> logTokenUsage(response, model, userId, instituteId))
                 .flatMap(response -> parseSubjectMarks(response, model));
     }
 
@@ -256,23 +260,23 @@ public class ComprehensiveReportLLMService {
     // ── model retry / fallback ────────────────────────────────────────────────
 
     private Mono<AiInsightsSection> tryModelsWithFallback(
-            String prompt, List<String> models, int idx, String userId) {
+            String prompt, List<String> models, int idx, String userId, String instituteId) {
         if (idx >= models.size()) {
             return Mono.error(new RuntimeException("All LLM models failed for student_report. Tried: " + models));
         }
         String model = models.get(idx);
-        return generateWithModel(prompt, model, userId)
+        return generateWithModel(prompt, model, userId, instituteId)
                 .retryWhen(Retry.fixedDelay(MAX_RETRIES_PER_MODEL, Duration.ofSeconds(2))
                         .doBeforeRetry(s -> log.warn("[ComprehensiveReportLLM] Retry {}/{} for model={}",
                                 s.totalRetries() + 1, MAX_RETRIES_PER_MODEL, model))
                         .onRetryExhaustedThrow((spec, signal) -> signal.failure()))
                 .onErrorResume(err -> {
                     log.error("[ComprehensiveReportLLM] Model {} failed: {}. Trying next.", model, err.getMessage());
-                    return tryModelsWithFallback(prompt, models, idx + 1, userId);
+                    return tryModelsWithFallback(prompt, models, idx + 1, userId, instituteId);
                 });
     }
 
-    private Mono<AiInsightsSection> generateWithModel(String prompt, String model, String userId) {
+    private Mono<AiInsightsSection> generateWithModel(String prompt, String model, String userId, String instituteId) {
         Map<String, Object> payload = Map.of(
                 "model", model,
                 "messages", List.of(
@@ -290,11 +294,11 @@ public class ComprehensiveReportLLMService {
                 .retrieve()
                 .bodyToMono(String.class)
                 .timeout(Duration.ofSeconds(RESPONSE_TIMEOUT_SECONDS))
-                .doOnNext(response -> logTokenUsage(response, model, userId))
+                .doOnNext(response -> logTokenUsage(response, model, userId, instituteId))
                 .flatMap(response -> parseInsights(response, model));
     }
 
-    private void logTokenUsage(String body, String model, String userId) {
+    private void logTokenUsage(String body, String model, String userId, String instituteId) {
         try {
             JsonNode root = objectMapper.readTree(body);
             JsonNode usage = root.get("usage");
@@ -303,7 +307,12 @@ public class ComprehensiveReportLLMService {
                 int completion = usage.has("completion_tokens") ? usage.get("completion_tokens").asInt() : 0;
                 UUID userUuid = null;
                 try { if (userId != null) userUuid = UUID.fromString(userId); } catch (IllegalArgumentException ignored) {}
-                aiTokenUsageService.recordUsageAsync(ApiProvider.OPENAI, RequestType.ANALYTICS, model, prompt, completion, null, userUuid);
+                UUID instituteUuid = null;
+                try { if (instituteId != null) instituteUuid = UUID.fromString(instituteId); } catch (IllegalArgumentException ignored) {}
+                aiTokenUsageService.recordUsageAsync(ApiProvider.OPENAI, RequestType.ANALYTICS, model, prompt, completion, instituteUuid, userUuid);
+                if (instituteId != null && !instituteId.isBlank()) {
+                    creditClient.deductCreditsAsync(instituteId, "analytics", model, prompt, completion, null);
+                }
             }
         } catch (Exception e) {
             log.warn("[ComprehensiveReportLLM] Token usage logging failed: {}", e.getMessage());

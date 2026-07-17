@@ -503,7 +503,7 @@ const PaidPlanReview = ({
 
         {/* Currency note */}
         {plan.currency && (
-          <p className="text-xs text-gray-400 mt-3 text-right">
+          <p className="text-xs text-gray-400 mt-3 text-end">
             All prices in {plan.currency.toUpperCase()}
           </p>
         )}
@@ -654,7 +654,7 @@ const FreePlanReview = ({
 
         {/* Currency note */}
         {plan.currency && plan.amount !== 0 && (
-          <p className="text-xs text-gray-400 mt-3 text-right">
+          <p className="text-xs text-gray-400 mt-3 text-end">
             All prices in {plan.currency.toUpperCase()}
           </p>
         )}

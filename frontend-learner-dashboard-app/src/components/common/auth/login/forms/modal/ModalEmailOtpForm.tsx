@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -29,10 +29,17 @@ import { LOGIN_OTP, REQUEST_OTP } from "@/constants/urls";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 
-const emailSchema = z.object({
-    email: z.string().email({ message: "Invalid email address" }),
-});
+/**
+ * Built per-render (not a module constant) so the validation message follows
+ * the active language instead of freezing at import time.
+ */
+const makeEmailSchema = () =>
+    z.object({
+        email: z.string().email({ message: i18n.t("auth:validation.invalidEmail") }),
+    });
 
 const otpSchema = z.object({
     otp: z
@@ -41,7 +48,7 @@ const otpSchema = z.object({
         .transform((val) => val.join("")),
 });
 
-type EmailFormValues = z.infer<typeof emailSchema>;
+type EmailFormValues = z.infer<ReturnType<typeof makeEmailSchema>>;
 type OtpFormValues = { otp: string[] };
 
 interface ModalEmailOtpFormProps {
@@ -67,6 +74,12 @@ export function ModalEmailLogin({
     signupAvailable,
     instituteId: propInstituteId,
 }: ModalEmailOtpFormProps) {
+    const { t, i18n: i18nInstance } = useTranslation("auth");
+    const emailSchema = useMemo(
+        () => makeEmailSchema(),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [i18nInstance.language]
+    );
     // Extract instituteId from props or current URL
     const urlParams = new URLSearchParams(window.location.search);
     const urlInstituteId = urlParams.get("instituteId");
@@ -128,7 +141,7 @@ export function ModalEmailLogin({
         onSuccess: () => {
             setIsOtpSent(true);
             startTimer();
-            toast.success("OTP sent successfully!");
+            toast.success(i18n.t("auth:toasts.otpSentExclaim"));
             if (onEmailVerificationSuccess) {
                 onEmailVerificationSuccess(email);
             }
@@ -143,9 +156,9 @@ export function ModalEmailLogin({
                     // Get the email from the form state
                     const emailValue = emailForm.getValues().email;
                     
-                    toast.error("Account not found. Please sign up to continue.", {
+                    toast.error(i18n.t("auth:toasts.accountNotFoundSignup"), {
                         duration: 3000,
-                        description: "This email is not registered in our system."
+                        description: i18n.t("auth:toasts.emailNotRegistered")
                     });
                     
                     // Automatically switch to signup after a short delay with pre-filled email and auto-send OTP
@@ -154,22 +167,27 @@ export function ModalEmailLogin({
                     }, 2000);
                 } else {
                     // Signup not available - show different message
-                    toast.error("Account not found.", {
+                    toast.error(i18n.t("auth:toasts.accountNotFoundPeriod"), {
                         duration: 5000,
-                        description: "This email is not registered in our system. Please contact your administrator for access."
+                        description: i18n.t("auth:toasts.emailNotRegisteredContactAdmin")
                     });
                 }
             } else if (errorData?.ex || errorData?.responseCode) {
                 // Show specific backend error message
-                toast.error(errorData.ex || errorData.responseCode || "Failed to send OTP", {
-                    duration: 5000,
-                    description: "Please try again or contact support if the issue persists."
-                });
+                toast.error(
+                    errorData.ex ||
+                        errorData.responseCode ||
+                        i18n.t("auth:toasts.failedToSendOtp"),
+                    {
+                        duration: 5000,
+                        description: i18n.t("auth:toasts.retryOrContactSupport")
+                    }
+                );
             } else {
                 // Generic error fallback
-                toast.error("Failed to send OTP. Please try again.", {
+                toast.error(i18n.t("auth:toasts.failedToSendOtpRetry"), {
                     duration: 5000,
-                    description: "Please check your internet connection and try again."
+                    description: i18n.t("auth:toasts.checkConnection")
                 });
             }
         },
@@ -266,11 +284,11 @@ export function ModalEmailLogin({
                             }
                         }
                                             } catch (error) {
-                            toast.error("Failed to fetch details");
+                            toast.error(i18n.t("auth:toasts.failedToFetchDetails"));
                         }
                     } else if (instituteId && !authorityKeys.includes(instituteId)) {
                     // User is not enrolled in the specified institute
-                    toast.error("You are not enrolled in this institute.");
+                    toast.error(i18n.t("auth:toasts.notEnrolledInstitute"));
                     if (onLoginSuccess) {
                         onLoginSuccess(); // Close modal
                     }
@@ -326,7 +344,7 @@ export function ModalEmailLogin({
                             }
                         }
                                             } catch (error) {
-                            toast.error("Failed to fetch details");
+                            toast.error(i18n.t("auth:toasts.failedToFetchDetails"));
                         }
                     } else {
                         // Single institute case
@@ -389,7 +407,7 @@ export function ModalEmailLogin({
                                 // Unexpected login status
                             }
                         } catch (error) {
-                            toast.error("Failed to fetch details");
+                            toast.error(i18n.t("auth:toasts.failedToFetchDetails"));
                         }
                     } else {
                         // Institute ID or User ID is undefined
@@ -405,14 +423,19 @@ export function ModalEmailLogin({
             
             if (errorData?.ex || errorData?.responseCode) {
                 // Show specific backend error message
-                toast.error(errorData.ex || errorData.responseCode || "Invalid OTP", {
-                    duration: 5000,
-                    description: "Please check your OTP and try again."
-                });
+                toast.error(
+                    errorData.ex ||
+                        errorData.responseCode ||
+                        i18n.t("auth:toasts.invalidOtp"),
+                    {
+                        duration: 5000,
+                        description: i18n.t("auth:toasts.checkOtpAndRetry")
+                    }
+                );
             } else {
                 // Generic error fallback
-                toast.error("Invalid OTP", {
-                    description: "Please try again",
+                toast.error(i18n.t("auth:toasts.invalidOtp"), {
+                    description: i18n.t("auth:toasts.tryAgain"),
                     duration: 5000,
                 });
             }
@@ -438,7 +461,7 @@ export function ModalEmailLogin({
             });
         } else {
             setIsLoading(false);
-            toast.error("Please fill all OTP fields");
+            toast.error(i18n.t("auth:toasts.fillAllOtpFields"));
         }
     };
 
@@ -522,10 +545,10 @@ export function ModalEmailLogin({
                     </motion.div>
                     <div className="space-y-1">
                         <h3 className="text-lg font-semibold text-gray-900">
-                            Check your email
+                            {t("common.checkYourEmail")}
                         </h3>
                         <p className="text-sm text-gray-600">
-                            We've sent a 6-digit code to
+                            {t("common.sentSixDigitCode")}
                         </p>
                         <motion.div
                             initial={{ scale: 0.9, opacity: 0 }}
@@ -627,7 +650,7 @@ export function ModalEmailLogin({
                             className="text-center"
                         >
                                                          <p className="text-sm text-gray-600">
-                                 Didn't receive the code?{" "}
+                                 {t("otpVerification.didntReceiveCode")}{" "}
                                  <motion.button
                                      type="button"
                                      onClick={handleResendOtp}
@@ -641,8 +664,8 @@ export function ModalEmailLogin({
                                      }`}
                                  >
                                      {timer > 0
-                                         ? `Resend in ${timer}s`
-                                         : "Resend"}
+                                         ? t("common.resendIn", { count: timer })
+                                         : t("common.resend")}
                                  </motion.button>
                              </p>
                         </motion.div>
@@ -674,13 +697,13 @@ export function ModalEmailLogin({
                                              <ArrowsClockwise className="w-4 h-4" />
                                          </motion.div>
                                          <span className="text-sm">
-                                             Verifying...
+                                             {t("common.verifying")}
                                          </span>
                                      </div>
                                  ) : (
                                      <div className="flex items-center justify-center space-x-2">
                                          <Shield className="w-4 h-4" />
-                                         <span className="text-sm">Verify OTP</span>
+                                         <span className="text-sm">{t("otpVerification.verifyOtp")}</span>
                                      </div>
                                  )}
                              </motion.button>
@@ -700,8 +723,8 @@ export function ModalEmailLogin({
                                  whileTap={{ scale: 0.98 }}
                                  className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 font-medium"
                              >
-                                 <ArrowLeft className="w-3 h-3 mr-1" />
-                                 Back to email
+                                 <ArrowLeft className="w-3 h-3 me-1" />
+                                 {t("common.backToEmail")}
                              </motion.button>
                          </motion.div>
                     </form>
@@ -732,7 +755,7 @@ export function ModalEmailLogin({
                                     <FormControl>
                                         <MyInput
                                             inputType="email"
-                                            inputPlaceholder="Enter your email"
+                                            inputPlaceholder={t("common.enterEmail")}
                                             input={field.value}
                                             onChangeFunction={field.onChange}
                                             error={
@@ -741,8 +764,8 @@ export function ModalEmailLogin({
                                             }
                                             required
                                             size="large"
-                                            label="Email Address"
-                                            className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
+                                            label={t("common.emailAddressLabel")}
+                                            className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pe-10"
                                         />
                                     </FormControl>
                                 </FormItem>
@@ -777,14 +800,14 @@ export function ModalEmailLogin({
                                         <ArrowsClockwise className="w-4 h-4" />
                                     </motion.div>
                                     <span className="text-sm">
-                                        Sending code...
+                                        {t("common.sendingCode")}
                                     </span>
                                 </div>
                             ) : (
                                 <div className="flex items-center justify-center space-x-2">
                                     <Envelope className="w-4 h-4" />
                                     <span className="text-sm">
-                                        Send Verification Code
+                                        {t("common.sendVerificationCode")}
                                     </span>
                                 </div>
                             )}
@@ -805,8 +828,8 @@ export function ModalEmailLogin({
                         className="text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 relative group font-medium"
                         onClick={onSwitchToUsername}
                     >
-                        Prefer username login?
-                        <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
+                        {t("login.preferUsernameLogin")}
+                        <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
                     </motion.button>
                 )}
                 

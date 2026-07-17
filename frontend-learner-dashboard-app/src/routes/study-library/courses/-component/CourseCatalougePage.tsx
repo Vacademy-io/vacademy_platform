@@ -17,7 +17,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { IconBooks, IconChartBar, IconCheck } from "@tabler/icons-react";
 import { CoursePackageResponse } from "@/types/course-catalog/course-catalog-list.ts";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings.ts";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils.ts";
+import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils.ts";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import { Preferences } from "@capacitor/preferences";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import type { StudentAllCoursesTabId } from "@/types/student-display-settings";
@@ -47,6 +49,7 @@ function mergeInstructorsFromCourses(
 }
 
 const CourseCatalougePage: React.FC = () => {
+  const { t } = useTranslation("study");
   const [allowLeanersToCreateCourses, setAllowLeanersToCreateCourses] =
     useState<boolean>(false);
 
@@ -69,13 +72,12 @@ const CourseCatalougePage: React.FC = () => {
   const [visibleTabs, setVisibleTabs] = useState<
     { value: "ALL" | "PROGRESS" | "COMPLETED"; label?: string }[]
   >(() => {
+    // Labels intentionally omitted — the render falls back to translated
+    // defaults so they stay in sync with the active language.
     const base: { value: "ALL" | "PROGRESS" | "COMPLETED"; label?: string }[] = [
-      { value: "PROGRESS", label: "In Progress" },
-      { value: "COMPLETED", label: "Completed" },
-      {
-        value: "ALL",
-        label: `All ${getTerminology(ContentTerms.Course, SystemTerms.Course)}s`,
-      },
+      { value: "PROGRESS" },
+      { value: "COMPLETED" },
+      { value: "ALL" },
     ];
     // Reader mode: drop the "All Courses" (browse/marketplace) tab — only the
     // learner's own In-Progress / Completed courses remain (Apple 3.1.1).
@@ -279,14 +281,28 @@ const CourseCatalougePage: React.FC = () => {
           console.error("[Catalog] learner-packages search failed", { status, message, tabType });
         }
         if (status === 500) {
-          toast.error("Something went wrong while loading courses. Please try again.");
+          toast.error(
+            i18n.t("study:catalog.toast.loadError", {
+              courses: getTerminologyPlural(
+                ContentTerms.Course,
+                SystemTerms.Course
+              ).toLocaleLowerCase(),
+            })
+          );
         }
 
         // For non-ALL tabs there is no fallback, so a non-500 error
         // (e.g. backend's custom 511) would otherwise fail silently and the
         // user is left staring at an empty tab. Surface it.
         if (tabType !== "ALL" && status !== 500) {
-          toast.error("Couldn't load courses for this tab. Please try again.");
+          toast.error(
+            i18n.t("study:catalog.toast.loadTabError", {
+              courses: getTerminologyPlural(
+                ContentTerms.Course,
+                SystemTerms.Course
+              ).toLocaleLowerCase(),
+            })
+          );
         }
 
         if (tabType === "ALL" && status !== 500) {
@@ -353,7 +369,14 @@ const CourseCatalougePage: React.FC = () => {
           }
 
           if (!fallbackSucceeded && !controller.signal.aborted) {
-            toast.error("Couldn't load courses. Please try again.");
+            toast.error(
+              i18n.t("study:catalog.toast.loadFallbackError", {
+                courses: getTerminologyPlural(
+                  ContentTerms.Course,
+                  SystemTerms.Course
+                ).toLocaleLowerCase(),
+              })
+            );
           }
         }
       } finally {
@@ -588,59 +611,61 @@ const CourseCatalougePage: React.FC = () => {
           <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-md mb-3">
             <div className="p-2 sm:p-3">
               <TabsList className="bg-muted/50 dark:bg-neutral-900 justify-start p-1 w-full grid grid-cols-3 gap-1 sm:w-auto sm:flex sm:flex-row rounded-full [.ui-play_&]:!bg-white [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:rounded-2xl [.ui-play_&]:p-1.5 [.ui-play_&]:gap-1.5 [.ui-play_&]:shadow-play-3-primary">
-                {visibleTabs.map((t) => {
+                {visibleTabs.map((tab) => {
                   const count =
-                    t.value === "ALL"
+                    tab.value === "ALL"
                       ? allCourses.totalElements
-                      : t.value === "PROGRESS"
+                      : tab.value === "PROGRESS"
                         ? progressCourses.totalElements
-                        : t.value === "COMPLETED"
+                        : tab.value === "COMPLETED"
                           ? completedCourses.totalElements
                           : 0;
                   return (
                   <TabsTrigger
-                    key={t.value}
-                    value={t.value}
+                    key={tab.value}
+                    value={tab.value}
                     className={cn(
                       "flex-1 sm:flex-none px-2.5 sm:px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all duration-200 data-[state=active]:bg-primary-100 data-[state=active]:text-primary-700 data-[state=active]:font-semibold data-[state=active]:shadow-sm dark:data-[state=active]:bg-primary-900/40 dark:data-[state=active]:text-primary-200",
                       // Vibrant Styles - Flat Pastel
-                      t.value === "COMPLETED" &&
+                      tab.value === "COMPLETED" &&
                       "[.ui-vibrant_&]:data-[state=active]:bg-emerald-100/50 [.ui-vibrant_&]:data-[state=active]:text-emerald-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-emerald-900/30 dark:[.ui-vibrant_&]:data-[state=active]:text-emerald-300",
-                      t.value === "PROGRESS" &&
+                      tab.value === "PROGRESS" &&
                       "[.ui-vibrant_&]:data-[state=active]:bg-indigo-100/50 [.ui-vibrant_&]:data-[state=active]:text-indigo-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-indigo-900/30 dark:[.ui-vibrant_&]:data-[state=active]:text-indigo-300",
-                      t.value !== "COMPLETED" &&
-                      t.value !== "PROGRESS" &&
+                      tab.value !== "COMPLETED" &&
+                      tab.value !== "PROGRESS" &&
                       "[.ui-vibrant_&]:data-[state=active]:bg-slate-100/50 [.ui-vibrant_&]:data-[state=active]:text-slate-700 dark:[.ui-vibrant_&]:data-[state=active]:bg-slate-800/50 dark:[.ui-vibrant_&]:data-[state=active]:text-slate-300",
                       // Play Styles — solid, bold, Duolingo-style
                       "[.ui-play_&]:rounded-full [.ui-play_&]:font-bold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide [.ui-play_&]:text-xs",
-                      t.value === "COMPLETED" &&
+                      tab.value === "COMPLETED" &&
                       "[.ui-play_&]:data-[state=active]:!bg-play-success-soft [.ui-play_&]:data-[state=active]:!text-play-success-soft-ink [.ui-play_&]:data-[state=active]:!shadow-none",
-                      t.value === "PROGRESS" &&
+                      tab.value === "PROGRESS" &&
                       "[.ui-play_&]:data-[state=active]:!bg-play-info-soft [.ui-play_&]:data-[state=active]:!text-play-info-soft-ink [.ui-play_&]:data-[state=active]:!shadow-none",
-                      t.value !== "COMPLETED" &&
-                      t.value !== "PROGRESS" &&
+                      tab.value !== "COMPLETED" &&
+                      tab.value !== "PROGRESS" &&
                       "[.ui-play_&]:data-[state=active]:!bg-play-accent-soft [.ui-play_&]:data-[state=active]:!text-play-accent-soft-ink [.ui-play_&]:data-[state=active]:!shadow-none"
                     )}
                   >
                     <span className="inline-flex items-center gap-1.5">
                       <span className="inline-flex shrink-0">
-                        {t.value === "ALL" && <IconBooks size={14} />}
-                        {t.value === "PROGRESS" && <IconChartBar size={14} />}
-                        {t.value === "COMPLETED" && <IconCheck size={14} />}
+                        {tab.value === "ALL" && <IconBooks size={14} />}
+                        {tab.value === "PROGRESS" && <IconChartBar size={14} />}
+                        {tab.value === "COMPLETED" && <IconCheck size={14} />}
                       </span>
                       <span className="truncate">
-                        {t.label ||
-                          (t.value === "ALL"
-                            ? `All ${getTerminology(
-                              ContentTerms.Course,
-                              SystemTerms.Course
-                            )}s`
-                            : t.value === "PROGRESS"
-                              ? "In Progress"
-                              : "Completed")}
+                        {tab.label ||
+                          (tab.value === "ALL"
+                            ? t("catalog.tab.all", {
+                                courses: getTerminologyPlural(
+                                  ContentTerms.Course,
+                                  SystemTerms.Course
+                                ),
+                              })
+                            : tab.value === "PROGRESS"
+                              ? t("catalog.tab.inProgress")
+                              : t("catalog.tab.completed"))}
                       </span>
                       {count > 0 && (
-                        <span className="ml-0.5 hidden sm:inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-neutral-200/80 text-caption font-semibold text-neutral-700 data-[state=active]:bg-primary-200 dark:bg-neutral-700 dark:text-neutral-200">
+                        <span className="ms-0.5 hidden sm:inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full bg-neutral-200/80 text-caption font-semibold text-neutral-700 data-[state=active]:bg-primary-200 dark:bg-neutral-700 dark:text-neutral-200">
                           {count}
                         </span>
                       )}

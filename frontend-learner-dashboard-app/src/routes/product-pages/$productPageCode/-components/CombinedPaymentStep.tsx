@@ -209,7 +209,7 @@ export const CombinedPaymentStep = ({
                     <span>Total</span>
                     <span>{currency} {amount.toLocaleString()}</span>
                 </div>
-                <p className="text-right text-xs text-gray-400">All prices in {currency}</p>
+                <p className="text-end text-xs text-gray-400">All prices in {currency}</p>
             </div>
         </>
     );

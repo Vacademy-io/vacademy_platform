@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "@tanstack/react-router";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import {
@@ -35,7 +36,9 @@ export interface ImminentSession {
   minutesToStart: number;
 }
 
-function getGreetingPeriod(): string {
+type GreetingPeriod = "morning" | "afternoon" | "evening";
+
+function getGreetingPeriod(): GreetingPeriod {
   const hour = new Date().getHours();
   if (hour < 12) return "morning";
   if (hour < 17) return "afternoon";
@@ -93,6 +96,7 @@ export function useDashboardHeroData({
   liveSessions: SessionDetails[] | undefined;
   hasAnyProgress: boolean;
 }): DashboardHeroData {
+  const { t } = useTranslation("dashboard");
   const navigate = useNavigate();
   const gamification = usePlayGamificationStore((s) => s.data);
 
@@ -111,11 +115,13 @@ export function useDashboardHeroData({
     SystemTerms.Slides
   ).toLocaleLowerCase();
 
+  // Whole-sentence greeting keys per time-of-day — never "Good " + period, so
+  // translators control word order and the period noun's case/agreement.
   const period = getGreetingPeriod();
   const firstName = userName?.trim().split(/\s+/)[0] ?? "";
   const greeting = firstName
-    ? `Good ${period}, ${firstName}`
-    : `Good ${period}`;
+    ? t(`hero.greeting.${period}WithName`, { name: firstName })
+    : t(`hero.greeting.${period}`);
 
   const streak = gamification?.currentStreak ?? 0;
   const todayXp = gamification?.todayXp ?? 0;
@@ -131,8 +137,8 @@ export function useDashboardHeroData({
   const ctaCaption = resume
     ? resume.slideTitle
     : isContinue
-      ? "Pick up where you left off"
-      : `your first ${slideTerm}`;
+      ? t("hero.pickUpWhereLeftOff")
+      : t("hero.yourFirstSlide", { slide: slideTerm });
 
   // Existing app pattern: loosely-typed navigate (the resume route's search
   // schema is validated by the destination route itself).

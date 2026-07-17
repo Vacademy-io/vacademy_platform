@@ -584,7 +584,7 @@ const VideoQuestionOverlay = ({
                                         )}
                                     </span>
                                 </div>
-                                <div className="ml-3 flex items-center gap-2">
+                                <div className="ms-3 flex items-center gap-2">
                                     {isMultipleChoice ? (
                                         <Checkbox
                                             checked={selectedOptions.some(

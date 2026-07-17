@@ -402,7 +402,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
     return (
       <header
-        className={`fixed top-0 left-0 right-0 z-catalogue-fixed bg-white border-b border-catalogue-border-subtle w-full ${headerTopOffset}`}
+        className={`fixed top-0 start-0 end-0 z-catalogue-fixed bg-white border-b border-catalogue-border-subtle w-full ${headerTopOffset}`}
         style={{
           '--header-height': 'var(--catalogue-header-height)',
           '--header-height-mobile': 'var(--catalogue-header-height-mobile)'
@@ -574,7 +574,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   >
                     <ShoppingCart className="w-5 h-5" />
                     {cartItemCount > 0 && (
-                      <span className="absolute -top-0.5 -right-0.5 bg-primary-500 text-white text-caption font-semibold rounded-full min-w-5 h-5 flex items-center justify-center px-1">
+                      <span className="absolute -top-0.5 -end-0.5 bg-primary-500 text-white text-caption font-semibold rounded-full min-w-5 h-5 flex items-center justify-center px-1">
                         {cartItemCount > 99 ? '99+' : cartItemCount}
                       </span>
                     )}
@@ -644,7 +644,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
           {isCourseCatalogeTypeEnabled ? (
             <div
               ref={setMobileMenuRef}
-              className={`md:hidden  fixed left-0 right-0 z-catalogue-dropdown bg-white border-b border-catalogue-border transition-all duration-300 ease-out ${isMobileMenuOpen
+              className={`md:hidden  fixed start-0 end-0 z-catalogue-dropdown bg-white border-b border-catalogue-border transition-all duration-300 ease-out ${isMobileMenuOpen
                 ? 'opacity-100 visible'
                 : 'opacity-0 invisible pointer-events-none'
                 }`}
@@ -666,7 +666,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                               setIsMobileMenuOpen(false);
                               handleNavigation(item.route, item.label, openInSameTab);
                             }}
-                            className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${isActive
+                            className={`block w-full text-start px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${isActive
                               ? 'text-primary-500 bg-primary-50'
                               : 'text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover'
                               }`}
@@ -823,7 +823,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
             isMobileMenuOpen && (navigation.length > 0 || authLinks.length > 0) && (
               <div
                 ref={setMobileMenuRef}
-                className={`md:hidden fixed left-0 right-0 z-catalogue-dropdown border-t border-catalogue-border-subtle bg-white ${isAndroid || isIOS ? 'mt-8' : ''}`}
+                className={`md:hidden fixed start-0 end-0 z-catalogue-dropdown border-t border-catalogue-border-subtle bg-white ${isAndroid || isIOS ? 'mt-8' : ''}`}
                 style={{ top: isIOS ? 'calc(56px + 32px)' : '56px' }}
               >
                 <div className="px-4 py-3 space-y-1">
@@ -838,7 +838,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                           setIsMobileMenuOpen(false);
                           handleNavigation(item.route, item.label, openInSameTab);
                         }}
-                        className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${isActive
+                        className={`block w-full text-start px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${isActive
                           ? 'text-primary-500 bg-primary-50'
                           : 'text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-interactive-hover'
                           }`}
@@ -858,7 +858,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                               setIsMobileMenuOpen(false);
                               navigate({ to: '/dashboard' });
                             }}
-                            className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 text-white bg-primary-500 hover:bg-primary-400`}
+                            className={`block w-full text-start px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 text-white bg-primary-500 hover:bg-primary-400`}
                           >
                             Dashboard
                           </button>
@@ -890,7 +890,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                                 navigate({ to: link.route });
                               }
                             }}
-                            className={`block w-full text-left px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${index === 0
+                            className={`block w-full text-start px-4 py-2.5 rounded-md text-base font-medium transition-colors duration-200 ${index === 0
                               ? 'bg-primary-500 text-white hover:bg-primary-400'
                               : 'text-primary-500 hover:bg-primary-50'
                               }`}

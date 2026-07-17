@@ -645,7 +645,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
         <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
             <DialogPrimitive.Portal>
                 <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" />
-                <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-pct-95 max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl bg-white p-0 shadow-2xl focus:outline-none overflow-hidden flex flex-col max-h-screen-90">
+                <DialogPrimitive.Content className="fixed start-1/2 top-1/2 z-50 w-pct-95 max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-xl bg-white p-0 shadow-2xl focus:outline-none overflow-hidden flex flex-col max-h-screen-90">
 
                     {/* Compact Header */}
                     <div className="bg-primary-600 px-5 py-2 text-white flex justify-between items-center shrink-0">
@@ -731,12 +731,12 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                                     setPhone(value);
                                                     if (phoneOtpSent) setPhoneOtpSent(false);
                                                 }}
-                                                inputClass={`!w-full !px-3 !py-2 !pl-12 !h-10 !bg-gray-50 !border ${phoneError ? "!border-red-300" : "!border-gray-200"} !rounded-lg !text-sm !font-medium focus:!bg-white focus:!ring-2 focus:!ring-primary-50 ${isPhoneVerified ? "!text-green-700 !bg-green-50/50 !border-green-200" : ""}`}
+                                                inputClass={`!w-full !px-3 !py-2 !ps-12 !h-10 !bg-gray-50 !border ${phoneError ? "!border-red-300" : "!border-gray-200"} !rounded-lg !text-sm !font-medium focus:!bg-white focus:!ring-2 focus:!ring-primary-50 ${isPhoneVerified ? "!text-green-700 !bg-green-50/50 !border-green-200" : ""}`}
                                                 containerClass="!w-full"
-                                                buttonClass={`!rounded-l-lg !border-gray-200 !bg-gray-50 !w-10 ${isPhoneVerified ? "!bg-green-50/50 !border-green-200" : ""}`}
+                                                buttonClass={`!rounded-s-lg !border-gray-200 !bg-gray-50 !w-10 ${isPhoneVerified ? "!bg-green-50/50 !border-green-200" : ""}`}
                                                 dropdownClass="!rounded-lg !shadow-xl"
                                             />
-                                            {isPhoneVerified && <CheckCircle className="absolute right-2.5 top-2.5 h-4 w-4 text-green-500 z-10" />}
+                                            {isPhoneVerified && <CheckCircle className="absolute end-2.5 top-2.5 h-4 w-4 text-green-500 z-10" />}
                                         </div>
                                         {!isPhoneVerified && (
                                             <MyButton
@@ -751,7 +751,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                             </MyButton>
                                         )}
                                     </div>
-                                    {phoneError && <p className="text-red-500 text-caption font-semibold ml-1">{phoneError}</p>}
+                                    {phoneError && <p className="text-red-500 text-caption font-semibold ms-1">{phoneError}</p>}
 
                                     {/* OTP Input for Phone */}
                                     {phoneOtpSent && !isPhoneVerified && (
@@ -812,7 +812,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                                             <span className="text-caption text-gray-500 font-bold uppercase tracking-tight">Order Total</span>
                                             <span className="text-base font-black text-primary-600">₹{totalAmount.toFixed(0)}</span>
                                         </div>
-                                        <div className="text-right">
+                                        <div className="text-end">
                                             <span className="text-caption text-gray-400 font-medium block">{items.length} Items</span>
                                             <span className="text-caption text-green-600 font-bold flex items-center justify-end gap-1">
                                                 <span className="w-1 h-1 bg-green-500 rounded-full" /> Secure

@@ -46,8 +46,8 @@ const LANGUAGES = [
   { code: "ta-IN", label: "Tamil" },
   { code: "te-IN", label: "Telugu" },
   { code: "kn-IN", label: "Kannada" },
-  { code: "ml-IN", label: "Malayalam" },
-  { code: "mr-IN", label: "Marathi" },
+  { code: "ms-IN", label: "Malayalam" },
+  { code: "me-IN", label: "Marathi" },
   { code: "gu-IN", label: "Gujarati" },
   { code: "pa-IN", label: "Punjabi" },
   { code: "od-IN", label: "Odia" },
@@ -111,7 +111,7 @@ export const VoiceModeSelector: React.FC<VoiceModeSelectorProps> = ({
                   <button
                     key={m.key}
                     className={cn(
-                      "w-full flex items-start gap-3 p-3 rounded-xl text-left transition-all",
+                      "w-full flex items-start gap-3 p-3 rounded-xl text-start transition-all",
                       isSelected
                         ? "bg-primary/20 border border-primary/50 ring-1 ring-primary/30"
                         : "bg-white/5 border border-white/10 hover:bg-white/10",

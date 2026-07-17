@@ -143,7 +143,7 @@ export const TutorialsHelpButton = ({ className }: { className?: string }) => {
         side="bottom"
         className="max-h-screen-85 overflow-y-auto rounded-t-2xl pb-safe"
       >
-        <SheetHeader className="text-left">
+        <SheetHeader className="text-start">
           <SheetTitle>Tutorials</SheetTitle>
           <SheetDescription>
             Quick guided walkthroughs of the app. Pick one to start.
@@ -159,7 +159,7 @@ export const TutorialsHelpButton = ({ className }: { className?: string }) => {
                   type="button"
                   onClick={() => void startTour(tour)}
                   className={cn(
-                    'flex w-full items-center gap-3 rounded-lg border border-neutral-200 bg-white p-3 text-left',
+                    'flex w-full items-center gap-3 rounded-lg border border-neutral-200 bg-white p-3 text-start',
                     'transition-colors duration-200 hover:border-primary-300 hover:bg-primary-50/50',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
                   )}
@@ -194,7 +194,7 @@ export const TutorialsHelpButton = ({ className }: { className?: string }) => {
                 onClick={() => void handleDownloadGuide()}
                 disabled={downloadingGuide}
                 className={cn(
-                  'flex w-full items-center gap-3 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 p-3 text-left',
+                  'flex w-full items-center gap-3 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 p-3 text-start',
                   'transition-colors duration-200 hover:border-primary-300 hover:bg-primary-50',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   'disabled:cursor-not-allowed disabled:opacity-70'

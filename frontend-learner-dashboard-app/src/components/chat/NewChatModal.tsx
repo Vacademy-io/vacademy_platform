@@ -126,14 +126,14 @@ export function NewChatModal({
         <div className="relative">
           <MagnifyingGlass
             size={18}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+            className="absolute start-3 top-1/2 -translate-y-1/2 text-muted-foreground"
           />
           <Input
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search people by name…"
-            className="pl-9"
+            className="ps-9"
           />
         </div>
 
@@ -177,7 +177,7 @@ export function NewChatModal({
                     type="button"
                     disabled={startingId !== null}
                     onClick={() => startDm(person)}
-                    className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-colors hover:bg-muted disabled:opacity-60"
+                    className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-start transition-colors hover:bg-muted disabled:opacity-60"
                   >
                     <span
                       aria-hidden

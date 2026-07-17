@@ -62,7 +62,7 @@ export default function PlanningLogsTable({
               <TableHead>Title</TableHead>
               <TableHead>Created By</TableHead>
               <TableHead>Created At</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead className="text-end">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -85,13 +85,13 @@ export default function PlanningLogsTable({
                     year: "numeric",
                   })}
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell className="text-end">
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => onViewLog(log)}
                   >
-                    <Eye className="mr-2 size-4" />
+                    <Eye className="me-2 size-4" />
                     View
                   </Button>
                 </TableCell>

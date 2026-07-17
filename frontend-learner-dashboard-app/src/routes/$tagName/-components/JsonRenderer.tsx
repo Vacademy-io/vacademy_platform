@@ -392,7 +392,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
                 {rendered}
               </div>
               {isSelected && (
-                <div className="absolute top-0 left-0 z-50 bg-primary-500 text-white text-xs px-2 py-0.5 rounded-br-md font-medium select-none">
+                <div className="absolute top-0 start-0 z-50 bg-primary-500 text-white text-xs px-2 py-0.5 rounded-ee-md font-medium select-none">
                   {component.type}
                 </div>
               )}
@@ -467,10 +467,10 @@ const FaqSectionRenderer: React.FC<any> = ({ headerText, subheading, faqs = [], 
             <div key={i} data-stagger-item style={{ ['--stagger-i' as any]: i }} className="rounded-lg border border-catalogue-border bg-catalogue-bg overflow-hidden">
               <button
                 onClick={() => setOpenIndex(openIndex === i ? null : i)}
-                className="flex w-full items-center justify-between px-6 py-4 text-left font-medium text-catalogue-text-primary hover:bg-catalogue-interactive-hover"
+                className="flex w-full items-center justify-between px-6 py-4 text-start font-medium text-catalogue-text-primary hover:bg-catalogue-interactive-hover"
               >
                 <span>{faq.question}</span>
-                <span className="ml-4 text-catalogue-text-muted text-xl">{openIndex === i ? '−' : '+'}</span>
+                <span className="ms-4 text-catalogue-text-muted text-xl">{openIndex === i ? '−' : '+'}</span>
               </button>
               {openIndex === i && (
                 <div className="border-t border-catalogue-border-subtle px-6 py-4 text-catalogue-text-secondary leading-relaxed">
@@ -545,7 +545,7 @@ const PricingTableRenderer: React.FC<any> = ({ headerText, subheading, plans = [
       <div className={`grid gap-6 ${plans.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
         {plans.map((plan: any, i: number) => (
           <div key={i} data-stagger-item style={{ ['--stagger-i' as any]: i }} className={`relative flex flex-col rounded-2xl border-2 p-8 ${plan.highlighted ? 'border-primary-500 shadow-xl' : 'border-catalogue-border'}`}>
-            {plan.highlighted && <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-4 py-1 text-xs font-semibold text-white" style={{ backgroundColor: 'hsl(var(--primary-500, 217 91% 60%))' }}>Recommended</div>}
+            {plan.highlighted && <div className="absolute -top-3 start-1/2 -translate-x-1/2 rounded-full px-4 py-1 text-xs font-semibold text-white" style={{ backgroundColor: 'hsl(var(--primary-500, 217 91% 60%))' }}>Recommended</div>}
             <h3 className="text-xl font-bold text-catalogue-text-primary">{plan.name}</h3>
             {plan.description && <p className="mt-1 text-sm text-catalogue-text-muted">{plan.description}</p>}
             <div className="mt-4 flex items-baseline gap-1">
@@ -589,7 +589,7 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
           <form onSubmit={handleSubmit} className="space-y-5 rounded-xl border border-catalogue-border bg-catalogue-bg p-8 shadow-sm">
             {fields.map((field: any) => (
               <div key={field.name}>
-                <label className="mb-1 block text-sm font-medium text-catalogue-text-secondary">{field.label}{field.required && <span className="ml-1 text-red-500">*</span>}</label>
+                <label className="mb-1 block text-sm font-medium text-catalogue-text-secondary">{field.label}{field.required && <span className="ms-1 text-red-500">*</span>}</label>
                 {field.type === 'textarea' ? (
                   <textarea required={field.required} rows={4} value={formData[field.name] || ''} onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })} className="w-full rounded-lg border border-catalogue-border bg-catalogue-bg text-catalogue-text-primary px-4 py-2.5 text-sm focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 focus:outline-none" />
                 ) : (
@@ -722,7 +722,7 @@ const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defau
           ) : null}
           <span className={compact ? 'truncate' : 'min-w-0'}>{item.title}</span>
         </span>
-        <span className="ml-4 flex shrink-0 items-center gap-3">
+        <span className="ms-4 flex shrink-0 items-center gap-3">
           {item.meta && <span className="text-xs text-catalogue-text-muted">{item.meta}</span>}
           <span className={`text-catalogue-text-muted transition-transform ${open ? 'rotate-180' : ''}`}>&#9662;</span>
         </span>
@@ -749,7 +749,7 @@ const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defau
           <div className="space-y-2 lg:col-span-2">
             {items.map((item: any, i: number) => (
               <div key={i} className={`rounded-lg border overflow-hidden ${openIndices.has(i) ? 'border-primary-200 bg-primary-50' : 'border-catalogue-border bg-catalogue-bg'}`}>
-                <button onClick={() => setOpenIndices(new Set([i]))} className="flex w-full items-center justify-between px-5 py-4 text-left font-medium text-catalogue-text-primary hover:bg-catalogue-interactive-hover">
+                <button onClick={() => setOpenIndices(new Set([i]))} className="flex w-full items-center justify-between px-5 py-4 text-start font-medium text-catalogue-text-primary hover:bg-catalogue-interactive-hover">
                   {triggerContent(item, i, openIndices.has(i))}
                 </button>
                 {/* Mobile: panel renders inline under the open trigger */}
@@ -776,7 +776,7 @@ const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defau
         <div className={`mx-auto max-w-3xl ${boxed ? 'divide-y divide-catalogue-border-subtle rounded-xl border border-catalogue-border overflow-hidden' : 'space-y-2'}`}>
           {items.map((item: any, i: number) => (
             <div key={i} className={boxed ? 'bg-catalogue-bg' : 'rounded-lg border border-catalogue-border bg-catalogue-bg overflow-hidden'}>
-              <button onClick={() => toggleAccordion(i)} className="flex w-full items-center justify-between px-5 py-4 text-left font-medium text-catalogue-text-primary hover:bg-catalogue-interactive-hover">
+              <button onClick={() => toggleAccordion(i)} className="flex w-full items-center justify-between px-5 py-4 text-start font-medium text-catalogue-text-primary hover:bg-catalogue-interactive-hover">
                 {triggerContent(item, i, openIndices.has(i))}
               </button>
               {openIndices.has(i) && (
@@ -912,7 +912,7 @@ const TrustChipRenderer: React.FC<any> = ({ text, rating, avatars = [], alignmen
   const justify = alignment === 'left' ? 'justify-start' : alignment === 'right' ? 'justify-end' : 'justify-center';
   return (
     <section className={`flex px-4 py-6 ${justify}`}>
-      <div className="inline-flex items-center gap-3 rounded-full border border-catalogue-border-subtle bg-catalogue-bg-subtle py-2 pl-2.5 pr-5">
+      <div className="inline-flex items-center gap-3 rounded-full border border-catalogue-border-subtle bg-catalogue-bg-subtle py-2 ps-2.5 pe-5">
         {avatars.length > 0 && (
           <span className="flex -space-x-2">
             {avatars.slice(0, 4).map((src: string, i: number) => (
@@ -966,7 +966,7 @@ const SectionHeadingRenderer: React.FC<any> = ({
 
   return (
     <section style={sectionBg(backgroundColor)} className="px-4 pt-14 pb-4 bg-catalogue-bg">
-      <div className={`mx-auto max-w-3xl ${align === 'left' ? 'text-left' : 'text-center'}`}>
+      <div className={`mx-auto max-w-3xl ${align === 'left' ? 'text-start' : 'text-center'}`}>
         {eyebrow && <span className="catalogue-eyebrow">{eyebrow}</span>}
         <h2 className={`${eyebrow ? 'mt-3' : ''} font-bold ${sizeClass} ${txt.heading}`}>{titleNode}</h2>
         {lead && <p className={`mt-4 catalogue-lead ${txt.muted}`}>{lead}</p>}
@@ -1106,7 +1106,7 @@ const FeatureGridRenderer: React.FC<any> = ({
             const chips: string[] = (f.chips || []).filter(Boolean);
             const bullets: string[] = (f.bullets || []).filter(Boolean);
             return (
-            <div key={i} data-stagger-item style={{ ['--stagger-i' as any]: i }} className={`${isLeft ? 'text-left' : 'text-center'} ${cardClass}`}>
+            <div key={i} data-stagger-item style={{ ['--stagger-i' as any]: i }} className={`${isLeft ? 'text-start' : 'text-center'} ${cardClass}`}>
               <div className="mb-4">
                 {f.image ? (
                   <img src={f.image} alt={f.title || ''} className={`${isLeft ? '' : 'mx-auto'} w-full max-w-40 h-auto rounded-lg object-cover`} style={{ aspectRatio: '1/1' }} />
@@ -1128,7 +1128,7 @@ const FeatureGridRenderer: React.FC<any> = ({
               <h4 className={`mb-2 text-lg font-semibold ${cardOnSection ? txt.heading : 'text-catalogue-text-primary'}`}>{f.title}</h4>
               <p className={`text-sm leading-relaxed ${cardOnSection ? txt.muted : 'text-catalogue-text-muted'}`}>{f.description}</p>
               {bullets.length > 0 && (
-                <ul className={`mt-3 space-y-1.5 text-sm ${cardOnSection ? txt.body : 'text-catalogue-text-secondary'} ${isLeft ? '' : 'inline-block text-left'}`}>
+                <ul className={`mt-3 space-y-1.5 text-sm ${cardOnSection ? txt.body : 'text-catalogue-text-secondary'} ${isLeft ? '' : 'inline-block text-start'}`}>
                   {bullets.map((b: string, j: number) => (
                     <li key={j} className="flex items-start gap-2">
                       <Check size={15} weight="bold" className="mt-0.5 shrink-0 text-primary-500" aria-hidden="true" />
@@ -1310,7 +1310,7 @@ const StepsProcessRenderer: React.FC<any> = ({ headerText, subheading, layout = 
           <div className="relative">
             {/* Rail: left on mobile/timeline, centered on desktop alternating */}
             <div
-              className={`absolute bottom-0 top-0 w-0.5 ${isAlt ? 'left-5 md:left-1/2 md:-translate-x-1/2' : 'left-5'}`}
+              className={`absolute bottom-0 top-0 w-0.5 ${isAlt ? 'start-5 md:start-1/2 md:-translate-x-1/2' : 'start-5'}`}
               style={railStyle}
               aria-hidden="true"
             />
@@ -1357,7 +1357,7 @@ const StepsProcessRenderer: React.FC<any> = ({ headerText, subheading, layout = 
       );
     }
     return (
-      <div className="ml-5 flex justify-center" style={{ height: 24 }}>
+      <div className="ms-5 flex justify-center" style={{ height: 24 }}>
         <div className="w-0.5" style={{
           height: '100%',
           background: connectorStyle === 'dashed' ? `repeating-linear-gradient(to bottom, ${accent} 0, ${accent} 6px, transparent 6px, transparent 12px)` : accent,

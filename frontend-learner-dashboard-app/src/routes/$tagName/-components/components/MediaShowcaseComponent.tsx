@@ -283,7 +283,7 @@ const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEd
       ) : (
         renderImage()
       )}
-      <div className={`absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white p-4 ${roundedEdges ? 'rounded-b-lg' : 'rounded-b-none'
+      <div className={`absolute bottom-0 start-0 end-0 bg-black bg-opacity-50 text-white p-4 ${roundedEdges ? 'rounded-b-lg' : 'rounded-b-none'
         }`}>
         <p className="text-sm font-medium">{item.caption}</p>
       </div>
@@ -643,7 +643,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
             <>
               <button
                 onClick={prevSlide}
-                className="absolute left-4 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-80 hover:bg-opacity-100 text-gray-800 p-2 sm:p-3 rounded-full shadow-lg transition-all z-20"
+                className="absolute start-4 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-80 hover:bg-opacity-100 text-gray-800 p-2 sm:p-3 rounded-full shadow-lg transition-all z-20"
                 aria-label="Previous slide"
               >
                 <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -652,7 +652,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
               </button>
               <button
                 onClick={nextSlide}
-                className="absolute right-4 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-80 hover:bg-opacity-100 text-gray-800 p-2 sm:p-3 rounded-full shadow-lg transition-all z-20"
+                className="absolute end-4 top-1/2 transform -translate-y-1/2 bg-white bg-opacity-80 hover:bg-opacity-100 text-gray-800 p-2 sm:p-3 rounded-full shadow-lg transition-all z-20"
                 aria-label="Next slide"
               >
                 <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -664,7 +664,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
 
           {/* Dots Indicator */}
           {slides.length > 1 && (
-            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-2 z-20">
+            <div className="absolute bottom-4 start-1/2 transform -translate-x-1/2 flex space-x-2 z-20">
               {slides.map((_, index) => (
                 <button
                   key={index}
@@ -734,7 +734,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
               <>
                 <button
                   onClick={prevSlide}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-white border border-catalogue-border text-catalogue-text-secondary p-1.5 rounded-full hover:bg-catalogue-interactive-hover transition-colors"
+                  className="absolute start-2 top-1/2 -translate-y-1/2 bg-white border border-catalogue-border text-catalogue-text-secondary p-1.5 rounded-full hover:bg-catalogue-interactive-hover transition-colors"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -742,7 +742,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
                 </button>
                 <button
                   onClick={nextSlide}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-white border border-catalogue-border text-catalogue-text-secondary p-1.5 rounded-full hover:bg-catalogue-interactive-hover transition-colors"
+                  className="absolute end-2 top-1/2 -translate-y-1/2 bg-white border border-catalogue-border text-catalogue-text-secondary p-1.5 rounded-full hover:bg-catalogue-interactive-hover transition-colors"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />

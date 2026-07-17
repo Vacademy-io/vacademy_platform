@@ -61,6 +61,24 @@ export const GENERATE_TRANSCRIPT_NOTES_URL = `${AI_SERVICE_BASE_URL}/transcript/
 // Response: { html: string, model: string }.
 export const GENERATE_HTML_DOCUMENT_URL = `${AI_SERVICE_BASE_URL}/html-doc/v1/generate`;
 
+// Content translation — AI-service side (job orchestration + credit estimate).
+// See ai_service app/routers/translation.py. The stage machine is
+// EXTRACT -> TRANSLATE -> REVIEW (DRAFT mode parks here as AWAITING_INPUT) ->
+// WRITE_BACK; TRANSLATE_COURSE answers 402 when credits are short.
+export const TRANSLATION_ESTIMATE_URL = `${AI_SERVICE_BASE_URL}/translation/v1/estimate`;
+export const TRANSLATE_COURSE_URL = (packageSessionId: string) =>
+    `${AI_SERVICE_BASE_URL}/translation/v1/course/${packageSessionId}`;
+export const TRANSLATION_JOB_URL = (jobId: string) =>
+    `${AI_SERVICE_BASE_URL}/translation/v1/job/${jobId}`;
+export const TRANSLATION_JOB_APPROVE_URL = (jobId: string) =>
+    `${AI_SERVICE_BASE_URL}/translation/v1/job/${jobId}/approve`;
+
+// Content translation — admin-core side (review sidecar reads/writes).
+// See admin_core_service features/translation TranslationAdminController.
+export const TRANSLATION_STATUS_URL = `${BASE_URL}/admin-core-service/translations/v1/status`;
+export const TRANSLATION_ITEMS_URL = `${BASE_URL}/admin-core-service/translations/v1/items`;
+export const TRANSLATION_ITEM_STATE_URL = `${BASE_URL}/admin-core-service/translations/v1/item/state`;
+
 // Institute AI Settings APIs
 export const GET_INSTITUTE_AI_SETTINGS = (instituteId: string) =>
     `${AI_SERVICE_BASE_URL}/institute/ai-settings/v1/get?institute_id=${instituteId}`;

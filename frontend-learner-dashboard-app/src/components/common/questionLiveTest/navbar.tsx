@@ -645,7 +645,7 @@ export function Navbar({
                                 {time}
                               </span>
                               {index < array.length - 1 && (
-                                <span className="absolute -right-2.5 text-lg">
+                                <span className="absolute -end-2.5 text-lg">
                                   :
                                 </span>
                               )}

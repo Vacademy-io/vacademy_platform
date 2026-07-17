@@ -132,7 +132,7 @@ export const LayoutContainer = ({
             {/* Docked Chatbot Side Panel - fixed position on the right */}
             {showDockedPanel && (
                 <div
-                    className="fixed top-0 right-0 h-screen z-50"
+                    className="fixed top-0 end-0 h-screen z-50"
                     style={{ width: panelWidth }}
                 >
                     <ChatbotSidePanel />

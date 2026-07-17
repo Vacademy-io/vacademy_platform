@@ -472,7 +472,7 @@ export function ChapterPathView({
       <div className="relative flex flex-col items-center gap-5 py-4">
         {/* Centered vertical spine */}
         <div
-          className="absolute bottom-6 left-1/2 top-6 w-1 -translate-x-1/2 rounded-full bg-play-surface"
+          className="absolute bottom-6 start-1/2 top-6 w-1 -translate-x-1/2 rounded-full bg-play-surface"
           aria-hidden="true"
         />
         {nodes.map((node) => {

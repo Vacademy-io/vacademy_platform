@@ -48,18 +48,18 @@ export const CertificateDialog = ({
                     <div className="space-y-2 text-sm">
                         <div>
                             <span className="font-medium text-gray-700">Course:</span>
-                            <span className="ml-2">{toTitleCase(courseTitle)}</span>
+                            <span className="ms-2">{toTitleCase(courseTitle)}</span>
                         </div>
                         {isSessionVisible && (
                             <div>
                                 <span className="font-medium text-gray-700">Session:</span>
-                                <span className="ml-2">{toTitleCase(sessionLabel || "")}</span>
+                                <span className="ms-2">{toTitleCase(sessionLabel || "")}</span>
                             </div>
                         )}
                         {isLevelVisible && (
                             <div>
                                 <span className="font-medium text-gray-700">Level:</span>
-                                <span className="ml-2">{toTitleCase(levelLabel || "")}</span>
+                                <span className="ms-2">{toTitleCase(levelLabel || "")}</span>
                             </div>
                         )}
                     </div>

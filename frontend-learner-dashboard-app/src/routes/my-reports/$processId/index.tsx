@@ -140,7 +140,7 @@ function RouteComponent() {
     return (
       <LayoutContainer className="!m-0 !p-0 max-w-none">
         <div className="relative">
-          <div className="absolute right-4 top-4 z-10">
+          <div className="absolute end-4 top-4 z-10">
             <button
               onClick={() => downloadReportPdf(detail.process_id)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-3 py-1.5 text-sm font-medium text-neutral-700 shadow-sm transition-colors hover:bg-neutral-50"

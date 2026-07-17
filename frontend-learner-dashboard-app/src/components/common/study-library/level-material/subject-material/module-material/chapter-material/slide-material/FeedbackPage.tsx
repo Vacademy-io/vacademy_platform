@@ -9,10 +9,12 @@ import axios from "axios";
 import { useRouter } from "@tanstack/react-router";
 import { getUserId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { urlInstituteDetails } from "@/constants/urls";
+import { useTranslation } from "react-i18next";
 
 const MySwal = withReactContent(Swal);
 
 export default function FeedbackPage() {
+  const { t } = useTranslation("studyContent");
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
   const [comments, setComments] = useState("");
@@ -35,7 +37,7 @@ export default function FeedbackPage() {
 
       if (!instituteId || !courseId) {
         console.error("Missing instituteId or courseId");
-        MySwal.fire("Missing Info", "Institute ID or Course ID is missing.", "warning");
+        MySwal.fire(t("feedback.missingInfoTitle"), t("feedback.missingInstituteOrCourse"), "warning");
         return;
       }
 
@@ -62,15 +64,15 @@ export default function FeedbackPage() {
           setPackageSessionId(matched.id);
         } else {
           console.error("❌ No matching packageSessionId found");
-          MySwal.fire("Error", "Course is not linked to any session.", "error");
+          MySwal.fire(t("feedback.errorTitle"), t("feedback.courseNotLinked"), "error");
         }
       } catch (error) {
         console.error("❌ Failed to fetch package session:", error);
-        MySwal.fire("Oops!", "Unable to fetch session data", "error");
+        MySwal.fire(t("feedback.oopsTitle"), t("feedback.unableToFetchSession"), "error");
       }
 
       if (!id) {
-        MySwal.fire("Missing Info", "User ID is missing", "warning");
+        MySwal.fire(t("feedback.missingInfoTitle"), t("feedback.userIdMissing"), "warning");
       }
     };
 
@@ -81,12 +83,12 @@ export default function FeedbackPage() {
     e.preventDefault();
 
     if (!userId || !packageSessionId) {
-      await MySwal.fire("Error", "Cannot submit feedback — user or session ID is missing.", "error");
+      await MySwal.fire(t("feedback.errorTitle"), t("feedback.cannotSubmit"), "error");
       return;
     }
 
     if (!rating) {
-      await MySwal.fire("Incomplete", "Please select a rating.", "warning");
+      await MySwal.fire(t("feedback.incompleteTitle"), t("feedback.selectRating"), "warning");
       return;
     }
 
@@ -107,8 +109,8 @@ export default function FeedbackPage() {
       await submitFeedback(payload);
 
       await MySwal.fire({
-        title: "Thank you!",
-        text: "Thanks for sharing your thoughts — it means a lot to us!",
+        title: t("feedback.thankYouTitle"),
+        text: t("feedback.thankYouText"),
         icon: "success",
         confirmButtonColor: "#2563eb", // design-lint-ignore: SweetAlert2 SDK color prop, not a Tailwind class
       });
@@ -120,11 +122,11 @@ export default function FeedbackPage() {
       const errorMessage = (() => {
         if (typeof error === "object" && error !== null && "response" in error) {
           const response = (error as { response?: { data?: { message?: string } } }).response;
-          return response?.data?.message || "Something went wrong. Please try again.";
+          return response?.data?.message || t("feedback.somethingWentWrong");
         }
-        return "Something went wrong. Please try again.";
+        return t("feedback.somethingWentWrong");
       })();
-      await MySwal.fire("Oops!", errorMessage, "error");
+      await MySwal.fire(t("feedback.oopsTitle"), errorMessage, "error");
     } finally {
       setLoading(false);
     }
@@ -133,16 +135,16 @@ export default function FeedbackPage() {
   return (
     <div className="w-full min-h-[calc(100vh-150px)] bg-gradient-to-br px-6 py-10 overflow-y-auto"> {/* design-lint-ignore: viewport calc with fixed offset, no token equivalent */}
       <div className="mb-6">
-        <h2 className="text-2xl font-bold mb-2">We Value Your Feedback</h2>
+        <h2 className="text-2xl font-bold mb-2">{t("feedback.heading")}</h2>
         <p className="text-base text-gray-600">
-          Thank you for taking the time to provide feedback on your course experience!
+          {t("feedback.subheading")}
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
         <div>
-          <label className="block text-lg font-semibold text-gray-700 mb-2">Overall Rating</label>
-          <div className="flex gap-2" role="radiogroup" aria-label="Overall rating">
+          <label className="block text-lg font-semibold text-gray-700 mb-2">{t("feedback.overallRating")}</label>
+          <div className="flex gap-2" role="radiogroup" aria-label={t("feedback.overallRatingAria")}>
             {[1, 2, 3, 4, 5].map((star) => (
               <Star
                 key={star}
@@ -152,7 +154,7 @@ export default function FeedbackPage() {
                 tabIndex={0}
                 role="radio"
                 aria-checked={rating === star}
-                aria-label={`${star} star${star > 1 ? "s" : ""}`}
+                aria-label={t("feedback.starCount", { count: star })}
                 onMouseEnter={() => setHover(star)}
                 onMouseLeave={() => setHover(0)}
                 onClick={() => setRating(star)}
@@ -169,11 +171,11 @@ export default function FeedbackPage() {
         </div>
 
         <div>
-          <label className="block text-lg font-semibold text-gray-700 mb-2">Share Your Thoughts</label>
+          <label className="block text-lg font-semibold text-gray-700 mb-2">{t("feedback.shareYourThoughts")}</label>
           <textarea
             value={comments}
             onChange={(e) => setComments(e.target.value)}
-            placeholder="We’d love to hear about your experience! What did you enjoy? What could be improved?"
+            placeholder={t("feedback.commentsPlaceholder")}
             className="w-full min-h-reg-150 p-4 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-200 resize-none"
           />
         </div>
@@ -185,7 +187,7 @@ export default function FeedbackPage() {
           type="submit"
           disable={loading || rating === 0}
         >
-          {loading ? "Submitting..." : "Submit Feedback"}
+          {loading ? t("feedback.submitting") : t("feedback.submit")}
         </MyButton>
       </form>
     </div>

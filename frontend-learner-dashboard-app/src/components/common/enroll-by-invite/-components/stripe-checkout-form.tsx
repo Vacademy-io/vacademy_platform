@@ -141,7 +141,7 @@ export const StripeCheckoutForm = ({
           />
         </div>
         {error && (
-          <div className="mt-5 p-4 bg-red-50 border border-red-200 rounded-lg text-left">
+          <div className="mt-5 p-4 bg-red-50 border border-red-200 rounded-lg text-start">
             <strong className="text-red-800">❌ Error</strong>
             <p className="text-red-700 text-sm mt-1">{error}</p>
           </div>

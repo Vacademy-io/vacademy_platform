@@ -885,7 +885,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
             className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 h-8 px-3"
             title="Print Worksheet"
           >
-            <Printer className="h-3 w-3 mr-1" />
+            <Printer className="h-3 w-3 me-1" />
             Print
           </Button>
         )}
@@ -1010,7 +1010,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                       key={i}
                       onClick={() => !hasAnswered && setSelectedAnswer(i)}
                       disabled={hasAnswered}
-                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-left text-sm font-medium transition-all ${cls} disabled:cursor-default`}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border text-start text-sm font-medium transition-all ${cls} disabled:cursor-default`}
                     >
                       <span className={`w-6 h-6 rounded-full border flex items-center justify-center text-xs font-bold shrink-0 ${
                         hasAnswered && isCorrect ? 'border-green-400 text-green-400' :
@@ -1041,7 +1041,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                   onClick={handleDismissQuestion}
                   className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold"
                 >
-                  Continue <Play className="h-3.5 w-3.5 ml-2" />
+                  Continue <Play className="h-3.5 w-3.5 ms-2" />
                 </Button>
               )}
             </div>
@@ -1083,7 +1083,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                   className="relative z-1"
                 />
               </div>
-              <span className="text-white text-sm font-mono min-w-16 text-right">
+              <span className="text-white text-sm font-mono min-w-16 text-end">
                 {formatTime(currentTime)} / {formatTime(duration)}
               </span>
             </div>
@@ -1173,16 +1173,16 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                     className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 h-8px-3"
                     title="Playback speed"
                   >
-                    <Gear className="h-3 w-3 mr-1" />
+                    <Gear className="h-3 w-3 me-1" />
                     {playbackRate}x
                   </Button>
                   {showPlaybackSpeedMenu && (
-                    <div className="absolute bottom-full right-0 mb-2 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-24">
+                    <div className="absolute bottom-full end-0 mb-2 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-10 min-w-24">
                       {playbackSpeeds.map((speed) => (
                         <button
                           key={speed}
                           onClick={() => handlePlaybackRateChange(speed)}
-                          className={`w-fullpx-4 py-2 text-left text-sm hover: bg-gray -700 first: rounded-t -lg last: rounded-b -lg ${playbackRate === speed ? "bg-gray-700 text-primary" : "text-white"} `}
+                          className={`w-fullpx-4 py-2 text-start text-sm hover: bg-gray -700 first: rounded-t -lg last: rounded-b -lg ${playbackRate === speed ? "bg-gray-700 text-primary" : "text-white"} `}
                         >
                           {speed}x
                         </button>
@@ -1204,7 +1204,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                     }`}
                     title={questionsEnabled ? 'Disable quiz questions' : 'Enable quiz questions'}
                   >
-                    <Question className="h-3.5 w-3.5 mr-1" />
+                    <Question className="h-3.5 w-3.5 me-1" />
                     Quiz {questionsEnabled ? 'ON' : 'OFF'}
                   </Button>
                 )}
@@ -1241,7 +1241,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                 className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700 disabled:opacity-50"
                 title="Previous"
               >
-                <CaretLeft className="h-4 w-4 mr-1" />
+                <CaretLeft className="h-4 w-4 me-1" />
                 Previous
               </Button>
 
@@ -1258,7 +1258,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
                 title="Next"
               >
                 Next
-                <CaretRight className="h-4 w-4 ml-1" />
+                <CaretRight className="h-4 w-4 ms-1" />
               </Button>
             </div>
 
@@ -1285,7 +1285,7 @@ export const AIVideoPlayer: React.FC<AIVideoPlayerProps> = ({
               className="bg-gray-800 text-white border-gray-700 hover:bg-gray-700"
               title="Reset"
             >
-              <ArrowCounterClockwise className="h-4 w-4 mr-1" />
+              <ArrowCounterClockwise className="h-4 w-4 me-1" />
               Reset
             </Button>
             <span className="text-gray-400 text-sm">

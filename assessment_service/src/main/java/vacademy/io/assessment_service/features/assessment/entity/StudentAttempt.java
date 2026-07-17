@@ -75,6 +75,11 @@ public class StudentAttempt {
     @Column(name = "report_last_release_date")
     private Date reportLastReleaseDate;
 
+    // Which content locale the attempt was served in (i18n Phase 1). Nullable,
+    // additive: legacy rows and pre-i18n clients keep NULL (canonical English).
+    @Column(name = "content_locale")
+    private String contentLocale;
+
     @ManyToOne
     @JoinColumn(name = "set_id")
     private AssessmentSetMapping assessmentSetMapping;

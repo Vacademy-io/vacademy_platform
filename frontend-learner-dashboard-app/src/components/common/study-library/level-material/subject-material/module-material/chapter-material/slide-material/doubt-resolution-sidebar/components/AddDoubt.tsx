@@ -5,6 +5,7 @@ import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { useAddDoubt } from "../services/AddDoubt";
 import { ArrowUp } from "@phosphor-icons/react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { useMediaRefsStore } from "@/stores/mediaRefsStore";
 import { useEffect, useState } from "react";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
@@ -26,6 +27,7 @@ export const AddDoubt = ({
     timestamp, 
 }: AddDoubtProps) => {
 
+    const { t } = useTranslation("studyContent");
     const {activeItem, currentPackageSessionId} = useContentStore();
     const addDoubt = useAddDoubt()
     const { currentPdfPage, currentYoutubeTime, currentUploadedVideoTime } = useMediaRefsStore();
@@ -101,7 +103,7 @@ export const AddDoubt = ({
                 }
             },
             onError: () => {
-                toast.error("Error adding doubt")
+                toast.error(t("doubts.errorAdding"))
             }
         })
     }

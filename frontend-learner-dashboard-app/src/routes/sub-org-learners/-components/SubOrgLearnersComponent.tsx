@@ -437,7 +437,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
               enableSearch={true}
               placeholder="+1 234 567 8900"
               inputClass="!w-full h-10 !rounded-md !border-input"
-              buttonClass="!rounded-l-md !border-input"
+              buttonClass="!rounded-s-md !border-input"
               countryCodeEditable={false}
               enableAreaCodes={false}
               disableCountryGuess={false}
@@ -475,17 +475,17 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={loadMembers} variant="outline" size="sm">
-            <ArrowsClockwise className="w-4 h-4 mr-2" />
+            <ArrowsClockwise className="w-4 h-4 me-2" />
             Refresh
           </Button>
           <Button variant="outline" onClick={() => setIsBulkUploadOpen(true)}>
-            <UploadSimple className="w-4 h-4 mr-2" />
+            <UploadSimple className="w-4 h-4 me-2" />
             Bulk Upload
           </Button>
           <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
             <DialogTrigger asChild>
               <Button>
-                <Plus className="w-4 h-4 mr-2" />
+                <Plus className="w-4 h-4 me-2" />
                 Add Staff
               </Button>
             </DialogTrigger>
@@ -540,7 +540,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                         value={formData.mobile_number}
                         onChange={(phone) => setFormData((prev: any) => ({ ...prev, mobile_number: phone.startsWith('+') ? phone : `+${phone}` }))}
                         inputClass="!w-full h-10 !rounded-md !border-input"
-                        buttonClass="!rounded-l-md !border-input"
+                        buttonClass="!rounded-s-md !border-input"
                       />
                     </div>
                   </>
@@ -618,7 +618,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
             {selectedMembers.length > 0 && (
               <>
                 <Button variant="destructive" size="sm" onClick={openTerminateDialog} className="text-white">
-                  <Trash className="w-4 h-4 mr-2 text-white" />
+                  <Trash className="w-4 h-4 me-2 text-white" />
                   Terminate Selected ({selectedMembers.length})
                 </Button>
 
@@ -644,7 +644,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                       >
                         {isTerminating ? (
                           <>
-                            <SpinnerGap className="w-4 h-4 mr-2 animate-spin" />
+                            <SpinnerGap className="w-4 h-4 me-2 animate-spin" />
                             Terminating...
                           </>
                         ) : (
@@ -662,7 +662,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
-              <span className="ml-3 text-gray-600">Loading staff...</span>
+              <span className="ms-3 text-gray-600">Loading staff...</span>
             </div>
           ) : members.length === 0 ? (
             <div className="text-center py-8">
@@ -778,7 +778,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-12 sticky left-0 bg-white z-10">
+                        <TableHead className="w-12 sticky start-0 bg-white z-10">
                           <Checkbox
                             checked={selectedMembers.length === members.length && members.length > 0}
                             onCheckedChange={handleSelectAll}
@@ -790,13 +790,13 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                             {capitalizeFieldName(col.field_name)}
                           </TableHead>
                         ))}
-                        <TableHead className="sticky right-0 bg-white z-10">Status</TableHead>
+                        <TableHead className="sticky end-0 bg-white z-10">Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {members.map((member) => (
                         <TableRow key={member.id}>
-                          <TableCell className="sticky left-0 bg-white z-10">
+                          <TableCell className="sticky start-0 bg-white z-10">
                             <Checkbox
                               checked={selectedMembers.includes(member.user_id)}
                               onCheckedChange={(checked) => handleSelectMember(member.user_id, checked as boolean)}
@@ -808,7 +808,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                               {getCustomFieldValue(member, col.field_key, col.field_name)}
                             </TableCell>
                           ))}
-                          <TableCell className="sticky right-0 bg-white z-10">
+                          <TableCell className="sticky end-0 bg-white z-10">
                             <Badge className={getStatusColor(member.status)}>
                               {member.status}
                             </Badge>

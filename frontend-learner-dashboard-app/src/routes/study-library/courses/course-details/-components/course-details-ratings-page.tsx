@@ -453,11 +453,11 @@ export function CourseDetailsRatingsComponent({
 
             {/* Floating orb effects */}
             <div className={cn(
-                "absolute top-0 right-0 w-16 h-16 bg-primary-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 -translate-y-3 translate-x-6",
+                "absolute top-0 end-0 w-16 h-16 bg-primary-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 -translate-y-3 translate-x-6",
                 "[.ui-play_&]:hidden"
             )}></div>
             <div className={cn(
-                "absolute bottom-0 left-0 w-20 h-20 bg-yellow-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 translate-y-3 -translate-x-6",
+                "absolute bottom-0 start-0 w-20 h-20 bg-yellow-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 translate-y-3 -translate-x-6",
                 "[.ui-play_&]:hidden"
             )}></div>
 
@@ -550,7 +550,7 @@ export function CourseDetailsRatingsComponent({
                             </button>
                         ))}
                         <span className={cn(
-                            "ml-1 text-caption text-neutral-500",
+                            "ms-1 text-caption text-neutral-500",
                             "[.ui-play_&]:text-play-muted-deep [.ui-play_&]:font-bold"
                         )}>
                             {selectedRating
@@ -606,7 +606,7 @@ export function CourseDetailsRatingsComponent({
 
                             <div className="relative grid grid-cols-1 lg:grid-cols-5 gap-3">
                                 {/* Rating Score */}
-                                <div className="lg:col-span-2 text-center lg:text-left space-y-1.5">
+                                <div className="lg:col-span-2 text-center lg:text-start space-y-1.5">
                                     <div className="inline-flex flex-col items-center lg:items-start space-y-1">
                                         <div className="text-2xl sm:text-3xl font-bold text-gray-900 leading-none">
                                             {overallRatingData?.average_rating !==
@@ -699,7 +699,7 @@ export function CourseDetailsRatingsComponent({
                                                         )}
                                                     />
                                                 </div>
-                                                <span className="text-xs font-bold text-gray-900 min-w-10 text-right">
+                                                <span className="text-xs font-bold text-gray-900 min-w-10 text-end">
                                                     {percent}%
                                                 </span>
                                             </div>

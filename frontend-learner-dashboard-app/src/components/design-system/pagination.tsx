@@ -119,11 +119,11 @@ export function MyPagination({ currentPage, totalPages, onPageChange }: Paginati
                         inputType="text"
                         input={pageInput}
                         onChangeFunction={handlePageInputChange}
-                        className="h-7 w-12 pr-7"
+                        className="h-7 w-12 pe-7"
                     />
                     <KeyReturn
                         weight="fill"
-                        className={`absolute right-2 top-1/4 size-5 cursor-pointer text-primary-500 ${
+                        className={`absolute end-2 top-1/4 size-5 cursor-pointer text-primary-500 ${
                             (pageInput.length || (submittedPage.length && !pageInput.length)) &&
                             submittedPage !== pageInput
                                 ? "visible"
@@ -132,7 +132,7 @@ export function MyPagination({ currentPage, totalPages, onPageChange }: Paginati
                         onClick={handlePageInputSubmit}
                     />
                     <XCircle
-                        className={`absolute right-2 top-1/4 size-5 cursor-pointer text-neutral-400 ${
+                        className={`absolute end-2 top-1/4 size-5 cursor-pointer text-neutral-400 ${
                             pageInput === submittedPage && pageInput !== "" ? "visible" : "hidden"
                         }`}
                         onClick={handleClearPageInput}

@@ -135,7 +135,7 @@ export function ReviewItem({
                 <div className="absolute inset-0 bg-gradient-to-br from-primary-500/5 to-transparent opacity-0 group-hover/review:opacity-100 transition-opacity duration-300 rounded-md"></div>
 
                 {/* Floating orb effect */}
-                <div className="absolute top-0 right-0 w-10 h-10 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover/review:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
+                <div className="absolute top-0 end-0 w-10 h-10 bg-primary-100/20 rounded-full blur-2xl opacity-0 group-hover/review:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3"></div>
 
                 <div className="relative">
                     {/* User Info */}
@@ -239,7 +239,7 @@ export function ReviewItem({
                 </div>
 
                 {/* Progress indicator */}
-                <div className="absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover/review:w-full transition-all duration-500 ease-out rounded-b-md"></div>
+                <div className="absolute bottom-0 start-0 h-0.5 bg-gradient-to-r from-primary-400 to-primary-600 w-0 group-hover/review:w-full transition-all duration-500 ease-out rounded-b-md"></div>
             </div>
 
             {/* Delete Confirmation Dialog */}

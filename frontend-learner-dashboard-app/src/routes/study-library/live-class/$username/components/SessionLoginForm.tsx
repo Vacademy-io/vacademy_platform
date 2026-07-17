@@ -403,10 +403,10 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
                           id="username"
                           type="text"
                           placeholder="Enter your username"
-                          className="h-11 pr-10"
+                          className="h-11 pe-10"
                           disabled={getUserDetailsMutation.isPending}
                         />
-                        <Shield className="absolute right-3 top-3 w-4 h-4 text-gray-400" />
+                        <Shield className="absolute end-3 top-3 w-4 h-4 text-gray-400" />
                       </div>
                     </FormControl>
                     <FormMessage />
@@ -481,7 +481,7 @@ export const SessionLoginForm: React.FC<SessionLoginFormProps> = ({
             >
               {isVerifyingOtp ? (
                 <>
-                  <ArrowsClockwise className="w-4 h-4 mr-2 animate-spin" />
+                  <ArrowsClockwise className="w-4 h-4 me-2 animate-spin" />
                   Verifying...
                 </>
               ) : (

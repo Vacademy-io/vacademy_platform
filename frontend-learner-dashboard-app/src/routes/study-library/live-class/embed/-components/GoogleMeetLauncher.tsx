@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { ArrowSquareOut } from "@phosphor-icons/react";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
@@ -22,6 +23,7 @@ interface Props {
  * Meet in a new tab (web) or the Meet app (native, via Capacitor Browser).
  */
 export default function GoogleMeetLauncher({ scheduleId, fallbackUrl }: Props) {
+  const { t } = useTranslation("studyContent");
   const [joinUrl, setJoinUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
@@ -52,7 +54,7 @@ export default function GoogleMeetLauncher({ scheduleId, fallbackUrl }: Props) {
           if (fallbackUrl) {
             setJoinUrl(fallbackUrl);
           } else {
-            toast.error("Failed to join the meeting. Please try again.");
+            toast.error(t("liveClass.failedToJoinMeeting"));
             fetchedRef.current = false; // allow retry
           }
         }
@@ -79,7 +81,7 @@ export default function GoogleMeetLauncher({ scheduleId, fallbackUrl }: Props) {
   if (accessDenied) {
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
-        You don&apos;t have access to this session. Please make sure you&apos;re enrolled and signed in.
+        {t("liveClass.noAccessToSession")}
       </div>
     );
   }
@@ -87,7 +89,7 @@ export default function GoogleMeetLauncher({ scheduleId, fallbackUrl }: Props) {
   if (!joinUrl) {
     return (
       <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-yellow-700">
-        This Google Meet is still being set up. Please try again in a moment.
+        {t("liveClass.meetBeingSetUp")}
       </div>
     );
   }
@@ -95,15 +97,15 @@ export default function GoogleMeetLauncher({ scheduleId, fallbackUrl }: Props) {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center gap-4 p-8">
       <div className="space-y-3 text-center">
-        <h3 className="text-lg font-semibold">Live Class is Ready</h3>
+        <h3 className="text-lg font-semibold">{t("liveClass.meetReady")}</h3>
         <p className="text-sm text-muted-foreground">
           {Capacitor.getPlatform() === "web"
-            ? "Click below to join Google Meet in a new tab."
-            : "Tap below to join Google Meet."}
+            ? t("liveClass.meetClickToJoin")
+            : t("liveClass.meetTapToJoin")}
         </p>
         <Button onClick={() => openMeeting(joinUrl)} className="gap-2">
           <ArrowSquareOut size={18} />
-          Join Google Meet
+          {t("liveClass.joinGoogleMeet")}
         </Button>
       </div>
     </div>

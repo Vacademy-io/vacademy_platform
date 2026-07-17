@@ -149,11 +149,11 @@ export function AssessmentPreview() {
         {/* Navbar with Timer */}
         <div className="sticky top-0 z-20 bg-white border-b">
           <div className="flex bg-primary-50 items-center justify-center sm:flex-row  p-4">
-            <h1 className="text-base ml-5 font-semibold">Preview</h1>
+            <h1 className="text-base ms-5 font-semibold">Preview</h1>
             {/* <h1 className="text-base font-semibold">
             {assessmentData ? assessmentData.name : "Loading..."}
           </h1> */}
-            <div className="flex items-center justify-center space-x-4 mr-14 w-full">
+            <div className="flex items-center justify-center space-x-4 me-14 w-full">
               {formatTime(timeLeft)
                 .split(":")
                 .map((time, index, array) => (
@@ -162,7 +162,7 @@ export function AssessmentPreview() {
                       {time}
                     </span>
                     {index < array.length - 1 && (
-                      <span className="absolute -right-2.5 text-lg">:</span>
+                      <span className="absolute -end-2.5 text-lg">:</span>
                     )}
                   </div>
                 ))}
@@ -218,7 +218,7 @@ export function AssessmentPreview() {
                   <span className="text-sm text-gray-500">
                     Question {idx + 1}
                   </span>
-                  <span className="text-sm text-gray-500 ml-auto">
+                  <span className="text-sm text-gray-500 ms-auto">
                     {
                       calculateMarkingScheme(question.marking_json).data
                         .totalMark

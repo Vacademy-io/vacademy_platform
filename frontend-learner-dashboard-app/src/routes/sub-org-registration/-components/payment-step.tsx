@@ -714,7 +714,7 @@ const PaymentStep = ({
               onClick={handleRetryFromInProgress}
               className="w-full sm:w-auto"
             >
-              <CreditCard className="mr-2 size-4" />
+              <CreditCard className="me-2 size-4" />
               Complete payment
             </MyButton>
           </div>
@@ -808,7 +808,7 @@ const PaymentStep = ({
               disable={isProcessing}
               className="w-full sm:w-auto"
             >
-              <ArrowLeft className="mr-2 size-4" />
+              <ArrowLeft className="me-2 size-4" />
               Back
             </MyButton>
           ) : (
@@ -875,7 +875,7 @@ const PaymentStep = ({
                 }}
                 disable={isProcessing || cashfreeInitLoading}
               >
-                <ArrowLeft className="mr-1 size-3.5" />
+                <ArrowLeft className="me-1 size-3.5" />
                 Change plan
               </MyButton>
             )}
@@ -932,7 +932,7 @@ const PaymentStep = ({
                 }}
                 disable={cashfreeInitLoading}
               >
-                <ArrowCounterClockwise className="mr-1 size-3.5" />
+                <ArrowCounterClockwise className="me-1 size-3.5" />
                 Try again
               </MyButton>
             </div>
@@ -954,7 +954,7 @@ const PaymentStep = ({
           >
             {isProcessing ? (
               <>
-                <SpinnerGap className="mr-2 size-4 animate-spin" />
+                <SpinnerGap className="me-2 size-4 animate-spin" />
                 Processing...
               </>
             ) : (

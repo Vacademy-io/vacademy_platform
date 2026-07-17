@@ -11,6 +11,8 @@ import vacademy.io.admin_core_service.features.slide.dto.SlideDetailProjection;
 import vacademy.io.admin_core_service.features.study_library.dto.ChapterDTOWithDetails;
 import vacademy.io.admin_core_service.features.study_library.dto.ModuleDTOWithDetails;
 import vacademy.io.admin_core_service.features.study_library.service.StudyLibraryService;
+import vacademy.io.admin_core_service.features.translation.dto.AvailableLanguagesResponseDTO;
+import vacademy.io.admin_core_service.features.translation.service.ContentTranslationService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.admin_core_service.config.cache.ClientCacheable;
 import vacademy.io.admin_core_service.config.cache.CacheScope;
@@ -26,8 +28,11 @@ public class LearnerStudyLibraryController {
     @Autowired
     private StudyLibraryService studyLibraryService;
 
+    @Autowired
+    private ContentTranslationService contentTranslationService;
+
     @GetMapping("/init-details")
-    @ClientCacheable(maxAgeSeconds = 0, scope = CacheScope.NO_STORE, varyHeaders = {"X-User-Id", "X-Package-Session-Id"})
+    @ClientCacheable(maxAgeSeconds = 0, scope = CacheScope.NO_STORE, varyHeaders = {"X-User-Id", "X-Package-Session-Id", "Accept-Language"})
     public ResponseEntity<List<LearnerSubjectProjection>> getLearnerStudyLibraryInitDetails(
             @RequestParam String packageSessionId,
             @RequestAttribute("user") CustomUserDetails user) {
@@ -35,21 +40,34 @@ public class LearnerStudyLibraryController {
     }
 
     @GetMapping("/modules-with-chapters")
-    @ClientCacheable(maxAgeSeconds = 0, scope = CacheScope.NO_STORE, varyHeaders = {"X-User-Id", "X-Package-Session-Id"})
+    @ClientCacheable(maxAgeSeconds = 0, scope = CacheScope.NO_STORE, varyHeaders = {"X-User-Id", "X-Package-Session-Id", "Accept-Language"})
     public ResponseEntity<List<LearnerModuleDTOWithDetails>> modulesWithChapters(@RequestParam("subjectId") String subjectId, @RequestParam("packageSessionId") String packageSessionId, @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(learnerStudyLibraryService.getModulesDetailsWithChapters(subjectId, packageSessionId, user));
     }
 
     @GetMapping("/get-slides/{chapterId}")
-    @ClientCacheable(maxAgeSeconds = 0, scope = CacheScope.NO_STORE, varyHeaders = {"X-User-Id"})
+    @ClientCacheable(maxAgeSeconds = 0, scope = CacheScope.NO_STORE, varyHeaders = {"X-User-Id", "Accept-Language"})
     public ResponseEntity<List<SlideDetailProjection>> getSlidesByChapterId(@PathVariable String chapterId, @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(learnerStudyLibraryService.getSlidesByChapterId(chapterId, user));
     }
 
     @GetMapping("/slides")
-    @ClientCacheable(maxAgeSeconds = 0, scope = CacheScope.NO_STORE, varyHeaders = {"X-User-Id"})
+    @ClientCacheable(maxAgeSeconds = 0, scope = CacheScope.NO_STORE, varyHeaders = {"X-User-Id", "Accept-Language"})
     public ResponseEntity<List<LearnerSlidesDetailDTO>> getLearnerSlidesByChapterId(@RequestParam String chapterId, @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(learnerStudyLibraryService.getLearnerSlides(chapterId, user));
+    }
+
+    /**
+     * Locales with learner-visible translated content for the package session
+     * (from content_translation_coverage; empty list when none). Additive,
+     * backward-compatible — lets the learner app offer a language picker.
+     */
+    @GetMapping("/available-languages")
+    public ResponseEntity<AvailableLanguagesResponseDTO> getAvailableLanguages(
+            @RequestParam String packageSessionId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(new AvailableLanguagesResponseDTO(
+                packageSessionId, contentTranslationService.getAvailableLanguages(packageSessionId)));
     }
 
     @GetMapping("/chapters-with-slides")

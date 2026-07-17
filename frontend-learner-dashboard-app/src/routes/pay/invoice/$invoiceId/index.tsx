@@ -237,7 +237,7 @@ function InvoicePaymentPage() {
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-4 w-3/4" />
               <Skeleton className="h-px w-full mt-4" />
-              <Skeleton className="h-5 w-32 ml-auto" />
+              <Skeleton className="h-5 w-32 ms-auto" />
               <Skeleton className="h-10 w-full mt-4" />
             </div>
           </div>
@@ -335,13 +335,13 @@ function InvoicePaymentPage() {
                 <span className="col-span-5 text-caption font-medium text-muted-foreground">
                   Description
                 </span>
-                <span className="col-span-2 text-caption font-medium text-muted-foreground text-right">
+                <span className="col-span-2 text-caption font-medium text-muted-foreground text-end">
                   Qty
                 </span>
-                <span className="col-span-2 text-caption font-medium text-muted-foreground text-right">
+                <span className="col-span-2 text-caption font-medium text-muted-foreground text-end">
                   Unit
                 </span>
-                <span className="col-span-3 text-caption font-medium text-muted-foreground text-right">
+                <span className="col-span-3 text-caption font-medium text-muted-foreground text-end">
                   Amount
                 </span>
               </div>
@@ -350,7 +350,7 @@ function InvoicePaymentPage() {
                 <span className="text-caption font-medium text-muted-foreground">
                   Description
                 </span>
-                <span className="text-caption font-medium text-muted-foreground text-right">
+                <span className="text-caption font-medium text-muted-foreground text-end">
                   Amount
                 </span>
               </div>
@@ -382,13 +382,13 @@ function InvoicePaymentPage() {
                     <span className="col-span-5 text-body text-foreground break-words leading-snug">
                       {item.description}
                     </span>
-                    <span className="col-span-2 text-body text-muted-foreground text-right tabular-nums">
+                    <span className="col-span-2 text-body text-muted-foreground text-end tabular-nums">
                       {item.quantity}
                     </span>
-                    <span className="col-span-2 text-body text-muted-foreground text-right tabular-nums">
+                    <span className="col-span-2 text-body text-muted-foreground text-end tabular-nums">
                       {formatCurrency(item.unit_price, invoice.currency)}
                     </span>
-                    <span className="col-span-3 text-body text-foreground text-right tabular-nums font-medium">
+                    <span className="col-span-3 text-body text-foreground text-end tabular-nums font-medium">
                       {formatCurrency(item.amount, invoice.currency)}
                     </span>
                   </div>

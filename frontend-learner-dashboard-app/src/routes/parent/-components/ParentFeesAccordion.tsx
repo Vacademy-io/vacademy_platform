@@ -348,7 +348,7 @@ export function ParentFeesAccordion({ child }: ParentFeesAccordionProps) {
                     </p>
                   </div>
                   <div className="flex items-center gap-4 sm:gap-6 text-xs sm:text-sm">
-                    <div className="text-right">
+                    <div className="text-end">
                       <p className="uppercase text-caption text-muted-foreground tracking-wide">
                         Total Amount
                       </p>
@@ -356,7 +356,7 @@ export function ParentFeesAccordion({ child }: ParentFeesAccordionProps) {
                         {formatINR(totalExpected)}
                       </p>
                     </div>
-                    <div className="text-right">
+                    <div className="text-end">
                       <p className="uppercase text-caption text-muted-foreground tracking-wide">
                         Paid
                       </p>
@@ -490,10 +490,10 @@ function DuesTable({
             <TableHead className="w-10">#</TableHead>
             <TableHead>Fees</TableHead>
             <TableHead>Due Date</TableHead>
-            <TableHead className="text-right">Expected</TableHead>
-            <TableHead className="text-right">Discount</TableHead>
-            <TableHead className="text-right">Paid</TableHead>
-            <TableHead className="text-right font-semibold">Amt Due</TableHead>
+            <TableHead className="text-end">Expected</TableHead>
+            <TableHead className="text-end">Discount</TableHead>
+            <TableHead className="text-end">Paid</TableHead>
+            <TableHead className="text-end font-semibold">Amt Due</TableHead>
             <TableHead className="text-center">Status</TableHead>
           </TableRow>
         </TableHeader>
@@ -517,19 +517,19 @@ function DuesTable({
               <TableCell className="whitespace-nowrap">
                 {formatDueDate(item.due_date)}
               </TableCell>
-              <TableCell className="text-right">
+              <TableCell className="text-end">
                 {formatINR(item.amount_expected)}
               </TableCell>
               <TableCell
-                className="text-right"
+                className="text-end"
                 title={item.adjustment_reason || undefined}
               >
                 {formatINR(item.adjustment_amount)}
               </TableCell>
-              <TableCell className="text-right">
+              <TableCell className="text-end">
                 {formatINR(item.amount_paid)}
               </TableCell>
-              <TableCell className="text-right font-bold">
+              <TableCell className="text-end font-bold">
                 {formatINR(item.amount_due)}
               </TableCell>
               <TableCell className="text-center">
@@ -723,10 +723,10 @@ function ReceiptsTable({
           <TableRow className="bg-muted/40">
             <TableHead className="w-8"></TableHead>
             <TableHead>Date</TableHead>
-            <TableHead className="text-right">Amount</TableHead>
+            <TableHead className="text-end">Amount</TableHead>
             <TableHead className="text-center">Type</TableHead>
             <TableHead>Receipt No.</TableHead>
-            <TableHead className="text-right">Action</TableHead>
+            <TableHead className="text-end">Action</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -739,7 +739,7 @@ function ReceiptsTable({
                   className="cursor-pointer hover:bg-muted/50"
                   onClick={() => toggleExpand(invoice.invoice_id)}
                 >
-                  <TableCell className="w-8 pr-0">
+                  <TableCell className="w-8 pe-0">
                     {isExpanded ? (
                       <CaretUp size={16} className="text-muted-foreground" />
                     ) : (
@@ -749,7 +749,7 @@ function ReceiptsTable({
                   <TableCell className="whitespace-nowrap">
                     {formatReceiptDate(invoice.invoice_date)}
                   </TableCell>
-                  <TableCell className="text-right font-medium">
+                  <TableCell className="text-end font-medium">
                     {formatINR(invoice.amount_paid_now)}
                   </TableCell>
                   <TableCell className="text-center">
@@ -765,7 +765,7 @@ function ReceiptsTable({
                   <TableCell className="font-mono text-xs">
                     {invoice.invoice_number}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-end">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -842,7 +842,7 @@ function ReceiptsTable({
                                   <TableRow className="bg-muted/50">
                                     <TableHead className="text-xs">Description</TableHead>
                                     <TableHead className="text-xs">Fee Type</TableHead>
-                                    <TableHead className="text-xs text-right">Amount</TableHead>
+                                    <TableHead className="text-xs text-end">Amount</TableHead>
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -854,7 +854,7 @@ function ReceiptsTable({
                                       <TableCell className="text-sm text-muted-foreground">
                                         {item.fee_type_name || "—"}
                                       </TableCell>
-                                      <TableCell className="text-sm text-right font-medium">
+                                      <TableCell className="text-sm text-end font-medium">
                                         {formatINR(item.amount)}
                                       </TableCell>
                                     </TableRow>

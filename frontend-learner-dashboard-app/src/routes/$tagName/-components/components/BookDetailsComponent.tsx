@@ -145,7 +145,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                         <div className="relative aspect-[9/16] w-full max-w-reg-280 mx-auto md:max-w-none rounded-xl overflow-hidden shadow-2xl bg-gray-100 transition-transform duration-300 hover:shadow-3xl">
                             {/* Stock Indicator Overlay */}
                             {courseData.available_slots !== undefined && (
-                                <div className="absolute top-2 left-2 z-20 px-3 py-1.5 rounded-lg text-xs font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-2 border border-white/20">
+                                <div className="absolute top-2 start-2 z-20 px-3 py-1.5 rounded-lg text-xs font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-2 border border-white/20">
                                     {courseData.available_slots > 5 ? (
                                         <>
                                             <div className="w-2 h-2 rounded-full bg-green-500 shadow-glow-live-green" />
@@ -167,7 +167,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
 
                             {/* Share Button - top-right corner */}
                             {courseData.packageSessionId && (
-                                <div className="absolute top-2 right-2 z-20">
+                                <div className="absolute top-2 end-2 z-20">
                                     <ShareButton
                                         packageSessionId={courseData.packageSessionId}
                                         destinationUrl={window.location.href}
@@ -260,7 +260,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="h-9 w-9 hover:bg-white active:bg-gray-200 rounded-l-lg transition-all duration-150"
+                                                className="h-9 w-9 hover:bg-white active:bg-gray-200 rounded-s-lg transition-all duration-150"
                                                 onClick={async () => {
                                                     if (courseData.enrollInviteId) {
                                                         await updateQuantity(courseData.enrollInviteId, existingItem.quantity - 1);
@@ -275,7 +275,7 @@ export const BookDetailsComponent: React.FC<BookDetailsProps> = ({
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
-                                                className="h-9 w-9 hover:bg-white active:bg-gray-200 rounded-r-lg transition-all duration-150"
+                                                className="h-9 w-9 hover:bg-white active:bg-gray-200 rounded-e-lg transition-all duration-150"
                                                 onClick={async () => {
                                                     if (courseData.enrollInviteId) {
                                                         await updateQuantity(courseData.enrollInviteId, existingItem.quantity + 1);

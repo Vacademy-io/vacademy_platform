@@ -175,7 +175,7 @@ const EnrollmentPolicyDialog = ({
                                     {getActionIcon(action.type)}
                                 </div>
 
-                                <div className="flex-1 text-center sm:text-left space-y-1">
+                                <div className="flex-1 text-center sm:text-start space-y-1">
                                     <h4 className="font-bold text-gray-900 text-base">
                                         {action.type === "whatsapp" ? "WhatsApp Verification" : key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())}
                                     </h4>
@@ -255,7 +255,7 @@ const EnrollmentPolicyDialog = ({
                                 className="flex items-center gap-2 px-6 shadow-lg shadow-primary-500/30 hover:shadow-primary-500/40"
                             >
                                 <span>Upgrade Now</span>
-                                <ArrowSquareOut className="w-4 h-4 ml-2" />
+                                <ArrowSquareOut className="w-4 h-4 ms-2" />
                             </MyButton>
                         </div>
                     </div>
@@ -271,7 +271,7 @@ const EnrollmentPolicyDialog = ({
                     onClick={() => onOpenChange(false)}
                     className="w-full sm:w-auto order-2 sm:order-1"
                 >
-                    <X className="w-4 h-4 mr-2" />
+                    <X className="w-4 h-4 me-2" />
                     Close
                 </MyButton>
                 <MyButton
@@ -327,7 +327,7 @@ const EnrollmentPolicyDialog = ({
                                 className="flex items-center gap-2 px-6 shadow-lg shadow-primary-500/30 hover:shadow-primary-500/40"
                             >
                                 <span>{reenrollmentPolicy.upgradeOptions.paid_upgrade.text}</span>
-                                <ArrowSquareOut className="w-4 h-4 ml-2" />
+                                <ArrowSquareOut className="w-4 h-4 ms-2" />
                             </MyButton>
                         </div>
                     </div>
@@ -373,7 +373,7 @@ const EnrollmentPolicyDialog = ({
                                 className="flex items-center gap-2 px-6 shadow-lg shadow-primary-500/30 hover:shadow-primary-500/40"
                             >
                                 <span>{reenrollmentPolicy.upgradeOptions.paid_upgrade.text}</span>
-                                <ArrowSquareOut className="w-4 h-4 ml-2" />
+                                <ArrowSquareOut className="w-4 h-4 ms-2" />
                             </MyButton>
                         </div>
                     </div>

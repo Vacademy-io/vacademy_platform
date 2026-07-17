@@ -5,6 +5,7 @@ import { ModulesWithChapters } from "@/stores/study-library/use-modules-with-cha
 import { useEffect, useState } from "react";
 import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { useTranslation } from "react-i18next";
 
 interface ModulesProps {
     modules: ModulesWithChapters[] | null;
@@ -12,6 +13,7 @@ interface ModulesProps {
 
 export const Modules = ({modules: initialModules }:ModulesProps) => {
 
+    const { t } = useTranslation("studyContent");
     const [modules, setModules] = useState<ModulesWithChapters[] | null>(initialModules);
     const {open} = useSidebar();
 
@@ -24,7 +26,7 @@ export const Modules = ({modules: initialModules }:ModulesProps) => {
         {!modules?.length && (
             <div className="flex w-full h-screen-70 flex-col items-center justify-center gap-8 rounded-lg">
                     <EmptyModulesImage />
-                    <div>No {getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules)} have been added yet.</div>
+                    <div>{t("modules.emptyState", { modules: getTerminologyPlural(ContentTerms.Modules, SystemTerms.Modules) })}</div>
                 </div>
             )}
             <div className={`grid xs:grid-cols-1 md-tablets:grid-cols-2 ${open?"sm:grid-cols-1":"sm:grid-cols-2"} gap-6 w-full`}>

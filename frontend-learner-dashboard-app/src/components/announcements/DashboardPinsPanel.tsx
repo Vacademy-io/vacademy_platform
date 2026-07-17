@@ -181,7 +181,7 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
                       className="text-red-600 hover:text-red-700 hover:bg-red-50"
                       disabled={loading}
                     >
-                      <Trash className="h-4 w-4 mr-1" />
+                      <Trash className="h-4 w-4 me-1" />
                       Clear All
                     </Button>
                   </AlertDialogTrigger>
@@ -228,7 +228,7 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <SpinnerGap className="h-6 w-6 animate-spin text-gray-400" />
-              <span className="ml-2 text-sm text-gray-500">Loading pins...</span>
+              <span className="ms-2 text-sm text-gray-500">Loading pins...</span>
             </div>
           ) : (
             <div className="space-y-4">
@@ -236,7 +236,7 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
                 <div
                   key={pin.messageId}
                   className={`p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md ${
-                    !pin.isRead ? 'border-l-4 border-l-blue-500 bg-blue-50' : 'border-gray-200'
+                    !pin.isRead ? 'border-s-4 border-s-blue-500 bg-blue-50' : 'border-gray-200'
                   }`}
                   onClick={() => handlePinClick(pin)}
                 >
@@ -260,7 +260,7 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="ml-2 h-6 w-6 p-0 hover:bg-gray-100"
+                      className="ms-2 h-6 w-6 p-0 hover:bg-gray-100"
                       onClick={(e) => handleDismissPin(pin.messageId, e)}
                     >
                       <X className="h-3 w-3" />

@@ -347,7 +347,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
                                 <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
                                 
                                 {/* Title Overlay */}
-                                <div className="absolute bottom-0 left-0 right-0 p-6">
+                                <div className="absolute bottom-0 start-0 end-0 p-6">
                                     <h2 className="text-xl sm:text-2xl font-bold text-foreground line-clamp-2">
                                         {activeItem?.title || "Audio Track"}
                                     </h2>
@@ -401,7 +401,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
                                     {isPlaying ? (
                                         <Pause className="h-7 w-7 fill-current" />
                                     ) : (
-                                        <Play className="h-7 w-7 fill-current ml-1" />
+                                        <Play className="h-7 w-7 fill-current ms-1" />
                                     )}
                                 </Button>
 

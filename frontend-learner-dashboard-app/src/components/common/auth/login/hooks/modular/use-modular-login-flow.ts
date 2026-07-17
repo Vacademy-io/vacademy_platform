@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { LoginSettings } from "@/config/login/defaultLoginSettings";
 import { mapLoginSettings } from "@/config/login/mapLoginSettings";
 import { parseInstituteSettings, useInstituteQuery } from "@/services/signup-api";
+import i18n from "@/i18n";
 
 interface UseModularLoginFlowProps {
   instituteId: string;
@@ -47,7 +48,7 @@ export function useModularLoginFlow({ instituteId }: UseModularLoginFlowProps) {
         setError(null);
       } catch (err) {
         console.error("[useModularLoginFlow] Error mapping login settings:", err);
-        setError("Failed to load login configuration");
+        setError(i18n.t("auth:flowErrors.loadLoginConfigFailed"));
         // Fallback to default settings
         const defaults = mapLoginSettings(null);
         console.info("[useModularLoginFlow] Fallback to default settings:", defaults.providers);
@@ -58,7 +59,7 @@ export function useModularLoginFlow({ instituteId }: UseModularLoginFlowProps) {
       }
     } else if (instituteError) {
       console.warn("[useModularLoginFlow] Institute error, using defaults");
-      setError("Failed to load institute details");
+      setError(i18n.t("auth:flowErrors.loadInstituteFailed"));
       // Fallback to default settings
       const defaults = mapLoginSettings(null);
       console.info("[useModularLoginFlow] Defaults due to error:", defaults.providers);

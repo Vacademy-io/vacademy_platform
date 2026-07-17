@@ -521,7 +521,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
             {/* SEARCH BAR (added) */}
             <div className={`w-full overflow-hidden transition-all duration-300 ease-in-out px-2 origin-top ${togle ? "max-h-20 opacity-100 py-2" : "max-h-0 opacity-0 py-0"}`}>
               <div className="relative border-gray-400">
-                <MagnifyingGlass className="absolute left-3 top-1/2 transform -translate-y-1/2 text-catalogue-text-muted" size={18} />
+                <MagnifyingGlass className="absolute start-3 top-1/2 transform -translate-y-1/2 text-catalogue-text-muted" size={18} />
                 <input
                   ref={searchInputRef}
                   type="text"
@@ -540,13 +540,13 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                       // ignore storage errors (private mode etc)
                     }
                   }}
-                  className="w-full pl-10 pr-10 py-2 border border-catalogue-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-primary-400 bg-catalogue-bg text-catalogue-text-primary shadow-md"
+                  className="w-full ps-10 pe-10 py-2 border border-catalogue-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-primary-400 bg-catalogue-bg text-catalogue-text-primary shadow-md"
                 />
                 {searchTerm && (
                   <button
                     onClick={clearSearch}
                     aria-label="Clear search"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    className="absolute end-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
                     type="button"
                   >
                     <X size={16} />
@@ -585,14 +585,14 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                   {storeMenuOpen && (
                     <>
                       <div className="fixed inset-0 z-40" onClick={() => setStoreMenuOpen(false)} />
-                      <div className="absolute left-0 z-50 mt-2 min-w-44 rounded-lg border border-catalogue-border bg-catalogue-bg py-1 shadow-md">
+                      <div className="absolute start-0 z-50 mt-2 min-w-44 rounded-lg border border-catalogue-border bg-catalogue-bg py-1 shadow-md">
                         {cartMode !== "rent" && (
                           <button
                             onClick={() => {
                               setStoreFilter(null);
                               setStoreMenuOpen(false);
                             }}
-                            className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                            className={`w-full text-start px-3 py-2 text-sm hover:bg-gray-50 ${
                               !storeFilter ? "bg-primary-50 text-primary-500 font-semibold" : "text-catalogue-text-secondary"
                             }`}
                           >
@@ -606,7 +606,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                               setStoreFilter(s.id);
                               setStoreMenuOpen(false);
                             }}
-                            className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
+                            className={`w-full text-start px-3 py-2 text-sm hover:bg-gray-50 ${
                               storeFilter === s.id ? "bg-primary-50 text-primary-500 font-semibold" : "text-catalogue-text-secondary"
                             }`}
                           >
@@ -672,7 +672,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                       >
                         <span>{formatTagForDisplay(genre)}</span>
                         {isSelected && (
-                          <span className="bg-white/20 rounded-full p-0.5 ml-1 hover:bg-white/30 active:bg-white/40 text-black transition-colors">
+                          <span className="bg-white/20 rounded-full p-0.5 ms-1 hover:bg-white/30 active:bg-white/40 text-black transition-colors">
                             <X className="h-3 w-3" />
                           </span>
                         )}
@@ -741,7 +741,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                       </div>
 
                       {/* Top-left badge stack: offer badge + stock / multi-store hint */}
-                      <div className="absolute top-2 left-2 z-20 flex flex-col items-start gap-1">
+                      <div className="absolute top-2 start-2 z-20 flex flex-col items-start gap-1">
                         <OfferBadge actual={book.price} elevated={book.elevatedPrice} />
                         {!storeFilter && (book.storeCount ?? 0) > 1 ? (
                           <div className="px-2 py-1 rounded-lg text-caption font-bold bg-white/90 backdrop-blur-sm shadow-sm flex items-center gap-1.5 border border-white/20">
@@ -772,7 +772,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
 
                       {/* Share Button - top-right corner */}
                       {book.packageSessionId && (
-                        <div className="absolute top-2 right-2 z-20">
+                        <div className="absolute top-2 end-2 z-20">
                           <ShareButton
                             packageSessionId={book.packageSessionId}
                             destinationUrl={`${window.location.origin}/${tagName}/${book.id}?packageSessionId=${book.packageSessionId}${book.enrollInviteId ? `&enrollInviteId=${book.enrollInviteId}` : ""}${book.level ? `&level=${book.level}` : ""}`}
@@ -784,11 +784,11 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                       )}
 
                       {/* Bottom Gradient Overlay - visible on mobile always; desktop on hover */}
-                      <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/70 via-black/40 to-transparent opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-500 ease-in-out pointer-events-none" />
+                      <div className="absolute bottom-0 start-0 end-0 h-32 bg-gradient-to-t from-black/70 via-black/40 to-transparent opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-500 ease-in-out pointer-events-none" />
 
                       {/* Quick Action Overlay - visible on mobile always; desktop slides up on hover */}
                       {cartButtonConfig?.enabled !== false && (
-                        <div className="cart-button-overlay absolute bottom-0 left-0 right-0 p-2 sm:p-3 md:p-4 transform translate-y-0 md:translate-y-full md:group-hover:translate-y-0 transition-all duration-500 ease-out z-10">
+                        <div className="cart-button-overlay absolute bottom-0 start-0 end-0 p-2 sm:p-3 md:p-4 transform translate-y-0 md:translate-y-full md:group-hover:translate-y-0 transition-all duration-500 ease-out z-10">
                           {/* Add to Cart Logic */}
                           <div className="flex justify-center w-full min-w-0" onClick={(e) => e.stopPropagation()}>
                             {(() => {
@@ -805,7 +805,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                         <Button
                                           variant="ghost"
                                           size="icon"
-                                          className="h-7 w-7 hover:bg-catalogue-interactive-hover active:bg-catalogue-interactive-active rounded-l-lg transition-all duration-150"
+                                          className="h-7 w-7 hover:bg-catalogue-interactive-hover active:bg-catalogue-interactive-active rounded-s-lg transition-all duration-150"
                                           onClick={async () => {
                                             if (book.enrollInviteId) {
                                               await updateQuantity(book.enrollInviteId, existingItem.quantity - 1);
@@ -820,7 +820,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                         <Button
                                           variant="ghost"
                                           size="icon"
-                                          className="h-7 w-7 hover:bg-catalogue-interactive-hover active:bg-catalogue-interactive-active rounded-r-lg transition-all duration-150"
+                                          className="h-7 w-7 hover:bg-catalogue-interactive-hover active:bg-catalogue-interactive-active rounded-e-lg transition-all duration-150"
                                           onClick={async () => {
                                             if (book.enrollInviteId) {
                                               await updateQuantity(book.enrollInviteId, existingItem.quantity + 1);
@@ -900,7 +900,7 @@ export const BookCatalogueComponent: React.FC<BookCatalogueProps> = ({
                                   disabled={!book.enrollInviteId || book.available_slots === 0}
                                   style={{ touchAction: "manipulation" }}
                                 >
-                                  <ShoppingCart className="h-4 w-4 mr-2" />
+                                  <ShoppingCart className="h-4 w-4 me-2" />
                                   {book.available_slots === 0 ? "Out of Stock" : "Add to Cart"}
                                 </Button>
                               );

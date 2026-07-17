@@ -1,5 +1,8 @@
 import { Badge } from "@/components/ui/badge";
+import { useTranslation } from "react-i18next";
 import { formatTimeFromMillis } from "@/helpers/formatTimeFromMiliseconds";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { UserActivityArray } from "../-types/dashboard-data-types";
 import dayjs from "dayjs";
 import { TrendDown, TrendUp, Minus } from "@phosphor-icons/react";
@@ -26,7 +29,13 @@ interface StudentProgress {
 }
 
 export const StudentProgressTable = ({ userActivity }: { userActivity: UserActivityArray }) => {
-    // Transform API data for the table
+    const { t } = useTranslation("dashboard");
+    // Batch is institute-configurable naming; compose it, never bake it in.
+    const batchTerm = getTerminology(ContentTerms.Batch, SystemTerms.Batch);
+    // Transform API data for the table.
+    // NOTE: `status` stays an untranslated internal discriminator ("Above" /
+    // "Below" / "Average") — it drives comparisons below. Only the rendered
+    // badge label is localized.
     const tableData: StudentProgress[] = userActivity.map((item) => {
         const userTime = item.time_spent_by_user_millis;
         const batchAvg = item.avg_time_spent_by_batch_millis;
@@ -77,11 +86,11 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
     const getStatusBadge = (status: string) => {
         switch (status) {
             case "Above":
-                return <Badge variant="outline" className="border-green-500/30 text-green-600 bg-green-500/5 hover:bg-green-500/10 [.ui-vibrant_&]:bg-green-100 [.ui-vibrant_&]:text-green-800 [.ui-play_&]:bg-play-success-soft [.ui-play_&]:text-play-success-soft-ink [.ui-play_&]:border-0 [.ui-play_&]:font-bold [.ui-play_&]:rounded-full"><TrendUp size={12} className="mr-1" /> Above</Badge>;
+                return <Badge variant="outline" className="border-green-500/30 text-green-600 bg-green-500/5 hover:bg-green-500/10 [.ui-vibrant_&]:bg-green-100 [.ui-vibrant_&]:text-green-800 [.ui-play_&]:bg-play-success-soft [.ui-play_&]:text-play-success-soft-ink [.ui-play_&]:border-0 [.ui-play_&]:font-bold [.ui-play_&]:rounded-full"><TrendUp size={12} className="me-1" /> {t("progressTable.statusAbove")}</Badge>;
             case "Below":
-                return <Badge variant="outline" className="border-red-500/30 text-red-600 bg-red-500/5 hover:bg-red-500/10 [.ui-vibrant_&]:bg-red-100 [.ui-vibrant_&]:text-red-800 [.ui-play_&]:bg-play-danger-soft [.ui-play_&]:text-play-danger-soft-ink [.ui-play_&]:border-0 [.ui-play_&]:font-bold [.ui-play_&]:rounded-full"><TrendDown size={12} className="mr-1" /> Below</Badge>;
+                return <Badge variant="outline" className="border-red-500/30 text-red-600 bg-red-500/5 hover:bg-red-500/10 [.ui-vibrant_&]:bg-red-100 [.ui-vibrant_&]:text-red-800 [.ui-play_&]:bg-play-danger-soft [.ui-play_&]:text-play-danger-soft-ink [.ui-play_&]:border-0 [.ui-play_&]:font-bold [.ui-play_&]:rounded-full"><TrendDown size={12} className="me-1" /> {t("progressTable.statusBelow")}</Badge>;
             default:
-                return <Badge variant="outline" className="text-muted-foreground [.ui-vibrant_&]:bg-gray-100 [.ui-vibrant_&]:text-gray-700 [.ui-play_&]:bg-play-ink/5 [.ui-play_&]:text-play-ink/60 [.ui-play_&]:border-0 [.ui-play_&]:font-bold [.ui-play_&]:rounded-full"><Minus size={12} className="mr-1" /> Average</Badge>;
+                return <Badge variant="outline" className="text-muted-foreground [.ui-vibrant_&]:bg-gray-100 [.ui-vibrant_&]:text-gray-700 [.ui-play_&]:bg-play-ink/5 [.ui-play_&]:text-play-ink/60 [.ui-play_&]:border-0 [.ui-play_&]:font-bold [.ui-play_&]:rounded-full"><Minus size={12} className="me-1" /> {t("progressTable.statusAverage")}</Badge>;
         }
     };
 
@@ -98,7 +107,9 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative">
                 <Card className="shadow-none border-dashed bg-muted/30 [.ui-vibrant_&]:bg-gray-100/50 [.ui-play_&]:bg-white [.ui-play_&]:border [.ui-play_&]:border-solid [.ui-play_&]:border-border [.ui-play_&]:rounded-play-card-sm [.ui-play_&]:shadow-play-soft-card [.ui-cleaner-play_&]:border-solid [.ui-cleaner-play_&]:border-cp-border">
                     <CardContent className="p-4 flex flex-col gap-1">
-                        <span className="text-sm font-medium text-muted-foreground">Total Sessions</span>
+                        <span className="text-sm font-medium text-muted-foreground">
+                            {t("progressTable.totalSessions")}
+                        </span>
                         <div className="text-2xl font-bold tracking-tight">
                             {tableData.filter(row => row.user_millis > 0).length}
                         </div>
@@ -107,7 +118,9 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
 
                 <Card className="shadow-none border-dashed bg-green-500/5 border-green-500/20 [.ui-vibrant_&]:bg-green-50 [.ui-vibrant_&]:border-green-200 [.ui-play_&]:bg-play-success-soft [.ui-play_&]:border [.ui-play_&]:border-solid [.ui-play_&]:border-border [.ui-play_&]:rounded-play-card-sm [.ui-play_&]:shadow-play-soft-card [.ui-cleaner-play_&]:border-solid [.ui-cleaner-play_&]:border-cp-border">
                     <CardContent className="p-4 flex flex-col gap-1">
-                        <span className="text-sm font-medium text-green-600 [.ui-vibrant_&]:text-green-700 [.ui-play_&]:text-play-success-soft-ink [.ui-play_&]:font-black">Above Average</span>
+                        <span className="text-sm font-medium text-green-600 [.ui-vibrant_&]:text-green-700 [.ui-play_&]:text-play-success-soft-ink [.ui-play_&]:font-black">
+                            {t("progressTable.aboveAverage")}
+                        </span>
                         <div className="text-2xl font-bold text-foreground">
                             {tableData.filter(row => row.status === "Above").length}
                         </div>
@@ -116,7 +129,9 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
 
                 <Card className="shadow-none border-dashed bg-primary/5 border-primary/20 [.ui-vibrant_&]:bg-primary/10 [.ui-vibrant_&]:border-primary/30 [.ui-play_&]:bg-play-accent-soft [.ui-play_&]:border [.ui-play_&]:border-solid [.ui-play_&]:border-border [.ui-play_&]:rounded-play-card-sm [.ui-play_&]:shadow-play-soft-card [.ui-cleaner-play_&]:border-solid [.ui-cleaner-play_&]:border-cp-border">
                     <CardContent className="p-4 flex flex-col gap-1">
-                        <span className="text-sm font-medium text-primary [.ui-vibrant_&]:text-primary-700 [.ui-play_&]:text-play-accent-soft-ink [.ui-play_&]:font-black">Consistency</span>
+                        <span className="text-sm font-medium text-primary [.ui-vibrant_&]:text-primary-700 [.ui-play_&]:text-play-accent-soft-ink [.ui-play_&]:font-black">
+                            {t("progressTable.consistency")}
+                        </span>
                         <div className="text-2xl font-bold text-foreground">
                             {Math.round((tableData.filter(row => row.user_millis > 0).length / tableData.length) * 100)}%
                         </div>
@@ -129,10 +144,18 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                 <Table>
                     <TableHeader>
                         <TableRow className="bg-muted/40 hover:bg-muted/40 [.ui-vibrant_&]:bg-primary/5">
-                            <TableHead className="w-44 font-semibold text-xs uppercase text-muted-foreground">Date</TableHead>
-                            <TableHead className="font-semibold text-xs uppercase text-muted-foreground">Your Time</TableHead>
-                            <TableHead className="font-semibold text-xs uppercase text-muted-foreground">Batch Avg</TableHead>
-                            <TableHead className="text-right font-semibold text-xs uppercase text-muted-foreground">Status</TableHead>
+                            <TableHead className="w-44 font-semibold text-xs uppercase text-muted-foreground">
+                                {t("progressTable.columnDate")}
+                            </TableHead>
+                            <TableHead className="font-semibold text-xs uppercase text-muted-foreground">
+                                {t("progressTable.columnYourTime")}
+                            </TableHead>
+                            <TableHead className="font-semibold text-xs uppercase text-muted-foreground">
+                                {t("progressTable.columnBatchAvg", { batch: batchTerm })}
+                            </TableHead>
+                            <TableHead className="text-end font-semibold text-xs uppercase text-muted-foreground">
+                                {t("progressTable.columnStatus")}
+                            </TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -168,7 +191,7 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                                     <TableCell>
                                         <span className="text-sm text-muted-foreground">{row.time_spent_batch}</span>
                                     </TableCell>
-                                    <TableCell className="text-right">
+                                    <TableCell className="text-end">
                                         {getStatusBadge(row.status)}
                                     </TableCell>
                                 </TableRow>
@@ -195,7 +218,9 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
 
                                 <div className="space-y-2 pt-2">
                                     <div className="flex justify-between text-sm">
-                                        <span className="text-muted-foreground">Your Time</span>
+                                        <span className="text-muted-foreground">
+                                            {t("progressTable.columnYourTime")}
+                                        </span>
                                         <span className="font-medium">{row.time_spent}</span>
                                     </div>
                                     <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
@@ -205,8 +230,17 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                                         />
                                     </div>
                                     <div className="flex justify-between text-xs text-muted-foreground">
-                                        <span>Batch Avg: {row.time_spent_batch}</span>
-                                        <span>{percentage.toFixed(0)}% of avg</span>
+                                        <span>
+                                            {t("progressTable.batchAvgValue", {
+                                                batch: batchTerm,
+                                                value: row.time_spent_batch,
+                                            })}
+                                        </span>
+                                        <span>
+                                            {t("progressTable.percentOfAvg", {
+                                                percent: percentage.toFixed(0),
+                                            })}
+                                        </span>
                                     </div>
                                 </div>
                             </CardContent>

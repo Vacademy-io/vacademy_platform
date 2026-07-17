@@ -60,6 +60,15 @@ export interface DeserializeLossReport {
     lossy: boolean;
     /** Human-readable list of what was dropped, e.g. ["1 table", "2 heading(s)"]. */
     lost: string[];
+    /**
+     * Images sitting INSIDE a table cell. Yoopta's table has no representation for an
+     * image, so these are dropped on every single load — the editor cannot even create
+     * this shape (it arrives via AI-generated HTML or a paste). This is therefore a
+     * PERMANENT condition, not a transient glitch: telling the author to "reload and try
+     * again" loops them forever, because the loss happens DURING the load. Surfaced
+     * separately so the save gate can explain the real reason instead.
+     */
+    imagesInsideTables: number;
 }
 
 /**
@@ -82,8 +91,13 @@ export function detectDeserializeLoss(
     deserializedValue: Record<string, any>
 ): DeserializeLossReport {
     const lost: string[] = [];
+    let imagesInsideTables = 0;
     try {
         const doc = new DOMParser().parseFromString(sourceHtml || '', 'text/html');
+
+        // Count images inside tables BEFORE any stripping — these are unrepresentable
+        // in a Yoopta table and are dropped on every load (see the interface docs).
+        imagesInsideTables = doc.body.querySelectorAll('table img').length;
 
         // Source custom blocks (by data-yoopta-type), counted BEFORE stripping.
         const srcCustom: Record<string, number> = {};
@@ -121,9 +135,41 @@ export function detectDeserializeLoss(
         if (srcHeading > edHeading) lost.push(`${srcHeading - edHeading} heading(s)`);
     } catch {
         // Detection must never throw or block a load — treat as non-lossy on failure.
-        return { lossy: false, lost: [] };
+        return { lossy: false, lost: [], imagesInsideTables: 0 };
     }
-    return { lossy: lost.length > 0, lost };
+    return { lossy: lost.length > 0, lost, imagesInsideTables };
+}
+
+/**
+ * Count the top-level blocks in HTML produced by html.serialize + formatHTMLString.
+ * Yoopta emits one element per block; formatHTMLString then wraps the lot in plain
+ * <div>s, so we descend through those wrappers before counting. Used by the save-side
+ * integrity check to compare serialize INPUT (the editor value) against OUTPUT.
+ */
+export function countSerializedBlocks(serializedHtml: string): number {
+    if (!serializedHtml) return 0;
+    try {
+        const doc = new DOMParser().parseFromString(serializedHtml, 'text/html');
+        let root: Element = doc.body;
+        // Descend only through plain wrapper divs — never into a real block (a custom
+        // block root, or a div that IS the block, e.g. the mermaid/image wrapper).
+        while (root.children.length === 1) {
+            const only = root.children[0];
+            if (
+                !only ||
+                only.tagName !== 'DIV' ||
+                only.hasAttribute('data-yoopta-type') ||
+                only.classList.contains('mermaid')
+            ) {
+                break;
+            }
+            root = only;
+        }
+        return root.children.length;
+    } catch {
+        // Never let the check itself break a save; 0 disables the comparison.
+        return 0;
+    }
 }
 
 export function appReloadPreprocess(storedHtml: string): string {

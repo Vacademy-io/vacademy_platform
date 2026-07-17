@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,7 +59,8 @@ function getSessionsWithin24Hours(
 function formatRelativeTime(
   meetingDate: string,
   startTime: string,
-  timezone: string
+  timezone: string,
+  t: TFunction<"dashboard">
 ): string {
   try {
     const sessionTime = timezone
@@ -66,12 +69,16 @@ function formatRelativeTime(
     const now = new Date();
     const diffMs = sessionTime.getTime() - now.getTime();
 
-    if (diffMs < 0) return "Now";
+    if (diffMs < 0) return t("liveClasses.relativeNow");
     const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 60) return `in ${diffMins}m`;
+    if (diffMins < 60) return t("liveClasses.relativeInMinutes", { minutes: diffMins });
     const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `in ${diffHours}h ${diffMins % 60}m`;
-    return `in ${diffHours}h`;
+    if (diffHours < 24)
+      return t("liveClasses.relativeInHoursMinutes", {
+        hours: diffHours,
+        minutes: diffMins % 60,
+      });
+    return t("liveClasses.relativeInHours", { hours: diffHours });
   } catch {
     return "";
   }
@@ -83,6 +90,7 @@ export function UpcomingLiveClassesWidget({
   isLoading,
   onJoinSession,
 }: UpcomingLiveClassesWidgetProps) {
+  const { t } = useTranslation("dashboard");
   const navigate = useNavigate();
   const isCleanerPlay = useCleanerPlayTheme();
 
@@ -176,11 +184,12 @@ export function UpcomingLiveClassesWidget({
                 "cp-heading"
               )}
             >
-              Upcoming{" "}
-              {getTerminologyPlural(
-                ContentTerms.LiveSession,
-                SystemTerms.LiveSession
-              )}
+              {t("liveClasses.title", {
+                liveClasses: getTerminologyPlural(
+                  ContentTerms.LiveSession,
+                  SystemTerms.LiveSession
+                ),
+              })}
             </CardTitle>
             <p
               className={cn(
@@ -189,7 +198,7 @@ export function UpcomingLiveClassesWidget({
                 "cp-muted"
               )}
             >
-              {totalCount} {totalCount === 1 ? "class" : "classes"} in next 24h
+              {t("liveClasses.countInNext24h", { count: totalCount })}
             </p>
           </div>
         </div>
@@ -204,7 +213,7 @@ export function UpcomingLiveClassesWidget({
           )}
           onClick={() => navigate({ to: "/study-library/live-class" })}
         >
-          View All <CaretRight size={14} className="ms-1" />
+          {t("liveClasses.viewAll")} <CaretRight size={14} className="ms-1" />
         </Button>
       </CardHeader>
 
@@ -265,7 +274,7 @@ export function UpcomingLiveClassesWidget({
                   aria-hidden="true"
                   className="hidden [.ui-play_&]:inline-block h-1.5 w-1.5 rounded-full bg-white animate-pulse me-1"
                 />
-                Live Now
+                {t("liveClasses.liveNowBadge")}
               </Badge>
               <Button
                 size="sm"
@@ -278,7 +287,7 @@ export function UpcomingLiveClassesWidget({
                   "[.ui-play_&]:focus-visible:ring-2 [.ui-play_&]:focus-visible:ring-play-ink/30"
                 )}
               >
-                Join
+                {t("liveClasses.join")}
               </Button>
             </div>
           </div>
@@ -289,7 +298,8 @@ export function UpcomingLiveClassesWidget({
           const relTime = formatRelativeTime(
             session.meeting_date,
             session.start_time,
-            session.timezone
+            session.timezone,
+            t
           );
 
           return (
@@ -355,7 +365,7 @@ export function UpcomingLiveClassesWidget({
                   "[.ui-play_&]:bg-white [.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:border-transparent"
                 )}
               >
-                Upcoming
+                {t("liveClasses.upcomingBadge")}
               </Badge>
             </div>
           );

@@ -4,6 +4,7 @@ import { HtmlSlideIframe } from "./html-slide-iframe";
 import TurndownService from "turndown";
 import ReactMarkdown from "react-markdown";
 import { DocumentWithMermaid } from "./DocumentWithMermaid";
+import { useTranslation } from "react-i18next";
 
 // Helper to strip expired query params from public AWS S3 URLs
 // Example: https://...amazonaws.com/.../image.jpg?X-Amz-Algorithm=... -> https://...amazonaws.com/.../image.jpg
@@ -62,6 +63,7 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
   onSlideProgress,
   onSlideComplete
 }, ref) => {
+  const { t } = useTranslation("studyContent");
   const containerRef = useRef<HTMLDivElement>(null);
   const totalPagesRef = useRef<number>(0);
   const [markdownContent, setMarkdownContent] = useState<string>("");
@@ -301,8 +303,8 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-red-900 mb-2">Document Load Error</h3>
-          <p className="text-red-700 text-sm leading-relaxed mb-4">Unable to load the document. Please try refreshing or contact support if the issue persists.</p>
+          <h3 className="text-lg font-semibold text-red-900 mb-2">{t("docViewer.loadErrorTitle")}</h3>
+          <p className="text-red-700 text-sm leading-relaxed mb-4">{t("docViewer.loadErrorBody")}</p>
           <div className="bg-red-50 border border-red-200 rounded-lg p-3">
             <p className="text-xs text-red-600 font-mono break-words">{error}</p>
           </div>
@@ -324,8 +326,8 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
               </svg>
             </div>
           </div>
-          <h3 className="text-xl font-semibold text-blue-900 mb-2">Processing Document</h3>
-          <p className="text-blue-700">Converting content for optimal viewing...</p>
+          <h3 className="text-xl font-semibold text-blue-900 mb-2">{t("docViewer.processingTitle")}</h3>
+          <p className="text-blue-700">{t("docViewer.processingBody")}</p>
           <div className="mt-4 w-32 h-1 bg-blue-200 rounded-full mx-auto overflow-hidden">
             <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full animate-pulse"></div>
           </div>
@@ -564,8 +566,8 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-700 mb-2">No Content Available</h3>
-              <p className="text-gray-500">The document appears to be empty or could not be processed.</p>
+              <h3 className="text-lg font-medium text-gray-700 mb-2">{t("docViewer.noContentTitle")}</h3>
+              <p className="text-gray-500">{t("docViewer.noContentBody")}</p>
             </div>
           )}
           

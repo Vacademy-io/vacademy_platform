@@ -9,6 +9,9 @@ import {
   AppleSignInCancelledError,
 } from "@/lib/auth/appleNativeAuth";
 import { AppleSignInButton } from "@/components/common/auth/AppleSignInButton";
+import { resolveFontStack } from "@/utils/branding";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
@@ -54,6 +57,7 @@ export function ModularDynamicLoginContainer({
   onLoginSuccess,
   className = ""
 }: ModularDynamicLoginContainerProps) {
+  const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const { setPrimaryColor } = useTheme();
   
@@ -203,7 +207,7 @@ export function ModularDynamicLoginContainer({
       } catch (error) {
         console.error('[ModularDynamicLoginContainer] ❌ Error finalizing login:', error);
         setIsOAuthProcessing(false);
-        toast.error("Failed to complete login. Please try again.");
+        toast.error(i18n.t("auth:toasts.failedCompleteLogin"));
       }
     };
 
@@ -222,9 +226,11 @@ export function ModularDynamicLoginContainer({
           console.error('[OAuth Parent] Failed to store signup data:', e);
         }
         onSwitchToSignup('', false);
-        toast.info('Your email may be private. Please provide your email below to continue.');
+        toast.info(i18n.t("auth:toasts.emailPrivateInfo"));
       } else {
-        toast.error(data?.message || 'We could not complete sign-in. Please try again or use another method.');
+        toast.error(
+          data?.message || i18n.t("auth:toasts.couldNotCompleteSignIn")
+        );
       }
     };
 
@@ -268,12 +274,12 @@ export function ModularDynamicLoginContainer({
               console.error('[OAuth Parent] Failed to store signup data:', e);
             }
           } else {
-            toast.info("Please sign up to continue");
+            toast.info(i18n.t("auth:toasts.pleaseSignUpToContinue"));
           }
         } else if (data.error) {
-          toast.error(data.error || "OAuth login failed. Please try again.", {
+          toast.error(data.error || i18n.t("auth:toasts.oauthLoginFailed"), {
             duration: 5000,
-            description: "Please check your internet connection and try again."
+            description: i18n.t("auth:toasts.checkConnection")
           });
         }
         return;
@@ -297,7 +303,7 @@ export function ModularDynamicLoginContainer({
             console.error('[OAuth Parent] Failed to store signup data:', e);
           }
         } else {
-          toast.info("Please sign up to continue");
+          toast.info(i18n.t("auth:toasts.pleaseSignUpToContinue"));
         }
       } else if (data && data.type === 'oauth_error') {
         handleOAuthErrorFromPopup(data?.data);
@@ -336,7 +342,7 @@ export function ModularDynamicLoginContainer({
                 console.error('[OAuth Parent] Failed to store signup data:', e);
               }
             } else {
-              toast.info("Please sign up to continue");
+              toast.info(i18n.t("auth:toasts.pleaseSignUpToContinue"));
             }
             localStorage.removeItem('OAUTH_RESULT');
           } else if (parsed?.isModalLogin !== false && parsed?.type === 'oauth_error') {
@@ -373,7 +379,7 @@ export function ModularDynamicLoginContainer({
                 console.error('[OAuth Parent] Failed to store signup data:', e);
               }
             } else {
-              toast.info("Please sign up to continue");
+              toast.info(i18n.t("auth:toasts.pleaseSignUpToContinue"));
             }
           } else if (msg.isModalLogin !== false && msg.type === 'oauth_error') {
             handleOAuthErrorFromPopup(msg?.data);
@@ -407,7 +413,7 @@ export function ModularDynamicLoginContainer({
                 console.error('[OAuth Parent] Failed to store signup data:', e);
               }
             } else {
-              toast.info("Please sign up to continue");
+              toast.info(i18n.t("auth:toasts.pleaseSignUpToContinue"));
             }
             localStorage.removeItem('OAUTH_RESULT');
           } else if (parsed?.isModalLogin !== false && parsed?.type === 'oauth_error') {
@@ -457,14 +463,12 @@ export function ModularDynamicLoginContainer({
           return; // user dismissed the sheet — no error UI
         }
         if (e instanceof AppleSessionLimitError) {
-          toast.error(
-            "You've reached the active session limit. Please log out from another device and try again.",
-          );
+          toast.error(i18n.t("auth:toasts.sessionLimitReached"));
         } else {
           toast.error(
             e instanceof Error
               ? e.message
-              : "Failed to sign in with Apple. Please try again.",
+              : i18n.t("auth:toasts.appleSignInFailed"),
           );
         }
       }
@@ -558,7 +562,7 @@ export function ModularDynamicLoginContainer({
 
       if (!popup) {
         console.error('[OAuth] Popup blocked');
-        toast.error("Popup blocked! Please allow popups for this site.");
+        toast.error(i18n.t("auth:toasts.popupBlocked"));
         return;
       }
 
@@ -566,7 +570,7 @@ export function ModularDynamicLoginContainer({
       popup.focus();
      }
     } catch {
-      toast.error("Failed to initiate login. Please try again.");
+      toast.error(i18n.t("auth:toasts.failedInitiateLogin"));
     }
   };
 
@@ -612,16 +616,7 @@ export function ModularDynamicLoginContainer({
           setPrimaryColor(parsed.theme);
         }
         if (parsed?.fontFamily) {
-          const mapFamily = (f: string) => {
-            const key = String(f).toUpperCase();
-            if (key === "INTER") return 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "CAIRO") return 'Cairo, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "PLAYPEN SANS") return 'Playpen Sans, cursive, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "WORK SANS") return 'Work Sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "LEXEND") return 'Lexend, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            return f;
-          };
-          const family = mapFamily(parsed.fontFamily);
+          const family = resolveFontStack(parsed.fontFamily);
           document.documentElement.style.setProperty("--app-font-family", family);
           document.body.style.fontFamily = family;
         }
@@ -694,10 +689,10 @@ export function ModularDynamicLoginContainer({
             </motion.div>
             <div className="space-y-2">
               <h3 className="text-base font-medium text-gray-900">
-                Signing you in
+                {t("sso.signingYouIn")}
               </h3>
               <p className="text-sm text-gray-500">
-                Please wait...
+                {t("sso.pleaseWait")}
               </p>
             </div>
           </motion.div>
@@ -717,10 +712,10 @@ export function ModularDynamicLoginContainer({
       >
         <div className="space-y-1">
           <h3 className="text-lg font-semibold text-gray-900">
-            Welcome
+            {t("common.welcome")}
           </h3>
           <p className="text-sm text-gray-600">
-            Sign in to continue your journey
+            {t("common.signInToContinue")}
           </p>
         </div>
       </motion.div>
@@ -745,7 +740,7 @@ export function ModularDynamicLoginContainer({
             >
               <FcGoogle className="w-4 h-4" />
               <span className="text-sm">
-                Continue with Google
+                {t("common.continueWithGoogle")}
               </span>
               <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
             </motion.button>
@@ -761,7 +756,7 @@ export function ModularDynamicLoginContainer({
             >
               <GitHubLogoIcon className="w-4 h-4" />
               <span className="text-sm">
-                Continue with GitHub
+                {t("common.continueWithGitHub")}
               </span>
               <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
             </motion.button>
@@ -848,7 +843,7 @@ export function ModularDynamicLoginContainer({
                       className="text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 relative group font-medium"
                       onClick={() => setCurrentProvider("usernamePassword")}
                     >
-                      Prefer username login?
+                      {t("login.preferUsernameLogin")}
                       <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
                     </motion.button>
                   ) : (
@@ -858,7 +853,7 @@ export function ModularDynamicLoginContainer({
                       className="text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 relative group font-medium"
                       onClick={() => setCurrentProvider("emailOtp")}
                     >
-                      Prefer email login?
+                      {t("login.preferEmailLogin")}
                       <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
                     </motion.button>
                   )}
@@ -898,21 +893,21 @@ export function ModularDynamicLoginContainer({
         className="text-center text-xs text-gray-600"
       >
         <p>
-          I agree to{" "}
+          {t("common.iAgreeTo")}{" "}
           <motion.button
             whileHover={{ scale: 1.02 }}
             onClick={openTerms}
             className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
           >
-            terms and conditions
+            {t("common.termsAndConditions")}
           </motion.button>{" "}
-          and{" "}
+          {t("common.and")}{" "}
           <motion.button
             whileHover={{ scale: 1.02 }}
             onClick={openPrivacy}
             className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
           >
-            Privacy Policy
+            {t("common.privacyPolicy")}
           </motion.button>
         </p>
       </motion.div>

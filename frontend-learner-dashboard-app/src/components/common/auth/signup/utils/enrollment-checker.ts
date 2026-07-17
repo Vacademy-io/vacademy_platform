@@ -1,6 +1,7 @@
 import { checkUserEnrollment } from "@/services/signup-api";
 import { loginEnrolledUser } from "@/services/signup-api";
 import { toast } from "sonner";
+import i18n from "@/i18n";
 import { Preferences } from "@capacitor/preferences";
 import { TokenKey } from "@/constants/auth/tokens";
 import { getTokenDecodedData } from "@/lib/auth/sessionUtility";
@@ -169,16 +170,16 @@ export function handleEnrolledUser(
   return new Promise(async (resolve) => {
     try {
       // Show user-friendly message
-      toast.info("You are already enrolled in this institute. Logging you in automatically...");
+      toast.info(i18n.t("auth:enrollment.alreadyEnrolledAutoLogin"));
       
       // Attempt auto-login
       const result = await autoLoginEnrolledUser(email, instituteId, undefined, shouldRedirectAfterLogin);
       
       if (result.success) {
-        toast.success("Welcome! You are already enrolled in this institute.");
+        toast.success(i18n.t("auth:enrollment.welcomeAlreadyEnrolled"));
         onAutoLoginSuccess?.();
       } else {
-        toast.error("You are already enrolled in this institute. Please use the login page with your correct credentials.");
+        toast.error(i18n.t("auth:enrollment.alreadyEnrolledUseLogin"));
         onAutoLoginFailure?.(result.error || 'Auto-login failed');
       }
       
@@ -186,7 +187,7 @@ export function handleEnrolledUser(
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Auto-login failed';
-      toast.error("You are already enrolled in this institute. Please use the login page with your correct credentials.");
+      toast.error(i18n.t("auth:enrollment.alreadyEnrolledUseLogin"));
       onAutoLoginFailure?.(errorMessage);
       resolve({ success: false, error: errorMessage });
     }

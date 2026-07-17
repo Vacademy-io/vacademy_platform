@@ -1,6 +1,7 @@
 import { H1 } from "@/components/design-system/typography";
 import { cn } from "@/lib/utils";
 import { BookOpen, Play } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { MyButton } from "@/components/design-system/button";
@@ -35,6 +36,7 @@ const HeroSection = ({
 }: {
     allowLeanersToCreateCourses: boolean;
 }) => {
+    const { t } = useTranslation("study");
     // useQuery (NOT useSuspenseQuery): a failed fetch here must not throw to
     // the router error boundary and replace the whole courses page — the hero
     // only loses its optional "Create Course" button.
@@ -149,7 +151,7 @@ const HeroSection = ({
                                     "[.ui-vibrant_&]:text-primary"
                                 )}
                             >
-                                Jump back in
+                                {t("hero.resume.eyebrow")}
                             </p>
                             <h1 className="line-clamp-2 break-words text-display-sm text-foreground">
                                 {resume.slideTitle}
@@ -165,7 +167,7 @@ const HeroSection = ({
                                     className="w-full gap-2 sm:w-auto"
                                 >
                                     <Play size={16} weight="fill" />
-                                    Continue
+                                    {t("hero.resume.continue")}
                                 </MyButton>
                             </div>
                         </div>
@@ -194,23 +196,23 @@ const HeroSection = ({
                                     "text-xs font-semibold text-primary-600 uppercase tracking-wider",
                                     "[.ui-vibrant_&]:text-primary"
                                 )}>
-                                    {getTerminology(
-                                        ContentTerms.Course,
-                                        SystemTerms.Course
-                                    )}{" "}
-                                    Catalog
+                                    {t("hero.catalogEyebrow", {
+                                        course: getTerminology(
+                                            ContentTerms.Course,
+                                            SystemTerms.Course
+                                        ),
+                                    })}
                                 </span>
                             </div>
                         </div>
 
                         {/* Main Heading */}
-                        <H1 className="mb-1 sm:mb-1">Explore & Discover</H1>
+                        <H1 className="mb-1 sm:mb-1">{t("hero.title")}</H1>
 
                         {/* Single Description */}
                         <div className="mb-0.5 sm:mb-1">
                             <p className="text-sm sm:text-base text-gray-600 font-medium leading-relaxed">
-                                Effortlessly organize, upload, and track
-                                educational resources in one place.
+                                {t("hero.description")}
                             </p>
                         </div>
                     </div>
@@ -231,7 +233,12 @@ const HeroSection = ({
                                 onClick={handleNavigate}
                                 className="w-full sm:w-auto"
                             >
-                                Create Course
+                                {t("hero.createCourse", {
+                                    course: getTerminology(
+                                        ContentTerms.Course,
+                                        SystemTerms.Course
+                                    ),
+                                })}
                             </MyButton>
                         </>
                     )}

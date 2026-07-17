@@ -116,13 +116,17 @@ public class WhatsAppInboxService {
                         .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
                                 org.springframework.http.HttpStatus.BAD_REQUEST, "No WhatsApp provider found")));
 
-        provider.sendText(phone, text, instituteId, businessChannelId);
+        String providerMessageId = provider.sendText(phone, text, instituteId, businessChannelId);
 
         NotificationLog outLog = new NotificationLog();
         outLog.setNotificationType("WHATSAPP_MESSAGE_OUTGOING");
         outLog.setChannelId(phone);
         outLog.setBody(text);
         outLog.setSource("INBOX");
+        // wamid → source_id: lets the sent/delivered/read status webhooks join THIS row exactly
+        // instead of falling back to "most recent outbound to this phone" (which could be a
+        // different sender's row and misattribute the read).
+        outLog.setSourceId(providerMessageId);
         outLog.setSenderBusinessChannelId(businessChannelId);
         outLog.setInstituteId(instituteId);
         outLog.setNotificationDate(Instant.now());

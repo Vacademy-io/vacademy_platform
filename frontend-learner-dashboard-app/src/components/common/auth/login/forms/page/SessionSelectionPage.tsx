@@ -6,11 +6,17 @@ import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { getPublicUrl } from "@/services/upload_file";
 import { Session } from "@/types/user/user-detail";
+import { useTranslation } from "react-i18next";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import {
+  getTerminology,
+  getTerminologyPlural,
+} from "@/components/common/layout-container/sidebar/utils";
 import { toTitleCase } from "@/lib/utils";
+import i18n from "@/i18n";
 
 const SessionSelectionPage = () => {
+  const { t } = useTranslation("auth");
   const [sessionList, setSessionList] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -38,7 +44,7 @@ const SessionSelectionPage = () => {
 
         if (!selectedInstitute.value || !studentData.value) {
           console.warn("⚠️ Institute or student data missing.");
-          toast.error("Missing institute or student data. Please reselect.");
+          toast.error(i18n.t("auth:sessionSelection.missingData"));
           return;
         }
 
@@ -47,7 +53,7 @@ const SessionSelectionPage = () => {
 
         if (!sessionListRaw.value) {
           console.warn("⚠️ No sessionList found in Preferences.");
-          toast.error("No sessions found.");
+          toast.error(i18n.t("auth:sessionSelection.noSessions"));
           return;
         }
 
@@ -64,7 +70,7 @@ const SessionSelectionPage = () => {
         setSessionList(parsed);
       } catch (error) {
         console.error("❌ Error loading session list:", error);
-        toast.error("Failed to load session list.");
+        toast.error(i18n.t("auth:sessionSelection.loadFailed"));
       } finally {
         setLoading(false);
         console.log("✅ Finished checkAndFetch. Loading set to false.");
@@ -153,7 +159,7 @@ const SessionSelectionPage = () => {
       navigate({ to: redirect });
     } catch (error) {
       console.error("❌ Error during session selection:", error);
-      toast.error("Something went wrong while selecting session.");
+      toast.error(i18n.t("auth:sessionSelection.selectError"));
     } finally {
       setSubmitting(false);
       console.log("✅ Session selection finished. Submitting set to false.");
@@ -199,16 +205,17 @@ const SessionSelectionPage = () => {
             </svg>
           </div>
           <h1 className="text-3xl font-bold text-gray-900">
-            Choose Your{" "}
-            {getTerminology(ContentTerms.Course, SystemTerms.Course)}
+            {t("sessionSelection.title", {
+              course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+            })}
           </h1>
           <p className="text-gray-600">
-            Select a{" "}
-            {getTerminology(
-              ContentTerms.Course,
-              SystemTerms.Course
-            ).toLocaleLowerCase()}{" "}
-            to begin your learning journey
+            {t("sessionSelection.subtitle", {
+              course: getTerminology(
+                ContentTerms.Course,
+                SystemTerms.Course
+              ).toLocaleLowerCase(),
+            })}
           </p>
         </div>
 
@@ -231,16 +238,20 @@ const SessionSelectionPage = () => {
                 </svg>
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                No {getTerminology(ContentTerms.Course, SystemTerms.Course)}s
-                Available
+                {t("sessionSelection.noCoursesTitle", {
+                  courses: getTerminologyPlural(
+                    ContentTerms.Course,
+                    SystemTerms.Course
+                  ),
+                })}
               </h3>
               <p className="text-gray-600">
-                You are not currently enrolled in any{" "}
-                {getTerminology(
-                  ContentTerms.Course,
-                  SystemTerms.Course
-                ).toLowerCase()}
-                s. Please contact your administrator.
+                {t("sessionSelection.noCoursesBody", {
+                  courses: getTerminologyPlural(
+                    ContentTerms.Course,
+                    SystemTerms.Course
+                  ).toLowerCase(),
+                })}
               </p>
             </div>
           </div>
@@ -289,11 +300,12 @@ const SessionSelectionPage = () => {
                     <CardContent className="space-y-2 text-sm text-gray-600">
                       <div className="flex items-center space-x-1">
                         <span className="font-medium">
-                          {getTerminology(
-                            ContentTerms.Session,
-                            SystemTerms.Session
-                          )}
-                          :
+                          {t("sessionSelection.sessionLabel", {
+                            session: getTerminology(
+                              ContentTerms.Session,
+                              SystemTerms.Session
+                            ),
+                          })}
                         </span>
                         <span className="truncate">
                           {toTitleCase(session.session.session_name)}
@@ -301,23 +313,26 @@ const SessionSelectionPage = () => {
                       </div>
                       <div className="flex items-center space-x-1">
                         <span className="font-medium">
-                          {getTerminology(
-                            ContentTerms.Level,
-                            SystemTerms.Level
-                          )}
-                          :
+                          {t("sessionSelection.levelLabel", {
+                            level: getTerminology(
+                              ContentTerms.Level,
+                              SystemTerms.Level
+                            ),
+                          })}
                         </span>
                         <span>{toTitleCase(session.level.level_name)}</span>
                       </div>
                       <div className="flex items-center space-x-1">
-                        <span className="font-medium">Start:</span>
+                        <span className="font-medium">
+                          {t("sessionSelection.startLabel")}
+                        </span>
                         <span>
                           {new Date(session.start_time).toLocaleDateString()}
                         </span>
                       </div>
                       <div className="pt-1">
                         <div className="flex justify-between text-xs text-gray-500 mb-1">
-                          <span>Ready to start</span>
+                          <span>{t("sessionSelection.readyToStart")}</span>
                           <span>100%</span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-1.5">

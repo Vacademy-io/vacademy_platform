@@ -1,0 +1,138 @@
+{
+    "catalog": {
+        "tab": {
+            "all": "All {{courses}}",
+            "inProgress": "In Progress",
+            "completed": "Completed"
+        },
+        "toast": {
+            "loadError": "Something went wrong while loading {{courses}}. Please try again.",
+            "loadTabError": "Couldn't load {{courses}} for this tab. Please try again.",
+            "loadFallbackError": "Couldn't load {{courses}}. Please try again."
+        },
+        "search": {
+            "placeholder": "Search {{courses}}..."
+        },
+        "sort": {
+            "label": "Sort by:",
+            "ariaLabel": "Sort {{courses}}",
+            "placeholder": "Sort order",
+            "newest": "Newest First",
+            "oldest": "Oldest First",
+            "highestRated": "Highest Rated",
+            "shortest": "Shortest First"
+        },
+        "empty": {
+            "title": "No {{courses}} found",
+            "description": "We couldn't find anything matching your search. Try different keywords, adjust your filters, or clear them to see all available {{courses}}."
+        },
+        "results": {
+            "summary": "{{total}} {{courses}} • Page {{page}}/{{totalPages}} • Showing {{showing}} of {{total}}"
+        },
+        "card": {
+            "untitledPackage": "Untitled Package"
+        }
+    },
+    "filters": {
+        "title": "Filters",
+        "clearAll": "Clear All",
+        "close": "Close",
+        "show": "Show",
+        "apply": "Apply Filters",
+        "applyShort": "Apply",
+        "applyWithCount": "Apply ({{selected}})",
+        "appliedCount_one": "{{count}} filter(s) applied",
+        "appliedCount_other": "{{count}} filter(s) applied",
+        "noOptions": "No options available",
+        "unavailable": "Unavailable",
+        "unnamedLevel": "Unnamed {{level}}",
+        "unnamedInstructor": "Unnamed {{instructor}}"
+    },
+    "pagination": {
+        "ariaLabel": "Pagination",
+        "previous": "Previous",
+        "next": "Next"
+    },
+    "dialog": {
+        "close": "Close"
+    },
+    "enrollment": {
+        "success": {
+            "title": "Enrollment Successful!",
+            "welcome": "Welcome to {{courseTitle}}!",
+            "description": "You have successfully enrolled in the {{course}}. You can now access all the {{slides}} and start learning.",
+            "exploreCourse": "Explore {{course}}"
+        },
+        "pending": {
+            "title": "Enrollment Request Submitted",
+            "heading": "Request Submitted Successfully",
+            "nextTitle": "What happens next?",
+            "step1": "{{admin}} will review your enrollment request",
+            "step2": "You'll receive notification once approved",
+            "step3": "Access to {{course}} {{slides}} will be granted"
+        }
+    },
+    "approval": {
+        "success": {
+            "srTitle": "Approval Successful",
+            "srDescription": "Your enrollment has been approved and you now have access to the {{course}}",
+            "heading": "Approval Successful!",
+            "readyTitle": "Ready to Learn!",
+            "readyMessage": "You can now access the {{course}} content and start learning.",
+            "startLearning": "Start Learning"
+        }
+    },
+    "payment": {
+        "success": {
+            "srTitle": "Payment Successful",
+            "srDescription": "Your payment has been processed successfully",
+            "heading": "Payment Successful!",
+            "approvalTitle": "{{admin}} Approval Required",
+            "approvalStep1": "Administrator will review your enrollment request",
+            "approvalStep2": "You will receive an email notification once approved",
+            "approvalStep3": "{{course}} access will be granted automatically",
+            "accessMessage": "You can now access the {{course}} content and start learning.",
+            "exploreCourse": "Explore {{course}}"
+        },
+        "failed": {
+            "srTitle": "Payment Failed",
+            "srDescription": "Your payment could not be processed",
+            "heading": "Payment Failed",
+            "description": "Your payment could not be processed. Please try again.",
+            "nextTitle": "What to do next?",
+            "step1": "Check your payment method and try again",
+            "step2": "Contact support if the issue persists",
+            "step3": "You can start the enrollment process again",
+            "tryAgain": "Try Again"
+        }
+    },
+    "hero": {
+        "resume": {
+            "eyebrow": "Jump back in",
+            "continue": "Continue"
+        },
+        "catalogEyebrow": "{{course}} Catalog",
+        "title": "Explore & Discover",
+        "description": "Effortlessly organize, upload, and track educational resources in one place.",
+        "createCourse": "Create {{course}}"
+    },
+    "card": {
+        "unknownInstructor": "Unknown {{instructor}}",
+        "cta": {
+            "review": "Review",
+            "continue": "Continue",
+            "startLearning": "Start learning",
+            "view": "View {{course}}"
+        },
+        "tagsMore_one": "+{{count}} more",
+        "tagsMore_other": "+{{count}} more",
+        "status": {
+            "notStarted": "Not started",
+            "percentComplete": "{{percent}}% complete",
+            "keepGoing": "Keep going!"
+        },
+        "nextSlide": "Next: {{title}}",
+        "overview": "Overview",
+        "overviewAriaLabel": "View {{course}} overview"
+    }
+}

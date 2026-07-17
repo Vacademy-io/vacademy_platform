@@ -6,6 +6,95 @@ export interface TabBrandingResult {
   tabText: string | null;
 }
 
+/* ============================================================================
+ * Font stacks (i18n Phase 1 — Arabic-first).
+ *
+ * SINGLE SOURCE OF TRUTH for every runtime `--app-font-family` / body font
+ * write. White-label branding used to REPLACE the whole stack, which dropped
+ * the 'Noto Naskh Arabic' fallback that src/index.css puts in the default
+ * chain — so a branded institute rendered Arabic in whatever the OS happened
+ * to pick (often a face with no Arabic glyphs at all). Every setter now routes
+ * through resolveFontStack()/buildFontStack() so the Arabic face can never be
+ * dropped again.
+ *
+ * Latin rendering is unchanged: the Noto Naskh Arabic @font-face in index.css
+ * is unicode-range-scoped to Arabic-script codepoints, so Latin text can never
+ * match it and simply continues down to the next family in the list. Brand
+ * fonts that DO carry Arabic glyphs (e.g. Cairo) still win, because they sit
+ * ahead of the fallback.
+ * ========================================================================== */
+
+/** Arabic-script face. @font-face + unicode-range live in src/index.css. */
+const ARABIC_FALLBACK = "'Noto Naskh Arabic'";
+
+/** Emoji tail shared by the branded stacks below. Kept verbatim. */
+const EMOJI_TAIL =
+  '"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+
+/** System tail shared by the sans-serif branded stacks below. Kept verbatim. */
+const SYSTEM_TAIL = `ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", ${EMOJI_TAIL}`;
+
+/**
+ * Builds a full font stack: brand font → Arabic fallback → system fallbacks.
+ * The Arabic face is injected here and nowhere else, so no caller can omit it.
+ */
+export function buildFontStack(brandFont?: string, tail: string = SYSTEM_TAIL): string {
+  return [brandFont, ARABIC_FALLBACK, tail].filter(Boolean).join(", ");
+}
+
+/** True when `stack` already names the Arabic face (avoids double-insertion). */
+const hasArabicFallback = (stack: string): boolean =>
+  /noto\s+naskh\s+arabic/i.test(stack);
+
+/**
+ * Injects the Arabic fallback into a caller-supplied CSS font stack (e.g. a
+ * catalogue's `fonts.family` JSON blob) directly after the first family.
+ *
+ * It must go after the brand font (so branding still wins for Latin, and for
+ * Arabic when the brand font has Arabic glyphs) but BEFORE any generic family
+ * such as `sans-serif`/`cursive` — a generic matches every codepoint, so an
+ * Arabic face appended after one would never be reached.
+ */
+export function withArabicFallback(stack: string): string {
+  const trimmed = stack.trim();
+  if (!trimmed) return buildFontStack();
+  if (hasArabicFallback(trimmed)) return trimmed;
+
+  const [first, ...rest] = trimmed.split(",");
+  return [first!.trim(), ARABIC_FALLBACK, ...rest.map((part) => part.trim())].join(", ");
+}
+
+/** Default stack when an institute has no branded font (e.g. /resolve 404). */
+const DEFAULT_STACK = buildFontStack("Inter");
+
+/**
+ * Maps an institute's configured font to its full stack, Arabic fallback
+ * included. Known brand keys expand to their curated stack; anything else is
+ * treated as a literal CSS stack and only gains the Arabic fallback.
+ *
+ * This replaces the `mapFamily` helper that was copy-pasted verbatim across
+ * branding.ts, login-form, forgot-password-form and the two Modular*Container
+ * files — every one of which dropped the Arabic face.
+ */
+export function resolveFontStack(fontFamily?: string | null): string {
+  if (!fontFamily) return DEFAULT_STACK;
+
+  switch (String(fontFamily).toUpperCase()) {
+    case "INTER":
+      return DEFAULT_STACK;
+    case "CAIRO":
+      return buildFontStack("Cairo");
+    case "PLAYPEN SANS":
+      return buildFontStack("Playpen Sans", `cursive, ${EMOJI_TAIL}`);
+    case "WORK SANS":
+      return buildFontStack("Work Sans");
+    case "LEXEND":
+      return buildFontStack("Lexend");
+    default:
+      return withArabicFallback(String(fontFamily));
+  }
+}
+
 // Global state to track current favicon and prevent unnecessary resets
 let currentFaviconUrl: string | null = null;
 let faviconMonitorInterval: NodeJS.Timeout | null = null;
@@ -89,27 +178,12 @@ export const applyTabBranding = async (
       document.title = tabText ?? (fallbackTitle as string);
     }
 
-    // Apply font family if provided, else fall back to default Inter stack
+    // Apply font family if provided, else fall back to default Inter stack.
+    // resolveFontStack keeps the Arabic fallback in the chain either way.
     try {
-      const defaultStack = 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-      if (fontFamily) {
-        const mapFamily = (f: string) => {
-          const key = String(f).toUpperCase();
-          if (key === "INTER") return defaultStack;
-          if (key === "CAIRO") return 'Cairo, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-          if (key === "PLAYPEN SANS") return 'Playpen Sans, cursive, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-          if (key === "WORK SANS") return 'Work Sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-          if (key === "LEXEND") return 'Lexend, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-          return f;
-        };
-        const resolved = mapFamily(fontFamily);
-        document.documentElement.style.setProperty("--app-font-family", resolved);
-        document.body.style.fontFamily = resolved;
-      } else {
-        // Default to Inter stack when no font is available (e.g., /resolve 404)
-        document.documentElement.style.setProperty("--app-font-family", defaultStack);
-        document.body.style.fontFamily = defaultStack;
-      }
+      const resolved = resolveFontStack(fontFamily);
+      document.documentElement.style.setProperty("--app-font-family", resolved);
+      document.body.style.fontFamily = resolved;
     } catch {
       // Ignore font family errors
     }

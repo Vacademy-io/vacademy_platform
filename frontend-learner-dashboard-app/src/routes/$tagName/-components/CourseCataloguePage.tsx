@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { withArabicFallback } from "@/utils/branding";
 import { Capacitor } from "@capacitor/core";
 import { useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
@@ -155,14 +156,16 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
     const fonts = catalogueData?.globalSettings?.fonts;
     if (!fonts?.enabled || !fonts?.family) {
-      document.body.style.fontFamily =
-        "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      document.body.style.fontFamily = withArabicFallback(
+        "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+      );
       document.documentElement.style.removeProperty("--catalogue-heading-font");
       return;
     }
 
-    // Apply the global font exactly as specified in JSON
-    const fontFamily = fonts.family.trim();
+    // Apply the global font exactly as specified in JSON, plus the Arabic
+    // fallback the stack would otherwise drop (Latin order is preserved).
+    const fontFamily = withArabicFallback(fonts.family.trim());
     document.body.style.fontFamily = fontFamily;
     document.documentElement.style.setProperty("--app-font-family", fontFamily);
 

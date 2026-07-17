@@ -2,6 +2,7 @@ import React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { XCircle } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { MyButton } from "@/components/design-system/button";
 
 interface PaymentFailedDialogProps {
@@ -19,6 +20,8 @@ export const PaymentFailedDialog: React.FC<PaymentFailedDialogProps> = ({
   onTryAgain,
   onClose,
 }) => {
+  const { t } = useTranslation("study");
+
   // Log when dialog opens
   React.useEffect(() => {
     if (open) {
@@ -51,15 +54,15 @@ export const PaymentFailedDialog: React.FC<PaymentFailedDialogProps> = ({
         <DialogPrimitive.Content
           className="fixed start-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none"
         >
-          <DialogPrimitive.Title className="sr-only">Payment Failed</DialogPrimitive.Title>
+          <DialogPrimitive.Title className="sr-only">{t("payment.failed.srTitle")}</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">
-            Your payment could not be processed
+            {t("payment.failed.srDescription")}
           </DialogPrimitive.Description>
-          
+
           <button
             className="absolute end-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
             onClick={handleClose}
-            aria-label="Close"
+            aria-label={t("dialog.close")}
           >
             <Cross2Icon className="h-4 w-4" />
           </button>
@@ -72,23 +75,22 @@ export const PaymentFailedDialog: React.FC<PaymentFailedDialogProps> = ({
             </div>
             
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Payment Failed
+              {t("payment.failed.heading")}
             </h3>
-            
+
             <p className="text-gray-600 mb-6">
-              Your payment could not be processed. 
-              Please try again.
+              {t("payment.failed.description")}
             </p>
             
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
               <div className="flex items-center space-x-2 text-red-800 mb-2">
                 <XCircle className="w-4 h-4" />
-                <span className="text-sm font-medium">What to do next?</span>
+                <span className="text-sm font-medium">{t("payment.failed.nextTitle")}</span>
               </div>
               <ul className="text-sm text-red-700 space-y-1 text-start">
-                <li>• Check your payment method and try again</li>
-                <li>• Contact support if the issue persists</li>
-                <li>• You can start the enrollment process again</li>
+                <li>• {t("payment.failed.step1")}</li>
+                <li>• {t("payment.failed.step2")}</li>
+                <li>• {t("payment.failed.step3")}</li>
               </ul>
             </div>
             
@@ -99,7 +101,7 @@ export const PaymentFailedDialog: React.FC<PaymentFailedDialogProps> = ({
                 onClick={handleTryAgain}
                 className="w-full max-w-xs"
               >
-                Try Again
+                {t("payment.failed.tryAgain")}
               </MyButton>
             </div>
           </div>

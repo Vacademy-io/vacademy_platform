@@ -75,19 +75,42 @@
               sicon.setAttribute("href", href);
             }
             if (parsed.fontFamily) {
+              /* Mirrors resolveFontStack() in src/utils/branding.ts — that is the
+                 source of truth; this copy exists only because this script runs
+                 before the bundle (first paint, anti-FOUC) and cannot import.
+                 Keep the two in sync. 'Noto Naskh Arabic' must stay ahead of the
+                 system fonts or branded institutes lose Arabic glyphs; it is
+                 unicode-range-scoped in index.css so Latin never reaches it. */
+              var ARABIC_FALLBACK = "'Noto Naskh Arabic'";
+              var SYSTEM_TAIL =
+                'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
               var mapFamily = function (f) {
                 var key = String(f).toUpperCase();
                 if (key === "INTER")
-                  return 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+                  return "Inter, " + ARABIC_FALLBACK + ", " + SYSTEM_TAIL;
                 if (key === "CAIRO")
-                  return 'Cairo, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+                  return "Cairo, " + ARABIC_FALLBACK + ", " + SYSTEM_TAIL;
                 if (key === "PLAYPEN SANS")
-                  return 'Playpen Sans, cursive, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+                  return (
+                    "Playpen Sans, " +
+                    ARABIC_FALLBACK +
+                    ', cursive, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"'
+                  );
                 if (key === "WORK SANS")
-                  return 'Work Sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+                  return "Work Sans, " + ARABIC_FALLBACK + ", " + SYSTEM_TAIL;
                 if (key === "LEXEND")
-                  return 'Lexend, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-                return f;
+                  return "Lexend, " + ARABIC_FALLBACK + ", " + SYSTEM_TAIL;
+                /* Literal CSS stack: insert the Arabic face after the first
+                   family, before any generic (a generic matches everything). */
+                if (/noto\s+naskh\s+arabic/i.test(f)) return f;
+                var parts = String(f).split(",");
+                return [parts[0].trim(), ARABIC_FALLBACK]
+                  .concat(
+                    parts.slice(1).map(function (p) {
+                      return p.trim();
+                    })
+                  )
+                  .join(", ");
               };
               var resolved = mapFamily(parsed.fontFamily);
               document.documentElement.style.setProperty(

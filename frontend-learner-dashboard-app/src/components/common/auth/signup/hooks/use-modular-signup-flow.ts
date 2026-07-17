@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { SignupSettings } from "@/config/signup/defaultSignupSettings";
 import { mapSignupSettings } from "@/config/signup/mapSignupSettings";
 import { useInstituteQuery, parseInstituteSettings } from "@/services/signup-api";
+import i18n from "@/i18n";
 
 interface UseModularSignupFlowProps {
   instituteId: string;
@@ -39,14 +40,14 @@ export function useModularSignupFlow({ instituteId }: UseModularSignupFlowProps)
         setSettings(mappedSettings);
         setError(null);
       } catch (err) {
-        setError("Failed to load signup configuration");
+        setError(i18n.t("auth:flowErrors.loadSignupConfigFailed"));
         // Fallback to default settings
         setSettings(mapSignupSettings(null));
       } finally {
         setIsLoading(false);
       }
     } else if (instituteError) {
-      setError("Failed to load institute details");
+      setError(i18n.t("auth:flowErrors.loadInstituteFailed"));
       // Fallback to default settings
       setSettings(mapSignupSettings(null));
       setIsLoading(false);

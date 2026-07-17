@@ -49,6 +49,8 @@ public class SupportSuperAdminController {
      * @param instituteId  single-institute filter (kept for existing callers/deep links)
      * @param instituteIds multi-institute filter (repeated or comma-separated); unioned with
      *                     {@code instituteId}. Empty/absent means all institutes.
+     * @param unassigned   only tickets with no engineer assigned (takes precedence over engineerId)
+     * @param search       case-insensitive substring match on the ticket subject
      */
     @GetMapping("/tickets")
     public ResponseEntity<PageResponseDto<SupportTicketDto>> tickets(
@@ -57,6 +59,8 @@ public class SupportSuperAdminController {
             @RequestParam(value = "instituteIds", required = false) List<String> instituteIds,
             @RequestParam(value = "status", required = false) String status,
             @RequestParam(value = "engineerId", required = false) String engineerId,
+            @RequestParam(value = "unassigned", defaultValue = "false") boolean unassigned,
+            @RequestParam(value = "search", required = false) String search,
             @RequestParam(value = "overdue", defaultValue = "false") boolean overdue,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size) {
@@ -69,7 +73,8 @@ public class SupportSuperAdminController {
         if (instituteId != null) {
             institutes.add(instituteId);
         }
-        return ResponseEntity.ok(ticketService.search(institutes, status, engineerId, overdue, pageable));
+        return ResponseEntity.ok(ticketService.search(
+                institutes, status, engineerId, unassigned, search, overdue, pageable));
     }
 
     @GetMapping("/tickets/counts")

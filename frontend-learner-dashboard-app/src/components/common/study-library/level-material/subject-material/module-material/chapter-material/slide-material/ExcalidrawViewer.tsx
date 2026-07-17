@@ -3,12 +3,14 @@ import { Excalidraw } from '@excalidraw/excalidraw';
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types';
 import '@excalidraw/excalidraw/index.css';
 import { fetchExcalidrawContent, ExcalidrawSceneData } from './excalidrawUtils';
+import { useTranslation } from 'react-i18next';
 
 interface ExcalidrawViewerProps {
     fileId: string | null | undefined;
 }
 
 export const ExcalidrawViewer: React.FC<ExcalidrawViewerProps> = ({ fileId }) => {
+    const { t } = useTranslation('studyContent');
     const [scene, setScene] = useState<ExcalidrawSceneData | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -113,7 +115,7 @@ export const ExcalidrawViewer: React.FC<ExcalidrawViewerProps> = ({ fileId }) =>
             <div className="flex items-center justify-center w-full h-screen-80 bg-gray-50 rounded-lg border border-gray-200">
                 <div className="flex flex-col items-center space-y-3">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                    <p className="text-sm text-gray-600 font-medium">Loading diagram...</p>
+                    <p className="text-sm text-gray-600 font-medium">{t("excalidraw.loading")}</p>
                 </div>
             </div>
         );
@@ -130,8 +132,8 @@ export const ExcalidrawViewer: React.FC<ExcalidrawViewerProps> = ({ fileId }) =>
                         </svg>
                     </div>
                     <div>
-                        <h3 className="text-sm font-medium text-gray-900">Unable to load diagram</h3>
-                        <p className="text-xs text-gray-500 mt-1">{error || 'The diagram content could not be loaded'}</p>
+                        <h3 className="text-sm font-medium text-gray-900">{t("excalidraw.unableToLoad")}</h3>
+                        <p className="text-xs text-gray-500 mt-1">{error || t("excalidraw.contentCouldNotLoad")}</p>
                     </div>
                 </div>
             </div>
@@ -159,12 +161,12 @@ export const ExcalidrawViewer: React.FC<ExcalidrawViewerProps> = ({ fileId }) =>
             <button
                 onClick={centerContent}
                 className="absolute top-3 end-3 z-20 bg-white hover:bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors duration-200 flex items-center space-x-2"
-                title="Center diagram content"
+                title={t("excalidraw.centerTitle")}
             >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
                 </svg>
-                <span>Center</span>
+                <span>{t("excalidraw.center")}</span>
             </button>
 
             <div className="w-full h-full">

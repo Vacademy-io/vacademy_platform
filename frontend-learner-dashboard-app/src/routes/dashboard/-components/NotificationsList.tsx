@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,7 @@ interface MessageGroupListProps {
 }
 
 function MessageGroupList({ groups }: MessageGroupListProps) {
+  const { t } = useTranslation("dashboard");
   return (
     <div className="space-y-4">
       {groups.map(({ alert, count, isRead }) => (
@@ -80,11 +82,11 @@ function MessageGroupList({ groups }: MessageGroupListProps) {
               variant="secondary"
               className="absolute -top-2 -end-2 z-10 border border-border bg-background text-xs shadow-sm"
             >
-              ×{count}
+              {t("notifications.occurrenceCount", { count })}
             </Badge>
           )}
           <NotifcationCard
-            title={alert.title || "Notification"}
+            title={alert.title || t("notifications.defaultTitle")}
             description={getMessagePreview(alert)}
             date={formatNotificationDate(alert.createdAt)}
             isNew={!isRead}
@@ -96,6 +98,7 @@ function MessageGroupList({ groups }: MessageGroupListProps) {
 }
 
 export function NotificationList() {
+  const { t } = useTranslation("dashboard");
   const {
     alerts,
     loading: alertsLoading,
@@ -132,10 +135,10 @@ export function NotificationList() {
           <div className="mb-6 animate-fade-in-down">
             <div className="text-center mb-4">
               <h1 className="text-2xl font-bold text-foreground mb-2 tracking-tight">
-                Notifications
+                {t("notifications.pageTitle")}
               </h1>
               <p className="text-sm text-muted-foreground">
-                Stay updated with your latest activities and announcements
+                {t("notifications.pageSubtitle")}
               </p>
             </div>
 
@@ -146,7 +149,7 @@ export function NotificationList() {
               >
                 <span className="flex items-center gap-2">
                   <Bell className="w-4 h-4" />
-                  General Notifications
+                  {t("notifications.tabGeneral")}
                 </span>
               </TabsTrigger>
               <TabsTrigger
@@ -155,7 +158,7 @@ export function NotificationList() {
               >
                 <span className="flex items-center gap-2">
                   <Megaphone className="w-4 h-4" />
-                  Announcements
+                  {t("notifications.tabAnnouncements")}
                 </span>
               </TabsTrigger>
             </TabsList>
@@ -167,15 +170,15 @@ export function NotificationList() {
               <LoadingState variant="list" count={3} />
             ) : alertsError ? (
               <ErrorState
-                title="Could not load notifications"
+                title={t("notifications.errorTitle")}
                 message={alertsError}
                 onRetry={refresh}
               />
             ) : generalGroups.length === 0 ? (
               <EmptyState
                 icon={Bell}
-                title="No notifications yet"
-                description="You are all caught up. New notifications will show up here."
+                title={t("notifications.emptyTitle")}
+                description={t("notifications.emptyDescription")}
               />
             ) : (
               <>
@@ -188,7 +191,7 @@ export function NotificationList() {
                       onClick={loadMore}
                       disabled={alertsLoading}
                     >
-                      {alertsLoading ? "Loading..." : "Load more"}
+                      {alertsLoading ? t("notifications.loading") : t("notifications.loadMore")}
                     </Button>
                   </div>
                 )}
@@ -202,15 +205,15 @@ export function NotificationList() {
               <LoadingState variant="list" count={3} />
             ) : dashboardPins.error ? (
               <ErrorState
-                title="Could not load announcements"
+                title={t("notifications.announcementsErrorTitle")}
                 message={dashboardPins.error}
                 onRetry={fetchDashboardPins}
               />
             ) : announcementGroups.length === 0 ? (
               <EmptyState
                 icon={Megaphone}
-                title="No announcements yet"
-                description="Announcements from your institute will show up here."
+                title={t("notifications.announcementsEmptyTitle")}
+                description={t("notifications.announcementsEmptyDescription")}
               />
             ) : (
               <MessageGroupList groups={announcementGroups} />

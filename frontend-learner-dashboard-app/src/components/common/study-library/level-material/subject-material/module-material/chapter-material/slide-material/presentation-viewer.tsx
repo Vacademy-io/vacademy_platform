@@ -1,6 +1,7 @@
 import type React from "react";
 import { useEffect, useState, useRef, useCallback, lazy, Suspense } from "react";
 import { FileX } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 
 // Lazy load ExcalidrawViewer (3.7MB) - only load when presentation slide is viewed
 const ExcalidrawViewer = lazy(() =>
@@ -8,14 +9,17 @@ const ExcalidrawViewer = lazy(() =>
 );
 
 // Loading fallback for Excalidraw
-const ExcalidrawLoadingFallback = () => (
-  <div className="flex items-center justify-center w-full h-screen-80 bg-gray-50 rounded-lg border border-gray-200">
-    <div className="flex flex-col items-center space-y-3">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      <p className="text-sm text-gray-600 font-medium">Loading presentation viewer...</p>
+const ExcalidrawLoadingFallback = () => {
+  const { t } = useTranslation("studyContent");
+  return (
+    <div className="flex items-center justify-center w-full h-screen-80 bg-gray-50 rounded-lg border border-gray-200">
+      <div className="flex flex-col items-center space-y-3">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <p className="text-sm text-gray-600 font-medium">{t("presentation.loadingViewer")}</p>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 import { Slide } from '@/hooks/study-library/use-slides';
 import { usePresentationTrackingStore } from "@/stores/study-library/presentation-tracking-store";
 import { usePresentationSync } from "@/hooks/study-library/usePresentationSync";
@@ -31,6 +35,7 @@ const getISTTime = () => new Date().toISOString();
 const getEpochTimeInMillis = () => Date.now();
 
 const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
+  const { t } = useTranslation("studyContent");
   const { addActivity } = usePresentationTrackingStore();
   const { syncPresentationTrackingData } = usePresentationSync();
   const { activeItem } = useContentStore();
@@ -324,10 +329,10 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
           </div>
           <div className="space-y-2">
             <h3 className="text-lg font-medium text-gray-900">
-              Presentation Not Available
+              {t("presentation.notAvailableTitle")}
             </h3>
             <p className="text-sm text-gray-600">
-              The presentation content could not be loaded at this time.
+              {t("presentation.notAvailableBody")}
             </p>
           </div>
         </div>
@@ -384,10 +389,10 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
         <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-sm mx-4 text-center">
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Session Paused
+              {t("presentation.sessionPausedTitle")}
             </h3>
             <p className="text-sm text-gray-600">
-              Please stay focused while learning. Your session will resume automatically.
+              {t("presentation.sessionPausedBody")}
             </p>
           </div>
         </div>

@@ -283,7 +283,10 @@ const CourseCatalougePage: React.FC = () => {
         if (status === 500) {
           toast.error(
             i18n.t("study:catalog.toast.loadError", {
-              courses: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course),
+              courses: getTerminologyPlural(
+                ContentTerms.Course,
+                SystemTerms.Course
+              ).toLocaleLowerCase(),
             })
           );
         }
@@ -294,7 +297,10 @@ const CourseCatalougePage: React.FC = () => {
         if (tabType !== "ALL" && status !== 500) {
           toast.error(
             i18n.t("study:catalog.toast.loadTabError", {
-              courses: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course),
+              courses: getTerminologyPlural(
+                ContentTerms.Course,
+                SystemTerms.Course
+              ).toLocaleLowerCase(),
             })
           );
         }
@@ -365,7 +371,10 @@ const CourseCatalougePage: React.FC = () => {
           if (!fallbackSucceeded && !controller.signal.aborted) {
             toast.error(
               i18n.t("study:catalog.toast.loadFallbackError", {
-                courses: getTerminologyPlural(ContentTerms.Course, SystemTerms.Course),
+                courses: getTerminologyPlural(
+                  ContentTerms.Course,
+                  SystemTerms.Course
+                ).toLocaleLowerCase(),
               })
             );
           }

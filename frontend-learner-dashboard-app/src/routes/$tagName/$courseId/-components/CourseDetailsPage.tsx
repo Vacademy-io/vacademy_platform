@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { withArabicFallback } from "@/utils/branding";
 import { BASE_URL } from "@/constants/urls";
 import { Capacitor } from "@capacitor/core";
 import { useNavigate } from "@tanstack/react-router";
@@ -509,9 +510,11 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       document.head.appendChild(link);
     }
 
-    // Apply font exactly as specified in JSON
-    document.body.style.fontFamily = fontFamily;
-    document.documentElement.style.setProperty("--app-font-family", fontFamily);
+    // Apply font exactly as specified in JSON, plus the Arabic fallback the
+    // stack would otherwise drop (withArabicFallback preserves Latin order).
+    const resolvedFontFamily = withArabicFallback(fontFamily);
+    document.body.style.fontFamily = resolvedFontFamily;
+    document.documentElement.style.setProperty("--app-font-family", resolvedFontFamily);
   }, [catalogueData]);
 
   // Fetch course details

@@ -4,8 +4,10 @@ import { CheckCircle } from "@phosphor-icons/react";
 import { Chapter } from "@/stores/study-library/use-modules-with-chapters-store";
 import { CompletionStatusComponent } from "@/components/common/completion-status-component";
 import { toTitleCase } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 export const ChapterCard = ({ chapter }: {chapter: Chapter}) => {
+    const { t } = useTranslation("studyContent");
     const router = useRouter();
     const {  subjectId, moduleId } = router.state.location.search;
     const navigate = useNavigate();
@@ -42,7 +44,7 @@ export const ChapterCard = ({ chapter }: {chapter: Chapter}) => {
                     </div>
                     <div className="flex items-center gap-2">
                         <CompletionStatusComponent completionPercentage={chapter.percentage_completed} />
-                        <p className="text-body text-neutral-500">({chapter.percentage_completed.toFixed(2)}% completed)</p>
+                        <p className="text-body text-neutral-500">{t("progress.percentCompletedParenthetical", { percent: chapter.percentage_completed.toFixed(2) })}</p>
                     </div>
                 </div>
                 <div className="flex items-center justify-between">

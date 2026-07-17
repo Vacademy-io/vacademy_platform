@@ -47,6 +47,8 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, St
             + "(:hasInstitutes = false OR t.instituteId IN :instituteIds) AND "
             + "(:status IS NULL OR t.status = :status) AND "
             + "(:engineerId IS NULL OR t.assignedEngineerId = :engineerId) AND "
+            + "(:unassigned = false OR t.assignedEngineerId IS NULL) AND "
+            + "(:search IS NULL OR LOWER(t.subject) LIKE :search ESCAPE '!') AND "
             + "(:onlyOverdue = false OR (t.firstRespondedAt IS NULL AND t.firstResponseDueAt IS NOT NULL "
             + "    AND t.firstResponseDueAt < :now "
             + "    AND t.status NOT IN (vacademy.io.community_service.feature.support.enums.TicketStatus.RESOLVED, "
@@ -55,6 +57,9 @@ public interface SupportTicketRepository extends JpaRepository<SupportTicket, St
                                       @Param("instituteIds") Collection<String> instituteIds,
                                       @Param("status") TicketStatus status,
                                       @Param("engineerId") String engineerId,
+                                      @Param("unassigned") boolean unassigned,
+                                      /** Pre-lowercased, wildcard-escaped and %-wrapped by the service. */
+                                      @Param("search") String search,
                                       @Param("onlyOverdue") boolean onlyOverdue,
                                       @Param("now") Date now,
                                       Pageable pageable);

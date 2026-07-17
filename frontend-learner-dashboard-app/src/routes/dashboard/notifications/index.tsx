@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import {NotificationList} from "../-components/NotificationsList"
 
@@ -8,10 +9,12 @@ export const Route = createFileRoute('/dashboard/notifications/')({
 })
 
 function RouteComponent() {
+    const { t } = useTranslation("dashboard");
     const { setNavHeading } = useNavHeadingStore();
+    // `t` in deps so the heading re-resolves when the learner switches language.
     useEffect(() => {
-      setNavHeading("Notifications");
-    }, []);
+      setNavHeading(t("notifications.navHeading"));
+    }, [t, setNavHeading]);
   return (
     <NotificationList/>
   );

@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -44,7 +46,7 @@ const createEmailInputSchema = (
   usernameStrategy?: string
 ) => {
   const baseSchema: any = {
-    email: z.string().email("Please enter a valid email address"),
+    email: z.string().email(i18n.t("auth:validation.validEmail")),
   };
 
   // For email OTP signup, ask for full name only if:
@@ -53,7 +55,7 @@ const createEmailInputSchema = (
   if (!hideFullName && usernameStrategy !== "email") {
     baseSchema.fullName = z
       .string()
-      .min(2, "Full name must be at least 2 characters");
+      .min(2, i18n.t("auth:validation.fullNameMin"));
   }
 
   return z.object(baseSchema);
@@ -73,6 +75,7 @@ export function EmailInputForm({
   onEnrolledUserDetected,
   checkEnrollmentOnce,
 }: EmailInputFormProps) {
+  const { t } = useTranslation("auth");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const schema = createEmailInputSchema(
     hideFullName,
@@ -117,10 +120,10 @@ export function EmailInputForm({
         }
       );
 
-      toast.success("OTP sent successfully to your email");
+      toast.success(i18n.t("auth:toasts.otpSentEmail"));
       onOtpSent(data.email, fullNameToUse);
     } catch (error) {
-      toast.error("Failed to send OTP. Please try again.");
+      toast.error(i18n.t("auth:toasts.failedToSendOtpRetry"));
     } finally {
       setIsSubmitting(false);
     }
@@ -134,12 +137,12 @@ export function EmailInputForm({
     >
       <div className="text-center space-y-2">
         <h3 className="text-xl font-semibold text-gray-900">
-          {isOAuth ? "Verify Your Email" : "Create Your Account"}
+          {isOAuth ? t("emailInput.verifyEmail") : t("signup.createAccount")}
         </h3>
         <p className="text-sm text-gray-600">
           {isOAuth
-            ? "Please verify your email to complete the signup process"
-            : "Enter your details to get started"}
+            ? t("emailInput.verifyEmailSubtitle")
+            : t("emailInput.enterDetails")}
         </p>
       </div>
 
@@ -181,12 +184,12 @@ export function EmailInputForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-sm font-medium text-gray-700">
-                    Full Name *
+                    {t("emailInput.fullNameLabel")}
                   </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
-                      placeholder="Enter your full name"
+                      placeholder={t("emailInput.enterFullName")}
                       className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     />
                   </FormControl>
@@ -202,13 +205,13 @@ export function EmailInputForm({
             render={({ field }) => (
               <FormItem>
                 <FormLabel className="text-sm font-medium text-gray-700">
-                  Email Address *
+                  {t("emailInput.emailLabel")}
                 </FormLabel>
                 <FormControl>
                   <Input
                     {...field}
                     type="email"
-                    placeholder="Enter your email address"
+                    placeholder={t("common.enterEmailAddress")}
                     className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                   />
                 </FormControl>
@@ -225,11 +228,11 @@ export function EmailInputForm({
             {isSubmitting ? (
               <>
                 <SpinnerGap className="w-4 h-4 me-2 animate-spin" />
-                Sending OTP...
+                {t("emailInput.sendingOtp")}
               </>
             ) : (
               <>
-                Send OTP
+                {t("emailInput.sendOtp")}
                 <ArrowRight className="w-4 h-4 ms-2" />
               </>
             )}
@@ -243,7 +246,7 @@ export function EmailInputForm({
           className="w-full flex items-center justify-center gap-2 text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to signup options
+          {t("emailInput.backToOptions")}
         </button>
       )}
     </motion.div>

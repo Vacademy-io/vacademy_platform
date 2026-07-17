@@ -21,6 +21,7 @@ import {
     UserList,
     Notebook,
 } from '@phosphor-icons/react';
+import i18next from 'i18next';
 import { StorageKey } from '@/constants/storage/storage';
 import {
     ContentTerms,
@@ -30,6 +31,9 @@ import {
 import { NamingSettingsType } from '@/routes/settings/-constants/terms';
 import { SidebarItemsType } from '@/types/layout-container/layout-container-types';
 import { isBulkContentUploadEnabled } from '@/components/common/study-library/bulk-content-uploading/feature-gate';
+import { DEFAULT_LOCALE, normalizeLocale, type SupportedLocale } from '@/i18n/locales';
+import { getLanguageSetting } from '@/services/language-settings';
+import { notifyNamingSettingsUpdated } from '@/hooks/useNamingSettingsVersion';
 
 // Utility function to get naming settings from localStorage
 const getNamingSettings = (): NamingSettingsType[] => {
@@ -50,6 +54,98 @@ const getNamingSettings = (): NamingSettingsType[] => {
         console.error('Failed to parse naming settings from localStorage:', error);
         return [];
     }
+};
+
+/* -------------------------------------------------------------------------- *
+ * Locale-aware terminology resolution
+ *
+ * Institutes rename terms ("Course" → "Programme") AND the UI can render in a
+ * language other than the one those renames were typed in. resolveLocalizedTerm
+ * covers steps (a)–(c) of the chain; it returns null when the caller must apply
+ * step (d) — its own pre-existing fallback, byte-for-byte:
+ *
+ *   (a) term.locales[lng]                    → the institute's word for THIS locale
+ *   (b) lng === content source locale        → null (flat customValue path = today)
+ *   (c) i18n.t('terms:<key>')                → translated SYSTEM default
+ *   (d) null                                 → caller's existing fallback
+ *
+ * ENGLISH IS UNTOUCHED: with no `locales` map and no LANGUAGE_SETTING, the
+ * source locale defaults to 'en', so an 'en' UI always exits at (b) with null
+ * and every caller behaves exactly as it did before this file changed. The
+ * terms catalog is not even fetched.
+ * -------------------------------------------------------------------------- */
+
+const TERMS_NAMESPACE = 'terms';
+
+/**
+ * Active UI locale. Read off the i18next singleton rather than importing
+ * '@/i18n' so this module never triggers i18n init (735 call sites import it,
+ * including from non-browser contexts) and no import cycle is possible.
+ */
+const getActiveLocale = (): SupportedLocale =>
+    normalizeLocale(i18next.resolvedLanguage ?? i18next.language);
+
+/** Language the institute's flat customValue/customPluralValue are written in. */
+const getContentSourceLocale = (): SupportedLocale => {
+    try {
+        return normalizeLocale(getLanguageSetting()?.content_source_locale ?? DEFAULT_LOCALE);
+    } catch {
+        return DEFAULT_LOCALE;
+    }
+};
+
+// Locales whose terms catalog has been requested — the namespace is fetched
+// lazily and only for locales that can actually reach step (c), so an
+// English-only institute never pays for it.
+const requestedTermsLocales = new Set<string>();
+
+const ensureTermsCatalog = (locale: string): void => {
+    if (requestedTermsLocales.has(locale) || !i18next.isInitialized) return;
+    requestedTermsLocales.add(locale);
+    void i18next
+        .loadNamespaces(TERMS_NAMESPACE)
+        // The catalog lands after the first paint; tell consumers to re-read.
+        .then(() => notifyNamingSettingsUpdated())
+        .catch(() => {
+            // Missing/failed catalog is non-fatal — resolution falls to step (d).
+            requestedTermsLocales.delete(locale);
+        });
+};
+
+/** Translated system default for a term, or null when the catalog lacks it. */
+const translateTerm = (key: string, suffix?: string): string | null => {
+    if (!i18next.isInitialized) return null;
+    const fullKey = suffix ? `${key}_${suffix}` : key;
+    if (!i18next.exists(fullKey, { ns: TERMS_NAMESPACE })) return null;
+    const value = i18next.t(fullKey, { ns: TERMS_NAMESPACE, defaultValue: '' });
+    return typeof value === 'string' && value.length > 0 ? value : null;
+};
+
+/**
+ * Steps (a)–(c) above. `null` means "use your own fallback" (step (d)).
+ *
+ * Plural reads the `_other` suffix: it is the bare plural LABEL in every
+ * catalog (en "Courses", ar broken plural "دورات"), not a count-driven form.
+ */
+export const resolveLocalizedTerm = (
+    setting: NamingSettingsType | undefined,
+    key: string,
+    form: 'singular' | 'plural'
+): string | null => {
+    const locale = getActiveLocale();
+
+    // (a) Institute's own word for the active locale. `locales` is optional —
+    // blobs cached before this field existed simply have nothing here.
+    const override = setting?.locales?.[locale];
+    const overrideValue = form === 'plural' ? override?.customPluralValue : override?.customValue;
+    if (overrideValue) return overrideValue;
+
+    // (b) The flat fields already hold the right language — caller's path wins.
+    if (locale === getContentSourceLocale()) return null;
+
+    // (c) Translated system default.
+    ensureTermsCatalog(locale);
+    return translateTerm(key, form === 'plural' ? 'other' : undefined);
 };
 
 // When true, getTerminology/getTerminologyPlural bypass localStorage and
@@ -80,6 +176,11 @@ export const getTerminology = (key: string, defaultValue: string): string => {
     }
 
     const setting = settings.find((item) => item.key === key);
+
+    // Steps (a)-(c); null → step (d), the original line below, unchanged.
+    const localized = resolveLocalizedTerm(setting, key, 'singular');
+    if (localized) return localized;
+
     return setting?.customValue || defaultValue;
 };
 
@@ -94,6 +195,13 @@ export const getTerminologyPlural = (key: string, defaultValue: string): string 
     }
 
     const setting = settings.find((item) => item.key === key);
+
+    // Steps (a)-(c); null → step (d), the original body below, unchanged.
+    // naivePluralize is English-only, so reaching it for a non-English locale
+    // would mangle the word — that is exactly what step (c) prevents.
+    const localized = resolveLocalizedTerm(setting, key, 'plural');
+    if (localized) return localized;
+
     if (setting?.customPluralValue) {
         return setting.customPluralValue;
     }

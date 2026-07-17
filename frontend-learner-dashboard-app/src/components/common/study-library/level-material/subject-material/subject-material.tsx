@@ -6,7 +6,7 @@ import { fetchStudyLibraryDetails } from "@/services/study-library/getStudyLibra
 import { toTitleCase } from "@/lib/utils";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { TabType, tabs } from "./-constants/constant";
+import { TabType, getTabs } from "./-constants/constant";
 import {
   CaretDown,
   CaretRight,
@@ -32,8 +32,12 @@ import {
 import { getIcon } from "./module-material/chapter-material/slide-material/chapter-sidebar-slides";
 import { useRouter } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import {
+  getTerminology,
+  getTerminologyPlural,
+} from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
+import { useTranslation } from "react-i18next";
 
 export interface Chapter {
   id: string;
@@ -68,6 +72,7 @@ export interface ModuleWithChapters {
 export type SubjectModulesMap = { [subjectId: string]: ModuleWithChapters[] };
 
 export const SubjectMaterial = () => {
+  const { t } = useTranslation("studyContent");
   const router = useRouter();
   const { setNavHeading } = useNavHeadingStore();
   const { studyLibraryData, setStudyLibraryData } = useStudyLibraryStore();
@@ -200,10 +205,15 @@ export const SubjectMaterial = () => {
   useEffect(() => {
     setNavHeading(
       <div className="flex items-center gap-2">
-        <div>Course Details</div>
+        <div>
+          {t("subjectMaterial.courseDetails", {
+            course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+          })}
+        </div>
       </div>
     );
-  }, []);
+    // Re-publish the heading when the language (or a rename) changes it.
+  }, [t]);
 
   const refreshData = async () => {
     const PackageSessionId = await getPackageSessionId();
@@ -294,12 +304,12 @@ export const SubjectMaterial = () => {
               {isAllExpanded ? (
                 <>
                   <FolderOpen size={14} className="me-1.5" />
-                  Collapse All
+                  {t("subjectMaterial.collapseAll")}
                 </>
               ) : (
                 <>
                   <Folder size={14} className="me-1.5" />
-                  Expand All
+                  {t("subjectMaterial.expandAll")}
                 </>
               )}
             </Button>
@@ -475,7 +485,9 @@ export const SubjectMaterial = () => {
                                           {(slidesMap[ch.id] ?? []).length ===
                                           0 ? (
                                             <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
-                                              No slides in this chapter.
+                                              {t(
+                                                "subjectMaterial.noSlidesInChapter"
+                                              )}
                                             </div>
                                           ) : (
                                             (slidesMap[ch.id] ?? []).map(
@@ -534,12 +546,16 @@ export const SubjectMaterial = () => {
             <span className="text-white text-xs font-bold">T</span>
           </div>
           <span className="font-medium text-neutral-700">
-            {getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}s
+            {getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}
           </span>
         </div>
         <p className="text-neutral-500">
-          {getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}s content
-          coming soon.
+          {t("subjectMaterial.teachersComingSoon", {
+            teachers: getTerminologyPlural(
+              RoleTerms.Teacher,
+              SystemTerms.Teacher
+            ),
+          })}
         </p>
       </div>
     ),
@@ -549,9 +565,13 @@ export const SubjectMaterial = () => {
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
             <span className="text-white text-xs font-bold">A</span>
           </div>
-          <span className="font-medium text-neutral-700">Assessments</span>
+          <span className="font-medium text-neutral-700">
+            {t("subjectMaterial.assessments")}
+          </span>
         </div>
-        <p className="text-neutral-500">Assessment content coming soon.</p>
+        <p className="text-neutral-500">
+          {t("subjectMaterial.assessmentComingSoon")}
+        </p>
       </div>
     ),
   };
@@ -565,7 +585,7 @@ export const SubjectMaterial = () => {
           className="w-full overflow-scroll"
         >
           <TabsList className="h-auto border-b border-neutral-200/80 bg-transparent p-0">
-            {tabs.map((tab) => (
+            {getTabs().map((tab) => (
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}

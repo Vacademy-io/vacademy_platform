@@ -2,7 +2,10 @@ import React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { Cross2Icon } from "@radix-ui/react-icons";
 import { CheckCircle, Clock } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { MyButton } from "@/components/design-system/button";
+import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 
 interface PaymentSuccessDialogProps {
   open: boolean;
@@ -21,6 +24,9 @@ export const PaymentSuccessDialog: React.FC<PaymentSuccessDialogProps> = ({
   onExploreCourse,
   onClose,
 }) => {
+  const { t } = useTranslation("study");
+  const course = getTerminology(ContentTerms.Course, SystemTerms.Course);
+
   const handleClose = () => {
     onOpenChange(false);
     onClose?.();
@@ -38,15 +44,15 @@ export const PaymentSuccessDialog: React.FC<PaymentSuccessDialogProps> = ({
         <DialogPrimitive.Content
           className="fixed start-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none"
         >
-          <DialogPrimitive.Title className="sr-only">Payment Successful</DialogPrimitive.Title>
+          <DialogPrimitive.Title className="sr-only">{t("payment.success.srTitle")}</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">
-            Your payment has been processed successfully
+            {t("payment.success.srDescription")}
           </DialogPrimitive.Description>
-          
+
           <button
             className="absolute end-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
             onClick={handleClose}
-            aria-label="Close"
+            aria-label={t("dialog.close")}
           >
             <Cross2Icon className="h-4 w-4" />
           </button>
@@ -67,7 +73,7 @@ export const PaymentSuccessDialog: React.FC<PaymentSuccessDialogProps> = ({
             {/* Main Content */}
             <div className="space-y-4">
               <h3 className="text-2xl font-bold text-gray-900">
-                Payment Successful!
+                {t("payment.success.heading")}
               </h3>
             </div>
             
@@ -81,20 +87,22 @@ export const PaymentSuccessDialog: React.FC<PaymentSuccessDialogProps> = ({
                   </div>
                   <div className="flex-1 text-start">
                     <h4 className="text-sm font-semibold text-yellow-900 mb-2">
-                      Admin Approval Required
+                      {t("payment.success.approvalTitle", {
+                        admin: getTerminology(RoleTerms.Admin, SystemTerms.Admin),
+                      })}
                     </h4>
                     <div className="space-y-2">
                       <div className="flex items-center space-x-2 text-sm text-yellow-700">
                         <div className="w-1.5 h-1.5 bg-yellow-600 rounded-full"></div>
-                        <span>Administrator will review your enrollment request</span>
+                        <span>{t("payment.success.approvalStep1")}</span>
                       </div>
                       <div className="flex items-center space-x-2 text-sm text-yellow-700">
                         <div className="w-1.5 h-1.5 bg-yellow-600 rounded-full"></div>
-                        <span>You will receive an email notification once approved</span>
+                        <span>{t("payment.success.approvalStep2")}</span>
                       </div>
                       <div className="flex items-center space-x-2 text-sm text-yellow-700">
                         <div className="w-1.5 h-1.5 bg-yellow-600 rounded-full"></div>
-                        <span>Course access will be granted automatically</span>
+                        <span>{t("payment.success.approvalStep3", { course })}</span>
                       </div>
                     </div>
                   </div>
@@ -104,7 +112,9 @@ export const PaymentSuccessDialog: React.FC<PaymentSuccessDialogProps> = ({
                <div className="mt-8 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-6 shadow-sm">
                  <div className="text-center">
                    <p className="text-green-800 font-medium">
-                     You can now access the course content and start learning.
+                     {t("payment.success.accessMessage", {
+                       course: course.toLocaleLowerCase(),
+                     })}
                    </p>
                  </div>
                </div>
@@ -118,7 +128,7 @@ export const PaymentSuccessDialog: React.FC<PaymentSuccessDialogProps> = ({
                   onClick={handleExploreCourse}
                   className="w-full h-12 text-base font-semibold"
                 >
-                  Explore Course
+                  {t("payment.success.exploreCourse", { course })}
                 </MyButton>
               </div>
             )}

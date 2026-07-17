@@ -18,6 +18,7 @@ import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingStepI
 import vacademy.io.admin_core_service.features.onboarding.enums.OnboardingStepInstanceStatus;
 import vacademy.io.admin_core_service.features.onboarding.enums.OnboardingStepTypeEnum;
 import vacademy.io.admin_core_service.features.onboarding.service.OnboardingStudentCreationService;
+import vacademy.io.common.exceptions.InvalidRequestException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -89,7 +90,10 @@ public class FormStepTypeHandler implements OnboardingStepTypeHandler {
         }
 
         if (!missingMandatory.isEmpty()) {
-            throw new IllegalArgumentException(
+            // InvalidRequestException -> 400 via the shared GlobalExceptionHandler. A bare
+            // RuntimeException/IllegalArgumentException falls through that handler's generic
+            // RuntimeException catch-all, which maps to 511 -- wrong for a client validation error.
+            throw new InvalidRequestException(
                     "Missing mandatory field(s): " + String.join(", ", missingMandatory));
         }
 

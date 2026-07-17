@@ -54,7 +54,8 @@ The frontend renders this in `/admin-activity-logs` as **"John Doe created cours
 | Field | Required | Type | Purpose |
 |---|---|---|---|
 | `entityType` | yes | String | Logical resource type, uppercase snake. Used to filter audit rows. Examples: `COURSE`, `LIVE_SESSION`, `LEARNER`, `INSTITUTE_SETTING`. New types are free-form — add to the frontend's `RESOURCE_OPTIONS` dropdown in [ActivityLogFilters.tsx](../frontend-admin-dashboard/src/routes/admin-activity-logs/-components/ActivityLogFilters.tsx) once you start emitting them. |
-| `action` | yes | String | Logical action, uppercase. Examples: `CREATE`, `UPDATE`, `DELETE`, `CANCEL`, `ENROLL`, `PUBLISH`. Same dropdown convention as above (`ACTIVITY_OPTIONS`). |
+| `action` | yes* | String | Logical action, uppercase. Examples: `CREATE`, `UPDATE`, `DELETE`, `CANCEL`, `ENROLL`, `PUBLISH`. Same dropdown convention as above (`ACTIVITY_OPTIONS`). *Optional only when `actionExpr` is set, in which case it acts as the fallback. |
+| `actionExpr` | optional | SpEL | Resolves the action at runtime, for one mapping that performs several logical operations. Evaluated after the call, so `#result` is available. Takes precedence over `action`; falls back to it when blank. If both are empty the row is **skipped** — `action` is NOT NULL. See the multi-operation example below. |
 | `entityIdExpr` | optional | SpEL | Returns the id of the affected entity. Pulled from method args, `#user`, or `#result`. Example: `"#courseId"`, `"#result"`, `"#req?.id"`. |
 | `descriptionExpr` | optional but recommended | SpEL | Produces the human-readable verb-and-object fragment ("created course X"). Actor name is prepended automatically by the frontend, so don't include the actor. |
 | `captureBefore` | optional | SpEL | Evaluated *before* the wrapped method runs. Used for UPDATE/DELETE to snapshot the entity's prior state. Supports bean references — see the example below. |
@@ -158,6 +159,55 @@ Output row: `John deleted course Mathematics 101, Physics 201, Chemistry 110`.
 public ResponseEntity<?> deleteLiveSessions(@RequestBody DeleteLiveSessionRequest request, ...) { ... }
 ```
 
+### Multi-operation endpoint — action derived from the request
+
+`POST /institute_learner-operation/v1/update` switches on an `operation` field to
+terminate, deactivate, reactivate, move batches, or change expiry. A fixed
+`action` would stamp all six identically and make terminations unfilterable, so
+the action comes from the request itself:
+
+```java
+@PostMapping("/update")
+@Auditable(
+        entityType = "LEARNER",
+        actionExpr = "#requestWrapper?.operation",
+        descriptionExpr = "@auditNarrator.statusChangeFor(#requestWrapper?.operation, #requestWrapper?.requests)")
+public void updateStudentStatus(@RequestAttribute("user") CustomUserDetails user,
+                                @RequestBody StudentStatusUpdateRequestWrapper requestWrapper) { ... }
+```
+
+Emits `TERMINATE`, `MAKE_INACTIVE`, `MAKE_ACTIVE`, `UPDATE_BATCH`, `ADD_EXPIRY`,
+`UPDATE_STATUS` as distinct actions. Each needs an entry in `ACTIVITY_OPTIONS`
+to be filterable from the UI.
+
+### Naming things: `AuditNarrator`
+
+Requests carry ids, not names — a termination knows a `userId` and a
+`packageSessionId`, but the log has to read "terminated Amit Kumar from Physics
+201". Rather than repeat lookups across annotations as unreadable SpEL, they
+live in the [`AuditNarrator`](../admin_core_service/src/main/java/vacademy/io/admin_core_service/features/admin_activity_logs/service/AuditNarrator.java)
+bean and annotations call `@auditNarrator.<method>(...)`:
+
+| Method | Produces |
+|---|---|
+| `enrollmentOf(verb, name, psIds)` | `enrolled learner Amit Kumar in Physics 201` |
+| `bulkEnrollmentOf(verb, userIds, psIds)` | `enrolled 5 learner(s) in Physics 201` |
+| `statusChangeFor(operation, requests)` | `terminated 5 learner(s) from Physics 201` |
+| `coursesFor(ids)` | `Physics 201` / `3 courses` |
+| `learnerFor(id)` / `learnersFor(ids)` | `Amit Kumar` / `5 learner(s)` |
+
+Conventions worth keeping if you extend it:
+
+- **Never throw.** Every method degrades to a count, an id, or null. Audit must
+  not break a mutation.
+- **Course names are deduplicated**, so several batches of one course read as
+  that course rather than "3 courses".
+- **One name, many counted.** Listing every learner in a bulk action makes the
+  row unreadable; the count is what an admin scanning the log needs.
+- **No actor in the phrase** — the table prepends `actor_name` when rendering.
+- **Distinct method names, no overloads.** SpEL resolves overloads poorly when
+  an argument is null.
+
 ### Settings UPDATE — before/after diff
 
 ```java
@@ -181,7 +231,9 @@ The drawer in the audit-log UI shows the prior setting JSON on the left and the 
 
 ## Frontend description rendering
 
-The audit table renders each row as `**{actor_name}** {description}`. The entity name at the end of the description is auto-bolded by regex match in [ActivityLogTable.tsx](../frontend-admin-dashboard/src/routes/admin-activity-logs/-components/ActivityLogTable.tsx). Patterns currently matched:
+The audit table renders each row as `**{actor_name}** {description}`. Names inside the description are auto-bolded by regex match in [ActivityLogTable.tsx](../frontend-admin-dashboard/src/routes/admin-activity-logs/-components/ActivityLogTable.tsx).
+
+`NAMED_DESCRIPTION_PATTERNS` entries capture **alternating groups**: odd groups are connective text, even groups are names. That lets one sentence bold more than one subject. First match wins, so specific patterns must precede looser ones.
 
 | Backend `descriptionExpr` outputs | Renders as |
 |---|---|
@@ -190,13 +242,19 @@ The audit table renders each row as `**{actor_name}** {description}`. The entity
 | `deleted course X, Y, Z` | deleted course **X, Y, Z** |
 | `scheduled live session X` | scheduled live session **X** |
 | `created booking X` | created booking **X** |
-| `enrolled learner X` | enrolled learner **X** |
-| `re-enrolled learner X` | re-enrolled learner **X** |
+| `enrolled learner X in Y` | enrolled learner **X** in **Y** |
+| `re-enrolled learner X in Y` | re-enrolled learner **X** in **Y** |
+| `enrolled 5 learner(s) in Y` | enrolled **5 learner(s)** in **Y** |
+| `terminated X from Y` | terminated **X** from **Y** |
+| `deactivated X in Y` / `reactivated X in Y` | deactivated **X** in **Y** |
+| `moved X from A to B` | moved **X** from **A** to **B** |
+| `changed status of X in Y to Z` | changed status of **X** in **Y** to **Z** |
+| `changed expiry date of X in Y to Z` | changed expiry date of **X** in **Y** to **Z** |
 | `switched WhatsApp provider to X` | switched WhatsApp provider to **X** |
 | `updated WhatsApp credentials for X` | updated WhatsApp credentials for **X** |
 | `removed WhatsApp credentials for X` | removed WhatsApp credentials for **X** |
 
-If your new endpoint emits a verb-noun phrase the frontend doesn't recognize, the description renders as plain text (no bolding). That's fine — adding a new pattern is a one-line regex addition in `NAMED_DESCRIPTION_PATTERNS`.
+If your new endpoint emits a verb-noun phrase the frontend doesn't recognize, the description renders as plain text (no bolding). That's fine — adding a new pattern is a one-line regex addition in `NAMED_DESCRIPTION_PATTERNS`. Keep the alternating-group convention or the renderer will bold the wrong half.
 
 ---
 
@@ -348,13 +406,40 @@ Display-settings integration: `sidebar/constant.ts` (`controlledTabs`), `sidebar
 
 6. **Adding to the frontend dropdowns.** New `entityType` / `action` values will work in the backend immediately but won't appear in the filter dropdowns until they're added to `RESOURCE_OPTIONS` / `ACTIVITY_OPTIONS` in [ActivityLogFilters.tsx](../frontend-admin-dashboard/src/routes/admin-activity-logs/-components/ActivityLogFilters.tsx). Filters still accept any string typed/pasted, just no autocomplete.
 
-7. **The `clientId` header is required.** The axios interceptor in [axiosInstance.ts](../frontend-admin-dashboard/src/lib/auth/axiosInstance.ts) attaches it automatically from `getInstituteId()`. If you ever build a non-axios request path (e.g., a worker-side fetch), make sure that header is included or audit silently drops the row.
+7. **Never annotate an endpoint that is designed to partially succeed.** This is
+   the sharpest edge here. `AuditableAspect#audit` is
+   `@Transactional(Propagation.REQUIRED)`, so annotating a method wraps *the
+   whole method* in one transaction. Endpoints that loop over items, catch
+   per-item exceptions, and return a `successful/failed/skipped` report (CSV
+   bulk learner upload, `POST /v3/learner-management/assign` and `/deassign`)
+   rely on each item committing independently. Wrap them and a single poisoned
+   row can mark the transaction rollback-only, discarding work the response has
+   already reported as successful. Those three are deliberately left
+   un-annotated with a comment saying so. **`async = true` is not a workaround
+   today** — despite what its javadoc claims, the `@Transactional` sits on the
+   `@Around` method unconditionally, so the async path opens an outer
+   transaction too. Fixing that is the prerequisite for auditing these.
+
+8. **The `clientId` header is required.** The axios interceptor in [axiosInstance.ts](../frontend-admin-dashboard/src/lib/auth/axiosInstance.ts) attaches it automatically from `getInstituteId()`. If you ever build a non-axios request path (e.g., a worker-side fetch), make sure that header is included or audit silently drops the row.
 
 ---
 
+## Coverage reality check
+
+Worth knowing before assuming a mutation is logged: as of 2026-07-17 the local
+snapshot of `admin_activity_log` held **3,030 rows** against **~11,358**
+enrollment rows created in the same window. Enrollment *is* audited, but only on
+the four annotated enroll endpoints — the bulk paths above are unannotated, and
+most enrollments are learner-driven (self-signup, invitation response,
+payment/`UserPlanService`, workflow activation, Keap migrations) rather than
+admin actions. Roughly 3.5% of `admin_core_service`'s ~687 mutation endpoints
+carry `@Auditable`. An absent row usually means *not instrumented*, not *broken*.
+
 ## Future improvements (not yet wired)
 
-- **Promote annotation + aspect to `common_service`** so other services can audit into the same table without DB changes.
+- **Make `async = true` skip the outer transaction**, matching its javadoc. Unblocks auditing the partial-success bulk endpoints (gotcha 7) and needs a `conditionExpr`-style guard so dry-run calls aren't logged as real ones.
+- **Promote annotation + aspect to `common_service`** so other services can audit into the same table without DB changes. `auth_service` (role grants, permission changes, password resets) is the highest-value gap and is blocked on this.
+- **Failed/denied attempts are never recorded.** The row writes inside the business transaction, so a throw rolls the audit away too — "who *tried* to do X" is unanswerable by design.
 - **Bolding patterns auto-derived from `entityType`/`action`** instead of regex matching the description text.
 - **Per-institute retention override** via institute settings, falling back to the global `audit.retention.days`.
 - **S3 / cold-storage archival before delete** — required for SOC 2 / ISO 27001 evidence trails.

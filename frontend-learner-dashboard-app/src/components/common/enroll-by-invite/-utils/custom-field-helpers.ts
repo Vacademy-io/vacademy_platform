@@ -167,15 +167,38 @@ export const getFieldDefaultValue = (
   return parsed?.defaultValue ?? "";
 };
 
+type DropdownOption = { _id: number; value: string; label: string };
+
+/**
+ * Admin writes two variants of the same option config: {id,value,label} and
+ * {label,name}. Both mean the same thing, so collapse them to one shape here.
+ * An option with no resolvable value is dropped — it would otherwise render as
+ * a SelectItem that cannot be selected.
+ */
+const normaliseOptions = (
+  raw: Array<{ id?: number; value?: string; name?: string; label?: string }>
+): DropdownOption[] =>
+  raw
+    .map((option, index) => {
+      const value = option.value ?? option.name;
+      return {
+        _id: option.id ?? index + 1,
+        value: value as string,
+        label: option.label ?? (value as string),
+      };
+    })
+    .filter((option) => option.value !== undefined && option.value !== "");
+
 /**
  * Parses dropdown options from config JSON string or comma-separated string
  * Expected formats:
  * - JSON array: "[{\"id\":1,\"value\":\"Option 1\",\"label\":\"Option 1\"},{\"id\":2,\"value\":\"Option 2\",\"label\":\"Option 2\"}]"
+ * - JSON array: "[{\"label\":\"Option 1\",\"name\":\"Option 1\"}]"
  * - Comma-separated: "MALE,FEMALE,OTHER"
  */
 export const parseDropdownOptions = (
   config: string
-): Array<{ _id: number; value: string; label: string }> => {
+): DropdownOption[] => {
   try {
     // Return empty array for empty config
     if (!config || config === "{}") {
@@ -203,11 +226,7 @@ export const parseDropdownOptions = (
     if (!Array.isArray(parsed) && typeof parsed === "object" && parsed !== null) {
       // New object-format config: {options: [{id,value,label}], defaultValue, ...}
       if (Array.isArray(parsed.options)) {
-        return parsed.options.map((option: { id?: number; value: string; label?: string }, index: number) => ({
-          _id: option.id ?? index + 1,
-          value: option.value,
-          label: option.label ?? option.value,
-        }));
+        return normaliseOptions(parsed.options);
       }
 
       // Check for comma-separated wrapping (legacy) including the typo version seen in logs
@@ -235,14 +254,7 @@ export const parseDropdownOptions = (
     }
 
     // Transform to match SelectField Options interface
-    // Maps: id → _id, keeps value and label
-    const options = parsed.map((option) => ({
-      _id: option.id,
-      value: option.value,
-      label: option.label,
-    }));
-
-    return options;
+    return normaliseOptions(parsed);
   } catch (error) {
     console.error("parseDropdownOptions: Error parsing config", {
       config,

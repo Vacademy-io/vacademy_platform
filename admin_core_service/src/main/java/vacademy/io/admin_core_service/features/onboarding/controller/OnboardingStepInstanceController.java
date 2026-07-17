@@ -19,7 +19,7 @@ public class OnboardingStepInstanceController {
 
     @PostMapping("/{stepInstanceId}/complete")
     public ResponseEntity<OnboardingStepInstanceDTO> completeStep(
-            @RequestParam("user") CustomUserDetails userDetails,
+            @RequestAttribute("user") CustomUserDetails userDetails,
             @PathVariable("stepInstanceId") String stepInstanceId,
             @RequestBody CompleteStepInstanceRequest request) {
         return ResponseEntity.ok(OnboardingStepInstanceDTO.fromEntity(
@@ -29,7 +29,7 @@ public class OnboardingStepInstanceController {
 
     @PostMapping("/{stepInstanceId}/skip")
     public ResponseEntity<OnboardingStepInstanceDTO> skipStep(
-            @RequestParam("user") CustomUserDetails userDetails,
+            @RequestAttribute("user") CustomUserDetails userDetails,
             @PathVariable("stepInstanceId") String stepInstanceId,
             @RequestBody SkipStepInstanceRequest request) {
         return ResponseEntity.ok(OnboardingStepInstanceDTO.fromEntity(

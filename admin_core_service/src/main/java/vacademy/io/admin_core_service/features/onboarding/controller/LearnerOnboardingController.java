@@ -32,7 +32,7 @@ public class LearnerOnboardingController {
 
     @GetMapping("/instances")
     public ResponseEntity<List<OnboardingInstanceDTO>> myInstances(
-            @RequestParam("user") CustomUserDetails userDetails,
+            @RequestAttribute("user") CustomUserDetails userDetails,
             @RequestParam("instituteId") String instituteId) {
         List<OnboardingInstanceDTO> instances = onboardingInstanceService
                 .listBySubject(userDetails.getUserId(), instituteId).stream()
@@ -42,7 +42,7 @@ public class LearnerOnboardingController {
 
     @GetMapping("/step-instances/{stepInstanceId}")
     public ResponseEntity<OnboardingStepInstanceDTO> getStepInstance(
-            @RequestParam("user") CustomUserDetails userDetails,
+            @RequestAttribute("user") CustomUserDetails userDetails,
             @PathVariable("stepInstanceId") String stepInstanceId) {
         OnboardingStepInstance stepInstance = onboardingStepInstanceService.getStepInstance(stepInstanceId);
         assertOwnsStepInstance(userDetails, stepInstance);
@@ -51,7 +51,7 @@ public class LearnerOnboardingController {
 
     @PostMapping("/step-instances/{stepInstanceId}/submit")
     public ResponseEntity<OnboardingStepInstanceDTO> submitStep(
-            @RequestParam("user") CustomUserDetails userDetails,
+            @RequestAttribute("user") CustomUserDetails userDetails,
             @PathVariable("stepInstanceId") String stepInstanceId,
             @RequestBody CompleteStepInstanceRequest request) {
         OnboardingStepInstance stepInstance = onboardingStepInstanceService.getStepInstance(stepInstanceId);

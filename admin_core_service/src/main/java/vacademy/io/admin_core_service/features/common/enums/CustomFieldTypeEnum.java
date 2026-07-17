@@ -14,5 +14,8 @@ public enum CustomFieldTypeEnum {
     SESSION,
 
     /** Per assessment mapping, scoped by type_id = assessment.id */
-    ASSESSMENT
+    ASSESSMENT,
+
+    /** Per onboarding step mapping, scoped by type_id = onboarding_step.id */
+    ONBOARDING_STEP
 }

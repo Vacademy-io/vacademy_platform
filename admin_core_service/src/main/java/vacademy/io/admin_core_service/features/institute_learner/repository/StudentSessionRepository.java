@@ -366,4 +366,15 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
           String userId,
           String destinationPackageSessionId,
           List<String> statuses);
+
+  /**
+   * Existing ACTIVE enrollment of a user in a package session -- used to avoid creating a
+   * duplicate row. Scoped to ACTIVE only (not any status) so a legitimate re-enrollment after a
+   * prior CANCELLED/INACTIVE row is unaffected -- that's the same "new row per re-enrollment"
+   * pattern the existing re-enroll-learner endpoint already relies on.
+   */
+  List<StudentSessionInstituteGroupMapping> findByUserIdAndPackageSession_IdAndStatus(
+          String userId,
+          String packageSessionId,
+          String status);
 }

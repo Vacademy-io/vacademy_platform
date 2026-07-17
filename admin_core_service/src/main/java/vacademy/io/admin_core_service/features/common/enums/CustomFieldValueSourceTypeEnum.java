@@ -1,5 +1,5 @@
 package vacademy.io.admin_core_service.features.common.enums;
 
 public enum CustomFieldValueSourceTypeEnum {
-    STUDENT_SESSION_INSTITUTE_GROUP_MAPPING, USER, SUB_ORG_REGISTRATION
+    STUDENT_SESSION_INSTITUTE_GROUP_MAPPING, USER, SUB_ORG_REGISTRATION, ONBOARDING_STEP_INSTANCE
 }

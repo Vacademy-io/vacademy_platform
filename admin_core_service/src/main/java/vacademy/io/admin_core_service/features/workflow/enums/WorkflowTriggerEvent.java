@@ -63,6 +63,14 @@ public enum WorkflowTriggerEvent {
     ASSESSMENT_CREATE,
     ASSESSMENT_START,
     ASSESSMENT_END,
-    ASSESSMENT_FORM_SUBMISSION
+    ASSESSMENT_FORM_SUBMISSION,
+
+    // Onboarding. STEP_* are keyed by eventId = onboarding_step.id (the step definition,
+    // not the instance) so admins can target a specific step from the trigger config UI.
+    ONBOARDING_FLOW_STARTED,
+    ONBOARDING_FLOW_COMPLETED,
+    ONBOARDING_STEP_ENTERED,
+    ONBOARDING_STEP_COMPLETED,
+    ONBOARDING_STEP_SKIPPED
 }
 

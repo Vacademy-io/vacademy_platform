@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import vacademy.io.admin_core_service.features.admin_activity_logs.annotation.Auditable;
 import vacademy.io.admin_core_service.features.learner_management.dto.BulkAssignRequestDTO;
 import vacademy.io.admin_core_service.features.learner_management.dto.BulkAssignResponseDTO;
 import vacademy.io.admin_core_service.features.learner_management.dto.BulkDeassignRequestDTO;
@@ -42,8 +43,17 @@ public class BulkLearnerManagementController {
      * - Duplicate handling: SKIP / ERROR / RE_ENROLL
      * - dry_run mode for preview
      */
-    // NOT @Auditable yet — see the note on bulkDeassign below.
+    // conditionExpr: this endpoint returns 200 without mutating anything on a
+    // dry-run preview, or when every item was skipped/failed. Auditing those
+    // would claim enrollments that never happened.
     @PostMapping("/assign")
+    @Auditable(
+            entityType = "LEARNER",
+            action = "ENROLL",
+            conditionExpr = "#result?.body != null and !#result.body.dryRun "
+                    + "and (#result.body.summary?.successful ?: 0) > 0",
+            descriptionExpr = "@auditNarrator.bulkAssignmentOf(#result?.body?.summary?.successful, "
+                    + "#request?.userIds, #request?.assignments?.![packageSessionId])")
     public ResponseEntity<BulkAssignResponseDTO> bulkAssign(
             @RequestBody BulkAssignRequestDTO request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
@@ -78,14 +88,16 @@ public class BulkLearnerManagementController {
      * - Shared UserPlan warnings
      * - dry_run mode for preview
      */
-    // NOT @Auditable yet: both v3 bulk endpoints catch per-item failures and
-    // report successful/failed/skipped, so they are built to partially succeed.
-    // AuditableAspect wraps the annotated method in a REQUIRED transaction,
-    // which would turn that into all-or-nothing and could roll back items the
-    // response reports as successful. Auditing these needs the aspect's async
-    // path to stop opening a transaction first (its javadoc already claims it
-    // doesn't). Dry-run calls must also be excluded — they mutate nothing.
+    // A HARD de-assign revokes access immediately (a termination); SOFT leaves
+    // access until expiry. The action follows the request's own mode.
     @PostMapping("/deassign")
+    @Auditable(
+            entityType = "LEARNER",
+            actionExpr = "#request?.options?.mode == 'HARD' ? 'TERMINATE' : 'CANCEL'",
+            conditionExpr = "#result?.body != null and !#result.body.dryRun "
+                    + "and (#result.body.summary?.successful ?: 0) > 0",
+            descriptionExpr = "@auditNarrator.bulkDeassignmentOf(#request?.options?.mode, "
+                    + "#result?.body?.summary?.successful, #request?.userIds, #request?.packageSessionIds)")
     public ResponseEntity<BulkDeassignResponseDTO> bulkDeassign(
             @RequestBody BulkDeassignRequestDTO request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {

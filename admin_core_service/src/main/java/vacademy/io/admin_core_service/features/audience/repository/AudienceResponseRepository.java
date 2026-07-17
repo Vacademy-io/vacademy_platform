@@ -90,18 +90,41 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("userId") String userId);
 
         /**
-         * Every distinct student_user_id across this institute's leads (any
-         * campaign, any status) — a lead is "student-shaped" the moment a real
-         * user is attached, whether or not they've ever been enrolled. Powers
-         * the guardian-linking backfill's lead variant, which needs to reach
-         * leads that never got as far as an SSIGM enrollment row.
+         * Every distinct "student side" user id across this institute's leads
+         * (any campaign, any status) — a lead is "student-shaped" the moment a
+         * real user is attached, whether or not they've ever been enrolled.
+         * Powers the guardian-linking backfill's lead variant, which needs to
+         * reach leads that never got as far as an SSIGM enrollment row.
+         *
+         * <p>{@code audience_response} has two different user columns depending
+         * on how the lead was captured:
+         * <ul>
+         *   <li>Admission/enquiry-form leads (see AdmissionService,
+         *   AudienceService's enquiry-creation path) store the applying
+         *   guardian's own account in {@code user_id} and the child being
+         *   applied for in {@code student_user_id} — here {@code user_id} is
+         *   ALREADY a guardian and must be excluded, {@code student_user_id}
+         *   is the real candidate.</li>
+         *   <li>Every other (the common) lead-capture path only ever sets
+         *   {@code user_id} — the lead's own account IS the prospective
+         *   student, and {@code student_user_id} stays null. Missing this case
+         *   previously made the leads backfill silently see zero eligible
+         *   leads for the common path.</li>
+         * </ul>
          */
         @Query(value = """
-                SELECT DISTINCT ar.student_user_id
+                SELECT DISTINCT ar.student_user_id AS candidate_user_id
                 FROM audience_response ar
                 JOIN audience a ON a.id = ar.audience_id
                 WHERE a.institute_id = :instituteId
                   AND ar.student_user_id IS NOT NULL
+                UNION
+                SELECT DISTINCT ar.user_id AS candidate_user_id
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE a.institute_id = :instituteId
+                  AND ar.user_id IS NOT NULL
+                  AND ar.student_user_id IS NULL
                 """, nativeQuery = true)
         List<String> findDistinctStudentUserIdsByInstitute(@Param("instituteId") String instituteId);
 

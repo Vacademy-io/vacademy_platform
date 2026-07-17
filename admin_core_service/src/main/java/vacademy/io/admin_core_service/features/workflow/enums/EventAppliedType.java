@@ -11,5 +11,8 @@ public enum EventAppliedType {
     ASSESSMENT,
     // Counselor-pool scope: eventId holds the pool's id. A trigger of this type fires for
     // any lead whose audience belongs to that pool, in addition to institute-level triggers.
-    POOL
+    POOL,
+    // Metadata only (matching is still by eventId/eventName) -- eventId holds an
+    // onboarding_step.id, used by admins to identify onboarding-step triggers in the UI.
+    ONBOARDING_STEP
 }

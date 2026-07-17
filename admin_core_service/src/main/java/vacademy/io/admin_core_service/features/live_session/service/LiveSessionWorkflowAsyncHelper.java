@@ -51,4 +51,32 @@ public class LiveSessionWorkflowAsyncHelper {
                     session.getId(), e.getMessage(), e);
         }
     }
+
+    /**
+     * Fires {@code LIVE_SESSION_FORM_SUBMISSION} after a guest submits a session's
+     * public registration form. Scoped by session id, so a trigger can be configured
+     * for one webinar without firing for every public session in the institute.
+     *
+     * <p>Async because the caller is an unauthenticated public form POST: the guest
+     * should not wait on a WhatsApp/email round-trip, and a notification failure must
+     * never fail a registration that is already committed. Pinned to the bounded
+     * {@code workflowTaskExecutor} (not the default unbounded SimpleAsyncTaskExecutor)
+     * so a burst of registrations for a popular webinar cannot spawn unbounded threads.
+     */
+    @Async("workflowTaskExecutor")
+    public void fireLiveSessionFormSubmissionWorkflow(String sessionId,
+                                                      String instituteId,
+                                                      Map<String, Object> contextData) {
+        if (sessionId == null || instituteId == null) return;
+        try {
+            workflowTriggerService.handleTriggerEvents(
+                    WorkflowTriggerEvent.LIVE_SESSION_FORM_SUBMISSION.name(),
+                    sessionId,
+                    instituteId,
+                    contextData);
+        } catch (Exception e) {
+            log.warn("Async LIVE_SESSION_FORM_SUBMISSION workflow failed for sessionId={}: {}",
+                    sessionId, e.getMessage(), e);
+        }
+    }
 }

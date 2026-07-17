@@ -22,7 +22,7 @@ public class OnboardingStepInstanceController {
             @RequestAttribute("user") CustomUserDetails userDetails,
             @PathVariable("stepInstanceId") String stepInstanceId,
             @RequestBody CompleteStepInstanceRequest request) {
-        return ResponseEntity.ok(OnboardingStepInstanceDTO.fromEntity(
+        return ResponseEntity.ok(onboardingStepInstanceService.toDto(
                 onboardingStepInstanceService.completeStep(stepInstanceId, request.getPayload(),
                         OnboardingRoleKey.ADMIN.name(), userDetails.getUserId())));
     }
@@ -32,7 +32,7 @@ public class OnboardingStepInstanceController {
             @RequestAttribute("user") CustomUserDetails userDetails,
             @PathVariable("stepInstanceId") String stepInstanceId,
             @RequestBody SkipStepInstanceRequest request) {
-        return ResponseEntity.ok(OnboardingStepInstanceDTO.fromEntity(
+        return ResponseEntity.ok(onboardingStepInstanceService.toDto(
                 onboardingStepInstanceService.skipStep(stepInstanceId, request.getReason(), userDetails.getUserId())));
     }
 }

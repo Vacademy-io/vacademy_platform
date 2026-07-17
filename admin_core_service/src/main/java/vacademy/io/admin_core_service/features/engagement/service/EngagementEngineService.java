@@ -167,20 +167,30 @@ public class EngagementEngineService {
 
         // Dedup: the same person can arrive via PACKAGE_SESSION as (userId,null) AND via AUDIENCE
         // as (userId, respId) — distinct ux_em_subject keys → double enrollment → double messages.
-        // Collapse to a single canonical subject: prefer the user_id-only form when a user_id exists.
+        // Collapse by userId (stable across reconciles), but PRESERVE the audience_response_id when
+        // any occurrence carries one: a converted lead in an AUDIENCE keeps its respId, so the CRM
+        // data points (lead status/tier/counsellor, form answers) can still hydrate. Dropping it
+        // would blind exactly the lead-nurture use case an AUDIENCE engine exists for.
         java.util.Map<String, Target> canonical = new java.util.LinkedHashMap<>();
         for (Target t : raw) {
             String key = t.userId() != null ? "u:" + t.userId() : "l:" + t.audienceResponseId();
             Target existing = canonical.get(key);
-            if (existing == null || (existing.audienceResponseId() != null && t.audienceResponseId() == null)) {
-                canonical.put(key, t.userId() != null ? new Target(t.userId(), null) : t);
+            if (existing == null) {
+                canonical.put(key, t);
+            } else if (existing.audienceResponseId() == null && t.audienceResponseId() != null) {
+                // richer occurrence (has a lead row) wins — keep both ids
+                canonical.put(key, new Target(existing.userId() != null ? existing.userId() : t.userId(),
+                        t.audienceResponseId()));
             }
         }
 
+        // enrollOrStamp reports rows-affected=1 for both insert and update, so count real inserts
+        // by the change in ACTIVE membership across the run (accurate; avoids a fragile RETURNING).
+        long activeBefore = memberRepository.countByEngineIdAndStatus(engine.getId(), "ACTIVE");
+
         String runId = UUID.randomUUID().toString();
-        int enrolledNew = 0;
         for (Target t : canonical.values()) {
-            enrolledNew += memberRepository.enrollOrStamp(
+            memberRepository.enrollOrStamp(
                     UUID.randomUUID().toString(), engine.getId(), instituteId,
                     t.userId(), t.audienceResponseId(),
                     EngagementDecisionService.jitteredFirstWake(engine.getCadenceHours(), Instant.now()),
@@ -189,9 +199,12 @@ public class EngagementEngineService {
         // Exit anyone not stamped by this run — unconditional, so an emptied audience exits all.
         int exited = memberRepository.exitNotStampedBy(engine.getId(), runId);
 
-        log.info("Engine {}: audience {} (deduped from {}), {} newly enrolled, {} exited",
-                engineId, canonical.size(), raw.size(), enrolledNew, exited);
-        return new EnrollmentResult(canonical.size(), enrolledNew, exited);
+        long activeAfter = memberRepository.countByEngineIdAndStatus(engine.getId(), "ACTIVE");
+        int netNew = (int) Math.max(0, (activeAfter + exited) - activeBefore); // inserts + resurrections
+
+        log.info("Engine {}: audience {} (deduped from {}), ~{} newly active, {} exited",
+                engineId, canonical.size(), raw.size(), netNew, exited);
+        return new EnrollmentResult(canonical.size(), netNew, exited);
     }
 
     public record EnrollmentResult(int audienceSize, int newlyEnrolled, int exited) {}

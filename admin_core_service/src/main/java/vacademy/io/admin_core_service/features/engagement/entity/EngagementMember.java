@@ -66,6 +66,10 @@ public class EngagementMember {
     @Column(name = "consecutive_no_ops", nullable = false)
     private Short consecutiveNoOps = 0;
 
+    /** Separate from no-ops: transient call failures back off THIS, never the cadence counter. */
+    @Column(name = "consecutive_failures", nullable = false)
+    private Short consecutiveFailures = 0;
+
     /** Hash of QUANTIZED features (bands, never raw values — raw values change every tick for active users). */
     @Column(name = "wake_fingerprint", length = 64)
     private String wakeFingerprint;

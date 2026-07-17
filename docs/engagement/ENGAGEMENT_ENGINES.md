@@ -1,11 +1,21 @@
 # Vacademy Engagement Engines — Design
 
-> **Status: DESIGN LOCKED 2026-07-17. Phase 0 (ledger integrity) BUILT + adversarially reviewed
-> 2026-07-17 — compiles clean, NOT deployed.** A 3-lens review + verifier pass confirmed 15
-> findings (2 P0); all fixed or consciously recorded in §6.5. Grounded in a verified 10-area recon
-> of the monorepo, three competing architectures, three adversarial red-team passes, and a
-> 24-question founder interview (§0.1). Every class/table/endpoint named here was read in source.
-> Where the recon was wrong, this doc says so (Appendix).
+> **Status: DESIGN LOCKED 2026-07-17. Phase 0 (ledger integrity) + Phase 1a (the read-only brain)
+> BUILT + adversarially reviewed 2026-07-17 — compiles clean across notification/admin_core/
+> assessment/auth, NOT deployed.** Phase 0: 15 findings fixed (§6.5). Phase 1a: two review passes
+> (22 + 6 findings, incl. a runtime-fatal SQL bug the compile hid, cross-tenant IDOR, a
+> lease-outrun double-decide, and a quiet-hours floor-disable) all fixed or recorded (§15).
+> Grounded in a verified 10-area recon, three competing architectures, three adversarial red-team
+> passes, and a 24-question founder interview (§0.1). Every class/table/endpoint named here was
+> read in source. Where the recon was wrong, this doc says so (Appendix).
+>
+> **Migrations claimed:** notification_service **V31** (correlation_id); admin_core **V386**
+> (5 engagement tables — V385 was taken by an unrelated feature). New internal endpoints:
+> `POST …/notification-service/internal/v1/engagement/ledger-batch`,
+> `POST …/assessment-service/internal/student-analysis/assessment-history/batch`,
+> `POST …/auth-service/internal/v1/analytics/student-login-stats/batch` (HMAC).
+> **Deploy note:** admin_core JVM must stay UTC (the sweep/lease math + naive-UTC timestamp
+> binding depend on it — see the known IST bug).
 >
 > Companion docs: [`../crm/VACADEMY_AI_AGENT.md`](../crm/VACADEMY_AI_AGENT.md),
 > [`../crm/VACADEMY_VOICE_INTEGRATION.md`](../crm/VACADEMY_VOICE_INTEGRATION.md),
@@ -755,7 +765,7 @@ send-on-behalf, auto-reply, in-app, WhatsApp replies). Splitting it honestly:
 | Phase | Ships |
 |---|---|
 | **0 — Ledger integrity** ✅ **BUILT 2026-07-17** (reviewed, compiles clean, NOT deployed) | wamid capture end-to-end; `correlation_id` (V31, lookup index only — see §6.3); engine-gated attribution in unified send; exact-join-only correlation propagation; `ledger-batch` endpoint with per-provider observable flags + failure-code extraction. 11 files, 1 migration, notification_service only. **Deploy notes: off-peak (index build on the highest-write table) + mirror V31 into devops-baseline.** |
-| **1a — The brain, read-only** | V385 schema; sweep + lease + `shouldWake`; registry with 5 in-process providers; **batch endpoints for assessments + login**; lead reachability path; prompt v1 + AI clarifying interview; extract `<RecipientPicker>` from the 4,115-line `create/index.lazy.tsx`; `channel-capabilities` aggregate (5 endpoints × 2 services). Engine decides → tasks. **No sends.** |
+| **1a — The brain, read-only** ✅ **BUILT + 2× adversarially reviewed 2026-07-17** (compiles clean across admin_core/assessment/auth, NOT deployed) | **V386** schema (5 tables; note V385 was taken); sweep + per-row lease CAS + `shouldWake` (quantized bands + cadence clock); registry with 7 providers behind the SPI; **batched assessment + HMAC-guarded login endpoints** (sibling services); lead reachability (unconverted leads, which the announcements path can't reach); prompt v1 with immutable base + amendment recompile; engine CRUD + enroll/reconcile + task inbox (ack/done/dismiss) + data-point catalog. Engine decides → TASKs. **No sends.** Two review passes fixed 22 + 6 findings incl. a runtime-fatal null-cast SQL bug the compile hid, cross-tenant IDOR, the lease-outrun double-decide, and a quiet-hours floor-disable. **Deferred to 1b (the UI chunk): FE wizard/inbox, `channel-capabilities` aggregate, `<RecipientPicker>` extraction, token metering (LLMService exposes no usage yet).** |
 | **1b — The copilot** | Template negotiation wizard + Meta state machine; task inbox with ack/done/**send-on-behalf**/dismiss; WhatsApp reply ingest + `EngagementReplyJob`; opt-in auto-reply + escalation classifier; in-app channel; `timeline_event` writes; dashboard v1. **Humans send; AI replies in-window.** |
 | **2 — Automation** | Proactive autonomous sends behind `FIRST_N` approval; dispatcher + reconcile; kill switch; credits **priced and enforced**; holdout cohorts. |
 | **3 — Reach + learning** | AI-call automation (new `MediumType` end-to-end); SHADOW autotune; `BookMeetingHandler` / `UpdateCrmHandler`; email inbound (AWS work); Haiku cascade if the numbers justify it. |

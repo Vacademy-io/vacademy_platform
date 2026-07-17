@@ -48,7 +48,9 @@ public interface EngagementMemberRepository extends JpaRepository<EngagementMemb
      * Idempotent enrolment with a SWEEP STAMP. Inserts if absent; if present, stamps the row
      * with the current reconcile run id AND resurrects it if it was EXITED (a learner who left
      * and re-enrolled next term must not stay invisible) — but NOT if OPTED_OUT (consent sticks).
-     * ON CONFLICT target matches ux_em_subject token-for-token. Returns 1 on insert, 0 on update.
+     * ON CONFLICT target matches ux_em_subject token-for-token. Rows-affected is 1 on BOTH the
+     * insert and the update path (Postgres counts an ON-CONFLICT update as affected), so the
+     * caller measures "newly enrolled" by a before/after ACTIVE count, not this return value.
      */
     @Modifying
     @Transactional

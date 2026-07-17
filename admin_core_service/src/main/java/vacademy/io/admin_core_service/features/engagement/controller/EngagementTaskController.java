@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
+import vacademy.io.admin_core_service.features.engagement.service.EngagementAccessGuard;
 import vacademy.io.admin_core_service.features.engagement.entity.EngagementAction;
 import vacademy.io.admin_core_service.features.engagement.repository.EngagementActionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -35,7 +35,7 @@ import java.util.List;
 public class EngagementTaskController {
 
     private final EngagementActionRepository actionRepository;
-    private final InstituteAccessValidator instituteAccessValidator;
+    private final EngagementAccessGuard accessGuard;
 
     @GetMapping
     public ResponseEntity<Page<EngagementAction>> inbox(
@@ -44,7 +44,7 @@ public class EngagementTaskController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        accessGuard.requireAdmin(user, instituteId);
         List<String> statusList = List.of(statuses.split(","));
         return ResponseEntity.ok(actionRepository.findInbox(
                 instituteId, statusList, PageRequest.of(page, Math.min(size, 200))));
@@ -54,7 +54,7 @@ public class EngagementTaskController {
     public ResponseEntity<Void> ack(@PathVariable String taskId,
                                     @RequestParam String instituteId,
                                     @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        accessGuard.requireAdmin(user, instituteId);
         transition(taskId, instituteId, "ACKED", null);
         return ResponseEntity.ok().build();
     }
@@ -64,7 +64,7 @@ public class EngagementTaskController {
     public ResponseEntity<Void> done(@PathVariable String taskId,
                                      @RequestParam String instituteId,
                                      @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        accessGuard.requireAdmin(user, instituteId);
         transition(taskId, instituteId, "DONE", "ACCEPTED");
         return ResponseEntity.ok().build();
     }
@@ -73,7 +73,7 @@ public class EngagementTaskController {
     public ResponseEntity<Void> dismiss(@PathVariable String taskId,
                                         @RequestParam String instituteId,
                                         @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        accessGuard.requireAdmin(user, instituteId);
         transition(taskId, instituteId, "DISMISSED", "DISMISSED");
         return ResponseEntity.ok().build();
     }

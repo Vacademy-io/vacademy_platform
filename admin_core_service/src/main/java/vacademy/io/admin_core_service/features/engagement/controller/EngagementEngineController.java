@@ -22,7 +22,7 @@ import vacademy.io.admin_core_service.features.engagement.repository.EngagementP
 import vacademy.io.admin_core_service.features.engagement.service.EngagementEngineService;
 import vacademy.io.admin_core_service.features.engagement.spi.DataPointRegistry;
 import vacademy.io.admin_core_service.features.engagement.spi.DataPointSpec;
-import vacademy.io.admin_core_service.core.security.InstituteAccessValidator;
+import vacademy.io.admin_core_service.features.engagement.service.EngagementAccessGuard;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
@@ -44,20 +44,20 @@ public class EngagementEngineController {
     private final EngagementMemberRepository memberRepository;
     private final EngagementPromptVersionRepository promptRepository;
     private final DataPointRegistry dataPointRegistry;
-    private final InstituteAccessValidator instituteAccessValidator;
+    private final EngagementAccessGuard accessGuard;
 
     @PostMapping
     public ResponseEntity<EngagementEngine> create(@RequestParam String instituteId,
                                                    @RequestBody CreateEngineRequest request,
                                                    @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        accessGuard.requireAdmin(user, instituteId);
         return ResponseEntity.ok(engineService.create(request, instituteId, user.getUserId()));
     }
 
     @GetMapping
     public ResponseEntity<List<EngagementEngine>> list(@RequestParam String instituteId,
                                                        @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        accessGuard.requireAdmin(user, instituteId);
         return ResponseEntity.ok(engineRepository.findByInstituteIdOrderByCreatedAtDesc(instituteId));
     }
 
@@ -65,7 +65,7 @@ public class EngagementEngineController {
     public ResponseEntity<Map<String, Object>> get(@PathVariable String engineId,
                                                    @RequestParam String instituteId,
                                                    @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        accessGuard.requireAdmin(user, instituteId);
         EngagementEngine engine = engineService.requireEngine(engineId, instituteId);
         return ResponseEntity.ok(Map.of(
                 "engine", engine,
@@ -79,7 +79,7 @@ public class EngagementEngineController {
             @PathVariable String engineId,
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        accessGuard.requireAdmin(user, instituteId);
         return ResponseEntity.ok(engineService.enrollAndReconcile(engineId, instituteId));
     }
 
@@ -89,7 +89,7 @@ public class EngagementEngineController {
                                                        @RequestParam String instituteId,
                                                        @RequestParam String toStatus,
                                                        @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        accessGuard.requireAdmin(user, instituteId);
         return ResponseEntity.ok(engineService.transition(engineId, instituteId, toStatus));
     }
 
@@ -99,7 +99,7 @@ public class EngagementEngineController {
                                                               @RequestParam String instituteId,
                                                               @RequestBody PromptEditRequest request,
                                                               @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        accessGuard.requireAdmin(user, instituteId);
         return ResponseEntity.ok(engineService.editPrompt(engineId, instituteId, request, user.getUserId()));
     }
 
@@ -108,7 +108,7 @@ public class EngagementEngineController {
             @PathVariable String engineId,
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        accessGuard.requireAdmin(user, instituteId);
         engineService.requireEngine(engineId, instituteId);
         return ResponseEntity.ok(promptRepository.findByEngineIdOrderByVersionDesc(engineId));
     }
@@ -129,7 +129,7 @@ public class EngagementEngineController {
     public ResponseEntity<Void> archive(@PathVariable String engineId,
                                         @RequestParam String instituteId,
                                         @RequestAttribute("user") CustomUserDetails user) {
-        instituteAccessValidator.validateUserAccess(user, instituteId);
+        accessGuard.requireAdmin(user, instituteId);
         engineService.transition(engineId, instituteId, "ARCHIVED");
         return ResponseEntity.noContent().build();
     }

@@ -199,6 +199,7 @@ public class EngagementDecisionService {
 
         member.setLastDecidedAt(now);
         member.setWakeFingerprint(fingerprint);
+        member.setConsecutiveFailures((short) 0); // reached a real decision — clear the failure backoff
         int nextHours = d.nextCheckHours() != null && d.nextCheckHours() > 0
                 ? d.nextCheckHours()
                 : engine.getCadenceHours();
@@ -220,12 +221,17 @@ public class EngagementDecisionService {
         return s.length() <= MAX_DRAFT_CHARS ? s : s.substring(0, MAX_DRAFT_CHARS);
     }
 
-    /** Failure backoff on the member: stretch next_action_at so an outage doesn't retry-storm. */
+    /**
+     * Failure backoff — stretch next_action_at so an outage doesn't retry-storm. Uses a SEPARATE
+     * consecutive_failures counter, never consecutive_no_ops: a transient LLM/provider outage must
+     * not inflate the cadence math (which would send a member dormant for weeks after an outage it
+     * never actually got a decision from).
+     */
     private void backoffAfterFailure(EngagementMember m) {
         try {
-            short fails = (short) Math.min(m.getConsecutiveNoOps() + 1, 10);
-            long hours = Math.min(1L << Math.min(fails, 6), Duration.ofDays(1).toHours()); // 2,4,8,...,64h cap 24h
-            m.setConsecutiveNoOps(fails);
+            short fails = (short) Math.min(m.getConsecutiveFailures() + 1, 10);
+            long hours = Math.min(1L << Math.min(fails, 6), Duration.ofDays(1).toHours()); // 2,4,...,64h cap 24h
+            m.setConsecutiveFailures(fails);
             m.setNextActionAt(Instant.now().plus(Duration.ofHours(Math.max(hours, 1))));
             memberRepository.save(m);
         } catch (Exception ignored) {

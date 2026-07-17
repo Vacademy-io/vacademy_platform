@@ -29,7 +29,7 @@ import {
     useSlidesMutations,
 } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-hooks/use-slides';
 import { toast } from 'sonner';
-import { Check, DownloadSimple, PencilSimpleLine, Trash, FloppyDisk, LinkSimple, Warning } from '@phosphor-icons/react';
+import { Check, DownloadSimple, PencilSimpleLine, Trash, FloppyDisk, LinkSimple, Warning, X } from '@phosphor-icons/react';
 import { AlertCircle } from 'lucide-react';
 import {
     converDataToAssignmentFormat,
@@ -3570,6 +3570,26 @@ export const SlideMaterial = ({
         (editableVideoSourceType === 'VIDEO' || editableVideoSourceType === 'VIMEO') &&
         !activeItem?.splitScreenMode;
 
+    const saveHeading = () => {
+        if (!activeItem) return;
+        updateHeading(
+            activeItem,
+            addUpdateVideoSlide,
+            SaveDraft,
+            heading,
+            setIsEditing,
+            addUpdateDocumentSlide,
+            addUpdateQuizSlide,
+            updateAssignmentOrder,
+            updateQuestionOrder
+        );
+    };
+
+    const cancelHeadingEdit = () => {
+        setHeading(activeItem?.title || '');
+        setIsEditing(false);
+    };
+
     return (
         <div
             // Bounded-height scroll container so the `sticky top-0` header below
@@ -3652,30 +3672,45 @@ export const SlideMaterial = ({
                     <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-2">
                     <div className="w-full min-w-0 md:w-auto md:flex-1">
                         {isEditing ? (
-                            <div className="flex items-center justify-center gap-2 duration-200 animate-in fade-in">
+                            <div className="flex min-w-0 items-center gap-2 duration-200 animate-in fade-in">
                                 <input
                                     type="text"
                                     value={heading}
                                     onChange={handleHeadingChange}
-                                    className="w-fit border-b border-neutral-300 bg-transparent text-lg font-semibold text-neutral-700 transition-colors duration-200 focus:border-primary-500 focus:outline-none"
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            saveHeading();
+                                        } else if (e.key === 'Escape') {
+                                            e.preventDefault();
+                                            cancelHeadingEdit();
+                                        }
+                                    }}
+                                    className="min-w-0 flex-1 border-b border-neutral-300 bg-transparent text-lg font-semibold text-neutral-700 transition-colors duration-200 focus:border-primary-500 focus:outline-none"
                                     autoFocus
                                 />
-                                <Check
-                                    onClick={() =>
-                                        updateHeading(
-                                            activeItem,
-                                            addUpdateVideoSlide,
-                                            SaveDraft,
-                                            heading,
-                                            setIsEditing,
-                                            addUpdateDocumentSlide,
-                                            addUpdateQuizSlide, // <-- pass this for QUIZ support
-                                            updateAssignmentOrder, // <-- pass for ASSIGNMENT
-                                            updateQuestionOrder // <-- pass for QUESTION
-                                        )
-                                    }
-                                    className="cursor-pointer hover:text-primary-500"
-                                />
+                                <MyButton
+                                    type="button"
+                                    buttonType="text"
+                                    layoutVariant="icon"
+                                    scale="small"
+                                    className="shrink-0"
+                                    aria-label="Save title"
+                                    onClick={saveHeading}
+                                >
+                                    <Check size={16} />
+                                </MyButton>
+                                <MyButton
+                                    type="button"
+                                    buttonType="text"
+                                    layoutVariant="icon"
+                                    scale="small"
+                                    className="shrink-0 text-neutral-500 hover:text-danger-500"
+                                    aria-label="Cancel rename"
+                                    onClick={cancelHeadingEdit}
+                                >
+                                    <X size={16} />
+                                </MyButton>
                             </div>
                         ) : (
                             <div className="flex min-w-0 items-center gap-1.5">
@@ -3743,6 +3778,7 @@ export const SlideMaterial = ({
                                         buttonType="secondary"
                                         scale="medium"
                                         layoutVariant="default"
+                                        className="sm:min-w-0"
                                         onClick={() => setIsEditLinkDialogOpen(true)}
                                     >
                                         <LinkSimple size={18} />
@@ -3773,7 +3809,10 @@ export const SlideMaterial = ({
                                         layoutVariant="default"
                                         onClick={handleSaveDraftClick}
                                         disabled={isSaving}
-                                        className={cn(isSaving && 'pointer-events-none')}
+                                        className={cn(
+                                            'sm:min-w-0',
+                                            isSaving && 'pointer-events-none'
+                                        )}
                                     >
                                         {isSaving ? (
                                             <>
@@ -3803,6 +3842,7 @@ export const SlideMaterial = ({
                                                 buttonType="secondary"
                                                 scale="medium"
                                                 layoutVariant="default"
+                                                className="sm:min-w-0"
                                                 onClick={() => setIsUnpublishDialogOpen(true)}
                                             >
                                                 <span className="hidden sm:inline">Unpublish</span>
@@ -3836,6 +3876,7 @@ export const SlideMaterial = ({
                                                 buttonType="primary"
                                                 scale="medium"
                                                 layoutVariant="default"
+                                                className="sm:min-w-0"
                                                 onClick={() => setIsPublishDialogOpen(true)}
                                             >
                                                 <span className="hidden sm:inline">Publish</span>

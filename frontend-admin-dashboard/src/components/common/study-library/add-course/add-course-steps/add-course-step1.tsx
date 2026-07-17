@@ -29,6 +29,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { X } from 'lucide-react';
+import { toast } from 'sonner';
 import ImageCropperDialog from '@/components/design-system/image-cropper-dialog';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import {
@@ -38,6 +39,7 @@ import {
 
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { CourseSettingsData } from '@/types/course-settings';
+import { AiAssistButton } from './ai-assist-button';
 
 // Step 1 Schema
 export const step1Schema = z.object({
@@ -330,6 +332,7 @@ export const AddCourseStep1 = ({
             }
         } catch (error) {
             console.error('Upload failed:', error);
+            toast.error('Image upload failed. Please try again.');
         } finally {
             setUploadingStates((prev) => ({
                 ...prev,
@@ -594,7 +597,19 @@ export const AddCourseStep1 = ({
                                         name="description"
                                         render={({ field }) => (
                                             <FormItem>
-                                                <FormLabel>Description</FormLabel>
+                                                <div className="flex items-center justify-between">
+                                                    <FormLabel>Description</FormLabel>
+                                                    <AiAssistButton
+                                                        mode="text"
+                                                        field="description"
+                                                        fieldLabel="Description"
+                                                        getCourseName={() =>
+                                                            form.getValues('course')
+                                                        }
+                                                        getExistingHtml={() => field.value}
+                                                        onGenerated={(html) => field.onChange(html)}
+                                                    />
+                                                </div>
                                                 <FormControl>
                                                     <RichTextEditor
                                                         onChange={field.onChange}
@@ -699,7 +714,23 @@ export const AddCourseStep1 = ({
                                             name="learningOutcome"
                                             render={({ field }) => (
                                                 <FormItem>
-                                                    <FormLabel>What learners will gain?</FormLabel>
+                                                    <div className="flex items-center justify-between">
+                                                        <FormLabel>
+                                                            What learners will gain?
+                                                        </FormLabel>
+                                                        <AiAssistButton
+                                                            mode="text"
+                                                            field="learningOutcome"
+                                                            fieldLabel="What learners will gain?"
+                                                            getCourseName={() =>
+                                                                form.getValues('course')
+                                                            }
+                                                            getExistingHtml={() => field.value}
+                                                            onGenerated={(html) =>
+                                                                field.onChange(html)
+                                                            }
+                                                        />
+                                                    </div>
                                                     <FormControl>
                                                         <RichTextEditor
                                                             onChange={field.onChange}
@@ -720,13 +751,30 @@ export const AddCourseStep1 = ({
                                             name="aboutCourse"
                                             render={({ field }) => (
                                                 <FormItem>
-                                                    <FormLabel>
-                                                        About the{' '}
-                                                        {getTerminology(
-                                                            ContentTerms.Course,
-                                                            SystemTerms.Course
-                                                        )}
-                                                    </FormLabel>
+                                                    <div className="flex items-center justify-between">
+                                                        <FormLabel>
+                                                            About the{' '}
+                                                            {getTerminology(
+                                                                ContentTerms.Course,
+                                                                SystemTerms.Course
+                                                            )}
+                                                        </FormLabel>
+                                                        <AiAssistButton
+                                                            mode="text"
+                                                            field="aboutCourse"
+                                                            fieldLabel={`About the ${getTerminology(
+                                                                ContentTerms.Course,
+                                                                SystemTerms.Course
+                                                            )}`}
+                                                            getCourseName={() =>
+                                                                form.getValues('course')
+                                                            }
+                                                            getExistingHtml={() => field.value}
+                                                            onGenerated={(html) =>
+                                                                field.onChange(html)
+                                                            }
+                                                        />
+                                                    </div>
                                                     <FormControl>
                                                         <RichTextEditor
                                                             onChange={field.onChange}
@@ -747,7 +795,21 @@ export const AddCourseStep1 = ({
                                             name="targetAudience"
                                             render={({ field }) => (
                                                 <FormItem>
-                                                    <FormLabel>Who should join?</FormLabel>
+                                                    <div className="flex items-center justify-between">
+                                                        <FormLabel>Who should join?</FormLabel>
+                                                        <AiAssistButton
+                                                            mode="text"
+                                                            field="targetAudience"
+                                                            fieldLabel="Who should join?"
+                                                            getCourseName={() =>
+                                                                form.getValues('course')
+                                                            }
+                                                            getExistingHtml={() => field.value}
+                                                            onGenerated={(html) =>
+                                                                field.onChange(html)
+                                                            }
+                                                        />
+                                                    </div>
                                                     <FormControl>
                                                         <RichTextEditor
                                                             onChange={field.onChange}
@@ -770,13 +832,29 @@ export const AddCourseStep1 = ({
                                 {/* Course Preview */}
                                 {courseSettings?.courseInformation?.previewImageRequired && (
                                     <div className="flex flex-col gap-1">
-                                        <FormLabel>
-                                            {getTerminology(
-                                                ContentTerms.Course,
-                                                SystemTerms.Course
-                                            )}{' '}
-                                            Preview Image
-                                        </FormLabel>
+                                        <div className="flex items-center justify-between">
+                                            <FormLabel>
+                                                {getTerminology(
+                                                    ContentTerms.Course,
+                                                    SystemTerms.Course
+                                                )}{' '}
+                                                Preview Image
+                                            </FormLabel>
+                                            <AiAssistButton
+                                                mode="image"
+                                                imageKind="preview"
+                                                aspectRatio="16:9"
+                                                fieldLabel="Preview Image"
+                                                getCourseName={() => form.getValues('course')}
+                                                disabled={uploadingStates.coursePreview}
+                                                onGenerated={(file) =>
+                                                    handleFileSelectedWithCrop(
+                                                        file,
+                                                        'coursePreview'
+                                                    )
+                                                }
+                                            />
+                                        </div>
                                         <p className="text-sm text-neutral-500">
                                             This is the thumbnail that appears on the course card.
                                             Recommended size: 2:1 ratio
@@ -874,13 +952,26 @@ export const AddCourseStep1 = ({
                                 {/* Course Banner */}
                                 {courseSettings?.courseInformation?.bannerImageEnabled && (
                                     <div className="flex flex-col gap-1">
-                                        <FormLabel>
-                                            {getTerminology(
-                                                ContentTerms.Course,
-                                                SystemTerms.Course
-                                            )}{' '}
-                                            Banner Image
-                                        </FormLabel>
+                                        <div className="flex items-center justify-between">
+                                            <FormLabel>
+                                                {getTerminology(
+                                                    ContentTerms.Course,
+                                                    SystemTerms.Course
+                                                )}{' '}
+                                                Banner Image
+                                            </FormLabel>
+                                            <AiAssistButton
+                                                mode="image"
+                                                imageKind="banner"
+                                                aspectRatio="16:9"
+                                                fieldLabel="Banner Image"
+                                                getCourseName={() => form.getValues('course')}
+                                                disabled={uploadingStates.courseBanner}
+                                                onGenerated={(file) =>
+                                                    handleFileSelectedWithCrop(file, 'courseBanner')
+                                                }
+                                            />
+                                        </div>
                                         <p className="text-sm text-neutral-500">
                                             A wide background image displayed on top of the course
                                             detail page. Recommended size: 2.64:1 ratio
@@ -971,13 +1062,26 @@ export const AddCourseStep1 = ({
                                 {/* Course Media */}
                                 {courseSettings?.courseInformation?.courseMediaEnabled && (
                                     <div className="flex flex-col gap-1">
-                                        <FormLabel>
-                                            {getTerminology(
-                                                ContentTerms.Course,
-                                                SystemTerms.Course
-                                            )}{' '}
-                                            Media (Image or Video)
-                                        </FormLabel>
+                                        <div className="flex items-center justify-between">
+                                            <FormLabel>
+                                                {getTerminology(
+                                                    ContentTerms.Course,
+                                                    SystemTerms.Course
+                                                )}{' '}
+                                                Media (Image or Video)
+                                            </FormLabel>
+                                            <AiAssistButton
+                                                mode="image"
+                                                imageKind="media"
+                                                aspectRatio="16:9"
+                                                fieldLabel="Media Image"
+                                                getCourseName={() => form.getValues('course')}
+                                                disabled={uploadingStates.courseMedia}
+                                                onGenerated={(file) =>
+                                                    handleFileSelectedWithCrop(file, 'courseMedia')
+                                                }
+                                            />
+                                        </div>
                                         <p className="text-sm text-neutral-500">
                                             A featured media block within the course page; this can
                                             visually represent the content or offer a teaser. For

@@ -1,6 +1,16 @@
 # Admin Activity Logs
 
-A transactional audit log of administrative mutations in `admin_core_service`. Every annotated controller method writes one row to `admin_activity_log` **inside** the same database transaction as the wrapped business call, so audit rows can never exist without their action and vice versa.
+An audit log of administrative mutations in `admin_core_service`. Every annotated controller method writes one row to `admin_activity_log` after the wrapped business call returns.
+
+> **Correction (2026-07-17).** This document previously claimed the row is written *inside* the business transaction (a "transactional outbox", atomic with the mutation). **That has never been true.** `AuditableAspect#audit` carries `@Transactional(REQUIRED)`, but Spring's `AspectJAwareAdvisorAutoProxyCreator` **does not proxy `@Aspect` beans** — so an aspect cannot advise itself — and the annotation is silently ignored. The advice runs with no transaction of its own; by the time it executes, the service's own `@Transactional` has already committed, and the audit `INSERT` commits separately.
+>
+> Verified empirically against Spring 6.1.5 with a standalone context reproducing the exact wiring: an ordinary `@Transactional` bean shows an active transaction, the `@Aspect`'s advice does not.
+>
+> What this means in practice:
+> - **The audit row is not atomic with the mutation.** A crash between the commit and the `INSERT` loses the audit row while keeping the business change. Rare, but possible — do not treat this log as a guaranteed-complete ledger.
+> - **An audit failure genuinely cannot break a customer mutation** — the hard rule below still holds, just for a different reason than claimed. Nothing the aspect does can mark the business transaction rollback-only, because it does not share one.
+> - **Annotating a partial-success endpoint is safe.** The aspect does not impose all-or-nothing semantics on the method it wraps. This is why the v3 bulk endpoints could be annotated.
+> - **`async = true` is not meaningfully different** from the default today. Neither path is atomic; async only moves the write off the request thread.
 
 The feature is **opt-in per endpoint** via the `@Auditable` annotation. If a method doesn't carry the annotation, nothing runs — no bytecode, no allocation, zero overhead.
 
@@ -56,12 +66,13 @@ The frontend renders this in `/admin-activity-logs` as **"John Doe created cours
 | `entityType` | yes | String | Logical resource type, uppercase snake. Used to filter audit rows. Examples: `COURSE`, `LIVE_SESSION`, `LEARNER`, `INSTITUTE_SETTING`. New types are free-form — add to the frontend's `RESOURCE_OPTIONS` dropdown in [ActivityLogFilters.tsx](../frontend-admin-dashboard/src/routes/admin-activity-logs/-components/ActivityLogFilters.tsx) once you start emitting them. |
 | `action` | yes* | String | Logical action, uppercase. Examples: `CREATE`, `UPDATE`, `DELETE`, `CANCEL`, `ENROLL`, `PUBLISH`. Same dropdown convention as above (`ACTIVITY_OPTIONS`). *Optional only when `actionExpr` is set, in which case it acts as the fallback. |
 | `actionExpr` | optional | SpEL | Resolves the action at runtime, for one mapping that performs several logical operations. Evaluated after the call, so `#result` is available. Takes precedence over `action`; falls back to it when blank. If both are empty the row is **skipped** — `action` is NOT NULL. See the multi-operation example below. |
+| `conditionExpr` | optional | SpEL | Guard. When set and it does not evaluate to `true`, no row is written. Evaluated after the call, so it can read `#result`. For endpoints that return 200 without mutating anything — a dry-run, or a bulk call where every item was skipped. Fails closed: a failed evaluation skips the row. See gotcha 7. |
 | `entityIdExpr` | optional | SpEL | Returns the id of the affected entity. Pulled from method args, `#user`, or `#result`. Example: `"#courseId"`, `"#result"`, `"#req?.id"`. |
 | `descriptionExpr` | optional but recommended | SpEL | Produces the human-readable verb-and-object fragment ("created course X"). Actor name is prepended automatically by the frontend, so don't include the actor. |
 | `captureBefore` | optional | SpEL | Evaluated *before* the wrapped method runs. Used for UPDATE/DELETE to snapshot the entity's prior state. Supports bean references — see the example below. |
 | `payload` | optional | enum | `FULL` / `REDACTED` (default) / `NONE`. `REDACTED` masks fields named `password`, `token`, `otp`, `cardNumber`, `cvv`, `secret`, `apiKey` (case-insensitive). `NONE` omits the body. |
 | `maxPayloadBytes` | optional | int | Caps the serialized payload size (default 64,000). Bodies above this are truncated with `...[truncated]`. Set lower for bulk-import endpoints with multi-MB bodies. |
-| `async` | optional | bool | Default `false` = audit row written in the same transaction as the business call (atomic, crash-safe). `true` = fire-and-forget on a separate executor. **Use only on documented bulk endpoints where atomicity isn't required.** |
+| `async` | optional | bool | Default `false` = the row is written inline, on the request thread, after the business call returns. `true` = fire-and-forget on a separate executor. Neither path is atomic with the business transaction (see the correction at the top), so this only trades a little request latency for a lost-on-crash window. |
 
 ### SpEL context variables
 
@@ -272,18 +283,17 @@ Once the institute enables it, anyone with the `ADMIN` role can view the log (th
 
 ---
 
-## How the transactional outbox actually works
+## How the audit write actually works
 
 1. Spring AOP weaves `AuditableAspect#audit(...)` around any method annotated with `@Auditable`.
-2. The aspect's `@Around` method is itself `@Transactional(Propagation.REQUIRED)`. So:
-   - When the advice begins, an outer transaction opens (or it joins an existing one).
-   - `joinPoint.proceed()` invokes the controller, which calls the service. The service's own `@Transactional` participates in the outer transaction by default.
-   - On return, the aspect builds the `AdminActivityLog` row and calls `repository.save(log)` — this INSERT participates in the same transaction.
-   - The outer transaction commits → business changes + audit row land atomically in WAL.
-   - If the wrapped method throws, the transaction rolls back. Both the business changes and the audit row roll back. **There is never an audit row without a successful action.**
-3. The aspect is `@Order(Ordered.LOWEST_PRECEDENCE - 10)` so it wraps Spring's `@Transactional` advice from the outside.
+2. The advice calls `joinPoint.proceed()`, which invokes the controller and its service. **The service's own `@Transactional` opens and commits the business transaction here** — it is the outermost transaction in play.
+3. On return, the advice builds the `AdminActivityLog` row and calls `repository.save(log)`. The business transaction has already committed, so this `INSERT` runs on its own.
+4. If the wrapped method throws, the advice rethrows before ever building a row. **There is never an audit row without a successful action** — not because of a shared transaction, but because the write happens after a successful `proceed()`.
+5. The aspect is `@Order(Ordered.LOWEST_PRECEDENCE - 10)`, so it sits outside Spring's `@Transactional` advice on the wrapped method.
 
-For `async = true`, the aspect skips the in-transaction write and dispatches the row to a dedicated `ThreadPoolTaskExecutor` named `auditAsyncExecutor`. The async write runs in `Propagation.REQUIRES_NEW`, so a failure there doesn't roll back the business commit. **Use sparingly** — async loses the atomicity guarantee.
+**The `@Transactional(Propagation.REQUIRED)` on `audit(...)` is dead code.** Spring does not proxy `@Aspect` beans, so it never takes effect (see the correction at the top). Removing it would be honest, but it is load-bearing in one direction: anyone who "fixes" the aspect so the annotation *does* apply would silently convert every partial-success endpoint to all-or-nothing. Don't do that without re-auditing the annotated endpoints.
+
+For `async = true`, the aspect dispatches the row to a dedicated `ThreadPoolTaskExecutor` named `auditAsyncExecutor` instead of writing inline. Since the sync path is not atomic either, async only buys getting the write off the request thread.
 
 ---
 
@@ -294,7 +304,7 @@ For `async = true`, the aspect skips the in-transaction write and dispatches the
 | Per-call latency added | 0 | ~1–2 ms | ~3–8 ms (extra SELECT) | ~15–35 μs (snapshot + executor submit) |
 | Extra DB hits | 0 | +1 INSERT | +1 SELECT, +1 INSERT | 0 in the request path; +1 INSERT off-thread |
 | Connection pool pressure | 0 | Uses the request's existing connection | Same | One slot per concurrent async write |
-| Atomicity with business txn | n/a | Yes | Yes | **No** |
+| Atomicity with business txn | n/a | **No** | **No** | **No** |
 
 A typical admin mutation takes 50–500 ms end-to-end. Audit overhead is **<1% of that** in the worst case. Storage growth is bounded by retention.
 
@@ -309,10 +319,10 @@ The aspect uses Spring's compiled SpEL (`SpelCompilerMode.MIXED`) — hot expres
 | `clientId` header missing | Aspect skips the audit row write; logs DEBUG; the business call proceeds normally. |
 | SpEL expression throws (e.g., typo in `entityIdExpr`) | Aspect catches, logs WARN, sets that field to null. Row still writes; other fields are unaffected. |
 | `captureBefore` bean call throws (e.g., entity not found yet) | Aspect catches; `before_payload` stays null; row still writes. |
-| `repository.save(log)` throws | Aspect catches; logs ERROR; **business transaction is NOT rolled back**. Audit data is lost for that one call but the customer's mutation succeeds. |
+| `repository.save(log)` throws | Aspect catches; logs ERROR. The business transaction already committed and is unaffected — the aspect shares no transaction with it. Audit data is lost for that one call; the customer's mutation succeeds. |
 | Payload above `maxPayloadBytes` | JSON is truncated with `...[truncated]` suffix. |
-| JVM crash mid-mutation | Postgres rolls back; both business changes and audit row gone — consistent. |
-| JVM crash post-commit | Both are durable in WAL. No data loss either way. |
+| JVM crash mid-mutation | Postgres rolls back the business txn; no audit row was written yet — consistent. |
+| JVM crash between the business commit and the audit INSERT | Mutation is durable, audit row is lost. The one real gap from the write not being atomic. |
 
 The hard rule: **an audit issue never breaks a customer-facing API**.
 
@@ -345,7 +355,7 @@ The frontend's "Export CSV" button passes whatever filters are currently set, so
 
 ## Architecture decisions you'll inherit
 
-- **Why transactional outbox and not in-memory queue + batch writer?** Earlier design used `ArrayBlockingQueue` + a daemon consumer for throughput. Switched to the outbox because admin mutation volume is in the tens/sec, never thousands/sec, so the +1 ms per call is invisible. The outbox gives crash-safety and atomicity-with-business-txn for free. The `async = true` escape hatch is the only place the original queue idea survives.
+- **Why a synchronous write and not an in-memory queue + batch writer?** Earlier design used `ArrayBlockingQueue` + a daemon consumer for throughput. Switched to writing inline because admin mutation volume is in the tens/sec, never thousands/sec, so the +1 ms per call is invisible. This was *intended* to be a transactional outbox buying crash-safety and atomicity with the business txn — it never actually did (see the correction at the top); the write is simply inline and non-atomic. The `async = true` escape hatch is the only place the original queue idea survives.
 - **Why does it live in `admin_core_service` and not `common_service`?** 99% of admin mutations are here today. If `assessment_service` or another service ever wants to audit, we move just the `annotation/`, `aspect/`, `util/` packages into `common_service` (about a half-day's work). The table + read API + UI naturally belong to the admin app and would stay here regardless.
 - **Why one `admin_activity_log` table, not one per service?** Cross-service queries ("show me everything user X did across the platform") become trivial. The trade-off is that if a non-admin service wants to write here, it needs DB access to the admin-core DB. We'll cross that bridge when we get there.
 - **Why opt-in `@Auditable` and not a global HTTP interceptor that logs every mutation?** Interceptors can't capture semantic metadata (entity_id, human description) without a giant URL-pattern matcher. Opt-in per method also means deployments don't suddenly start logging unintended endpoints. Lower blast radius.
@@ -406,19 +416,19 @@ Display-settings integration: `sidebar/constant.ts` (`controlledTabs`), `sidebar
 
 6. **Adding to the frontend dropdowns.** New `entityType` / `action` values will work in the backend immediately but won't appear in the filter dropdowns until they're added to `RESOURCE_OPTIONS` / `ACTIVITY_OPTIONS` in [ActivityLogFilters.tsx](../frontend-admin-dashboard/src/routes/admin-activity-logs/-components/ActivityLogFilters.tsx). Filters still accept any string typed/pasted, just no autocomplete.
 
-7. **Never annotate an endpoint that is designed to partially succeed.** This is
-   the sharpest edge here. `AuditableAspect#audit` is
-   `@Transactional(Propagation.REQUIRED)`, so annotating a method wraps *the
-   whole method* in one transaction. Endpoints that loop over items, catch
-   per-item exceptions, and return a `successful/failed/skipped` report (CSV
-   bulk learner upload, `POST /v3/learner-management/assign` and `/deassign`)
-   rely on each item committing independently. Wrap them and a single poisoned
-   row can mark the transaction rollback-only, discarding work the response has
-   already reported as successful. Those three are deliberately left
-   un-annotated with a comment saying so. **`async = true` is not a workaround
-   today** — despite what its javadoc claims, the `@Transactional` sits on the
-   `@Around` method unconditionally, so the async path opens an outer
-   transaction too. Fixing that is the prerequisite for auditing these.
+7. **Partial-success endpoints need `conditionExpr`, not avoidance.** Endpoints
+   that loop over items, catch per-item exceptions, and return a
+   `successful/failed/skipped` report (`POST /v3/learner-management/assign` and
+   `/deassign`, CSV bulk learner upload) are safe to annotate — the aspect
+   opens no transaction, so it cannot turn them all-or-nothing. What they *do*
+   need is a guard: they return 200 having changed nothing when `dry_run` is set
+   or when every item was skipped. Audit those and the log claims enrollments
+   that never happened. Use the response summary, not the request:
+   `conditionExpr = "#result?.body != null and !#result.body.dryRun and (#result.body.summary?.successful ?: 0) > 0"`.
+   For the same reason, derive counts in the description from
+   `summary.successful` rather than `request.userIds` — bulk assign also selects
+   users by inline `new_users` or a filter, so the request does not say how many
+   learners were actually enrolled.
 
 8. **The `clientId` header is required.** The axios interceptor in [axiosInstance.ts](../frontend-admin-dashboard/src/lib/auth/axiosInstance.ts) attaches it automatically from `getInstituteId()`. If you ever build a non-axios request path (e.g., a worker-side fetch), make sure that header is included or audit silently drops the row.
 
@@ -437,7 +447,7 @@ carry `@Auditable`. An absent row usually means *not instrumented*, not *broken*
 
 ## Future improvements (not yet wired)
 
-- **Make `async = true` skip the outer transaction**, matching its javadoc. Unblocks auditing the partial-success bulk endpoints (gotcha 7) and needs a `conditionExpr`-style guard so dry-run calls aren't logged as real ones.
+- **Real atomicity, if it is ever wanted.** The audit row is not atomic with the mutation (see the correction at the top), so a crash between commit and INSERT loses it. Achieving atomicity needs the write moved into the business transaction deliberately — e.g. a `TransactionTemplate` in the advice or an actual outbox table — *not* by making the aspect's `@Transactional` apply, which would convert partial-success endpoints to all-or-nothing.
 - **Promote annotation + aspect to `common_service`** so other services can audit into the same table without DB changes. `auth_service` (role grants, permission changes, password resets) is the highest-value gap and is blocked on this.
 - **Failed/denied attempts are never recorded.** The row writes inside the business transaction, so a throw rolls the audit away too — "who *tried* to do X" is unanswerable by design.
 - **Bolding patterns auto-derived from `entityType`/`action`** instead of regex matching the description text.

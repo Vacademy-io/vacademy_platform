@@ -148,6 +148,56 @@ public class AuditNarrator {
         return verb + " " + who + inClause("in", coursesFor(packageSessionIds));
     }
 
+    // ── Bulk assign / de-assign (v3) ──────────────────────────────────────
+
+    /**
+     * Phrases a bulk assign, e.g. "enrolled 5 learner(s) in Physics 201".
+     *
+     * <p>{@code successful} comes from the response summary rather than the
+     * request: these endpoints select users by explicit ids, inline new users,
+     * or a filter, and individual items may fail or be skipped — so the request
+     * does not say how many learners were actually enrolled.
+     */
+    public String bulkAssignmentOf(Integer successful, List<String> userIds, List<String> packageSessionIds) {
+        String who = appliedLearners(successful, userIds);
+        if (who == null) {
+            return null;
+        }
+        return "enrolled " + who + inClause("in", coursesFor(packageSessionIds));
+    }
+
+    /**
+     * Phrases a bulk de-assign. A HARD de-assign revokes access immediately and
+     * is a termination; a SOFT one leaves access until expiry, so the two must
+     * not read alike in the log.
+     */
+    public String bulkDeassignmentOf(String mode, Integer successful, List<String> userIds,
+            List<String> packageSessionIds) {
+        String who = appliedLearners(successful, userIds);
+        if (who == null) {
+            return null;
+        }
+        String where = coursesFor(packageSessionIds);
+        return "HARD".equalsIgnoreCase(mode)
+                ? "terminated " + who + inClause("from", where)
+                : "cancelled enrollment of " + who + inClause("in", where);
+    }
+
+    /**
+     * Names the learner when exactly one was targeted by id, otherwise reports
+     * the count the call actually applied to.
+     */
+    private String appliedLearners(Integer successful, List<String> userIds) {
+        List<String> ids = distinctNonBlank(userIds);
+        if (ids.size() == 1) {
+            return learnerFor(ids.get(0));
+        }
+        if (successful != null && successful > 0) {
+            return successful + " learner(s)";
+        }
+        return ids.isEmpty() ? null : ids.size() + " learner(s)";
+    }
+
     // ── Learner status changes ────────────────────────────────────────────
 
     /**

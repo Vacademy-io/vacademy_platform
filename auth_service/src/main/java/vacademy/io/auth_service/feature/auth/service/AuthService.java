@@ -341,7 +341,9 @@ public class AuthService {
         childUser = userRepository.save(childUser);
 
         UserDTO parentResponseDTO = convertToUserDto(parentUser);
+        parentResponseDTO.setPassword(parentUser.getPassword());
         UserDTO childResponseDTO = convertToUserDto(childUser);
+        childResponseDTO.setPassword(childUser.getPassword());
 
         return List.of(parentResponseDTO, childResponseDTO);
     }
@@ -696,20 +698,13 @@ public class AuthService {
      * each child's linked_parent_id at write time so re-running the backfill is
      * idempotent even if the caller's snapshot is stale.
      *
-     * @param sendCredentials whether to email the newly-created guardian's
-     *                        login credentials once created.
-     * @param recipient       "STUDENT" (default) sends to the child's own
-     *                        email — the guardian's backfilled email is a
-     *                        synthetic, undeliverable @vacademy.com address,
-     *                        so the student is the only real recipient. Pass
-     *                        "GUARDIAN" to instead target the synthetic
-     *                        address anyway (a deliberate no-op for backfill,
-     *                        kept for symmetry with the non-backfill link
-     *                        flows where a guardian's email can be real).
+     * <p>
+     * Does not send any credential notification itself — the caller
+     * (admin_core_service) owns that via its configurable template system, using
+     * the full guardian/student details returned in {@code createdPairs}.
      */
     @Transactional
-    public BackfillParentsResultDTO backfillParents(List<BackfillParentItemDTO> items, String instituteId,
-            boolean sendCredentials, String recipient) {
+    public BackfillParentsResultDTO backfillParents(List<BackfillParentItemDTO> items, String instituteId) {
         List<BackfillParentItemDTO> safeItems = items != null ? items : List.of();
         int created = 0;
         int skipped = 0;
@@ -741,12 +736,13 @@ public class AuthService {
             createdPairs.add(BackfillCreatedPairDTO.builder()
                     .childUserId(child.getId())
                     .parentUserId(parentUser.getId())
+                    .studentFullName(child.getFullName())
+                    .studentEmail(child.getEmail())
+                    .guardianFullName(parentUser.getFullName())
+                    .guardianUsername(parentUser.getUsername())
+                    .guardianEmail(parentUser.getEmail())
+                    .guardianPassword(parentUser.getPassword())
                     .build());
-
-            if (sendCredentials) {
-                String targetEmail = "GUARDIAN".equalsIgnoreCase(recipient) ? parentUser.getEmail() : child.getEmail();
-                sendGuardianCredentialsNotification(targetEmail, parentUser, instituteId, child.getFullName());
-            }
         }
         return BackfillParentsResultDTO.builder()
                 .totalRequested(safeItems.size())
@@ -754,47 +750,5 @@ public class AuthService {
                 .skipped(skipped)
                 .createdPairs(createdPairs)
                 .build();
-    }
-
-    /**
-     * Best-effort credential notification for a freshly-created backfill
-     * guardian. Never throws — a mail failure must not roll back (or even be
-     * visible to the caller of) the user-creation transaction it's a side
-     * effect of.
-     */
-    private void sendGuardianCredentialsNotification(String toEmail, User guardian, String instituteId,
-            String studentFullName) {
-        if (!StringUtils.hasText(toEmail)) {
-            return;
-        }
-        try {
-            String instituteName = "Vacademy";
-            String theme = "#E67E22";
-            String loginUrl = "https://dash.vacademy.io";
-            if (StringUtils.hasText(instituteId)) {
-                InstituteInfoDTO instituteInfoDTO = instituteInternalService.getInstituteByInstituteId(instituteId);
-                if (instituteInfoDTO.getInstituteName() != null) {
-                    instituteName = instituteInfoDTO.getInstituteName();
-                }
-                if (instituteInfoDTO.getInstituteThemeCode() != null) {
-                    theme = instituteInfoDTO.getInstituteThemeCode();
-                }
-                if (StringUtils.hasText(instituteInfoDTO.getAdminPortalUrl())) {
-                    loginUrl = instituteInfoDTO.getAdminPortalUrl();
-                }
-            }
-            String greetingName = StringUtils.hasText(studentFullName)
-                    ? studentFullName + "'s Guardian"
-                    : "Guardian";
-            String body = NotificationEmailBody.createCredentialsFoundEmailBody(
-                    instituteName, greetingName, guardian.getUsername(), guardian.getPassword(), loginUrl, theme);
-            GenericEmailRequest emailRequest = new GenericEmailRequest();
-            emailRequest.setTo(toEmail);
-            emailRequest.setSubject("Guardian Account Credentials - " + instituteName);
-            emailRequest.setBody(body);
-            notificationService.sendGenericHtmlMailViaUnified(emailRequest, instituteId);
-        } catch (Exception e) {
-            log.warn("Failed to send guardian credential email to {}: {}", toEmail, e.getMessage());
-        }
     }
 }

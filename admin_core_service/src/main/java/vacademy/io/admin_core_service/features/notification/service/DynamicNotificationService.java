@@ -728,6 +728,83 @@ public class DynamicNotificationService {
     }
 
     /**
+     * Guardian account created (link, link-new-guardian, or backfill) —
+     * notifies whichever party the Guardian Setting is configured to notify
+     * ("STUDENT" or "GUARDIAN") with the newly-created guardian's login
+     * credentials. Resolves the EMAIL template via the same
+     * institute-specific-config -> DEFAULT-config fallback used elsewhere
+     * (see {@link vacademy.io.admin_core_service.features.live_session.service.LiveClassTemplateService});
+     * a seed migration guarantees a DEFAULT config/template always exists, so
+     * this is a silent no-op only if that seed was somehow removed.
+     */
+    public void sendGuardianAccountCreatedNotification(
+            String instituteId,
+            String guardianFullName,
+            String guardianUsername,
+            String guardianEmail,
+            String guardianPassword,
+            String studentFullName,
+            String studentEmail,
+            String recipient) {
+
+        try {
+            NotificationEventConfig config = configRepository
+                    .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
+                            NotificationEventType.GUARDIAN_ACCOUNT_CREATED,
+                            NotificationSourceType.INSTITUTE,
+                            instituteId,
+                            NotificationTemplateType.EMAIL)
+                    .or(() -> configRepository
+                            .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
+                                    NotificationEventType.GUARDIAN_ACCOUNT_CREATED,
+                                    NotificationSourceType.INSTITUTE,
+                                    "DEFAULT",
+                                    NotificationTemplateType.EMAIL))
+                    .orElse(null);
+
+            if (config == null) {
+                log.warn("No GUARDIAN_ACCOUNT_CREATED email config (institute or DEFAULT) found; skipping credential notification");
+                return;
+            }
+
+            boolean toGuardian = "GUARDIAN".equalsIgnoreCase(recipient);
+            String recipientEmail = toGuardian ? guardianEmail : studentEmail;
+            String recipientName = toGuardian ? guardianFullName : studentFullName;
+            if (!org.springframework.util.StringUtils.hasText(recipientEmail)) {
+                log.info("Guardian credential notification skipped: recipient ({}) has no email", recipient);
+                return;
+            }
+
+            Institute institute = getInstituteFromId(instituteId);
+            UserDTO recipientUser = new UserDTO();
+            recipientUser.setFullName(recipientName);
+            recipientUser.setEmail(recipientEmail);
+
+            NotificationTemplateVariables templateVars = NotificationTemplateVariables.builder()
+                    .userName(guardianUsername)
+                    .userEmail(recipientEmail)
+                    .userFullName(recipientName)
+                    .userPassword(guardianPassword)
+                    .portalUrl(institute != null ? institute.getAdminPortalBaseUrl() : null)
+                    .instituteName(institute != null ? institute.getInstituteName() : null)
+                    .instituteId(instituteId)
+                    .themeColor(getThemeColorFromInstitute(institute))
+                    .guardianName(guardianFullName)
+                    .guardianUsername(guardianUsername)
+                    .guardianEmail(guardianEmail)
+                    .guardianPassword(guardianPassword)
+                    .studentName(studentFullName)
+                    .studentEmail(studentEmail)
+                    .build();
+
+            sendNotificationViaUnifiedApi(config, instituteId, recipientUser, templateVars);
+        } catch (Exception e) {
+            log.error("Error sending guardian account created notification for institute {}: {}",
+                    instituteId, e.getMessage(), e);
+        }
+    }
+
+    /**
      * Resolves the Template entity referenced by a NotificationEventConfig.
      * Tries id-based lookup first so two configs sharing the same template_name can still
      * point at distinct rows (e.g. for session-specific dynamic_parameters while dispatching

@@ -32,6 +32,16 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
   List<Student> findByUserIdInAndGuardianUserIdIsNull(List<String> userIds);
 
   /**
+   * Guardian-linking eligibility pre-filter: candidates in this set PROVEN to
+   * already have a guardian locally — i.e. an exclude-list, never an
+   * allow-list. Candidates with no local {@code student} row at all (leads
+   * that were never enrolled have none) must NOT be inferred as "already
+   * linked" just because they're absent here; only use this to subtract
+   * known-linked ids from a candidate set, never to replace it.
+   */
+  List<Student> findByUserIdInAndGuardianUserIdIsNotNull(List<String> userIds);
+
+  /**
    * Stamps the denormalized guardian pointer once a link succeeds (assignment-time
    * link, link-new-guardian, or backfill). Bulk-by-userId since a user can have more
    * than one student row (findByUserId returns a List, not Optional) — every row for

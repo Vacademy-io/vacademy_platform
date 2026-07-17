@@ -470,4 +470,28 @@ public interface StudentSessionInstituteGroupMappingRepository
       """, nativeQuery = true)
   List<Object[]> findActiveSubOrgRoster(@Param("subOrgId") String subOrgId);
 
+  /**
+   * Sub-org ids a user belongs to within an institute, newest enrollment first.
+   *
+   * Membership mirrors {@link #findActiveSubOrgRoster(String)}: the mapping's own stamp
+   * (add-member / auto-link path) OR the sub-org invite the user_plan was created from.
+   * The second arm is essential because SUBORG_LEARNER self-enrollment does NOT stamp
+   * ssigm.sub_org_id.
+   */
+  @Query(value = """
+      SELECT COALESCE(ssigm.sub_org_id, ei.sub_org_id) AS sub_org_id
+      FROM student_session_institute_group_mapping ssigm
+      LEFT JOIN user_plan up ON up.id = ssigm.user_plan_id
+      LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+      WHERE ssigm.user_id = :userId
+        AND ssigm.institute_id = :instituteId
+        AND ssigm.status = 'ACTIVE'
+        AND COALESCE(ssigm.sub_org_id, ei.sub_org_id) IS NOT NULL
+      GROUP BY COALESCE(ssigm.sub_org_id, ei.sub_org_id)
+      ORDER BY MAX(ssigm.enrolled_date) DESC NULLS LAST
+      """, nativeQuery = true)
+  List<String> findActiveSubOrgIdsForUserInInstitute(
+      @Param("userId") String userId,
+      @Param("instituteId") String instituteId);
+
 }

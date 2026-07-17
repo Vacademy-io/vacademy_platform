@@ -42,6 +42,7 @@ public class BulkLearnerManagementController {
      * - Duplicate handling: SKIP / ERROR / RE_ENROLL
      * - dry_run mode for preview
      */
+    // NOT @Auditable yet — see the note on bulkDeassign below.
     @PostMapping("/assign")
     public ResponseEntity<BulkAssignResponseDTO> bulkAssign(
             @RequestBody BulkAssignRequestDTO request,
@@ -77,6 +78,13 @@ public class BulkLearnerManagementController {
      * - Shared UserPlan warnings
      * - dry_run mode for preview
      */
+    // NOT @Auditable yet: both v3 bulk endpoints catch per-item failures and
+    // report successful/failed/skipped, so they are built to partially succeed.
+    // AuditableAspect wraps the annotated method in a REQUIRED transaction,
+    // which would turn that into all-or-nothing and could roll back items the
+    // response reports as successful. Auditing these needs the aspect's async
+    // path to stop opening a transaction first (its javadoc already claims it
+    // doesn't). Dry-run calls must also be excluded — they mutate nothing.
     @PostMapping("/deassign")
     public ResponseEntity<BulkDeassignResponseDTO> bulkDeassign(
             @RequestBody BulkDeassignRequestDTO request,

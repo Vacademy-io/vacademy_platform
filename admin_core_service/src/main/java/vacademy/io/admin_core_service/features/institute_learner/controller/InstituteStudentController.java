@@ -32,7 +32,9 @@ public class InstituteStudentController {
     @Auditable(
             entityType = "LEARNER",
             action = "ENROLL",
-            descriptionExpr = "'enrolled learner ' + (#instituteStudentDTO?.userDetails?.fullName ?: #instituteStudentDTO?.userDetails?.email ?: '')")
+            descriptionExpr = "@auditNarrator.enrollmentOf('enrolled', "
+                    + "#instituteStudentDTO?.userDetails?.fullName ?: #instituteStudentDTO?.userDetails?.email, "
+                    + "{#instituteStudentDTO?.instituteStudentDetails?.packageSessionId})")
     public ResponseEntity<String> addStudentToInstitute(@RequestAttribute("user") CustomUserDetails user,
             @RequestParam(value = "notify", required = false, defaultValue = "true") boolean notify,
             @RequestBody InstituteStudentDTO instituteStudentDTO) {
@@ -50,7 +52,9 @@ public class InstituteStudentController {
     @Auditable(
             entityType = "LEARNER",
             action = "ENROLL",
-            descriptionExpr = "'enrolled learner ' + (#request?.user?.fullName ?: #request?.user?.email ?: '')")
+            descriptionExpr = "@auditNarrator.enrollmentOf('enrolled', "
+                    + "#request?.user?.fullName ?: #request?.user?.email, "
+                    + "#request?.learnerPackageSessionEnroll?.packageSessionIds)")
     public ResponseEntity<LearnerEnrollResponseDTO> adminEnrollLearner(
             @RequestAttribute("user") CustomUserDetails admin,
             @RequestBody LearnerEnrollRequestDTO request) {

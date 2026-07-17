@@ -293,12 +293,12 @@ export const SubjectMaterial = () => {
             >
               {isAllExpanded ? (
                 <>
-                  <FolderOpen size={14} className="mr-1.5" />
+                  <FolderOpen size={14} className="me-1.5" />
                   Collapse All
                 </>
               ) : (
                 <>
-                  <Folder size={14} className="mr-1.5" />
+                  <Folder size={14} className="me-1.5" />
                   Expand All
                 </>
               )}
@@ -309,8 +309,8 @@ export const SubjectMaterial = () => {
         <div className="max-w-2xl space-y-1.5">
           {studyLibraryData?.map((subject, idx) => {
             const isSubjectOpen = openSubjects.has(subject.id);
-            const baseIndent = "pl-[calc(18px+0.5rem+18px+0.5rem)]"; // design-lint-ignore: viewport math
-            const subjectContentIndent = `${baseIndent} pl-6`;
+            const baseIndent = "ps-[calc(18px+0.5rem+18px+0.5rem)]"; // design-lint-ignore: viewport math
+            const subjectContentIndent = `${baseIndent} ps-6`;
 
             return (
               <Collapsible
@@ -318,7 +318,7 @@ export const SubjectMaterial = () => {
                 open={isSubjectOpen}
                 onOpenChange={() => toggleSubject(subject.id)}
               >
-                <CollapsibleTrigger className="group flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-semibold text-neutral-700 transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 hover:border-primary-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1">
+                <CollapsibleTrigger className="group flex w-full items-center rounded-lg px-3 py-2 text-start text-sm font-semibold text-neutral-700 transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 hover:border-primary-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1">
                   <div className="flex min-w-0 flex-1 items-center gap-2.5">
                     {isSubjectOpen ? (
                       <CaretDown
@@ -352,7 +352,7 @@ export const SubjectMaterial = () => {
                   </div>
                   <ArrowSquareOut
                     size={18}
-                    className="ml-2 shrink-0 cursor-pointer text-neutral-400 hover:text-primary-600 transition-all duration-200 hover:scale-110"
+                    className="ms-2 shrink-0 cursor-pointer text-neutral-400 hover:text-primary-600 transition-all duration-200 hover:scale-110"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleSubjectNavigation(subject.id);
@@ -362,19 +362,19 @@ export const SubjectMaterial = () => {
                 <CollapsibleContent
                   className={`pb-1 pt-2 ${subjectContentIndent}`}
                 >
-                  <div className="space-y-1 border-l-2 border-gradient-to-b from-primary-200/60 to-neutral-200/40 pl-3 relative">
-                    <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-primary-300/80 to-transparent"></div>
+                  <div className="space-y-1 border-s-2 border-gradient-to-b from-primary-200/60 to-neutral-200/40 ps-3 relative">
+                    <div className="absolute start-0 top-0 w-0.5 h-full bg-gradient-to-b from-primary-300/80 to-transparent"></div>
                     {(subjectModulesMap[subject.id] ?? []).map(
                       (mod, modIdx) => {
                         const isModuleOpen = openModules.has(mod.module.id);
-                        const moduleContentIndent = `pl-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`; // design-lint-ignore: viewport math
+                        const moduleContentIndent = `ps-[calc(16px+0.5rem+16px+0.5rem+1.5rem)]`; // design-lint-ignore: viewport math
                         return (
                           <Collapsible
                             key={mod.module.id}
                             open={isModuleOpen}
                             onOpenChange={() => toggleModule(mod.module.id)}
                           >
-                            <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-indigo-50/50 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
+                            <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-start text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-blue-50/70 hover:to-indigo-50/50 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
                               <div className="flex min-w-0 flex-1 items-center gap-2">
                                 {isModuleOpen ? (
                                   <CaretDown
@@ -402,7 +402,7 @@ export const SubjectMaterial = () => {
                               </div>
                               <ArrowSquareOut
                                 size={16}
-                                className="ml-1.5 shrink-0 cursor-pointer text-neutral-400 hover:text-blue-600 transition-all duration-200 hover:scale-110"
+                                className="ms-1.5 shrink-0 cursor-pointer text-neutral-400 hover:text-blue-600 transition-all duration-200 hover:scale-110"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleModuleNavigation(
@@ -416,8 +416,8 @@ export const SubjectMaterial = () => {
                             <CollapsibleContent
                               className={`py-1 ${moduleContentIndent}`}
                             >
-                              <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
-                                <div className="absolute left-0 top-0 w-0.5 h-full bg-gradient-to-b from-blue-300/60 to-transparent"></div>
+                              <div className="space-y-0.5 border-s-2 border-blue-200/40 ps-2.5 relative">
+                                <div className="absolute start-0 top-0 w-0.5 h-full bg-gradient-to-b from-blue-300/60 to-transparent"></div>
                                 {(mod.chapters ?? []).map((ch, chIdx) => {
                                   const isChapterOpen = openChapters.has(ch.id);
 
@@ -430,7 +430,7 @@ export const SubjectMaterial = () => {
                                         getSlidesWithChapterId(ch.id);
                                       }}
                                     >
-                                      <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
+                                      <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-start text-sm text-neutral-600 transition-all duration-200 hover:bg-gradient-to-r hover:from-green-50/70 hover:to-emerald-50/50 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
                                         <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                           {isChapterOpen ? (
                                             <CaretDown
@@ -458,7 +458,7 @@ export const SubjectMaterial = () => {
                                         </div>
                                         <ArrowSquareOut
                                           size={14}
-                                          className="ml-1 shrink-0 cursor-pointer text-neutral-400 hover:text-green-600 transition-all duration-200 hover:scale-110"
+                                          className="ms-1 shrink-0 cursor-pointer text-neutral-400 hover:text-green-600 transition-all duration-200 hover:scale-110"
                                           onClick={(e) => {
                                             e.stopPropagation();
                                             handleChapterNavigation(
@@ -470,8 +470,8 @@ export const SubjectMaterial = () => {
                                         />
                                       </CollapsibleTrigger>
                                       <CollapsibleContent>
-                                        <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
-                                          <div className="absolute left-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
+                                        <div className="space-y-px ms-5 border-s border-green-200/50 py-1 ps-2 relative">
+                                          <div className="absolute start-0 top-0 w-px h-full bg-gradient-to-b from-green-300/50 to-transparent"></div>
                                           {(slidesMap[ch.id] ?? []).length ===
                                           0 ? (
                                             <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">

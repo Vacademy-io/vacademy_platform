@@ -170,7 +170,7 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
         <DialogPrimitive.Portal>
           <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
           <DialogPrimitive.Content
-            className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
+            className="fixed start-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
           >
             <div className="text-center py-8">
               <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
@@ -189,7 +189,7 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
         <DialogPrimitive.Portal>
           <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
           <DialogPrimitive.Content
-            className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
+            className="fixed start-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
           >
             <div className="text-center py-6">
               <p className="text-red-600 mb-4">{error}</p>
@@ -212,10 +212,10 @@ export const DonationDialog: React.FC<DonationDialogProps> = ({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
         <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
+          className="fixed start-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
         >
           <button
-            className="absolute right-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
+            className="absolute end-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
             onClick={() => onOpenChange(false)}
             aria-label="Close"
           >

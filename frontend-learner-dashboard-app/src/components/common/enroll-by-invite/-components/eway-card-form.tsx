@@ -326,7 +326,7 @@ export const EwayCardForm = ({
             className={errors.number && touched.number ? "border-red-500" : ""}
           />
           {cardType !== "unknown" && (
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
+            <div className="absolute end-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
               {getCardTypeDisplayName(cardType)}
             </div>
           )}

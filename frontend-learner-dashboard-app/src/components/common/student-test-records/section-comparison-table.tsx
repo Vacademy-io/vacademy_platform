@@ -41,15 +41,15 @@ export function SectionComparisonTable({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-muted-foreground">
-                <th className="text-left py-2 px-3">Section</th>
-                <th className="text-left py-2 px-3">Your Marks</th>
-                <th className="text-left py-2 px-3">Total</th>
-                <th className="text-left py-2 px-3">Class Avg</th>
-                <th className="text-left py-2 px-3">Accuracy</th>
+                <th className="text-start py-2 px-3">Section</th>
+                <th className="text-start py-2 px-3">Your Marks</th>
+                <th className="text-start py-2 px-3">Total</th>
+                <th className="text-start py-2 px-3">Class Avg</th>
+                <th className="text-start py-2 px-3">Accuracy</th>
                 {hasCutOff && (
                   <>
-                    <th className="text-left py-2 px-3">Cut-off</th>
-                    <th className="text-left py-2 px-3">Status</th>
+                    <th className="text-start py-2 px-3">Cut-off</th>
+                    <th className="text-start py-2 px-3">Status</th>
                   </>
                 )}
               </tr>

@@ -67,7 +67,7 @@ export const StatCard = ({
                         : `View ${title} - ${count ?? 0} items`
                 }
                 className={cn(
-                    "cp-card group flex h-full w-full flex-col items-start gap-3 p-4 text-left transition-transform duration-base ease-out-soft hover:-translate-y-0.5"
+                    "cp-card group flex h-full w-full flex-col items-start gap-3 p-4 text-start transition-transform duration-base ease-out-soft hover:-translate-y-0.5"
                 )}
             >
                 <div className="flex w-full items-center justify-between">
@@ -212,7 +212,7 @@ export const StatCard = ({
                         </div>
                     </CardContent>
                     {/* Vibrant Decorator */}
-                    <div className="absolute -bottom-6 -right-6 w-24 h-24 bg-primary/5 rounded-full blur-2xl hidden [.ui-vibrant_&]:block group-hover:scale-150 transition-transform duration-500 pointer-events-none" />
+                    <div className="absolute -bottom-6 -end-6 w-24 h-24 bg-primary/5 rounded-full blur-2xl hidden [.ui-vibrant_&]:block group-hover:scale-150 transition-transform duration-500 pointer-events-none" />
                 </>
             )}
         </Card>

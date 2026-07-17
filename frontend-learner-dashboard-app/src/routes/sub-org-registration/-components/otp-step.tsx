@@ -131,12 +131,12 @@ const OtpStep = ({
         >
           {isVerifying ? (
             <>
-              <SpinnerGap className="mr-2 size-4 animate-spin" />
+              <SpinnerGap className="me-2 size-4 animate-spin" />
               Verifying...
             </>
           ) : (
             <>
-              <CheckCircle className="mr-2 size-5" />
+              <CheckCircle className="me-2 size-5" />
               Verify & Continue
             </>
           )}

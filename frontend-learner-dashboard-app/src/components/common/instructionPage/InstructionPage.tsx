@@ -112,7 +112,7 @@ const InstructionPage = () => {
         </div>
       </main>
 
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-neutral-100 z-50">
+      <div className="fixed bottom-0 start-0 end-0 bg-white border-t border-neutral-100 z-50">
         <div className="mx-auto w-full max-w-2xl pb-4 pt-3 px-4">
           <AssessmentStartModal />
         </div>

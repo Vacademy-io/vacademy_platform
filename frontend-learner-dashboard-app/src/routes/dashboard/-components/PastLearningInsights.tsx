@@ -73,7 +73,7 @@ const InlineStat = ({
     </div>
     <div>
       <span className="text-sm font-bold">{value}</span>
-      <span className="text-xs text-muted-foreground ml-1">{label}</span>
+      <span className="text-xs text-muted-foreground ms-1">{label}</span>
     </div>
   </div>
 );
@@ -93,7 +93,7 @@ const PlayInlineStat = ({
     </div>
     <div>
       <span className="text-caption font-black text-play-ink">{value}</span>
-      <span className="ml-1 text-3xs font-bold text-play-ink/60">{label}</span>
+      <span className="ms-1 text-3xs font-bold text-play-ink/60">{label}</span>
     </div>
   </div>
 );
@@ -113,7 +113,7 @@ const CleanerInlineStat = ({
     </div>
     <div>
       <span className="cp-heading text-caption">{value}</span>
-      <span className="cp-muted ml-1 text-3xs">{label}</span>
+      <span className="cp-muted ms-1 text-3xs">{label}</span>
     </div>
   </div>
 );

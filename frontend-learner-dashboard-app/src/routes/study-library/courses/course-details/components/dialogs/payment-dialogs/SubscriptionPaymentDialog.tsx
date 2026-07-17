@@ -357,7 +357,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
         <DialogPrimitive.Portal>
           <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
           <DialogPrimitive.Content
-            className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
+            className="fixed start-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
           >
             <div className="text-center py-8">
               <SpinnerGap className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
@@ -376,7 +376,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
         <DialogPrimitive.Portal>
           <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
           <DialogPrimitive.Content
-            className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
+            className="fixed start-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4"
           >
             <div className="text-center py-6">
               <p className="text-red-600 mb-4">{error}</p>
@@ -400,10 +400,10 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
         <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
         <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white shadow-xl focus:outline-none flex flex-col"
+          className="fixed start-1/2 top-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white shadow-xl focus:outline-none flex flex-col"
         >
           <button
-            className="absolute right-4 top-4 text-gray-400 hover:text-gray-700 focus:outline-none z-10"
+            className="absolute end-4 top-4 text-gray-400 hover:text-gray-700 focus:outline-none z-10"
             onClick={() => onOpenChange(false)}
             aria-label="Close"
           >
@@ -465,13 +465,13 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                   Your Email Address
                 </label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                  <span className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-400">
                     <EnvelopeSimple size={18} />
                   </span>
                   <input
                     id="subscription-email"
                     type="email"
-                    className={`border rounded-lg pl-10 pr-4 py-3 text-sm w-full ${
+                    className={`border rounded-lg ps-10 pe-4 py-3 text-sm w-full ${
                       validationError ? 'border-red-500 bg-red-50' : 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent'
                     }`}
                     value={email}
@@ -558,7 +558,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                 }`}>
                   {!cardElementReady && (
                     <div className="flex items-center justify-center h-12 text-gray-500">
-                      <SpinnerGap className="w-5 h-5 animate-spin mr-2" />
+                      <SpinnerGap className="w-5 h-5 animate-spin me-2" />
                       Loading payment form...
                     </div>
                   )}

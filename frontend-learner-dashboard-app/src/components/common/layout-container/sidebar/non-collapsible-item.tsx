@@ -30,7 +30,7 @@ export const NonCollapsibleItem = ({ icon, title, to, onClick }: SidebarItemProp
                     {isActive && (
                         <span
                             aria-hidden
-                            className="absolute inset-y-2 left-0 w-1 rounded-full bg-nav-active-text"
+                            className="absolute inset-y-2 start-0 w-1 rounded-full bg-nav-active-text"
                         />
                     )}
                     {icon && React.createElement(icon, {

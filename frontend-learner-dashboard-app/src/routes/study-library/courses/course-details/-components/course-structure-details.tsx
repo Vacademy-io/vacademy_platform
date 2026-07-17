@@ -981,7 +981,7 @@ export const CourseStructureDetails = ({
   const renderContinueChip = (slideId: string) => {
     if (!resumeEntry || resumeEntry.slideId !== slideId) return null;
     return (
-      <span className="ml-1 shrink-0 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-500">
+      <span className="ms-1 shrink-0 rounded-full bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-500">
         Continue
       </span>
     );
@@ -1084,7 +1084,7 @@ export const CourseStructureDetails = ({
               Structure
             </span>
           </div>
-          <div className="flex items-center gap-2 ml-auto w-full md:w-auto">
+          <div className="flex items-center gap-2 ms-auto w-full md:w-auto">
             <div className="hidden md:flex items-center gap-2">
               <Input
                 value={searchQuery}
@@ -1111,12 +1111,12 @@ export const CourseStructureDetails = ({
             >
               {isAllExpanded ? (
                 <>
-                  <FolderOpen size={14} className="mr-1.5" />
+                  <FolderOpen size={14} className="me-1.5" />
                   Collapse All
                 </>
               ) : (
                 <>
-                  <Folder size={14} className="mr-1.5" />
+                  <Folder size={14} className="me-1.5" />
                   Expand All
                 </>
               )}
@@ -1149,12 +1149,12 @@ export const CourseStructureDetails = ({
                 <Skeleton className="w-6 h-6 rounded" />
                 <Skeleton className="h-4 w-40" />
               </div>
-              <div className="ml-8 space-y-2">
+              <div className="ms-8 space-y-2">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <div key={i} className="flex items-center gap-2">
                     <Skeleton className="w-5 h-5 rounded" />
                     <Skeleton className="h-4 w-32" />
-                    <div className="ml-auto w-24">
+                    <div className="ms-auto w-24">
                       <Skeleton className="h-2 w-full" />
                     </div>
                   </div>
@@ -1167,7 +1167,7 @@ export const CourseStructureDetails = ({
             courseStructure === 5 &&
             studyLibraryData?.map((subject: SubjectType, idx: number) => {
               const isSubjectOpen = openSubjects.has(subject.id);
-              const subjectContentIndent = "pl-1 sm:pl-struct-subject";
+              const subjectContentIndent = "ps-1 sm:ps-struct-subject";
               return (
                 <Collapsible
                   key={subject.id}
@@ -1176,7 +1176,7 @@ export const CourseStructureDetails = ({
                 >
                   <CollapsibleTrigger
                     className={cn(
-                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-start text-sm font-semibold shadow-sm transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                       // Vibrant Styles
                       "[.ui-vibrant_&]:bg-gradient-to-r [.ui-vibrant_&]:from-card [.ui-vibrant_&]:to-primary/5",
                       "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:hover:border-primary/40",
@@ -1231,11 +1231,11 @@ export const CourseStructureDetails = ({
                   <CollapsibleContent
                     className={`pb-1 pt-2 ${subjectContentIndent}`}
                   >
-                    <div className="space-y-1 border-l border-border pl-1 sm:pl-3 relative">
+                    <div className="space-y-1 border-s border-border ps-1 sm:ps-3 relative">
                       {(subjectModulesMap[subject.id] ?? []).map(
                         (mod, modIdx) => {
                           const isModuleOpen = openModules.has(mod.module.id);
-                          const moduleContentIndent = `pl-1 sm:pl-struct-module`;
+                          const moduleContentIndent = `ps-1 sm:ps-struct-module`;
                           return (
                             <Collapsible
                               key={mod.module.id}
@@ -1244,7 +1244,7 @@ export const CourseStructureDetails = ({
                             >
                               <CollapsibleTrigger
                                 className={cn(
-                                  "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                                  "group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm font-medium transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                                   // Vibrant Styles
                                   "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary",
                                   // Play Styles — quiet hover, ink text
@@ -1295,7 +1295,7 @@ export const CourseStructureDetails = ({
                                     {mod.module.module_name}
                                   </span>
                                   {/* Module Progress Indicator */}
-                                  <div className="flex items-center gap-2 ml-auto shrink-0 min-w-20">
+                                  <div className="flex items-center gap-2 ms-auto shrink-0 min-w-20">
                                     {(() => {
                                       const progress = calculateModuleProgress(
                                         mod.chapters || []
@@ -1316,7 +1316,7 @@ export const CourseStructureDetails = ({
                               <CollapsibleContent
                                 className={`py-1 ${moduleContentIndent}`}
                               >
-                                <div className="space-y-0.5 border-l border-border pl-1 sm:pl-2.5 relative">
+                                <div className="space-y-0.5 border-s border-border ps-1 sm:ps-2.5 relative">
                                   {(mod.chapters ?? []).map((ch, chIdx) => {
                                     const isChapterOpen = openChapters.has(
                                       ch.id
@@ -1350,7 +1350,7 @@ export const CourseStructureDetails = ({
                                         <CollapsibleTrigger
                                           disabled={isChapterLocked}
                                           className={cn(
-                                            `group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                                            `group flex w-full items-center gap-2 rounded-md px-2 py-1 text-start text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
                                               isChapterLocked
                                                 ? "cursor-not-allowed opacity-60"
                                                 : "hover:bg-muted/60 cursor-pointer"
@@ -1360,7 +1360,7 @@ export const CourseStructureDetails = ({
                                               "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:hover:text-primary",
                                             // Play Styles — quiet hover; open chapter gets a calm navy edge marker
                                             !isChapterLocked &&
-                                              "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:data-[state=open]:border-l-4 [.ui-play_&]:data-[state=open]:border-play-navy [.ui-play_&]:data-[state=open]:bg-play-highlight [.ui-play_&]:data-[state=open]:text-play-ink"
+                                              "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:data-[state=open]:border-s-4 [.ui-play_&]:data-[state=open]:border-play-navy [.ui-play_&]:data-[state=open]:bg-play-highlight [.ui-play_&]:data-[state=open]:text-play-ink"
                                           )}
                                         >
                                           <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -1425,7 +1425,7 @@ export const CourseStructureDetails = ({
                                               />
                                             )}
                                             {/* Chapter Progress Indicator */}
-                                            <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                                            <div className="flex items-center gap-1.5 ms-auto shrink-0">
                                               {(() => {
                                                 const progress =
                                                   calculateChapterProgress(
@@ -1469,9 +1469,9 @@ export const CourseStructureDetails = ({
                                         </CollapsibleTrigger>
                                         <CollapsibleContent>
                                           <div
-                                            className={`space-y-px ml-5 border-l border-border/50 py-1 pl-2 relative `}
+                                            className={`space-y-px ms-5 border-s border-border/50 py-1 ps-2 relative `}
                                           >
-                                            <div className="absolute left-0 top-0 w-px h-full bg-border/50"></div>
+                                            <div className="absolute start-0 top-0 w-px h-full bg-border/50"></div>
                                             {(() => {
                                               const slidesForChapter =
                                                 slidesMap[ch.id] ?? [];
@@ -1500,7 +1500,7 @@ export const CourseStructureDetails = ({
                                                 "idle";
                                               if (status === "loading") {
                                                 return (
-                                                  <div className="pr-2">
+                                                  <div className="pe-2">
                                                     {Array.from({
                                                       length: 3,
                                                     }).map((_, i) => (
@@ -1510,7 +1510,7 @@ export const CourseStructureDetails = ({
                                                       >
                                                         <Skeleton className="w-5 h-5 rounded" />
                                                         <Skeleton className="h-4 w-32" />
-                                                        <div className="ml-auto flex items-center gap-2">
+                                                        <div className="ms-auto flex items-center gap-2">
                                                           <Skeleton className="h-3 w-16" />
                                                         </div>
                                                       </div>
@@ -1603,7 +1603,7 @@ export const CourseStructureDetails = ({
                                                         />
                                                       )}
                                                       {/* Slide Meta Row */}
-                                                      <div className="flex flex-wrap items-center gap-2 ml-auto shrink-0 text-xs text-muted-foreground w-full sm:w-auto sm:ml-auto">
+                                                      <div className="flex flex-wrap items-center gap-2 ms-auto shrink-0 text-xs text-muted-foreground w-full sm:w-auto sm:ms-auto">
                                                         {(() => {
                                                           const meta =
                                                             getSlideMetaText(
@@ -1676,7 +1676,7 @@ export const CourseStructureDetails = ({
                   >
                     <CollapsibleTrigger
                       className={cn(
-                        "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                        "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-start text-sm font-semibold shadow-sm transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                         "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20",
                         "[.ui-play_&]:bg-play-navy-soft [.ui-play_&]:border-border [.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
                         "[.ui-play_&]:shadow-none [.ui-play_&]:hover:bg-play-navy-soft [.ui-play_&]:hover:text-play-navy-soft-ink"
@@ -1701,7 +1701,7 @@ export const CourseStructureDetails = ({
                           {toTitleCase(mod.module.module_name)}
                         </span>
                         {/* Module Progress Indicator */}
-                        <div className="flex items-center gap-2 ml-auto shrink-0">
+                        <div className="flex items-center gap-2 ms-auto shrink-0">
                           {(() => {
                             const progress = calculateModuleProgress(mod.chapters || []);
                             return (
@@ -1719,7 +1719,7 @@ export const CourseStructureDetails = ({
                       </div>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="pb-1 pt-2">
-                      <div className="space-y-0.5 relative pl-3 border-l border-border">
+                      <div className="space-y-0.5 relative ps-3 border-s border-border">
                         {(mod.chapters ?? []).map((ch, chIdx) => {
                           const isChapterOpen = openChapters.has(ch.id);
                           const chapterEval = chapterEvaluations[ch.id];
@@ -1739,12 +1739,12 @@ export const CourseStructureDetails = ({
                               <CollapsibleTrigger
                                 disabled={isChapterLocked}
                                 className={cn(
-                                  `group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                                  `group flex w-full items-center gap-2 rounded-md px-2 py-1 text-start text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
                                     isChapterLocked
                                       ? "cursor-not-allowed opacity-60"
                                       : "hover:bg-muted/60 cursor-pointer"
                                   }`,
-                                  !isChapterLocked && "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:data-[state=open]:border-l-4 [.ui-play_&]:data-[state=open]:border-play-navy [.ui-play_&]:data-[state=open]:bg-play-highlight [.ui-play_&]:data-[state=open]:text-play-ink"
+                                  !isChapterLocked && "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:data-[state=open]:border-s-4 [.ui-play_&]:data-[state=open]:border-play-navy [.ui-play_&]:data-[state=open]:bg-play-highlight [.ui-play_&]:data-[state=open]:text-play-ink"
                                 )}
                               >
                                 <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -1767,7 +1767,7 @@ export const CourseStructureDetails = ({
                                   {isChapterLocked && (
                                     <LockedBadge size="sm" unlockMessage={chapterEval?.unlockMessage} />
                                   )}
-                                  <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                                  <div className="flex items-center gap-1.5 ms-auto shrink-0">
                                     {(() => {
                                       const progress = calculateChapterProgress(ch.id);
                                       const slidesForChapter = slidesMap[ch.id] || [];
@@ -1791,18 +1791,18 @@ export const CourseStructureDetails = ({
                                 </div>
                               </CollapsibleTrigger>
                               <CollapsibleContent>
-                                <div className="space-y-px ml-1 sm:ml-5 border-l border-border py-1 pl-1 sm:pl-2 relative">
+                                <div className="space-y-px ms-1 sm:ms-5 border-s border-border py-1 ps-1 sm:ps-2 relative">
                                   {(() => {
                                     const status = slidesLoadingStatus[ch.id] || "idle";
                                     const filtered = filterSlides(slidesMap[ch.id] ?? []);
                                     if (status === "loading") {
                                       return (
-                                        <div className="pr-2">
+                                        <div className="pe-2">
                                           {Array.from({ length: 3 }).map((_, i) => (
                                             <div key={i} className="flex items-center gap-2 px-2 py-1">
                                               <Skeleton className="w-5 h-5 rounded" />
                                               <Skeleton className="h-4 w-32" />
-                                              <div className="ml-auto flex items-center gap-2">
+                                              <div className="ms-auto flex items-center gap-2">
                                                 <Skeleton className="h-3 w-16" />
                                               </div>
                                             </div>
@@ -1845,7 +1845,7 @@ export const CourseStructureDetails = ({
                                           {slide.title}
                                         </span>
                                         {renderContinueChip(slide.id)}
-                                        <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                                        <div className="flex items-center gap-1.5 ms-auto shrink-0">
                                           {getSlideTypeDisplay(slide) && (
                                             <Badge variant="outline" className={`hidden sm:inline text-caption ${quietBadgeClasses}`}>
                                               {getSlideTypeDisplay(slide)}
@@ -1917,7 +1917,7 @@ export const CourseStructureDetails = ({
                                     >
                                       <CollapsibleTrigger
                                         disabled={isChapterLocked}
-                                        className={`group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
+                                        className={`group flex w-full items-center gap-2 rounded-md px-2 py-1 text-start text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 ${
                                           isChapterLocked
                                             ? "cursor-not-allowed opacity-60"
                                             : "hover:bg-muted/60 cursor-pointer"
@@ -1960,7 +1960,7 @@ export const CourseStructureDetails = ({
                                             />
                                           )}
                                           {/* Chapter Progress Indicator */}
-                                          <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                                          <div className="flex items-center gap-1.5 ms-auto shrink-0">
                                             {(() => {
                                               const progress =
                                                 calculateChapterProgress(ch.id);
@@ -2001,7 +2001,7 @@ export const CourseStructureDetails = ({
                                         </div>
                                       </CollapsibleTrigger>
                                       <CollapsibleContent>
-                                        <div className="space-y-px ml-5 border-l border-border py-1 pl-2 relative">
+                                        <div className="space-y-px ms-5 border-s border-border py-1 ps-2 relative">
                                           {(() => {
                                             const status =
                                               slidesLoadingStatus[ch.id] ||
@@ -2011,7 +2011,7 @@ export const CourseStructureDetails = ({
                                             );
                                             if (status === "loading") {
                                               return (
-                                                <div className="pr-2">
+                                                <div className="pe-2">
                                                   {Array.from({
                                                     length: 3,
                                                   }).map((_, i) => (
@@ -2021,7 +2021,7 @@ export const CourseStructureDetails = ({
                                                     >
                                                       <Skeleton className="w-5 h-5 rounded" />
                                                       <Skeleton className="h-4 w-32" />
-                                                      <div className="ml-auto flex items-center gap-2">
+                                                      <div className="ms-auto flex items-center gap-2">
                                                         <Skeleton className="h-3 w-16" />
                                                       </div>
                                                     </div>
@@ -2086,7 +2086,7 @@ export const CourseStructureDetails = ({
                                                   </span>
                                                   {renderContinueChip(slide.id)}
                                                   {/* Slide Meta */}
-                                                  <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                                                  <div className="flex items-center gap-1.5 ms-auto shrink-0">
                                                     {getSlideTypeDisplay(
                                                       slide
                                                     ) && (
@@ -2133,7 +2133,7 @@ export const CourseStructureDetails = ({
                 >
                   <CollapsibleTrigger
                     className={cn(
-                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-left text-sm font-semibold shadow-sm transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                      "group flex w-full items-center justify-between rounded-lg border bg-card px-4 py-3 text-start text-sm font-semibold shadow-sm transition-colors hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
                       "[.ui-vibrant_&]:hover:bg-primary/5 [.ui-vibrant_&]:border-primary/20",
                       // Play Styles — solid, bold, Duolingo-style
                       "[.ui-play_&]:bg-play-navy-soft [.ui-play_&]:border-border [.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:font-extrabold [.ui-play_&]:rounded-xl",
@@ -2160,7 +2160,7 @@ export const CourseStructureDetails = ({
                     </div>
                   </CollapsibleTrigger>
                   <CollapsibleContent className={`pb-1 pt-2 `}>
-                    <div className="space-y-1 relative pl-3 border-l border-border">
+                    <div className="space-y-1 relative ps-3 border-s border-border">
                       {(subjectModulesMap[subject.id] ?? []).map((mod, modIdx) => {
                         const isModuleOpen = openModules.has(mod.module.id);
                         return (
@@ -2169,7 +2169,7 @@ export const CourseStructureDetails = ({
                             open={isModuleOpen}
                             onOpenChange={() => toggleModule(mod.module.id)}
                           >
-                            <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink")}>
+                            <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-start text-sm font-medium text-neutral-600 hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink")}>
                               <div className="flex min-w-0 flex-1 items-center gap-2">
                                 {isModuleOpen ? (
                                   <CaretDown size={16} className="shrink-0 text-neutral-500" />
@@ -2189,8 +2189,8 @@ export const CourseStructureDetails = ({
                                 </span>
                               </div>
                             </CollapsibleTrigger>
-                            <CollapsibleContent className={`py-1 pl-2`}>
-                              <div className="space-y-0.5 border-l border-border pl-2.5">
+                            <CollapsibleContent className={`py-1 ps-2`}>
+                              <div className="space-y-0.5 border-s border-border ps-2.5">
                                 {(mod.chapters ?? []).map((ch, chIdx) => {
                                   const isChapterOpen = openChapters.has(ch.id);
 
@@ -2203,7 +2203,7 @@ export const CourseStructureDetails = ({
                                         getSlidesWithChapterId(ch.id);
                                       }}
                                     >
-                                      <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:data-[state=open]:border-l-4 [.ui-play_&]:data-[state=open]:border-play-navy [.ui-play_&]:data-[state=open]:bg-play-highlight [.ui-play_&]:data-[state=open]:text-play-ink")}>
+                                      <CollapsibleTrigger className={cn("group flex w-full items-center gap-2 rounded-md px-2 py-1 text-start text-sm hover:bg-muted/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer", "[.ui-play_&]:rounded-xl [.ui-play_&]:font-bold [.ui-play_&]:hover:bg-play-highlight [.ui-play_&]:hover:text-play-ink [.ui-play_&]:data-[state=open]:border-s-4 [.ui-play_&]:data-[state=open]:border-play-navy [.ui-play_&]:data-[state=open]:bg-play-highlight [.ui-play_&]:data-[state=open]:text-play-ink")}>
                                         <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                           {isChapterOpen ? (
                                             <CaretDown size={14} className="shrink-0 text-neutral-500" />
@@ -2224,7 +2224,7 @@ export const CourseStructureDetails = ({
                                         </div>
                                       </CollapsibleTrigger>
                                       <CollapsibleContent>
-                                        <div className="space-y-px pl-2 relative">
+                                        <div className="space-y-px ps-2 relative">
                                           {(slidesMap[ch.id] ?? []).length ===
                                           0 ? (
                                             <div className="text-xs px-2 text-neutral-400 italic bg-neutral-50/50 rounded">
@@ -2274,7 +2274,7 @@ export const CourseStructureDetails = ({
                                                   </span>
                                                   {renderContinueChip(slide.id)}
                                                   {/* Slide Meta */}
-                                                  <div className="flex items-center gap-1.5 ml-auto shrink-0">
+                                                  <div className="flex items-center gap-1.5 ms-auto shrink-0">
                                                     {getSlideTypeDisplay(
                                                       slide
                                                     ) && (

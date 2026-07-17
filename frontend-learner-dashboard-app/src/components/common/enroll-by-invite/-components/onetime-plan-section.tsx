@@ -97,7 +97,7 @@ export const OneTimePlanSection = ({
                         {currency}
                         {discountedPrice.toFixed(2)}
                         {discount_json && (
-                          <span className="text-sm text-green-600 font-semibold ml-2">
+                          <span className="text-sm text-green-600 font-semibold ms-2">
                             {renderDiscount()}
                           </span>
                         )}

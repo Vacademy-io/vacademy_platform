@@ -109,7 +109,7 @@ export default function RegistrationForm({
             onSubmit={handleSubmit(onSubmit, onError)}
             className="flex flex-col gap-5"
           >
-            <div className="flex flex-col gap-4 overflow-auto max-h-screen-50 pr-1">
+            <div className="flex flex-col gap-4 overflow-auto max-h-screen-50 pe-1">
               {[...(customFields || [])].sort((a, b) => (a.formOrder ?? 0) - (b.formOrder ?? 0)).map((responseField) => {
                 const renderType = getFieldRenderType(
                   responseField.fieldKey,
@@ -170,7 +170,7 @@ export default function RegistrationForm({
                               <FormLabel className="text-sm font-medium text-gray-700">
                                 {responseField.fieldName}
                                 {responseField.mandatory && (
-                                  <span className="text-red-500 ml-0.5">*</span>
+                                  <span className="text-red-500 ms-0.5">*</span>
                                 )}
                               </FormLabel>
                               <FormControl>

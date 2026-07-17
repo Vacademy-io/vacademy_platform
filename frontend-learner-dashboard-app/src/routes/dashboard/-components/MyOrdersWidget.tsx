@@ -146,7 +146,7 @@ const PaidWithCouponInline = ({ entry }: { entry: PaymentLogEntry }) => {
                 {paid.toLocaleString()}
             </span>
             {code && saved > 0 && (
-                <span className="ml-2 inline-flex items-center gap-1 text-green-700">
+                <span className="ms-2 inline-flex items-center gap-1 text-green-700">
                     · saved {symbol}
                     {saved.toLocaleString()} with <span className="font-mono font-semibold">{code}</span>
                 </span>
@@ -265,13 +265,13 @@ const OrderCard = ({
             </div>
 
             {/* Status badges */}
-            <div className="flex items-center gap-1.5 flex-wrap ml-9">
+            <div className="flex items-center gap-1.5 flex-wrap ms-9">
                 {paymentStatus && <StatusBadge label={paymentStatus} styles={PAYMENT_STATUS_STYLES} />}
                 {orderStatus && <StatusBadge label={orderStatus} styles={ORDER_STATUS_STYLES} />}
             </div>
 
             {/* Details grid */}
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 ml-9 text-caption">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 ms-9 text-caption">
                 <span className="text-muted-foreground font-medium">Tracking ID</span>
                 {log.tracking_id ? (
                     <span className="text-foreground font-mono truncate">{log.tracking_id}</span>
@@ -400,7 +400,7 @@ export const MyOrdersWidget: React.FC<MyOrdersWidgetProps> = ({ className }) => 
                     <>
                         {/* Desktop: Table */}
                         <div className="hidden md:block overflow-x-auto">
-                            <table className="w-full text-left">
+                            <table className="w-full text-start">
                                 <thead>
                                     <tr className="border-b border-border">
                                         <th className="py-2 px-3 text-caption font-bold text-muted-foreground uppercase tracking-wider">Book</th>

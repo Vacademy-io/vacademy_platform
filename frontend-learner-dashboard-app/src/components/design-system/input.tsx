@@ -14,7 +14,7 @@ const inputSizeVariants = {
 
 const InputError = ({ errorMessage }: InputErrorProps) => {
   return (
-    <div className="flex items-center gap-1 pl-1 text-body font-regular text-danger-600">
+    <div className="flex items-center gap-1 ps-1 text-body font-regular text-danger-600">
       <span>
         <XCircle />
       </span>
@@ -68,7 +68,7 @@ export const MyInput = ({
             className={cn(
               inputSizeVariants[size],
               error ? "border-danger-600" : "border-neutral-300",
-              inputType === "password" ? "pr-10" : "",
+              inputType === "password" ? "pe-10" : "",
               "text-subtitle text-neutral-600 shadow-none placeholder:text-body placeholder:font-regular hover:border-primary-200 focus:border-primary-500 focus-visible:ring-0",
               className
             )}
@@ -81,7 +81,7 @@ export const MyInput = ({
             <button
               type="button"
               onClick={togglePasswordVisibility}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 focus:outline-none"
+              className="absolute end-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600 focus:outline-none"
             >
               {showPassword ? (
                 <EyeSlash className="size-4 text-neutral-600" />

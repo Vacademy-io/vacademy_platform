@@ -221,8 +221,8 @@ export default function AIReportDetailsPage({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-muted-foreground">
-                    <th className="pb-2 text-left font-medium">Rank</th>
-                    <th className="pb-2 text-left font-medium">Student</th>
+                    <th className="pb-2 text-start font-medium">Rank</th>
+                    <th className="pb-2 text-start font-medium">Student</th>
                     <th className="pb-2 text-center font-medium">Marks</th>
                     <th className="pb-2 text-center font-medium">Percentile</th>
                   </tr>
@@ -296,13 +296,13 @@ export default function AIReportDetailsPage({
                     <div key={s.l} className="flex items-center gap-1.5">
                       <span className={`w-2 h-2 rounded-full ${s.c}`} />
                       <span className="text-muted-foreground">{s.l}</span>
-                      <b className="ml-auto">{s.v}</b>
+                      <b className="ms-auto">{s.v}</b>
                     </div>
                   ))}
                 </div>
               </div>
               {report.confidence_estimation.insight && (
-                <div className="text-sm text-muted-foreground bg-violet-50 border-l-3 border-violet-400 p-3 rounded-md mb-3">
+                <div className="text-sm text-muted-foreground bg-violet-50 border-s-3 border-violet-400 p-3 rounded-md mb-3">
                   <b className="text-violet-600">AI Insight:</b> {report.confidence_estimation.insight}
                 </div>
               )}
@@ -343,7 +343,7 @@ export default function AIReportDetailsPage({
               <div className="overflow-x-auto mt-2">
                 <table className="w-full text-sm">
                   <thead><tr className="border-b text-muted-foreground">
-                    <th className="pb-2 text-left font-medium">Topic</th>
+                    <th className="pb-2 text-start font-medium">Topic</th>
                     <th className="pb-2 text-center font-medium">Qs</th>
                     <th className="pb-2 text-center font-medium">Correct</th>
                     <th className="pb-2 text-center font-medium">Accuracy</th>
@@ -416,12 +416,12 @@ export default function AIReportDetailsPage({
               <div className="space-y-2.5 mb-5">
                 {bloomsData.map(d => (
                   <div key={d.key} className="flex items-center gap-3">
-                    <span className="w-20 text-xs font-semibold text-right text-muted-foreground">{d.level}</span>
+                    <span className="w-20 text-xs font-semibold text-end text-muted-foreground">{d.level}</span>
                     <div className="flex-1 h-7 bg-gray-100 rounded-md overflow-hidden">
                       <div className={`h-full rounded-md ${BLOOM_BG[d.key]} flex items-center px-2 text-white text-xs font-bold`}
                         style={{ width: `${Math.max(d.accuracy, 5)}%` }}>{d.accuracy}%</div>
                     </div>
-                    <span className="text-xs text-muted-foreground w-10 text-right font-mono">{d.correct}/{d.total}</span>
+                    <span className="text-xs text-muted-foreground w-10 text-end font-mono">{d.correct}/{d.total}</span>
                   </div>
                 ))}
               </div>
@@ -455,7 +455,7 @@ export default function AIReportDetailsPage({
                     <span className="text-red-500"><b>Your Answer:</b> {m.student_answer}</span>
                     <span className="text-emerald-600"><b>Correct:</b> {m.correct_answer}</span>
                   </div>
-                  <div className="text-xs bg-orange-50 border-l-3 border-orange-400 p-2.5 rounded mb-1.5">
+                  <div className="text-xs bg-orange-50 border-s-3 border-orange-400 p-2.5 rounded mb-1.5">
                     <b className="text-orange-500">Misconception:</b> {m.misconception}
                   </div>
                   <p className="text-xs text-blue-500">{m.remediation}</p>
@@ -480,7 +480,7 @@ export default function AIReportDetailsPage({
                   const val = report.behavioral_insights?.[item.k as keyof typeof report.behavioral_insights];
                   if (!val) return null;
                   return (
-                    <div key={item.k} className={`p-3 rounded-lg border-l-4 ${item.c}`}>
+                    <div key={item.k} className={`p-3 rounded-lg border-s-4 ${item.c}`}>
                       <p className={`text-3xs font-bold uppercase tracking-wide mb-1 ${item.tc}`}>{item.l}</p>
                       <p className="text-sm text-muted-foreground">{val}</p>
                     </div>
@@ -556,7 +556,7 @@ export default function AIReportDetailsPage({
                   <Button variant="outline" size="sm" onClick={() => { setFlashIdx(p => p === 0 ? report.flashcards.length - 1 : p - 1); setShowAnswer(false); }}
                     disabled={report.flashcards.length <= 1}><CaretLeft size={16} /></Button>
                   <Button variant="outline" size="sm" onClick={() => setShowAnswer(!showAnswer)}>
-                    <ArrowCounterClockwise size={14} className="mr-1" /> Flip
+                    <ArrowCounterClockwise size={14} className="me-1" /> Flip
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => { setFlashIdx(p => p === report.flashcards.length - 1 ? 0 : p + 1); setShowAnswer(false); }}
                     disabled={report.flashcards.length <= 1}><CaretRight size={16} /></Button>

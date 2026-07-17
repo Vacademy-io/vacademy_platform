@@ -64,7 +64,7 @@ export const XpDisplayWidget: React.FC = () => {
             <div className="h-3 overflow-hidden rounded-full bg-white/70">
               <div className="h-full rounded-full bg-play-gold transition-all duration-700" style={{ width: `${progress}%` }} /* design-lint-ignore: dynamic progress percentage */ />
             </div>
-            <p className="mt-1 text-right text-3xs font-bold uppercase text-play-ink/60">{xpToNext} XP to go</p>
+            <p className="mt-1 text-end text-3xs font-bold uppercase text-play-ink/60">{xpToNext} XP to go</p>
           </div>
 
           {todayXp > 0 && (

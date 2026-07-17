@@ -133,10 +133,10 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
                     />
 
                     {/* Gradient Fade at bottom to indicate there's more */}
-                    <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white to-transparent pointer-events-none" />
+                    <div className="absolute bottom-0 start-0 end-0 h-16 bg-gradient-to-t from-white to-transparent pointer-events-none" />
 
                     {/* Pop-out / Zoom Overlay Options */}
-                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <div className="absolute top-2 end-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                         <div className="bg-white/90 backdrop-blur-sm p-1.5 rounded-md shadow-sm border border-gray-200 text-gray-500 hover:text-primary-600">
                             <ArrowsOut size={18} />
                         </div>

@@ -79,7 +79,7 @@ export function CleanerPlayDashboardHero(
         <div className="h-11 w-full max-w-md animate-pulse self-start rounded-full bg-cp-bg-deep" />
       ) : (
         imminent && (
-          <div className="flex items-center gap-3 rounded-full bg-danger-50 py-2 pl-4 pr-2">
+          <div className="flex items-center gap-3 rounded-full bg-danger-50 py-2 ps-4 pe-2">
             <span className="relative flex h-3 w-3 shrink-0">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-danger-500/60 motion-reduce:animate-none" />
               <span className="relative inline-flex h-3 w-3 rounded-full bg-danger-500" />

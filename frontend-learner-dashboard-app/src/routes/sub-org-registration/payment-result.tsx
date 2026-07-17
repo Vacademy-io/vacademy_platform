@@ -165,7 +165,7 @@ function PaymentResultPage() {
                 </p>
               </div>
               {showReassurance && (
-                <div className="mx-auto flex max-w-md items-start gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-left">
+                <div className="mx-auto flex max-w-md items-start gap-2 rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-start">
                   <EnvelopeSimple className="mt-0.5 size-5 flex-shrink-0 text-primary-500" />
                   <p className="text-sm text-neutral-600">
                     Confirmation is taking longer than usual. You can safely

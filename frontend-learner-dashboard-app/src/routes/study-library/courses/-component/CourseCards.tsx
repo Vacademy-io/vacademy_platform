@@ -367,7 +367,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                 </Badge>
                             ))}
                             {tags.length > 3 && (
-                                <span className="text-xs text-muted-foreground pl-1">
+                                <span className="text-xs text-muted-foreground ps-1">
                                     +{tags.length - 3} more
                                 </span>
                             )}
@@ -467,12 +467,12 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     <CtaIcon
                         size={16}
                         weight={isCompleted || isInProgress ? "fill" : "regular"}
-                        className="mr-2 transition-transform duration-300 group-hover/btn:scale-110"
+                        className="me-2 transition-transform duration-300 group-hover/btn:scale-110"
                     />
                     <span>{ctaLabel}</span>
                     <CaretRight
                         size={16}
-                        className="ml-1 transition-transform duration-300 group-hover/btn:translate-x-1"
+                        className="ms-1 transition-transform duration-300 group-hover/btn:translate-x-1"
                     />
                 </Button>
                 {/* Continue resumes straight into the viewer, so give learners
@@ -488,7 +488,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                         onClick={() => handleViewCoureseDetails(courseId)}
                         aria-label={`View ${getTerminology(ContentTerms.Course, SystemTerms.Course)} overview`}
                     >
-                        <BookOpen size={16} className="mr-1.5" />
+                        <BookOpen size={16} className="me-1.5" />
                         Overview
                     </Button>
                 )}

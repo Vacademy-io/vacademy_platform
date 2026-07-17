@@ -243,7 +243,7 @@ function BadgeChip({ badge, isCleanerPlay }: { badge: PlayBadge; isCleanerPlay?:
         />
         {!unlocked && (
           <span className={cn(
-            "absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full",
+            "absolute -bottom-0.5 -end-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full",
             isCleanerPlay ? "bg-cp-surface" : "bg-background"
           )}>
             <Lock weight="fill" size={9} className={isCleanerPlay ? "cp-muted" : "text-muted-foreground"} />
@@ -251,7 +251,7 @@ function BadgeChip({ badge, isCleanerPlay }: { badge: PlayBadge; isCleanerPlay?:
         )}
         {awarded && (
           <span className={cn(
-            "absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full ring-2",
+            "absolute -end-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full ring-2",
             isCleanerPlay ? "bg-cp-gold ring-cp-surface" : "bg-warning-500 ring-card"
           )}>
             <Star weight="fill" size={9} className="text-white" />

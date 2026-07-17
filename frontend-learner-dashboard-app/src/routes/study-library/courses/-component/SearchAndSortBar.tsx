@@ -70,7 +70,7 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
                         <SlidersHorizontal size={15} />
                         <span className="text-sm">Filters</span>
                         {activeFiltersCount > 0 && (
-                            <Badge variant="secondary" className="h-4 px-1 text-caption leading-none ml-0.5">
+                            <Badge variant="secondary" className="h-4 px-1 text-caption leading-none ms-0.5">
                                 {activeFiltersCount}
                             </Badge>
                         )}
@@ -81,7 +81,7 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
                     <div className="relative">
                         <MagnifyingGlass
                             size={18}
-                            className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none"
+                            className="absolute start-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none"
                         />
                         <Input
                             type="text"
@@ -89,7 +89,7 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
                                 ContentTerms.Course,
                                 SystemTerms.Course
                             ).toLocaleLowerCase()}s...`}
-                            className={cn("pl-10 w-full", "[.ui-play_&]:rounded-full [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:bg-primary-50 [.ui-play_&]:font-bold")}
+                            className={cn("ps-10 w-full", "[.ui-play_&]:rounded-full [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:bg-primary-50 [.ui-play_&]:font-bold")}
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
                             onKeyDown={handleKeyDown}

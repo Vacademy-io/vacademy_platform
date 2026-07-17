@@ -489,12 +489,12 @@ export function EmailLogin({
                               size="large"
                               error={emailForm.formState.errors.email?.message}
                               {...field}
-                              className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
+                              className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pe-10"
                               input={field.value}
                               onChangeFunction={field.onChange}
                               disabled={!ENABLE_OTP_FOR_LOGIN_SIGNUP}
                             />
-                            <Envelope className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
+                            <Envelope className="absolute end-3 bottom-3 w-4 h-4 text-gray-400" />
                           </div>
                         </FormControl>
                       </FormItem>
@@ -758,7 +758,7 @@ export function EmailLogin({
             onClick={onSwitchToUsername}
           >
             Use username & password instead?
-            <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
+            <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
           </motion.button>
         )}
 
@@ -770,7 +770,7 @@ export function EmailLogin({
             onClick={onSwitchToPhone}
           >
             Use Phone OTP Instead?
-            <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
+            <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
           </motion.button>
         )}
 

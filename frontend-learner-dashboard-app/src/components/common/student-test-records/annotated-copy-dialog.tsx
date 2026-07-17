@@ -80,7 +80,7 @@ export function AnnotatedCopyDialog({
         className="flex max-w-5xl flex-col gap-0 overflow-hidden p-0"
         style={{ /* design-lint-ignore: viewport-relative height for the in-app viewer */ height: "90vh" }}
       >
-        <DialogHeader className="shrink-0 flex-row items-center justify-between gap-3 space-y-0 border-b border-neutral-200 px-4 py-3 pr-12">
+        <DialogHeader className="shrink-0 flex-row items-center justify-between gap-3 space-y-0 border-b border-neutral-200 px-4 py-3 pe-12">
           <DialogTitle className="truncate text-base font-semibold">
             Annotated answer copy
           </DialogTitle>

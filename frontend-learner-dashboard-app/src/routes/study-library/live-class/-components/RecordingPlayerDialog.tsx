@@ -130,7 +130,7 @@ export const RecordingPlayerDialog = ({
                   Passcode: <span className="font-mono font-medium">{recording.passcode}</span>
                 </span>
                 <Button variant="outline" size="sm" onClick={handleCopyPasscode}>
-                  <Copy size={14} className="mr-1.5" />
+                  <Copy size={14} className="me-1.5" />
                   Copy
                 </Button>
               </div>
@@ -146,7 +146,7 @@ export const RecordingPlayerDialog = ({
                 size="sm"
                 onClick={() => window.open(recording.url, "_blank", "noopener,noreferrer")}
               >
-                <ArrowSquareOut size={16} className="mr-1.5" />
+                <ArrowSquareOut size={16} className="me-1.5" />
                 Open recording
               </Button>
             )}

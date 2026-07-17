@@ -78,7 +78,7 @@ function MessageGroupList({ groups }: MessageGroupListProps) {
           {count > 1 && (
             <Badge
               variant="secondary"
-              className="absolute -top-2 -right-2 z-10 border border-border bg-background text-xs shadow-sm"
+              className="absolute -top-2 -end-2 z-10 border border-border bg-background text-xs shadow-sm"
             >
               ×{count}
             </Badge>
@@ -124,8 +124,8 @@ export function NotificationList() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary-50/20 p-3 sm:p-5 relative overflow-hidden">
       {/* Decorative background elements */}
-      <div className="absolute top-0 left-1/4 w-72 h-72 bg-gradient-to-br from-primary-100/30 to-transparent rounded-full blur-3xl animate-pulse"></div>
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-gradient-to-br from-muted/40 to-transparent rounded-full blur-3xl animate-pulse"></div>
+      <div className="absolute top-0 start-1/4 w-72 h-72 bg-gradient-to-br from-primary-100/30 to-transparent rounded-full blur-3xl animate-pulse"></div>
+      <div className="absolute bottom-1/4 end-1/4 w-96 h-96 bg-gradient-to-br from-muted/40 to-transparent rounded-full blur-3xl animate-pulse"></div>
 
       <div className="max-w-4xl mx-auto relative z-10">
         <Tabs defaultValue="General" className="w-full">

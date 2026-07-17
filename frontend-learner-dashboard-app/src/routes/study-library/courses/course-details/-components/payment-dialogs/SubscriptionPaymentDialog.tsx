@@ -880,7 +880,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
       <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
         <DialogPrimitive.Portal>
           <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
-          <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4">
+          <DialogPrimitive.Content className="fixed start-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4">
             <DialogPrimitive.Title className="sr-only">
               Loading Subscription Options
             </DialogPrimitive.Title>
@@ -904,7 +904,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
       <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
         <DialogPrimitive.Portal>
           <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
-          <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4">
+          <DialogPrimitive.Content className="fixed start-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none flex flex-col gap-4">
             <DialogPrimitive.Title className="sr-only">
               Subscription Error
             </DialogPrimitive.Title>
@@ -934,7 +934,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
         <DialogPrimitive.Portal>
           <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
           <DialogPrimitive.Content
-            className={`fixed left-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-4 sm:p-6 shadow-xl focus:outline-none flex flex-col gap-4 max-h-screen-90 overflow-y-auto ${
+            className={`fixed start-1/2 top-1/2 z-50 w-full -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-4 sm:p-6 shadow-xl focus:outline-none flex flex-col gap-4 max-h-screen-90 overflow-y-auto ${
               step === "plans"
                 ? "max-w-sm sm:max-w-2xl lg:max-w-4xl"
                 : "max-w-md"
@@ -948,7 +948,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
               this course.
             </DialogPrimitive.Description>
             <button
-              className="absolute right-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
+              className="absolute end-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
               onClick={() => onOpenChange(false)}
               aria-label="Close"
             >
@@ -1182,13 +1182,13 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                     Email Address
                   </label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                    <span className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-400">
                       <EnvelopeSimple size={18} />
                     </span>
                     <input
                       id="subscription-email"
                       type="email"
-                      className={`border rounded-lg pl-10 pr-4 py-3 text-sm w-full h-12 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      className={`border rounded-lg ps-10 pe-4 py-3 text-sm w-full h-12 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                         validationError
                           ? "border-red-500 bg-red-50"
                           : "border-gray-300"
@@ -1334,7 +1334,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                       </EwayProvider>
                     ) : (
                       <div className="flex items-center justify-center py-6 text-gray-500">
-                        <SpinnerGap className="w-4 h-4 animate-spin mr-2" />
+                        <SpinnerGap className="w-4 h-4 animate-spin me-2" />
                         Loading secure card form...
                       </div>
                     )
@@ -1401,7 +1401,7 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                         >
                           {!cardElementReady && (
                             <div className="flex items-center justify-center h-full text-gray-500">
-                              <SpinnerGap className="w-4 h-4 animate-spin mr-2" />
+                              <SpinnerGap className="w-4 h-4 animate-spin me-2" />
                               Loading payment form...
                             </div>
                           )}
@@ -1445,9 +1445,9 @@ export const SubscriptionPaymentDialog: React.FC<PaymentDialogProps> = ({
                   </div>
 
                   <div className="text-xs text-gray-500 text-center mt-2 flex items-center justify-center gap-1">
-                    <Lock size={14} className="inline-block mr-1" />
+                    <Lock size={14} className="inline-block me-1" />
                     Secure payment powered by
-                    <span className="font-semibold flex items-center gap-1 ml-1">
+                    <span className="font-semibold flex items-center gap-1 ms-1">
                       {isStripe ? (
                         <>
                           <SiStripe size={16} className="text-indigo-600" />

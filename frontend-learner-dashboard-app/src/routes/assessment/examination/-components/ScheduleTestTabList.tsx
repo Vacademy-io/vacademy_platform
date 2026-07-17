@@ -39,7 +39,7 @@ const ScheduleTestTabList = ({
               {count > 0 && (
                 <Badge
                   variant="secondary"
-                  className="ml-1 rounded-full px-2 py-0.5 text-caption h-5 min-w-5 flex items-center justify-center bg-primary/10 text-primary hover:bg-primary/20"
+                  className="ms-1 rounded-full px-2 py-0.5 text-caption h-5 min-w-5 flex items-center justify-center bg-primary/10 text-primary hover:bg-primary/20"
                 >
                   {count}
                 </Badge>

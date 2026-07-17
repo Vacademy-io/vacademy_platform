@@ -537,7 +537,7 @@ function RouteComponent() {
                     session.timezone
                   )}
                   {session.timezone && (
-                    <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
+                    <span className="text-xs text-neutral-500 dark:text-neutral-400 ms-1">
                       ({getTimezoneDisplayInfo(session.timezone).sessionTz})
                     </span>
                   )}
@@ -565,7 +565,7 @@ function RouteComponent() {
                 className="shrink-0 bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
                 onClick={() => handleJoinSession(session)}
               >
-                <ArrowSquareOut size={16} className="mr-1.5" />
+                <ArrowSquareOut size={16} className="me-1.5" />
                 {zoomSettingUp
                   ? "Setting up…"
                   : !isLive && canJoinEarlyZoom
@@ -652,7 +652,7 @@ function RouteComponent() {
                   session.timezone
                 )}
                 {session.timezone && (
-                  <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400 ms-1">
                     ({getTimezoneDisplayInfo(session.timezone).sessionTz})
                   </span>
                 )}
@@ -679,7 +679,7 @@ function RouteComponent() {
                 className="w-full bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-sm hover:shadow-md transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
                 onClick={() => handleJoinSession(session)}
               >
-                <ArrowSquareOut size={16} className="mr-1.5" />
+                <ArrowSquareOut size={16} className="me-1.5" />
                 {zoomSettingUp
                   ? "Setting up…"
                   : !isLive && canJoinEarlyZoom
@@ -829,7 +829,7 @@ function RouteComponent() {
                                     session.timezone
                                   )}
                                   {session.timezone && (
-                                    <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
+                                    <span className="text-xs text-neutral-500 dark:text-neutral-400 ms-1">
                                       (
                                       {
                                         getTimezoneDisplayInfo(session.timezone)
@@ -850,7 +850,7 @@ function RouteComponent() {
                               )}
                             </div>
                           </div>
-                          <div className="flex flex-col items-end gap-2 shrink-0 ml-4">
+                          <div className="flex flex-col items-end gap-2 shrink-0 ms-4">
                             {(session.meeting_link || session.link_type === "bbb" || session.link_type === "BBB_MEETING") && (
                               <Button
                                 size="sm"
@@ -860,7 +860,7 @@ function RouteComponent() {
                                   setDayModalOpen(false);
                                 }}
                               >
-                                <ArrowSquareOut size={14} className="mr-1" />
+                                <ArrowSquareOut size={14} className="me-1" />
                                 {(session.session_streaming_service_type?.toLowerCase() === SessionStreamingServiceType.EMBED.toLowerCase())
                                   ? "Join"
                                   : "Join"}
@@ -910,7 +910,7 @@ function RouteComponent() {
                                     session.timezone
                                   )}
                                   {session.timezone && (
-                                    <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
+                                    <span className="text-xs text-neutral-500 dark:text-neutral-400 ms-1">
                                       (
                                       {
                                         getTimezoneDisplayInfo(session.timezone)
@@ -1294,14 +1294,14 @@ function RouteComponent() {
               value="list"
               className="data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-4 py-2 text-sm font-medium transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 dark:hover:from-primary-900/20 dark:hover:to-transparent focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1 data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-white data-[state=active]:to-primary-50/30 dark:data-[state=active]:from-neutral-900 dark:data-[state=active]:to-primary-900/20 data-[state=inactive]:text-neutral-500 dark:data-[state=inactive]:text-neutral-400 data-[state=inactive]:hover:rounded-t-lg"
             >
-              <List size={18} className="mr-2" />
+              <List size={18} className="me-2" />
               List View
             </TabsTrigger>
             <TabsTrigger
               value="calendar"
               className="data-[state=active]:text-primary data-[state=active]:border-primary hover:text-primary -mb-px px-4 py-2 text-sm font-medium transition-all duration-200 hover:bg-gradient-to-r hover:from-primary-50/60 hover:to-blue-50/40 dark:hover:from-primary-900/20 dark:hover:to-transparent focus-visible:ring-2 focus-visible:ring-primary-300 focus-visible:ring-offset-1 data-[state=active]:rounded-t-lg data-[state=active]:border-b-2 data-[state=active]:bg-gradient-to-r data-[state=active]:from-white data-[state=active]:to-primary-50/30 dark:data-[state=active]:from-neutral-900 dark:data-[state=active]:to-primary-900/20 data-[state=inactive]:text-neutral-500 dark:data-[state=inactive]:text-neutral-400 data-[state=inactive]:hover:rounded-t-lg"
             >
-              <Calendar size={18} className="mr-2" />
+              <Calendar size={18} className="me-2" />
               Calendar View
             </TabsTrigger>
           </TabsList>
@@ -1375,7 +1375,7 @@ function RouteComponent() {
                         ? `${filteredUpcomingSessions.length} ${getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession).toLowerCase()}${filteredUpcomingSessions.length !== 1 ? "s" : ""} found`
                         : `No ${getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession).toLowerCase()} found`}
                       {activeFilterType !== "none" && (
-                        <span className="ml-1 text-primary-500 font-medium">
+                        <span className="ms-1 text-primary-500 font-medium">
                           · {activeFilterType === "custom" && startDateFilter && endDateFilter
                             ? `${startDateFilter.split("-").reverse().join("/")} - ${endDateFilter.split("-").reverse().join("/")}`
                             : activeFilterType === "1day" ? "1 Day"

@@ -1145,7 +1145,7 @@ export const SlideMaterial = ({
               <div className="relative mb-4">
                 <div className="w-12 h-12 border-4 border-primary-200 border-t-primary-500 rounded-full animate-spin"></div>
                 <div
-                  className="absolute inset-0 w-12 h-12 border-4 border-transparent border-r-blue-400 rounded-full animate-spin"
+                  className="absolute inset-0 w-12 h-12 border-4 border-transparent border-e-blue-400 rounded-full animate-spin"
                   style={{
                     animationDelay: "0.1s",
                     animationDirection: "reverse",
@@ -1165,8 +1165,8 @@ export const SlideMaterial = ({
 
       {/* Mobile bottom navigation — default theme only. In play theme the app
           bottom tab bar hides this, so we render the inline top version above. */}
-      <div className="sm:hidden fixed bottom-0 left-0 right-0 z-40 [.ui-play_&]:hidden">
-        <div className="pointer-events-none absolute -top-3 left-0 right-0 h-3 bg-gradient-to-t from-white to-transparent"></div>
+      <div className="sm:hidden fixed bottom-0 start-0 end-0 z-40 [.ui-play_&]:hidden">
+        <div className="pointer-events-none absolute -top-3 start-0 end-0 h-3 bg-gradient-to-t from-white to-transparent"></div>
         <div className="bg-white border-t border-neutral-100 shadow-[0_-2px_8px_-2px_rgba(0,0,0,0.08)] px-3 py-2 pb-[calc(env(safe-area-inset-bottom)+10px)]"> {/* design-lint-ignore: custom shadow, safe-area viewport math */}
           {/* Context strip: slide title + position */}
           <div className="flex items-center justify-between gap-2 border-b border-neutral-100 pb-1.5 mb-2">

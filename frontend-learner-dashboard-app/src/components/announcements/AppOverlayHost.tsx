@@ -151,7 +151,7 @@ export const AppOverlayHost = () => {
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div
-            className="mx-auto w-full max-w-2xl px-4 py-5 text-body text-neutral-700 [&_a]:text-primary-500 [&_a]:underline [&_h1]:mb-3 [&_h1]:text-h2 [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-h3 [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:text-subtitle [&_h3]:font-semibold [&_img]:my-3 [&_img]:max-w-full [&_img]:rounded-lg [&_li]:mb-1 [&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3 [&_ul]:mb-3 [&_ul]:list-disc [&_ul]:pl-5"
+            className="mx-auto w-full max-w-2xl px-4 py-5 text-body text-neutral-700 [&_a]:text-primary-500 [&_a]:underline [&_h1]:mb-3 [&_h1]:text-h2 [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:text-h3 [&_h2]:font-semibold [&_h3]:mb-2 [&_h3]:text-subtitle [&_h3]:font-semibold [&_img]:my-3 [&_img]:max-w-full [&_img]:rounded-lg [&_li]:mb-1 [&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:ps-5 [&_p]:mb-3 [&_ul]:mb-3 [&_ul]:list-disc [&_ul]:ps-5"
             dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }}
           />
         </div>

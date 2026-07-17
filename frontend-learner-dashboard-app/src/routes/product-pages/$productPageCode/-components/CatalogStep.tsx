@@ -129,7 +129,7 @@ const CourseDetailDialog = ({
           <button
             type="button"
             onClick={onClose}
-            className="ml-4 mt-0.5 text-gray-400 hover:text-gray-600"
+            className="ms-4 mt-0.5 text-gray-400 hover:text-gray-600"
           >
             <X className="size-5" />
           </button>

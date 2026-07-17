@@ -87,7 +87,7 @@ export function ParentPortalDemoShell({ child, allChildren, onSwitchChild }: Pro
           </nav>
           <div className="flex items-center gap-2">
             {canSwitch && <button onClick={onSwitchChild} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-lg"><Users size={16} /><span className="hidden sm:inline">Switch</span></button>}
-            <button className="relative p-2 rounded-lg hover:bg-muted/50"><Bell size={18} className="text-muted-foreground" /><span className="absolute top-1.5 right-1.5 w-2 h-2 bg-orange-500 rounded-full" /></button>
+            <button className="relative p-2 rounded-lg hover:bg-muted/50"><Bell size={18} className="text-muted-foreground" /><span className="absolute top-1.5 end-1.5 w-2 h-2 bg-orange-500 rounded-full" /></button>
           </div>
         </div>
       </header>
@@ -95,7 +95,7 @@ export function ParentPortalDemoShell({ child, allChildren, onSwitchChild }: Pro
       <AnimatePresence>
         {isMobileMenuOpen && (<>
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsMobileMenuOpen(false)} className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden" />
-          <motion.div initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }} transition={{ type: "spring", stiffness: 300, damping: 30 }} className="fixed inset-y-0 left-0 z-50 w-72 bg-card border-r shadow-2xl lg:hidden">
+          <motion.div initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }} transition={{ type: "spring", stiffness: 300, damping: 30 }} className="fixed inset-y-0 start-0 z-50 w-72 bg-card border-e shadow-2xl lg:hidden">
             <div className="p-4 border-b"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/80 to-primary flex items-center justify-center text-primary-foreground text-sm font-bold">{initials}</div><div><p className="text-sm font-semibold">{child.full_name}</p><p className="text-xs text-muted-foreground">{child.grade_applying}</p></div></div></div>
             <nav className="p-2 space-y-0.5">{NAV_TABS.map(tab => (<button key={tab.id} onClick={() => { setActiveTab(tab.id); setIsMobileMenuOpen(false); }} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${activeTab === tab.id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"}`}><tab.icon size={18} />{tab.label}</button>))}</nav>
           </motion.div>
@@ -108,9 +108,9 @@ export function ParentPortalDemoShell({ child, allChildren, onSwitchChild }: Pro
         </AnimatePresence>
       </main>
       {/* Bottom tabs mobile */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/90 backdrop-blur-xl border-t border-border/50">
+      <nav className="lg:hidden fixed bottom-0 start-0 end-0 z-40 bg-card/90 backdrop-blur-xl border-t border-border/50">
         <div className="flex items-center justify-around px-2 h-16">
-          {NAV_TABS.slice(0, 5).map(tab => (<button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-0.5 min-w-0 flex-1 py-1 rounded-lg relative ${activeTab === tab.id ? "text-primary" : "text-muted-foreground"}`}><tab.icon size={20} className="shrink-0" /><span className="text-caption font-medium truncate w-full text-center">{tab.mobileLabel}</span>{activeTab === tab.id && <motion.div layoutId="demoMobileTab" className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full" />}</button>))}
+          {NAV_TABS.slice(0, 5).map(tab => (<button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center gap-0.5 min-w-0 flex-1 py-1 rounded-lg relative ${activeTab === tab.id ? "text-primary" : "text-muted-foreground"}`}><tab.icon size={20} className="shrink-0" /><span className="text-caption font-medium truncate w-full text-center">{tab.mobileLabel}</span>{activeTab === tab.id && <motion.div layoutId="demoMobileTab" className="absolute top-0 start-1/2 -translate-x-1/2 w-8 h-0.5 bg-primary rounded-full" />}</button>))}
         </div>
       </nav>
       <div className="lg:hidden h-16" />

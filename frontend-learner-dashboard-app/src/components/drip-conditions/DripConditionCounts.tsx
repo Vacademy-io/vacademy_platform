@@ -36,7 +36,7 @@ export function DripConditionCounts({
           variant="secondary"
           className="bg-green-50 text-green-700 border-green-200 text-xs"
         >
-          <Eye size={12} weight="fill" className="mr-1" />
+          <Eye size={12} weight="fill" className="me-1" />
           {accessible} {accessible === 1 ? itemLabel : itemLabelPlural}
         </Badge>
       )}
@@ -45,7 +45,7 @@ export function DripConditionCounts({
           variant="secondary"
           className="bg-amber-50 text-amber-700 border-amber-200 text-xs"
         >
-          <Lock size={12} weight="fill" className="mr-1" />
+          <Lock size={12} weight="fill" className="me-1" />
           {locked} locked
         </Badge>
       )}
@@ -54,7 +54,7 @@ export function DripConditionCounts({
           variant="secondary"
           className="bg-gray-100 text-gray-600 border-gray-300 text-xs"
         >
-          <EyeSlash size={12} weight="fill" className="mr-1" />
+          <EyeSlash size={12} weight="fill" className="me-1" />
           {hidden} hidden
         </Badge>
       )}

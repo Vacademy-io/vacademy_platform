@@ -465,7 +465,7 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
             onClick={handleViewReport}
             className="min-w-reg-180"
           >
-            <Eye className="mr-2 size-4" />
+            <Eye className="me-2 size-4" />
             View Report
           </Button>
         )}
@@ -475,7 +475,7 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
           onClick={handleStart}
           className="min-w-reg-180"
         >
-          <buttonState.icon className="mr-2 size-4" />
+          <buttonState.icon className="me-2 size-4" />
           {buttonState.label}
         </Button>
       </div>

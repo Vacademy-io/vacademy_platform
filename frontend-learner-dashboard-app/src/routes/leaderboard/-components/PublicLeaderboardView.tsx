@@ -73,7 +73,7 @@ function PodiumSpot({ entry, place }: { entry?: LeaderboardEntry; place: 1 | 2 |
         />
         <span
           className={cn(
-            "absolute -bottom-1 left-1/2 grid size-5 -translate-x-1/2 place-items-center rounded-full text-caption font-black shadow-sm",
+            "absolute -bottom-1 start-1/2 grid size-5 -translate-x-1/2 place-items-center rounded-full text-caption font-black shadow-sm",
             tone.pedestal
           )}
         >
@@ -110,9 +110,9 @@ function ListRow({ entry }: { entry: LeaderboardEntry }) {
       <InitialAvatar name={entry.name} className="size-9 text-caption" />
       <span className="flex-1 truncate text-body font-medium text-neutral-700">{entry.name}</span>
       <BadgeIcons entry={entry} />
-      <span className="w-16 text-right text-body font-bold tabular-nums text-foreground">
+      <span className="w-16 text-end text-body font-bold tabular-nums text-foreground">
         {entry.points}
-        <span className="ml-0.5 text-caption font-normal text-muted-foreground">pts</span>
+        <span className="ms-0.5 text-caption font-normal text-muted-foreground">pts</span>
       </span>
     </div>
   );

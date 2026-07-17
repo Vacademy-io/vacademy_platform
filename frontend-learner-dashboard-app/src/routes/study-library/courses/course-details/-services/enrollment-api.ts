@@ -360,7 +360,7 @@ export const formatCurrency = (
     NOK: { locale: "nb-NO", currency: "NOK" },
     DKK: { locale: "da-DK", currency: "DKK" },
     CHF: { locale: "de-CH", currency: "CHF" },
-    PLN: { locale: "pl-PL", currency: "PLN" },
+    PLN: { locale: "ps-PL", currency: "PLN" },
     CZK: { locale: "cs-CZ", currency: "CZK" },
     HUF: { locale: "hu-HU", currency: "HUF" },
     RON: { locale: "ro-RO", currency: "RON" },

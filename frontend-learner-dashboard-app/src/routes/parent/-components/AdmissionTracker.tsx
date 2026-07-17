@@ -103,10 +103,10 @@ export function AdmissionTracker({ child }: AdmissionTrackerProps) {
                 initial={{ width: 0 }}
                 animate={{ width: `${progressPercent}%` }}
                 transition={{ duration: 0.8, ease: "easeOut" }}
-                className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary to-emerald-500 rounded-full"
+                className="absolute inset-y-0 start-0 bg-gradient-to-r from-primary to-emerald-500 rounded-full"
               />
             </div>
-            <p className="text-xs text-muted-foreground mt-1.5 text-right">
+            <p className="text-xs text-muted-foreground mt-1.5 text-end">
               {progressPercent}% complete
             </p>
           </CardContent>
@@ -128,7 +128,7 @@ export function AdmissionTracker({ child }: AdmissionTrackerProps) {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="relative border-l-2 border-muted ml-3 space-y-8 pl-6 py-2">
+              <div className="relative border-s-2 border-muted ms-3 space-y-8 ps-6 py-2">
                 {sortedStages.map((stage) => {
                   console.log(
                     "Rendering stage:",
@@ -146,7 +146,7 @@ export function AdmissionTracker({ child }: AdmissionTrackerProps) {
                     <div key={stage.id} className="relative">
                       {/* Dot */}
                       <span
-                        className={`absolute -left-[31px] top-1 h-4 w-4 rounded-full border-2 ring-4 ring-background transition-colors ${
+                        className={`absolute -start-[31px] top-1 h-4 w-4 rounded-full border-2 ring-4 ring-background transition-colors ${
                           isCompleted
                             ? "bg-emerald-500 border-emerald-500"
                             : isCurrent

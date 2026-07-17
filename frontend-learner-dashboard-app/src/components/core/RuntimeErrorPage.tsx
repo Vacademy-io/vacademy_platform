@@ -30,7 +30,7 @@ export function RuntimeErrorPage({ error }: Props) {
                         <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-rose-100 border-4 border-white shadow-sm">
                             <Bug className="h-12 w-12 text-rose-600" aria-hidden="true" />
                         </div>
-                        <div className="absolute -bottom-2 -right-2 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md border border-gray-100">
+                        <div className="absolute -bottom-2 -end-2 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md border border-gray-100">
                             <Terminal className="h-5 w-5 text-gray-500" aria-hidden="true" />
                         </div>
                     </div>
@@ -42,7 +42,7 @@ export function RuntimeErrorPage({ error }: Props) {
                     An unexpected error occurred in the application. Our engineering team has been notified and is working on a fix.
                 </p>
 
-                <div className="mt-6 bg-white border border-gray-200 rounded-xl p-4 text-left max-w-md mx-auto shadow-sm">
+                <div className="mt-6 bg-white border border-gray-200 rounded-xl p-4 text-start max-w-md mx-auto shadow-sm">
                     <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
                         <CheckCircle className="h-4 w-4 text-green-500" />
                         Recommended Steps
@@ -60,7 +60,7 @@ export function RuntimeErrorPage({ error }: Props) {
                 </div>
 
                 {!!error && process.env.NODE_ENV === 'development' && (
-                    <div className="mt-6 mx-auto max-w-xl text-left bg-white rounded-lg border border-gray-200 p-4 shadow-sm overflow-auto max-h-48">
+                    <div className="mt-6 mx-auto max-w-xl text-start bg-white rounded-lg border border-gray-200 p-4 shadow-sm overflow-auto max-h-48">
                         <p className="text-xs font-semibold text-gray-500 mb-2">Error Details (Development Only)</p>
                         <pre className="text-xs text-gray-700 font-mono whitespace-pre-wrap break-all">
                             {String(error)}
@@ -73,7 +73,7 @@ export function RuntimeErrorPage({ error }: Props) {
                         className="w-full sm:w-auto"
                         onClick={() => window.location.reload()}
                     >
-                        <ArrowsClockwise className="mr-2 h-4 w-4" />
+                        <ArrowsClockwise className="me-2 h-4 w-4" />
                         Reload Page
                     </MyButton>
                     <MyButton

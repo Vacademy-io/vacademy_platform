@@ -700,7 +700,7 @@ export function ModalEmailLogin({
                                  whileTap={{ scale: 0.98 }}
                                  className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 font-medium"
                              >
-                                 <ArrowLeft className="w-3 h-3 mr-1" />
+                                 <ArrowLeft className="w-3 h-3 me-1" />
                                  Back to email
                              </motion.button>
                          </motion.div>
@@ -742,7 +742,7 @@ export function ModalEmailLogin({
                                             required
                                             size="large"
                                             label="Email Address"
-                                            className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
+                                            className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pe-10"
                                         />
                                     </FormControl>
                                 </FormItem>
@@ -806,7 +806,7 @@ export function ModalEmailLogin({
                         onClick={onSwitchToUsername}
                     >
                         Prefer username login?
-                        <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
+                        <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
                     </motion.button>
                 )}
                 

@@ -49,7 +49,7 @@ export const PaymentFailedDialog: React.FC<PaymentFailedDialogProps> = ({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
         <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none"
+          className="fixed start-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none"
         >
           <DialogPrimitive.Title className="sr-only">Payment Failed</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">
@@ -57,7 +57,7 @@ export const PaymentFailedDialog: React.FC<PaymentFailedDialogProps> = ({
           </DialogPrimitive.Description>
           
           <button
-            className="absolute right-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
+            className="absolute end-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
             onClick={handleClose}
             aria-label="Close"
           >
@@ -85,7 +85,7 @@ export const PaymentFailedDialog: React.FC<PaymentFailedDialogProps> = ({
                 <XCircle className="w-4 h-4" />
                 <span className="text-sm font-medium">What to do next?</span>
               </div>
-              <ul className="text-sm text-red-700 space-y-1 text-left">
+              <ul className="text-sm text-red-700 space-y-1 text-start">
                 <li>• Check your payment method and try again</li>
                 <li>• Contact support if the issue persists</li>
                 <li>• You can start the enrollment process again</li>

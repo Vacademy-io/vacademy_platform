@@ -265,7 +265,7 @@ const FilterSection: React.FC<FilterSectionProps> = ({
           >
             <input
               type="checkbox"
-              className="form-checkbox h-3.5 w-3.5 text-primary-500 border-catalogue-border rounded focus:ring-primary-400 mr-2"
+              className="form-checkbox h-3.5 w-3.5 text-primary-500 border-catalogue-border rounded focus:ring-primary-400 me-2"
               checked={selectedItems.includes(item.id)}
               onChange={() => handleChange(item.id)}
               disabled={disabled}
@@ -1261,7 +1261,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                 <div className="flex-1">
                   <div className="relative">
                     <MagnifyingGlass
-                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-catalogue-text-muted"
+                      className="absolute start-3 top-1/2 transform -translate-y-1/2 text-catalogue-text-muted"
                       size={20}
                     />
                     <input
@@ -1270,14 +1270,14 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       aria-label={`Search ${getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase()}`}
-                      className="w-full pl-10 pr-9 py-2.5 border border-catalogue-border rounded-lg bg-catalogue-bg text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent"
+                      className="w-full ps-10 pe-9 py-2.5 border border-catalogue-border rounded-lg bg-catalogue-bg text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent"
                     />
                     {searchTerm && (
                       <button
                         type="button"
                         onClick={() => setSearchTerm("")}
                         aria-label="Clear search"
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-catalogue-text-muted hover:text-catalogue-text-primary"
+                        className="absolute end-3 top-1/2 -translate-y-1/2 text-catalogue-text-muted hover:text-catalogue-text-primary"
                       >
                         <X size={16} aria-hidden="true" />
                       </button>
@@ -1289,13 +1289,13 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                 <div className="sm:w-48">
                   <div className="relative">
                     <SortAscending
-                      className="absolute left-3 top-1/2 transform -translate-y-1/2 text-catalogue-text-muted"
+                      className="absolute start-3 top-1/2 transform -translate-y-1/2 text-catalogue-text-muted"
                       size={20}
                     />
                     <select
                       value={sortOption}
                       onChange={(e) => setSortOption(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2.5 border border-catalogue-border rounded-lg bg-catalogue-bg text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent appearance-none"
+                      className="w-full ps-10 pe-4 py-2.5 border border-catalogue-border rounded-lg bg-catalogue-bg text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent appearance-none"
                     >
                       <option value="Newest">Newest</option>
                       <option value="Oldest">Oldest</option>
@@ -1385,7 +1385,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           </div>
                         )}
                         {/* Offer badge: top-left overlay */}
-                        <div className="absolute top-3 left-3">
+                        <div className="absolute top-3 start-3">
                           <OfferBadge
                             actual={course.price}
                             elevated={course.elevatedPrice}

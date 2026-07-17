@@ -54,7 +54,7 @@ const SessionExpiry = ({ studentData }: { studentData: Student }) => {
 
       <div className="relative w-full h-2 mt-4 bg-green-500 rounded">
         <div
-          className="absolute left-0 top-0 h-2 bg-gray-300 rounded"
+          className="absolute start-0 top-0 h-2 bg-gray-300 rounded"
           style={{ width: `${100 - progress}%` }}
         ></div>
       </div>

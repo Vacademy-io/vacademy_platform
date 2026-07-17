@@ -1038,7 +1038,7 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
           onClick={handleProgressClick}
         >
           <div
-            className="absolute left-0 top-0 h-full bg-blue-500"
+            className="absolute start-0 top-0 h-full bg-blue-500"
             style={{
               width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%`,
             }}
@@ -1112,12 +1112,12 @@ export const VimeoPlayerComp: React.FC<VimeoPlayerProps> = ({
                 {playbackSpeed}x
               </button>
               {showSpeedOptions && (
-                <div className="absolute bottom-full right-0 mb-1 rounded bg-gray-800 py-1 shadow-lg">
+                <div className="absolute bottom-full end-0 mb-1 rounded bg-gray-800 py-1 shadow-lg">
                   {speedOptions.map((speed) => (
                     <button
                       key={speed}
                       onClick={() => handleSpeedChange(speed)}
-                      className={`block w-full px-4 py-1 text-left text-xs hover:bg-gray-700 ${
+                      className={`block w-full px-4 py-1 text-start text-xs hover:bg-gray-700 ${
                         playbackSpeed === speed ? "text-blue-400" : ""
                       }`}
                     >

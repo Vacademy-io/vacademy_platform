@@ -188,6 +188,44 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
+    # ---- Content translation (i18n Phase 1, V384) --------------------------
+    # Ops-tunable placeholders — MUST agree with the V384 ai_tool_pricing seeds.
+    # TM (translation_memory) hits are free; only LLM-translated items bill.
+    "translate_rich_text": {   # per rich-text / entity-field item (per 100 chars)
+        "request_type": "translation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("0.02"),
+        "unit_field": "chars",
+        "params": {"chars_per_unit": "100"},
+    },
+    "translate_question": {    # per question (future per-question endpoint)
+        "request_type": "translation",
+        "flat_base_credits": Decimal("0.3"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    "translate_course": {      # whole-course job base (backs the 402 preflight)
+        "request_type": "translation",
+        "flat_base_credits": Decimal("25"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    "translate_strings": {     # synchronous UI/notification batch (per 100 chars of misses)
+        "request_type": "translation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("0.01"),
+        "unit_field": "chars",
+        "params": {"chars_per_unit": "100"},
+    },
+    "dub_video": {             # audio dubbing per minute (no code path yet — later wave)
+        "request_type": "translation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("3.0"),
+        "unit_field": "audio_minutes",
+        "params": {},
+    },
 }
 
 # Tool keys this estimator knows about (used for validation / FE discovery).

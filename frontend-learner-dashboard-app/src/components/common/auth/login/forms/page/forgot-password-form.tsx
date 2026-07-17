@@ -161,7 +161,7 @@ export function ForgotPassword() {
           repeat: Infinity,
           ease: "easeInOut" 
         }}
-        className="absolute top-20 left-20 w-48 h-48 bg-primary-100/40 rounded-full blur-3xl" 
+        className="absolute top-20 start-20 w-48 h-48 bg-primary-100/40 rounded-full blur-3xl" 
       />
       <motion.div
         animate={{
@@ -175,7 +175,7 @@ export function ForgotPassword() {
           ease: "easeInOut",
           delay: 3,
         }}
-        className="absolute bottom-20 right-20 w-64 h-64 bg-primary-100/40 rounded-full blur-3xl" 
+        className="absolute bottom-20 end-20 w-64 h-64 bg-primary-100/40 rounded-full blur-3xl" 
       />
 
       {/* Centered container */}
@@ -254,9 +254,9 @@ export function ForgotPassword() {
                                   size="large"
                                   label="Email Address"
                                   {...field}
-                                  className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
+                                  className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pe-10"
                                 />
-                                <Envelope className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
+                                <Envelope className="absolute end-3 bottom-3 w-4 h-4 text-gray-400" />
                               </div>
                             </FormControl>
                           </FormItem>

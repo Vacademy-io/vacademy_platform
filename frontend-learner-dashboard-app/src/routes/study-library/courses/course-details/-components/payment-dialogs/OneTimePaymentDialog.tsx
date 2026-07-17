@@ -978,7 +978,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                 <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
                   <div className="flex items-center">
                     <svg
-                      className="w-5 h-5 text-red-400 mr-2"
+                      className="w-5 h-5 text-red-400 me-2"
                       fill="currentColor"
                       viewBox="0 0 20 20"
                     >
@@ -1010,13 +1010,13 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                 >
                   {processingPayment ? (
                     <>
-                      <SpinnerGap className="w-5 h-5 animate-spin mr-2" />
+                      <SpinnerGap className="w-5 h-5 animate-spin me-2" />
                       Processing...
                     </>
                   ) : (
                     <>
                       <svg
-                        className="w-5 h-5 mr-2"
+                        className="w-5 h-5 me-2"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -1092,13 +1092,13 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                   Email Address
                 </label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                  <span className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-400">
                     <EnvelopeSimple size={18} />
                   </span>
                   <input
                     id="one-time-email"
                     type="email"
-                    className={`border rounded-lg pl-10 pr-4 py-3 text-sm w-full h-12 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                    className={`border rounded-lg ps-10 pe-4 py-3 text-sm w-full h-12 focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
                       validationError
                         ? "border-red-500 bg-red-50"
                         : "border-gray-300"
@@ -1279,7 +1279,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                     </EwayProvider>
                   ) : (
                     <div className="flex items-center justify-center py-6 text-gray-500">
-                      <SpinnerGap className="w-4 h-4 animate-spin mr-2" />
+                      <SpinnerGap className="w-4 h-4 animate-spin me-2" />
                       Loading secure card form...
                     </div>
                   )}
@@ -1309,7 +1309,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                   >
                     {!cardElementReady && (
                       <div className="flex items-center justify-center h-full text-gray-500">
-                        <SpinnerGap className="w-4 h-4 animate-spin mr-2" />
+                        <SpinnerGap className="w-4 h-4 animate-spin me-2" />
                         Loading payment form...
                       </div>
                     )}
@@ -1352,9 +1352,9 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                 </MyButton>
 
                 <div className="text-xs text-gray-500 text-center flex items-center justify-center gap-1">
-                  <Lock size={14} className="inline-block mr-1" />
+                  <Lock size={14} className="inline-block me-1" />
                   Secure payment powered by
-                  <span className="font-semibold flex items-center gap-1 ml-1">
+                  <span className="font-semibold flex items-center gap-1 ms-1">
                     {isStripe ? (
                       <>
                         <SiStripe size={16} className="text-indigo-600" />

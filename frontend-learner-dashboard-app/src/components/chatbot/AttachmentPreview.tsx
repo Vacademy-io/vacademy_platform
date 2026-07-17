@@ -54,7 +54,7 @@ export const AttachmentPreview: React.FC<AttachmentPreviewProps> = ({
           )}
           {/* Delete button */}
           <button
-            className="absolute -top-0.5 -right-0.5 size-3.5 rounded-full bg-destructive text-destructive-foreground text-caption flex items-center justify-center"
+            className="absolute -top-0.5 -end-0.5 size-3.5 rounded-full bg-destructive text-destructive-foreground text-caption flex items-center justify-center"
             onClick={() => onRemove(i)}
           >
             &times;

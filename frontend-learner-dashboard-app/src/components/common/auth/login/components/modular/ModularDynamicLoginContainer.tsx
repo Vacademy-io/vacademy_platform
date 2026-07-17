@@ -849,7 +849,7 @@ export function ModularDynamicLoginContainer({
                       onClick={() => setCurrentProvider("usernamePassword")}
                     >
                       Prefer username login?
-                      <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
+                      <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
                     </motion.button>
                   ) : (
                     <motion.button
@@ -859,7 +859,7 @@ export function ModularDynamicLoginContainer({
                       onClick={() => setCurrentProvider("emailOtp")}
                     >
                       Prefer email login?
-                      <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
+                      <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
                     </motion.button>
                   )}
                 </motion.div>

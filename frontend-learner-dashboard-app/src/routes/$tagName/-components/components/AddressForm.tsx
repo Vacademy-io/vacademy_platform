@@ -232,10 +232,10 @@ export const AddressForm = forwardRef<AddressFormHandle, AddressFormProps>(({ in
               onBlur={() => handleBlur("pinCode")}
               placeholder="Pincode"
               maxLength={6}
-              className={`${inputBase} pr-8 ${errors.pinCode ? inputError : inputDefault}`}
+              className={`${inputBase} pe-8 ${errors.pinCode ? inputError : inputDefault}`}
             />
             {pinLookupLoading && (
-              <SpinnerGap className="absolute right-2.5 top-2.5 h-4 w-4 text-gray-400 animate-spin" />
+              <SpinnerGap className="absolute end-2.5 top-2.5 h-4 w-4 text-gray-400 animate-spin" />
             )}
           </div>
           {errors.pinCode && <p className={errorText}>{errors.pinCode}</p>}

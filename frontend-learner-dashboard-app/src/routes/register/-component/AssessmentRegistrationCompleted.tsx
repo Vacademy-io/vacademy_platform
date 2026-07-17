@@ -106,8 +106,8 @@ const AssessmentRegistrationCompleted = ({
     <div className="flex min-h-screen w-full items-center justify-center bg-gradient-to-b from-primary-50/40 via-background to-background px-4 py-8">
       <div className="relative w-full max-w-md overflow-hidden rounded-3xl border border-primary-100 bg-white/90 backdrop-blur-sm p-6 sm:p-8 shadow-xl">
         {/* Decorative gradient blob */}
-        <div className="pointer-events-none absolute -right-20 -top-20 size-48 rounded-full bg-primary-100/60 blur-3xl" />
-        <div className="pointer-events-none absolute -left-16 -bottom-16 size-40 rounded-full bg-success-100/50 blur-3xl" />
+        <div className="pointer-events-none absolute -end-20 -top-20 size-48 rounded-full bg-primary-100/60 blur-3xl" />
+        <div className="pointer-events-none absolute -start-16 -bottom-16 size-40 rounded-full bg-success-100/50 blur-3xl" />
 
         <div className="relative flex flex-col items-center gap-5">
           {/* Branding */}

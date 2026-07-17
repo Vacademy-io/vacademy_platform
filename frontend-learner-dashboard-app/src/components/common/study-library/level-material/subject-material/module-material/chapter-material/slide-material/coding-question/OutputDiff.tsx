@@ -86,7 +86,7 @@ function Row({
   const bg = diff ? "bg-red-50" : "";
   return (
     <>
-      <div className={`px-1 text-right text-gray-400 ${bg}`}>{idx}</div>
+      <div className={`px-1 text-end text-gray-400 ${bg}`}>{idx}</div>
       <div className={`whitespace-pre break-all px-1 ${bg}`}>
         {a === undefined ? (
           <span className="text-gray-400">—</span>

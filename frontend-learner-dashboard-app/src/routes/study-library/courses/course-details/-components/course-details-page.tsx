@@ -185,7 +185,7 @@ const heading = (
       onClick={() => window.history.back()}
       className="cursor-pointer"
     />
-    <h1 className="text-lg ml-2">
+    <h1 className="text-lg ms-2">
       {getTerminology(ContentTerms.Course, SystemTerms.Course)} Details
     </h1>
   </div>
@@ -2415,7 +2415,7 @@ const CourseDetailsCollapsible = ({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={contentId}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-start hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
       >
         <span className="flex items-center gap-2 min-w-0">
           <Info className="w-4 h-4 text-primary flex-shrink-0" weight="bold" />

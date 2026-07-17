@@ -76,7 +76,7 @@ const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh, children }) =>
       >
         {/* Loader */}
         <div 
-          className="absolute left-1/2 -translate-x-1/2 -top-8 transition-opacity duration-200"
+          className="absolute start-1/2 -translate-x-1/2 -top-8 transition-opacity duration-200"
           style={{ 
             opacity: pullDistance / THRESHOLD,
           }}

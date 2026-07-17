@@ -100,7 +100,7 @@ export function SubmissionHistory({ slideId, refreshKey }: Props) {
           <div key={s.id} className="rounded border bg-white">
             <button
               type="button"
-              className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-gray-50"
+              className="flex w-full items-center gap-2 px-3 py-2 text-start hover:bg-gray-50"
               onClick={() => toggleOpen(summary.id)}
             >
               {open ? (
@@ -123,7 +123,7 @@ export function SubmissionHistory({ slideId, refreshKey }: Props) {
               <Badge variant="outline" className="text-3xs">
                 {LANGUAGE_REGISTRY[s.language]?.label ?? s.language}
               </Badge>
-              <span className="ml-auto text-xs text-gray-500">
+              <span className="ms-auto text-xs text-gray-500">
                 {fmtDate(s.submittedAt)}
               </span>
             </button>
@@ -167,7 +167,7 @@ export function SubmissionHistory({ slideId, refreshKey }: Props) {
                         {r.visible ? "(sample)" : "(hidden)"}
                       </span>
                       {r.timeMs != null && (
-                        <span className="ml-auto text-gray-500">
+                        <span className="ms-auto text-gray-500">
                           {r.timeMs} ms
                         </span>
                       )}

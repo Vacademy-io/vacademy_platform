@@ -503,7 +503,7 @@ export function BulkUploadModal({
           {/* Download Template Button */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
             <Button variant="outline" size="sm" onClick={downloadSampleSheet} className="w-full sm:w-auto">
-              <DownloadSimple className="w-4 h-4 mr-2" />
+              <DownloadSimple className="w-4 h-4 me-2" />
               Download Sample Template
             </Button>
             <p className="text-xs text-gray-500">
@@ -575,13 +575,13 @@ export function BulkUploadModal({
                 <div className="flex gap-2">
                   {successCount > 0 && (
                     <Badge variant="default" className="bg-green-100 text-green-800">
-                      <CheckCircle className="w-3 h-3 mr-1" />
+                      <CheckCircle className="w-3 h-3 me-1" />
                       {successCount} Success
                     </Badge>
                   )}
                   {errorCount > 0 && (
                     <Badge variant="destructive" className="bg-red-100 text-red-800">
-                      <XCircle className="w-3 h-3 mr-1" />
+                      <XCircle className="w-3 h-3 me-1" />
                       {errorCount} Failed
                     </Badge>
                   )}

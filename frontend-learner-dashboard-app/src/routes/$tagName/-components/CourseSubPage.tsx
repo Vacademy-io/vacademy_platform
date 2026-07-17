@@ -369,7 +369,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
 
       {/* Mobile Action Buttons - Fixed at bottom for catalogue page */}
       {(!showIntroPage || introCompleted) && catalogueData && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4">
+        <div className="md:hidden fixed bottom-0 start-0 end-0 z-50 bg-white border-t border-gray-200 p-4">
           <div className="flex flex-col gap-3">
             {/* Login Button */}
             <div className="flex flex-col gap-1">

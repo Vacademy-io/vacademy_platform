@@ -93,7 +93,7 @@ export function SessionSelectionDialog({
                           session.timezone
                         )}
                         {session.timezone && (
-                          <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
+                          <span className="text-xs text-neutral-500 dark:text-neutral-400 ms-1">
                             ({getTimezoneDisplayInfo(session.timezone).sessionTz})
                           </span>
                         )}
@@ -123,7 +123,7 @@ export function SessionSelectionDialog({
                   } text-white shadow-sm hover:shadow-md transition-all duration-200`}
                   size="lg"
                 >
-                  <ArrowSquareOut size={18} className="mr-2" />
+                  <ArrowSquareOut size={18} className="me-2" />
                   {status.isInWaitingRoom &&
                   session.waiting_room_type !== "PRE_JOINING"
                     ? "Join Waiting Room"

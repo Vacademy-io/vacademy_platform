@@ -204,7 +204,7 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                         <div key={membership.id || idx} className="space-y-3">
                             {/* Membership Item */}
                             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-card shadow-sm">
-                                <div className="flex-1 min-w-0 pr-2">
+                                <div className="flex-1 min-w-0 pe-2">
                                     <h3 className="font-bold text-base text-foreground truncate">
                                         {membership.package_name}
                                     </h3>

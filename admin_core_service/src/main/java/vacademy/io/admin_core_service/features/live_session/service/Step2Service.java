@@ -117,7 +117,8 @@ public class Step2Service {
                 // Handle ON_EDIT notification immediately — only fire on edit, never on first publish
                 if (dto.getType() == NotificationTypeEnum.ON_EDIT && dto.getNotify()) {
                     if (isEdit) {
-                        liveSessionNotificationProcessor.sendOnEditNotification(sessionId, schedules);
+                        liveSessionNotificationProcessor.sendOnEditNotification(sessionId, schedules,
+                                request.getOldMeetingDate(), request.getOldStartTime());
                     }
                     continue;
                 }

@@ -217,7 +217,8 @@ public class CentralizedRecipientResolutionService {
                         "UNION " +
                         "SELECT DISTINCT fspm.user_id FROM faculty_subject_package_session_mapping fspm " +
                         "WHERE fspm.package_session_id = ?" + paramOffset + " AND fspm.status = 'ACTIVE' " +
-                        "  AND fspm.user_id IS NOT NULL";
+                        "  AND fspm.user_id IS NOT NULL " +
+                        "  AND fspm.suborg_id IS NULL";
                 QueryWithParams q = new QueryWithParams(sql);
                 q.params.add(packageSessionId);
                 q.params.add(orgRoles);
@@ -268,7 +269,11 @@ public class CentralizedRecipientResolutionService {
         }
     }
 
-    /** PACKAGE_SESSION = students UNION faculty for the given package_session_id. */
+    /**
+     * PACKAGE_SESSION = students UNION faculty for the given package_session_id.
+     * Faculty excludes rows with a suborg_id: those are sub-org admin access grants, not
+     * teachers of the batch, and should not receive batch-targeted messages.
+     */
     private QueryWithParams packageSessionUnion(String packageSessionId, int paramOffset) {
         String sql =
                 "SELECT DISTINCT ssigm.user_id FROM student_session_institute_group_mapping ssigm " +
@@ -277,7 +282,8 @@ public class CentralizedRecipientResolutionService {
                 "UNION " +
                 "SELECT DISTINCT fspm.user_id FROM faculty_subject_package_session_mapping fspm " +
                 "WHERE fspm.package_session_id = ?" + paramOffset + " AND fspm.status = 'ACTIVE' " +
-                "  AND fspm.user_id IS NOT NULL";
+                "  AND fspm.user_id IS NOT NULL " +
+                "  AND fspm.suborg_id IS NULL";
         QueryWithParams q = new QueryWithParams(sql);
         // Same param used twice in SQL → only bind once
         q.params.add(packageSessionId);

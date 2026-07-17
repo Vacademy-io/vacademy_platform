@@ -76,6 +76,15 @@ public class OnboardingStudentCreationService {
             instituteStudentRepository.save(student);
         }
 
+        boolean alreadyEnrolled = !studentSessionRepository
+                .findByUserIdAndPackageSession_IdAndStatus(subjectUserId, packageSessionId, "ACTIVE")
+                .isEmpty();
+        if (alreadyEnrolled) {
+            log.info("Subject {} already has an ACTIVE enrollment in package session {}, skipping duplicate row (stepInstance {})",
+                    subjectUserId, packageSessionId, stepInstance.getId());
+            return;
+        }
+
         Optional<PackageSession> packageSession = packageSessionRepository.findById(packageSessionId);
         Optional<Institute> institute = instituteRepository.findById(instituteId);
         if (packageSession.isEmpty() || institute.isEmpty()) {

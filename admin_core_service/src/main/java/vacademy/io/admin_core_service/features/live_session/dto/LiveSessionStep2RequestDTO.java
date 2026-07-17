@@ -27,6 +27,22 @@ public class LiveSessionStep2RequestDTO {
 
     private String joinLink;
 
+    // === Reschedule Context ===
+    /**
+     * Wall-clock schedule this session held BEFORE the current edit, supplied by the
+     * client so the ON_EDIT mail can render {{OLD_TIME}}.
+     *
+     * Step 1 and step 2 are separate requests: by the time step 2 sends the mail,
+     * step 1 has already overwritten the stored schedule, so the previous value
+     * cannot be recovered server-side. The client holds it (it snapshots the session
+     * when the admin opens it for editing) and passes it back here.
+     *
+     * Formats: {@code oldMeetingDate} = "yyyy-MM-dd", {@code oldStartTime} = "HH:mm:ss".
+     * Both null for a first publish, or from clients that don't send them.
+     */
+    private String oldMeetingDate;
+    private String oldStartTime;
+
     // === Notification Setting Operations ===
     private List<NotificationActionDTO> addedNotificationActions;
     private List<NotificationActionDTO> updatedNotificationActions;

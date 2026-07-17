@@ -245,6 +245,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
             '{{live_class_status}}': 'Live class status (upcoming, live, past)',
             '{{next_live_class_date}}': 'Next live class date',
             '{{next_live_class_time}}': 'Next live class time',
+            '{{OLD_TIME}}': 'Date and time the class was scheduled for before it was rescheduled',
             '{{referral_count}}': 'Number of successful referrals',
             '{{referral_rewards}}': 'Referral rewards earned',
             '{{referral_bonus}}': 'Referral bonus amount',

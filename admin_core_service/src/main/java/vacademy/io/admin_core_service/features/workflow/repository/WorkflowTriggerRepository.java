@@ -6,6 +6,7 @@ import org.springframework.data.repository.query.Param;
 import vacademy.io.admin_core_service.features.workflow.entity.WorkflowTrigger;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface WorkflowTriggerRepository extends JpaRepository<WorkflowTrigger,String> {
     @Query("SELECT w FROM WorkflowTrigger w WHERE w.workflow.id = :workflowId")
@@ -13,6 +14,12 @@ public interface WorkflowTriggerRepository extends JpaRepository<WorkflowTrigger
 
     /** Idempotency for "attach workflow to course": don't create a duplicate trigger row. */
     boolean existsByWorkflow_IdAndEventIdAndTriggerEventName(String workflowId, String eventId, String triggerEventName);
+
+    /**
+     * Same match, any status -- lets a caller reactivate a previously soft-removed row
+     * instead of blind-skipping (existsBy... above) or hard-inserting a duplicate.
+     */
+    Optional<WorkflowTrigger> findFirstByWorkflow_IdAndEventIdAndTriggerEventName(String workflowId, String eventId, String triggerEventName);
 
     /** Active triggers whose eventId is one of these package sessions (to show what's attached to a course). */
     @Query("SELECT w FROM WorkflowTrigger w WHERE w.eventId IN :eventIds AND w.triggerEventName = :event AND w.status = 'ACTIVE'")

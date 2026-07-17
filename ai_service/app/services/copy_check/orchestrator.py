@@ -15,8 +15,11 @@ from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
+from ...db import db_session
 from ..api_key_resolver import ApiKeyResolver
 from ..chat_llm_client import ChatLLMClient
+from ..credit_service import CreditService
+from ...schemas.credits import CreditDeductRequest
 from . import callbacks, cancellation
 from .grader import DEFAULT_MODEL, CopyCheckGrader, call_llm_for_criteria
 from .mathpix_fallback import MathpixFallback
@@ -173,3 +176,35 @@ async def run(req: dict[str, Any], job_id: str, db: Session) -> None:
         await callbacks.failed(callback_base, process_id, job_id, str(e))
     finally:
         cancellation.cleanup(job_id, process_id=process_id)
+        _bill_copy_check(institute_id, preferred_model, grader, process_id, job_id)
+
+
+def _bill_copy_check(
+    institute_id: Optional[str],
+    preferred_model: Optional[str],
+    grader: CopyCheckGrader,
+    process_id: str,
+    job_id: str,
+) -> None:
+    """Deduct institute credits for one copy's worth of grading — whatever
+    tokens were actually burned, success or partial failure alike (the LLM
+    calls already happened and cost real money). Best-effort: billing never
+    blocks or fails the evaluation itself."""
+    if not institute_id or grader.tokens_used <= 0:
+        return
+    try:
+        with db_session() as db:
+            CreditService(db).deduct_credits(CreditDeductRequest(
+                institute_id=institute_id,
+                request_type="evaluation",
+                model=preferred_model or DEFAULT_MODEL,
+                prompt_tokens=grader.prompt_tokens_used,
+                completion_tokens=grader.completion_tokens_used,
+                usage_log_id=None,
+                description=f"AI evaluation (copy-check) — process {process_id}",
+            ))
+    except Exception:
+        logger.exception(
+            "copy-check credit deduction failed for process=%s job=%s institute=%s",
+            process_id, job_id, institute_id,
+        )

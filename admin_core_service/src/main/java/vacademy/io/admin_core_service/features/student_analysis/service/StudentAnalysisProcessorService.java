@@ -105,7 +105,7 @@ public class StudentAnalysisProcessorService {
 
                 // Step 2: Generate LLM report
                 log.info("[Student-Analysis-Processor] [v1] Generating LLM report");
-                StudentReportData report = llmService.generateStudentReport(data)
+                StudentReportData report = llmService.generateStudentReport(data, process.getInstituteId())
                                 .blockOptional(Duration.ofSeconds(70))
                                 .orElseThrow(() -> new RuntimeException("LLM timeout or returned null report"));
 
@@ -156,7 +156,7 @@ public class StudentAnalysisProcessorService {
                         // Must exceed the per-request timeout in ComprehensiveReportLLMService
                         // (RESPONSE_TIMEOUT_SECONDS) so a slow free-tier model gets one full attempt
                         // instead of being cut off here at the blocking read. Background @Async job.
-                        AiInsightsSection insights = comprehensiveLLMService.narrate(report, process.getUserId())
+                        AiInsightsSection insights = comprehensiveLLMService.narrate(report, process.getUserId(), process.getInstituteId())
                                         .blockOptional(Duration.ofSeconds(180))
                                         .orElse(null);
 
@@ -212,7 +212,7 @@ public class StudentAnalysisProcessorService {
                 // here we try to upgrade it to LLM-clustered subjects and, on ANY failure or empty
                 // result, silently keep the deterministic grouping already in place — this codebase
                 // has learned the LLM can be unreliable, so the fallback is mandatory, not optional.
-                clusterSubjectMarksSafe(report, process.getUserId());
+                clusterSubjectMarksSafe(report, process.getUserId(), process.getInstituteId());
 
                 // Step 3: Persist completed report + mark COMPLETED atomically
                 String reportJson = objectMapper.writeValueAsString(report);
@@ -525,7 +525,7 @@ public class StudentAnalysisProcessorService {
          * subject domains. On any exception, timeout, or empty LLM result, the deterministic
          * grouping already on the report is left untouched — never fails report generation.
          */
-        private void clusterSubjectMarksSafe(ComprehensiveStudentReport report, String userId) {
+        private void clusterSubjectMarksSafe(ComprehensiveStudentReport report, String userId, String instituteId) {
                 try {
                         var subjectMarks = report.getSubjectMarks();
                         if (subjectMarks == null || !subjectMarks.isAvailable()
@@ -533,7 +533,7 @@ public class StudentAnalysisProcessorService {
                                 return;
                         }
 
-                        var clustered = comprehensiveLLMService.clusterSubjectMarks(subjectMarks.getItems(), userId)
+                        var clustered = comprehensiveLLMService.clusterSubjectMarks(subjectMarks.getItems(), userId, instituteId)
                                         .blockOptional(Duration.ofSeconds(60))
                                         .orElse(null);
 

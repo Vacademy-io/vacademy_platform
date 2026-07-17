@@ -68,6 +68,8 @@ class CopyCheckGrader:
         self.institute_id = institute_id
         self.user_id = user_id
         self._tokens_used = 0
+        self._prompt_tokens = 0
+        self._completion_tokens = 0
         self._escalations_used = 0
 
     def add_tokens(self, n: int) -> None:
@@ -81,9 +83,36 @@ class CopyCheckGrader:
                 self._tokens_used, WARN_TOKENS_PER_COPY,
             )
 
+    def add_usage(self, usage: dict[str, Any]) -> None:
+        """Same accounting as add_tokens, but also splits prompt/completion
+        for credit deduction (calculate_credits prices input/output tokens
+        differently). Falls back to counting an unsplit total entirely as
+        prompt tokens when the provider doesn't report the split — grading
+        calls are dominated by the resent OCR+rubric context anyway, so this
+        is a conservative under-charge rather than an over-charge."""
+        usage = usage or {}
+        prompt = usage.get("prompt_tokens")
+        completion = usage.get("completion_tokens")
+        if prompt is not None or completion is not None:
+            self._prompt_tokens += max(0, int(prompt or 0))
+            self._completion_tokens += max(0, int(completion or 0))
+            self.add_tokens(int(prompt or 0) + int(completion or 0))
+        else:
+            total = usage.get("total_tokens") or usage.get("totalTokenCount") or 0
+            self._prompt_tokens += max(0, int(total or 0))
+            self.add_tokens(int(total or 0))
+
     @property
     def tokens_used(self) -> int:
         return self._tokens_used
+
+    @property
+    def prompt_tokens_used(self) -> int:
+        return self._prompt_tokens
+
+    @property
+    def completion_tokens_used(self) -> int:
+        return self._completion_tokens
 
     async def grade_question(
         self,
@@ -139,19 +168,7 @@ class CopyCheckGrader:
             raise
 
         # Token bookkeeping (best-effort — providers report usage differently).
-        usage = response.get("usage") or {}
-        used = (
-            usage.get("total_tokens")
-            or usage.get("totalTokenCount")
-            or ((usage.get("prompt_tokens") or 0) + (usage.get("completion_tokens") or 0))
-            or 0
-        )
-        self._tokens_used += int(used)
-        if self._tokens_used > WARN_TOKENS_PER_COPY:
-            logger.warning(
-                "copy-check token usage high: %d (warn threshold %d)",
-                self._tokens_used, WARN_TOKENS_PER_COPY,
-            )
+        self.add_usage(response.get("usage"))
 
         content = response.get("content") or ""
         try:
@@ -205,12 +222,5 @@ async def call_llm_for_criteria(
         model=preferred_model,
     )
     if token_sink is not None:
-        usage = response.get("usage") or {}
-        used = (
-            usage.get("total_tokens")
-            or usage.get("totalTokenCount")
-            or ((usage.get("prompt_tokens") or 0) + (usage.get("completion_tokens") or 0))
-            or 0
-        )
-        token_sink.add_tokens(int(used))
+        token_sink.add_usage(response.get("usage"))
     return _parse_json_or_retry_payload(response.get("content") or "")

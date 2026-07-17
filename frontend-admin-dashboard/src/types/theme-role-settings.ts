@@ -24,5 +24,12 @@ export interface ThemeRoleSettings {
         // never renders with them.
         secondary?: string;
         tertiary?: string;
+        // Page canvas (--background), which is white in both apps by default.
+        // Institutes with a light brand tint (cream, pale blue…) set it here.
+        // Cards/sheets stay white so they keep reading as raised surfaces —
+        // this only repaints the canvas behind them. Applies to BOTH apps.
+        // Expected to be a light tint: --foreground stays dark, so a dark
+        // value would break text contrast (the picker warns about this).
+        background?: string;
     };
 }

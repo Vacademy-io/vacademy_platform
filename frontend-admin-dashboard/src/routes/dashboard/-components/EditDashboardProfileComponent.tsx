@@ -22,22 +22,27 @@ import { toast } from 'sonner';
 import { AxiosError } from 'axios';
 import { handleUpdateInstituteDashboard } from '../-services/dashboard-services';
 import PhoneInputField from '@/components/design-system/phone-input-field';
-import themeData from '@/constants/themes/theme.json';
 import { useTheme } from '@/providers/theme/theme-provider';
 import { cn } from '@/lib/utils';
 import convert from 'color-convert';
 import { navPresets } from '@/constants/themes/nav-presets';
 import { getThemeRoleSettings, saveThemeRoleSettings } from '@/services/theme-role-settings';
 import type { NavRoleColors } from '@/types/theme-role-settings';
+import {
+    PRESET_THEMES,
+    CUSTOM_THEME_ID,
+    getThemeShades,
+    isCustomThemeCode,
+} from '@/constants/themes/preset-themes';
+import { rampHexFromHex, SHADES } from '@/lib/theme-ramp';
 
 /** Mirrors the light legacy default in theme-provider.tsx's applyNavRoles. */
 const buildLightNavPreview = (brandHex: string): NavRoleColors => {
-    const [h, s, l] = convert.hex.hsl(brandHex.replace('#', ''));
     const toHex = (hh: number, ss: number, ll: number) => `#${convert.hsl.hex([hh, ss, ll])}`;
     return {
         surface: toHex(0, 0, 100),
         surfaceHover: toHex(210, 40, 96),
-        active: toHex(h, Math.min(s + 40, 100), Math.min(l + 45, 96)),
+        active: rampHexFromHex(brandHex)['50'],
         activeText: brandHex,
         text: toHex(222.2, 20, 20),
     };
@@ -68,26 +73,55 @@ const NAV_COLOR_FIELDS: Array<{ key: keyof NavRoleColors; label: string }> = [
 
 /**
  * Secondary/tertiary aren't 5 distinct roles like nav — they're a single
- * base color that the learner app ramps into 6 shades (see setShadeRamp in
- * that app's theme-provider.tsx). This mirrors that exact clamp curve so the
- * preview strip matches what will actually render.
+ * base color that both apps ramp into 6 shades. Uses the shared curve
+ * (lib/theme-ramp.ts) so the preview strip matches what actually renders.
  */
 const buildShadeRampPreview = (hex: string): string[] => {
     try {
-        const [h, s, l] = convert.hex.hsl(hex.replace('#', ''));
-        const toHex = (hh: number, ss: number, ll: number) => `#${convert.hsl.hex([hh, ss, ll])}`;
-        return [
-            toHex(h, Math.min(s + 40, 100), Math.min(l + 45, 96)),
-            toHex(h, Math.min(s + 30, 90), Math.min(l + 38, 92)),
-            toHex(h, Math.min(s + 20, 88), Math.min(l + 29, 83)),
-            toHex(h, Math.min(s + 10, 87), Math.min(l + 18, 72)),
-            toHex(h, Math.min(s + 5, 86), Math.min(l + 7, 61)),
-            hex,
-        ];
+        const ramp = rampHexFromHex(hex);
+        return SHADES.map((shade) => ramp[shade]);
     } catch {
         return [];
     }
 };
+
+/**
+ * Suggested page tints for the background picker: the brand's own lightest
+ * shades plus two neutrals. Institutes asking for "a light version of our
+ * color" almost always mean exactly primary-50/100.
+ */
+const buildBackgroundSuggestions = (brandHex: string): Array<{ hex: string; label: string }> => {
+    const toHex = (hh: number, ss: number, ll: number) => `#${convert.hsl.hex([hh, ss, ll])}`;
+    let brand50 = toHex(0, 0, 100);
+    let brand100 = toHex(0, 0, 100);
+    try {
+        const ramp = rampHexFromHex(brandHex);
+        brand50 = ramp['50'];
+        brand100 = ramp['100'];
+    } catch {
+        // fall through to the neutrals
+    }
+    return [
+        { hex: toHex(0, 0, 100), label: 'White' },
+        { hex: brand50, label: 'Brand tint' },
+        { hex: brand100, label: 'Brand tint (deeper)' },
+        { hex: toHex(40, 33, 97), label: 'Warm cream' },
+        { hex: toHex(210, 20, 97), label: 'Cool grey' },
+    ];
+};
+
+/** The canvas is behind dark body text, so only light values are usable. */
+const BACKGROUND_MIN_LIGHTNESS = 88;
+const isBackgroundTooDark = (hex: string): boolean => {
+    try {
+        const [, , l] = convert.hex.hsl(hex.replace('#', ''));
+        return l < BACKGROUND_MIN_LIGHTNESS;
+    } catch {
+        return false;
+    }
+};
+
+const WHITE_HEX = `#${convert.hsl.hex([0, 0, 100])}`;
 
 // Seeds a secondary/tertiary override with the same hue-shift heuristic the
 // learner app uses for a custom brand hex, so switching the toggle on starts
@@ -101,30 +135,21 @@ const buildDefaultTertiaryHex = (brandHex: string): string => {
     return `#${convert.hsl.hex([((h + 48) % 360 + 360) % 360, Math.max(s - 35, 15), Math.min(l + 25, 88)])}`;
 };
 
-// Predefined themes with their base colors
-const presetThemes = [
-    { name: 'Orange', code: 'primary' },
-    { name: 'Blue', code: 'blue' },
-    { name: 'Green', code: 'green' },
-    { name: 'Purple', code: 'purple' },
-    { name: 'Red', code: 'red' },
-    { name: 'Pink', code: 'pink' },
-    { name: 'Indigo', code: 'indigo' },
-    { name: 'Yellow', code: 'amber' },
-    { name: 'Cyan', code: 'cyan' },
-];
-
 type FormValues = z.infer<typeof editDashboardProfileSchema>;
 
 const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
     const queryClient = useQueryClient();
     const [open, setOpen] = useState(false);
     const [openThemeDialog, setThemeDialog] = useState(false);
-    const [selectedTheme, setSelectedTheme] = useState(presetThemes[0]?.code || 'primary');
+    const [selectedTheme, setSelectedTheme] = useState(PRESET_THEMES[0]?.code || 'primary');
     const [selectedNavPresetId, setSelectedNavPresetId] = useState(navPresets[0]!.id);
     const [customNav, setCustomNav] = useState<NavRoleColors | null>(null);
     const [secondaryOverride, setSecondaryOverride] = useState<string | null>(null);
     const [tertiaryOverride, setTertiaryOverride] = useState<string | null>(null);
+    const [backgroundOverride, setBackgroundOverride] = useState<string | null>(null);
+    // Held separately from `selectedTheme` so switching away to a preset and
+    // back doesn't lose the hex the admin was editing.
+    const [customBrandHex, setCustomBrandHex] = useState<string | null>(null);
     const [isSavingNav, setIsSavingNav] = useState(false);
     const { setPrimaryColor, getPrimaryColorCode } = useTheme();
 
@@ -133,10 +158,20 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
     useEffect(() => {
         if (!openThemeDialog) return;
         let cancelled = false;
+        // Re-sync the brand tile with what's actually saved, so re-opening
+        // shows the institute's real theme rather than the first preset.
+        const savedCode = form.getValues('instituteThemeCode') || 'primary';
+        if (isCustomThemeCode(savedCode)) {
+            setSelectedTheme(CUSTOM_THEME_ID);
+            setCustomBrandHex(savedCode);
+        } else {
+            setSelectedTheme(savedCode);
+        }
         getThemeRoleSettings().then((saved) => {
             if (cancelled) return;
             setSecondaryOverride(saved?.roles?.secondary ?? null);
             setTertiaryOverride(saved?.roles?.tertiary ?? null);
+            setBackgroundOverride(saved?.roles?.background ?? null);
             if (!saved?.roles?.nav) {
                 setSelectedNavPresetId('match-brand');
                 return;
@@ -269,19 +304,20 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
         resetFormWithUrl();
     }, [instituteDetails]);
 
-    const getThemeShades = (code: string) => {
-        const theme = themeData.themes.find((theme) => theme.code === code);
-        if (theme && theme.colors) {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            return Object.entries(theme.colors).map(([key, color]) => color);
-        }
-        return [];
-    };
-
     const handleThemeSelect = (code: string) => {
         setSelectedTheme(code);
         setPrimaryColor(code);
-        form.setValue('instituteThemeCode', code);
+        form.setValue('instituteThemeCode', code, { shouldDirty: true });
+    };
+
+    // Custom brand hex. `institute_theme_code` is a free string, and both
+    // theme providers already branch on a leading '#', so a hex persists and
+    // renders through the exact same path a preset does.
+    const handleCustomBrandSelect = (hex: string) => {
+        setSelectedTheme(CUSTOM_THEME_ID);
+        setCustomBrandHex(hex);
+        setPrimaryColor(hex);
+        form.setValue('instituteThemeCode', hex, { shouldDirty: true });
     };
 
     const handleSaveThemeDialog = async () => {
@@ -301,11 +337,19 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                     ...(nav ? { nav } : {}),
                     ...(secondaryOverride ? { secondary: secondaryOverride } : {}),
                     ...(tertiaryOverride ? { tertiary: tertiaryOverride } : {}),
+                    ...(backgroundOverride ? { background: backgroundOverride } : {}),
                 },
             });
+            // Persist the brand code itself too. Without this the dialog only
+            // changed this browser's localStorage: the institute record (which
+            // is what every other admin and every learner reads) kept its old
+            // theme unless someone also hit Save Changes on the parent dialog.
+            await handleUpdateInstituteDashboard(form.getValues(), instituteDetails?.id);
+            queryClient.invalidateQueries({ queryKey: ['GET_BOTH_INSTITUTE_APIS'] });
+            toast.success('Theme updated', { className: 'success-toast', duration: 2000 });
         } catch (error) {
-            console.error('Failed to save nav theme', error);
-            toast.error('Could not save sidebar color — brand color was still updated.', {
+            console.error('Failed to save theme', error);
+            toast.error('Could not save the theme. Please try again.', {
                 className: 'error-toast',
                 duration: 2500,
             });
@@ -673,16 +717,23 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                     <div className="mb-2 w-36">
                                                         {(() => {
                                                             const currentThemeCode =
-                                                                form.watch('instituteThemeCode');
-                                                            const theme = themeData.themes.find(
-                                                                (t) => t.code === currentThemeCode
-                                                            );
-                                                            const shades = theme?.colors
-                                                                ? Object.entries(theme.colors).map(
-                                                                      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                                                                      ([_, color]) => color
-                                                                  )
-                                                                : [];
+                                                                form.watch('instituteThemeCode') ??
+                                                                '';
+                                                            // A saved code is either a preset or a
+                                                            // custom hex — ramp the latter so the
+                                                            // "Current" strip isn't blank for it.
+                                                            const shades = isCustomThemeCode(
+                                                                currentThemeCode
+                                                            )
+                                                                ? [...SHADES]
+                                                                      .reverse()
+                                                                      .map(
+                                                                          (shade) =>
+                                                                              rampHexFromHex(
+                                                                                  currentThemeCode
+                                                                              )[shade]
+                                                                      )
+                                                                : getThemeShades(currentThemeCode);
 
                                                             return (
                                                                 <div className="overflow-hidden rounded-lg shadow-sm">
@@ -748,33 +799,211 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                         <div className="flex-1 overflow-y-auto p-4">
                             <h1 className="mb-4 text-lg">Set your organization theme</h1>
                             <div className="mb-2 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-                                {presetThemes.map((theme) => {
+                                {PRESET_THEMES.map((theme) => {
                                     const shades = getThemeShades(theme.code);
                                     return (
-                                        <div
+                                        <button
+                                            type="button"
                                             key={theme.name}
-                                            role="button"
                                             onClick={() => handleThemeSelect(theme.code)}
                                             className={cn(
                                                 'overflow-hidden rounded-lg shadow-sm transition-shadow hover:shadow-md',
+                                                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2',
                                                 selectedTheme === theme.code
                                                     ? 'ring-2 ring-primary-500 ring-offset-2'
                                                     : 'ring-1 ring-gray-200'
                                             )}
                                             aria-label={`Select ${theme.name} theme`}
+                                            aria-pressed={selectedTheme === theme.code}
                                         >
                                             <div className="flex flex-col">
                                                 {shades?.map((shade, index) => (
                                                     <div
                                                         key={index}
                                                         className="h-5"
-                                                        style={{ backgroundColor: shade }}
+                                                        style={{ backgroundColor: shade }} // design-lint-ignore: data-driven palette swatch
                                                     />
                                                 ))}
                                             </div>
-                                        </div>
+                                        </button>
                                     );
                                 })}
+
+                                {/* Custom brand color — completes the 3-col grid. */}
+                                {(() => {
+                                    const isCustom = selectedTheme === CUSTOM_THEME_ID;
+                                    const hex = customBrandHex ?? getPrimaryColorCode();
+                                    const ramp = buildShadeRampPreview(hex);
+                                    return (
+                                        <button
+                                            type="button"
+                                            onClick={() => handleCustomBrandSelect(hex)}
+                                            className={cn(
+                                                'relative overflow-hidden rounded-lg shadow-sm transition-shadow hover:shadow-md',
+                                                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2',
+                                                isCustom
+                                                    ? 'ring-2 ring-primary-500 ring-offset-2'
+                                                    : 'ring-1 ring-gray-200'
+                                            )}
+                                            aria-label="Use a custom brand color"
+                                            aria-pressed={isCustom}
+                                        >
+                                            <div className="flex flex-col">
+                                                {[...ramp].reverse().map((shade, index) => (
+                                                    <div
+                                                        key={index}
+                                                        className="h-5"
+                                                        style={{ backgroundColor: shade }} // design-lint-ignore: live preview of the institute-chosen hex
+                                                    />
+                                                ))}
+                                            </div>
+                                            <span className="absolute inset-x-0 bottom-0 bg-white/85 py-1 text-center text-xs font-medium text-neutral-700">
+                                                Custom
+                                            </span>
+                                        </button>
+                                    );
+                                })()}
+                            </div>
+
+                            {selectedTheme === CUSTOM_THEME_ID && (
+                                <div className="mb-2 rounded-lg border border-gray-200 p-3">
+                                    <div className="mb-2 flex items-center justify-between gap-3">
+                                        <span className="text-sm font-medium">
+                                            Custom brand color
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            {/* design-lint-ignore: native color input — the value is
+                                                user-chosen per-institute data, not a static token. */}
+                                            <input
+                                                type="color"
+                                                value={customBrandHex ?? getPrimaryColorCode()}
+                                                onChange={(e) =>
+                                                    handleCustomBrandSelect(e.target.value)
+                                                }
+                                                className="h-8 w-8 cursor-pointer rounded border border-gray-200 p-0"
+                                                aria-label="Custom brand color"
+                                            />
+                                            <MyInput
+                                                inputType="text"
+                                                input={customBrandHex ?? getPrimaryColorCode()}
+                                                onChangeFunction={(e) =>
+                                                    handleCustomBrandSelect(e.target.value)
+                                                }
+                                                size="small"
+                                                className="w-24 font-mono text-xs"
+                                                inputPlaceholder="Hex color"
+                                            />
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-neutral-500">
+                                        Your exact brand color. Every lighter shade the apps use is
+                                        generated from it.
+                                    </p>
+                                </div>
+                            )}
+
+                            <Separator className="my-4" />
+                            <h1 className="mb-1 text-lg">Page background</h1>
+                            <p className="mb-4 text-sm text-neutral-500">
+                                The canvas behind your content — white by default, in both the admin
+                                dashboard and the learner app. Cards and menus stay white, so a light
+                                brand tint here reads as a subtle wash rather than recoloring
+                                everything.
+                            </p>
+                            <div className="mb-4 rounded-lg border border-gray-200 p-3">
+                                <div className="mb-3 flex items-center justify-between">
+                                    <span className="text-sm font-medium">
+                                        {backgroundOverride ? 'Custom' : 'White (default)'}
+                                    </span>
+                                    {backgroundOverride && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setBackgroundOverride(null)}
+                                            className="text-xs font-medium text-primary-500 hover:underline"
+                                        >
+                                            Reset to white
+                                        </button>
+                                    )}
+                                </div>
+
+                                <div className="mb-3 flex flex-wrap gap-2">
+                                    {buildBackgroundSuggestions(
+                                        customBrandHex ?? getPrimaryColorCode()
+                                    ).map(({ hex, label }) => {
+                                        const isWhite = hex.toLowerCase() === WHITE_HEX.toLowerCase();
+                                        const isActive = isWhite
+                                            ? backgroundOverride === null
+                                            : backgroundOverride?.toLowerCase() === hex.toLowerCase();
+                                        return (
+                                            <button
+                                                type="button"
+                                                key={label}
+                                                onClick={() =>
+                                                    setBackgroundOverride(isWhite ? null : hex)
+                                                }
+                                                className={cn(
+                                                    'flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs transition-colors',
+                                                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500',
+                                                    isActive
+                                                        ? 'border-primary-500 text-primary-500'
+                                                        : 'border-gray-200 text-neutral-600 hover:border-gray-300'
+                                                )}
+                                                aria-pressed={isActive}
+                                            >
+                                                <span
+                                                    className="size-4 rounded border border-gray-200"
+                                                    style={{ backgroundColor: hex }} // design-lint-ignore: computed brand-derived tint swatch
+                                                />
+                                                {label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    {/* design-lint-ignore: native color input — the value is
+                                        user-chosen per-institute data, not a static token. */}
+                                    <input
+                                        type="color"
+                                        value={backgroundOverride ?? WHITE_HEX}
+                                        onChange={(e) => setBackgroundOverride(e.target.value)}
+                                        className="h-8 w-8 cursor-pointer rounded border border-gray-200 p-0"
+                                        aria-label="Page background color"
+                                    />
+                                    <MyInput
+                                        inputType="text"
+                                        input={backgroundOverride ?? WHITE_HEX}
+                                        onChangeFunction={(e) =>
+                                            setBackgroundOverride(e.target.value)
+                                        }
+                                        size="small"
+                                        className="w-24 font-mono text-xs"
+                                        inputPlaceholder="Hex color"
+                                    />
+                                </div>
+
+                                {backgroundOverride && isBackgroundTooDark(backgroundOverride) && (
+                                    <p className="mt-2 text-xs text-warning-600">
+                                        This is dark for a page background — body text stays dark, so
+                                        it may be hard to read. Pick a lighter tint.
+                                    </p>
+                                )}
+
+                                {/* Live preview: a tinted canvas with a white card on it, which
+                                    is exactly the relationship this setting controls. */}
+                                <div
+                                    className="mt-3 rounded-md border border-gray-200 p-3"
+                                    style={{ backgroundColor: backgroundOverride ?? WHITE_HEX }} // design-lint-ignore: computed per-institute canvas preview
+                                >
+                                    <div className="rounded-md bg-white p-2 shadow-sm">
+                                        <div className="text-xs font-medium text-neutral-800">
+                                            Card
+                                        </div>
+                                        <div className="text-xs text-neutral-500">
+                                            Stays white on the tinted page.
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
                             <Separator className="my-4" />

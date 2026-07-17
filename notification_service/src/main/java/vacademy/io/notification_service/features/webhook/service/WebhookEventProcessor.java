@@ -172,7 +172,16 @@ public class WebhookEventProcessor {
         StringBuilder body = new StringBuilder();
 
         if (event.getMessageText() != null) {
-            body.append(truncateText(event.getMessageText(), 100));
+            // Inbound REPLY text is stored IN FULL (matching the Combot webhook path, which already
+            // stores full bodies): the Engagement Engine's auto-reply classifies money/anger/refund
+            // on this text, and a 100-char preview can cut the message BEFORE the money word —
+            // auto-answering a refund question the design mandates escalating. Status events keep
+            // the compact preview.
+            if (event.getEventType() == UnifiedWebhookEvent.EventType.REPLY) {
+                body.append(event.getMessageText());
+            } else {
+                body.append(truncateText(event.getMessageText(), 100));
+            }
         }
 
         if (event.getErrorMessage() != null) {

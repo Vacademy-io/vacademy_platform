@@ -81,6 +81,21 @@ public class WhatsAppTemplateManagerService {
         return toDTO(template);
     }
 
+    /**
+     * Look up a template by its natural key, returning null when absent. Lets a caller that lost a
+     * createDraft response (row committed here, response never arrived) adopt the existing draft by
+     * name instead of re-creating it and hitting the (institute,name,language) uniqueness 409.
+     */
+    public WhatsAppTemplateDTO getByNameOrNull(String instituteId, String name, String language) {
+        if (name == null) return null;
+        String normalized = name.toLowerCase().replaceAll("[^a-z0-9_]", "_");
+        String lang = language != null ? language : "en";
+        return templateRepository.findByInstituteIdAndNameAndLanguage(instituteId, normalized, lang)
+                .filter(t -> !"DELETED".equals(t.getStatus()))
+                .map(this::toDTO)
+                .orElse(null);
+    }
+
     public List<WhatsAppTemplateDTO> getAll(String instituteId) {
         return templateRepository.findByInstituteIdOrderByUpdatedAtDesc(instituteId)
                 .stream().map(this::toDTO).collect(Collectors.toList());
@@ -195,9 +210,16 @@ public class WhatsAppTemplateManagerService {
                 JsonNode body = objectMapper.readTree(response.getBody());
                 String metaTemplateId = body.path("id").asText(null);
                 String metaStatus = body.path("status").asText("PENDING");
+                // Meta can re-categorise at submit (e.g. UTILITY->MARKETING) and echo the assigned
+                // category on the create response. Persist it so callers see Meta's real category,
+                // not the one we requested — otherwise a synchronous APPROVED hides the recategorisation.
+                String metaCategory = body.path("category").asText(null);
 
                 template.setMetaTemplateId(metaTemplateId);
                 template.setStatus(metaStatus.toUpperCase());
+                if (metaCategory != null && !metaCategory.isBlank()) {
+                    template.setCategory(metaCategory.toUpperCase());
+                }
                 template.setSubmittedAt(new Timestamp(System.currentTimeMillis()));
 
                 if ("APPROVED".equalsIgnoreCase(metaStatus)) {

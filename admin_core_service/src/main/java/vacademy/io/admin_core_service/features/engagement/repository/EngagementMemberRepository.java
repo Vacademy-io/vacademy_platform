@@ -52,14 +52,21 @@ public interface EngagementMemberRepository extends JpaRepository<EngagementMemb
      * insert and the update path (Postgres counts an ON-CONFLICT update as affected), so the
      * caller measures "newly enrolled" by a before/after ACTIVE count, not this return value.
      */
+    // is_holdout is assigned ONCE at insert from a STABLE hash of the subject key (so re-reconciles
+    // never flip a member's cohort) against holdoutPct — and is deliberately NOT in DO UPDATE, so an
+    // existing member's cohort is immutable. holdoutPct=0 → hashtext(...)%100 in [0,99] is never < 0
+    // → nobody is a holdout.
     @Modifying
     @Transactional
     @Query(value = """
             INSERT INTO engagement_member
                 (id, engine_id, institute_id, user_id, audience_response_id, status, tier,
-                 next_action_at, memory_json)
+                 next_action_at, memory_json, is_holdout)
             VALUES (:id, :engineId, :instituteId, :userId, :audienceResponseId, 'ACTIVE', 2,
-                    :nextActionAt, jsonb_build_object('reconcileRun', CAST(:runId AS text)))
+                    :nextActionAt, jsonb_build_object('reconcileRun', CAST(:runId AS text)),
+                    -- non-negative 0..99 WITHOUT abs() — abs(hashtext) can hit abs(INT_MIN) which
+                    -- Postgres throws on ("integer out of range"), crashing that member's enroll.
+                    (((hashtext(:engineId || '|' || COALESCE(:userId, :audienceResponseId, :id)) % 100) + 100) % 100) < :holdoutPct)
             ON CONFLICT (engine_id, COALESCE(user_id, ''), COALESCE(audience_response_id, ''))
             DO UPDATE SET
                 status = CASE WHEN engagement_member.status = 'EXITED' THEN 'ACTIVE'
@@ -76,7 +83,8 @@ public interface EngagementMemberRepository extends JpaRepository<EngagementMemb
                       @Param("userId") String userId,
                       @Param("audienceResponseId") String audienceResponseId,
                       @Param("nextActionAt") Instant nextActionAt,
-                      @Param("runId") String runId);
+                      @Param("runId") String runId,
+                      @Param("holdoutPct") int holdoutPct);
 
     /**
      * Reconciliation: EXIT active members NOT stamped by this reconcile run — no giant IN-list
@@ -96,4 +104,177 @@ public interface EngagementMemberRepository extends JpaRepository<EngagementMemb
     long countByEngineIdAndStatus(String engineId, String status);
 
     List<EngagementMember> findByEngineIdAndStatus(String engineId, String status);
+
+    /**
+     * Reply ingestion: an inbound reply PULLS its member forward — tier 0, due now, 24h window
+     * open — so the copilot surfaces a reply-response task fast instead of at the next natural
+     * cadence (which for a dormant member could be days away). Matched by last-10 phone digits
+     * against the resolved contact; we don't store phone on the member, so this joins to the
+     * lead's contact fields and the student table. Returns the number of members promoted.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE engagement_member m
+               SET tier = CASE WHEN (m.window_open_until IS NULL OR m.window_open_until < :now)
+                               THEN 0 ELSE m.tier END,
+                   next_action_at = CASE WHEN (m.window_open_until IS NULL OR m.window_open_until < :now)
+                               THEN :now ELSE m.next_action_at END,
+                   -- Meta resets the 24h free-form window on EVERY inbound message, so the window is
+                   -- ALWAYS extended (GREATEST = monotonic). Only the scheduling pull-forward (tier /
+                   -- next_action_at) keeps the idempotency guard — re-running the overlapping sweep
+                   -- must not repeatedly reset the cadence or stomp a fresh in-flight lease, but it
+                   -- MUST keep the window honest, else a human answering an escalation hours later is
+                   -- falsely rejected while Meta's real window is still open. (CASE/SET expressions
+                   -- all read the OLD row values, so the guard sees pre-update window_open_until.)
+                   window_open_until = GREATEST(COALESCE(m.window_open_until, :windowUntil), :windowUntil),
+                   updated_at = :now
+             WHERE m.institute_id = :instituteId AND m.status = 'ACTIVE'
+               -- Holdout members are the control group: enrolled but NEVER messaged. Do not open
+               -- their reply window (which would let the auto-reply answer/escalate them and
+               -- contaminate the lift measurement) or pull them forward.
+               AND m.is_holdout = false
+               AND (
+                    m.user_id IN (
+                        SELECT s.user_id FROM student s
+                        WHERE RIGHT(regexp_replace(COALESCE(s.mobile_number,''),'[^0-9]','','g'),10) IN (:phones10))
+                 OR m.audience_response_id IN (
+                        SELECT ar.id FROM audience_response ar
+                        WHERE RIGHT(regexp_replace(COALESCE(ar.parent_mobile,''),'[^0-9]','','g'),10) IN (:phones10))
+               )
+            """, nativeQuery = true)
+    int promoteByPhones(@Param("instituteId") String instituteId,
+                        @Param("phones10") List<String> phones10,
+                        @Param("now") Instant now,
+                        @Param("windowUntil") Instant windowUntil);
+
+    /** Distinct institute ids that have a live (ACTIVE/DRY_RUN) engine — the reply sweep's scope. */
+    @Query(value = """
+            SELECT DISTINCT institute_id FROM engagement_engine
+            WHERE status IN ('ACTIVE', 'DRY_RUN')
+            """, nativeQuery = true)
+    List<String> institutesWithLiveEngines();
+
+    /** Projection for the auto-reply candidate lookup. */
+    interface AutoReplyCandidate {
+        String getMemberId();
+        String getEngineId();
+        String getLastReplyWamid();
+    }
+
+    /**
+     * Members whose engine wants to AUTO-REPLY to this phone right now: a live (ACTIVE, not DRY_RUN —
+     * a dry run must never send a real reply) engine with WhatsApp enabled AND autoReply on, whose 24h
+     * window is still open, matched by last-10 phone digits. Ordered most-recently-engaged first so a
+     * person in several engines is answered by ONE — the engine that last reached out (the one they're
+     * most plausibly replying to) — not spammed by all of them.
+     */
+    @Query(value = """
+            SELECT m.id AS memberId, m.engine_id AS engineId, m.last_reply_wamid AS lastReplyWamid
+            FROM engagement_member m
+            JOIN engagement_engine e ON e.id = m.engine_id
+            WHERE m.institute_id = :instituteId AND m.status = 'ACTIVE'
+              AND m.is_holdout = false
+              AND e.status = 'ACTIVE'
+              AND e.channels -> 'WHATSAPP' ->> 'enabled' = 'true'
+              AND e.channels -> 'WHATSAPP' ->> 'autoReply' = 'true'
+              AND m.window_open_until IS NOT NULL AND m.window_open_until > :now
+              AND (
+                   m.user_id IN (
+                       SELECT s.user_id FROM student s
+                       WHERE RIGHT(regexp_replace(COALESCE(s.mobile_number,''),'[^0-9]','','g'),10) = :phone10)
+                OR m.audience_response_id IN (
+                       SELECT ar.id FROM audience_response ar
+                       WHERE RIGHT(regexp_replace(COALESCE(ar.parent_mobile,''),'[^0-9]','','g'),10) = :phone10)
+              )
+            ORDER BY m.last_decided_at DESC NULLS LAST
+            """, nativeQuery = true)
+    List<AutoReplyCandidate> findAutoReplyCandidates(@Param("instituteId") String instituteId,
+                                                     @Param("phone10") String phone10,
+                                                     @Param("now") Instant now);
+
+    /**
+     * At-most-once claim on an inbound reply, scoped to the SUBJECT (institute + phone), not one
+     * member row: stamps last_reply_wamid on EVERY active member matching the phone in one atomic
+     * UPDATE. Returns >0 only for the single winning call — a second sweep (overlap/replica) matches
+     * zero rows because every candidate already carries the wamid. Claiming ALL matching members is
+     * what makes "one reply → ONE engine" hold even when the candidate ORDERING flips between sweeps
+     * (the normal sweep bumps last_decided_at on a co-enrolled member, which would otherwise promote
+     * a different, unstamped member to candidates[0] and double-answer the same message).
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE engagement_member m
+               SET last_reply_wamid = :wamid, updated_at = :now
+             WHERE m.institute_id = :instituteId AND m.status = 'ACTIVE'
+               AND (m.last_reply_wamid IS NULL OR m.last_reply_wamid <> :wamid)
+               AND (
+                    m.user_id IN (
+                        SELECT s.user_id FROM student s
+                        WHERE RIGHT(regexp_replace(COALESCE(s.mobile_number,''),'[^0-9]','','g'),10) = :phone10)
+                 OR m.audience_response_id IN (
+                        SELECT ar.id FROM audience_response ar
+                        WHERE RIGHT(regexp_replace(COALESCE(ar.parent_mobile,''),'[^0-9]','','g'),10) = :phone10)
+               )
+            """, nativeQuery = true)
+    int claimReplyWamidForPhone(@Param("instituteId") String instituteId,
+                                @Param("phone10") String phone10,
+                                @Param("wamid") String wamid,
+                                @Param("now") Instant now);
+
+    /**
+     * Mark a member as handled by the auto-reply so the NORMAL decision sweep doesn't ALSO wake it
+     * for the same reply and create a duplicate reply-response task: last_decided_at moves past the
+     * reply time (so hasUnansweredReply is false) and next_action_at is pushed to the next cadence.
+     * consecutive_no_ops resets — a reply IS engagement.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE engagement_member
+               SET last_decided_at = :now, next_action_at = :nextActionAt,
+                   consecutive_no_ops = 0, updated_at = :now
+             WHERE id = :id
+            """, nativeQuery = true)
+    int markReplyHandled(@Param("id") String id, @Param("now") Instant now,
+                         @Param("nextActionAt") Instant nextActionAt);
+
+    /**
+     * The reply did NOT settle (send failed, dispatch claim lost, engine vanished): pull the member
+     * due soon WITHOUT advancing last_decided_at, so the normal sweep's unanswered-reply wake
+     * surfaces a HUMAN task shortly — even when the member's next_action_at was days out (a
+     * follow-up reply inside an open window doesn't re-promote, so without this nudge the person's
+     * message would sit dark until cadence elapsed). LEAST keeps an earlier due time.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE engagement_member
+               SET next_action_at = LEAST(COALESCE(next_action_at, :retryAt), :retryAt), updated_at = :now
+             WHERE id = :id
+            """, nativeQuery = true)
+    int markReplyUnhandled(@Param("id") String id, @Param("retryAt") Instant retryAt, @Param("now") Instant now);
+
+    /**
+     * THE at-most-once gate for auto-answering an inbound message: exactly one caller ever inserts a
+     * given (institute, wamid) — overlapping sweeps, replicas, interleaved overruns, and late-arriving
+     * member rows all lose on the primary-key conflict. The per-member last_reply_wamid stamp remains
+     * as a secondary marker, but THIS is the gate.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            INSERT INTO engagement_handled_reply (institute_id, wamid, claimed_at)
+            VALUES (:instituteId, :wamid, :now)
+            ON CONFLICT (institute_id, wamid) DO NOTHING
+            """, nativeQuery = true)
+    int claimHandledReply(@Param("instituteId") String instituteId, @Param("wamid") String wamid,
+                          @Param("now") Instant now);
+
+    /** Prune the handled-reply set (rows older than the reply window are dead weight). */
+    @Modifying
+    @Transactional
+    @Query(value = "DELETE FROM engagement_handled_reply WHERE claimed_at < :before", nativeQuery = true)
+    int pruneHandledReplies(@Param("before") Instant before);
 }

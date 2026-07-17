@@ -43,8 +43,12 @@ public class EngagementEngineController {
     private final EngagementEngineRepository engineRepository;
     private final EngagementMemberRepository memberRepository;
     private final EngagementPromptVersionRepository promptRepository;
+    private final vacademy.io.admin_core_service.features.engagement.repository.EngagementActionRepository actionRepository;
     private final DataPointRegistry dataPointRegistry;
     private final EngagementAccessGuard accessGuard;
+
+    @org.springframework.beans.factory.annotation.Value("${engagement.autonomy.first-n:5}")
+    private int defaultFirstN;
 
     @PostMapping
     public ResponseEntity<EngagementEngine> create(@RequestParam String instituteId,
@@ -67,10 +71,16 @@ public class EngagementEngineController {
                                                    @RequestAttribute("user") CustomUserDetails user) {
         accessGuard.requireAdmin(user, instituteId);
         EngagementEngine engine = engineService.requireEngine(engineId, instituteId);
-        return ResponseEntity.ok(Map.of(
-                "engine", engine,
-                "activeMembers", memberRepository.countByEngineIdAndStatus(engineId, "ACTIVE"),
-                "prompt", promptRepository.findTopByEngineIdAndStatusOrderByVersionDesc(engineId, "ACTIVE").orElse(null)));
+        int effectiveFirstN = engine.getFirstN() != null ? engine.getFirstN() : defaultFirstN;
+        // HashMap (not Map.of) — the active prompt can be null on a brand-new engine, and Map.of
+        // rejects null values with an NPE. approvedSends/firstN drive the detail page's graduation UI.
+        Map<String, Object> body = new java.util.HashMap<>();
+        body.put("engine", engine);
+        body.put("activeMembers", memberRepository.countByEngineIdAndStatus(engineId, "ACTIVE"));
+        body.put("prompt", promptRepository.findTopByEngineIdAndStatusOrderByVersionDesc(engineId, "ACTIVE").orElse(null));
+        body.put("approvedSends", actionRepository.countApprovedSends(engineId));
+        body.put("effectiveFirstN", effectiveFirstN);
+        return ResponseEntity.ok(body);
     }
 
     /** Resolve audience selectors → enroll (idempotent, jittered) + exit leavers. */
@@ -101,6 +111,16 @@ public class EngagementEngineController {
                                                               @RequestAttribute("user") CustomUserDetails user) {
         accessGuard.requireAdmin(user, instituteId);
         return ResponseEntity.ok(engineService.editPrompt(engineId, instituteId, request, user.getUserId()));
+    }
+
+    /** Kill switch: stop/resume autonomous sending (the engine keeps drafting copilot tasks). */
+    @PutMapping("/{engineId}/autonomy")
+    public ResponseEntity<EngagementEngine> setAutonomy(@PathVariable String engineId,
+                                                        @RequestParam String instituteId,
+                                                        @RequestParam boolean killed,
+                                                        @RequestAttribute("user") CustomUserDetails user) {
+        accessGuard.requireAdmin(user, instituteId);
+        return ResponseEntity.ok(engineService.setAutonomyKilled(engineId, instituteId, killed));
     }
 
     @GetMapping("/{engineId}/prompt/history")

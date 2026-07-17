@@ -78,6 +78,14 @@ public class EngagementMember {
     @Column(name = "window_open_until")
     private Instant windowOpenUntil;
 
+    /** Last inbound wamid the auto-reply has handled — the at-most-once dedup key for answering replies. */
+    @Column(name = "last_reply_wamid", length = 255)
+    private String lastReplyWamid;
+
+    /** Holdout cohort (Phase 2): enrolled but never messaged, for lift measurement. Set once at enroll. */
+    @Column(name = "is_holdout", nullable = false)
+    private Boolean isHoldout = false;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "memory_json", columnDefinition = "jsonb", nullable = false)
     private String memoryJson = "{}";

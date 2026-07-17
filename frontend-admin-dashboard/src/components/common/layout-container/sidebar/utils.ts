@@ -536,6 +536,26 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         ],
     },
     {
+        icon: Lightning,
+        title: 'Engagement Engines',
+        id: 'engagement-engines',
+        category: 'CRM',
+        subItems: [
+            {
+                subItem: 'Engines',
+                subItemLink: '/engagement-engines',
+                subItemId: 'engagement-engines-list',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Task Inbox',
+                subItemLink: '/engagement-engines/inbox',
+                subItemId: 'engagement-task-inbox',
+                adminOnly: true,
+            },
+        ],
+    },
+    {
         icon: GearSix,
         id: 'settings',
         title: 'Settings',

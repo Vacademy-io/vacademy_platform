@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.engagement.entity.EngagementPromp
 import vacademy.io.admin_core_service.features.engagement.repository.EngagementActionRepository;
 import vacademy.io.admin_core_service.features.engagement.repository.EngagementMemberRepository;
 import vacademy.io.admin_core_service.features.engagement.repository.EngagementPromptVersionRepository;
+import vacademy.io.admin_core_service.features.engagement.repository.EngagementTemplateProposalRepository;
 import vacademy.io.admin_core_service.features.engagement.spi.DataPointRegistry;
 import vacademy.io.admin_core_service.features.engagement.spi.FetchContext;
 import vacademy.io.admin_core_service.features.engagement.spi.Subject;
@@ -28,6 +29,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * The per-cohort decision flow: hydrate → consent → shouldWake → LLM → gate → TASK/NO_OP.
@@ -49,6 +52,7 @@ public class EngagementDecisionService {
     private final EngagementMemberRepository memberRepository;
     private final EngagementActionRepository actionRepository;
     private final EngagementPromptVersionRepository promptRepository;
+    private final EngagementTemplateProposalRepository templateProposalRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${engagement.recent-window-days:14}")
@@ -59,6 +63,12 @@ public class EngagementDecisionService {
 
     @Value("${engagement.sweep.lease-minutes:15}")
     private int leaseMinutes;
+
+    @Value("${engagement.autonomy.first-n:5}")
+    private int defaultFirstN;
+
+    @Value("${engagement.schedule.max-hours:168}")
+    private int maxScheduleHours;
 
     private static final int MAX_DRAFT_CHARS = 4000;
     private static final Set<String> VALID_CHANNELS = Set.of("WHATSAPP", "EMAIL", "IN_APP", "AI_CALL");
@@ -99,11 +109,21 @@ public class EngagementDecisionService {
         Set<String> optedOut = policyGate.optedOutUserIds(engine.getInstituteId(),
                 members.stream().map(EngagementMember::getUserId).filter(java.util.Objects::nonNull).toList());
 
+        // Channel context is per-ENGINE, not per-member — compute once so the prompt prefix (which
+        // now carries the enabled channels + approved WhatsApp templates) stays byte-identical across
+        // the cohort. WhatsApp is template-only, so the brain can only pick it when a template exists.
+        Set<String> enabledChannels = parseEnabledChannels(engine);
+        List<EngagementBrainClient.TemplateOption> whatsappTemplates =
+                enabledChannels.contains("WHATSAPP") ? loadApprovedTemplates(engine) : List.of();
+        Map<String, EngagementBrainClient.TemplateOption> templatesByName = new java.util.HashMap<>();
+        whatsappTemplates.forEach(t -> templatesByName.put(t.name(), t));
+
         boolean dryRun = "DRY_RUN".equalsIgnoreCase(engine.getStatus());
         int decisions = 0;
         for (EngagementMember member : members) {
             try {
-                decisions += decideOne(engine, prompt, member, bundle, optedOut, dryRun) ? 1 : 0;
+                decisions += decideOne(engine, prompt, member, bundle, optedOut, dryRun,
+                        enabledChannels, whatsappTemplates, templatesByName) ? 1 : 0;
             } catch (Exception e) {
                 // Decision failed AFTER we claimed a lease. Push it out with exponential backoff
                 // so an LLM/provider outage doesn't re-hammer every 15 min (the lease alone would
@@ -118,7 +138,10 @@ public class EngagementDecisionService {
 
     private boolean decideOne(EngagementEngine engine, EngagementPromptVersion prompt,
                               EngagementMember member, DataPointRegistry.CohortBundle bundle,
-                              Set<String> optedOut, boolean dryRun) {
+                              Set<String> optedOut, boolean dryRun,
+                              Set<String> enabledChannels,
+                              List<EngagementBrainClient.TemplateOption> whatsappTemplates,
+                              Map<String, EngagementBrainClient.TemplateOption> templatesByName) {
         Instant now = Instant.now();
 
         // 0. Lease re-check: a serial cohort can outrun its 15-min lease; if another pod has
@@ -145,6 +168,17 @@ public class EngagementDecisionService {
             return false;
         }
 
+        // 1b. Holdout cohort (Phase 2): enrolled for lift measurement but NEVER messaged. Skip BEFORE
+        // the LLM (zero tokens), reschedule at cadence so they don't re-select every sweep, and stamp
+        // last_decided_at so no wake trigger keeps re-firing. Their engagement is compared to the
+        // treated cohort out-of-band; nothing is ever sent or tasked for them.
+        if (Boolean.TRUE.equals(member.getIsHoldout())) {
+            member.setLastDecidedAt(now);
+            member.setNextActionAt(now.plus(Duration.ofHours(Math.max(engine.getCadenceHours(), 1))));
+            memberRepository.save(member);
+            return false;
+        }
+
         // 2. Deterministic wake gate — zero tokens for most members.
         String fingerprint = quantizedFingerprint(bundle.payloadsFor(member.getId()));
         if (!shouldWake(member, engine, fingerprint, bundle, now)) {
@@ -156,12 +190,27 @@ public class EngagementDecisionService {
 
         // 3. The LLM.
         EngagementBrainClient.Decision d = brain.decide(
-                engine, prompt.getCompiledText(), bundle.renderFor(member.getId()), now);
+                engine, prompt.getCompiledText(), bundle.renderFor(member.getId()), now,
+                enabledChannels, whatsappTemplates);
 
         // 4. Persist the outcome — TASK (or SIMULATED for DRY_RUN) or NO_OP.
-        if ("ACT".equalsIgnoreCase(d.decision()) && d.draftBody() != null && !d.draftBody().isBlank()) {
-            Instant proposed = now.plus(Duration.ofHours(
-                    d.scheduleInHours() != null ? Math.max(d.scheduleInHours(), 0) : 0));
+        // Enforce the channel enablement server-side, not just in the prompt: a model that ignores
+        // the "choose only enabled channels" instruction must NOT get a task created on a channel the
+        // institute disabled (sendEmail/sendInApp have no enablement guard, so it would dispatch). A
+        // null channel is fine (the human picks); a non-null one must be enabled.
+        String chosenChannel = validChannel(d.channel());
+        boolean channelAllowed = chosenChannel == null || enabledChannels.contains(chosenChannel);
+        if (!channelAllowed) {
+            log.warn("Engine {}: brain chose disabled channel '{}' — recording NO_OP", engine.getId(), chosenChannel);
+        }
+        if ("ACT".equalsIgnoreCase(d.decision()) && channelAllowed
+                && d.draftBody() != null && !d.draftBody().isBlank()) {
+            // Cap the schedule horizon: an unbounded scheduleInHours lets the brain place a send days
+            // or weeks out, which (a) drifts far from the context it was decided on and (b) breaks the
+            // billing-reconciliation window if it dispatches long after creation.
+            int hoursOut = d.scheduleInHours() != null
+                    ? Math.min(Math.max(d.scheduleInHours(), 0), maxScheduleHours) : 0;
+            Instant proposed = now.plus(Duration.ofHours(hoursOut));
             Instant scheduledFor = policyGate.clampToAllowedWindow(engine, proposed);
 
             EngagementAction action = new EngagementAction();
@@ -169,17 +218,35 @@ public class EngagementDecisionService {
             action.setMemberId(member.getId());
             action.setInstituteId(engine.getInstituteId());
             action.setPromptVersionId(prompt.getId());
-            action.setKind("TASK");                      // Phase 1a: the engine only suggests
             action.setActionType(validActionType(d.actionType()));
-            action.setChannel(validChannel(d.channel()));
-            // DRY_RUN → SIMULATED (terminal, excluded from the inbox and the cadence cap): a dry
-            // run must never surface tasks staff could act on, or consume the real frequency cap.
-            action.setStatus(dryRun ? "SIMULATED" : "OPEN");
+            action.setChannel(chosenChannel);
             action.setDraftBody(cap(d.draftBody()));
             action.setRationale(cap(d.rationale()));
             action.setPriority(BigDecimal.valueOf(Math.max(0, Math.min(100, d.priority()))));
             action.setScheduledFor(scheduledFor);
             action.setExpiresAt(scheduledFor.plus(Duration.ofHours(taskExpireHours)));
+            // WhatsApp is template-only: attach the brain's chosen approved template + variables so
+            // the dispatcher can actually send it. If the pick is invalid (unknown template, missing
+            // a variable), leave it unattached — the task still surfaces with the resolved draft for
+            // a human to fix; the dispatcher refuses a template-less WhatsApp send, so nothing leaks.
+            if ("WHATSAPP".equals(action.getChannel())) {
+                attachWhatsAppTemplate(action, d, templatesByName);
+            }
+            // Phase 2 — AUTONOMOUS vs COPILOT. Auto-send (kind=SEND; the dispatch job fires it when
+            // due) only when ALL hold: the channel's `auto` intent is set, the engine isn't killed,
+            // it has GRADUATED (>= first_n human-approved sends), the draft is actually sendable
+            // (WhatsApp needs an attached approved template), and it's not a dry run. Otherwise it's a
+            // copilot TASK exactly as before. A dry run is always SIMULATED (never sends, never caps).
+            boolean draftReady = !"WHATSAPP".equals(chosenChannel) || action.getTemplateName() != null;
+            boolean autoSend = !dryRun
+                    && chosenChannel != null
+                    && !"AI_CALL".equals(chosenChannel)   // AI calls are task-only; never auto-send them
+                    && channelAutoEnabled(engine, chosenChannel)
+                    && !Boolean.TRUE.equals(engine.getAutoSendKilled())
+                    && draftReady
+                    && graduated(engine);
+            action.setKind(autoSend ? "SEND" : "TASK");
+            action.setStatus(dryRun ? "SIMULATED" : "OPEN");
             actionRepository.save(action);
 
             member.setConsecutiveNoOps((short) 0);
@@ -208,8 +275,140 @@ public class EngagementDecisionService {
         return true;
     }
 
+    /** True iff channels.<ch>.auto is set — the admin's intent to auto-send proactively on that channel. */
+    private boolean channelAutoEnabled(EngagementEngine engine, String channel) {
+        try {
+            return objectMapper.readTree(engine.getChannels()).path(channel).path("auto").asBoolean(false);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Graduated to autonomy: the engine has >= first_n human-approved sends (per-engine override or default). */
+    private boolean graduated(EngagementEngine engine) {
+        int threshold = engine.getFirstN() != null ? engine.getFirstN() : defaultFirstN;
+        if (threshold <= 0) return true; // 0 = trust immediately (explicit opt-in via override)
+        return actionRepository.countApprovedSends(engine.getId()) >= threshold;
+    }
+
+    /** Which channels the engine's config marks enabled; empty config → all (human reviews anyway). */
+    private Set<String> parseEnabledChannels(EngagementEngine engine) {
+        Set<String> enabled = new java.util.LinkedHashSet<>();
+        try {
+            JsonNode channels = objectMapper.readTree(engine.getChannels());
+            for (String ch : VALID_CHANNELS) {
+                if (channels.path(ch).path("enabled").asBoolean(false)) enabled.add(ch);
+            }
+        } catch (Exception e) {
+            log.warn("Engine {} has unparseable channels — allowing all", engine.getId());
+        }
+        return enabled.isEmpty() ? VALID_CHANNELS : enabled;
+    }
+
+    /** The engine's Meta-approved WhatsApp templates the brain may choose from (name + body + vars). */
+    private List<EngagementBrainClient.TemplateOption> loadApprovedTemplates(EngagementEngine engine) {
+        try {
+            return templateProposalRepository.findApproved(engine.getId(), engine.getInstituteId()).stream()
+                    .map(p -> new EngagementBrainClient.TemplateOption(
+                            p.getName(), p.getProposedBody(), readJsonArray(p.getVariableNames()), p.getLanguage()))
+                    .toList();
+        } catch (Exception e) {
+            log.warn("Engine {} approved-template load failed: {}", engine.getId(), e.getMessage());
+            return List.of();
+        }
+    }
+
+    /**
+     * Attach the brain's chosen template to a WhatsApp action, but ONLY if the pick is real and
+     * complete: the template must be one of THIS engine's approved templates, and the brain must
+     * have supplied a value for EVERY variable the template declares. Otherwise leave it unattached
+     * (the dispatcher rejects a template-less WhatsApp send, so an incomplete pick never sends).
+     */
+    private void attachWhatsAppTemplate(EngagementAction action, EngagementBrainClient.Decision d,
+                                        Map<String, EngagementBrainClient.TemplateOption> byName) {
+        String tn = d.templateName();
+        if (tn == null || tn.isBlank()) {
+            log.warn("Engine {}: brain chose WHATSAPP without a template — task left unattached", action.getEngineId());
+            return;
+        }
+        EngagementBrainClient.TemplateOption t = byName.get(tn);
+        if (t == null) {
+            log.warn("Engine {}: brain chose unapproved WhatsApp template '{}' — unattached", action.getEngineId(), tn);
+            return;
+        }
+        Map<String, String> supplied = d.variables() != null ? d.variables() : Map.of();
+        // Serialize ONLY the template's declared variables (drop any extras the model invented),
+        // and require every one to be present and non-blank.
+        Map<String, String> vars = new java.util.LinkedHashMap<>();
+        for (String name : t.variableNames()) {
+            String v = supplied.get(name);
+            if (v == null || v.isBlank()) {
+                log.warn("Engine {}: brain omitted variable '{}' for template '{}' — unattached",
+                        action.getEngineId(), name, tn);
+                return;
+            }
+            vars.put(name, v);
+        }
+        action.setTemplateName(t.name());
+        action.setVariablesJson(writeJson(vars));
+        // Meta identifies a template by name+language; the template was registered under the engine's
+        // language (metaLanguageCode maps hinglish→en). Carry it so the dispatcher sends the right locale.
+        action.setTemplateLanguage(metaLanguageCode(t.language()));
+        // Overwrite the model's free-text draft with the DETERMINISTIC render of the approved template
+        // filled with these variables — this is exactly what Meta will send, so the human reviews the
+        // real message and sent_body records the truth (the model's paraphrase could silently diverge).
+        String rendered = renderTemplate(t.body(), t.variableNames(), vars);
+        if (rendered != null && !rendered.isBlank()) action.setDraftBody(cap(rendered));
+    }
+
+    private static final Pattern TEMPLATE_PLACEHOLDER = Pattern.compile("\\{\\{(\\d+)}}");
+
+    /**
+     * Substitute {{1}}..{{n}} in a template body with the ordered variable values — the exact render
+     * Meta produces (position i ↔ variableNames[i-1]). SINGLE pass, so a variable value that itself
+     * contains a placeholder token (e.g. a person's name of "{{2}}") is NOT re-substituted, matching
+     * Meta's independent per-position fill and keeping the reviewed preview == the sent message.
+     */
+    private static String renderTemplate(String body, List<String> variableNames, Map<String, String> vars) {
+        if (body == null) return null;
+        Matcher m = TEMPLATE_PLACEHOLDER.matcher(body);
+        StringBuilder sb = new StringBuilder();
+        while (m.find()) {
+            int idx = Integer.parseInt(m.group(1)) - 1;
+            String val = (idx >= 0 && idx < variableNames.size())
+                    ? vars.getOrDefault(variableNames.get(idx), "") : m.group();
+            m.appendReplacement(sb, Matcher.quoteReplacement(val));
+        }
+        m.appendTail(sb);
+        return sb.toString();
+    }
+
+    /** Hinglish is authored under Meta code "en"; en/hi register under themselves. Must match the register-time mapping. */
+    private static String metaLanguageCode(String lang) {
+        return "hinglish".equals(lang) ? "en" : (lang != null ? lang : "en");
+    }
+
     private String validChannel(String c) {
         return c != null && VALID_CHANNELS.contains(c.toUpperCase()) ? c.toUpperCase() : null;
+    }
+
+    private List<String> readJsonArray(String json) {
+        try {
+            List<String> out = new ArrayList<>();
+            JsonNode n = objectMapper.readTree(json == null ? "[]" : json);
+            if (n.isArray()) n.forEach(e -> out.add(e.asText()));
+            return out;
+        } catch (Exception e) {
+            return List.of();
+        }
+    }
+
+    private String writeJson(Object o) {
+        try {
+            return objectMapper.writeValueAsString(o);
+        } catch (Exception e) {
+            return "{}";
+        }
     }
 
     private String validActionType(String t) {

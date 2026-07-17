@@ -13,6 +13,7 @@ import vacademy.io.admin_core_service.features.engagement.entity.EngagementPromp
 import vacademy.io.admin_core_service.features.engagement.repository.EngagementEngineRepository;
 import vacademy.io.admin_core_service.features.engagement.repository.EngagementMemberRepository;
 import vacademy.io.admin_core_service.features.engagement.repository.EngagementPromptVersionRepository;
+import vacademy.io.admin_core_service.features.engagement.repository.EngagementTemplateProposalRepository;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.Instant;
@@ -32,6 +33,7 @@ public class EngagementEngineService {
     private final EngagementEngineRepository engineRepository;
     private final EngagementMemberRepository memberRepository;
     private final EngagementPromptVersionRepository promptRepository;
+    private final EngagementTemplateProposalRepository templateProposalRepository;
     private final EngagementReadDao dao;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -58,6 +60,12 @@ public class EngagementEngineService {
         engine.setQuietHours(validObjectJson(req.getQuietHours(), "quietHours", "{}"));
         if (req.getCadenceHours() != null && req.getCadenceHours() > 0) {
             engine.setCadenceHours(req.getCadenceHours());
+        }
+        if (req.getHoldoutPct() != null) {
+            engine.setHoldoutPct(Math.max(0, Math.min(100, req.getHoldoutPct())));
+        }
+        if (req.getFirstN() != null && req.getFirstN() >= 0) {
+            engine.setFirstN(req.getFirstN());
         }
         engine.setCreatedBy(createdBy);
         engine = engineRepository.save(engine);
@@ -189,12 +197,13 @@ public class EngagementEngineService {
         long activeBefore = memberRepository.countByEngineIdAndStatus(engine.getId(), "ACTIVE");
 
         String runId = UUID.randomUUID().toString();
+        int holdoutPct = engine.getHoldoutPct() != null ? Math.max(0, Math.min(100, engine.getHoldoutPct())) : 0;
         for (Target t : canonical.values()) {
             memberRepository.enrollOrStamp(
                     UUID.randomUUID().toString(), engine.getId(), instituteId,
                     t.userId(), t.audienceResponseId(),
                     EngagementDecisionService.jitteredFirstWake(engine.getCadenceHours(), Instant.now()),
-                    runId);
+                    runId, holdoutPct);
         }
         // Exit anyone not stamped by this run — unconditional, so an emptied audience exits all.
         int exited = memberRepository.exitNotStampedBy(engine.getId(), runId);
@@ -212,16 +221,45 @@ public class EngagementEngineService {
     @Transactional
     public EngagementEngine transition(String engineId, String instituteId, String toStatus) {
         EngagementEngine engine = requireEngine(engineId, instituteId);
-        List<String> allowed = List.of("DRAFT", "DRY_RUN", "ACTIVE", "PAUSED", "ARCHIVED");
+        List<String> allowed = List.of("DRAFT", "TEMPLATES_PENDING", "DRY_RUN", "ACTIVE", "PAUSED", "ARCHIVED");
         if (!allowed.contains(toStatus)) throw new VacademyException("Unknown status: " + toStatus);
-        if (("ACTIVE".equals(toStatus) || "DRY_RUN".equals(toStatus))
-                && memberRepository.countByEngineIdAndStatus(engineId, "ACTIVE") == 0) {
+        boolean goingLive = "ACTIVE".equals(toStatus) || "DRY_RUN".equals(toStatus);
+        if (goingLive && memberRepository.countByEngineIdAndStatus(engineId, "ACTIVE") == 0) {
             throw new VacademyException("Enroll an audience before activating the engine");
         }
+        // D8 activation gate: a WhatsApp engine cannot go live until at least one template is
+        // Meta-approved (proactive WhatsApp is template-only). This gate fires only on the
+        // transition INTO live — an already-ACTIVE engine is never re-paused for a new template.
+        if (goingLive && whatsAppEnabled(engine)
+                && templateProposalRepository.countByEngineIdAndStatusIn(
+                        engineId, List.of("META_APPROVED", "META_RECATEGORISED")) == 0) {
+            throw new VacademyException("This engine sends on WhatsApp — it needs at least one "
+                    + "Meta-approved template before it can go live. Check template status.");
+        }
         engine.setStatus(toStatus);
-        if (("ACTIVE".equals(toStatus) || "DRY_RUN".equals(toStatus)) && engine.getNextDueAt() == null) {
+        if (goingLive && engine.getNextDueAt() == null) {
             engine.setNextDueAt(Instant.now());
         }
+        return engineRepository.save(engine);
+    }
+
+    private boolean whatsAppEnabled(EngagementEngine engine) {
+        try {
+            return objectMapper.readTree(engine.getChannels()).path("WHATSAPP").path("enabled").asBoolean(false);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * The Phase 2 kill switch: stop (or resume) AUTONOMOUS sending without pausing the engine. When
+     * killed, the engine keeps deciding and drafting, but every proactive decision drops to a human
+     * copilot task instead of auto-sending — an emergency brake distinct from PAUSED.
+     */
+    @Transactional
+    public EngagementEngine setAutonomyKilled(String engineId, String instituteId, boolean killed) {
+        EngagementEngine engine = requireEngine(engineId, instituteId);
+        engine.setAutoSendKilled(killed);
         return engineRepository.save(engine);
     }
 

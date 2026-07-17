@@ -69,6 +69,10 @@ public class EngagementAction {
     @Column(name = "template_name")
     private String templateName;
 
+    /** Meta language code the template is registered under (en|hi); Meta identifies a template by name+language. */
+    @Column(name = "template_language", length = 10)
+    private String templateLanguage;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "variables_json", columnDefinition = "jsonb")
     private String variablesJson;
@@ -105,6 +109,10 @@ public class EngagementAction {
 
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
+
+    /** Phase 2: set when the per-message credit charge succeeded; NULL on a SENT auto-send = re-bill. */
+    @Column(name = "credits_billed_at")
+    private Instant creditsBilledAt;
 
     @Column(name = "llm_tokens_in")
     private Integer llmTokensIn;

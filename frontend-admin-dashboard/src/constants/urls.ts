@@ -1480,3 +1480,9 @@ export const SALES_DASHBOARD_LEADERBOARD = (
     `${SALES_DASHBOARD_BASE}/counsellor-leaderboard?${buildSdQS(instituteId, { team_id: teamId, limit })}`;
 export const SALES_DASHBOARD_INSIGHTS = (instituteId: string, teamId?: string) =>
     `${SALES_DASHBOARD_BASE}/insights?${buildSdQS(instituteId, { team_id: teamId })}`;
+
+// ---- Engagement Engines (admin-core-service) ----
+export const ENGAGEMENT_ENGINES_BASE = `${BASE_URL}/admin-core-service/v1/engagement/engines`;
+export const ENGAGEMENT_DATA_POINTS = `${ENGAGEMENT_ENGINES_BASE}/data-points`;
+export const ENGAGEMENT_TASKS_BASE = `${BASE_URL}/admin-core-service/v1/engagement/tasks`;
+export const ENGAGEMENT_TEMPLATES_BASE = `${BASE_URL}/admin-core-service/v1/engagement/template-proposals`;

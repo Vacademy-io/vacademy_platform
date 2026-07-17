@@ -923,6 +923,31 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
         Long getRecentSends();
     }
 
+    interface InboundReplyRow {
+        String getChannelId();
+        String getBody();
+        java.sql.Timestamp getReceivedAt();
+        String getWamid();
+    }
+
+    /**
+     * Recent inbound WhatsApp replies for an institute since a cursor — drives the Engagement
+     * Engine's reply-ingestion sweep (promote the member to tier 0, open the 24h window) and its
+     * auto-reply. DISTINCT ON keeps only the latest reply per sender so the caller does a single
+     * pass; wamid (source_id) is the stable per-message id the auto-reply dedups on.
+     */
+    @Query(value = """
+            SELECT DISTINCT ON (channel_id) channel_id AS "channelId", body AS "body",
+                   notification_date AS "receivedAt", source_id AS "wamid"
+            FROM notification_log
+            WHERE institute_id = :instituteId
+              AND notification_type = 'WHATSAPP_MESSAGE_INCOMING'
+              AND notification_date >= :since
+            ORDER BY channel_id, notification_date DESC
+            """, nativeQuery = true)
+    List<InboundReplyRow> findInboundRepliesSince(@Param("instituteId") String instituteId,
+                                                  @Param("since") Instant since);
+
     @Query(value = """
             SELECT LOWER(channel_id) AS "channelId",
                    MAX(notification_date) FILTER (WHERE notification_type = 'EMAIL') AS "lastSentAt",

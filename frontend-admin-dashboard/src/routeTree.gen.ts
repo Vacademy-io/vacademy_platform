@@ -38,6 +38,7 @@ import { Route as LearnerInsightsIndexRouteImport } from "./routes/learner-insig
 import { Route as InstructorCopilotIndexRouteImport } from "./routes/instructor-copilot/index"
 import { Route as EvaluatorAiIndexRouteImport } from "./routes/evaluator-ai/index"
 import { Route as EvaluationIndexRouteImport } from "./routes/evaluation/index"
+import { Route as EngagementEnginesIndexRouteImport } from "./routes/engagement-engines/index"
 import { Route as DashboardIndexRouteImport } from "./routes/dashboard/index"
 import { Route as CounsellorsIndexRouteImport } from "./routes/counsellors/index"
 import { Route as ConnectorCenterDetailsIndexRouteImport } from "./routes/connector-center-details/index"
@@ -53,6 +54,7 @@ import { Route as AdminActivityLogsIndexRouteImport } from "./routes/admin-activ
 import { Route as VimWaitlistRouteImport } from "./routes/vim/waitlist"
 import { Route as VimLoginRouteImport } from "./routes/vim/login"
 import { Route as VimDashboardRouteImport } from "./routes/vim/dashboard"
+import { Route as EngagementEnginesEngineIdRouteImport } from "./routes/engagement-engines/$engineId"
 import { Route as CounsellorsUserIdRouteImport } from "./routes/counsellors/$userId"
 import { Route as WorkflowListIndexRouteImport } from "./routes/workflow/list/index"
 import { Route as WorkflowCreateIndexRouteImport } from "./routes/workflow/create/index"
@@ -97,6 +99,8 @@ import { Route as EvaluatorAiEvaluationIndexRouteImport } from "./routes/evaluat
 import { Route as EvaluatorAiAssessmentIndexRouteImport } from "./routes/evaluator-ai/assessment/index"
 import { Route as EvaluationEvaluationsIndexRouteImport } from "./routes/evaluation/evaluations/index"
 import { Route as EvaluationEvaluationToolIndexRouteImport } from "./routes/evaluation/evaluation-tool/index"
+import { Route as EngagementEnginesInboxIndexRouteImport } from "./routes/engagement-engines/inbox/index"
+import { Route as EngagementEnginesCreateIndexRouteImport } from "./routes/engagement-engines/create/index"
 import { Route as ContentContentIdIndexRouteImport } from "./routes/content/$contentId/index"
 import { Route as CommunityQuestionPaperIndexRouteImport } from "./routes/community/question-paper/index"
 import { Route as CommunicationWhatsappTemplatesIndexRouteImport } from "./routes/communication/whatsapp-templates/index"
@@ -390,6 +394,13 @@ const EvaluationIndexRoute = EvaluationIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/evaluation/index.lazy").then((d) => d.Route),
 )
+const EngagementEnginesIndexRoute = EngagementEnginesIndexRouteImport.update({
+  id: "/engagement-engines/",
+  path: "/engagement-engines/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/engagement-engines/index.lazy").then((d) => d.Route),
+)
 const DashboardIndexRoute = DashboardIndexRouteImport.update({
   id: "/dashboard/",
   path: "/dashboard/",
@@ -491,6 +502,14 @@ const VimDashboardRoute = VimDashboardRouteImport.update({
   path: "/vim/dashboard",
   getParentRoute: () => rootRouteImport,
 } as any)
+const EngagementEnginesEngineIdRoute =
+  EngagementEnginesEngineIdRouteImport.update({
+    id: "/engagement-engines/$engineId",
+    path: "/engagement-engines/$engineId",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/engagement-engines/$engineId.lazy").then((d) => d.Route),
+  )
 const CounsellorsUserIdRoute = CounsellorsUserIdRouteImport.update({
   id: "/counsellors/$userId",
   path: "/counsellors/$userId",
@@ -848,6 +867,24 @@ const EvaluationEvaluationToolIndexRoute =
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
     import("./routes/evaluation/evaluation-tool/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
+const EngagementEnginesInboxIndexRoute =
+  EngagementEnginesInboxIndexRouteImport.update({
+    id: "/engagement-engines/inbox/",
+    path: "/engagement-engines/inbox/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/engagement-engines/inbox/index.lazy").then((d) => d.Route),
+  )
+const EngagementEnginesCreateIndexRoute =
+  EngagementEnginesCreateIndexRouteImport.update({
+    id: "/engagement-engines/create/",
+    path: "/engagement-engines/create/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/engagement-engines/create/index.lazy").then(
       (d) => d.Route,
     ),
   )
@@ -1639,6 +1676,7 @@ export interface FileRoutesByFullPath {
   "/learner-insights": typeof LearnerInsightsLazyRouteWithChildren
   "/pricing": typeof PricingLazyRoute
   "/counsellors/$userId": typeof CounsellorsUserIdRoute
+  "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -1654,6 +1692,7 @@ export interface FileRoutesByFullPath {
   "/connector-center-details/": typeof ConnectorCenterDetailsIndexRoute
   "/counsellors/": typeof CounsellorsIndexRoute
   "/dashboard/": typeof DashboardIndexRoute
+  "/engagement-engines/": typeof EngagementEnginesIndexRoute
   "/evaluation/": typeof EvaluationIndexRoute
   "/evaluator-ai/": typeof EvaluatorAiIndexRoute
   "/instructor-copilot/": typeof InstructorCopilotIndexRoute
@@ -1718,6 +1757,8 @@ export interface FileRoutesByFullPath {
   "/communication/whatsapp-templates/": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper/": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId/": typeof ContentContentIdIndexRoute
+  "/engagement-engines/create/": typeof EngagementEnginesCreateIndexRoute
+  "/engagement-engines/inbox/": typeof EngagementEnginesInboxIndexRoute
   "/evaluation/evaluation-tool/": typeof EvaluationEvaluationToolIndexRoute
   "/evaluation/evaluations/": typeof EvaluationEvaluationsIndexRoute
   "/evaluator-ai/assessment/": typeof EvaluatorAiAssessmentIndexRoute
@@ -1824,6 +1865,7 @@ export interface FileRoutesByTo {
   "/landing": typeof LandingLazyRoute
   "/pricing": typeof PricingLazyRoute
   "/counsellors/$userId": typeof CounsellorsUserIdRoute
+  "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -1839,6 +1881,7 @@ export interface FileRoutesByTo {
   "/connector-center-details": typeof ConnectorCenterDetailsIndexRoute
   "/counsellors": typeof CounsellorsIndexRoute
   "/dashboard": typeof DashboardIndexRoute
+  "/engagement-engines": typeof EngagementEnginesIndexRoute
   "/evaluation": typeof EvaluationIndexRoute
   "/evaluator-ai": typeof EvaluatorAiIndexRoute
   "/instructor-copilot": typeof InstructorCopilotIndexRoute
@@ -1903,6 +1946,8 @@ export interface FileRoutesByTo {
   "/communication/whatsapp-templates": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId": typeof ContentContentIdIndexRoute
+  "/engagement-engines/create": typeof EngagementEnginesCreateIndexRoute
+  "/engagement-engines/inbox": typeof EngagementEnginesInboxIndexRoute
   "/evaluation/evaluation-tool": typeof EvaluationEvaluationToolIndexRoute
   "/evaluation/evaluations": typeof EvaluationEvaluationsIndexRoute
   "/evaluator-ai/assessment": typeof EvaluatorAiAssessmentIndexRoute
@@ -2011,6 +2056,7 @@ export interface FileRoutesById {
   "/learner-insights": typeof LearnerInsightsLazyRouteWithChildren
   "/pricing": typeof PricingLazyRoute
   "/counsellors/$userId": typeof CounsellorsUserIdRoute
+  "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -2026,6 +2072,7 @@ export interface FileRoutesById {
   "/connector-center-details/": typeof ConnectorCenterDetailsIndexRoute
   "/counsellors/": typeof CounsellorsIndexRoute
   "/dashboard/": typeof DashboardIndexRoute
+  "/engagement-engines/": typeof EngagementEnginesIndexRoute
   "/evaluation/": typeof EvaluationIndexRoute
   "/evaluator-ai/": typeof EvaluatorAiIndexRoute
   "/instructor-copilot/": typeof InstructorCopilotIndexRoute
@@ -2090,6 +2137,8 @@ export interface FileRoutesById {
   "/communication/whatsapp-templates/": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper/": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId/": typeof ContentContentIdIndexRoute
+  "/engagement-engines/create/": typeof EngagementEnginesCreateIndexRoute
+  "/engagement-engines/inbox/": typeof EngagementEnginesInboxIndexRoute
   "/evaluation/evaluation-tool/": typeof EvaluationEvaluationToolIndexRoute
   "/evaluation/evaluations/": typeof EvaluationEvaluationsIndexRoute
   "/evaluator-ai/assessment/": typeof EvaluatorAiAssessmentIndexRoute
@@ -2199,6 +2248,7 @@ export interface FileRouteTypes {
     | "/learner-insights"
     | "/pricing"
     | "/counsellors/$userId"
+    | "/engagement-engines/$engineId"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2214,6 +2264,7 @@ export interface FileRouteTypes {
     | "/connector-center-details/"
     | "/counsellors/"
     | "/dashboard/"
+    | "/engagement-engines/"
     | "/evaluation/"
     | "/evaluator-ai/"
     | "/instructor-copilot/"
@@ -2278,6 +2329,8 @@ export interface FileRouteTypes {
     | "/communication/whatsapp-templates/"
     | "/community/question-paper/"
     | "/content/$contentId/"
+    | "/engagement-engines/create/"
+    | "/engagement-engines/inbox/"
     | "/evaluation/evaluation-tool/"
     | "/evaluation/evaluations/"
     | "/evaluator-ai/assessment/"
@@ -2384,6 +2437,7 @@ export interface FileRouteTypes {
     | "/landing"
     | "/pricing"
     | "/counsellors/$userId"
+    | "/engagement-engines/$engineId"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2399,6 +2453,7 @@ export interface FileRouteTypes {
     | "/connector-center-details"
     | "/counsellors"
     | "/dashboard"
+    | "/engagement-engines"
     | "/evaluation"
     | "/evaluator-ai"
     | "/instructor-copilot"
@@ -2463,6 +2518,8 @@ export interface FileRouteTypes {
     | "/communication/whatsapp-templates"
     | "/community/question-paper"
     | "/content/$contentId"
+    | "/engagement-engines/create"
+    | "/engagement-engines/inbox"
     | "/evaluation/evaluation-tool"
     | "/evaluation/evaluations"
     | "/evaluator-ai/assessment"
@@ -2570,6 +2627,7 @@ export interface FileRouteTypes {
     | "/learner-insights"
     | "/pricing"
     | "/counsellors/$userId"
+    | "/engagement-engines/$engineId"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2585,6 +2643,7 @@ export interface FileRouteTypes {
     | "/connector-center-details/"
     | "/counsellors/"
     | "/dashboard/"
+    | "/engagement-engines/"
     | "/evaluation/"
     | "/evaluator-ai/"
     | "/instructor-copilot/"
@@ -2649,6 +2708,8 @@ export interface FileRouteTypes {
     | "/communication/whatsapp-templates/"
     | "/community/question-paper/"
     | "/content/$contentId/"
+    | "/engagement-engines/create/"
+    | "/engagement-engines/inbox/"
     | "/evaluation/evaluation-tool/"
     | "/evaluation/evaluations/"
     | "/evaluator-ai/assessment/"
@@ -2757,6 +2818,7 @@ export interface RootRouteChildren {
   LearnerInsightsLazyRoute: typeof LearnerInsightsLazyRouteWithChildren
   PricingLazyRoute: typeof PricingLazyRoute
   CounsellorsUserIdRoute: typeof CounsellorsUserIdRoute
+  EngagementEnginesEngineIdRoute: typeof EngagementEnginesEngineIdRoute
   VimDashboardRoute: typeof VimDashboardRoute
   VimLoginRoute: typeof VimLoginRoute
   VimWaitlistRoute: typeof VimWaitlistRoute
@@ -2772,6 +2834,7 @@ export interface RootRouteChildren {
   ConnectorCenterDetailsIndexRoute: typeof ConnectorCenterDetailsIndexRoute
   CounsellorsIndexRoute: typeof CounsellorsIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
+  EngagementEnginesIndexRoute: typeof EngagementEnginesIndexRoute
   EvaluationIndexRoute: typeof EvaluationIndexRoute
   EvaluatorAiIndexRoute: typeof EvaluatorAiIndexRoute
   InstructorCopilotIndexRoute: typeof InstructorCopilotIndexRoute
@@ -2835,6 +2898,8 @@ export interface RootRouteChildren {
   CommunicationWhatsappTemplatesIndexRoute: typeof CommunicationWhatsappTemplatesIndexRoute
   CommunityQuestionPaperIndexRoute: typeof CommunityQuestionPaperIndexRoute
   ContentContentIdIndexRoute: typeof ContentContentIdIndexRoute
+  EngagementEnginesCreateIndexRoute: typeof EngagementEnginesCreateIndexRoute
+  EngagementEnginesInboxIndexRoute: typeof EngagementEnginesInboxIndexRoute
   EvaluationEvaluationToolIndexRoute: typeof EvaluationEvaluationToolIndexRoute
   EvaluationEvaluationsIndexRoute: typeof EvaluationEvaluationsIndexRoute
   EvaluatorAiAssessmentIndexRoute: typeof EvaluatorAiAssessmentIndexRoute
@@ -3152,6 +3217,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof EvaluationIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/engagement-engines/": {
+      id: "/engagement-engines/"
+      path: "/engagement-engines"
+      fullPath: "/engagement-engines/"
+      preLoaderRoute: typeof EngagementEnginesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/dashboard/": {
       id: "/dashboard/"
       path: "/dashboard"
@@ -3255,6 +3327,13 @@ declare module "@tanstack/react-router" {
       path: "/vim/dashboard"
       fullPath: "/vim/dashboard"
       preLoaderRoute: typeof VimDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/engagement-engines/$engineId": {
+      id: "/engagement-engines/$engineId"
+      path: "/engagement-engines/$engineId"
+      fullPath: "/engagement-engines/$engineId"
+      preLoaderRoute: typeof EngagementEnginesEngineIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/counsellors/$userId": {
@@ -3563,6 +3642,20 @@ declare module "@tanstack/react-router" {
       path: "/evaluation/evaluation-tool"
       fullPath: "/evaluation/evaluation-tool/"
       preLoaderRoute: typeof EvaluationEvaluationToolIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/engagement-engines/inbox/": {
+      id: "/engagement-engines/inbox/"
+      path: "/engagement-engines/inbox"
+      fullPath: "/engagement-engines/inbox/"
+      preLoaderRoute: typeof EngagementEnginesInboxIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/engagement-engines/create/": {
+      id: "/engagement-engines/create/"
+      path: "/engagement-engines/create"
+      fullPath: "/engagement-engines/create/"
+      preLoaderRoute: typeof EngagementEnginesCreateIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/content/$contentId/": {
@@ -4247,6 +4340,7 @@ const rootRouteChildren: RootRouteChildren = {
   LearnerInsightsLazyRoute: LearnerInsightsLazyRouteWithChildren,
   PricingLazyRoute: PricingLazyRoute,
   CounsellorsUserIdRoute: CounsellorsUserIdRoute,
+  EngagementEnginesEngineIdRoute: EngagementEnginesEngineIdRoute,
   VimDashboardRoute: VimDashboardRoute,
   VimLoginRoute: VimLoginRoute,
   VimWaitlistRoute: VimWaitlistRoute,
@@ -4262,6 +4356,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectorCenterDetailsIndexRoute: ConnectorCenterDetailsIndexRoute,
   CounsellorsIndexRoute: CounsellorsIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
+  EngagementEnginesIndexRoute: EngagementEnginesIndexRoute,
   EvaluationIndexRoute: EvaluationIndexRoute,
   EvaluatorAiIndexRoute: EvaluatorAiIndexRoute,
   InstructorCopilotIndexRoute: InstructorCopilotIndexRoute,
@@ -4333,6 +4428,8 @@ const rootRouteChildren: RootRouteChildren = {
     CommunicationWhatsappTemplatesIndexRoute,
   CommunityQuestionPaperIndexRoute: CommunityQuestionPaperIndexRoute,
   ContentContentIdIndexRoute: ContentContentIdIndexRoute,
+  EngagementEnginesCreateIndexRoute: EngagementEnginesCreateIndexRoute,
+  EngagementEnginesInboxIndexRoute: EngagementEnginesInboxIndexRoute,
   EvaluationEvaluationToolIndexRoute: EvaluationEvaluationToolIndexRoute,
   EvaluationEvaluationsIndexRoute: EvaluationEvaluationsIndexRoute,
   EvaluatorAiAssessmentIndexRoute: EvaluatorAiAssessmentIndexRoute,

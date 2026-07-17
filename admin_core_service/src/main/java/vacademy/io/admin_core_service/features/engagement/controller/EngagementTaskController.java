@@ -11,7 +11,9 @@ import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestBody;
 import vacademy.io.admin_core_service.features.engagement.service.EngagementAccessGuard;
+import vacademy.io.admin_core_service.features.engagement.service.EngagementDispatcher;
 import vacademy.io.admin_core_service.features.engagement.entity.EngagementAction;
 import vacademy.io.admin_core_service.features.engagement.repository.EngagementActionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -19,6 +21,7 @@ import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The Phase 1 copilot inbox: institute-wide, unassigned (founder call, D6) — every decision
@@ -36,6 +39,7 @@ public class EngagementTaskController {
 
     private final EngagementActionRepository actionRepository;
     private final EngagementAccessGuard accessGuard;
+    private final EngagementDispatcher dispatcher;
 
     @GetMapping
     public ResponseEntity<Page<EngagementAction>> inbox(
@@ -75,6 +79,42 @@ public class EngagementTaskController {
                                         @RequestAttribute("user") CustomUserDetails user) {
         accessGuard.requireAdmin(user, instituteId);
         transition(taskId, instituteId, "DISMISSED", "DISMISSED");
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Send-on-behalf: the human reviews the AI draft, optionally edits it, and sends. The claim
+     * (OPEN/ACKED → DISPATCHING) is atomic so two admins can't double-send; then the dispatcher
+     * settles to SENT/FAILED. Body {"editedBody": "..."} is optional; absent = send the draft as-is.
+     */
+    @PostMapping("/{taskId}/send")
+    public ResponseEntity<EngagementAction> send(@PathVariable String taskId,
+                                                 @RequestParam String instituteId,
+                                                 @RequestBody(required = false) Map<String, String> body,
+                                                 @RequestAttribute("user") CustomUserDetails user) {
+        accessGuard.requireAdmin(user, instituteId);
+        int claimed = actionRepository.claimForDispatch(taskId, instituteId, Instant.now());
+        if (claimed == 0) {
+            throw new VacademyException("Task not found, not sendable, or already being handled");
+        }
+        EngagementAction action = actionRepository.findById(taskId)
+                .orElseThrow(() -> new VacademyException("Task vanished after claim"));
+        String editedBody = body != null ? body.get("editedBody") : null;
+        return ResponseEntity.ok(dispatcher.dispatchClaimed(action, editedBody, user.getUserId()));
+    }
+
+    /**
+     * Reopen a FAILED task after the human has confirmed it did NOT actually land (the send may
+     * have succeeded with a lost response — check the ledger by correlation_id before reopening).
+     * FAILED → OPEN so it re-enters the inbox and can be re-sent.
+     */
+    @PostMapping("/{taskId}/reopen")
+    public ResponseEntity<Void> reopen(@PathVariable String taskId,
+                                       @RequestParam String instituteId,
+                                       @RequestAttribute("user") CustomUserDetails user) {
+        accessGuard.requireAdmin(user, instituteId);
+        int updated = actionRepository.reopenFailed(taskId, instituteId, Instant.now());
+        if (updated == 0) throw new VacademyException("Task not found or not in a FAILED state");
         return ResponseEntity.ok().build();
     }
 

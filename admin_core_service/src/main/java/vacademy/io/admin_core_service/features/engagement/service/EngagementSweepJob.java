@@ -115,12 +115,17 @@ public class EngagementSweepJob {
         }
     }
 
-    /** Task reaper — stale open tasks expire so the inbox never silently becomes wallpaper. */
+    /** Task reaper — stale open tasks expire; rows stuck mid-dispatch settle to FAILED (visible). */
     @Scheduled(fixedDelayString = "${engagement.reaper.delay-ms:900000}")
     @SchedulerLock(name = "EngagementTaskReaper", lockAtMostFor = "PT5M", lockAtLeastFor = "PT10S")
     public void reapExpiredTasks() {
         int expired = actionRepository.expireStaleTasks();
-        if (expired > 0) log.info("Expired {} stale engagement tasks", expired);
+        // A dispatch stuck > 10 min means the pod died between claim and settle; make it visible
+        // as FAILED (never OPEN — the send may have landed) so a human can reopen after checking.
+        int reaped = actionRepository.reapStuckDispatching(Instant.now().minus(Duration.ofMinutes(10)));
+        if (expired > 0 || reaped > 0) {
+            log.info("Reaper: {} tasks expired, {} stuck-dispatching settled to FAILED", expired, reaped);
+        }
     }
 
     /**

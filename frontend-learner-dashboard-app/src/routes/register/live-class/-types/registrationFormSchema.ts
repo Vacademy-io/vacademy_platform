@@ -3,6 +3,7 @@ import { phoneSchema } from "@/lib/phone-validation";
 import { CustomField } from "./type";
 import {
   getFieldRenderType,
+  parseDropdownOptions,
   FieldRenderType,
 } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 
@@ -29,21 +30,16 @@ export const generateZodSchema = (
 
     let schema: ZodTypeAny;
 
-    switch (field.fieldType.toLowerCase()) {
-      case "text":
-        schema = z.string();
-        break;
-      case "dropdown":
-        try {
-          const options = JSON.parse(field.config);
-          const optionValues = options.map((opt: any) => opt.name);
-          schema = z.enum([...optionValues] as [string, ...string[]]);
-        } catch (err) {
-          schema = z.string(); // fallback
-        }
-        break;
-      default:
-        schema = z.string(); // fallback
+    // Dropdown values must come from the same parser the <Select> renders from.
+    // Parsing field.config a second time here is what let the two drift apart:
+    // the enum was built from `opt.name` while the options rendered `opt.value`.
+    if (getFieldRenderType(field.fieldKey, field.fieldType) === FieldRenderType.DROPDOWN) {
+      const optionValues = parseDropdownOptions(field.config).map((opt) => opt.value);
+      schema = optionValues.length
+        ? z.enum(optionValues as [string, ...string[]])
+        : z.string();
+    } else {
+      schema = z.string();
     }
 
     // ✅ Apply `.nonempty()` only to ZodString types

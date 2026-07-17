@@ -21,7 +21,7 @@ public class OnboardingFlowController {
 
     @PostMapping
     public ResponseEntity<OnboardingFlowDTO> createFlow(
-            @RequestParam("user") CustomUserDetails userDetails,
+            @RequestAttribute("user") CustomUserDetails userDetails,
             @RequestParam("instituteId") String instituteId,
             @RequestBody CreateOnboardingFlowRequest request) {
         OnboardingFlow flow = onboardingFlowService.createFlow(instituteId, userDetails.getUserId(), request);

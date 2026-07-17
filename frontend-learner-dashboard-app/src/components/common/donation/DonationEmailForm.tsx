@@ -32,13 +32,13 @@ export const DonationEmailForm: React.FC<DonationEmailFormProps> = ({
       <div className="mb-2">
         <label className="block text-xs text-gray-600 mb-1" htmlFor="donation-email">Your Email</label>
         <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+          <span className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-400">
             <EnvelopeSimple size={16} />
           </span>
           <input
             id="donation-email"
             type="email"
-            className={`border rounded pl-9 p-2 text-xs w-full h-10 ${
+            className={`border rounded ps-9 p-2 text-xs w-full h-10 ${
               validationError ? 'border-red-500 bg-red-50' : ''
             }`}
             value={email}

@@ -17,8 +17,8 @@ export function TrackerDemo({ child, timeline }: Props) {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="shadow-sm overflow-hidden"><CardContent className="p-4">
           <div className="flex items-center justify-between mb-2"><div className="flex items-center gap-2"><Flag size={16} className="text-primary" /><p className="text-sm font-semibold">Overall Progress</p></div><Badge variant="outline" className="text-xs">{done} / {timeline.length} steps</Badge></div>
-          <div className="relative h-2 rounded-full bg-muted overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.8 }} className="absolute inset-y-0 left-0 bg-gradient-to-r from-primary to-emerald-500 rounded-full" /></div>
-          <p className="text-xs text-muted-foreground mt-1.5 text-right">{pct}% complete</p>
+          <div className="relative h-2 rounded-full bg-muted overflow-hidden"><motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.8 }} className="absolute inset-y-0 start-0 bg-gradient-to-r from-primary to-emerald-500 rounded-full" /></div>
+          <p className="text-xs text-muted-foreground mt-1.5 text-end">{pct}% complete</p>
         </CardContent></Card>
       </motion.div>
 

@@ -158,7 +158,7 @@ export const ExcalidrawViewer: React.FC<ExcalidrawViewerProps> = ({ fileId }) =>
             {/* Center Content Button */}
             <button
                 onClick={centerContent}
-                className="absolute top-3 right-3 z-20 bg-white hover:bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors duration-200 flex items-center space-x-2"
+                className="absolute top-3 end-3 z-20 bg-white hover:bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors duration-200 flex items-center space-x-2"
                 title="Center diagram content"
             >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

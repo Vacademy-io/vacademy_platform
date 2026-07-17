@@ -309,7 +309,7 @@ export const FreePlanDialog: React.FC<FreePlanDialogProps> = ({
                             </div>
                           </div>
                           
-                          <div className="text-right">
+                          <div className="text-end">
                             <div className="text-2xl font-bold text-green-600">
                               FREE
                             </div>

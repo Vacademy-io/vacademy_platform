@@ -456,12 +456,12 @@ export const CourseStructureDetails = ({
             >
               {isAllExpanded ? (
                 <>
-                  <FolderOpen size={14} className="mr-1.5" />
+                  <FolderOpen size={14} className="me-1.5" />
                   Collapse All
                 </>
               ) : (
                 <>
-                  <Folder size={14} className="mr-1.5" />
+                  <Folder size={14} className="me-1.5" />
                   Expand All
                 </>
               )}
@@ -472,8 +472,8 @@ export const CourseStructureDetails = ({
           {courseStructure === 5 &&
             studyLibraryData?.map((subject: SubjectType, idx: number) => {
               const isSubjectOpen = openSubjects.has(subject.id);
-              const baseIndent = "pl-struct-base";
-              const subjectContentIndent = `${baseIndent} pl-6`;
+              const baseIndent = "ps-struct-base";
+              const subjectContentIndent = `${baseIndent} ps-6`;
 
               return (
                 <Collapsible
@@ -481,7 +481,7 @@ export const CourseStructureDetails = ({
                   open={isSubjectOpen}
                   onOpenChange={() => toggleSubject(subject.id)}
                 >
-                  <CollapsibleTrigger className="group flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-semibold text-neutral-700 transition-all duration-200 hover:bg-primary-50/60 hover:border-primary-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1">
+                  <CollapsibleTrigger className="group flex w-full items-center rounded-lg px-3 py-2 text-start text-sm font-semibold text-neutral-700 transition-all duration-200 hover:bg-primary-50/60 hover:border-primary-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1">
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
                       {isSubjectOpen ? (
                         <CaretDown
@@ -528,19 +528,19 @@ export const CourseStructureDetails = ({
                   <CollapsibleContent
                     className={`pb-1 pt-2 ${subjectContentIndent}`}
                   >
-                    <div className="space-y-1 border-l-2 border-primary-200/60 pl-3 relative">
-                      <div className="absolute left-0 top-0 w-0.5 h-full bg-primary-300/60"></div>
+                    <div className="space-y-1 border-s-2 border-primary-200/60 ps-3 relative">
+                      <div className="absolute start-0 top-0 w-0.5 h-full bg-primary-300/60"></div>
                       {(subjectModulesMap[subject.id] ?? []).map(
                         (mod, modIdx) => {
                           const isModuleOpen = openModules.has(mod.module.id);
-                          const moduleContentIndent = `pl-struct-module`;
+                          const moduleContentIndent = `ps-struct-module`;
                           return (
                             <Collapsible
                               key={mod.module.id}
                               open={isModuleOpen}
                               onOpenChange={() => toggleModule(mod.module.id)}
                             >
-                              <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-blue-50/70 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
+                              <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-start text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-blue-50/70 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
                                 <div className="flex min-w-0 flex-1 items-center gap-2">
                                   {isModuleOpen ? (
                                     <CaretDown
@@ -592,13 +592,13 @@ export const CourseStructureDetails = ({
                               <CollapsibleContent
                                 className={`pb-1 pt-2 ${moduleContentIndent}`}
                               >
-                                <div className="space-y-1 border-l-2 border-blue-200/60 pl-3 relative">
-                                  <div className="absolute left-0 top-0 w-0.5 h-full bg-blue-300/60"></div>
+                                <div className="space-y-1 border-s-2 border-blue-200/60 ps-3 relative">
+                                  <div className="absolute start-0 top-0 w-0.5 h-full bg-blue-300/60"></div>
                                   {mod.chapters.map((ch, chIdx) => {
                                     const isChapterOpen = openChapters.has(
                                       ch.id
                                     );
-                                    const chapterContentIndent = `pl-struct-chapter`;
+                                    const chapterContentIndent = `ps-struct-chapter`;
                                     return (
                                       <Collapsible
                                         key={ch.id}
@@ -607,7 +607,7 @@ export const CourseStructureDetails = ({
                                           toggleChapter(ch.id)
                                         }
                                       >
-                                        <CollapsibleTrigger className="group flex w-full items-center rounded px-2 py-1 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-indigo-50/70 hover:border-indigo-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1">
+                                        <CollapsibleTrigger className="group flex w-full items-center rounded px-2 py-1 text-start text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-indigo-50/70 hover:border-indigo-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 focus-visible:ring-offset-1">
                                           <div className="flex min-w-0 flex-1 items-center gap-2">
                                             {isChapterOpen ? (
                                               <CaretDown
@@ -667,8 +667,8 @@ export const CourseStructureDetails = ({
                                         <CollapsibleContent
                                           className={`pb-1 pt-2 ${chapterContentIndent}`}
                                         >
-                                          <div className="space-y-1 border-l-2 border-gradient-to-b from-indigo-200/60 to-neutral-200/40 pl-3 relative">
-                                            <div className="absolute left-0 top-0 w-0.5 h-full bg-indigo-300/80"></div>
+                                          <div className="space-y-1 border-s-2 border-gradient-to-b from-indigo-200/60 to-neutral-200/40 ps-3 relative">
+                                            <div className="absolute start-0 top-0 w-0.5 h-full bg-indigo-300/80"></div>
                                             {slidesMap[ch.id]?.map(
                                               (slide, slideIdx) => (
                                                 <div
@@ -720,14 +720,14 @@ export const CourseStructureDetails = ({
                       {(subjectModulesMap[subject.id] ?? []).map(
                         (mod, modIdx) => {
                           const isModuleOpen = openModules.has(mod.module.id);
-                          const moduleContentIndent = `pl-struct-module`;
+                          const moduleContentIndent = `ps-struct-module`;
                           return (
                             <Collapsible
                               key={mod.module.id}
                               open={isModuleOpen}
                               onOpenChange={() => toggleModule(mod.module.id)}
                             >
-                              <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-left text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-blue-50/70 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
+                              <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2.5 py-1.5 text-start text-sm font-medium text-neutral-600 transition-all duration-200 hover:bg-blue-50/70 hover:border-blue-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1">
                                 <div className="flex min-w-0 flex-1 items-center gap-2">
                                   {isModuleOpen ? (
                                     <CaretDown
@@ -765,8 +765,8 @@ export const CourseStructureDetails = ({
                               <CollapsibleContent
                                 className={`py-1 ${moduleContentIndent}`}
                               >
-                                <div className="space-y-0.5 border-l-2 border-blue-200/40 pl-2.5 relative">
-                                  <div className="absolute left-0 top-0 w-0.5 h-full bg-blue-300/60"></div>
+                                <div className="space-y-0.5 border-s-2 border-blue-200/40 ps-2.5 relative">
+                                  <div className="absolute start-0 top-0 w-0.5 h-full bg-blue-300/60"></div>
                                   {(mod.chapters ?? []).map((ch, chIdx) => {
                                     const isChapterOpen = openChapters.has(
                                       ch.id
@@ -781,7 +781,7 @@ export const CourseStructureDetails = ({
                                           getSlidesWithChapterId(ch.id);
                                         }}
                                       >
-                                        <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-green-50/70 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
+                                        <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-start text-sm text-neutral-600 transition-all duration-200 hover:bg-green-50/70 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
                                           <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                             {isChapterOpen ? (
                                               <CaretDown
@@ -822,8 +822,8 @@ export const CourseStructureDetails = ({
                                           </div>
                                         </CollapsibleTrigger>
                                         <CollapsibleContent>
-                                          <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
-                                            <div className="absolute left-0 top-0 w-px h-full bg-green-300/50"></div>
+                                          <div className="space-y-px ms-5 border-s border-green-200/50 py-1 ps-2 relative">
+                                            <div className="absolute start-0 top-0 w-px h-full bg-green-300/50"></div>
                                             {(slidesMap[ch.id] ?? []).length ===
                                             0 ? (
                                               <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
@@ -898,7 +898,7 @@ export const CourseStructureDetails = ({
                                         getSlidesWithChapterId(ch.id);
                                       }}
                                     >
-                                      <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-left text-sm text-neutral-600 transition-all duration-200 hover:bg-green-50/70 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
+                                      <CollapsibleTrigger className="group flex w-full items-center rounded-md px-2 py-1 text-start text-sm text-neutral-600 transition-all duration-200 hover:bg-green-50/70 hover:border-green-200/60 border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-1">
                                         <div className="flex min-w-0 flex-1 items-center gap-1.5">
                                           {isChapterOpen ? (
                                             <CaretDown
@@ -924,8 +924,8 @@ export const CourseStructureDetails = ({
                                         </div>
                                       </CollapsibleTrigger>
                                       <CollapsibleContent>
-                                        <div className="space-y-px ml-5 border-l border-green-200/50 py-1 pl-2 relative">
-                                          <div className="absolute left-0 top-0 w-px h-full bg-green-300/50"></div>
+                                        <div className="space-y-px ms-5 border-s border-green-200/50 py-1 ps-2 relative">
+                                          <div className="absolute start-0 top-0 w-px h-full bg-green-300/50"></div>
                                           {(slidesMap[ch.id] ?? []).length ===
                                           0 ? (
                                             <div className="text-xs px-2 py-1 text-neutral-400 italic bg-neutral-50/50 rounded">
@@ -1001,7 +1001,7 @@ export const CourseStructureDetails = ({
                                       }}
                                     >
                                       <CollapsibleContent>
-                                        <div className="space-y-px pl-2 relative">
+                                        <div className="space-y-px ps-2 relative">
                                           {(slidesMap[ch.id] ?? []).length ===
                                           0 ? (
                                             <div className="text-xs px-2 text-neutral-400 italic bg-neutral-50/50 rounded">

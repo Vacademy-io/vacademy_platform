@@ -289,7 +289,7 @@ export function ErrorFeedbackDialog({
             <SheetTrigger asChild>
                 {trigger || <MyButton buttonType="secondary">Report an Issue</MyButton>}
             </SheetTrigger>
-            <SheetContent className="sm:max-w-md w-vw-90 overflow-y-auto bg-white border-l border-gray-200 p-6">
+            <SheetContent className="sm:max-w-md w-vw-90 overflow-y-auto bg-white border-s border-gray-200 p-6">
                 <SheetHeader className="mb-6">
                     <SheetTitle className="text-xl font-bold text-gray-900">Report an Issue</SheetTitle>
                     <SheetDescription className="text-gray-500">
@@ -348,7 +348,7 @@ export function ErrorFeedbackDialog({
                             accept="image/*,video/*"
                             multiple
                             onChange={(e) => setFiles(e.target.files)}
-                            className="cursor-pointer file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 focus-visible:ring-1 focus-visible:ring-primary-500"
+                            className="cursor-pointer file:me-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 focus-visible:ring-1 focus-visible:ring-primary-500"
                         />
                         {files && files.length > 0 && (
                             <p className="text-xs text-gray-500 mt-1">
@@ -374,12 +374,12 @@ export function ErrorFeedbackDialog({
                         >
                             {isSubmitting ? (
                                 <>
-                                    <SpinnerGap className="mr-2 h-4 w-4 animate-spin" />
+                                    <SpinnerGap className="me-2 h-4 w-4 animate-spin" />
                                     Sending...
                                 </>
                             ) : (
                                 <>
-                                    <PaperPlaneTilt className="mr-2 h-4 w-4" />
+                                    <PaperPlaneTilt className="me-2 h-4 w-4" />
                                     Send Report
                                 </>
                             )}

@@ -397,9 +397,9 @@ export function PhoneLoginForm({
                                                                 preferredCountries={preferredCountries}
                                                                 value={field.value}
                                                                 onChange={(value) => field.onChange(value)}
-                                                                inputClass={`!w-full !px-3 !py-2 !pl-12 !h-11 !bg-gray-50/50 hover:!bg-white !border ${phoneForm.formState.errors.phone ? "!border-red-300" : "!border-gray-200"} !rounded-lg !text-sm !font-medium focus:!bg-white focus:!ring-0`}
+                                                                inputClass={`!w-full !px-3 !py-2 !ps-12 !h-11 !bg-gray-50/50 hover:!bg-white !border ${phoneForm.formState.errors.phone ? "!border-red-300" : "!border-gray-200"} !rounded-lg !text-sm !font-medium focus:!bg-white focus:!ring-0`}
                                                                 containerClass="!w-full"
-                                                                buttonClass={`!rounded-l-lg !border-gray-200 !bg-gray-50/50 !w-10`}
+                                                                buttonClass={`!rounded-s-lg !border-gray-200 !bg-gray-50/50 !w-10`}
                                                                 dropdownClass="!rounded-lg !shadow-xl"
                                                             />
                                                         </div>
@@ -657,7 +657,7 @@ export function PhoneLoginForm({
                             onClick={onSwitchToEmail}
                         >
                             Use Email OTP
-                            <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
+                            <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
                         </motion.button>
                     )}
 
@@ -669,7 +669,7 @@ export function PhoneLoginForm({
                             onClick={onSwitchToUsername}
                         >
                             Use Username & Password
-                            <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
+                            <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
                         </motion.button>
                     )}
                 </div>

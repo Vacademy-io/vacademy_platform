@@ -410,7 +410,7 @@ export function RegistrationModule({ child, title }: RegistrationModuleProps) {
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="fixed bottom-20 lg:bottom-4 right-4 text-caption text-muted-foreground bg-card/80 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border flex items-center gap-1.5"
+          className="fixed bottom-20 lg:bottom-4 end-4 text-caption text-muted-foreground bg-card/80 backdrop-blur-sm px-3 py-1.5 rounded-full shadow-sm border flex items-center gap-1.5"
         >
           <SpinnerGap size={10} className="animate-spin" />
           Auto‑saving...
@@ -443,7 +443,7 @@ function FormField({ field, value, onChange, error }: FormFieldProps) {
     <div>
       <label className="text-xs font-medium text-foreground mb-1.5 block">
         {field.label}
-        {field.is_required && <span className="text-destructive ml-0.5">*</span>}
+        {field.is_required && <span className="text-destructive ms-0.5">*</span>}
       </label>
 
       {field.type === "select" && field.options ? (

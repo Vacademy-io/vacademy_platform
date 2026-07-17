@@ -204,7 +204,7 @@ export function UpcomingLiveClassesWidget({
           )}
           onClick={() => navigate({ to: "/study-library/live-class" })}
         >
-          View All <CaretRight size={14} className="ml-1" />
+          View All <CaretRight size={14} className="ms-1" />
         </Button>
       </CardHeader>
 
@@ -263,7 +263,7 @@ export function UpcomingLiveClassesWidget({
               >
                 <span
                   aria-hidden="true"
-                  className="hidden [.ui-play_&]:inline-block h-1.5 w-1.5 rounded-full bg-white animate-pulse mr-1"
+                  className="hidden [.ui-play_&]:inline-block h-1.5 w-1.5 rounded-full bg-white animate-pulse me-1"
                 />
                 Live Now
               </Badge>

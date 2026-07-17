@@ -223,7 +223,7 @@ export function InstituteSelection() {
             <motion.div
                 animate={{ x: [0, 20, 0], y: [0, -10, 0], rotate: [0, 2, 0] }}
                 transition={{ duration: 12, repeat: Infinity }}
-                className="absolute top-20 left-20 w-48 h-48 bg-gradient-to-br from-gray-200/10 to-gray-300/10 rounded-full blur-3xl"
+                className="absolute top-20 start-20 w-48 h-48 bg-gradient-to-br from-gray-200/10 to-gray-300/10 rounded-full blur-3xl"
             />
             <motion.div
                 initial={{ opacity: 0, y: 20, scale: 0.98 }}
@@ -338,7 +338,7 @@ export function InstituteSelection() {
                             scale="medium"
                             buttonType="text"
                             layoutVariant="default"
-                            className="text-gray-700 hover:text-black hover:underline ml-1"
+                            className="text-gray-700 hover:text-black hover:underline ms-1"
                             onClick={() =>
                                 navigate({ to: "/login", search: { redirect: redirect || "/dashboard/" } })
                             }

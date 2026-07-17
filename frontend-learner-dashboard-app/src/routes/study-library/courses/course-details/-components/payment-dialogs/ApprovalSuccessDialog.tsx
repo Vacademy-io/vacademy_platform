@@ -34,7 +34,7 @@ export const ApprovalSuccessDialog: React.FC<ApprovalSuccessDialogProps> = ({
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
         <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none"
+          className="fixed start-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none"
         >
           <DialogPrimitive.Title className="sr-only">Approval Successful</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">
@@ -42,7 +42,7 @@ export const ApprovalSuccessDialog: React.FC<ApprovalSuccessDialogProps> = ({
           </DialogPrimitive.Description>
           
           <button
-            className="absolute right-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
+            className="absolute end-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
             onClick={handleClose}
             aria-label="Close"
           >
@@ -56,7 +56,7 @@ export const ApprovalSuccessDialog: React.FC<ApprovalSuccessDialogProps> = ({
                 <div className="w-20 h-20 bg-gradient-to-br from-green-100 to-green-200 rounded-full flex items-center justify-center shadow-lg">
                   <CheckCircle className="w-10 h-10 text-green-600" />
                 </div>
-                <div className="absolute -top-1 -right-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                <div className="absolute -top-1 -end-1 w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
                   <CheckCircle className="w-3 h-3 text-white" />
                 </div>
               </div>
@@ -77,7 +77,7 @@ export const ApprovalSuccessDialog: React.FC<ApprovalSuccessDialogProps> = ({
                     <CheckCircle className="w-4 h-4 text-white" />
                   </div>
                 </div>
-                <div className="flex-1 text-left">
+                <div className="flex-1 text-start">
                   <h4 className="text-sm font-semibold text-green-900 mb-1">
                     Ready to Learn!
                   </h4>

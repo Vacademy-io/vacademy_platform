@@ -119,7 +119,7 @@ const KycStep = ({
       disable={isSubmitting || isStartingKyc}
       className="w-full sm:w-auto"
     >
-      <ArrowLeft className="mr-2 size-4" />
+      <ArrowLeft className="me-2 size-4" />
       Back
     </MyButton>
   ) : (
@@ -246,12 +246,12 @@ const KycStep = ({
 
   const startButtonContent = isStartingKyc ? (
     <>
-      <SpinnerGap className="mr-2 size-4 animate-spin" />
+      <SpinnerGap className="me-2 size-4 animate-spin" />
       Preparing verification...
     </>
   ) : (
     <>
-      <ShieldCheck className="mr-2 size-5" />
+      <ShieldCheck className="me-2 size-5" />
       Verify with DigiLocker
     </>
   );
@@ -285,7 +285,7 @@ const KycStep = ({
       {uiState === "CHECKING" && (
         <div className="flex h-40 items-center justify-center rounded-lg border border-neutral-200 bg-neutral-50">
           <SpinnerGap className="size-6 animate-spin text-neutral-400" />
-          <span className="ml-2 text-sm text-neutral-500">
+          <span className="ms-2 text-sm text-neutral-500">
             Checking verification status...
           </span>
         </div>
@@ -435,7 +435,7 @@ const KycStep = ({
             >
               {isSubmitting ? (
                 <>
-                  <SpinnerGap className="mr-2 size-4 animate-spin" />
+                  <SpinnerGap className="me-2 size-4 animate-spin" />
                   Submitting...
                 </>
               ) : isFinalStep ? (
@@ -479,12 +479,12 @@ const KycStep = ({
             >
               {isStartingKyc ? (
                 <>
-                  <SpinnerGap className="mr-2 size-4 animate-spin" />
+                  <SpinnerGap className="me-2 size-4 animate-spin" />
                   Preparing verification...
                 </>
               ) : (
                 <>
-                  <ArrowClockwise className="mr-2 size-5" />
+                  <ArrowClockwise className="me-2 size-5" />
                   Try Again
                 </>
               )}

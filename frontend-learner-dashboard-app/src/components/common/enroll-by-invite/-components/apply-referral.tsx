@@ -222,7 +222,7 @@ const ReferralCodeComponent = ({
             >
               {isApplied ? (
                 <>
-                  <Check className="w-4 h-4 mr-1" />
+                  <Check className="w-4 h-4 me-1" />
                   Applied
                 </>
               ) : isApplying ? (

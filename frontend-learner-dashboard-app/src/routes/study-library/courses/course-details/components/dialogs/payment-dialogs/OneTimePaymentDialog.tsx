@@ -503,7 +503,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                                     )}
                                   </div>
                                 </div>
-                                <div className="text-right">
+                                <div className="text-end">
                                   <div className="text-2xl font-bold text-blue-600">
                                     {formatCurrency(plan.actual_price, plan.currency)}
                                   </div>
@@ -608,7 +608,7 @@ export const OneTimePaymentDialog: React.FC<OneTimePaymentDialogProps> = ({
                   }`}>
                     {!cardElementReady && (
                       <div className="flex items-center justify-center h-12 text-gray-500">
-                        <SpinnerGap className="w-5 h-5 animate-spin mr-2" />
+                        <SpinnerGap className="w-5 h-5 animate-spin me-2" />
                         Loading payment form...
                       </div>
                     )}

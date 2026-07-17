@@ -264,8 +264,8 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                             "[.ui-play_&]:!bg-primary-50 [.ui-play_&]:rounded-2xl"
                         )}>
                             {/* Decorative background blobs */}
-                            <div className="pointer-events-none absolute -top-16 -left-10 w-48 h-48 rounded-full bg-primary-100/50 blur-3xl" aria-hidden="true" />
-                            <div className="pointer-events-none absolute -bottom-12 -right-8 w-40 h-40 rounded-full bg-primary-200/40 blur-3xl" aria-hidden="true" />
+                            <div className="pointer-events-none absolute -top-16 -start-10 w-48 h-48 rounded-full bg-primary-100/50 blur-3xl" aria-hidden="true" />
+                            <div className="pointer-events-none absolute -bottom-12 -end-8 w-40 h-40 rounded-full bg-primary-200/40 blur-3xl" aria-hidden="true" />
 
                             <div className="relative">
                                 {/* Illustrated icon stack */}

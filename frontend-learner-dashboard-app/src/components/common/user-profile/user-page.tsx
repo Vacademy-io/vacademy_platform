@@ -31,6 +31,18 @@ import {
   SUBSCRIPTION_LIST_QUERY_KEY,
   fetchSubscriptions,
 } from "./payment-billing/subscription-services";
+import { useTranslation } from "react-i18next";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useLanguageStore } from "@/stores/localization/useLanguageStore";
+import { useSyncLanguage } from "@/hooks/useSyncLanguage";
+import { LOCALE_LABELS } from "@/i18n/locales";
+import { getEnabledLocales } from "@/services/language-settings";
 // import { SessionExpiry } from "./sessionExpiery";
 interface CourseDetails {
   packageName: string;
@@ -78,6 +90,11 @@ const getAvatarToneClass = (name: string): string => {
 
 export default function ProfilePage() {
   const navigate = useNavigate();
+  // Keeps i18next + <html lang/dir> in sync with the persisted locale.
+  useSyncLanguage();
+  const { t } = useTranslation();
+  const locale = useLanguageStore((state) => state.locale);
+  const setLocale = useLanguageStore((state) => state.setLocale);
   const [studentData, setStudentData] = useState<Student | null>(null);
   const [courseDetails, setCourseDetails] = useState<CourseDetails | null>(
     null
@@ -429,7 +446,7 @@ export default function ProfilePage() {
                 )}
               >
                 <playIllustrations.FeelingHappy
-                  className="pointer-events-none absolute right-3 top-3 hidden h-16 w-auto text-play-accent [.ui-play_&]:!block"
+                  className="pointer-events-none absolute end-3 top-3 hidden h-16 w-auto text-play-accent [.ui-play_&]:!block"
                   aria-hidden="true"
                 />
                 <div className="p-6 flex flex-col items-center">
@@ -512,6 +529,33 @@ export default function ProfilePage() {
               )}
               {studentData && <ProgressStats userId={studentData.user_id} />}
               <BadgesRankCard />
+
+              {/* Language preference — bound to the persisted locale store.
+                  Options are the institute's enabled locales (English plus
+                  the current selection until an institute enables more). */}
+              <div className="bg-card rounded-xl border shadow p-6">
+                <h3 className="text-sm font-semibold text-foreground mb-1">
+                  {t("profile.language", "Language")}
+                </h3>
+                <p className="text-xs text-muted-foreground mb-4">
+                  {t(
+                    "profile.languageHint",
+                    "Choose the language for menus and buttons."
+                  )}
+                </p>
+                <Select value={locale} onValueChange={setLocale}>
+                  <SelectTrigger aria-label={t("profile.language", "Language")}>
+                    <SelectValue>{LOCALE_LABELS[locale]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getEnabledLocales(locale).map((option) => (
+                      <SelectItem key={option} value={option}>
+                        <span lang={option}>{LOCALE_LABELS[option]}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Right Column - Details */}

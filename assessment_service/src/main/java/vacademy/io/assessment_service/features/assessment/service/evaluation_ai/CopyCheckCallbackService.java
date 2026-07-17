@@ -83,6 +83,14 @@ public class CopyCheckCallbackService {
             log.warn("[copy-check] question callback for unknown process={}", payload.getProcessId());
             return;
         }
+        // A process the stale-job sweeper marked FAILED, or the teacher CANCELLED,
+        // is reaped: ignore straggler callbacks so a (possibly still-alive) old run
+        // can't silently resurrect it and race a retry into the same marks rows.
+        if (isReaped(process.getStatus())) {
+            log.info("[copy-check] ignoring question callback for reaped process {} (status={})",
+                    payload.getProcessId(), process.getStatus());
+            return;
+        }
         String qStatus = (payload.getStatus() != null && !payload.getStatus().isBlank())
                 ? payload.getStatus().toUpperCase()
                 : "COMPLETED";
@@ -161,6 +169,14 @@ public class CopyCheckCallbackService {
             log.warn("[copy-check] complete callback for unknown process={}", payload.getProcessId());
             return;
         }
+        // Don't let a straggler complete callback resurrect a reaped (swept-FAILED
+        // or user-CANCELLED) run into COMPLETED after a retry may already exist.
+        if (isReaped(process.getStatus())) {
+            log.info("[copy-check] ignoring complete callback for reaped process {} (status={})",
+                    payload.getProcessId(), process.getStatus());
+            cancellationService.clearFlag(payload.getProcessId());
+            return;
+        }
         process.setStatus(AiEvaluationStatusEnum.COMPLETED.name());
         process.setCompletedAt(new Date());
         try {
@@ -217,5 +233,10 @@ public class CopyCheckCallbackService {
         processRepository.save(process);
         cancellationService.clearFlag(payload.getProcessId());
         log.warn("[copy-check] process {} failed: {}", payload.getProcessId(), payload.getErrorMessage());
+    }
+
+    /** A process that has been reaped by the sweeper (FAILED) or the user (CANCELLED). */
+    private static boolean isReaped(String status) {
+        return "FAILED".equalsIgnoreCase(status) || "CANCELLED".equalsIgnoreCase(status);
     }
 }

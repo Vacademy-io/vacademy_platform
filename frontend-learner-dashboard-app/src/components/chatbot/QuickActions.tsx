@@ -157,7 +157,7 @@ export const QuickActions: React.FC<QuickActionsProps> = ({
         >
           <action.icon
             className={cn(
-              "mr-1",
+              "me-1",
               compact ? "h-2.5 w-2.5" : "h-3 w-3",
             )}
           />

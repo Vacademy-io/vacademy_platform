@@ -135,7 +135,7 @@ const SlideRow = ({
       onClick={onClick}
       title={title}
       style={{ paddingLeft: `${depth * 14 + 12}px` }}
-      className={`w-full flex items-start gap-2 pr-3 py-2 text-left text-caption transition-colors ${
+      className={`w-full flex items-start gap-2 pe-3 py-2 text-start text-caption transition-colors ${
         isActive
           ? "bg-primary-50 text-primary-700 font-semibold"
           : "text-gray-700 hover:bg-gray-50"
@@ -223,7 +223,7 @@ const ExpanderRow = ({
       type="button"
       onClick={onToggle}
       style={{ paddingLeft: `${depth * 14 + 8}px` }}
-      className={`w-full flex items-start gap-1.5 pr-3 py-2 text-left transition-colors ${stickyClasses} ${bgClass}`}
+      className={`w-full flex items-start gap-1.5 pe-3 py-2 text-start transition-colors ${stickyClasses} ${bgClass}`}
       title={label}
       aria-expanded={isOpen}
     >

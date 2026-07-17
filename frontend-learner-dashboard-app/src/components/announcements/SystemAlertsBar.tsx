@@ -156,7 +156,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
   const renderAlertCard = (alert: UserMessage) => (
     <Card
       key={alert.messageId}
-      className={`mb-3 cursor-pointer transition-all hover:shadow-md ${!alert.isRead ? 'border-l-4 border-l-blue-500 bg-blue-50' : ''
+      className={`mb-3 cursor-pointer transition-all hover:shadow-md ${!alert.isRead ? 'border-s-4 border-s-blue-500 bg-blue-50' : ''
         }`}
       ref={(el) => {
         if (el) {
@@ -202,7 +202,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
           <Button
             variant="ghost"
             size="sm"
-            className="ml-1 h-6 w-6 p-0 hover:bg-gray-100 flex-shrink-0"
+            className="ms-1 h-6 w-6 p-0 hover:bg-gray-100 flex-shrink-0"
             onClick={(e) => handleDismiss(alert.messageId, e)}
           >
             <X className="h-3 w-3" />
@@ -227,12 +227,12 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
             {unreadCount > 0 && (
               <Badge
                 variant="destructive"
-                className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
+                className="absolute -top-1 -end-1 h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs"
               >
                 {unreadCount > 99 ? '99+' : unreadCount}
               </Badge>
             )}
-            {isOpen ? <CaretUp className="ml-1 h-4 w-4" /> : <CaretDown className="ml-1 h-4 w-4" />}
+            {isOpen ? <CaretUp className="ms-1 h-4 w-4" /> : <CaretDown className="ms-1 h-4 w-4" />}
           </Button>
         </DropdownMenuTrigger>
 
@@ -254,7 +254,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
                         className="text-red-600 hover:text-red-700 hover:bg-red-50 text-xs sm:text-sm px-2 sm:px-3"
                         disabled={loading}
                       >
-                        <Trash className="h-4 w-4 mr-1" />
+                        <Trash className="h-4 w-4 me-1" />
                         Clear All
                       </Button>
                     </AlertDialogTrigger>
@@ -301,7 +301,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
               {loading && alerts.length === 0 ? (
                 <div className="flex items-center justify-center py-8">
                   <SpinnerGap className="h-6 w-6 animate-spin text-gray-400" />
-                  <span className="ml-2 text-sm text-gray-500">Loading alerts...</span>
+                  <span className="ms-2 text-sm text-gray-500">Loading alerts...</span>
                 </div>
               ) : alerts.length === 0 ? (
                 <div className="text-center py-8">
@@ -322,7 +322,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
                       >
                         {loading ? (
                           <>
-                            <SpinnerGap className="h-4 w-4 animate-spin mr-2" />
+                            <SpinnerGap className="h-4 w-4 animate-spin me-2" />
                             Loading...
                           </>
                         ) : (
@@ -352,7 +352,7 @@ export const SystemAlertsBar: React.FC<SystemAlertsBarProps> = ({ className = ''
         >
           <CardContent className="p-1 sm:p-8 flex flex-col overflow-hidden">
             <div className="flex items-start justify-between mb-4 flex-shrink-0">
-              <div className="flex-1 min-w-0 mr-2">
+              <div className="flex-1 min-w-0 me-2">
                 {selectedAlert.title && (
                   <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-2 break-words">
                     {selectedAlert.title}

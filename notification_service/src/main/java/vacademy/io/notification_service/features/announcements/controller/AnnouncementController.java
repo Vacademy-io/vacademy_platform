@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.notification_service.features.announcements.dto.*;
 import vacademy.io.notification_service.features.announcements.enums.AnnouncementStatus;
+import vacademy.io.notification_service.features.announcements.enums.ModeType;
 import vacademy.io.notification_service.features.announcements.service.AnnouncementService;
 import vacademy.io.notification_service.features.announcements.service.EmailConfigurationService;
 
@@ -465,6 +466,26 @@ public class AnnouncementController {
             return ResponseEntity.ok(announcementService.getAnnouncementStats(announcementId));
         } catch (Exception e) {
             log.error("Error getting announcement stats: {}", announcementId, e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
+     * List per-recipient delivery + read/dismiss state for an announcement
+     * (admin analytics: which students have seen/dismissed it)
+     */
+    @GetMapping("/{announcementId}/recipients")
+    public ResponseEntity<Page<AnnouncementRecipientInteractionResponse>> getRecipientInteractions(
+            @PathVariable String announcementId,
+            @RequestParam(required = false) String modeType,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        try {
+            ModeType mode = modeType != null ? ModeType.valueOf(modeType.toUpperCase()) : null;
+            Pageable pageable = PageRequest.of(page, size);
+            return ResponseEntity.ok(announcementService.getRecipientInteractions(announcementId, mode, pageable));
+        } catch (Exception e) {
+            log.error("Error getting recipient interactions for announcement: {}", announcementId, e);
             return ResponseEntity.badRequest().build();
         }
     }

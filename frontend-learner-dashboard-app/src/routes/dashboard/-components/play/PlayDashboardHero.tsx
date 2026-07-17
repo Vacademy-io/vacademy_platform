@@ -70,7 +70,7 @@ export function PlayDashboardHero(props: PlayDashboardHeroProps): JSX.Element {
         <div className="h-11 w-full max-w-md animate-pulse self-start rounded-full bg-play-surface" />
       ) : (
         imminent && (
-          <div className="flex items-center gap-3 rounded-full bg-play-danger-soft py-2 pl-4 pr-2">
+          <div className="flex items-center gap-3 rounded-full bg-play-danger-soft py-2 ps-4 pe-2">
             <span className="relative flex h-3 w-3 shrink-0">
               <span className="play-pulse absolute inline-flex h-full w-full rounded-full bg-play-danger/50" />
               <span className="relative inline-flex h-3 w-3 rounded-full bg-play-danger" />

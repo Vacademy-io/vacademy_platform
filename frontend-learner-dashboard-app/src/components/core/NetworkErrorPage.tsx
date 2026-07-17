@@ -14,7 +14,7 @@ export function NetworkErrorPage() {
                             <Gear className="h-12 w-12 text-amber-600 animate-[spin_8s_linear_infinite]" aria-hidden="true" />
                         </div>
                         {/* Overlapping Badge */}
-                        <div className="absolute -bottom-2 -right-2 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md border border-gray-100">
+                        <div className="absolute -bottom-2 -end-2 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-md border border-gray-100">
                             <Wrench className="h-5 w-5 text-gray-600" aria-hidden="true" />
                         </div>
                     </div>
@@ -31,7 +31,7 @@ export function NetworkErrorPage() {
                         className="w-full sm:w-auto"
                         onClick={() => window.location.reload()}
                     >
-                        <ArrowsClockwise className="mr-2 h-4 w-4" />
+                        <ArrowsClockwise className="me-2 h-4 w-4" />
                         Try Again
                     </MyButton>
                     <MyButton 

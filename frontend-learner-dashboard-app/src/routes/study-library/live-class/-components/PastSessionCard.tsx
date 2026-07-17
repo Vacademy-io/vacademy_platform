@@ -180,7 +180,7 @@ export const PastSessionCard = ({ session }: PastSessionCardProps) => {
             session.timezone
           )}
           {session.timezone && (
-            <span className="text-xs text-neutral-500 dark:text-neutral-400 ml-1">
+            <span className="text-xs text-neutral-500 dark:text-neutral-400 ms-1">
               ({getTimezoneDisplayInfo(session.timezone).sessionTz})
             </span>
           )}
@@ -203,7 +203,7 @@ export const PastSessionCard = ({ session }: PastSessionCardProps) => {
               disabled={!!recording.expired}
               onClick={() => handleWatch(recording)}
             >
-              <PlayCircle size={16} className="mr-1.5" />
+              <PlayCircle size={16} className="me-1.5" />
               {recording.expired ? "Recording expired" : recordingLabel(recording, idx)}
             </Button>
           ))}
@@ -224,9 +224,9 @@ export const PastSessionCard = ({ session }: PastSessionCardProps) => {
                 onClick={() => void handleOpenMaterial(material)}
               >
                 {material.kind === "PDF" ? (
-                  <FilePdf size={16} className="mr-1.5" />
+                  <FilePdf size={16} className="me-1.5" />
                 ) : (
-                  <VideoCamera size={16} className="mr-1.5" />
+                  <VideoCamera size={16} className="me-1.5" />
                 )}
                 <span className="max-w-48 truncate">{material.title || "Material"}</span>
               </Button>

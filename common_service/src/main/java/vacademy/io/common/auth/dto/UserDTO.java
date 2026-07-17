@@ -62,6 +62,10 @@ public class UserDTO {
     private Boolean isParent;
     private String linkedParentId;
 
+    // BCP-47 language tag (serialized as preferred_locale); null = no preference
+    @Size(max = 10, message = "Preferred locale must not exceed 10 characters")
+    private String preferredLocale;
+
     public UserDTO(User user) {
         this.id = user.getId();
         this.username = user.getUsername();
@@ -79,6 +83,7 @@ public class UserDTO {
         this.roles = user.getRoles().stream().map((ur) -> ur.getRole().getName()).toList();
         this.isParent=user.getIsParent();
         this.linkedParentId=user.getLinkedParentId();
+        this.preferredLocale = user.getPreferredLocale();
     }
 
     public UserDTO(User user, UserDTO userDTO) {
@@ -99,6 +104,7 @@ public class UserDTO {
         this.roles = user.getRoles().stream().map((ur) -> ur.getRole().getName()).toList();
         this.isParent=user.getIsParent();
         this.linkedParentId=user.getLinkedParentId();
+        this.preferredLocale = user.getPreferredLocale();
 
     }
 }

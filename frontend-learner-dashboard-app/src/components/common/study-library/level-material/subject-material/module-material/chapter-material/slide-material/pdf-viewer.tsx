@@ -572,7 +572,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
     <div className="relative w-full h-full">
       {/* Verification overlay */}
       {showVerification && (
-        <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-50 animate-in fade-in slide-in-from-top duration-300">
+        <div className="absolute top-2 start-1/2 transform -translate-x-1/2 w-full max-w-xs z-50 animate-in fade-in slide-in-from-top duration-300">
           <div className="bg-yellow-50 border bg-primary-500 rounded-lg shadow-lg overflow-hidden">
             <div className="p-2">
               <div className="mt-1">
@@ -688,7 +688,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
         <button
           type="button"
           onClick={() => setPdfActive(false)}
-          className="fixed bottom-24 left-2 z-50 flex items-center gap-1 rounded-md bg-red-500 px-2.5 py-1.5 text-2xs font-semibold text-white shadow-lg active:scale-95"
+          className="fixed bottom-24 start-2 z-50 flex items-center gap-1 rounded-md bg-red-500 px-2.5 py-1.5 text-2xs font-semibold text-white shadow-lg active:scale-95"
         >
           <svg
             width="12"

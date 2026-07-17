@@ -236,7 +236,7 @@ export const ContinueLearningCard = ({
                             type="button"
                             key={slide.slide_id}
                             onClick={() => onResumeClick(slide)}
-                            className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-cp-border p-2.5 text-left transition-colors hover:bg-cp-bg-deep focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                            className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-cp-border p-2.5 text-start transition-colors hover:bg-cp-bg-deep focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
                         >
                             <span
                                 className={cn(
@@ -310,7 +310,7 @@ export const ContinueLearningCard = ({
                             type="button"
                             key={slide.slide_id}
                             onClick={() => onResumeClick(slide)}
-                            className="flex w-full cursor-pointer items-center gap-3 rounded-xl bg-white/60 p-2.5 text-left transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-play-ink/30"
+                            className="flex w-full cursor-pointer items-center gap-3 rounded-xl bg-white/60 p-2.5 text-start transition-colors hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-play-ink/30"
                         >
                             <span
                                 className={cn(
@@ -396,7 +396,7 @@ export const ContinueLearningCard = ({
                             key={slide.slide_id}
                             onClick={() => onResumeClick(slide)}
                             className={cn(
-                                "group/item flex w-full items-center gap-3 p-2.5 rounded-lg text-left hover:bg-muted/80 transition-colors cursor-pointer border border-transparent hover:border-border",
+                                "group/item flex w-full items-center gap-3 p-2.5 rounded-lg text-start hover:bg-muted/80 transition-colors cursor-pointer border border-transparent hover:border-border",
                                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                 "[.ui-vibrant_&]:hover:bg-white/60 [.ui-vibrant_&]:hover:border-primary/20"
                             )}

@@ -198,7 +198,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                             onClick={clearAllFilters}
                             className="h-8 text-xs px-2 text-muted-foreground hover:text-foreground"
                         >
-                            <X size={14} className="mr-1" />
+                            <X size={14} className="me-1" />
                             Clear All
                         </Button>
                     )}
@@ -230,7 +230,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                             <AccordionTrigger className="hover:no-underline py-3">
                                 <span className="text-sm font-semibold">{getTerminology(ContentTerms.Level, SystemTerms.Level)}</span>
                                 {selectedLevels.length > 0 && (
-                                    <Badge variant="secondary" className="ml-2 text-caption h-5 px-1.5">
+                                    <Badge variant="secondary" className="ms-2 text-caption h-5 px-1.5">
                                         {selectedLevels.length}
                                     </Badge>
                                 )}
@@ -251,7 +251,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                             <AccordionTrigger className="hover:no-underline py-3">
                                 <span className="text-sm font-semibold">{getTerminologyPlural(ContentTerms.PopularTag, SystemTerms.PopularTag)}</span>
                                 {selectedTags.length > 0 && (
-                                    <Badge variant="secondary" className="ml-2 text-caption h-5 px-1.5">
+                                    <Badge variant="secondary" className="ms-2 text-caption h-5 px-1.5">
                                         {selectedTags.length}
                                     </Badge>
                                 )}
@@ -272,7 +272,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                             <AccordionTrigger className="hover:no-underline py-3">
                                 <span className="text-sm font-semibold">{getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}</span>
                                 {selectedInstructors.length > 0 && (
-                                    <Badge variant="secondary" className="ml-2 text-caption h-5 px-1.5">
+                                    <Badge variant="secondary" className="ms-2 text-caption h-5 px-1.5">
                                         {selectedInstructors.length}
                                     </Badge>
                                 )}
@@ -299,7 +299,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                 >
                     Apply Filters
                     {hasActiveFilters && (
-                        <Badge variant="secondary" className="ml-2 bg-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/30 border-0">
+                        <Badge variant="secondary" className="ms-2 bg-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/30 border-0">
                             {activeFiltersCount}
                         </Badge>
                     )}
@@ -343,12 +343,12 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                     </Badge>
                                 )}
                             </div>
-                            <span className="text-xs text-muted-foreground mr-1">Show</span>
+                            <span className="text-xs text-muted-foreground me-1">Show</span>
                         </Button>
                     </SheetTrigger>
                     <SheetContent side="left" className="w-72 sm:w-96 p-0 overflow-hidden flex flex-col">
                         <SheetHeader className="p-4 border-b">
-                            <SheetTitle className="text-left flex items-center justify-between">
+                            <SheetTitle className="text-start flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <Funnel size={18} />
                                     <span>Filters</span>

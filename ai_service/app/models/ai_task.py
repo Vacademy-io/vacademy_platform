@@ -47,6 +47,10 @@ class AiTaskType(str, Enum):
     SORT_QUESTIONS_TOPIC_WISE = "SORT_QUESTIONS_TOPIC_WISE"
     CHAT_WITH_PDF = "CHAT_WITH_PDF"
     EVALUATION = "EVALUATION"
+    # i18n Phase 1 — content translation pipeline (translation_service.py).
+    TRANSLATE_SLIDE = "TRANSLATE_SLIDE"
+    TRANSLATE_QUESTION = "TRANSLATE_QUESTION"
+    TRANSLATE_STRINGS = "TRANSLATE_STRINGS"
 
 
 class AiTaskInputType(str, Enum):

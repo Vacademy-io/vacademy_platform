@@ -165,14 +165,14 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
               <>
                 <button
                   onClick={prevTestimonial}
-                  className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 bg-white border border-gray-200 text-gray-500 p-2 rounded-full hover:text-gray-800 hover:shadow-md transition-all"
+                  className="absolute start-0 top-1/2 -translate-y-1/2 -translate-x-4 bg-white border border-gray-200 text-gray-500 p-2 rounded-full hover:text-gray-800 hover:shadow-md transition-all"
                   aria-label="Previous testimonial"
                 >
                   <CaretLeft className="w-5 h-5" />
                 </button>
                 <button
                   onClick={nextTestimonial}
-                  className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 bg-white border border-gray-200 text-gray-500 p-2 rounded-full hover:text-gray-800 hover:shadow-md transition-all"
+                  className="absolute end-0 top-1/2 -translate-y-1/2 translate-x-4 bg-white border border-gray-200 text-gray-500 p-2 rounded-full hover:text-gray-800 hover:shadow-md transition-all"
                   aria-label="Next testimonial"
                 >
                   <CaretRight className="w-5 h-5" />

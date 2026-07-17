@@ -60,7 +60,7 @@ const markdownComponents = {
     />
   ),
   li: ({ ...props }: React.LiHTMLAttributes<HTMLLIElement>) => (
-    <li className="ml-2" {...props} />
+    <li className="ms-2" {...props} />
   ),
   code: ({
     children,
@@ -86,7 +86,7 @@ const markdownComponents = {
   },
   blockquote: ({ ...props }: React.BlockquoteHTMLAttributes<HTMLQuoteElement>) => (
     <blockquote
-      className="border-l-4 border-primary pl-3 py-1 my-3 italic text-muted-foreground text-sm"
+      className="border-s-4 border-primary ps-3 py-1 my-3 italic text-muted-foreground text-sm"
       {...props}
     />
   ),
@@ -119,12 +119,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     <div
       className={cn(
         "flex w-full max-w-pct-92",
-        isUser ? "ml-auto justify-end" : "mr-auto justify-start",
+        isUser ? "ms-auto justify-end" : "me-auto justify-start",
       )}
     >
       {/* Assistant avatar */}
       {isAssistant && (
-        <Avatar className="h-6 w-6 mr-1.5 mt-0.5 shrink-0 ring-1 ring-border/40">
+        <Avatar className="h-6 w-6 me-1.5 mt-0.5 shrink-0 ring-1 ring-border/40">
           {avatarUrl ? (
             <AvatarImage
               src={avatarUrl}
@@ -143,8 +143,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           className={cn(
             "rounded-xl px-2.5 py-1.5 text-caption break-words max-w-full leading-relaxed",
             isUser
-              ? "bg-primary text-primary-foreground rounded-br-sm shadow-sm"
-              : "bg-card text-card-foreground rounded-bl-sm shadow-sm ring-1 ring-border/30",
+              ? "bg-primary text-primary-foreground rounded-ee-sm shadow-sm"
+              : "bg-card text-card-foreground rounded-es-sm shadow-sm ring-1 ring-border/30",
           )}
         >
           {isUser ? (
@@ -168,7 +168,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             <div className="max-w-none group relative">
               {/* Copy button — visible on hover */}
               <button
-                className="absolute -top-0.5 -right-0.5 p-1 rounded-md bg-muted/80 shrink-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                className="absolute -top-0.5 -end-0.5 p-1 rounded-md bg-muted/80 shrink-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity z-10"
                 onClick={() => onCopy(msg.content, msg.id)}
                 title="Copy"
               >

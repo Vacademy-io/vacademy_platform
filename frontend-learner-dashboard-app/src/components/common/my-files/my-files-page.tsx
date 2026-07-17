@@ -192,7 +192,7 @@ export default function MyFilesPage() {
                 <TableHead className="font-semibold text-primary-900 dark:text-primary-100">
                   Date Added
                 </TableHead>
-                <TableHead className="text-right font-semibold text-primary-900 dark:text-primary-100">
+                <TableHead className="text-end font-semibold text-primary-900 dark:text-primary-100">
                   Actions
                 </TableHead>
               </TableRow>
@@ -225,7 +225,7 @@ export default function MyFilesPage() {
                   <TableCell className="text-gray-600 dark:text-gray-400 text-sm">
                     {formatDate(file.created_at_iso)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-end">
                     <div className="flex justify-end gap-2">
                       {canShowViewButton(file) && (
                         <Button

@@ -83,6 +83,11 @@ public class SupportTicket {
     @Column(name = "eta")
     private Date eta;
 
+    /** Support-team-only ticket: never surfaced to the institute (list, detail or counts). */
+    @Column(name = "internal_only", nullable = false)
+    @Builder.Default
+    private boolean internalOnly = false;
+
     @Column(name = "first_response_due_at")
     private Date firstResponseDueAt;
 

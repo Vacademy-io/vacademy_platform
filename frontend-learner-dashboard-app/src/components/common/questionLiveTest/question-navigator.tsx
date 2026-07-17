@@ -88,7 +88,7 @@ export function QuestionNavigator({
                   </div>
                   {(status === "marked" || status === "answered-marked") && (
                     <Circle
-                      className="absolute -top-1 -right-1 w-3 h-3 text-primary-500"
+                      className="absolute -top-1 -end-1 w-3 h-3 text-primary-500"
                       weight="fill"
                     />
                   )}
@@ -124,7 +124,7 @@ export function QuestionNavigator({
                   </Button>
                   {state?.isMarkedForReview && (
                     <Circle
-                      className="absolute -top-1 -right-1 w-3 h-3 text-primary-500"
+                      className="absolute -top-1 -end-1 w-3 h-3 text-primary-500"
                       weight="fill"
                     />
                   )}

@@ -412,12 +412,12 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
                   
                   // Enhanced list styling
                   ul: ({children}) => (
-                    <ul className="list-none pl-0 mb-6 space-y-3">
+                    <ul className="list-none ps-0 mb-6 space-y-3">
                       {children}
                     </ul>
                   ),
                   ol: ({children}) => (
-                    <ol className="list-none pl-0 mb-6 space-y-3 counter-reset-list">
+                    <ol className="list-none ps-0 mb-6 space-y-3 counter-reset-list">
                       {children}
                     </ol>
                   ),
@@ -425,10 +425,10 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
                     const { children } = props as { children?: React.ReactNode };
                     const isOrdered = (props as { ordered?: boolean }).ordered;
                     return (
-                      <li className={`relative pl-8 text-gray-700 text-lg leading-relaxed ${
+                      <li className={`relative ps-8 text-gray-700 text-lg leading-relaxed ${
                         isOrdered ? 'counter-increment-list' : ''
                       }`}>
-                        <span className={`absolute left-0 top-0 flex items-center justify-center w-6 h-6 rounded-full text-sm font-medium ${
+                        <span className={`absolute start-0 top-0 flex items-center justify-center w-6 h-6 rounded-full text-sm font-medium ${
                           isOrdered 
                             ? 'bg-blue-100 text-blue-700 border-2 border-blue-200' 
                             : 'bg-indigo-100 text-indigo-700'
@@ -446,8 +446,8 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
                   
                   // Enhanced blockquote styling
                   blockquote: ({children}) => (
-                    <blockquote className="relative border-l-4 border-blue-400 pl-6 py-4 my-8 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-r-lg shadow-sm">
-                      <div className="absolute top-2 left-2 text-blue-300 opacity-50">
+                    <blockquote className="relative border-s-4 border-blue-400 ps-6 py-4 my-8 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-e-lg shadow-sm">
+                      <div className="absolute top-2 start-2 text-blue-300 opacity-50">
                         <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z"/>
                         </svg>
@@ -470,7 +470,7 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
                     }
                     return (
                       <div className="relative my-6">
-                        <div className="absolute top-0 left-0 right-0 h-8 bg-gray-800 rounded-t-lg flex items-center px-4">
+                        <div className="absolute top-0 start-0 end-0 h-8 bg-gray-800 rounded-t-lg flex items-center px-4">
                           <div className="flex space-x-2">
                             <div className="w-3 h-3 bg-red-500 rounded-full"></div>
                             <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
@@ -494,7 +494,7 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
                       rel="noopener noreferrer"
                     >
                       {children}
-                      <svg className="inline w-3 h-3 ml-1 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="inline w-3 h-3 ms-1 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                       </svg>
                     </a>
@@ -524,7 +524,7 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
                     </tr>
                   ),
                   th: ({children}) => (
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 uppercase tracking-wider border-b-2 border-gray-200">
+                    <th className="px-6 py-4 text-start text-sm font-semibold text-gray-900 uppercase tracking-wider border-b-2 border-gray-200">
                       {children}
                     </th>
                   ),

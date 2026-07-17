@@ -38,6 +38,9 @@ export type NotificationSettings = {
         high_priority_roles: string[] | null;
         auto_dismiss_hours: number;
     };
+    // Full-screen app-open overlays (mode APP_OVERLAY). Missing block falls back
+    // to server-side defaults (students false / teachers true / admins true).
+    appOverlays?: AppOverlaySettings;
     directMessages: {
         students_can_send: boolean;
         teachers_can_send: boolean;
@@ -77,6 +80,31 @@ export type NotificationSettings = {
     }>;
     firebase?: FirebaseSettings;
 };
+
+// App overlay permissions block, persisted under institute-settings
+// `settings.appOverlays`. Keys are snake_case to match the backend JSON shape EXACTLY.
+export type AppOverlaySettings = {
+    students_can_send: boolean;
+    teachers_can_send: boolean;
+    admins_can_send: boolean;
+};
+
+// Defaults mirror the server-side fallback for a missing appOverlays block.
+export function getDefaultAppOverlaySettings(): AppOverlaySettings {
+    return {
+        students_can_send: false,
+        teachers_can_send: true,
+        admins_can_send: true,
+    };
+}
+
+// Merge a possibly-missing/partial appOverlays block against the defaults so the
+// Notification tab can render toggles for institutes saved before this block existed.
+export function mergeAppOverlaySettings(
+    partial?: Partial<AppOverlaySettings> | null
+): AppOverlaySettings {
+    return { ...getDefaultAppOverlaySettings(), ...(partial ?? {}) };
+}
 
 // Chat settings block, persisted under institute-settings `settings.chat`.
 // Inner keys are snake_case to match the backend JSON shape EXACTLY.

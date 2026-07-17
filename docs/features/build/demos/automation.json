@@ -1,0 +1,105 @@
+{
+  "pillar": "automation",
+  "demo": {
+    "intro": "Watch a fee-reminder automation go from a visual canvas to messages on a parent's phone — and the run log that proves it all happened.",
+    "screens": [
+      {
+        "id": "builder",
+        "device": "desktop",
+        "title": "Workflow Builder — Daily Fee Reminder",
+        "nav": ["Dashboard", "Study Library", "Learners", "Automations*", "Payments", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "wf-head", "title": "Daily Fee Reminder", "subtitle": "Scheduled · Every day, 9:00 AM IST · Next run in 14h", "actions": ["Test Run", "Publish"] },
+          { "type": "tree", "id": "flow-tree", "nodes": [
+            { "label": "Trigger — Schedule: daily, 9:00 AM IST", "children": [
+              { "label": "Query — Fee installments due in 3 days", "children": [
+                { "label": "If/Else — Installment still unpaid?", "children": [
+                  { "label": "Yes → Send WhatsApp: 'fee_reminder_v2' template", "children": [
+                    { "label": "Send Email — reminder with payment link" }
+                  ]},
+                  { "label": "No → End (already paid)" }
+                ]}
+              ]}
+            ]}
+          ]},
+          { "type": "chat", "id": "ai-draft", "messages": [
+            { "from": "user", "text": "Remind parents on WhatsApp 3 days before a fee installment is due" },
+            { "from": "ai", "text": "Drafted a 5-node workflow: daily schedule → fee-installments query → unpaid filter → WhatsApp + email. Which batches should it cover — all, or NEET 2027 Batch A only?" }
+          ], "composer": "Describe an automation..." }
+        ]
+      },
+      {
+        "id": "library",
+        "device": "desktop",
+        "title": "One-Click Automations",
+        "nav": ["Dashboard", "Study Library", "Learners", "Automations*", "Payments", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "lib-head", "title": "Automations Library", "subtitle": "26 ready-made recipes · 9 active", "actions": ["Open Workflow Builder"] },
+          { "type": "form", "id": "auto-toggles", "title": "Payments & Fees", "fields": [
+            { "label": "Daily fee-due reminders (WhatsApp + email)", "value": "on", "type": "toggle" },
+            { "label": "Instant payment-success receipt", "value": "on", "type": "toggle" },
+            { "label": "Payment-failed email with retry link", "value": "on", "type": "toggle" },
+            { "label": "Abandoned-checkout nudge", "value": "off", "type": "toggle" }
+          ]},
+          { "type": "cards", "id": "lib-cards", "items": [
+            { "title": "Live class alerts", "sub": "'We're live now' + separate recaps for absentees", "chip": "3 active", "tone": "green" },
+            { "title": "Parent updates", "sub": "Attended vs missed, weekly attendance roll-ups", "chip": "2 active", "tone": "green" },
+            { "title": "Enrollment & onboarding", "sub": "Welcome email with login credentials", "chip": "On", "tone": "green" },
+            { "title": "Membership renewals", "sub": "Expiry scans, renewal nudges, win-back emails", "chip": "Off", "tone": "gray" }
+          ]}
+        ]
+      },
+      {
+        "id": "run",
+        "device": "phone",
+        "title": "Parent's Phone — 9:00 AM",
+        "nav": ["Chats*", "Updates", "Calls", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "p-head", "title": "Mrs. Verma", "subtitle": "+91 98201 44573 · Rohan, NEET 2027 Batch A" },
+          { "type": "notify", "id": "sent-msgs", "items": [
+            { "channel": "WhatsApp", "text": "Hi Mrs. Verma, Rohan's installment #2 of ₹12,500 for NEET 2027 Batch A is due 20 Jul. Pay securely: vacademy.io/pay/8k2f" },
+            { "channel": "Email", "text": "Fee reminder — ₹12,500 due 20 Jul · invoice and payment link attached" },
+            { "channel": "Push", "text": "Reminder: Rohan's fee installment is due in 3 days" }
+          ]}
+        ]
+      },
+      {
+        "id": "history",
+        "device": "desktop",
+        "title": "Execution History — Daily Fee Reminder",
+        "nav": ["Dashboard", "Study Library", "Learners", "Automations*", "Payments", "Reports", "Settings"],
+        "widgets": [
+          { "type": "stats", "id": "run-stats", "items": [
+            { "label": "Runs this month", "value": "312" },
+            { "label": "Success rate", "value": "98.7%" },
+            { "label": "Messages sent", "value": "1,046", "delta": "+41 today" },
+            { "label": "Avg duration", "value": "6.2s" }
+          ]},
+          { "type": "table", "id": "run-table", "columns": ["Run", "Trigger", "Recipients", "Status", "Duration"], "rows": [
+            ["17 Jul, 9:00 AM", "Schedule", "41 parents", { "chip": "Completed", "tone": "green" }, "5.8s"],
+            ["16 Jul, 9:00 AM", "Schedule", "38 parents", { "chip": "Completed", "tone": "green" }, "6.1s"],
+            ["15 Jul, 9:00 AM", "Schedule", "44 parents", { "chip": "1 failed", "tone": "red" }, "7.4s"],
+            ["14 Jul, 9:00 AM", "Schedule", "36 parents", { "chip": "Completed", "tone": "green" }, "5.9s"]
+          ]},
+          { "type": "list", "id": "step-log", "items": [
+            { "title": "Trigger fired", "sub": "15 Jul, 9:00:00 AM IST", "chip": "OK", "tone": "green" },
+            { "title": "Query: fee installments due in 3 days", "sub": "44 unpaid installments found", "chip": "OK", "tone": "green" },
+            { "title": "Send WhatsApp × 44", "sub": "fee_reminder_v2 · all delivered", "chip": "OK", "tone": "green" },
+            { "title": "Send Email × 44", "sub": "1 bounced — invalid address for Kabir Shah", "chip": "1 failed", "tone": "red" }
+          ]}
+        ]
+      }
+    ],
+    "steps": [
+      { "screen": "builder", "target": null, "title": "Every event becomes the next action", "text": "Vacademy's workflow engine listens to 35+ events — enrollments, payments, missed classes, new leads — and fires the right response automatically. This flow chases unpaid fee installments every morning." },
+      { "screen": "builder", "target": "flow-tree", "title": "Wire it up on a visual canvas", "text": "Drag from 20 node types — triggers, queries, If/Else branches, loops, delays, WhatsApp, email, push, webhooks — and connect them. Prebuilt lookups like 'fee installments due' mean zero technical setup." },
+      { "screen": "builder", "target": "ai-draft", "title": "Or describe it — AI drafts the flow", "text": "Type your goal in plain language and AI assembles the whole workflow, asking clarifying questions — which batch? which template? — and explaining every step. Nothing goes live until you review and publish." },
+      { "screen": "builder", "target": "wf-head", "title": "Test safely before anything goes live", "text": "Run a safe test with clear warnings before real messages go out. Pre-publish validation flags misconfigured steps, and duplicate-safe delivery ensures no one ever gets the same message twice for one event." },
+      { "screen": "library", "target": "lib-cards", "title": "26 automations, ready to switch on", "text": "No canvas needed — the curated library covers live class alerts, parent updates, enrollment welcomes with login credentials, renewal nudges and admin team alerts. Each recipe is a full workflow you can open and extend later." },
+      { "screen": "library", "target": "auto-toggles", "title": "Fee follow-ups in one click", "text": "Flip a switch and answer one or two friendly questions — which template, what time, how many days before due. Daily reminders, payment receipts and failed-payment retry links start running immediately." },
+      { "screen": "run", "target": "sent-msgs", "title": "The right message, on every channel", "text": "At 9:00 AM the run finds Rohan's unpaid ₹12,500 installment and reaches his parent on WhatsApp, email and push — template variables filled from his record, with a secure payment link in each message." },
+      { "screen": "history", "target": "run-table", "title": "Every run, on the record", "text": "The history tab logs each execution with recipients, status and duration — plus summary cards for runs, success rate and average time. When a parent says 'I never got it', you have the receipt." },
+      { "screen": "history", "target": "step-log", "title": "Drill into any run, node by node", "text": "Open a run to see the execution flow step by step: what the query found, exactly which messages went out, and what failed and why — like the one bounced email here — so nothing is a black box." }
+    ]
+  }
+}

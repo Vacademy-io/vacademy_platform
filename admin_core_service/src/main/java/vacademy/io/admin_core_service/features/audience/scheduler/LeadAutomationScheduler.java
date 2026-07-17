@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.audience.scheduler;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.audience.dto.LeadSlaCandidate;
@@ -74,6 +75,7 @@ public class LeadAutomationScheduler {
     /** 30-minute cadence (server timezone). "Before" reminder windows shorter than the scan
      *  interval may be skipped, so configure before-windows of 30 minutes or more. */
     @Scheduled(cron = "0 */30 * * * ?")
+    @SchedulerLock(name = "LeadAutomationScheduler", lockAtMostFor = "PT25M", lockAtLeastFor = "PT1M")
     public void scan() {
         scanLeadSlas();
         scanScheduledFollowups();

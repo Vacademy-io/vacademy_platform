@@ -9,9 +9,9 @@ export const BannerComponent: React.FC<BannerProps> = ({
   const getAlignmentClass = () => {
     switch (alignment) {
       case "left":
-        return "text-left";
+        return "text-start";
       case "right":
-        return "text-right";
+        return "text-end";
       case "center":
       default:
         return "text-center";

@@ -163,6 +163,12 @@ public class InstituteSettingService {
         } catch (Exception e) {
             log.error("Error creating default invoice setting: " + e.getMessage());
         }
+
+        try {
+            createDefaultOnboardingSetting(institute);
+        } catch (Exception e) {
+            log.error("Error creating default onboarding setting: " + e.getMessage());
+        }
         // Doubt notification templates: a single global default row lives at institute_id =
         // 'DEFAULT' (see V215). New institutes fall back to it automatically via
         // DoubtNotificationService.resolveTemplateId — no per-institute seeding needed.
@@ -204,6 +210,25 @@ public class InstituteSettingService {
                 .settingData(defaultData)
                 .build();
         createNewGenericSetting(institute, "INVOICE_SETTING", request);
+    }
+
+    /**
+     * Adds ONBOARDING_SETTING key-value to institute settings if not already present.
+     * Default is disabled (enabled=false) -- with the setting off, none of the onboarding
+     * feature's UI or auto-start behavior is active and the institute behaves exactly as
+     * it did before the feature existed. Does not overwrite an existing value.
+     */
+    public void createDefaultOnboardingSetting(Institute institute) {
+        if (getSpecificSetting(institute, "ONBOARDING_SETTING") != null) {
+            return;
+        }
+        Map<String, Object> defaultData = new HashMap<>();
+        defaultData.put("enabled", false);
+        GenericSettingRequest request = GenericSettingRequest.builder()
+                .settingName("Onboarding Setting")
+                .settingData(defaultData)
+                .build();
+        createNewGenericSetting(institute, "ONBOARDING_SETTING", request);
     }
 
     @Transactional

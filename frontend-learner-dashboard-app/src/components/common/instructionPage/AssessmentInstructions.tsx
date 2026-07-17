@@ -223,7 +223,7 @@ export const AssessmentInstructions = ({
                   <span className="truncate">{att.fileName}</span>
                   <ArrowSquareOut
                     size={14}
-                    className="ml-auto shrink-0 text-neutral-400"
+                    className="ms-auto shrink-0 text-neutral-400"
                   />
                 </a>
               ))}

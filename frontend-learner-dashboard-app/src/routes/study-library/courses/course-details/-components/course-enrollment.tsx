@@ -17,7 +17,7 @@ import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 // navigating to the course from the catalog with a specific packageSessionId in the URL.
 const StaticField = ({ label, value }: { label: string; value: string }) => (
   <div className="flex flex-col gap-1.5">
-    <span className="text-xs font-medium text-muted-foreground ml-1">
+    <span className="text-xs font-medium text-muted-foreground ms-1">
       {label}
     </span>
     <div className="px-3 py-2.5 bg-muted/50 rounded-md border text-sm font-medium">
@@ -186,7 +186,7 @@ export const CourseEnrollment = ({
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
 
       {/* Floating orb effect */}
-      <div className="absolute top-0 right-0 w-16 h-16 bg-primary/10 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3 pointer-events-none"></div>
+      <div className="absolute top-0 end-0 w-16 h-16 bg-primary/10 rounded-full blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -translate-y-1 translate-x-3 pointer-events-none"></div>
 
       <CardHeader className="p-3 pb-2 space-y-0">
         <div className="flex items-center space-x-2">
@@ -217,7 +217,7 @@ export const CourseEnrollment = ({
                     Preview Mode
                   </span>
                 </div>
-                <p className="text-blue-600/90 dark:text-blue-400 pl-3.5 text-xs leading-relaxed">
+                <p className="text-blue-600/90 dark:text-blue-400 ps-3.5 text-xs leading-relaxed">
                   Browse structure. Enroll to access{" "}
                   {getTerminology(
                     ContentTerms.Slides,
@@ -269,7 +269,7 @@ export const CourseEnrollment = ({
                 selectedSession &&
                 selectedLevel && (
                   <div className="flex flex-col gap-1.5 sm:col-span-2">
-                    <span className="text-xs font-medium text-muted-foreground ml-1">
+                    <span className="text-xs font-medium text-muted-foreground ms-1">
                       Class / Section
                     </span>
                     <Select
@@ -304,7 +304,7 @@ export const CourseEnrollment = ({
                   : `Not enrolled`}
               </span>
             </div>
-            <p className="text-xs text-yellow-700 dark:text-yellow-400 pl-3.5 leading-relaxed">
+            <p className="text-xs text-yellow-700 dark:text-yellow-400 ps-3.5 leading-relaxed">
               {selectedTab === "ALL"
                 ? `This ${getTerminology(
                     ContentTerms.Course,

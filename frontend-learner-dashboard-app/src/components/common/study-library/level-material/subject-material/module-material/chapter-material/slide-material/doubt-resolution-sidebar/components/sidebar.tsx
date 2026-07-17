@@ -220,12 +220,12 @@ export const DoubtResolutionSidebar = () => {
       <div
         ref={sidebarRef}
         className={`
-            fixed top-0 right-0 h-full z-50
+            fixed top-0 end-0 h-full z-50
             transition-transform duration-300 ease-in-out
             ${open ? "translate-x-0" : "translate-x-full"}
             w-full sm:w-vw-90 md:w-vw-70 lg:w-vw-60 xl:w-vw-35
             min-w-reg-280 sm:min-w-reg-320 lg:min-w-reg-400 max-w-reg-500
-            bg-gradient-to-b from-white to-slate-50/30 shadow-2xl border-l border-gray-200/60 backdrop-blur-xl 
+            bg-gradient-to-b from-white to-slate-50/30 shadow-2xl border-s border-gray-200/60 backdrop-blur-xl 
             flex flex-col overflow-hidden
           `}
       >

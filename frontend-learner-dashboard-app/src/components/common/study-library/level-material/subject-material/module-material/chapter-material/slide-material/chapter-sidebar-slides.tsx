@@ -565,7 +565,7 @@ const SlideItem = ({
                 "flex w-full items-center gap-2 rounded-md py-2 transition-all duration-150",
                 "[.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary-100 [.ui-play_&]:my-1.5 [.ui-play_&]:shadow-[0_2px_0_hsl(var(--primary-100))] [.ui-play_&]:transition-all [.ui-play_&]:hover:border-primary-200 [.ui-play_&]:hover:shadow-play-3-primary", // design-lint-ignore: custom shadow (primary-100 variant, no token)
                 isActive
-                  ? "pl-1 pr-2 text-primary-700 bg-primary-50 border border-primary-200/60 border-l-4 border-l-primary-500 [.ui-play_&]:!bg-primary-50 [.ui-play_&]:!border-primary-300 [.ui-play_&]:!shadow-[0_3px_0_hsl(var(--primary-300))]" // design-lint-ignore: custom shadow (primary-300 variant, no token)
+                  ? "ps-1 pe-2 text-primary-700 bg-primary-50 border border-primary-200/60 border-s-4 border-s-primary-500 [.ui-play_&]:!bg-primary-50 [.ui-play_&]:!border-primary-300 [.ui-play_&]:!shadow-[0_3px_0_hsl(var(--primary-300))]" // design-lint-ignore: custom shadow (primary-300 variant, no token)
                   : "px-2 bg-white text-gray-700 hover:bg-gray-50 border border-transparent",
               ].join(" ")}
             >

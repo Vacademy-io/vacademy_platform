@@ -497,7 +497,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
       {/* Mobile Action Buttons - Fixed at bottom for catalogue page (hidden in preview mode) */}
       {(!showIntroPage || introCompleted) && !isPreviewMode && catalogueData && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-catalogue-bg border-t border-catalogue-border p-4">
+        <div className="md:hidden fixed bottom-0 start-0 end-0 z-50 bg-catalogue-bg border-t border-catalogue-border p-4">
           <div className={`flex flex-col gap-3 ${isAndroid || isIOS ? 'mb-8' : ''}`}>
             {/* Login Button */}
             <div className="flex flex-col gap-1">
@@ -552,7 +552,7 @@ const BackToTopButton = () => {
   return (
     <button
       onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-      className="catalogue-fab fixed bottom-6 right-6 z-50 flex h-11 w-11 items-center justify-center rounded-full backdrop-blur active:scale-95 md:bottom-8 md:right-8"
+      className="catalogue-fab fixed bottom-6 end-6 z-50 flex h-11 w-11 items-center justify-center rounded-full backdrop-blur active:scale-95 md:bottom-8 md:end-8"
       aria-label="Back to top"
     >
       <CaretUp size={20} weight="bold" aria-hidden="true" />

@@ -234,7 +234,7 @@ const PaymentSelectionStep = ({
               Custom Amount
             </h3>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-lg">
+              <span className="absolute start-3 top-1/2 transform -translate-y-1/2 text-gray-500 text-lg">
                 {getCurrencySymbol(selectedPayment?.currency || "GBP")}
               </span>
               <input
@@ -243,7 +243,7 @@ const PaymentSelectionStep = ({
                 onChange={(e) => handleCustomAmountChange(e.target.value)}
                 min={minAmount}
                 step="1"
-                className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
+                className="w-full ps-8 pe-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
                 placeholder={`Minimum ${getCurrencySymbol(
                   selectedPayment?.currency || "GBP"
                 )}${minAmount}`}

@@ -524,7 +524,7 @@ export const TestReportDialog = ({
                 disabled={isLoading}
               >
                 <Export weight="duotone" />
-                {isLoading ? <span className="ml-2">Exporting...</span> : <>Export Report</>}
+                {isLoading ? <span className="ms-2">Exporting...</span> : <>Export Report</>}
               </MyButton>
             </div>
 
@@ -816,13 +816,13 @@ export const TestReportDialog = ({
                           />
                         </div>
                         <Alert
-                          className={`border-l-4 ${review.answer_status === "CORRECT"
-                            ? "border-l-emerald-500 bg-emerald-50/50 border-emerald-200"
+                          className={`border-s-4 ${review.answer_status === "CORRECT"
+                            ? "border-s-emerald-500 bg-emerald-50/50 border-emerald-200"
                             : review.answer_status === "INCORRECT"
-                              ? "border-l-rose-500 bg-rose-50/50 border-rose-200"
+                              ? "border-s-rose-500 bg-rose-50/50 border-rose-200"
                               : review.answer_status === "PARTIAL_CORRECT"
-                                ? "border-l-amber-500 bg-amber-50/50 border-amber-200"
-                                : "border-l-slate-500 bg-slate-50/50 border-slate-200"
+                                ? "border-s-amber-500 bg-amber-50/50 border-amber-200"
+                                : "border-s-slate-500 bg-slate-50/50 border-slate-200"
                             }`}
                         >
                           <AlertDescription className="text-sm text-slate-700">
@@ -835,7 +835,7 @@ export const TestReportDialog = ({
                       {review.answer_status !== "CORRECT" && (
                         <div className="space-y-2">
                           <span className="text-sm font-semibold text-slate-700">Correct Answer</span>
-                          <Alert className="border-l-4 border-l-emerald-500 bg-emerald-50/50 border-emerald-200">
+                          <Alert className="border-s-4 border-s-emerald-500 bg-emerald-50/50 border-emerald-200">
                             <AlertDescription className="text-sm text-slate-700">
                               {renderCorrectAnswer(review, questionsData)}
                             </AlertDescription>
@@ -877,7 +877,7 @@ export const TestReportDialog = ({
         </div>
 
         {/* Mobile Export Button */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 pb-safe bg-white border-t border-slate-200 shadow-lg z-40">
+        <div className="md:hidden fixed bottom-0 start-0 end-0 p-4 pb-safe bg-white border-t border-slate-200 shadow-lg z-40">
           <MyButton
             buttonType="secondary"
             scale="large"
@@ -886,13 +886,13 @@ export const TestReportDialog = ({
             className="w-full"
           >
             <Export />
-            {isLoading ? <span className="ml-2">Exporting...</span> : <>Export Report</>}
+            {isLoading ? <span className="ms-2">Exporting...</span> : <>Export Report</>}
           </MyButton>
         </div>
 
         {/* PDF Preview Modal */}
         {evaluation_type === "MANUAL" && pdfFile && (
-          <div className="fixed bottom-4 right-4 z-50">
+          <div className="fixed bottom-4 end-4 z-50">
             <MyButton
               buttonType="primary"
               scale="large"

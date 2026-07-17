@@ -4,6 +4,11 @@ import { INSTITUTE_DETAIL } from "@/constants/urls";
 import { NAMING_SETTINGS_KEY } from "@/types/naming-settings";
 import { THEME_ROLE_SETTINGS_KEY, type ThemeRoleSettings } from "@/types/theme-role-settings";
 import { upsertInstituteDetails } from "@/services/institute-settings-cache";
+import {
+  setLanguageSettingCache,
+  clearLanguageSettingCache,
+  type LanguageSetting,
+} from "@/services/language-settings";
 
 export interface InstituteDetails {
   institute_name: string;
@@ -50,6 +55,11 @@ interface InstituteSettings {
       key: string;
       name: string;
       data?: ThemeRoleSettings;
+    };
+    LANGUAGE_SETTING?: {
+      key: string;
+      name: string;
+      data?: unknown;
     };
   };
 }
@@ -135,6 +145,22 @@ export const fetchAndStoreInstituteDetails = async (
           localStorage.setItem(THEME_ROLE_SETTINGS_KEY, JSON.stringify(themeRoleData));
         } else {
           localStorage.removeItem(THEME_ROLE_SETTINGS_KEY);
+        }
+
+        // Institute language configuration (default/enabled locales) —
+        // cached alongside NAMING_SETTING; mirrors the admin app's
+        // syncLanguageSettingCache. Null-safe: most institutes don't have
+        // the key yet — in that case the cache is cleared so a value from a
+        // previously used institute never lingers.
+        const languageData = settingsObj?.setting?.LANGUAGE_SETTING?.data;
+        if (
+          languageData &&
+          typeof languageData === "object" &&
+          !Array.isArray(languageData)
+        ) {
+          setLanguageSettingCache(languageData as LanguageSetting);
+        } else {
+          clearLanguageSettingCache();
         }
       } catch (err) {
         console.error("Failed to parse or store naming settings:", err);

@@ -573,7 +573,7 @@ export function QuestionModeView({ question, slideId }: Props) {
           {def.executor}
         </Badge>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ms-auto flex items-center gap-2">
           {question.sessionTimeMinutes ? (
             <SessionTimer
               slideId={slideId}
@@ -601,9 +601,9 @@ export function QuestionModeView({ question, slideId }: Props) {
             }
           >
             {isRunning ? (
-              <SpinnerGap className="mr-1 size-4 animate-spin" />
+              <SpinnerGap className="me-1 size-4 animate-spin" />
             ) : (
-              <Play className="mr-1 size-4" />
+              <Play className="me-1 size-4" />
             )}
             Run
           </Button>
@@ -620,9 +620,9 @@ export function QuestionModeView({ question, slideId }: Props) {
             }
           >
             {isSubmitting ? (
-              <SpinnerGap className="mr-1 size-4 animate-spin" />
+              <SpinnerGap className="me-1 size-4 animate-spin" />
             ) : (
-              <PaperPlaneTilt className="mr-1 size-4" />
+              <PaperPlaneTilt className="me-1 size-4" />
             )}
             Submit
           </Button>
@@ -640,7 +640,7 @@ export function QuestionModeView({ question, slideId }: Props) {
             *deterrent* (paste-into-LLM). Not a security control — anyone
             can read the DOM. Code editor stays selectable. */}
         <div
-          className="w-full select-none overflow-auto border-b bg-white p-4 md:w-2/5 md:min-w-reg-280 md:border-b-0 md:border-r"
+          className="w-full select-none overflow-auto border-b bg-white p-4 md:w-2/5 md:min-w-reg-280 md:border-b-0 md:border-e"
           style={{
             WebkitUserSelect: "none",
             MozUserSelect: "none",
@@ -732,7 +732,7 @@ export function QuestionModeView({ question, slideId }: Props) {
               <div className="text-xs">
                 <span className="font-semibold">{latestVerdict}</span>
                 {latestScore != null && (
-                  <span className="ml-1 text-gray-500">
+                  <span className="ms-1 text-gray-500">
                     {latestScore.toFixed(1)} / {question.maxPoints}
                   </span>
                 )}
@@ -780,7 +780,7 @@ export function QuestionModeView({ question, slideId }: Props) {
                         </span>
                       )}
                       {r.timeMs != null && (
-                        <span className="ml-auto text-gray-500">
+                        <span className="ms-auto text-gray-500">
                           {r.timeMs} ms
                         </span>
                       )}

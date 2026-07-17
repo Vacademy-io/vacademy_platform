@@ -246,13 +246,13 @@ export default function AccountDetailsEdit({
                   type={showNewPassword ? "text" : "password"}
                   {...register("newPassword")}
                   placeholder="Enter your new password"
-                  className="h-11 text-sm pr-10"
+                  className="h-11 text-sm pe-10"
                   disabled={isLoading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowNewPassword(!showNewPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute end-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   {showNewPassword ? <EyeSlash size={16} /> : <Eye size={16} />}
                 </button>
@@ -296,13 +296,13 @@ export default function AccountDetailsEdit({
                   type={showConfirmPassword ? "text" : "password"}
                   {...register("confirmPassword")}
                   placeholder="Confirm your new password"
-                  className="h-11 text-sm pr-10"
+                  className="h-11 text-sm pe-10"
                   disabled={isLoading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute end-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   {showConfirmPassword ? (
                     <EyeSlash size={16} />

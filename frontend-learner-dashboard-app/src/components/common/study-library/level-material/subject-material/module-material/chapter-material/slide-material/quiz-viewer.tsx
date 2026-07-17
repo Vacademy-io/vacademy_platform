@@ -1147,7 +1147,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
                   <label
                     className={`flex items-center text-sm ${selected ? "font-medium text-primary-700" : "text-neutral-700"}`}
                   >
-                    <span className="font-medium mr-2">{String.fromCharCode(97 + index)}.</span>
+                    <span className="font-medium me-2">{String.fromCharCode(97 + index)}.</span>
                     <div className="rich-text-content min-w-0 flex-1" dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(option.text.content) }} />
                   </label>
                 </div>
@@ -1190,7 +1190,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
                       <div className="rich-text-content min-w-0 flex-1" dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(option.text.content) }} />
                     ) : (
                       <>
-                        <span className="font-medium mr-2">{String.fromCharCode(97 + index)}.</span>
+                        <span className="font-medium me-2">{String.fromCharCode(97 + index)}.</span>
                         <div className="rich-text-content min-w-0 flex-1" dangerouslySetInnerHTML={{ __html: renderHtmlWithMath(option.text.content) }} />
                       </>
                     )}
@@ -1230,7 +1230,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       <div className="mb-8">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-sm text-gray-700 font-medium">Question {current + 1} of {total}</span>
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ms-auto flex items-center gap-3">
             {timeLimitMinutes && timeLimitMinutes > 0 && (
               <QuizTimer
                 totalSeconds={timeLimitMinutes * 60}
@@ -1245,7 +1245,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         </div>
         <div className="w-full h-3 rounded-full overflow-hidden bg-gray-200 relative">
           <div
-            className="h-3 rounded-full transition-all duration-500 ease-out bg-gradient-to-r from-primary-400 to-primary-600 absolute left-0 top-0"
+            className="h-3 rounded-full transition-all duration-500 ease-out bg-gradient-to-r from-primary-400 to-primary-600 absolute start-0 top-0"
             style={{ width: `${progress}%` }}
           />
           {/* The gray background is already present as bg-gray-200 */}
@@ -1315,7 +1315,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
             {isAnswered() ? "Answered" : "Not answered"}
           </span>
           {showIncorrectNotice && (
-            <span className="text-sm text-danger-600 ml-2">Incorrect. Try again.</span>
+            <span className="text-sm text-danger-600 ms-2">Incorrect. Try again.</span>
           )}
         </div>
 

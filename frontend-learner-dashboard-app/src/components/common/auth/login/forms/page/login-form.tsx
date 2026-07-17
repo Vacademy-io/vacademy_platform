@@ -31,6 +31,7 @@ import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { usePublicDoubtConfig } from "@/services/public-doubt-config";
 import { GuestQueryDialog } from "@/components/common/queries/GuestQueryDialog";
 import { AuthPageBranding } from "@/components/common/institute-branding";
+import { LanguageDropdown } from "@/components/common/localization/language-dropdown";
 import { identifyUser } from "@/lib/analytics";
 import { useEffect as useEffectTheme } from "react";
 import {
@@ -918,7 +919,7 @@ export function LoginForm({
             repeat: Infinity,
             ease: "easeInOut",
           }}
-          className="absolute top-20 left-20 w-24 h-24 bg-muted/20 rounded-full blur-xl"
+          className="absolute top-20 start-20 w-24 h-24 bg-muted/20 rounded-full blur-xl"
         />
         <motion.div
           animate={{
@@ -931,7 +932,7 @@ export function LoginForm({
             ease: "easeInOut",
             delay: 1,
           }}
-          className="absolute bottom-20 right-20 w-32 h-32 bg-muted/20 rounded-full blur-xl"
+          className="absolute bottom-20 end-20 w-32 h-32 bg-muted/20 rounded-full blur-xl"
         />
 
         <motion.div
@@ -982,6 +983,11 @@ export function LoginForm({
     >
       {/* Subtle Background Pattern (gradients removed) */}
       <div className="absolute inset-0 -z-10" />
+
+      {/* Language switcher — full-page login only (not the embedded variant).
+          Options come from the institute's enabled locales; defaults to just
+          English until an institute enables more. */}
+      {!type && <LanguageDropdown />}
 
       {/* Centered container */}
       <div className="w-full min-h-screen-60 flex items-center justify-center p-4">
@@ -1045,7 +1051,7 @@ export function LoginForm({
                       onClick={() => handleOAuthLogin("google")}
                       type="button"
                     >
-                      <FcGoogle className="mr-2 h-4 w-4" />
+                      <FcGoogle className="me-2 h-4 w-4" />
                       Continue with Google
                     </Button>
                   )}
@@ -1056,7 +1062,7 @@ export function LoginForm({
                       onClick={() => handleOAuthLogin("github")}
                       type="button"
                     >
-                      <GitHubLogoIcon className="mr-2 h-4 w-4" />
+                      <GitHubLogoIcon className="me-2 h-4 w-4" />
                       Continue with GitHub
                     </Button>
                   )}

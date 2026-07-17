@@ -201,6 +201,15 @@ public class UserMessageService {
     }
 
     @Transactional(readOnly = true)
+    public List<UserMessagesResponse> getActiveAppOverlays(String userId) {
+        log.debug("Getting active app overlays for user: {}", userId);
+        return recipientMessageRepository.findActiveAppOverlays(userId)
+                .stream()
+                .map(this::mapToUserMessagesResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
     public Page<UserMessagesResponse> getStreamMessages(String userId, String packageSessionId, String streamType, Pageable pageable) {
         log.debug("Getting stream messages for user: {} with packageSessionId: {}, streamType: {}", userId, packageSessionId, streamType);
         vacademy.io.notification_service.features.announcements.enums.StreamType enumType = null;

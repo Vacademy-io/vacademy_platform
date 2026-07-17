@@ -24,9 +24,9 @@ export function InterviewDemo({ child, interview, assessment }: Props) {
 function ScheduleCard({ type, date, time, dur, mode, link, location, icon, accent }: { type: string; date: string; time: string; dur: number; mode: string; link?: string; location?: string; icon: React.ReactNode; accent: "violet" | "blue" }) {
   const dateStr = new Date(date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
   const bg = accent === "violet" ? "bg-violet-50 dark:bg-violet-950/20" : "bg-blue-50 dark:bg-blue-950/20";
-  const border = accent === "violet" ? "border-l-violet-500" : "border-l-blue-500";
+  const border = accent === "violet" ? "border-s-violet-500" : "border-s-blue-500";
   return (
-    <Card className={`shadow-sm border-l-4 ${border}`}>
+    <Card className={`shadow-sm border-s-4 ${border}`}>
       <CardHeader className="pb-3"><div className="flex items-center gap-2.5"><div className={`p-2 rounded-lg ${bg}`}>{icon}</div><div><CardTitle className="text-base">{type}</CardTitle><CardDescription className="text-xs">Upcoming</CardDescription></div></div></CardHeader>
       <CardContent className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
@@ -37,7 +37,7 @@ function ScheduleCard({ type, date, time, dur, mode, link, location, icon, accen
         <div className="flex items-center gap-2 text-sm">
           {mode === "ONLINE" ? <VideoCamera size={14} className="text-muted-foreground" /> : <MapPin size={14} className="text-muted-foreground" />}
           <span>{mode === "ONLINE" ? "Online" : location || "On campus"}</span>
-          <Badge variant="outline" className="text-caption ml-auto">{mode}</Badge>
+          <Badge variant="outline" className="text-caption ms-auto">{mode}</Badge>
         </div>
         {link && <Button variant="outline" size="sm" className="w-full sm:w-auto gap-1.5 text-xs h-8" onClick={() => window.open(link, "_blank")}><VideoCamera size={12} />Join Meeting<ArrowSquareOut size={10} /></Button>}
       </CardContent>

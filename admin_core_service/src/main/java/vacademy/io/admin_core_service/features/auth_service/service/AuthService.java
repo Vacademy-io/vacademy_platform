@@ -687,12 +687,9 @@ public class AuthService {
      * item whose child does not already have one linked.
      */
     public vacademy.io.common.auth.dto.BackfillParentsResultDTO backfillParents(
-            List<vacademy.io.common.auth.dto.BackfillParentItemDTO> items, String instituteId,
-            boolean sendCredentials, String recipient) {
+            List<vacademy.io.common.auth.dto.BackfillParentItemDTO> items, String instituteId) {
         try {
-            String endpoint = AuthServiceRoutes.BACKFILL_PARENTS + "?instituteId=" + instituteId
-                    + "&sendCredentials=" + sendCredentials
-                    + "&recipient=" + recipient;
+            String endpoint = AuthServiceRoutes.BACKFILL_PARENTS + "?instituteId=" + instituteId;
             ObjectMapper objectMapper = new ObjectMapper();
             ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
                     clientName,

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.EvaluationProcessSummaryDto;
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.EvaluationProgressDto;
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.ParticipantDetailsDto;
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.QuestionEvaluationResultDto;
@@ -16,7 +17,9 @@ import vacademy.io.assessment_service.features.assessment.repository.AiQuestionE
 import vacademy.io.assessment_service.features.assessment.repository.CopyCheckLayoutRepository;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -135,6 +138,47 @@ public class AiEvaluationProgressService {
                                 .rubricVersion(rubricVersion)
                                 .aiServiceJobId(process.getAiServiceJobId())
                                 .build();
+        }
+
+        /**
+         * List all AI-evaluation runs for an assessment (within one institute) for
+         * the evaluations dashboard — replacing the old localStorage-only handoff,
+         * so a running/failed run is findable again after leaving the page.
+         */
+        public List<EvaluationProcessSummaryDto> listProcessesForAssessment(String assessmentId, String instituteId) {
+                List<AiEvaluationProcess> processes = processRepository
+                                .findByAssessmentAndInstitute(assessmentId, instituteId);
+
+                // One grouped query for the "needs review" (FAILED) counts across the
+                // whole assessment, rather than a count per process.
+                Map<String, Long> failedByProcess = new HashMap<>();
+                for (Object[] rowCount : questionEvaluationRepository
+                                .countByAssessmentGroupedByProcess(assessmentId, "FAILED")) {
+                        failedByProcess.put((String) rowCount[0], (Long) rowCount[1]);
+                }
+
+                return processes.stream().map(p -> {
+                        String participantName = null;
+                        String attemptId = null;
+                        if (p.getStudentAttempt() != null) {
+                                attemptId = p.getStudentAttempt().getId();
+                                if (p.getStudentAttempt().getRegistration() != null) {
+                                        participantName = p.getStudentAttempt().getRegistration()
+                                                        .getParticipantName();
+                                }
+                        }
+                        return EvaluationProcessSummaryDto.builder()
+                                        .processId(p.getId())
+                                        .attemptId(attemptId)
+                                        .participantName(participantName)
+                                        .status(p.getStatus())
+                                        .questionsCompleted(p.getQuestionsCompleted())
+                                        .questionsTotal(p.getQuestionsTotal())
+                                        .needsReviewCount(failedByProcess.getOrDefault(p.getId(), 0L))
+                                        .startedAt(p.getStartedAt())
+                                        .completedAt(p.getCompletedAt())
+                                        .build();
+                }).collect(Collectors.toList());
         }
 
         /**

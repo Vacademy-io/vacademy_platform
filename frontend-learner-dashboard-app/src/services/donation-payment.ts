@@ -2,6 +2,7 @@ import axios from "axios";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { TokenKey } from "@/constants/auth/tokens";
 import { BASE_URL } from "@/constants/urls";
+import { getActiveLocale } from "@/lib/formatters";
 
 const DONATION_PAYMENT_URL = `${BASE_URL}/admin-core-service/payments/user-plan/user-plan-payment`;
 
@@ -94,7 +95,7 @@ export const processDonationPayment = async (
       {
         headers: {
           accept: "*/*",
-          "accept-language": "en-US,en;q=0.9",
+          "accept-language": getActiveLocale(),
           "content-type": "application/json",
           Authorization: `Bearer ${token}`,
           origin: BASE_URL,
@@ -138,7 +139,7 @@ export const getUserPlanId = async (instituteId: string): Promise<string | null>
       {
         headers: {
           accept: "*/*",
-          "accept-language": "en-US,en;q=0.9",
+          "accept-language": getActiveLocale(),
           "priority": "u=1, i",
           referer: `${BASE_URL}/admin-core-service/swagger-ui/index.html`,
           "sec-ch-ua": '"Not;A=Brand";v="99", "Google Chrome";v="139", "Chromium";v="139"',

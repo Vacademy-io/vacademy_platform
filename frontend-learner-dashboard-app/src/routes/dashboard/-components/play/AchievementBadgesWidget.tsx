@@ -33,16 +33,16 @@ const BadgeItem: React.FC<{ badge: PlayBadge }> = ({ badge }) => {
           <Lock
             weight="fill"
             size={10}
-            className="absolute -bottom-0.5 -right-0.5 rounded-full bg-white p-0.5 text-play-ink"
+            className="absolute -bottom-0.5 -end-0.5 rounded-full bg-white p-0.5 text-play-ink"
           />
         )}
         {awarded ? (
-          <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-play-gold ring-2 ring-white">
+          <span className="absolute -top-1 -end-1 flex h-4 w-4 items-center justify-center rounded-full bg-play-gold ring-2 ring-white">
             <Star weight="fill" size={10} className="text-play-ink" />
           </span>
         ) : (
           unlocked && badge.unlockedAt && isRecent(badge.unlockedAt) && (
-            <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
+            <span className="absolute -top-1 -end-1 flex h-3.5 w-3.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-play-gold opacity-75" />
               <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-play-gold text-play-badge text-play-ink font-black items-center justify-center">!</span>
             </span>

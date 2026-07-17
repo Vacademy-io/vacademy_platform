@@ -367,7 +367,7 @@ function DocumentCard({
                   Camera
                 </Button>
 
-                <span className="text-caption text-muted-foreground ml-auto">
+                <span className="text-caption text-muted-foreground ms-auto">
                   Max {doc.max_size_mb}MB •{" "}
                   {doc.allowed_formats.join(", ").toUpperCase()}
                 </span>
@@ -419,7 +419,7 @@ function getDocStatusConfig(status: string) {
       iconBg: "bg-blue-100 dark:bg-blue-900/30",
       badgeBg: "bg-blue-100 dark:bg-blue-900/30",
       badgeText: "text-blue-700 dark:text-blue-300",
-      statusIcon: <UploadSimple size={10} className="mr-1" />,
+      statusIcon: <UploadSimple size={10} className="me-1" />,
     },
     UNDER_REVIEW: {
       label: "Under Review",
@@ -427,7 +427,7 @@ function getDocStatusConfig(status: string) {
       iconBg: "bg-amber-100 dark:bg-amber-900/30",
       badgeBg: "bg-amber-100 dark:bg-amber-900/30",
       badgeText: "text-amber-700 dark:text-amber-300",
-      statusIcon: <Clock size={10} className="mr-1" />,
+      statusIcon: <Clock size={10} className="me-1" />,
     },
     APPROVED: {
       label: "Verified",
@@ -440,7 +440,7 @@ function getDocStatusConfig(status: string) {
       iconBg: "bg-emerald-100 dark:bg-emerald-900/30",
       badgeBg: "bg-emerald-100 dark:bg-emerald-900/30",
       badgeText: "text-emerald-700 dark:text-emerald-300",
-      statusIcon: <CheckCircle size={10} className="mr-1" />,
+      statusIcon: <CheckCircle size={10} className="me-1" />,
     },
     REJECTED: {
       label: "Rejected",
@@ -448,7 +448,7 @@ function getDocStatusConfig(status: string) {
       iconBg: "bg-red-100 dark:bg-red-900/30",
       badgeBg: "bg-red-100 dark:bg-red-900/30",
       badgeText: "text-red-700 dark:text-red-300",
-      statusIcon: <XCircle size={10} className="mr-1" />,
+      statusIcon: <XCircle size={10} className="me-1" />,
     },
   };
 

@@ -102,7 +102,7 @@ export const SubscriptionPlanSection = ({
                       {currency}
                       {discountedPrice.toFixed(2)}
                       {payment.validity_in_days && (
-                        <span className="text-sm font-normal text-gray-500 ml-1">
+                        <span className="text-sm font-normal text-gray-500 ms-1">
                           /
                           {payment.validity_in_days % 30 === 0
                             ? payment.validity_in_days / 30
@@ -124,7 +124,7 @@ export const SubscriptionPlanSection = ({
                     {currency}
                     {payment.actual_price}
                     {payment.validity_in_days && (
-                      <span className="text-sm font-normal text-gray-500 ml-1">
+                      <span className="text-sm font-normal text-gray-500 ms-1">
                         /
                         {payment.validity_in_days % 30 === 0
                           ? payment.validity_in_days / 30

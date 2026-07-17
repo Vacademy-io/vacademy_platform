@@ -418,13 +418,13 @@ export function EmailOtpForm({
             >
               {isSubmitting ? (
                 <>
-                  <SpinnerGap className="w-4 h-4 mr-2 animate-spin" />
+                  <SpinnerGap className="w-4 h-4 me-2 animate-spin" />
                   Sending OTP...
                 </>
               ) : (
                 <>
                   Send OTP
-                  <ArrowRight className="w-4 h-4 ml-2" />
+                  <ArrowRight className="w-4 h-4 ms-2" />
                 </>
               )}
             </Button>
@@ -494,7 +494,7 @@ export function EmailOtpForm({
           >
             {currentStep === "verifying" ? (
               <>
-                <SpinnerGap className="w-4 h-4 mr-2 animate-spin" />
+                <SpinnerGap className="w-4 h-4 me-2 animate-spin" />
                 Verifying...
               </>
             ) : (

@@ -66,6 +66,8 @@ export const TEMPLATE_VARIABLES = {
         '{{student_unique_link}}', // Student unique link (e.g., login, profile, personalized action)
         '{{student_referral_code}}', // Student referral code
         '{{referral_count}}', // Number of successful referrals by the student
+        '{{first_name}}', // Student's first name (derived from full name)
+        '{{last_name}}', // Student's last name (derived from full name)
     ],
     course: [
         '{{course_name}}', // Course name

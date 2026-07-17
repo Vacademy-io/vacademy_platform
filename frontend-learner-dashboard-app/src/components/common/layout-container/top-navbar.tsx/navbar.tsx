@@ -16,6 +16,7 @@ import { handleFetchUserRoleDetails } from "@/routes/study-library/courses/-serv
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { TokenKey } from "@/constants/auth/tokens";
 import { NotificationsBell } from "./NotificationsBell";
+import { TutorialsHelpButton } from "@/components/tutorials/TutorialsHelpButton";
 import { UserMenu } from "./UserMenu";
 import { handleGetPublicInstituteDetails } from "../services/navbar-services";
 import { useRouter, useRouterState } from "@tanstack/react-router";
@@ -361,6 +362,7 @@ export function Navbar() {
 
         {/* Right Section */}
         <div className="flex shrink-0 items-center gap-1">
+          <TutorialsHelpButton className="h-9 w-9" />
           <NotificationsBell className="h-9 w-9" />
           <UserMenu />
         </div>
@@ -483,6 +485,8 @@ export function Navbar() {
             </TooltipContent>
           </Tooltip>
         )}
+        {/* Help & tutorials */}
+        <TutorialsHelpButton className="h-9 w-9" />
         {/* Notifications */}
         <NotificationsBell className="h-9 w-9" />
 

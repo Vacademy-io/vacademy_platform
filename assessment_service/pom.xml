@@ -247,6 +247,9 @@
                     <project>java-spring-boot</project>
                     <!-- Auth token passed via Maven property: -Dsentry.authToken -->
                     <authToken>${sentry.authToken}</authToken>
+                    <!-- Local builds: -Dsentry.skip=true (same as auth/notification services).
+                         Unresolved in CI -> literal "${sentry.skip}" -> boolean false -> plugin runs. -->
+                    <skip>${sentry.skip}</skip>
                 </configuration>
                 <executions>
                     <execution>

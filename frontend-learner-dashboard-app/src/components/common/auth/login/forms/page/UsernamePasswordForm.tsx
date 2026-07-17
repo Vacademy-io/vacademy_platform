@@ -336,13 +336,13 @@ export function UsernameLogin({
                           className="h-10 py-2 px-3 text-subtitle w-full border-gray-200
                                                         focus:border-gray-300 focus:ring-0 focus-visible:ring-0
                                                         rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white
-                                                        font-normal pr-10 text-neutral-600 shadow-none
+                                                        font-normal pe-10 text-neutral-600 shadow-none
                                                         placeholder:text-body placeholder:font-regular
                                                         hover:border-primary-200 focus:border-primary-500"
                         />
 
                         {/* User icon */}
-                        <User className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <User className="absolute end-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                       </div>
                     </div>
                   </FormControl>
@@ -378,14 +378,14 @@ export function UsernameLogin({
                             <Input
                               type={showPassword ? "text" : "password"}
                               placeholder="Enter your password"
-                              className="h-10 py-2 px-3 text-subtitle w-full border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-20 text-neutral-600 shadow-none placeholder:text-body placeholder:font-regular hover:border-primary-200 focus:border-primary-500"
+                              className="h-10 py-2 px-3 text-subtitle w-full border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pe-20 text-neutral-600 shadow-none placeholder:text-body placeholder:font-regular hover:border-primary-200 focus:border-primary-500"
                               value={value}
                               onChange={onChange}
                               required
                               {...field}
                             />
                             {/* Custom password toggle and lock icon */}
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center space-x-2">
+                            <div className="absolute end-3 top-1/2 -translate-y-1/2 flex items-center space-x-2">
                               <motion.button
                                 type="button"
                                 whileHover={{
@@ -407,7 +407,7 @@ export function UsernameLogin({
                             </div>
                           </div>
                           {form.formState.errors.password?.message && (
-                            <div className="flex items-center gap-1 pl-1 text-body font-regular text-danger-600">
+                            <div className="flex items-center gap-1 ps-1 text-body font-regular text-danger-600">
                               <XCircle />
                               <span className="mt-0.5">
                                 {form.formState.errors.password.message}
@@ -490,7 +490,7 @@ export function UsernameLogin({
             onClick={onSwitchToEmail}
           >
             Use email OTP instead?
-            <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
+            <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
           </motion.button>
         )}
 
@@ -502,7 +502,7 @@ export function UsernameLogin({
             onClick={onSwitchToPhone}
           >
             Use Phone OTP Instead?
-            <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
+            <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
           </motion.button>
         )}
 

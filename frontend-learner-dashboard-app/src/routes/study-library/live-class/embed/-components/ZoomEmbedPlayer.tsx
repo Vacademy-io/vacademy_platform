@@ -32,7 +32,7 @@ const ZoomEmbedPlayer: React.FC<ZoomEmbedPlayerProps> = ({
 
       {/* Retention note — recording lives on Zoom Cloud and will expire */}
       {showExpiry && (
-        <span className="absolute bottom-3 left-3 z-10 rounded bg-black/70 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm">
+        <span className="absolute bottom-3 start-3 z-10 rounded bg-black/70 px-2 py-1 text-xs font-medium text-white backdrop-blur-sm">
           Available until {expiryDate!.toLocaleDateString()}
         </span>
       )}

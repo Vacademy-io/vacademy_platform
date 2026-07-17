@@ -39,7 +39,7 @@ export function PaymentsDemo({ child, summary, history }: Props) {
                 <div className="flex-1 min-w-0"><div className="flex items-center gap-2 mb-0.5"><p className="text-sm font-medium text-foreground truncate">{item.description}</p><Badge className={`text-caption px-1.5 ${catColors[item.category] || catColors["ADDITIONAL"]}`}>{item.category}</Badge></div>
                   {item.due_date && !paid && <p className={`text-caption ${overdue ? "text-destructive font-medium" : "text-muted-foreground"}`}>{overdue ? "⚠ Overdue — " : "Due "}{new Date(item.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</p>}
                 </div>
-                <div className="text-right shrink-0"><p className={`text-sm font-bold ${paid ? "text-muted-foreground line-through" : "text-foreground"}`}>{summary.currency}{item.total.toLocaleString()}</p>{item.discount > 0 && <p className="text-caption text-emerald-600">-{summary.currency}{item.discount.toLocaleString()} off</p>}</div>
+                <div className="text-end shrink-0"><p className={`text-sm font-bold ${paid ? "text-muted-foreground line-through" : "text-foreground"}`}>{summary.currency}{item.total.toLocaleString()}</p>{item.discount > 0 && <p className="text-caption text-emerald-600">-{summary.currency}{item.discount.toLocaleString()} off</p>}</div>
               </div>
             );
           })}</CardContent>

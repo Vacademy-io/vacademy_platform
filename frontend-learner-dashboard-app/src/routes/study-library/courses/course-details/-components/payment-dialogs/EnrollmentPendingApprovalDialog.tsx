@@ -25,7 +25,7 @@ export const EnrollmentPendingApprovalDialog: React.FC<EnrollmentPendingApproval
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/60 animate-fade-in" />
         <DialogPrimitive.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none"
+          className="fixed start-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl focus:outline-none"
         >
           <DialogPrimitive.Title className="sr-only">Pending for Approval</DialogPrimitive.Title>
           <DialogPrimitive.Description className="sr-only">
@@ -33,7 +33,7 @@ export const EnrollmentPendingApprovalDialog: React.FC<EnrollmentPendingApproval
           </DialogPrimitive.Description>
           
           <button
-            className="absolute right-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
+            className="absolute end-2 top-2 text-gray-400 hover:text-gray-700 focus:outline-none"
             onClick={handleClose}
             aria-label="Close"
           >
@@ -47,7 +47,7 @@ export const EnrollmentPendingApprovalDialog: React.FC<EnrollmentPendingApproval
                 <div className="w-20 h-20 bg-gradient-to-br from-yellow-100 to-orange-200 rounded-full flex items-center justify-center shadow-lg">
                   <Clock className="w-10 h-10 text-yellow-600" />
                 </div>
-                <div className="absolute -top-1 -right-1 w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
+                <div className="absolute -top-1 -end-1 w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
                   <Clock className="w-3 h-3 text-white" />
                 </div>
               </div>
@@ -68,7 +68,7 @@ export const EnrollmentPendingApprovalDialog: React.FC<EnrollmentPendingApproval
                     <Clock className="w-4 h-4 text-white" />
                   </div>
                 </div>
-                <div className="flex-1 text-left">
+                <div className="flex-1 text-start">
                   <p className="text-sm text-yellow-800 mb-3">
                     Your enrollment request is being reviewed by an administrator.
                   </p>

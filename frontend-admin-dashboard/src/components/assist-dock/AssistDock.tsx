@@ -4,6 +4,7 @@ import {
     BookOpen,
     CaretLeft,
     CaretRight,
+    Compass,
     GraduationCap,
     Question,
     RocketLaunch,
@@ -20,6 +21,7 @@ import { useAssistDock } from './store';
 import { tutorialsForRoute } from './tutorials';
 import { TutorialViewer } from './TutorialViewer';
 import { RoadmapViewer } from './RoadmapViewer';
+import { ExploreViewer } from './ExploreViewer';
 
 // Keep in sync with routes/__root.tsx publicRoutes — the dock only shows inside
 // the authenticated shell.
@@ -153,6 +155,14 @@ export function AssistDock() {
                     >
                         <RocketLaunch size={20} weight={panel === 'roadmap' ? 'fill' : 'duotone'} />
                     </RailButton>
+
+                    <RailButton
+                        label="Explore"
+                        active={panel === 'explore'}
+                        onClick={() => togglePanel('explore')}
+                    >
+                        <Compass size={20} weight={panel === 'explore' ? 'fill' : 'duotone'} />
+                    </RailButton>
                 </aside>
             )}
 
@@ -166,6 +176,8 @@ export function AssistDock() {
                 html={roadmap.data?.htmlContent ?? ''}
                 onClose={() => setPanel('none')}
             />
+
+            <ExploreViewer open={panel === 'explore'} onClose={() => setPanel('none')} />
 
             {/* Tutorials panel (slides out left of the rail) */}
             {panel === 'tutorials' && (

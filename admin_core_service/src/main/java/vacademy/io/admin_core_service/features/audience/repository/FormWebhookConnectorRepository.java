@@ -57,6 +57,25 @@ public interface FormWebhookConnectorRepository extends JpaRepository<FormWebhoo
             String platformFormId, String vendor);
 
     /**
+     * Advance ONLY the poll cursor columns for one connector. The poller loads the
+     * entity outside a transaction and, after slow Graph calls, would otherwise
+     * {@code save()} a stale full-row snapshot that clobbers columns another
+     * scheduler wrote in the meantime (e.g. a freshly-rotated oauth_access_token_enc
+     * from MetaTokenRefreshJob, or connection_status from the monitor). This targeted
+     * write touches only the disjoint columns the poller owns. last_polled_lead_id is
+     * kept when {@code leadId} is null so a poll that returned nothing doesn't erase it.
+     */
+    @org.springframework.transaction.annotation.Transactional
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query(
+        "UPDATE FormWebhookConnector c SET c.lastPolledAt = :ts, " +
+        "c.lastPolledLeadId = COALESCE(:leadId, c.lastPolledLeadId) WHERE c.id = :id")
+    void updatePollCursor(
+            @org.springframework.data.repository.query.Param("id") String id,
+            @org.springframework.data.repository.query.Param("ts") java.time.LocalDateTime ts,
+            @org.springframework.data.repository.query.Param("leadId") String leadId);
+
+    /**
      * Find all active connectors for a given vendor where tokens are expiring soon.
      * Used by MetaTokenRefreshJob to proactively refresh tokens.
      */

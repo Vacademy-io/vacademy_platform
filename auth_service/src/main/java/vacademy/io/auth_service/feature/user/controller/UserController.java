@@ -211,11 +211,9 @@ public class UserController {
     @Transactional
     public ResponseEntity<BackfillParentsResultDTO> backfillParents(
             @RequestBody List<BackfillParentItemDTO> items,
-            @RequestParam("instituteId") String instituteId,
-            @RequestParam(name = "sendCredentials", required = false, defaultValue = "false") boolean sendCredentials,
-            @RequestParam(name = "recipient", required = false, defaultValue = "STUDENT") String recipient) {
+            @RequestParam("instituteId") String instituteId) {
         try {
-            return ResponseEntity.ok(authService.backfillParents(items, instituteId, sendCredentials, recipient));
+            return ResponseEntity.ok(authService.backfillParents(items, instituteId));
         } catch (Exception e) {
             throw new VacademyException(e.getMessage());
         }

@@ -38,7 +38,7 @@ export const CollapsibleItem = ({ icon, title, subItems, onClick }: SidebarItemP
                         {isChildActive && (
                             <span
                                 aria-hidden
-                                className="absolute inset-y-2 left-0 w-1 rounded-full bg-nav-active-text"
+                                className="absolute inset-y-2 start-0 w-1 rounded-full bg-nav-active-text"
                             />
                         )}
                         {icon && React.createElement(icon, {
@@ -46,7 +46,7 @@ export const CollapsibleItem = ({ icon, title, subItems, onClick }: SidebarItemP
                             className: "size-5 shrink-0"
                         })}
                         <span className="flex-1 truncate">{title}</span>
-                        <CaretRight className="ml-auto shrink-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                        <CaretRight className="ms-auto shrink-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                     </SidebarMenuButton>
                 </CollapsibleTrigger>
                 <CollapsibleContent>

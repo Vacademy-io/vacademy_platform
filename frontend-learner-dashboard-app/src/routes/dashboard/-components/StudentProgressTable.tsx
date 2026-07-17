@@ -77,11 +77,11 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
     const getStatusBadge = (status: string) => {
         switch (status) {
             case "Above":
-                return <Badge variant="outline" className="border-green-500/30 text-green-600 bg-green-500/5 hover:bg-green-500/10 [.ui-vibrant_&]:bg-green-100 [.ui-vibrant_&]:text-green-800 [.ui-play_&]:bg-play-success-soft [.ui-play_&]:text-play-success-soft-ink [.ui-play_&]:border-0 [.ui-play_&]:font-bold [.ui-play_&]:rounded-full"><TrendUp size={12} className="mr-1" /> Above</Badge>;
+                return <Badge variant="outline" className="border-green-500/30 text-green-600 bg-green-500/5 hover:bg-green-500/10 [.ui-vibrant_&]:bg-green-100 [.ui-vibrant_&]:text-green-800 [.ui-play_&]:bg-play-success-soft [.ui-play_&]:text-play-success-soft-ink [.ui-play_&]:border-0 [.ui-play_&]:font-bold [.ui-play_&]:rounded-full"><TrendUp size={12} className="me-1" /> Above</Badge>;
             case "Below":
-                return <Badge variant="outline" className="border-red-500/30 text-red-600 bg-red-500/5 hover:bg-red-500/10 [.ui-vibrant_&]:bg-red-100 [.ui-vibrant_&]:text-red-800 [.ui-play_&]:bg-play-danger-soft [.ui-play_&]:text-play-danger-soft-ink [.ui-play_&]:border-0 [.ui-play_&]:font-bold [.ui-play_&]:rounded-full"><TrendDown size={12} className="mr-1" /> Below</Badge>;
+                return <Badge variant="outline" className="border-red-500/30 text-red-600 bg-red-500/5 hover:bg-red-500/10 [.ui-vibrant_&]:bg-red-100 [.ui-vibrant_&]:text-red-800 [.ui-play_&]:bg-play-danger-soft [.ui-play_&]:text-play-danger-soft-ink [.ui-play_&]:border-0 [.ui-play_&]:font-bold [.ui-play_&]:rounded-full"><TrendDown size={12} className="me-1" /> Below</Badge>;
             default:
-                return <Badge variant="outline" className="text-muted-foreground [.ui-vibrant_&]:bg-gray-100 [.ui-vibrant_&]:text-gray-700 [.ui-play_&]:bg-play-ink/5 [.ui-play_&]:text-play-ink/60 [.ui-play_&]:border-0 [.ui-play_&]:font-bold [.ui-play_&]:rounded-full"><Minus size={12} className="mr-1" /> Average</Badge>;
+                return <Badge variant="outline" className="text-muted-foreground [.ui-vibrant_&]:bg-gray-100 [.ui-vibrant_&]:text-gray-700 [.ui-play_&]:bg-play-ink/5 [.ui-play_&]:text-play-ink/60 [.ui-play_&]:border-0 [.ui-play_&]:font-bold [.ui-play_&]:rounded-full"><Minus size={12} className="me-1" /> Average</Badge>;
         }
     };
 
@@ -132,7 +132,7 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                             <TableHead className="w-44 font-semibold text-xs uppercase text-muted-foreground">Date</TableHead>
                             <TableHead className="font-semibold text-xs uppercase text-muted-foreground">Your Time</TableHead>
                             <TableHead className="font-semibold text-xs uppercase text-muted-foreground">Batch Avg</TableHead>
-                            <TableHead className="text-right font-semibold text-xs uppercase text-muted-foreground">Status</TableHead>
+                            <TableHead className="text-end font-semibold text-xs uppercase text-muted-foreground">Status</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -168,7 +168,7 @@ export const StudentProgressTable = ({ userActivity }: { userActivity: UserActiv
                                     <TableCell>
                                         <span className="text-sm text-muted-foreground">{row.time_spent_batch}</span>
                                     </TableCell>
-                                    <TableCell className="text-right">
+                                    <TableCell className="text-end">
                                         {getStatusBadge(row.status)}
                                     </TableCell>
                                 </TableRow>

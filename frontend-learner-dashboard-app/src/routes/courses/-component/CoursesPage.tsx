@@ -92,7 +92,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     <div ref={scrollRef}>
       <div className="flex flex-col lg:flex-row p-2 sm:p-4 lg:p-8 bg-gray-50 min-h-screen">
         {/* Filter Panel - Full width on mobile, sidebar on desktop */}
-        <div className="w-full lg:w-1/4 lg:pr-8 mb-6 lg:mb-0 order-1">
+        <div className="w-full lg:w-1/4 lg:pe-8 mb-6 lg:mb-0 order-1">
           <div className="lg:sticky lg:top-8">
             <FilterPanel
               selectedLevels={selectedLevels}

@@ -92,12 +92,12 @@ function RouteComponent() {
         ...getAttemptDetails(attemptId),
     });
 
-    // Get section IDs from localStorage
+    // localStorage handoff is only a fallback now — assessment/section context
+    // comes from the progress API, so the page works cross-device and after a
+    // storage clear (runs triggered before this was wired still read storage).
     const evaluationData = getEvaluationDataFromStorage().find(
         (data: any) => data.processId === processId
     );
-    const sectionIds = evaluationData?.sectionIds?.join(',');
-    const assessmentId = evaluationData?.assessmentId;
 
     const {
         data: progress,
@@ -117,6 +117,9 @@ function RouteComponent() {
         staleTime: 0,
         enabled: !!processId && !isStopEvaluation,
     });
+
+    // Assessment context: server-provided (cross-device safe), storage fallback.
+    const assessmentId = progress?.assessment_id ?? evaluationData?.assessmentId;
 
     const stopEvaluationMutation = useMutation({
         ...useStopEvaluation(),
@@ -156,6 +159,12 @@ function RouteComponent() {
             type: 'EXAM',
         }),
     });
+
+    // Section IDs to fetch question content — derived from the assessment itself
+    // (same shape the trigger used), with the localStorage handoff as fallback.
+    const sectionIds =
+        assessmentData?.[1]?.saved_data?.sections?.map((section: any) => section.id).join(',') ??
+        evaluationData?.sectionIds?.join(',');
 
     const { data: totalMarks } = useQuery({
         queryKey: ['TOTAL_MARKS', assessmentId],

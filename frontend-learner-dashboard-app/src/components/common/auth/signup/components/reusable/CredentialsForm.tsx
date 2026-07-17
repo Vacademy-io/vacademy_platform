@@ -197,12 +197,12 @@ export function CredentialsForm({
                           {...field}
                           type={showPassword ? "text" : "password"}
                           placeholder="Enter your password"
-                          className="px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                          className="px-3 py-2 pe-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                          className="absolute inset-y-0 end-0 pe-3 flex items-center"
                         >
                           {showPassword ? (
                             <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -236,12 +236,12 @@ export function CredentialsForm({
                           {...field}
                           type={showConfirmPassword ? "text" : "password"}
                           placeholder="Confirm your password"
-                          className="px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                          className="px-3 py-2 pe-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                         />
                         <button
                           type="button"
                           onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                          className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                          className="absolute inset-y-0 end-0 pe-3 flex items-center"
                         >
                           {showConfirmPassword ? (
                             <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -270,13 +270,13 @@ export function CredentialsForm({
           >
             {isSubmitting ? (
               <>
-                <SpinnerGap className="w-4 h-4 mr-2 animate-spin" />
+                <SpinnerGap className="w-4 h-4 me-2 animate-spin" />
                 Creating Account...
               </>
             ) : (
               <>
                 Create Account
-                <ArrowRight className="w-4 h-4 ml-2" />
+                <ArrowRight className="w-4 h-4 ms-2" />
               </>
             )}
           </Button>

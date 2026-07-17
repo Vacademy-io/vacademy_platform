@@ -155,9 +155,9 @@ export function ModalForgotPasswordForm({
                                                         size="large"
                                                         label="Email Address"
                                                         {...field}
-                                                        className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
+                                                        className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pe-10"
                                                     />
-                                                    <Envelope className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
+                                                    <Envelope className="absolute end-3 bottom-3 w-4 h-4 text-gray-400" />
                                                 </div>
                                             </FormControl>
                                         </FormItem>

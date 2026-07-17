@@ -176,8 +176,12 @@ export class BulkEmailService {
      * Add common placeholders
      */
     private addCommonPlaceholders(placeholders: Record<string, string>, student: any): void {
-        placeholders.name = student.full_name || '';
-        placeholders.student_name = student.full_name || '';
+        const fullName = student.full_name || '';
+        placeholders.name = fullName;
+        placeholders.student_name = fullName;
+        const [firstName, ...rest] = fullName.split(' ');
+        placeholders.first_name = firstName || '';
+        placeholders.last_name = rest.join(' ');
         placeholders.email = student.email || '';
         placeholders.student_email = student.email || '';
         placeholders.mobile_number = student.mobile_number || '';
@@ -290,7 +294,7 @@ export class BulkEmailService {
      * Add support placeholders
      */
     private addSupportPlaceholders(placeholders: Record<string, string>, student: any): void {
-        placeholders.custom_message_text = '';
+        placeholders.custom_message_text = student.custom_message_text || '';
         placeholders.custom_field_1 = student.custom_field_1 || '';
         placeholders.custom_field_2 = student.custom_field_2 || '';
         // Use institute email and website for support
@@ -549,7 +553,11 @@ export class BulkEmailService {
                             });
 
                             // Add specific mappings for common variables
-                            placeholders.name = student.full_name || '';
+                            const fallbackFullName = student.full_name || '';
+                            const [fallbackFirstName, ...fallbackRest] = fallbackFullName.split(' ');
+                            placeholders.name = fallbackFullName;
+                            placeholders.first_name = fallbackFirstName || '';
+                            placeholders.last_name = fallbackRest.join(' ');
                             placeholders.email = student.email || '';
                             placeholders.mobile_number = student.mobile_number || '';
                             placeholders.current_date = new Date().toLocaleDateString();

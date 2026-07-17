@@ -31,6 +31,8 @@ public class SupportTicketDto {
     private String source;
     /** Optional expected-resolution time set by the support team; visible to the institute. */
     private Date eta;
+    /** Support-team-only: never returned on institute-facing endpoints. */
+    private boolean internalOnly;
     private Date firstResponseDueAt;
     private Date firstRespondedAt;
     private Date resolvedAt;

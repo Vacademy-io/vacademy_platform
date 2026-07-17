@@ -47,7 +47,7 @@ function TermsAndConditions() {
           repeat: Infinity,
           ease: "easeInOut" 
         }}
-        className="absolute top-20 left-20 w-48 h-48 bg-muted/10 rounded-full blur-3xl"
+        className="absolute top-20 start-20 w-48 h-48 bg-muted/10 rounded-full blur-3xl"
       />
 
       <div className="max-w-4xl mx-auto px-4 py-8">

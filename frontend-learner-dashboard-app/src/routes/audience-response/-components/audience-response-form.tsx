@@ -26,6 +26,7 @@ import {
   getCountryCode,
   findCountryFieldKey,
 } from "@/components/common/enroll-by-invite/-utils/country-code-mapping";
+import { getCachedPreferredCountries } from "@/services/domain-routing";
 import type { AudienceCampaignResponse } from "../-services/audience-campaign-services";
 import {
   submitAudienceLead,
@@ -215,15 +216,19 @@ const AudienceResponseForm = ({
     void syncBranding();
   }, [instituteId, instituteData]);
 
-  // Get phone country code dynamically
+  // Get phone country code dynamically, falling back to the institute's
+  // configured preferred country (commaSeparatedPreferredCountry) instead of
+  // a hardcoded default so the phone input honors institute settings.
   const getPhoneCountryCode = () => {
+    const preferred = getCachedPreferredCountries();
+    const fallback = preferred[0] ?? "in";
     const formValues = form.getValues();
     const countryFieldKey = findCountryFieldKey(formValues);
     if (countryFieldKey) {
       const countryValue = formValues[countryFieldKey]?.value || "";
-      return getCountryCode(countryValue);
+      return getCountryCode(countryValue, fallback);
     }
-    return "us"; // Default
+    return fallback;
   };
 
   const onSubmit = async (values: FormValues) => {

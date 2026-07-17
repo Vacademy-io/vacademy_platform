@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import vacademy.io.common.auth.constants.AuthConstant;
 import vacademy.io.common.auth.entity.User;
 import vacademy.io.common.auth.entity.UserRole;
+import vacademy.io.common.core.i18n.LocaleRegistry;
 
 import java.security.Key;
 import java.util.Date;
@@ -106,6 +107,7 @@ public class JwtService {
         extraClaims.put("is_root_user", userDetails.isRootUser());  // Indicate if it's a root user
         extraClaims.put("authorities", UserRoleService.createInstituteRoleMap(userRoles));
         extraClaims.put("permissions", userPermissions);
+        addLocaleClaim(extraClaims, userDetails);
         return buildToken(extraClaims, userDetails, AuthConstant.jwtTokenExpiryInMillis);
     }
 
@@ -125,10 +127,21 @@ public class JwtService {
         extraClaims.put("is_root_user", userDetails.isRootUser());  // Indicate if it's a root user
         extraClaims.put("authorities", UserRoleService.createInstituteRoleMap(userRoles));
         extraClaims.put("permissions", userPermissions);
+        addLocaleClaim(extraClaims, userDetails);
 
         // convert days → milliseconds
         long expirationMillis = days * 24L * 60L * 60L * 1000L;
 
         return buildToken(extraClaims, userDetails, expirationMillis);
+    }
+
+    // Add the user's preferred locale as a "locale" claim (i18n Phase 0).
+    // Omitted when the user has no explicit preference — resolution then falls
+    // back to Accept-Language / default in LocaleResolutionFilter. Institute-
+    // default resolution at token time is a documented follow-up.
+    private void addLocaleClaim(Map<String, Object> extraClaims, User userDetails) {
+        if (userDetails.getPreferredLocale() != null) {
+            extraClaims.put("locale", LocaleRegistry.normalize(userDetails.getPreferredLocale()));
+        }
     }
 }

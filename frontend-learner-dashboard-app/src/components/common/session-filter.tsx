@@ -197,7 +197,7 @@ export function SessionFilter({
                     variant="outline"
                     size="sm"
                     onClick={() => setOpen((v) => !v)}
-                    className={`h-8 pl-2.5 pr-2 text-body font-medium rounded-lg transition-all duration-200 gap-1.5 ${isActive
+                    className={`h-8 ps-2.5 pe-2 text-body font-medium rounded-lg transition-all duration-200 gap-1.5 ${isActive
                             ? "border-primary-200 bg-primary-50 text-primary-500 shadow-sm hover:bg-primary-100"
                             : "border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800"
                         }`}
@@ -213,7 +213,7 @@ export function SessionFilter({
 
             {/* ── Dropdown panel ──────────────────────────────────────────────── */}
             <div
-                className={`absolute z-30 mt-2 w-[calc(100vw-2rem)] sm:w-80 origin-top-${alignment} transition-all duration-250 ease-out ${alignment === "left" ? "left-0" : "right-0" /* design-lint-ignore: viewport math */
+                className={`absolute z-30 mt-2 w-[calc(100vw-2rem)] sm:w-80 origin-top-${alignment} transition-all duration-250 ease-out ${alignment === "left" ? "start-0" : "end-0" /* design-lint-ignore: viewport math */
                     } ${open
                         ? "opacity-100 scale-100 translate-y-0 pointer-events-auto"
                         : "opacity-0 scale-95 -translate-y-1 pointer-events-none"

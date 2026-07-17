@@ -51,7 +51,7 @@ export function CommunityRulesPanel({
           <button
             type="button"
             onClick={() => !needsAck && setExpanded((v) => !v)}
-            className="flex w-full items-center justify-between gap-2 text-left"
+            className="flex w-full items-center justify-between gap-2 text-start"
             disabled={needsAck}
           >
             <span className="text-body font-medium text-foreground">{title}</span>
@@ -61,7 +61,7 @@ export function CommunityRulesPanel({
           </button>
 
           {expanded && items.length > 0 && (
-            <ul className="mt-2 list-disc space-y-1 pl-4">
+            <ul className="mt-2 list-disc space-y-1 ps-4">
               {items.map((item, i) => (
                 <li key={i} className="text-caption text-muted-foreground">
                   {item}

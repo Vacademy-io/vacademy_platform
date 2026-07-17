@@ -33,12 +33,12 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
             ContentTerms.Course,
             SystemTerms.Course
           ).toLocaleLowerCase()}s by title ...`}
-          className="w-full pl-10 pr-4 py-2.5 sm:py-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm sm:text-base"
+          className="w-full ps-10 pe-4 py-2.5 sm:py-3 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm sm:text-base"
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleKeyDown()}
         />
-        <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+        <MagnifyingGlassIcon className="absolute start-3 top-1/2 transform -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
       </div>
 
       {/* Sort Section */}
@@ -48,14 +48,14 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
           onChange={(e: ChangeEvent<HTMLSelectElement>) =>
             onSortChange(e.target.value)
           }
-          className="appearance-none w-full mr-2 md:w-auto bg-white border border-gray-300 text-gray-700 py-2.5 sm:py-3 px-3 sm:px-4 pr-8 rounded-md leading-tight focus:outline-none focus:bg-white focus:border-blue-500 hover:border-gray-400 text-sm sm:text-base"
+          className="appearance-none w-full me-2 md:w-auto bg-white border border-gray-300 text-gray-700 py-2.5 sm:py-3 px-3 sm:px-4 pe-8 rounded-md leading-tight focus:outline-none focus:bg-white focus:border-blue-500 hover:border-gray-400 text-sm sm:text-base"
         >
           <option value="Newest">Sort by: Newest</option>
           <option value="Oldest">Sort by: Oldest</option>
           {/* <option value="Popularity">Sort by: Popularity</option>
           <option value="Rating">Sort by: Rating</option> */}
         </select>
-        <CaretDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+        <CaretDown className="absolute end-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
       </div>
     </div>
   );

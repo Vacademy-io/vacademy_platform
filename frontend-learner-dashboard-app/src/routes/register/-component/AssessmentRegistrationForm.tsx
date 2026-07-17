@@ -1021,7 +1021,7 @@ const AssessmentRegistrationForm = () => {
                 </div>
               )}
               <FormProvider {...form}>
-                <form className="w-full flex flex-col gap-6 mt-5 sm:max-h-screen-70 sm:overflow-auto pr-1">
+                <form className="w-full flex flex-col gap-6 mt-5 sm:max-h-screen-70 sm:overflow-auto pe-1">
                   {Object.entries(form.getValues()).map(([key, value]) => {
                     if (key === "phone_number") {
                       return (

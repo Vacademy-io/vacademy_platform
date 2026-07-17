@@ -13,8 +13,16 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import TipTapEditor from '@/components/tiptap/TipTapEditor';
 import { BASE_URL } from '@/constants/urls';
+import { TEMPLATE_VARIABLES } from '@/types/message-template-types';
 
 type Placeholder = { label: string; value: string };
+
+// Default placeholders sourced from the canonical variable catalog so this composer
+// can't silently drift from what the backend actually resolves at send time.
+const DEFAULT_PLACEHOLDERS: Placeholder[] = [
+    { label: 'Name', value: TEMPLATE_VARIABLES.student[0] },
+    { label: 'Email', value: TEMPLATE_VARIABLES.student[2] },
+];
 
 export type EmailComposerProps = {
     subject: string;
@@ -60,10 +68,7 @@ export default function EmailComposer({
     htmlBody,
     onSubjectChange,
     onHtmlBodyChange,
-    placeholders = [
-        { label: 'Name', value: '{{name}}' },
-        { label: 'Email', value: '{{email}}' },
-    ],
+    placeholders = DEFAULT_PLACEHOLDERS,
     sampleData = { name: 'Sample User', email: 'sample@example.com' },
     loadableTemplates,
     onTemplateSelected,

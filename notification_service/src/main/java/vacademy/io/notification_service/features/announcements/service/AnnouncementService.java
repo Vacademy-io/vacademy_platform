@@ -45,7 +45,8 @@ public class AnnouncementService {
     private final AnnouncementResourceRepository resourceRepository;
     private final AnnouncementCommunityRepository communityRepository;
     private final AnnouncementTaskRepository taskRepository;
-    
+    private final AnnouncementAppOverlayRepository appOverlayRepository;
+
     private final AnnouncementSchedulingService schedulingService;
     private final AnnouncementProcessingService processingService;
     private final InstituteAnnouncementSettingsService instituteSettingsService;
@@ -277,6 +278,7 @@ public class AnnouncementService {
         resourceRepository.deleteByAnnouncementId(announcementId);
         communityRepository.deleteByAnnouncementId(announcementId);
         taskRepository.deleteByAnnouncementId(announcementId);
+        appOverlayRepository.deleteByAnnouncementId(announcementId);
     }
 
     @Transactional
@@ -499,6 +501,9 @@ public class AnnouncementService {
                 case TASKS:
                     createTaskEntity(announcementId, settingsMap);
                     break;
+                case APP_OVERLAY:
+                    createAppOverlayEntity(announcementId, settingsMap);
+                    break;
                 default:
                     log.warn("Unknown mode type: {}", modeType);
             }
@@ -572,7 +577,11 @@ public class AnnouncementService {
         if (!taskRepository.findByAnnouncementIdAndIsActive(announcementId, true).isEmpty()) {
             modeTypes.add(ModeType.TASKS);
         }
-        
+
+        if (!appOverlayRepository.findByAnnouncementIdAndIsActive(announcementId, true).isEmpty()) {
+            modeTypes.add(ModeType.APP_OVERLAY);
+        }
+
         log.debug("Found {} mode types for announcement: {}", modeTypes.size(), announcementId);
         return modeTypes;
     }
@@ -691,6 +700,34 @@ public class AnnouncementService {
     public AnnouncementResponse.AnnouncementStatsResponse getAnnouncementStats(String announcementId) {
         return computeAnnouncementStats(announcementId);
     }
+
+    /**
+     * Per-recipient delivery + interaction state, for admin "who has seen this" analytics.
+     */
+    @Transactional(readOnly = true)
+    public Page<AnnouncementRecipientInteractionResponse> getRecipientInteractions(
+            String announcementId, ModeType modeType, Pageable pageable) {
+        Page<RecipientMessage> messages = modeType != null
+                ? recipientMessageRepository.findByAnnouncementIdAndModeTypeOrderByCreatedAtDesc(announcementId, modeType, pageable)
+                : recipientMessageRepository.findByAnnouncementIdOrderByCreatedAtDesc(announcementId, pageable);
+
+        return messages.map(rm -> {
+            AnnouncementRecipientInteractionResponse row = new AnnouncementRecipientInteractionResponse();
+            row.setRecipientMessageId(rm.getId());
+            row.setUserId(rm.getUserId());
+            row.setUserName(rm.getUserName());
+            row.setModeType(rm.getModeType());
+            row.setStatus(rm.getStatus());
+            row.setDeliveredAt(rm.getDeliveredAt());
+            messageInteractionRepository.findByRecipientMessageIdAndUserIdAndInteractionType(
+                    rm.getId(), rm.getUserId(), InteractionType.READ)
+                    .ifPresent(i -> row.setReadAt(i.getInteractionTime()));
+            messageInteractionRepository.findByRecipientMessageIdAndUserIdAndInteractionType(
+                    rm.getId(), rm.getUserId(), InteractionType.DISMISSED)
+                    .ifPresent(i -> row.setDismissedAt(i.getInteractionTime()));
+            return row;
+        });
+    }
     
     /**
      * Debug method to inspect email tracking data for an announcement
@@ -802,18 +839,22 @@ public class AnnouncementService {
         long deliveredCount = recipientMessageRepository.countByAnnouncementIdAndStatus(announcementId, MessageStatus.DELIVERED);
         long failedCount = recipientMessageRepository.countByAnnouncementIdAndStatus(announcementId, MessageStatus.FAILED);
         long readCount = messageInteractionRepository.countByAnnouncementIdAndInteractionType(announcementId, InteractionType.READ);
+        long dismissedCount = messageInteractionRepository.countByAnnouncementIdAndInteractionType(announcementId, InteractionType.DISMISSED);
 
         stats.setTotalRecipients(totalRecipients);
         stats.setDeliveredCount(deliveredCount);
         stats.setFailedCount(failedCount);
         stats.setReadCount(readCount);
+        stats.setDismissedCount(dismissedCount);
 
         if (totalRecipients > 0) {
             stats.setDeliveryRate((double) deliveredCount / totalRecipients * 100);
             stats.setReadRate((double) readCount / totalRecipients * 100);
+            stats.setDismissRate((double) dismissedCount / totalRecipients * 100);
         } else {
             stats.setDeliveryRate(0.0);
             stats.setReadRate(0.0);
+            stats.setDismissRate(0.0);
         }
         
         // Enhanced SES Email Event Stats from notification_log table
@@ -1005,6 +1046,9 @@ public class AnnouncementService {
                 case TASKS:
                     return taskRepository.findByAnnouncementIdAndIsActive(announcementId, true)
                             .stream().findFirst().map(this::mapTaskSettings).orElse(null);
+                case APP_OVERLAY:
+                    return appOverlayRepository.findByAnnouncementIdAndIsActive(announcementId, true)
+                            .stream().findFirst().map(this::mapAppOverlaySettings).orElse(null);
                 default:
                     log.warn("Unknown mode type for settings retrieval: {}", modeType);
                     return null;
@@ -1096,6 +1140,14 @@ public class AnnouncementService {
         map.put("isMandatory", task.getIsMandatory());
         map.put("autoStatusUpdate", task.getAutoStatusUpdate());
         map.put("reminderBeforeMinutes", task.getReminderBeforeMinutes());
+        return map;
+    }
+
+    private Map<String, Object> mapAppOverlaySettings(AnnouncementAppOverlay overlay) {
+        Map<String, Object> map = new java.util.LinkedHashMap<>();
+        map.put("priority", overlay.getPriority());
+        map.put("showUntil", overlay.getShowUntil());
+        map.put("isDismissible", overlay.getIsDismissible());
         return map;
     }
 
@@ -1288,7 +1340,31 @@ public class AnnouncementService {
         taskRepository.save(task);
         log.debug("Created task entity for announcement: {} with {} slides", announcementId, slideIds.size());
     }
-    
+
+    private void createAppOverlayEntity(String announcementId, Map<String, Object> settings) {
+        AnnouncementAppOverlay overlay = new AnnouncementAppOverlay();
+        overlay.setAnnouncementId(announcementId);
+
+        overlay.setPriority(getIntegerSetting(settings, "priority", 1, 1, 10));
+        overlay.setIsDismissible(getBooleanSetting(settings, "isDismissible", true));
+
+        // Optional expiry after which the overlay stops appearing even if never dismissed
+        Object showUntilObj = settings != null ? settings.get("showUntil") : null;
+        if (showUntilObj instanceof LocalDateTime showUntil) {
+            overlay.setShowUntil(showUntil);
+        } else if (showUntilObj instanceof String showUntilStr && !showUntilStr.isBlank()) {
+            try {
+                overlay.setShowUntil(LocalDateTime.parse(showUntilStr));
+            } catch (Exception e) {
+                throw new IllegalArgumentException("Invalid showUntil format. Expected ISO LocalDateTime format.");
+            }
+        }
+        overlay.setIsActive(true);
+
+        appOverlayRepository.save(overlay);
+        log.debug("Created app overlay entity for announcement: {}", announcementId);
+    }
+
     // Helper methods for settings validation and defaults
     
     private Boolean getBooleanSetting(Map<String, Object> settings, String key, Boolean defaultValue) {

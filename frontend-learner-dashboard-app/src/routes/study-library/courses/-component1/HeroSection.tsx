@@ -131,9 +131,9 @@ const HeroSection = ({
         )}>
             {/* Animated background elements */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute top-1/4 left-1/4 w-12 h-12 sm:w-16 sm:h-4 md:w-32 md:h-8 bg-primary-100/20 rounded-full blur-3xl animate-gentle-pulse"></div>
+                <div className="absolute top-1/4 start-1/4 w-12 h-12 sm:w-16 sm:h-4 md:w-32 md:h-8 bg-primary-100/20 rounded-full blur-3xl animate-gentle-pulse"></div>
                 <div
-                    className="absolute bottom-1/3 right-1/3 w-16 h-16 sm:w-20 sm:h-20 md:w-40 md:h-40 bg-primary-50/30 rounded-full blur-3xl animate-gentle-pulse"
+                    className="absolute bottom-1/3 end-1/3 w-16 h-16 sm:w-20 sm:h-20 md:w-40 md:h-40 bg-primary-50/30 rounded-full blur-3xl animate-gentle-pulse"
                     style={{ animationDelay: "2s" }}
                 ></div>
             </div>
@@ -142,7 +142,7 @@ const HeroSection = ({
                 {/* Content Section — leads with the resume thread when one exists */}
                 {resume ? (
                     <div className="w-full lg:w-2/3 flex items-center justify-center lg:justify-start">
-                        <div className="animate-fade-in-up w-full max-w-2xl min-w-0 text-center lg:text-left">
+                        <div className="animate-fade-in-up w-full max-w-2xl min-w-0 text-center lg:text-start">
                             <p
                                 className={cn(
                                     "mb-1 text-caption font-semibold uppercase tracking-wider text-muted-foreground",
@@ -172,7 +172,7 @@ const HeroSection = ({
                     </div>
                 ) : (
                 <div className="w-full lg:w-2/3 flex items-center justify-center lg:justify-start">
-                    <div className="animate-fade-in-up max-w-2xl text-center lg:text-left">
+                    <div className="animate-fade-in-up max-w-2xl text-center lg:text-start">
                         {/* Header with Icon */}
                         <div className="flex items-center justify-center lg:justify-start space-x-1.0 mb-1 sm:mb-2">
                             <div className={cn(
@@ -219,7 +219,7 @@ const HeroSection = ({
 
                 {/* Actions Section (image removed) */}
                 <div
-                    className={`w-full lg:w-1/3 flex items-right justify-end lg:items-end lg:ml-auto p-0.5 sm:p-1 animate-fade-in-up ${allowLeanersToCreateCourses
+                    className={`w-full lg:w-1/3 flex items-right justify-end lg:items-end lg:ms-auto p-0.5 sm:p-1 animate-fade-in-up ${allowLeanersToCreateCourses
                         ? "gap-2 sm:gap-3 flex-col"
                         : ""
                         }`}

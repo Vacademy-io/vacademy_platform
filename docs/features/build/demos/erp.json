@@ -1,0 +1,111 @@
+{
+  "pillar": "erp",
+  "demo": {
+    "intro": "Run the whole institute from one place — follow a registrar's day from the learner directory through bulk enrollment, batches and branches, to payroll.",
+    "screens": [
+      {
+        "id": "directory",
+        "device": "desktop",
+        "title": "Learner Directory",
+        "nav": ["Dashboard", "Learners*", "Batches", "Sub-Orgs", "HR", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "dir-head", "title": "Learners", "subtitle": "2,318 across 4 sessions", "actions": ["+ Enroll Learner", "CSV Import", "Export"] },
+          { "type": "stats", "id": "dir-stats", "items": [
+            { "label": "Active", "value": "2,046", "delta": "+184 this month" },
+            { "label": "Pending approval", "value": "37" },
+            { "label": "Expiring in 30 days", "value": "112" },
+            { "label": "Payment overdue", "value": "58" }
+          ]},
+          { "type": "table", "id": "dir-table", "columns": ["Learner", "Batch", "Status", "Payment", "Expiry"], "rows": [
+            ["Ananya Sharma", "NEET 2027 Batch A", { "chip": "Active", "tone": "green" }, { "chip": "Paid", "tone": "green" }, "31 Mar 2027"],
+            ["Rohan Verma", "JEE Advanced Batch B", { "chip": "Active", "tone": "green" }, { "chip": "Overdue ₹12,500", "tone": "red" }, "15 Jan 2027"],
+            ["Priya Nair", "IELTS Band 8", { "chip": "Pending approval", "tone": "orange" }, { "chip": "Unpaid", "tone": "gray" }, "—"],
+            ["Aarav Kulkarni", "Class 10 Foundation", { "chip": "Active", "tone": "green" }, { "chip": "Installment 2/4", "tone": "blue" }, "30 Apr 2027"],
+            ["Ishita Reddy", "NEET 2027 Batch A", { "chip": "Inactive", "tone": "gray" }, { "chip": "Paid", "tone": "green" }, "Expired 01 Jul" ]
+          ]}
+        ]
+      },
+      {
+        "id": "bulk-ops",
+        "device": "desktop",
+        "title": "Bulk Assign Learners",
+        "nav": ["Dashboard", "Learners*", "Batches", "Sub-Orgs", "HR", "Reports", "Settings"],
+        "widgets": [
+          { "type": "wizard", "id": "bulk-wizard", "steps": ["Pick learners", "Choose batches", "Payment & access", "Dry-run preview", "Commit"], "active": 3 },
+          { "cols": [
+            { "type": "form", "id": "bulk-form", "title": "Assignment", "fields": [
+              { "label": "Source", "value": "Filter: Class 10 Foundation · Active", "type": "select" },
+              { "label": "Destination batch", "value": "Class 11 Science — 2026-27", "type": "select" },
+              { "label": "Access days", "value": "365", "type": "text" },
+              { "label": "Offline payment", "value": "₹18,000 · UPI · per learner", "type": "text" },
+              { "label": "Skip already-enrolled", "value": "on", "type": "toggle" },
+              { "label": "Send credentials on enroll", "value": "on", "type": "toggle" }
+            ], "submit": "Run dry-run" },
+            { "type": "list", "id": "bulk-preview", "items": [
+              { "title": "412 will be enrolled", "sub": "New membership in Class 11 Science", "chip": "OK", "tone": "green" },
+              { "title": "23 skipped", "sub": "Already enrolled — duplicate rule", "chip": "Skip", "tone": "blue" },
+              { "title": "6 need fixes", "sub": "Missing guardian mobile in profile", "chip": "Fix", "tone": "orange" }
+            ]}
+          ]}
+        ]
+      },
+      {
+        "id": "batches",
+        "device": "desktop",
+        "title": "Batches & Sub-Organizations",
+        "nav": ["Dashboard", "Learners", "Batches*", "Sub-Orgs", "HR", "Reports", "Settings"],
+        "widgets": [
+          { "type": "stats", "id": "seat-stats", "items": [
+            { "label": "Batches", "value": "46" },
+            { "label": "Total capacity", "value": "3,900" },
+            { "label": "Seats remaining", "value": "412" },
+            { "label": "Nearly full", "value": "5", "delta": "2 critical" }
+          ]},
+          { "type": "cards", "id": "batch-cards", "items": [
+            { "title": "NEET 2027 Batch A", "sub": "118 / 120 seats · starts 6:30 AM", "chip": "2 left", "tone": "red" },
+            { "title": "JEE Advanced Batch B", "sub": "92 / 100 seats · evening", "chip": "8 left", "tone": "orange" },
+            { "title": "Class 10 Foundation", "sub": "412 / 500 seats", "chip": "Open", "tone": "green" },
+            { "title": "IELTS Band 8 Sprint", "sub": "Unlimited seats", "chip": "Open", "tone": "green" }
+          ]},
+          { "type": "list", "id": "suborg-list", "items": [
+            { "title": "Indore Branch", "sub": "Seats 240/300 · ₹1,84,000 collected", "chip": "Active", "tone": "green" },
+            { "title": "Bhopal Franchise — Sharma Classes", "sub": "Seats 96/100 · invoice due ₹45,000", "chip": "Due", "tone": "orange" },
+            { "title": "TechCorp L&D (client org)", "sub": "Seats 55/200 · subscription till Mar 2027", "chip": "Active", "tone": "green" }
+          ]}
+        ]
+      },
+      {
+        "id": "hr",
+        "device": "desktop",
+        "title": "HR & Payroll",
+        "nav": ["Dashboard", "Learners", "Batches", "Sub-Orgs", "HR*", "Reports", "Settings"],
+        "widgets": [
+          { "type": "stats", "id": "hr-stats", "items": [
+            { "label": "Employees", "value": "84" },
+            { "label": "Present today", "value": "76", "delta": "3 on leave" },
+            { "label": "Pending approvals", "value": "9" },
+            { "label": "July payroll", "value": "₹28.4L", "delta": "Run: Processed" }
+          ]},
+          { "type": "table", "id": "payroll-table", "columns": ["Employee", "Designation", "Net Pay", "Payslip", "Payout"], "rows": [
+            ["Rajesh Iyer", "Senior Physics Faculty", "₹92,400", { "chip": "Generated", "tone": "green" }, { "chip": "Released", "tone": "green" }],
+            ["Meena Joshi", "Counsellor", "₹38,750", { "chip": "Generated", "tone": "green" }, { "chip": "Released", "tone": "green" }],
+            ["Vikram Singh", "Centre Manager", "₹64,200", { "chip": "Generated", "tone": "green" }, { "chip": "On hold", "tone": "orange" }],
+            ["Kavya Menon", "Maths Faculty", "₹71,300", { "chip": "Pending", "tone": "gray" }, { "chip": "—", "tone": "gray" }]
+          ]}
+        ]
+      }
+    ],
+    "steps": [
+      { "screen": "directory", "target": null, "title": "Every learner, one directory", "text": "Search 2,000+ learners with type-ahead, filter by batch, status, payment, session-expiry window or any custom field, and export any view to CSV — including a credentials export for offline distribution." },
+      { "screen": "directory", "target": "dir-stats", "title": "Registrar problems surface themselves", "text": "Live headcounts flag what needs action today: pending approvals to accept or decline, enrollments expiring within 30 days, and overdue payments — before parents call to complain." },
+      { "screen": "directory", "target": "dir-table", "title": "Act on any row, or any selection", "text": "Open a side-panel profile — guardian info, batch memberships, per-chapter progress — or multi-select to change batch, extend access, re-register for the next session, or blast WhatsApp and email." },
+      { "screen": "bulk-ops", "target": "bulk-form", "title": "Move thousands of learners at once", "text": "Bulk-assign a CSV of new users, an explicit list, or a saved filter into one or more batches — with access days, offline payment capture (amount, mode, transaction ID) and optional credential delivery." },
+      { "screen": "bulk-ops", "target": "bulk-preview", "title": "Dry-run before you commit", "text": "A simulation shows the per-learner outcome first: who gets enrolled, who's skipped by the duplicate rule, and which rows need fixes. Re-runs are always safe — nothing changes until you commit." },
+      { "screen": "batches", "target": "seat-stats", "title": "Seat inventory, live", "text": "Cap seats per batch and watch capacity institute-wide. Seats reserve and release automatically during enrollment — no overselling — and nearly-full batches are flagged so you add capacity or push urgency." },
+      { "screen": "batches", "target": "batch-cards", "title": "Sessions, levels and batches", "text": "A guided wizard creates course, level and academic session in sequence, producing a ready-to-enroll batch. Parent-child hierarchies and learner groups keep large cohorts organized." },
+      { "screen": "batches", "target": "suborg-list", "title": "Branches and franchises under one roof", "text": "Each sub-org gets its own team, seat allocation and financial ledger — invoices, payments, waivers, penalties. Partners manage their own rosters through a self-serve screen, even by public self-registration link." },
+      { "screen": "hr", "target": "hr-stats", "title": "A real HR suite, built in", "text": "Staff check in manually, by biometric device or geo-location; leave policies accrue monthly or yearly; and regularizations, leave and reimbursements route through multi-step approval chains." },
+      { "screen": "hr", "target": "payroll-table", "title": "Payroll from calculation to paid", "text": "Monthly runs auto-calculate every entry from salary structures with regime-aware Indian tax. Hold or release individual payouts, generate payslips in bulk, and export bank-ready transfer files." }
+    ]
+  }
+}

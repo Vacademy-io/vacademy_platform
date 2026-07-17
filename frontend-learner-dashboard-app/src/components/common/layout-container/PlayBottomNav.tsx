@@ -130,7 +130,7 @@ export const PlayBottomNav: React.FC = () => {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white border-t border-border"
+      className="fixed bottom-0 start-0 end-0 z-50 md:hidden bg-white border-t border-border"
       style={{ // design-lint-ignore: dynamic safe-area inset padding
         paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 4px)",
         boxShadow: "0 -2px 8px rgba(0,0,0,0.04)",
@@ -275,7 +275,7 @@ export const PlayNavRail: React.FC = () => {
   return (
     <nav
       aria-label="Main navigation"
-      className="sticky top-0 z-30 hidden h-svh w-20 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r border-border bg-white px-2 py-4 lg:flex"
+      className="sticky top-0 z-30 hidden h-svh w-20 shrink-0 flex-col items-center gap-1 overflow-y-auto border-e border-border bg-white px-2 py-4 lg:flex"
     >
       {items.map((item, i) => {
         const isActive = item.to ? currentRoute.includes(item.to) : false;

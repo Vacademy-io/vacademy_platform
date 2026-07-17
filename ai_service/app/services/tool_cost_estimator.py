@@ -53,6 +53,18 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "questions",
         "params": {"image_unit_credits": "0.5"},
     },
+    # AI evaluation of one uploaded answer copy (copy-check): OCR + per-question
+    # rubric-grounded grading. Priced per graded question for a predictable
+    # preview ("8 questions = 8 credits"); the actual charge is
+    # max(this, real token cost), so premium models (Opus/GPT) add overage on
+    # long answers while flash-lite copies stay at the flat per-question rate.
+    "copy_check_evaluation": {
+        "request_type": "evaluation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("1"),
+        "unit_field": "questions",
+        "params": {},
+    },
     "coding_question": {
         # One AI-authored coding question (problem + test cases + starter code
         # per language + a reference solution). A single LLM call — priced flat
@@ -174,6 +186,44 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "flat_base_credits": Decimal("2"),
         "per_unit_credits": Decimal("0"),
         "unit_field": "flat",
+        "params": {},
+    },
+    # ---- Content translation (i18n Phase 1, V384) --------------------------
+    # Ops-tunable placeholders — MUST agree with the V384 ai_tool_pricing seeds.
+    # TM (translation_memory) hits are free; only LLM-translated items bill.
+    "translate_rich_text": {   # per rich-text / entity-field item (per 100 chars)
+        "request_type": "translation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("0.02"),
+        "unit_field": "chars",
+        "params": {"chars_per_unit": "100"},
+    },
+    "translate_question": {    # per question (future per-question endpoint)
+        "request_type": "translation",
+        "flat_base_credits": Decimal("0.3"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    "translate_course": {      # whole-course job base (backs the 402 preflight)
+        "request_type": "translation",
+        "flat_base_credits": Decimal("25"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    "translate_strings": {     # synchronous UI/notification batch (per 100 chars of misses)
+        "request_type": "translation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("0.01"),
+        "unit_field": "chars",
+        "params": {"chars_per_unit": "100"},
+    },
+    "dub_video": {             # audio dubbing per minute (no code path yet — later wave)
+        "request_type": "translation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("3.0"),
+        "unit_field": "audio_minutes",
         "params": {},
     },
 }

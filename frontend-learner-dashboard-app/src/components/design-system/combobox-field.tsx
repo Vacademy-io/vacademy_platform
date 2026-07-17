@@ -91,7 +91,7 @@ const ComboboxField: React.FC<SelectFieldProps> = ({
                         (option) => option.value.toString() === field.value
                       )?.label || field.value
                     : `Select ${label}`}
-                  <CaretUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  <CaretUpDown className="ms-2 h-4 w-4 shrink-0 opacity-50" />
                 </Button>
               </FormControl>
             </PopoverTrigger>
@@ -121,7 +121,7 @@ const ComboboxField: React.FC<SelectFieldProps> = ({
                       >
                         <Check
                           className={cn(
-                            "mr-2 h-4 w-4",
+                            "me-2 h-4 w-4",
                             field.value === option.value.toString()
                               ? "opacity-100"
                               : "opacity-0"

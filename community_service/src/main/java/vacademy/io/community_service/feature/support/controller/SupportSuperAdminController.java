@@ -13,6 +13,7 @@ import vacademy.io.community_service.feature.support.service.SupportConfigServic
 import vacademy.io.community_service.feature.support.service.SupportEngineerService;
 import vacademy.io.community_service.feature.support.service.SupportTicketService;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -44,10 +45,16 @@ public class SupportSuperAdminController {
 
     // ---- inbox -------------------------------------------------------------------
 
+    /**
+     * @param instituteId  single-institute filter (kept for existing callers/deep links)
+     * @param instituteIds multi-institute filter (repeated or comma-separated); unioned with
+     *                     {@code instituteId}. Empty/absent means all institutes.
+     */
     @GetMapping("/tickets")
     public ResponseEntity<PageResponseDto<SupportTicketDto>> tickets(
             @RequestAttribute("user") CustomUserDetails user,
             @RequestParam(value = "instituteId", required = false) String instituteId,
+            @RequestParam(value = "instituteIds", required = false) List<String> instituteIds,
             @RequestParam(value = "status", required = false) String status,
             @RequestParam(value = "engineerId", required = false) String engineerId,
             @RequestParam(value = "overdue", defaultValue = "false") boolean overdue,
@@ -55,7 +62,14 @@ public class SupportSuperAdminController {
             @RequestParam(value = "size", defaultValue = "20") int size) {
         SuperAdminAuthUtil.requireSuperAdmin(user);
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), 100));
-        return ResponseEntity.ok(ticketService.search(instituteId, status, engineerId, overdue, pageable));
+        List<String> institutes = new ArrayList<>();
+        if (instituteIds != null) {
+            institutes.addAll(instituteIds);
+        }
+        if (instituteId != null) {
+            institutes.add(instituteId);
+        }
+        return ResponseEntity.ok(ticketService.search(institutes, status, engineerId, overdue, pageable));
     }
 
     @GetMapping("/tickets/counts")
@@ -77,6 +91,15 @@ public class SupportSuperAdminController {
                                                          @RequestBody CreateSupportTicketRequest request) {
         SuperAdminAuthUtil.requireSuperAdmin(user);
         return ResponseEntity.ok(ticketService.createBySupport(request, user));
+    }
+
+    /** Edit an existing ticket (fields, internal-only flag, and its opening message/attachments). */
+    @PutMapping("/tickets/{id}")
+    public ResponseEntity<SupportTicketDto> updateTicket(@RequestAttribute("user") CustomUserDetails user,
+                                                         @PathVariable String id,
+                                                         @RequestBody UpdateTicketRequest request) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(ticketService.updateTicket(id, request));
     }
 
     /** Set or clear (null eta) the expected-resolution ETA shown to the institute. */

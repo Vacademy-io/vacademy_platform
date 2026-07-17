@@ -20,7 +20,7 @@ public class LearnerSlideController {
     private final LearnerSlideService learnerSlideService;
 
     @GetMapping("/get-slides-with-status")
-    @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE, varyHeaders = {"X-User-Id"})
+    @ClientCacheable(maxAgeSeconds = 60, scope = CacheScope.PRIVATE, varyHeaders = {"X-User-Id", "Accept-Language"})
     public ResponseEntity<List<SlideDetailWithOperationProjection>> getLearnerSlides(@RequestParam("userId") String userId, @RequestParam("chapterId") String chapterId, @RequestAttribute("user") CustomUserDetails userDetails) {
         return ResponseEntity.ok(learnerSlideService.getLearnerSlides(userId, chapterId, userDetails));
     }

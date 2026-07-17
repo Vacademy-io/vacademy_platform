@@ -103,7 +103,7 @@ export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, ref
                                         </div>
                                     )}
                                 </div>
-                                <div className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${doubt.status === "RESOLVED" ? "bg-green-500" : "bg-amber-500"}`}></div>
+                                <div className={`absolute -bottom-1 -end-1 w-4 h-4 rounded-full border-2 border-white ${doubt.status === "RESOLVED" ? "bg-green-500" : "bg-amber-500"}`}></div>
                             </div>
                             <div className="flex flex-col min-w-0 flex-1">
                                 <h4 className="font-semibold text-gray-900 text-sm leading-tight truncate">
@@ -180,7 +180,7 @@ export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, ref
                             className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded-lg transition-colors w-fit group/replies"
                         >
                             <p className="text-sm font-semibold text-gray-700">
-                                Replies <span className="text-primary-500 bg-primary-50 px-2 py-0.5 rounded-full text-xs ml-1">{doubt.replies.length}</span>
+                                Replies <span className="text-primary-500 bg-primary-50 px-2 py-0.5 rounded-full text-xs ms-1">{doubt.replies.length}</span>
                             </p>
                             {showReplies ? (
                                 <CaretUp size={16} className="text-gray-500 group-hover/replies:text-gray-700 transition-colors"/>
@@ -189,7 +189,7 @@ export const Doubt = ({doubt, refetch}:{doubt:DoubtType, filter:DoubtFilter, ref
                             )}
                         </button>
                         {showReplies && (
-                            <div className="space-y-4 pl-4 border-l-2 border-gray-200 ml-2 animate-in slide-in-from-top-2 duration-200">
+                            <div className="space-y-4 ps-4 border-s-2 border-gray-200 ms-2 animate-in slide-in-from-top-2 duration-200">
                                 {doubt.replies.map((reply, key) => (
                                     <div key={key} className="animate-in fade-in slide-in-from-left-4 duration-300" style={{ animationDelay: `${key * 100}ms` }}>
                                         <Reply reply={reply} raiserUserId={doubt.user_id} />

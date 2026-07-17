@@ -148,7 +148,7 @@ export default function PlanningFilters({
                   onClick={() => toggleBatch(batchId)}
                 >
                   {batchName}
-                  {isSelected && <X className="ml-1 size-3" />}
+                  {isSelected && <X className="ms-1 size-3" />}
                 </Badge>
               );
             })}
@@ -171,7 +171,7 @@ export default function PlanningFilters({
                   onClick={() => toggleIntervalType(option.id)}
                 >
                   {option.label}
-                  {isSelected && <X className="ml-1 size-3" />}
+                  {isSelected && <X className="ms-1 size-3" />}
                 </Badge>
               );
             })}

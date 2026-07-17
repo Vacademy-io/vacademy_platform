@@ -1,0 +1,107 @@
+{
+  "pillar": "platform",
+  "demo": {
+    "intro": "Turn Vacademy into your own product — your domain, your vocabulary, your branded apps, your sign-in rules.",
+    "screens": [
+      {
+        "id": "whitelabel",
+        "device": "desktop",
+        "title": "Settings — White-Label & Domains",
+        "nav": ["Dashboard", "Study Library", "Learners", "Assessments", "Reports", "Settings*"],
+        "widgets": [
+          { "type": "header", "id": "wl-head", "title": "White-Label Portals", "subtitle": "Prakash Career Institute · 3 domains live", "actions": ["+ Add Domain"] },
+          { "cols": [
+            { "type": "form", "id": "wl-form", "title": "learn.prakashinstitute.in", "fields": [
+              { "label": "Portal", "value": "Learner portal (primary)", "type": "select" },
+              { "label": "Logo", "value": "prakash-logo.svg · 240×64", "type": "text" },
+              { "label": "Theme color", "value": "#1A5FB4 · Font: Poppins", "type": "text" },
+              { "label": "Browser tab title", "value": "Prakash Career Institute", "type": "text" },
+              { "label": "Hide Vacademy branding", "value": "on", "type": "toggle" }
+            ], "submit": "Save & Provision" },
+            { "type": "list", "id": "wl-portals", "items": [
+              { "title": "learn.prakashinstitute.in", "sub": "Learner portal · SSL active", "chip": "Live", "tone": "green" },
+              { "title": "admin.prakashinstitute.in", "sub": "Admin portal · SSL active", "chip": "Live", "tone": "green" },
+              { "title": "kota.prakashinstitute.in", "sub": "Sub-org: Kota branch", "chip": "DNS pending", "tone": "orange" },
+              { "title": "Play Store · App Store links", "sub": "Attached to learner portal", "right": "2 apps" }
+            ]}
+          ]}
+        ]
+      },
+      {
+        "id": "naming",
+        "device": "desktop",
+        "title": "Settings — Naming Settings",
+        "nav": ["Dashboard", "Study Library", "Learners", "Assessments", "Reports", "Settings*"],
+        "widgets": [
+          { "type": "header", "id": "nm-head", "title": "Naming Settings", "subtitle": "Rename what the platform calls things — changes apply everywhere" },
+          { "type": "table", "id": "nm-table", "columns": ["System term", "Your term", "Plural", "Status"], "rows": [
+            ["Course", "Program", "Programs", { "chip": "Renamed", "tone": "blue" }],
+            ["Batch", "Cohort", "Cohorts", { "chip": "Renamed", "tone": "blue" }],
+            ["Learner", "Student", "Students", { "chip": "Renamed", "tone": "blue" }],
+            ["Teacher", "Faculty", "Faculty", { "chip": "Renamed", "tone": "blue" }],
+            ["Session", "Academic Year", "Academic Years", { "chip": "Renamed", "tone": "blue" }],
+            ["Chapter", "Chapter", "Chapters", { "chip": "Default", "tone": "gray" }]
+          ]},
+          { "type": "form", "id": "nm-edit", "title": "Edit term: Teacher", "fields": [
+            { "label": "What it means", "value": "A staff member who teaches and manages content", "type": "text" },
+            { "label": "Singular", "value": "Faculty", "type": "text" },
+            { "label": "Plural", "value": "Faculty", "type": "text" },
+            { "label": "Apply on white-label domains", "value": "on", "type": "toggle" }
+          ], "submit": "Save Term" }
+        ]
+      },
+      {
+        "id": "brandedapp",
+        "device": "phone",
+        "title": "Prakash Learning App",
+        "nav": ["Home*", "Programs", "Tests", "Profile"],
+        "widgets": [
+          { "type": "header", "id": "app-head", "title": "Prakash Career Institute", "subtitle": "Hi Aarav · NEET 2027 Cohort A" },
+          { "type": "cards", "id": "app-programs", "items": [
+            { "title": "NEET 2027 — Program A", "sub": "Physics · 62% complete", "chip": "Continue", "tone": "blue" },
+            { "title": "Class 12 Boards Booster", "sub": "New chapter unlocked", "chip": "New", "tone": "green" }
+          ]},
+          { "type": "list", "id": "app-update", "items": [
+            { "title": "Update ready — v2.4.1", "sub": "Improved test player · 4.2 MB", "chip": "Update", "tone": "orange" },
+            { "title": "Mock Test 6 on Sunday", "sub": "Reminder from Prakash Institute", "right": "9:00 AM" },
+            { "title": "Screenshot blocked", "sub": "This content is protected", "right": "🔒" }
+          ]}
+        ]
+      },
+      {
+        "id": "security",
+        "device": "desktop",
+        "title": "Settings — Team, Login & Security",
+        "nav": ["Dashboard", "Study Library", "Learners", "Assessments", "Reports", "Settings*"],
+        "widgets": [
+          { "type": "header", "id": "sec-head", "title": "Team & Access", "subtitle": "12 staff members · 2 sub-organizations", "actions": ["+ Invite Staff"] },
+          { "type": "table", "id": "sec-roles", "columns": ["Name", "Role", "Workspace", "Status"], "rows": [
+            ["Priya Deshmukh", { "chip": "Admin", "tone": "purple" }, "Main campus", { "chip": "Active", "tone": "green" }],
+            ["Rohan Mehta", { "chip": "Faculty", "tone": "blue" }, "Main campus", { "chip": "Active", "tone": "green" }],
+            ["Ananya Iyer", { "chip": "Evaluator", "tone": "orange" }, "Kota branch", { "chip": "Active", "tone": "green" }],
+            ["Vikram Singh", { "chip": "Course Creator", "tone": "blue" }, "Main + Kota", { "chip": "Active", "tone": "green" }]
+          ]},
+          { "type": "form", "id": "sec-login", "title": "Sign-in methods · learn.prakashinstitute.in", "fields": [
+            { "label": "Password login", "value": "on", "type": "toggle" },
+            { "label": "Email OTP", "value": "on", "type": "toggle" },
+            { "label": "WhatsApp OTP", "value": "on", "type": "toggle" },
+            { "label": "Google sign-in", "value": "on", "type": "toggle" },
+            { "label": "Open self-signup", "value": "off", "type": "toggle" },
+            { "label": "Device limit per student", "value": "2 devices", "type": "select" }
+          ], "submit": "Save Sign-in Rules" }
+        ]
+      }
+    ],
+    "steps": [
+      { "screen": "whitelabel", "target": null, "title": "Your platform, not ours", "text": "Everything a learner or parent touches runs on your domains under your brand — Vacademy stays invisible. This is the control room where Prakash Career Institute makes the platform its own." },
+      { "screen": "whitelabel", "target": "wl-form", "title": "One-click domain, DNS and SSL", "text": "Point learn.prakashinstitute.in at your learner portal and the wizard provisions DNS and SSL automatically. Each domain carries its own logo, theme color, fonts, tab title and legal links." },
+      { "screen": "whitelabel", "target": "wl-portals", "title": "Separate domains per portal", "text": "Run distinct domains for learner and admin portals, and give each branch or partner brand its own sub-org entry point. Attach your Play Store and App Store links so every portal promotes your apps." },
+      { "screen": "naming", "target": "nm-table", "title": "The platform speaks your language", "text": "Rename 16+ terms — Course, Batch, Learner, Session, Module and more — per institute. Call a Course a Program and a Batch a Cohort; the change flows through menus, dialogs, reports and your white-label domains." },
+      { "screen": "naming", "target": "nm-edit", "title": "Real plurals, not just an 's'", "text": "Every term has independent singular and plural forms — 'Faculty/Faculty', 'Child/Children' — plus a plain-language explanation of what it controls, so you rename with confidence." },
+      { "screen": "brandedapp", "target": "app-head", "title": "Your own app in the stores", "text": "The learner app ships as a branded Android and iOS build under your institute's name, icon and store listing — published on your developer account. Windows and Mac desktop apps too." },
+      { "screen": "brandedapp", "target": "app-update", "title": "Instant updates, protected content", "text": "Over-the-air releases push fixes straight to devices — no app-store wait, with one-click rollback. Push notifications go out under your app identity, and privacy screens block screenshots of paid content." },
+      { "screen": "security", "target": "sec-roles", "title": "Roles across every branch", "text": "Staff carry roles like Admin, Faculty, Evaluator and Course Creator — renamed to your terms. One person can work across the main campus and the Kota branch, switching workspaces without re-login." },
+      { "screen": "security", "target": "sec-login", "title": "Sign-in rules you control", "text": "Per portal, switch on password, email OTP, WhatsApp OTP, Google or GitHub sign-in — and keep access invite-only. A 2-device limit stops account sharing; students log out an old device themselves." }
+    ]
+  }
+}

@@ -22,5 +22,7 @@ public class CreateSupportTicketRequest {
     private String source;               // MANUAL | EMAIL | WHATSAPP | PHONE | OTHER
     private Date eta;                    // optional expected-resolution time
     private String assignedEngineerId;   // optional
+    /** true = support-team-only; the institute never sees this ticket. */
+    private Boolean internalOnly;
     private List<AttachmentDto> attachments;
 }

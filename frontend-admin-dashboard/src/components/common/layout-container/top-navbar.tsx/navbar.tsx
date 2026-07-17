@@ -81,6 +81,9 @@ import {
     getSelectedSubOrgLinkageType,
 } from '@/lib/auth/facultyAccessUtils';
 import { getSubOrgInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
+import { LanguageDropdown } from '@/components/common/localization/language-dropdown';
+import { useLanguageStore } from '@/stores/localization/useLanguageStore';
+import { getEnabledLocales } from '@/services/language-settings';
 
 export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolean }) {
     const roleColors: Record<string, string> = {
@@ -145,6 +148,11 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
 
     const showAiCredits = effectiveDS.ui?.showAiCredits !== false;
     const { data: aiCredits, isError: isCreditsError } = useAiCreditsQuery(showAiCredits);
+
+    // Language switcher: only when the institute offers more than one locale
+    // (single-language institutes — all existing ones — see no change).
+    const currentLocale = useLanguageStore((state) => state.locale);
+    const showLanguageSwitcher = getEnabledLocales(currentLocale).length > 1;
 
     const [showAllDialog, setShowAllDialog] = useState(false);
     const unreadCount = useMemo(() => {
@@ -431,6 +439,8 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
             </div>
 
             <div className="flex shrink-0 items-center gap-2 text-neutral-600 md:gap-6">
+                {/* Language switcher (multi-language institutes only) */}
+                {showLanguageSwitcher && <LanguageDropdown className="relative" />}
                 {/* AI Credits */}
                 {showAiCredits && aiCredits && !isCreditsError && <AiCreditsPanel />}
                 {/* Apps Menu */}

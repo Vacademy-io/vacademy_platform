@@ -264,7 +264,7 @@ export const MultiEnrollForm = ({ pageData, settings, primaryColor = '#2563eb', 
                                     <label className="block text-sm font-medium text-gray-700">
                                         {cf.fieldName}
                                         {cf.isMandatory && (
-                                            <span className="ml-1 text-red-500">*</span>
+                                            <span className="ms-1 text-red-500">*</span>
                                         )}
                                     </label>
                                     <CustomFieldRenderer

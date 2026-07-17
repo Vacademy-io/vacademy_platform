@@ -2,7 +2,12 @@ import { LayoutContainer } from '@/components/common/layout-container/layout-con
 import { createLazyFileRoute } from '@tanstack/react-router';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useEffect, useMemo, useState } from 'react';
-import { AnnouncementService, type ModeType, type MediumType } from '@/services/announcement';
+import {
+    AnnouncementService,
+    type ModeType,
+    type MediumType,
+    type AnnouncementRecipientRow,
+} from '@/services/announcement';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -80,6 +85,9 @@ type AnnouncementStats = {
     failedCount: number;
     deliveryRate: number;
     readRate: number;
+    // APP_OVERLAY dismiss tracking (also covers other dismissible modes)
+    dismissedCount?: number;
+    dismissRate?: number;
     // Email-specific (driven by SES events)
     emailsSent: number;
     emailsSend: number; // count of SES `send` events — backend keeps it for parity, UI hides it
@@ -563,6 +571,16 @@ function AnnouncementHistoryPage() {
                                             value={stats.failedCount}
                                             tone="danger"
                                         />
+                                        <StatTile
+                                            label="Dismissed"
+                                            value={stats.dismissedCount}
+                                            tone="muted"
+                                        />
+                                        <StatTile
+                                            label="Dismiss rate"
+                                            value={percent(stats.dismissRate)}
+                                            tone="muted"
+                                        />
                                     </div>
                                 </div>
 
@@ -642,6 +660,14 @@ function AnnouncementHistoryPage() {
                                     <div className="rounded-xl border border-dashed border-neutral-200 p-6 text-center text-sm text-neutral-500">
                                         No emails were sent for this announcement.
                                     </div>
+                                )}
+
+                                {/* Per-recipient delivery/read/dismiss breakdown */}
+                                {statsFor && (
+                                    <RecipientsSection
+                                        key={statsFor.id}
+                                        announcementId={statsFor.id}
+                                    />
                                 )}
                             </div>
                         ) : (
@@ -765,6 +791,123 @@ function ScheduleCell({ scheduling }: { scheduling: Announcement['scheduling'] }
         <div className="text-xs">
             <div>Recurring</div>
             <div>CRON: {scheduling.cronExpression || '-'}</div>
+        </div>
+    );
+}
+
+// Paginated per-recipient list inside the stats dialog. Reads the
+// GET /announcements/{id}/recipients Spring Page endpoint 10 rows at a time.
+function RecipientsSection({ announcementId }: { announcementId: string }) {
+    const [rows, setRows] = useState<AnnouncementRecipientRow[]>([]);
+    const [page, setPage] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const pageSize = 10;
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                const data = await AnnouncementService.recipients(announcementId, {
+                    page,
+                    size: pageSize,
+                });
+                if (cancelled) return;
+                setRows(data?.content ?? []);
+                setTotalPages(data?.totalPages ?? 0);
+            } catch (e) {
+                if (cancelled) return;
+                setError('Failed to load recipients');
+            } finally {
+                if (!cancelled) setLoading(false);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [announcementId, page]);
+
+    return (
+        <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm sm:p-6">
+            <div className="mb-3 flex items-center gap-2 sm:mb-4">
+                <div className="h-1 w-6 rounded-full bg-gradient-to-r from-green-500 to-green-400 sm:w-8"></div>
+                <h4 className="text-base font-semibold text-neutral-800 sm:text-lg">
+                    Recipients
+                </h4>
+            </div>
+            {error ? (
+                <div className="rounded border border-dashed border-neutral-200 p-6 text-center text-sm text-danger-600">
+                    {error}
+                </div>
+            ) : loading ? (
+                <div className="flex items-center justify-center py-6">
+                    <div className="flex items-center gap-2 text-sm text-neutral-500">
+                        <div className="size-4 animate-spin rounded-full border-2 border-neutral-300 border-t-neutral-600"></div>
+                        Loading recipients...
+                    </div>
+                </div>
+            ) : rows.length === 0 ? (
+                <div className="rounded border border-dashed border-neutral-200 p-6 text-center text-sm text-neutral-500">
+                    No recipients found for this announcement.
+                </div>
+            ) : (
+                <div className="overflow-x-auto">
+                    <Table>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Name</TableHead>
+                                <TableHead>Mode</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Seen at</TableHead>
+                                <TableHead>Dismissed at</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {rows.map((r) => (
+                                <TableRow key={r.recipientMessageId}>
+                                    <TableCell>{r.userName || r.userId || '-'}</TableCell>
+                                    <TableCell>
+                                        <Badge variant="secondary">{r.modeType}</Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline">{r.status || '-'}</Badge>
+                                    </TableCell>
+                                    <TableCell>{formatDateTime(r.readAt ?? undefined)}</TableCell>
+                                    <TableCell>
+                                        {formatDateTime(r.dismissedAt ?? undefined)}
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </div>
+            )}
+            {!error && totalPages > 1 && (
+                <div className="mt-3 flex items-center justify-end gap-2">
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={loading || page === 0}
+                        onClick={() => setPage((p) => Math.max(0, p - 1))}
+                    >
+                        Prev
+                    </Button>
+                    <div className="text-sm text-neutral-600">
+                        Page {page + 1} of {totalPages}
+                    </div>
+                    <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={loading || page + 1 >= totalPages}
+                        onClick={() => setPage((p) => p + 1)}
+                    >
+                        Next
+                    </Button>
+                </div>
+            )}
         </div>
     );
 }

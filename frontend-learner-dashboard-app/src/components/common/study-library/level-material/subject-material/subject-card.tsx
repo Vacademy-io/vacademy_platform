@@ -81,7 +81,7 @@ export const SubjectCard = ({ subject }: SubjectCardProps) => {
         </div>
         
         {/* Progress bar at bottom */}
-        <div className="absolute bottom-0 left-0 right-0 h-1 bg-neutral-200 rounded-b-xl overflow-hidden">
+        <div className="absolute bottom-0 start-0 end-0 h-1 bg-neutral-200 rounded-b-xl overflow-hidden">
           <div 
             className="h-full bg-gradient-to-r from-primary-500 to-primary-600 transition-all duration-300 ease-out"
             style={{ width: `${subject.percentage_completed}%` }}

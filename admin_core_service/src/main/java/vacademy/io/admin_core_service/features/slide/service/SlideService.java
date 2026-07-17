@@ -1179,12 +1179,18 @@ public class SlideService {
     }
 
     public List<SlideDTO> getSlides(String chapterId) {
+        // Resolved request locale (?lang > Accept-Language > JWT claim > en, set by
+        // LocaleResolutionFilter). For 'en' no translation rows match and the
+        // COALESCEs fall back to canonical content — identical to pre-i18n output.
+        String lang = vacademy.io.common.core.i18n.LocaleRegistry.normalize(
+                org.springframework.context.i18n.LocaleContextHolder.getLocale().toLanguageTag());
         // Fetch JSON response from repository
         String jsonSlides = slideRepository.getSlidesByChapterId(
                 chapterId,
                 List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name(), SlideStatus.DRAFT.name()),
                 List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name(), SlideStatus.DRAFT.name()),
-                List.of(QuestionStatusEnum.ACTIVE.name()) // Added missing closing parenthesis here
+                List.of(QuestionStatusEnum.ACTIVE.name()), // Added missing closing parenthesis here
+                lang
         );
 
         // Map the JSON to List<SlideDTO>

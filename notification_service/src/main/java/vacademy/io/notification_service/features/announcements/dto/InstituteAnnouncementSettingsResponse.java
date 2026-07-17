@@ -29,6 +29,7 @@ public class InstituteAnnouncementSettingsResponse {
         private DirectMessageSettings directMessages;
         private StreamSettings streams;
         private ResourceSettings resources;
+        private AppOverlaySettings appOverlays;
         private GeneralSettings general;
         private FirebaseSettings firebase;
         private vacademy.io.notification_service.features.chat.dto.ChatSettings chat;
@@ -166,6 +167,20 @@ public class InstituteAnnouncementSettingsResponse {
         private Integer maxFileSizeMb;
     }
     
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AppOverlaySettings {
+        @JsonProperty("students_can_send")
+        private Boolean studentsCanSend;
+
+        @JsonProperty("teachers_can_send")
+        private Boolean teachersCanSend;
+
+        @JsonProperty("admins_can_send")
+        private Boolean adminsCanSend;
+    }
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor

@@ -83,7 +83,7 @@ const PhoneInputField: React.FC<PhoneInputFieldProps> = ({
                 if (onChange) onChange(formattedValue);
               }}
               inputClass="!w-full h-10 !rounded-md !border-input"
-              buttonClass="!rounded-l-md !border-input"
+              buttonClass="!rounded-s-md !border-input"
               disabled={disabled}
               value={value || field.value}
               countryCodeEditable={false}

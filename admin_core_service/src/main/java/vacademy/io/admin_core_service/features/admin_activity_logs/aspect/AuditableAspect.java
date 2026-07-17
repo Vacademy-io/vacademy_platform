@@ -214,6 +214,10 @@ public class AuditableAspect {
         Object beforeRaw = before == null ? null : before.raw();
         String beforeJson = before == null ? null : before.json();
 
+        if (!passesCondition(auditable, signature, args, user, result, beforeRaw)) {
+            return null;
+        }
+
         String action = resolveAction(auditable, signature, args, user, result, beforeRaw);
         if (action == null) {
             // `action` is NOT NULL — a row without one would fail the insert.
@@ -269,6 +273,25 @@ public class AuditableAspect {
         }
         String fallback = auditable.action();
         return fallback == null || fallback.isBlank() ? null : fallback;
+    }
+
+    /**
+     * A blank {@code conditionExpr} means "always audit". Otherwise the row is
+     * written only on an explicit true — a null (failed eval) skips, so we never
+     * record an action we are not sure happened.
+     */
+    private boolean passesCondition(Auditable auditable,
+            MethodSignature signature,
+            Object[] args,
+            CustomUserDetails user,
+            Object result,
+            Object beforeRaw) {
+        if (auditable.conditionExpr() == null || auditable.conditionExpr().isBlank()) {
+            return true;
+        }
+        Object value = spelEvaluator.evaluateObject(
+                auditable.conditionExpr(), signature, args, user, result, beforeRaw);
+        return Boolean.TRUE.equals(value);
     }
 
     private String serializePayload(Auditable auditable, String httpMethod, Object[] args) {

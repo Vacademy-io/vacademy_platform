@@ -47,7 +47,11 @@ import { handlePublishSlide } from './slide-operations/handlePublishSlide';
 import { handleUnpublishSlide } from './slide-operations/handleUnpublishSlide';
 import { updateHeading } from './slide-operations/updateSlideHeading';
 import { formatHTMLString, stripAwsQueryParamsFromUrls } from './slide-operations/formatHtmlString';
-import { flattenSemanticWrappers, detectDeserializeLoss } from './slide-operations/doc-slide-integrity/reload';
+import {
+    flattenSemanticWrappers,
+    detectDeserializeLoss,
+    countSerializedBlocks,
+} from './slide-operations/doc-slide-integrity/reload';
 import { handleConvertAndUpload } from './slide-operations/handleConvertUpload';
 import { HtmlDocAiAuthor } from './html-doc/html-doc-ai-author';
 import { HTML_DOC_TYPE, isHtmlDocEmpty } from './html-doc/html-doc-utils';
@@ -416,16 +420,56 @@ export const SlideMaterial = ({
     // auto-save reads this to refuse a destructive overwrite. Reset on every
     // serialize; only the LAST serialize before a save matters.
     const lastSerializeDegradedRef = useRef(false);
+    // Timestamp of the last real user input inside the editor (keystroke, paste, cut,
+    // drag). Used to tell an intentional deletion from a programmatic collapse: only a
+    // deletion is preceded by input, so only a deletion may lower the content baseline.
+    const lastUserInputAtRef = useRef(0);
     // Layer-2 load integrity: set when the last DOC deserialize dropped blocks vs the
     // stored HTML (a lossy round-trip for some block type). Tagged with the slide it
     // was computed for. While set for the active slide, the DOC save path REFUSES to
     // overwrite `data` — otherwise the reduced editor state would be persisted and the
     // dropped content lost permanently. Recomputed on every content-apply.
-    const docLoadIntegrityRef = useRef<{ slideId: string | null; lossy: boolean; lost: string[] }>({
+    const docLoadIntegrityRef = useRef<{
+        slideId: string | null;
+        lossy: boolean;
+        lost: string[];
+        imagesInsideTables: number;
+    }>({
         slideId: null,
         lossy: false,
         lost: [],
+        imagesInsideTables: 0,
     });
+    /**
+     * The message shown when a slide loaded incompletely and we are refusing to save it.
+     *
+     * Two very different situations reach here, and telling them apart matters:
+     *  - Images inside a table cell: Yoopta has no representation for one, so it is
+     *    dropped on EVERY load. This is permanent — "reload and try again" loops the
+     *    author forever, because the loss happens DURING the load. Say what's wrong and
+     *    what would make the slide editable again.
+     *  - Anything else: treat as transient; a reload may genuinely fix it.
+     */
+    const describeLoadIntegrityFailure = (
+        integrity: { lost: string[]; imagesInsideTables: number },
+        action: 'saved' | 'published'
+    ): string => {
+        if (integrity.imagesInsideTables > 0) {
+            const n = integrity.imagesInsideTables;
+            return (
+                `This slide has ${n} image${n > 1 ? 's' : ''} inside a table, which the editor ` +
+                `cannot open or keep. It was NOT ${action}, so nothing is lost — your slide is ` +
+                `safe as-is. To edit it, the image${n > 1 ? 's' : ''} must be moved out of the ` +
+                'table first; please contact support.'
+            );
+        }
+        return (
+            'This slide did not load completely (' +
+            integrity.lost.join(', ') +
+            ` missing). To protect your content it was NOT ${action}. Please reload the page and try again.`
+        );
+    };
+
     // Dedup guard to prevent double-save on add + switch happening together
     const lastHandledPrevSlideIdRef = useRef<string | null>(null);
     // activeItem.id from the previous loadContent() run. Lets the DOC branch tell
@@ -690,7 +734,19 @@ export const SlideMaterial = ({
         };
 
         return (
-            <div className="relative w-full">
+            // Capture real user input so we can tell an intentional deletion from a
+            // programmatic collapse. Both look identical in the editor value; the only
+            // honest difference is that a deletion follows a keystroke/paste and a
+            // load-time reset does not. Capture phase so we see it even when a nested
+            // custom-block field stops propagation.
+            <div
+                className="relative w-full"
+                onKeyDownCapture={() => (lastUserInputAtRef.current = Date.now())}
+                onBeforeInputCapture={() => (lastUserInputAtRef.current = Date.now())}
+                onPasteCapture={() => (lastUserInputAtRef.current = Date.now())}
+                onCutCapture={() => (lastUserInputAtRef.current = Date.now())}
+                onDragEndCapture={() => (lastUserInputAtRef.current = Date.now())}
+            >
                 {showPlaceholder && (
                     <div
                         className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center text-gray-400"
@@ -728,6 +784,36 @@ export const SlideMaterial = ({
                                     const serializedHtml = formatHTMLString(currentContent || '');
                                     const targetSlideId =
                                         prevDocSlideRef.current?.id ?? activeItem?.id ?? null;
+                                    // Guard the BASELINE. setEditorValue also fires onChange,
+                                    // so a load-time reset / mid-reload collapse would other-
+                                    // wise overwrite currentDocHtmlRef with the collapsed HTML
+                                    // within 500ms — destroying the very reference the save
+                                    // path needs to notice the collapse (and re-poisoning the
+                                    // serialize-failure fallback). Only let the baseline drop
+                                    // sharply when a real keystroke/paste preceded it: an
+                                    // intentional deletion always follows user input, a
+                                    // programmatic collapse never does.
+                                    const prevBaseline =
+                                        currentDocHtmlRef.current.slideId === targetSlideId
+                                            ? currentDocHtmlRef.current.html
+                                            : null;
+                                    const prevBaselineBlocks = prevBaseline
+                                        ? countSerializedBlocks(prevBaseline)
+                                        : 0;
+                                    const nowBlocks = countSerializedBlocks(serializedHtml);
+                                    const userTypedRecently =
+                                        Date.now() - lastUserInputAtRef.current < 3000;
+                                    const unexplainedCollapse =
+                                        prevBaselineBlocks >= 3 &&
+                                        nowBlocks < prevBaselineBlocks * 0.5 &&
+                                        !userTypedRecently;
+                                    if (unexplainedCollapse) {
+                                        console.error(
+                                            `[Editor] value collapsed ${prevBaselineBlocks} -> ${nowBlocks} block(s) ` +
+                                                'with no user input — keeping the previous baseline and not stashing.'
+                                        );
+                                        return;
+                                    }
                                     currentDocHtmlRef.current = {
                                         slideId: targetSlideId,
                                         html: serializedHtml,
@@ -744,11 +830,24 @@ export const SlideMaterial = ({
                                     const isRealEdit =
                                         initialForThisSlide !== null &&
                                         serializedHtml !== initialForThisSlide;
+                                    // Never stash a serialization that lost blocks relative to
+                                    // the editor value. The stashed draft OUTRANKS server
+                                    // content on reopen, so laundering a collapsed serialize
+                                    // through localStorage makes the loss authoritative — and
+                                    // the load-integrity gate can't see it, because it then
+                                    // compares that partial draft against itself.
+                                    const editorBlocks = Object.keys(editor.children || {}).length;
+                                    const stashBlocks = countSerializedBlocks(serializedHtml);
+                                    const stashLostBlocks =
+                                        editorBlocks >= 3 &&
+                                        stashBlocks > 0 &&
+                                        stashBlocks < editorBlocks * 0.5;
                                     if (
                                         targetSlideId &&
                                         serializedHtml &&
                                         !checkIsHtmlEmpty(serializedHtml) &&
-                                        isRealEdit
+                                        isRealEdit &&
+                                        !stashLostBlocks
                                     ) {
                                         // guardShrink=false: continuous stash reflects the user's real
                                         // current content and must always win over an older draft.
@@ -1073,6 +1172,7 @@ export const SlideMaterial = ({
                 slideId: activeItem?.id ?? null,
                 lossy: loss.lossy,
                 lost: loss.lost,
+                imagesInsideTables: loss.imagesInsideTables,
             };
             if (loss.lossy) {
                 console.error(
@@ -1083,7 +1183,12 @@ export const SlideMaterial = ({
                 );
             }
         } catch {
-            docLoadIntegrityRef.current = { slideId: activeItem?.id ?? null, lossy: false, lost: [] };
+            docLoadIntegrityRef.current = {
+                slideId: activeItem?.id ?? null,
+                lossy: false,
+                lost: [],
+                imagesInsideTables: 0,
+            };
         }
 
         const processNode = (node: any): any => {
@@ -1376,47 +1481,95 @@ export const SlideMaterial = ({
                     .join('');
             }
             const formatted = formatHTMLString(htmlString);
+
+            // ---- Save-side integrity: two independent checks ----
+            // Both compare the HTML we are about to persist against a baseline that a
+            // REAL user deletion would have already moved. Neither can fire on intent.
+            const inBlockCount = Object.keys((data || {}) as Record<string, unknown>).length;
+            const outBlockCount = countSerializedBlocks(formatted);
+
+            // (1) Serializer dropped blocks: the editor value holds them, the HTML
+            // doesn't. Catches silent drops that never throw (the per-block fallback
+            // above only sees blocks whose serializer raised).
+            if (inBlockCount >= 3 && outBlockCount > 0 && outBlockCount < inBlockCount * 0.5) {
+                lastSerializeDegradedRef.current = true;
+                console.error(
+                    `[Save] serialize emitted ${outBlockCount} block(s) from an editor holding ` +
+                        `${inBlockCount} — treating as degraded; refusing to overwrite stored content.`
+                );
+            }
+
+            // (2) The editor VALUE itself collapsed — the case (1) is blind to, because
+            // a collapsed value serializes faithfully (0 in -> 0 out, 1 in -> 1 out).
+            // Seen live: a rename/slide-switch reload leaves the editor empty or
+            // holding only the focused block for a window, while the screen still shows
+            // the full slide. Saving in that window is what wiped published lessons
+            // (58KB -> a single 3KB quiz block). Compare against the last GOOD serialize
+            // of THIS slide: a real deletion lands there first via the onChange stash,
+            // so this only fires when content vanished without the user touching it.
+            const baselineSlideId = prevDocSlideRef.current?.id ?? activeItem?.id ?? null;
+            const prevGoodHtml =
+                currentDocHtmlRef.current.slideId === baselineSlideId
+                    ? currentDocHtmlRef.current.html
+                    : null;
+            const prevGoodBlocks = prevGoodHtml ? countSerializedBlocks(prevGoodHtml) : 0;
+            const collapsedVsBaseline =
+                prevGoodBlocks >= 3 && outBlockCount < prevGoodBlocks * 0.5;
+            if (collapsedVsBaseline) {
+                lastSerializeDegradedRef.current = true;
+                console.error(
+                    `[Save] editor collapsed: about to write ${outBlockCount} block(s) where this ` +
+                        `slide last held ${prevGoodBlocks}. Refusing — the editor is mid-reload, ` +
+                        'not edited down. (rename / slide-switch race)'
+                );
+            }
+
             // Keep the last-known-good snapshot in sync so future serialize
             // failures (e.g. the Yoopta accordion "Cannot find descendant
             // at path" Slate bug) have something to fall back to. Only cache a
-            // NON-empty result: a transient empty/degenerate serialize (e.g.
-            // mid slide-switch) must not poison the fallback, or the catch
-            // block below would itself recover empty content and lose work.
-            if (!checkIsHtmlEmpty(formatted)) {
+            // NON-empty, NON-collapsed result: a transient empty/degenerate
+            // serialize (e.g. mid slide-switch) must not poison the fallback, or
+            // the catch block below would itself recover reduced content.
+            if (!checkIsHtmlEmpty(formatted) && !collapsedVsBaseline) {
                 currentDocHtmlRef.current = {
-                    slideId: prevDocSlideRef.current?.id ?? activeItem?.id ?? null,
+                    slideId: baselineSlideId,
                     html: formatted,
                 };
             }
             return formatted;
         } catch (error) {
-            console.error('Error serializing content in getCurrentEditorHTMLContent:', error);
-            // Serialize blew up (typically Yoopta/Slate throwing on a
-            // partially-normalized accordion/custom-block state). The value we
-            // return here is a FALLBACK, not a faithful serialization of the
-            // live editor — mark it degraded so the silent auto-save won't treat
-            // it as an authoritative new version to overwrite stored data with.
-            lastSerializeDegradedRef.current = true;
-            // Fall back to the most recent successfully-serialized HTML
-            // (captured on every onChange), then to the slide's stored
-            // data. Returning '' used to land in SaveDraft's empty-guard
-            // and surface "Could not read editor content" — we'd rather
-            // preserve prior content than lose work.
-            // Only reuse the cached HTML if it belongs to the slide currently in
-            // the editor — otherwise it's a DIFFERENT slide's content, and handing
-            // it back here is exactly how one slide's data bleeds into another.
-            if (
-                currentDocHtmlRef.current.html &&
-                currentDocHtmlRef.current.slideId ===
-                    (prevDocSlideRef.current?.id ?? activeItem?.id)
-            ) {
-                return currentDocHtmlRef.current.html;
-            }
-            if (activeItem?.document_slide?.data) {
-                return activeItem.document_slide.data;
-            }
-            return '';
+            return getCurrentEditorHTMLContentFallback(error);
         }
+    };
+
+    // The serialize-threw path, extracted so the happy path can return early.
+    // Behaviour unchanged from the original catch block.
+    const getCurrentEditorHTMLContentFallback = (error: unknown): string => {
+        console.error('Error serializing content in getCurrentEditorHTMLContent:', error);
+        // Serialize blew up (typically Yoopta/Slate throwing on a
+        // partially-normalized accordion/custom-block state). The value we
+        // return here is a FALLBACK, not a faithful serialization of the
+        // live editor — mark it degraded so no write path treats it as an
+        // authoritative new version to overwrite stored data with.
+        lastSerializeDegradedRef.current = true;
+        // Fall back to the most recent successfully-serialized HTML
+        // (captured on every onChange), then to the slide's stored
+        // data. Returning '' used to land in SaveDraft's empty-guard
+        // and surface "Could not read editor content" — we'd rather
+        // preserve prior content than lose work.
+        // Only reuse the cached HTML if it belongs to the slide currently in
+        // the editor — otherwise it's a DIFFERENT slide's content, and handing
+        // it back here is exactly how one slide's data bleeds into another.
+        if (
+            currentDocHtmlRef.current.html &&
+            currentDocHtmlRef.current.slideId === (prevDocSlideRef.current?.id ?? activeItem?.id)
+        ) {
+            return currentDocHtmlRef.current.html;
+        }
+        if (activeItem?.document_slide?.data) {
+            return activeItem.document_slide.data;
+        }
+        return '';
     };
 
     // Unified handler to check and handle unsaved DOC changes for the previous slide
@@ -3140,24 +3293,24 @@ export const SlideMaterial = ({
                 docLoadIntegrityRef.current.lossy &&
                 docLoadIntegrityRef.current.slideId === slide?.id
             ) {
-                toast.error(
-                    'This slide did not load completely (' +
-                        docLoadIntegrityRef.current.lost.join(', ') +
-                        ' missing). To protect your content it was NOT saved. Please reload the page and try again.'
-                );
+                toast.error(describeLoadIntegrityFailure(docLoadIntegrityRef.current, 'saved'));
                 return;
             }
 
             const currentHtml = getCurrentEditorHTMLContent();
 
-            // Explicit Save proceeds on user intent, but if a block's serializer
-            // threw it was dropped from currentHtml — tell the user so the loss
-            // isn't silent (the silent auto-save-on-switch already refuses this).
+            // A degraded serialize is NOT user intent — the editor still holds the
+            // blocks; only the HTML we just produced is missing them. Persisting it
+            // writes that loss into `data`, which is what an UNSYNC slide reopens
+            // from, so the blocks are gone on the next load. Refuse, like the
+            // auto-save and publish paths do. (This used to warn and save anyway.)
             if (lastSerializeDegradedRef.current) {
-                toast.warning(
-                    'A block on this slide could not be saved and was left out. ' +
-                        'Please check the slide — you may need to re-create that block.'
+                toast.error(
+                    'This slide could not be read correctly, so it was NOT saved. ' +
+                        'Your saved content is safe — reload the page to get it back, then redo ' +
+                        'any recent edits.'
                 );
+                return;
             }
 
             // Process images in HTML content before saving
@@ -3865,16 +4018,35 @@ export const SlideMaterial = ({
                                                             activeItem?.id
                                                     ) {
                                                         toast.error(
-                                                            'This slide did not load completely (' +
-                                                                docLoadIntegrityRef.current.lost.join(
-                                                                    ', '
-                                                                ) +
-                                                                ' missing). Publish blocked to protect your content. Please reload the page.'
+                                                            describeLoadIntegrityFailure(
+                                                                docLoadIntegrityRef.current,
+                                                                'published'
+                                                            )
                                                         );
                                                         setIsPublishDialogOpen(false);
                                                         return;
                                                     }
                                                     let currentHtml = getCurrentEditorHTMLContent();
+                                                    // A degraded serialize means blocks were
+                                                    // DROPPED from currentHtml — the editor holds
+                                                    // more than this HTML represents. The
+                                                    // switch-time auto-save already refuses to
+                                                    // persist that; publish MUST too. Publish is
+                                                    // the only writer of published_data, so an
+                                                    // unguarded write here replaces the live slide
+                                                    // with the fragment that survived
+                                                    // serialization. The author only ever sees the
+                                                    // server's "this will remove N blocks"
+                                                    // confirm, which reads as a false alarm after
+                                                    // they've merely ADDED content — they click OK
+                                                    // and the lesson is gone.
+                                                    if (lastSerializeDegradedRef.current) {
+                                                        toast.error(
+                                                            'Some blocks on this slide could not be read, so publishing was stopped to protect your content. Please reload the page and try again.'
+                                                        );
+                                                        setIsPublishDialogOpen(false);
+                                                        return;
+                                                    }
                                                     if (containsBase64Images(currentHtml)) {
                                                         const { processedHtml } =
                                                             await processHtmlImages(currentHtml);

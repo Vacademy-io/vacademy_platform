@@ -49,6 +49,21 @@ public @interface Auditable {
     String actionExpr() default "";
 
     /**
+     * Optional SpEL guard. When set and it does not evaluate to {@code true},
+     * no audit row is written. Evaluated after the wrapped call, so it can
+     * inspect {@code #result}.
+     *
+     * <p>Exists for endpoints that can return 200 without mutating anything —
+     * a dry-run/preview, or a bulk call where every item was skipped. Logging
+     * those would claim an action that never happened:
+     * {@code conditionExpr = "!#result?.body?.dryRun"}.
+     *
+     * <p>A failed evaluation yields null, which is not {@code true}, so the row
+     * is skipped rather than written with a claim we cannot stand behind.
+     */
+    String conditionExpr() default "";
+
+    /**
      * Optional SpEL evaluated against method args + {@code #user} + {@code #result}
      * to resolve the affected entity's id. Example: {@code "#req.courseId"}.
      */

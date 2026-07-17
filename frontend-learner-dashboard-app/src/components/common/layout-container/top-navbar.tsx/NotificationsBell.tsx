@@ -89,7 +89,7 @@ export const NotificationsBell: React.FC<{ className?: string }> = ({
             'hover:text-primary-700 dark:hover:text-primary-300 transition-colors duration-200',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
             // Play: slightly chunkier rounded-full button
-            '[.ui-play_&]:rounded-full [.ui-play_&]:bg-primary/10 [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20',
+            '[.ui-play_&]:rounded-full [.ui-play_&]:bg-primary/10 [.ui-play_&]:border [.ui-play_&]:border-border',
             className,
           )}
         >
@@ -111,7 +111,7 @@ export const NotificationsBell: React.FC<{ className?: string }> = ({
       <PopoverContent
         align="end"
         sideOffset={8}
-        className="w-80 p-0 [.ui-play_&]:rounded-2xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
+        className="w-80 p-0 [.ui-play_&]:rounded-2xl [.ui-play_&]:border [.ui-play_&]:border-border"
       >
         <div className="border-b border-border px-4 py-3">
           <h3 className="text-sm font-semibold text-foreground">

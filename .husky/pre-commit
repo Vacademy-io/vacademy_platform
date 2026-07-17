@@ -48,6 +48,22 @@ if [ "$status" -ne 0 ]; then
   echo "Commit blocked by the Vacademy design system. Fix the violations above"
   echo "(see frontend-admin-dashboard/docs/design-system/), then re-stage and commit."
   echo "To bypass in a genuine emergency: git commit --no-verify"
+  exit $status
 fi
 
-exit $status
+# i18n commit gate. Checks only lines ADDED in this commit (git diff --cached
+# -U0) for RTL-unsafe Tailwind utilities (ml-/mr-/pl-/pr-/left-/right-/
+# text-left/text-right/space-x-), locale-less toLocale*() calls, and hardcoded
+# 'Asia/Kolkata'. Existing/legacy lines are never flagged.
+# shellcheck disable=SC2086
+node scripts/i18n-lint.mjs $files
+i18n_status=$?
+
+if [ "$i18n_status" -ne 0 ]; then
+  echo ""
+  echo "Commit blocked by the Vacademy i18n guard. Fix the violations above"
+  echo "(logical utilities: ms-/me-/ps-/pe-/start-/end-/text-start), then re-stage."
+  echo "To bypass in a genuine emergency: git commit --no-verify"
+fi
+
+exit $i18n_status

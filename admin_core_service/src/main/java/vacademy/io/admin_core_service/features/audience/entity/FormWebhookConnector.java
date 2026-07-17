@@ -150,6 +150,27 @@ public class FormWebhookConnector {
     @Column(name = "last_checked_at")
     private LocalDateTime lastCheckedAt;
 
+    // ─── Lead polling cursor (MetaLeadPollingJob) ─────────────────────────────
+    // Polling is a PULL fallback for when realtime push is blocked (Meta CRM
+    // access revoked). It reuses the same ingest pipeline as the webhook.
+
+    /** Watermark: only Meta leads created after this instant are pulled next poll.
+     *  Null = never polled; the job seeds a going-forward cursor on first run so
+     *  it never mass-imports historical leads (and mass-fires their workflows). */
+    @Column(name = "last_polled_at")
+    private LocalDateTime lastPolledAt;
+
+    /** Meta lead id (leadgen_id) of the most recent lead the poller ingested.
+     *  Diagnostic only — the time watermark drives the query. */
+    @Column(name = "last_polled_lead_id", length = 255)
+    private String lastPolledLeadId;
+
+    /** Per-connector polling kill switch. Defaults true so the poller backstops
+     *  every Meta connector; set false to opt a healthy-realtime connector out. */
+    @Column(name = "polling_enabled")
+    @Builder.Default
+    private Boolean pollingEnabled = true;
+
     /** Source type tag for leads from this connector: FACEBOOK_ADS, INSTAGRAM_ADS, GOOGLE_ADS */
     @Column(name = "produces_source_type", length = 50)
     private String producesSourceType;

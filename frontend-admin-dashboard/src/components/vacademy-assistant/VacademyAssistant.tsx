@@ -45,7 +45,7 @@ const PUBLIC_PREFIXES = [
 
 /** Capability-group → human blurb + example prompts (role-accurate: only the
  * groups the /capabilities endpoint returns for THIS user are shown). */
-const CAPABILITY_COPY: Record<string, { blurb: string; suggestions: string[] }> = {
+export const CAPABILITY_COPY: Record<string, { blurb: string; suggestions: string[] }> = {
     search_help_knowledge: {
         blurb: 'How-to guidance',
         suggestions: ['How do I create a course?', 'How do I invite a team member?'],
@@ -74,6 +74,14 @@ const CAPABILITY_COPY: Record<string, { blurb: string; suggestions: string[] }> 
         blurb: 'Make changes (with your confirmation)',
         suggestions: ["Extend a learner's access expiry"],
     },
+    assessments: {
+        blurb: 'Assessment results & pending evaluations',
+        suggestions: ['Which submissions are still pending evaluation?'],
+    },
+    announcements: {
+        blurb: 'Send announcements (with your confirmation)',
+        suggestions: ['Send an announcement to a batch'],
+    },
 };
 
 const FALLBACK_SUGGESTIONS = [
@@ -88,8 +96,19 @@ export function VacademyAssistant() {
     const [expanded, setExpanded] = useState(false);
     const panel = useAssistDock((s) => s.panel);
     const setPanel = useAssistDock((s) => s.setPanel);
+    const pendingPrompt = useAssistDock((s) => s.pendingPrompt);
+    const clearPendingPrompt = useAssistDock((s) => s.clearPendingPrompt);
     const open = panel === 'assistant';
     const { messages, status, error, sendMessage, reset, resolveAction } = useVacademyAssistant();
+
+    // A question handed over from the dashboard launch bar: send it as soon as
+    // the panel opens (sendMessage cold-starts the session itself).
+    useEffect(() => {
+        if (open && pendingPrompt) {
+            clearPendingPrompt();
+            sendMessage(pendingPrompt);
+        }
+    }, [open, pendingPrompt, clearPendingPrompt, sendMessage]);
     const scrollEndRef = useRef<HTMLDivElement>(null);
     const navigate = useNavigate();
 

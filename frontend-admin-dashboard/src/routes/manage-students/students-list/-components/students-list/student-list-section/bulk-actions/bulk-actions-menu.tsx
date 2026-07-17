@@ -6,15 +6,24 @@ import { StudentTable } from '@/types/student-table-types';
 import { ReactNode } from 'react';
 import { BulkActionDropdownList } from '@/routes/manage-students/students-list/-constants/bulk-actions-menu-options';
 import { useRouter } from '@tanstack/react-router';
+import { useEnrollRequestsDialogStore } from '@/routes/manage-students/enroll-requests/-components/bulk-actions/bulk-actions-store';
 
 interface BulkActionsMenuProps {
     selectedCount: number;
     selectedStudentIds: string[];
     selectedStudents: StudentTable[];
     trigger: ReactNode;
+    // When the Approval Status filter (Pending for Approval / Invited) is active,
+    // expose the bulk "Accept Request" action so pending learners can be approved
+    // in bulk instead of one-by-one from each row's menu.
+    showApprovalActions?: boolean;
 }
 
-export const BulkActionsMenu = ({ selectedStudents, trigger }: BulkActionsMenuProps) => {
+export const BulkActionsMenu = ({
+    selectedStudents,
+    trigger,
+    showApprovalActions = false,
+}: BulkActionsMenuProps) => {
     const router = useRouter();
     const {
         openBulkChangeBatchDialog,
@@ -25,6 +34,14 @@ export const BulkActionsMenu = ({ selectedStudents, trigger }: BulkActionsMenuPr
         openBulkSendMessageDialog,
         openBulkSendEmailDialog,
     } = useDialogStore();
+    // The Accept flow is owned by the enroll-requests dialog store (the same store the
+    // row-level "Accept Request" menu uses); its AcceptRequestDialog is already mounted
+    // on this page and handles bulk approval.
+    const { openBulkAcceptRequestDialog } = useEnrollRequestsDialogStore();
+
+    const dropdownList = showApprovalActions
+        ? ['Accept Request', ...BulkActionDropdownList]
+        : BulkActionDropdownList;
 
     const handleMenuOptionsChange = (value: string) => {
         const validStudents = selectedStudents.filter(
@@ -43,6 +60,9 @@ export const BulkActionsMenu = ({ selectedStudents, trigger }: BulkActionsMenuPr
         };
 
         switch (value) {
+            case 'Accept Request':
+                openBulkAcceptRequestDialog(bulkActionInfo);
+                break;
             case 'Change Batch':
                 openBulkChangeBatchDialog(bulkActionInfo);
                 break;
@@ -79,7 +99,7 @@ export const BulkActionsMenu = ({ selectedStudents, trigger }: BulkActionsMenuPr
     };
 
     return (
-        <MyDropdown dropdownList={BulkActionDropdownList} onSelect={handleMenuOptionsChange}>
+        <MyDropdown dropdownList={dropdownList} onSelect={handleMenuOptionsChange}>
             {trigger}
         </MyDropdown>
     );

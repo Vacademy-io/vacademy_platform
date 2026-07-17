@@ -64,6 +64,11 @@ public class User {
     @Column(name = "linked_parent_id")
     private String linkedParentId;
 
+    // BCP-47 language tag ("en", "ar", "hi", ...); validated against
+    // LocaleRegistry before persisting. NULL = no explicit preference.
+    @Column(name = "preferred_locale")
+    private String preferredLocale;
+
     @Column(name = "last_token_update_time")
     @Temporal(TemporalType.TIMESTAMP)
     private Date lastTokenUpdateTime;
@@ -91,6 +96,7 @@ public class User {
                 .email(this.email)
                 .pinCode(this.pinCode)
                 .profilePicFileId(this.profilePicFileId)
+                .preferredLocale(this.preferredLocale)
                 .roles(this.roles != null ? roles.stream().map(UserRole::getRoleDto).toList() : new ArrayList<>())
                 .build();
     }
@@ -230,6 +236,14 @@ public class User {
 
     public void setLinkedParentId(String linkedParentId) {
         this.linkedParentId = linkedParentId;
+    }
+
+    public String getPreferredLocale() {
+        return preferredLocale;
+    }
+
+    public void setPreferredLocale(String preferredLocale) {
+        this.preferredLocale = preferredLocale;
     }
 
     public Date getLastTokenUpdateTime() {

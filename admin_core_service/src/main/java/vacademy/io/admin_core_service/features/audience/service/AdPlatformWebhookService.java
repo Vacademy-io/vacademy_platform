@@ -14,7 +14,9 @@ import vacademy.io.admin_core_service.features.audience.dto.ProcessedFormDataDTO
 import vacademy.io.admin_core_service.features.audience.entity.FormWebhookConnector;
 import vacademy.io.admin_core_service.features.audience.repository.FormWebhookConnectorRepository;
 import vacademy.io.admin_core_service.features.audience.strategy.AdPlatformStrategy;
+import vacademy.io.admin_core_service.features.audience.strategy.MetaLeadAdsStrategy;
 import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.logging.SentryLogger;
 
 import java.util.*;
 
@@ -47,6 +49,9 @@ public class AdPlatformWebhookService {
 
     @Autowired
     private LeadEnricher leadEnricher;
+
+    @Autowired
+    private MetaLeadAdsStrategy metaLeadAdsStrategy;
 
     // ── Strategy registry (built once at startup via @PostConstruct) ─────────
 
@@ -163,6 +168,54 @@ public class AdPlatformWebhookService {
             }
         }
     }
+
+    // ── Polling (PULL fallback for the webhook PUSH) ──────────────────────────
+
+    /**
+     * PULL new leads for a Meta connector created after {@code sinceEpochSeconds}
+     * and run each through the SAME normalize→route→submit pipeline the webhook
+     * uses. Reusing that pipeline is what makes the poller dedup-safe alongside
+     * realtime delivery (same lead → same synthesized user → the existing
+     * existsByAudienceIdAndUserId guard drops the duplicate, no extra row, no
+     * re-fired workflow).
+     *
+     * Throws (via the strategy) if Meta returns an error — the caller keeps the
+     * cursor where it was so the leads are retried on the next poll, and should
+     * surface the failure (log + Sentry alert). This method does NOT itself write
+     * connection_status; the scheduled job / manual endpoint own that.
+     *
+     * @return {@link PollResult} with the count fetched, whether the page cap cut
+     *         the pull short (caller must not advance the cursor if truncated), and
+     *         the newest lead id (for the caller's targeted cursor write).
+     */
+    public PollResult pollMetaConnector(FormWebhookConnector connector, long sinceEpochSeconds,
+            int maxPages) {
+        MetaLeadAdsStrategy.LeadPullResult pull =
+                metaLeadAdsStrategy.fetchLeadsSince(connector, sinceEpochSeconds, maxPages);
+        List<NormalizedLeadData> leads = pull.leads();
+        for (NormalizedLeadData lead : leads) {
+            try {
+                submitNormalizedLead(lead, connector);
+            } catch (Exception e) {
+                log.error("Failed to submit polled lead {} from connector {}",
+                        lead.getPlatformLeadId(), connector.getId(), e);
+            }
+        }
+        // Meta returns /leads newest-first, so data[0] is the most recent. The caller
+        // persists this via a targeted update (never a full-entity save that could
+        // clobber another scheduler's concurrent write to this row).
+        String newestLeadId = leads.isEmpty() ? null : leads.get(0).getPlatformLeadId();
+        if (!leads.isEmpty()) {
+            log.info("Poll ingested {} lead(s) for connector {} (form {})",
+                    leads.size(), connector.getId(), connector.getPlatformFormId());
+        }
+        return new PollResult(leads.size(), pull.truncated(), newestLeadId);
+    }
+
+    /** Outcome of a poll: count fetched, whether the page cap cut it short (older
+     *  leads remain — caller keeps its cursor so they're retried), and the newest
+     *  lead id for the caller's targeted cursor write. */
+    public record PollResult(int fetched, boolean truncated, String newestLeadId) {}
 
     // Note: @Transactional omitted intentionally — self-invocation from @Async bypasses AOP.
     // audienceService.submitLeadFromFormWebhook() is itself @Transactional.
@@ -319,12 +372,32 @@ public class AdPlatformWebhookService {
             String currentToken = tokenEncryptionService.decrypt(connector.getOauthAccessTokenEnc());
             AdPlatformStrategy strategy = getStrategy(connector.getVendor());
             Optional<OAuthTokenResult> result = strategy.refreshToken(connector, currentToken);
-            result.ifPresent(r -> {
+            if (result.isPresent()) {
+                OAuthTokenResult r = result.get();
                 connector.setOauthAccessTokenEnc(tokenEncryptionService.encrypt(r.getAccessToken()));
                 connector.setOauthTokenExpiresAt(r.getExpiresAt());
                 connectorRepository.save(connector);
                 log.info("Refreshed token for connector {}", connector.getId());
-            });
+            } else {
+                // Graph-side refresh failed (the strategy caught the error and
+                // returned empty). This used to be swallowed silently — the token
+                // would keep failing to refresh every night until it actually
+                // expired and leads (webhook AND poll) quietly stopped. Surface it.
+                log.error("Meta token refresh returned no token for connector {} — "
+                        + "token may be revoked/invalid", connector.getId());
+                Map<String, String> tags = new LinkedHashMap<>();
+                tags.put("feature", "ad_platform_connector");
+                tags.put("vendor", connector.getVendor());
+                tags.put("connector_id", connector.getId());
+                if (connector.getInstituteId() != null) {
+                    tags.put("institute_id", connector.getInstituteId());
+                }
+                SentryLogger.logWarning(
+                        "Meta token refresh failed (no token returned) for connector "
+                                + connector.getId() + " institute=" + connector.getInstituteId()
+                                + " — leads will stop when the current token expires.",
+                        tags);
+            }
         } catch (Exception e) {
             log.error("Failed to refresh token for connector {}", connector.getId(), e);
             connector.setConnectionStatus("TOKEN_EXPIRED");

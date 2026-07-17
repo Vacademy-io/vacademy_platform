@@ -112,9 +112,11 @@ public class AnnouncementResponse {
         private Long totalRecipients;
         private Long deliveredCount;
         private Long readCount;
+        private Long dismissedCount;
         private Long failedCount;
         private Double deliveryRate;
         private Double readRate;
+        private Double dismissRate;
         
         // Enhanced SES Email Event Stats
         private Long emailsSent;               // Total emails sent

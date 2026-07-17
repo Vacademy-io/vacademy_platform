@@ -86,7 +86,7 @@ export const CertificateCompletionBanner = ({
                 "[.ui-vibrant_&]:bg-success-50 dark:[.ui-vibrant_&]:bg-success-500/10",
                 "[.ui-vibrant_&]:border-success-200 dark:[.ui-vibrant_&]:border-success-500/30 [.ui-vibrant_&]:shadow-sm",
                 // Play Styles — solid green hero with soft layered shadow
-                "[.ui-play_&]:bg-play-success [.ui-play_&]:border-transparent [.ui-play_&]:text-white [.ui-play_&]:rounded-2xl [.ui-play_&]:font-extrabold",
+                "[.ui-play_&]:bg-play-success-soft [.ui-play_&]:border-border [.ui-play_&]:text-play-success-soft-ink [.ui-play_&]:rounded-play-card-sm [.ui-play_&]:font-extrabold",
                 "[.ui-play_&]:shadow-play-glow-success-lg"
             )}>
                 <div className="flex items-center gap-4">

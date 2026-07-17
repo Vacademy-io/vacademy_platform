@@ -152,6 +152,15 @@ public class AiCallResult {
     @Column(name = "call_start")
     private Instant callStart;
 
+    /**
+     * When the per-minute credit meter successfully charged this record (V378).
+     * Stamped by CallBillingService after ai_service acknowledges the deduction;
+     * null = not yet billed (retried by the reconciliation sweep). Makes the charge
+     * attempt at-least-once instead of fire-and-forget.
+     */
+    @Column(name = "credits_billed_at")
+    private java.time.Instant creditsBilledAt;
+
     @Column(name = "transcript", columnDefinition = "TEXT")
     private String transcript;
 

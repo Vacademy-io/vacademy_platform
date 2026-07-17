@@ -1,7 +1,7 @@
 import { MyDialog } from '@/components/design-system/dialog';
 import { toast } from 'sonner';
 import { useEnrollRequestsDialogStore } from '../bulk-actions-store';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AxiosError } from 'axios';
 import { getApproveEnrollmentRequestsData } from '../../../-services/get-enroll-requests';
 
@@ -20,6 +20,7 @@ export interface EnrollRequestAcceptData {
 export const AcceptRequestDialog = () => {
     const { isAcceptRequestOpen, bulkActionInfo, selectedStudent, closeAllDialogs } =
         useEnrollRequestsDialogStore();
+    const queryClient = useQueryClient();
 
     const pendingForApprovalStudentsBulk = bulkActionInfo?.selectedStudents?.filter(
         (student) => student.payment_status === 'PAYMENT_PENDING'
@@ -51,6 +52,9 @@ export const AcceptRequestDialog = () => {
         },
         onSuccess: () => {
             toast.success('Request accepted successfully');
+            // Refresh the students list so approved learners drop out of the
+            // "Pending for Approval" view (matches the useBulkOperations convention).
+            queryClient.invalidateQueries({ queryKey: ['students'] });
             closeAllDialogs();
         },
         onError: (error: unknown) => {

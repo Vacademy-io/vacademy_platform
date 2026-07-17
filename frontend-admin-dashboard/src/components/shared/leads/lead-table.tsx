@@ -75,11 +75,18 @@ interface LeadTableProps {
     extraColumns?: LeadTableExtraColumn[];
     /** Enables a leading checkbox column for multi-select (bulk actions). */
     selectable?: boolean;
-    /** Selected lead user ids (selection is keyed on vm.userId). */
+    /**
+     * Selected lead RESPONSE ids (selection is keyed on vm.responseId).
+     *
+     * Keyed per response, not per user: a row IS one campaign response, and the same person can
+     * hold several — keying on userId collapsed those into one checkbox, so ticking one of a
+     * person's rows silently ticked them all. Bulk actions that operate per-person (assign) must
+     * therefore de-duplicate userIds from the selection themselves.
+     */
     selectedIds?: Set<string>;
-    /** Toggle a single row. Only fired for rows that have a userId. */
-    onToggleRow?: (userId: string, vm: LeadCardVM) => void;
-    /** Toggle all selectable (userId-bearing) rows currently rendered. */
+    /** Toggle a single row. Only fired for rows with both a userId and a responseId. */
+    onToggleRow?: (responseId: string, vm: LeadCardVM) => void;
+    /** Toggle all selectable rows currently rendered. */
     onToggleAll?: (checked: boolean, selectableVms: LeadCardVM[]) => void;
     /** Server-driven column sort. Omit to render headers as non-interactive (unsorted). */
     sortBy?: LeadSortKey | null;
@@ -240,10 +247,13 @@ export function LeadTable({
     const profOf = (vm: LeadCardVM) => (vm.userId ? profiles[vm.userId] : undefined);
     const notesOf = (vm: LeadCardVM) => (vm.userId ? notes?.[vm.userId] : undefined);
 
-    // Rows that can participate in bulk selection (need a user id to assign).
-    const selectableVms = vms.filter((v) => !!v.userId);
+    // Rows that can participate in bulk selection. Needs a user id (assign targets a person)
+    // AND a response id (that's the selection key, and what delete targets). response_id is the
+    // audience_response primary key so it's always present on a lead row; the check is a guard,
+    // not a narrowing — the selectable set is the same rows as before.
+    const selectableVms = vms.filter((v) => !!v.userId && !!v.responseId);
     const allSelected =
-        selectableVms.length > 0 && selectableVms.every((v) => selectedIds?.has(v.userId!));
+        selectableVms.length > 0 && selectableVms.every((v) => selectedIds?.has(v.responseId!));
 
     const allCols: Col[] = [
         {
@@ -253,10 +263,10 @@ export function LeadTable({
             show: selectable,
             interactive: true,
             render: (vm) =>
-                vm.userId ? (
+                vm.userId && vm.responseId ? (
                     <Checkbox
-                        checked={!!selectedIds?.has(vm.userId)}
-                        onCheckedChange={() => onToggleRow?.(vm.userId!, vm)}
+                        checked={!!selectedIds?.has(vm.responseId)}
+                        onCheckedChange={() => onToggleRow?.(vm.responseId!, vm)}
                         aria-label={`Select ${vm.name}`}
                     />
                 ) : (

@@ -91,11 +91,13 @@ const naivePluralize = (word: string): string => {
 export const SidebarItemsData: SidebarItemsType[] = [
   {
     icon: House,
+    id: "dashboard",
     title: "Dashboard",
     to: "/dashboard",
   },
   {
     icon: BookOpen,
+    id: "learning-center",
     title: "Learning Center",
     subItems: [
       {
@@ -117,6 +119,7 @@ export const SidebarItemsData: SidebarItemsType[] = [
   },
   {
     icon: NotePencil,
+    id: "homework",
     title: "Homework",
     subItems: [
       {
@@ -131,11 +134,13 @@ export const SidebarItemsData: SidebarItemsType[] = [
   },
   {
     icon: Users,
+    id: "sub-org-learners",
     title: "Sub-Org Learners",
     to: "/sub-org-learners",
   },
   {
     icon: Scroll,
+    id: "assessment-centre",
     title: "Assessment Centre",
     subItems: [
       {
@@ -165,15 +170,17 @@ export const HamBurgerSidebarItemsData: SidebarItemsType[] = [
   //TODO : add other options when api and ui is available
   {
     icon: UserCircle,
+    id: "view-profile",
     title: "View Profile Details",
     to: "/user-profile",
   },
   {
     icon: Files,
+    id: "my-files",
     title: "My Files",
     to: "/my-files",
   },
-  { icon: AddressBook, title: "My Reports", to: "/my-reports" },
+  { icon: AddressBook, id: "my-reports", title: "My Reports", to: "/my-reports" },
   // {
   //   icon: CreditCard,
   //   title: "Membership Details",
@@ -181,6 +188,7 @@ export const HamBurgerSidebarItemsData: SidebarItemsType[] = [
   // },
   {
     icon: Password,
+    id: "change-password",
     title: "Change Password",
     to: "/change-password",
   },
@@ -191,11 +199,13 @@ export const HamBurgerSidebarItemsData: SidebarItemsType[] = [
   // },
   {
     icon: SignOut,
+    id: "logout",
     title: "Log Out",
     to: "/logout",
   },
   {
     icon: UserCircleMinus,
+    id: "delete-account",
     title: "Delete Account",
     to: "/delete-user",
   },
@@ -212,34 +222,35 @@ export async function filterHamburgerMenuItemsWithPermissions(
     canViewReports: boolean;
   }
 ) {
-  // Filter based on permissions
+  // Filter based on permissions. Compare on stable `id`s, never on `title`
+  // (display text — translated / institute-renamed).
   if (!permissions.canViewProfile) {
     HamBurgerSidebarItemsData = HamBurgerSidebarItemsData.filter(
-      (item) => item.title !== "View Profile Details"
+      (item) => item.id !== "view-profile"
     );
   }
 
   if (!permissions.canViewFiles) {
     HamBurgerSidebarItemsData = HamBurgerSidebarItemsData.filter(
-      (item) => item.title !== "My Files"
+      (item) => item.id !== "my-files"
     );
   }
 
   if (!permissions.canViewReports) {
     HamBurgerSidebarItemsData = HamBurgerSidebarItemsData.filter(
-      (item) => item.title !== "My Reports"
+      (item) => item.id !== "my-reports"
     );
   }
 
   if (!permissions.canEditProfile) {
     HamBurgerSidebarItemsData = HamBurgerSidebarItemsData.filter(
-      (item) => item.title !== "Change Password"
+      (item) => item.id !== "change-password"
     );
   }
 
   if (!permissions.canDeleteProfile) {
     HamBurgerSidebarItemsData = HamBurgerSidebarItemsData.filter(
-      (item) => item.title !== "Delete Account"
+      (item) => item.id !== "delete-account"
     );
   }
 

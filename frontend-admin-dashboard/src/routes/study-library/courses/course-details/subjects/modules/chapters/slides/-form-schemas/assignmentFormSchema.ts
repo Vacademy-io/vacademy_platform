@@ -51,8 +51,16 @@ export const assignmentFormSchema = z.object({
 
 export type AssignmentFormType = z.infer<typeof assignmentFormSchema>;
 
+// Sentinel value for the "All Files" option — selecting it means no
+// restriction at all, including formats outside this fixed category list
+// (e.g. .sb3 PictoBlox/Scratch projects). Equivalent to selecting nothing,
+// but explicit so admins don't have to know that "check nothing" means
+// "allow anything."
+export const ALL_FILES_VALUE = 'all';
+
 // File types an admin can allow learners to upload. PDF is always allowed.
 export const ALLOWED_FILE_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
+    { value: ALL_FILES_VALUE, label: 'All Files' },
     { value: 'pdf', label: 'PDF' },
     { value: 'image', label: 'Image (PNG, JPG, GIF)' },
     { value: 'doc', label: 'Document (DOC, DOCX)' },
@@ -68,12 +76,20 @@ export const ALLOWED_TYPES_FIELD_PREFIX = 'types:';
 
 const KNOWN_TYPE_VALUES = new Set(ALLOWED_FILE_TYPE_OPTIONS.map((o) => o.value));
 
+// Collapse to the canonical "all" encoding: if "all" is present alongside
+// other selections (shouldn't happen given the UI enforces exclusivity, but
+// don't trust that from stored/legacy data), only "all" is kept.
+const normalizeAllowedFileTypes = (types: string[]): string[] =>
+    types.includes(ALL_FILES_VALUE) ? [ALL_FILES_VALUE] : types;
+
 export function encodeAllowedFileTypes(types: string[] | undefined | null): string {
-    const cleaned = Array.from(
-        new Set(
-            (types ?? [])
-                .map((t) => t.trim().toLowerCase())
-                .filter((t) => KNOWN_TYPE_VALUES.has(t))
+    const cleaned = normalizeAllowedFileTypes(
+        Array.from(
+            new Set(
+                (types ?? [])
+                    .map((t) => t.trim().toLowerCase())
+                    .filter((t) => KNOWN_TYPE_VALUES.has(t))
+            )
         )
     );
     return `${ALLOWED_TYPES_FIELD_PREFIX}${cleaned.join(',')}`;
@@ -81,13 +97,15 @@ export function encodeAllowedFileTypes(types: string[] | undefined | null): stri
 
 export function decodeAllowedFileTypes(raw: string | undefined | null): string[] {
     if (!raw || !raw.startsWith(ALLOWED_TYPES_FIELD_PREFIX)) return [];
-    return Array.from(
-        new Set(
-            raw
-                .slice(ALLOWED_TYPES_FIELD_PREFIX.length)
-                .split(',')
-                .map((t) => t.trim().toLowerCase())
-                .filter((t) => KNOWN_TYPE_VALUES.has(t))
+    return normalizeAllowedFileTypes(
+        Array.from(
+            new Set(
+                raw
+                    .slice(ALLOWED_TYPES_FIELD_PREFIX.length)
+                    .split(',')
+                    .map((t) => t.trim().toLowerCase())
+                    .filter((t) => KNOWN_TYPE_VALUES.has(t))
+            )
         )
     );
 }

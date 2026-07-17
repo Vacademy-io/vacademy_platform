@@ -16,8 +16,11 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { useDashboardPins } from '@/hooks/useDashboardPins';
+import { usePlayTheme } from '@/hooks/use-play-theme';
+import { useCleanerPlayTheme } from '@/hooks/use-cleaner-play-theme';
+import iconAnnouncement from '@/assets/cleaner-play/icon-announcement.webp';
 import { formatLocalDateTime } from '@/helpers/formatISOTime';
-import { sanitizeHtml } from '@/lib/utils';
+import { cn, sanitizeHtml } from '@/lib/utils';
 import type { UserMessage } from '@/types/announcement';
 import { announcementApi } from '@/services/announcementApi';
 
@@ -48,6 +51,8 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
 
   const [selectedPin, setSelectedPin] = useState<UserMessage | null>(null);
   const [showFullContent, setShowFullContent] = useState(false);
+  const isPlay = usePlayTheme();
+  const isCleanerPlay = useCleanerPlayTheme();
 
   const handlePinClick = (pin: UserMessage) => {
     setSelectedPin(pin);
@@ -136,11 +141,34 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
 
   return (
     <div className={className}>
-      <Card>
+      <Card
+        className={cn(
+          // Cleaner Play: shared cp-card shell (rule scoped to .ui-cleaner-play)
+          'cp-card',
+          // Play: pastel gold announcement surface, quiet chrome
+          '[.ui-play_&]:bg-play-gold-soft [.ui-play_&]:rounded-play-card-sm',
+          '[.ui-play_&]:border-border [.ui-play_&]:shadow-play-soft-card'
+        )}
+      >
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <PushPin className="h-5 w-5 text-blue-600" />
+            <CardTitle
+              className={cn(
+                'flex items-center gap-2 text-lg',
+                'cp-heading',
+                '[.ui-play_&]:font-black [.ui-play_&]:text-play-gold-soft-ink'
+              )}
+            >
+              {isPlay || isCleanerPlay ? (
+                <img
+                  src={iconAnnouncement}
+                  alt=""
+                  aria-hidden="true"
+                  className="h-9 w-9 object-contain"
+                />
+              ) : (
+                <PushPin className="h-5 w-5 text-blue-600" />
+              )}
               Important Updates
             </CardTitle>
             <div className="flex items-center gap-2">

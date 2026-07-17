@@ -70,6 +70,15 @@ const TOOL_ACTIVITY_LABELS: Record<string, string> = {
     trigger_full_report: 'Starting the full report…',
     update_learner_profile: 'Preparing the change…',
     manage_enrollment: 'Preparing the change…',
+    find_batch: 'Finding the batch…',
+    search_fee_records: 'Searching fee records…',
+    get_collections_summary: 'Summing collections…',
+    list_recent_enrollments: 'Loading recent enrollments…',
+    find_assessment: 'Finding the assessment…',
+    get_assessment_results: 'Loading submissions…',
+    get_assessment_leaderboard: 'Loading the leaderboard…',
+    list_announcements: 'Loading announcements…',
+    send_announcement: 'Preparing the announcement…',
 };
 
 /**

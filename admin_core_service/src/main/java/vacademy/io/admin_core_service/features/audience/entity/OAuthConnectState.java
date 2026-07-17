@@ -80,6 +80,17 @@ public class OAuthConnectState {
     @Builder.Default
     private String sessionStatus = "PENDING";
 
+    /**
+     * Frontend origin (scheme + host [+ port]) that started this OAuth flow, e.g.
+     * "https://crm.someclient.com". Captured at /initiate so the /callback can send
+     * the browser back to the SAME white-label domain it came from — landing on a
+     * different origin loses the client's per-origin session. Validated against the
+     * institute's registered hosts before use; null falls back to the configured
+     * default callback URL.
+     */
+    @Column(name = "frontend_origin", length = 255)
+    private String frontendOrigin;
+
     @PrePersist
     void onCreate() {
         createdAt = LocalDateTime.now();

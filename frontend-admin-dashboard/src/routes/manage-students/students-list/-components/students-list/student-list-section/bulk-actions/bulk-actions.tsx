@@ -10,6 +10,8 @@ interface BulkActionsProps {
     selectedStudentIds: string[];
     selectedStudents: StudentTable[]; // Add this prop
     onReset: () => void;
+    // Surfaces the bulk "Accept Request" action while the Approval Status filter is active.
+    showApprovalActions?: boolean;
 }
 
 export const BulkActions = ({
@@ -17,6 +19,7 @@ export const BulkActions = ({
     selectedStudentIds,
     selectedStudents, // Add this
     onReset,
+    showApprovalActions = false,
 }: BulkActionsProps) => {
     //   const { toast } = useToast();
 
@@ -46,6 +49,7 @@ export const BulkActions = ({
                     selectedCount={selectedCount}
                     selectedStudentIds={selectedStudentIds}
                     selectedStudents={selectedStudents} // Pass the selected students
+                    showApprovalActions={showApprovalActions}
                     trigger={
                         <MyButton
                             buttonType="primary"

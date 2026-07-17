@@ -1,7 +1,8 @@
-import type {
-    StudentDisplaySettingsData,
-    StudentSidebarTabConfig,
-    StudentDashboardWidgetConfig,
+import {
+    LEARNER_TOUR_KEYS,
+    type StudentDisplaySettingsData,
+    type StudentSidebarTabConfig,
+    type StudentDashboardWidgetConfig,
 } from '@/types/student-display-settings';
 
 function defaultSidebarTabs(): StudentSidebarTabConfig[] {
@@ -155,6 +156,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         allowSystemAlerts: true,
         allowDashboardPins: true,
         allowBatchStream: true,
+        allowAppOverlays: true,
     },
     certificates: {
         enabled: true,
@@ -166,6 +168,12 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         showAttendance: false,
         showActivityStats: false,
         showClassMaterials: false,
+    },
+    tutorials: {
+        // Off by default; admins opt in from Student Display settings.
+        enabled: false,
+        enabledTours: [...LEARNER_TOUR_KEYS],
+        pdfGuideEnabled: false,
     },
     postLoginRedirectRoute: '/dashboard',
 };

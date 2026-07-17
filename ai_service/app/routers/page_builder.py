@@ -13,6 +13,8 @@ Phase A scope: one page per run (wizard). Copilot ops come in Phase B.
 """
 from __future__ import annotations
 
+import asyncio
+import base64
 import json
 import logging
 import os
@@ -21,6 +23,8 @@ import uuid
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+import httpx
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -88,6 +92,215 @@ def _load_catalog() -> Dict[str, Any]:
         return json.load(fh)
 
 
+# ─── Image generation (logos / hero art / illustrations) ────────────────────
+
+_IMAGE_MODEL = os.getenv("PAGE_IMAGE_MODEL") or "google/gemini-3.1-flash-image"
+_IMAGE_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+_IMAGE_ASPECTS = {"16:9", "4:3", "1:1", "3:4", "9:16", "3:2", "2:3"}
+_MAX_AUTO_IMAGES = 5  # cap auto-generated images per page (cost/latency bound)
+# Value sentinel the composer uses in an image field to request generation.
+_GEN_PREFIX = "gen:"
+
+
+async def _openrouter_image(prompt: str, aspect: str) -> Optional[bytes]:
+    """One image via OpenRouter (same call the course/doc image path uses).
+    Returns raw PNG bytes or None."""
+    from ..config import get_settings
+    key = getattr(get_settings(), "openrouter_api_key", None)
+    if not key:
+        logger.warning("[page-image] no OpenRouter key")
+        return None
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        resp = await client.post(
+            _IMAGE_API_URL,
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+            json={
+                "model": _IMAGE_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "modalities": ["image"],
+                "image_config": {"aspect_ratio": aspect if aspect in _IMAGE_ASPECTS else "16:9"},
+            },
+        )
+    if resp.status_code != 200:
+        logger.error("[page-image] OpenRouter %s: %s", resp.status_code, resp.text[:200])
+        return None
+    for choice in resp.json().get("choices") or []:
+        for image in (choice.get("message") or {}).get("images", []) or []:
+            url = (image.get("image_url") or {}).get("url", "")
+            if url:
+                b64 = url.split(",", 1)[1] if "," in url else url
+                try:
+                    return base64.b64decode(b64)
+                except Exception:  # noqa: BLE001
+                    return None
+    return None
+
+
+def _upload_image(data: bytes, kind: str) -> Optional[str]:
+    from ..services.s3_service import S3Service
+    try:
+        s3 = S3Service()
+        key = f"page-builder/{kind}-{uuid.uuid4().hex}.png"
+        return s3.upload_file_content(data, f"{kind}.png", s3_key=key, content_type="image/png")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-image] upload failed: %s", e)
+        return None
+
+
+def _bill_image(db, institute_id: Optional[str], user_id: Optional[str]) -> None:
+    if not institute_id:
+        return
+    try:
+        from ..services.token_usage_service import TokenUsageService
+        from ..models.ai_token_usage import ApiProvider
+        TokenUsageService(db).record_usage_and_deduct_credits(
+            api_provider=ApiProvider.OPENAI,  # via OpenRouter
+            prompt_tokens=0, completion_tokens=0, total_tokens=0,
+            request_type=RequestType.IMAGE,
+            institute_id=institute_id, user_id=user_id,
+            model=_IMAGE_MODEL, metadata={"feature": "page_builder_image"},
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-image] billing skipped: %s", e)
+
+
+async def _generate_and_upload_image(
+    prompt: str, aspect: str, kind: str, db, institute_id: Optional[str], user_id: Optional[str]
+) -> Optional[str]:
+    """Generate → upload → bill one image. Returns the public URL or None."""
+    data = await _openrouter_image(prompt, aspect)
+    if not data:
+        return None
+    url = _upload_image(data, kind)
+    if url:
+        _bill_image(db, institute_id, user_id)
+    return url
+
+
+# Scalar image keys the composer may fill with a "gen:<prompt>" sentinel.
+_GEN_KEYS = {"image", "src", "logo", "avatar", "photo", "backgroundimage", "posterimage", "thumbnail"}
+_GEN_ASPECT = {"logo": "1:1", "avatar": "1:1", "photo": "4:3", "backgroundimage": "16:9", "thumbnail": "4:3"}
+
+
+async def _autogen_images(page: Any, db, institute_id: Optional[str], user_id: Optional[str]) -> set:
+    """Walk the page for image fields set to 'gen:<prompt>', generate each
+    (concurrently, capped), upload, and replace the value with the real URL
+    (or '' on failure). Returns the set of generated URLs to allowlist."""
+    refs: List[tuple] = []  # (container_dict, key, prompt, aspect, kind)
+
+    def collect(node: Any) -> None:
+        if isinstance(node, dict):
+            for k, v in node.items():
+                lk = k.lower()
+                if lk in _GEN_KEYS and isinstance(v, str) and v.startswith(_GEN_PREFIX):
+                    prompt = v[len(_GEN_PREFIX):].strip()
+                    if prompt:
+                        refs.append((node, k, prompt, _GEN_ASPECT.get(lk, "16:9"), lk))
+                else:
+                    collect(v)
+        elif isinstance(node, list):
+            for item in node:
+                collect(item)
+
+    collect(page)
+    if not refs:
+        return set()
+    refs = refs[:_MAX_AUTO_IMAGES]
+    generated: set = set()
+
+    async def one(container: Dict[str, Any], key: str, prompt: str, aspect: str, kind: str) -> None:
+        url = await _generate_and_upload_image(prompt, aspect, kind, db, institute_id, user_id)
+        container[key] = url or ""
+        if url:
+            generated.add(url)
+
+    await asyncio.gather(*[one(*r) for r in refs], return_exceptions=True)
+    return generated
+
+
+async def _import_site(url: str) -> str:
+    """Best-effort fetch of the institute's own site → a compact text corpus
+    (title, headings, paragraphs) so the rebuilt page keeps their REAL copy.
+    Returns '' on any failure — never blocks generation."""
+    if not url or not url.strip():
+        return ""
+    target = url.strip()
+    if not target.startswith(("http://", "https://")):
+        target = "https://" + target
+    # SSRF guard: only public http(s) hosts — block localhost / link-local /
+    # private ranges / non-http schemes so this can't probe internal services.
+    try:
+        import ipaddress
+        import socket
+        from urllib.parse import urlparse
+        host = (urlparse(target).hostname or "").lower()
+        if not host or host in ("localhost",) or host.endswith(".local") or host.endswith(".internal"):
+            return ""
+        try:
+            for info in socket.getaddrinfo(host, None):
+                ip = ipaddress.ip_address(info[4][0])
+                if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                    logger.warning("[page-builder] site import blocked non-public host: %s", host)
+                    return ""
+        except socket.gaierror:
+            return ""
+    except Exception:  # noqa: BLE001 — never let the guard itself break generation
+        return ""
+    try:
+        # No redirect-following: a public URL could 30x to an internal one,
+        # sidestepping the DNS check above.
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
+            resp = await client.get(target, headers={"User-Agent": "Mozilla/5.0 (compatible; VacademyBot/1.0)"})
+        if resp.status_code != 200 or "text/html" not in resp.headers.get("content-type", ""):
+            return ""
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(resp.text[:800_000], "html.parser")
+        for tag in soup(["script", "style", "noscript", "svg", "iframe"]):
+            tag.decompose()
+        parts: List[str] = []
+        title = (soup.title.string if soup.title else "") or ""
+        if title.strip():
+            parts.append(f"TITLE: {title.strip()[:200]}")
+        for el in soup.find_all(["h1", "h2", "h3", "li", "p"]):
+            txt = " ".join(el.get_text(" ", strip=True).split())
+            if 3 <= len(txt) <= 400:
+                tag = el.name.upper()
+                parts.append(f"{tag}: {txt}" if tag.startswith("H") else txt)
+            if len(parts) >= 120:
+                break
+        corpus = "\n".join(parts)
+        return corpus[:6000]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-builder] site import failed: %s", e)
+        return ""
+
+
+async def _analyze_inspiration(image_urls: List[str], db, institute_id: Optional[str], user_id: Optional[str]) -> str:
+    """Vision pass over inspiration screenshots → a short DESIGN brief (mood,
+    palette direction, serif-vs-sans display, layout patterns). Structure/mood
+    only — never content. Best-effort; returns '' on any failure."""
+    from ..services.chat_llm_client import ChatLLMClient
+    from ..services.api_key_resolver import ApiKeyResolver
+
+    client = ChatLLMClient(ApiKeyResolver(db))
+    messages = [{
+        "role": "user",
+        "content": (
+            "These are screenshots of websites an education institute admires. Give a concise DESIGN "
+            "BRIEF (NOT their content) to guide building a NEW page: overall mood (editorial / premium / "
+            "playful / techy / minimal), color-palette direction, whether the display type reads serif or "
+            "sans, and layout patterns (hero style, use of stat cards, marquee tickers, feature cards, "
+            "testimonials). 4–6 short bullet points. Do NOT transcribe or suggest copying their text, "
+            "logos, or images."
+        ),
+        "attachments": [{"type": "image", "url": u} for u in image_urls[:3]],
+    }]
+    resp = await client.chat_completion(
+        messages, temperature=0.2, max_tokens=400, institute_id=institute_id, user_id=user_id
+    )
+    return _clean_string((resp.get("content") or "").strip())
+
+
 # ─── Request / response models ──────────────────────────────────────────────
 
 class PageImage(BaseModel):
@@ -110,6 +323,12 @@ class GeneratePageRequest(BaseModel):
     route_slug: Optional[str] = None
     institute_name: Optional[str] = None
     images: List[PageImage] = Field(default_factory=list)
+    # Screenshots of sites the admin likes — analysed for LAYOUT/MOOD only
+    # (never content), producing a design brief that steers the composer.
+    inspiration_image_urls: List[str] = Field(default_factory=list)
+    # The institute's OWN existing website — we extract its real copy so the
+    # rebuilt page keeps their actual content ("rebuild my site").
+    source_url: Optional[str] = None
     # Compact snapshot of real courses, passed by the admin FE so copy and
     # data-bound components reference real offerings (no new cross-service call).
     courses: List[CourseSnapshotItem] = Field(default_factory=list)
@@ -121,25 +340,140 @@ class GeneratePageRequest(BaseModel):
     # Header/footer are site chrome; the composer may only emit them when the
     # caller explicitly opts in (Phase B copilot).
     allow_chrome: bool = False
+    # Auto-generate a hero image + a few section visuals during composition.
+    auto_images: bool = True
 
 
 class GeneratePageResponse(BaseModel):
     page: Dict[str, Any]
+    # A matching site theme (globalSettings) the composer chose for this page —
+    # the wizard applies it so the page renders premium, not on the plain
+    # default. None when the model omitted it.
+    global_settings: Optional[Dict[str, Any]] = None
     run_id: str
     model: str
     warnings: List[str] = Field(default_factory=list)
 
 
+# Font LABEL → CSS stack (globalSettings.fonts.family is stored as a stack).
+_FONT_STACKS: Dict[str, str] = {
+    "Inter": "Inter, sans-serif",
+    "Roboto": "Roboto, sans-serif",
+    "Open Sans": '"Open Sans", sans-serif',
+    "Poppins": "Poppins, sans-serif",
+    "Lato": "Lato, sans-serif",
+    "Montserrat": "Montserrat, sans-serif",
+    "Mulish": "Mulish, sans-serif",
+    "Figtree": "Figtree, sans-serif",
+    "Outfit": "Outfit, sans-serif",
+    "Nunito": "Nunito, sans-serif",
+    "Space Grotesk": '"Space Grotesk", sans-serif',
+    "Playfair Display": '"Playfair Display", serif',
+    "Fraunces": "Fraunces, serif",
+    "Newsreader": "Newsreader, serif",
+    "Lora": "Lora, serif",
+    "DM Serif Display": '"DM Serif Display", serif',
+}
+
+# One compact, VALID exemplar page showing the premium vocabulary in-schema —
+# few-shot so the model produces designed pages (eyebrow badges, stat chips,
+# highlighted headings, glass cards, ornaments, marquee, atmosphere theme)
+# instead of plain stacked sections on the default theme.
+_PREMIUM_EXEMPLAR = json.dumps({
+    "globalSettings": {
+        "theme": {"preset": "forest", "atmosphere": {"canvas": "mesh", "intensity": "medium"}, "headingScale": "editorial", "borderRadius": "rounded"},
+        "fonts": {"enabled": True, "family": "Inter, sans-serif", "headingFamily": "Playfair Display, serif"},
+        "motion": {"personality": "calm"},
+    },
+    "page": {
+        "title": "GATE & ISRO Coaching",
+        "route": "home",
+        "components": [
+            {
+                "id": "hero", "type": "heroSection", "enabled": True,
+                "props": {
+                    "layout": "split",
+                    "eyebrow": {"text": "Trivandrum's premier engineering institute", "style": "badge"},
+                    "left": {
+                        "title": "Train for GATE, ISRO, PSC — and land your career",
+                        "description": "<p>IIT & NIT alumni-led coaching across every engineering branch — from GATE and ISRO to Kerala PSC and campus placements.</p>",
+                        "buttons": [
+                            {"text": "Explore all programs", "action": "navigate", "target": "#courses", "variant": "primary"},
+                            {"text": "View branches", "action": "navigate", "target": "#branches", "variant": "secondary"},
+                        ],
+                    },
+                    "right": {"image": "gen:A warm, bright photograph of focused engineering students collaborating over laptops and circuit boards at a modern lab bench, natural window light, shallow depth of field"},
+                    "statChips": [
+                        {"value": "30K+", "label": "Students trained"},
+                        {"value": "5K+", "label": "Placements / year"},
+                        {"value": "85%", "label": "Selection rate"},
+                    ],
+                },
+                "style": {"layout": {"width": "wide"}, "minHeight": "80vh", "contentAlign": "center"},
+            },
+            {
+                "id": "ticker", "type": "logoCloud", "enabled": True,
+                "props": {"layout": "marquee", "display": "label-pill", "marqueeSpeed": "slow", "logos": [
+                    {"label": "GATE 2025 batches open"}, {"label": "ISRO / BARC post-GATE"}, {"label": "Kerala PSC technical coaching"},
+                ]},
+            },
+            {
+                "id": "why", "type": "sectionHeading", "enabled": True,
+                "props": {"eyebrow": "Why choose us", "title": "Coaching that actually converts", "highlight": {"text": "converts", "style": "gradient"}, "lead": "Outcome-first programs built around real exam patterns.", "align": "center", "size": "lg"},
+            },
+            {
+                "id": "features", "type": "featureGrid", "enabled": True,
+                "props": {"columns": 3, "style": "glass", "align": "left", "features": [
+                    {"iconName": "Trophy", "title": "Proven results", "description": "Consistent top ranks across GATE and PSC.", "chips": ["30K+ trained"]},
+                    {"iconName": "UsersThree", "title": "Alumni mentors", "description": "Taught by IIT/NIT alumni who cleared these exams."},
+                    {"iconName": "Target", "title": "Exam-pattern drills", "description": "Weekly mocks tuned to the latest paper pattern."},
+                ]},
+                "style": {"ornaments": [{"preset": "glow-orb", "x": "72%", "y": "-10%", "size": "420px", "opacity": 0.22, "blur": 40}]},
+            },
+            {"id": "courses", "type": "courseCatalog", "enabled": True, "props": {"title": "Explore our programs"}},
+            {
+                "id": "cta", "type": "ctaBanner", "enabled": True,
+                "props": {"headerText": "Ready to start?", "description": "Book a free demo class this week.", "buttonText": "Book a free demo", "buttonAction": "openLeadCollection"},
+                "style": {"layout": {"width": "full"}, "backgroundLayers": [{"type": "linear", "from": "hsl(var(--primary-500))", "to": "hsl(var(--primary-400))", "angle": 120}]},
+            },
+        ],
+    },
+}, ensure_ascii=False)
+
+
 # ─── Prompt ──────────────────────────────────────────────────────────────────
 
-def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any]) -> str:
+_PREMIUM_DOCTRINE = [
+    "Design like a senior product designer for a premium education brand — NOT a generic template. "
+    "Compare your output to award-winning cohort/coaching landing pages: confident, editorial, spacious.",
+    "ALWAYS return globalSettings that suit the brand: pick a theme preset (not 'default' unless the brand is truly neutral), "
+    "an atmosphere (soft/mesh/aurora give the page depth — flat looks cheap), an editorial headingScale for premium/story brands, "
+    "and a FONT PAIRING. For an editorial/premium feel, set fonts.headingFamily to a SERIF display face (Playfair Display / "
+    "Fraunces / DM Serif Display) and keep fonts.family a clean SANS body (Inter / Mulish / Outfit) — serif headlines over sans "
+    "paragraphs is the single biggest 'premium' signal. For a modern/techy brand use Space Grotesk/Outfit headings on an Inter body. "
+    "Motion: calm or balanced.",
+    "OPEN with a rich heroSection: an eyebrow BADGE, a bold specific headline, 2 CTA buttons (primary+secondary), and 3 statChips "
+    "for proof numbers. Put it on a section shell (style.layout.width 'wide') with minHeight '80vh' + contentAlign 'center' so it fills the fold.",
+    "Use a sectionHeading with a highlight (style 'gradient' or 'underline') on ONE key phrase before each dense section — this accent is what makes pages feel designed.",
+    "Prefer rich components over plain ones: featureGrid with style 'glass'/'gradient-border'/'tinted' and chips, stepsProcess ALWAYS with variant 'timeline-cards' or "
+    "'alternating' plus nodeStyle 'icon' (plain numbered steps look dated), logoCloud in 'marquee' layout as a ticker of announcements, testimonialSection with ratings, "
+    "trustChip. NEVER use the plain 'banner' component for a hero.",
+    "Feature/accordion icons: ALWAYS set iconName from the icon library (GraduationCap, Rocket, Target, UsersThree, Code, Brain, Trophy, Lightbulb, ShieldCheck, "
+    "ChartLineUp, Clock, Star, BookOpen, Certificate, ChatsCircle, Wrench, Sparkle, Medal, Briefcase, Globe) — never rely on the emoji 'icon' field; emojis read cheap.",
+    "Theme preset: commit to a COLOR that fits the brand's subject (ocean/midnight = tech & engineering, forest = growth & science, sunset/amber = energetic, "
+    "rose/violet = creative, slate = corporate). Use 'default' ONLY when the institute's own brand color should shine through unchanged.",
+    "Add tasteful depth: an ornaments glow-orb behind a feature section, a subtle backgroundLayers gradient on the CTA, atmosphere on the hero. Keep it restrained — one accent per section.",
+    "Rhythm: exactly ONE hero; alternate section surface tints; place a live courseCatalog where offerings belong; end with a CTA (and contact if a contact page). 6–12 sections.",
+    "Copy: concise, benefit-led, specific to THIS institute (use real course names + the provided stats/claims). Never lorem ipsum, never generic filler. Mirror the brief's language.",
+]
+
+
+def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration_brief: str = "", site_corpus: str = "", fixed_global: Optional[Dict[str, Any]] = None) -> str:
     parts: List[str] = []
     parts.append(
-        "You are the page composer for Vacademy's catalogue website builder. "
-        "You produce ONE page as pure JSON against the component vocabulary below. "
-        "You never write HTML or CSS — only the JSON schema. Your pages must look "
-        "designed by a senior product designer: clear hierarchy, generous rhythm, "
-        "specific benefit-led copy (never lorem ipsum, never generic filler)."
+        "You are the page composer for Vacademy's catalogue website builder. You produce ONE page as "
+        "pure JSON against the component vocabulary below — you never write HTML or CSS, only the JSON "
+        "schema. Study the PREMIUM EXEMPLAR: match that level of polish and richness."
     )
     vocab = catalog["components"]
     if not req.allow_chrome:
@@ -148,7 +482,12 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any]) -> str:
         vocab = [c for c in vocab if c.get("type") not in ("header", "footer")]
     parts.append("## COMPONENT VOCABULARY (types with example props)\n" + json.dumps(vocab, ensure_ascii=False))
     parts.append("## STYLE VOCABULARY\n" + json.dumps(catalog["styleSchema"], ensure_ascii=False))
-    parts.append("## RULES\n- " + "\n- ".join(catalog["doctrine"]))
+    parts.append("## DESIGN RULES\n- " + "\n- ".join(_PREMIUM_DOCTRINE))
+    parts.append(
+        "## PREMIUM EXEMPLAR (a page at the quality bar you must hit — study its globalSettings, hero, "
+        "highlighted heading, glass feature cards, marquee ticker and CTA; do NOT copy its content)\n"
+        + _PREMIUM_EXEMPLAR
+    )
 
     if req.institute_name:
         parts.append(f"## INSTITUTE\nName: {req.institute_name}")
@@ -164,12 +503,37 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any]) -> str:
         )
     if req.images:
         parts.append(
-            "## PROVIDED IMAGES (the ONLY image URLs you may use — place them where their caption fits; "
-            "leave image fields empty if nothing fits)\n"
+            "## PROVIDED IMAGES (real URLs you may use — place them where their caption fits)\n"
             + json.dumps([i.model_dump(exclude_none=True) for i in req.images], ensure_ascii=False)
+        )
+    if req.auto_images:
+        parts.append(
+            "## IMAGE GENERATION\nYou may request AI-generated images: set an image field to "
+            '"gen:<a vivid, specific photography/illustration prompt>" and it will be generated and '
+            "filled in for you. Use it for the HERO right.image and 1–3 key section visuals (feature/"
+            "media images). Do NOT gen: logos of real brands or people. Keep total gen: fields ≤ 4. "
+            "Leave an image field empty ('') rather than gen: when a real provided image fits or none is needed."
+        )
+    if site_corpus:
+        parts.append(
+            "## EXISTING SITE CONTENT (the institute's OWN current website — REBUILD it in our system: "
+            "keep their real facts, program names, numbers and about-us copy; improve the writing and "
+            "structure, do NOT invent different facts)\n" + site_corpus
+        )
+    if inspiration_brief:
+        parts.append(
+            "## INSPIRATION (the admin shared screenshots of sites they admire — a design DIRECTION for "
+            "layout/mood/theme ONLY, never copy their text or images)\n" + inspiration_brief
         )
     if req.direction:
         parts.append(f"## DESIGN DIRECTION\n{req.direction}")
+
+    if fixed_global:
+        parts.append(
+            "## FIXED SITE THEME (this multi-page site already has a theme — reuse EXACTLY this "
+            "globalSettings for a consistent look; do NOT propose a different one)\n"
+            + json.dumps(fixed_global, ensure_ascii=False)
+        )
 
     page_type = req.page_type or "homepage"
     parts.append(
@@ -177,9 +541,14 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any]) -> str:
     )
     parts.append(
         "## OUTPUT CONTRACT\nReturn ONLY a JSON object of this exact shape (no markdown, no commentary):\n"
-        '{"page": {"id": "<kebab-id>", "title": "<short page title>", "route": "<kebab-slug>", '
+        '{"globalSettings": {"theme": {"preset": "...", "atmosphere": {"canvas": "...", "intensity": "..."}, '
+        '"headingScale": "...", "borderRadius": "..."}, "fonts": {"enabled": true, "family": "<sans body font '
+        'label>", "headingFamily": "<serif/display heading font label — omit to reuse the body font>"}, '
+        '"motion": {"personality": "..."}}, '
+        '"page": {"id": "<kebab-id>", "title": "<short page title>", "route": "<kebab-slug>", '
         '"components": [{"id": "<kebab-id>", "type": "<type>", "enabled": true, "props": {…}, "style": {…}?}, …]}}\n'
-        "6–12 components. Do NOT include header or footer components — the site provides global ones."
+        "6–12 components. Do NOT include header or footer components — the site provides global ones. "
+        "globalSettings is REQUIRED — a plain default theme makes the page look cheap."
     )
     return "\n\n".join(parts)
 
@@ -301,13 +670,53 @@ def sanitize_component(
     return cleaned
 
 
-def _sanitize_page(raw_json: str, req: GeneratePageRequest, catalog: Dict[str, Any]) -> tuple[Dict[str, Any], List[str]]:
+def _coerce_global_settings(raw: Any) -> Optional[Dict[str, Any]]:
+    """Clamp the model's globalSettings to valid values (the theme presets,
+    atmospheres, fonts, etc. the renderers actually support). Font label OR a
+    known stack maps to a stack; anything else falls back to Inter."""
+    if not isinstance(raw, dict):
+        return None
+    theme_in = raw.get("theme") if isinstance(raw.get("theme"), dict) else {}
+    atm_in = theme_in.get("atmosphere") if isinstance(theme_in.get("atmosphere"), dict) else {}
+    fonts_in = raw.get("fonts") if isinstance(raw.get("fonts"), dict) else {}
+    motion_in = raw.get("motion") if isinstance(raw.get("motion"), dict) else {}
+
+    _known_stacks = set(_FONT_STACKS.values())
+    fam = fonts_in.get("family")
+    font_stack = _FONT_STACKS.get(fam) or (fam if fam in _known_stacks else "Inter, sans-serif")
+    # Optional separate heading font (serif display over sans body).
+    head = fonts_in.get("headingFamily")
+    head_stack = _FONT_STACKS.get(head) or (head if head in _known_stacks else None)
+
+    fonts_out: Dict[str, Any] = {"enabled": True, "family": font_stack}
+    if head_stack and head_stack != font_stack:
+        fonts_out["headingFamily"] = head_stack
+
+    return {
+        "theme": {
+            "preset": theme_in.get("preset") if theme_in.get("preset") in _THEME_PRESETS else "default",
+            "atmosphere": {
+                "canvas": atm_in.get("canvas") if atm_in.get("canvas") in _ATMOSPHERES else "soft",
+                "intensity": atm_in.get("intensity") if atm_in.get("intensity") in _INTENSITIES else "subtle",
+            },
+            "headingScale": theme_in.get("headingScale") if theme_in.get("headingScale") in _HEADING_SCALES else "default",
+            "borderRadius": theme_in.get("borderRadius") if theme_in.get("borderRadius") in _RADII else "rounded",
+        },
+        "fonts": fonts_out,
+        "motion": {"personality": motion_in.get("personality") if motion_in.get("personality") in _MOTIONS else "calm"},
+    }
+
+
+def _sanitize_page(
+    raw_json: str, req: GeneratePageRequest, catalog: Dict[str, Any], extra_allowed: Optional[set] = None
+) -> tuple[Dict[str, Any], Optional[Dict[str, Any]], List[str]]:
     warnings: List[str] = []
     try:
         data = json.loads(raw_json)
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=502, detail=f"Model returned invalid JSON: {e}")
 
+    global_settings = _coerce_global_settings(data.get("globalSettings")) if isinstance(data, dict) else None
     page = data.get("page") if isinstance(data, dict) else None
     if page is None and isinstance(data, dict) and "components" in data:
         page = data  # model returned the page object directly
@@ -315,7 +724,8 @@ def _sanitize_page(raw_json: str, req: GeneratePageRequest, catalog: Dict[str, A
         raise HTTPException(status_code=502, detail="Model output did not contain a page with components.")
 
     allowed_types = {c["type"] for c in catalog["components"]}
-    allowed_urls = {i.url for i in req.images}
+    # Provided images + any we auto-generated (already uploaded to our S3).
+    allowed_urls = {i.url for i in req.images} | (extra_allowed or set())
     seen_ids: set = set()
 
     components: List[Dict[str, Any]] = []
@@ -336,7 +746,7 @@ def _sanitize_page(raw_json: str, req: GeneratePageRequest, catalog: Dict[str, A
         "route": route,
         "components": components,
     }
-    return result, warnings
+    return result, global_settings, warnings
 
 
 # ─── Endpoints ───────────────────────────────────────────────────────────────
@@ -353,6 +763,77 @@ async def estimate_page_generation(
     if not institute_id:
         raise HTTPException(status_code=400, detail="No institute context on this session.")
     return preflight_tool_credits(db, tool_key=_TOOL_KEY, tool_params={}, institute_id=institute_id)
+
+
+async def _compose_one_page(
+    body: GeneratePageRequest, catalog: Dict[str, Any], db, institute_id: str, actor_user_id: Optional[str],
+    fixed_global: Optional[Dict[str, Any]] = None,
+) -> tuple[Dict[str, Any], Optional[Dict[str, Any]], List[str], str, str]:
+    """Compose ONE page end-to-end: inspiration/site-import → prompt → LLM →
+    auto-images → sanitize → bill. Returns (page, global_settings, warnings,
+    model, run_id). Raises HTTPException(502) if the LLM call fails.
+    When fixed_global is set, the theme is pinned (multi-page consistency)."""
+    inspiration_brief = ""
+    if body.inspiration_image_urls:
+        try:
+            inspiration_brief = await _analyze_inspiration(
+                body.inspiration_image_urls, db, institute_id, actor_user_id
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[page-builder] inspiration analysis skipped: %s", e)
+
+    site_corpus = ""
+    if body.source_url:
+        try:
+            site_corpus = await _import_site(body.source_url)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[page-builder] site import skipped: %s", e)
+
+    prompt = _build_prompt(body, catalog, inspiration_brief, site_corpus, fixed_global)
+    run_id = uuid.uuid4().hex
+
+    primary, fallbacks = resolve_models(
+        db, "page_builder", preferred_model=body.preferred_model, hard_fallback=_DEFAULT_MODEL
+    )
+    try:
+        raw_json, model_used, usage = await generate_json(prompt, [primary, *fallbacks], label="page-builder")
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-builder] generation failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"Page generation failed: {e}")
+
+    generated_urls: set = set()
+    if body.auto_images:
+        try:
+            data = json.loads(raw_json)
+            page_obj = data.get("page") if isinstance(data, dict) else None
+            if isinstance(page_obj, dict):
+                generated_urls = await _autogen_images(page_obj, db, institute_id, actor_user_id)
+                raw_json = json.dumps(data)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[page-builder] auto-image pass skipped: %s", e)
+
+    page, global_settings, warnings = _sanitize_page(raw_json, body, catalog, extra_allowed=generated_urls)
+    if fixed_global is not None:
+        global_settings = fixed_global  # pin the shared theme across the site
+
+    try:
+        record_tool_billing(
+            tool_key=_TOOL_KEY,
+            tool_params={"page_type": body.page_type or "homepage"},
+            request_type=RequestType.CONTENT,
+            model=model_used,
+            prompt_tokens=int((usage or {}).get("prompt_tokens") or 0),
+            completion_tokens=int((usage or {}).get("completion_tokens") or 0),
+            institute_id=institute_id,
+            user_id=actor_user_id,
+            user_role=None,
+            idempotency_key=f"{_TOOL_KEY}:{run_id}",
+            usage_markup=_USAGE_MARKUP,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-builder] billing skipped: %s", e)
+
+    return page, global_settings, warnings, model_used, run_id
 
 
 @router.post("/v1/generate", response_model=GeneratePageResponse)
@@ -385,43 +866,12 @@ async def generate_page(
         )
 
     catalog = _load_catalog()
-    prompt = _build_prompt(body, catalog)
-    # Billing id is minted server-side — a caller-supplied id could replay the
-    # idempotency key and make repeat generations free.
-    run_id = uuid.uuid4().hex
-
-    primary, fallbacks = resolve_models(
-        db, "page_builder", preferred_model=body.preferred_model, hard_fallback=_DEFAULT_MODEL
+    page, global_settings, warnings, model_used, run_id = await _compose_one_page(
+        body, catalog, db, institute_id, actor_user_id
     )
-    try:
-        raw_json, model_used, usage = await generate_json(
-            prompt, [primary, *fallbacks], label="page-builder"
-        )
-    except Exception as e:  # noqa: BLE001
-        logger.warning("[page-builder] generation failed: %s", e)
-        raise HTTPException(status_code=502, detail=f"Page generation failed: {e}")
-
-    page, warnings = _sanitize_page(raw_json, body, catalog)
-
-    # Best-effort post-paid billing; idempotency key dedups retried runs.
-    try:
-        record_tool_billing(
-            tool_key=_TOOL_KEY,
-            tool_params={"page_type": body.page_type or "homepage"},
-            request_type=RequestType.CONTENT,
-            model=model_used,
-            prompt_tokens=int((usage or {}).get("prompt_tokens") or 0),
-            completion_tokens=int((usage or {}).get("completion_tokens") or 0),
-            institute_id=institute_id,
-            user_id=actor_user_id,
-            user_role=None,
-            idempotency_key=f"{_TOOL_KEY}:{run_id}",
-            usage_markup=_USAGE_MARKUP,
-        )
-    except Exception as e:  # noqa: BLE001
-        logger.warning("[page-builder] billing skipped: %s", e)
-
-    return GeneratePageResponse(page=page, run_id=run_id, model=model_used, warnings=warnings)
+    return GeneratePageResponse(
+        page=page, global_settings=global_settings, run_id=run_id, model=model_used, warnings=warnings
+    )
 
 
 # ─── Copilot (conversational edit) ──────────────────────────────────────────
@@ -447,6 +897,8 @@ class EditPageRequest(BaseModel):
     # Prior turns for context (kept short by the FE).
     history: List[ChatTurn] = Field(default_factory=list)
     allow_chrome: bool = False
+    # Allow the copilot to request generated images via gen:<prompt> sentinels.
+    auto_images: bool = True
     preferred_model: Optional[str] = None
 
 
@@ -489,6 +941,13 @@ def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any]) -> str:
             f"## FOCUS\nThe admin has selected component id '{req.selected_component_id}'. "
             "If the request is about 'this'/'the selected' section, scope your ops to it."
         )
+    if req.auto_images:
+        parts.append(
+            "## IMAGE GENERATION\nWhen the request needs a NEW image (replace a photo, add a hero visual, "
+            "an illustration), set that image field to \"gen:<a vivid, specific photography/illustration "
+            "prompt>\" inside your op and it will be generated and filled in. Max 2 gen: fields per edit. "
+            "Never gen: real-brand logos or real people."
+        )
     parts.append("## REQUEST\n" + req.instruction.strip())
     parts.append(
         "## OUTPUT CONTRACT\nReturn ONLY JSON of this shape (no markdown, no commentary):\n"
@@ -506,7 +965,7 @@ def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any]) -> str:
     return "\n\n".join(parts)
 
 
-def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any]) -> tuple[List[Dict[str, Any]], str, List[str]]:
+def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any], extra_allowed: Optional[set] = None) -> tuple[List[Dict[str, Any]], str, List[str]]:
     warnings: List[str] = []
     try:
         data = json.loads(raw_json)
@@ -517,7 +976,7 @@ def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any]) 
 
     reply = str(data.get("reply") or "").strip()
     allowed_types = {c["type"] for c in catalog["components"]}
-    allowed_urls = {i.url for i in req.images}
+    allowed_urls = {i.url for i in req.images} | (extra_allowed or set())
     # Ids that exist on the page (top-level + slot children) — ops may only
     # reference these (inserts bring their own new id).
     existing_ids: set = set()
@@ -647,7 +1106,20 @@ async def edit_page(
         logger.warning("[page-copilot] edit failed: %s", e)
         raise HTTPException(status_code=502, detail=f"Edit failed: {e}")
 
-    ops, reply, warnings = _sanitize_ops(raw_json, body, catalog)
+    # Generate any gen:<prompt> images the copilot requested in its ops
+    # (insert components / propsPatch) BEFORE sanitizing, so the fresh URLs
+    # pass the image allowlist.
+    generated_urls: set = set()
+    if body.auto_images:
+        try:
+            data = json.loads(raw_json)
+            if isinstance(data, dict) and isinstance(data.get("ops"), list):
+                generated_urls = await _autogen_images(data["ops"], db, institute_id, actor_user_id)
+                raw_json = json.dumps(data)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[page-copilot] auto-image pass skipped: %s", e)
+
+    ops, reply, warnings = _sanitize_ops(raw_json, body, catalog, extra_allowed=generated_urls)
 
     try:
         record_tool_billing(
@@ -701,7 +1173,8 @@ class BrandKit(BaseModel):
     headingScale: str
     borderRadius: str
     motion: str
-    fontFamily: str
+    fontFamily: str          # body
+    headingFontFamily: str   # heading (may equal fontFamily = no separate heading font)
     rationale: str
 
 
@@ -726,6 +1199,8 @@ def _coerce_kit(raw: Any) -> Optional[BrandKit]:
         borderRadius=raw.get("borderRadius") if raw.get("borderRadius") in _RADII else "rounded",
         motion=raw.get("motion") if raw.get("motion") in _MOTIONS else "calm",
         fontFamily=raw.get("fontFamily") if raw.get("fontFamily") in _FONT_FAMILIES else "Inter",
+        headingFontFamily=raw.get("headingFontFamily") if raw.get("headingFontFamily") in _FONT_FAMILIES
+        else (raw.get("fontFamily") if raw.get("fontFamily") in _FONT_FAMILIES else "Inter"),
         rationale=_clean_string(str(raw.get("rationale") or ""))[:240],
     )
 
@@ -759,15 +1234,19 @@ async def derive_brand_kit(
         f"- themePreset: {sorted(_THEME_PRESETS)}\n"
         f"- atmosphere.canvas: {sorted(_ATMOSPHERES)}; atmosphere.intensity: {sorted(_INTENSITIES)}\n"
         f"- headingScale: {sorted(_HEADING_SCALES)}; borderRadius: {sorted(_RADII)}; motion: {sorted(_MOTIONS)}\n"
-        f"- fontFamily: {sorted(_FONT_FAMILIES)}\n"
+        f"- fontFamily (body) and headingFontFamily (headings): {sorted(_FONT_FAMILIES)}\n"
         "Make the three genuinely different (e.g. one editorial-serif, one bold-modern, one calm-minimal). "
+        "For editorial/premium options pair a SERIF headingFontFamily (Playfair Display / Fraunces / DM Serif "
+        "Display) with a SANS fontFamily body — serif headings over sans body reads premium. Set "
+        "headingFontFamily equal to fontFamily when no separate heading font is wanted. "
         "Pick presets/colors that suit the institute's subject and audience.\n\n"
         f"Institute: {body.institute_name or 'an education institute'}\n"
         f"Context: {(body.brief or '')[:600]}\n"
         f"Brand notes: {(body.brand_notes or 'none')[:300]}\n\n"
         'Return ONLY JSON: {"kits": [{"label": "...", "themePreset": "...", '
         '"atmosphere": {"canvas": "...", "intensity": "..."}, "headingScale": "...", '
-        '"borderRadius": "...", "motion": "...", "fontFamily": "...", "rationale": "one sentence"}]}'
+        '"borderRadius": "...", "motion": "...", "fontFamily": "...", "headingFontFamily": "...", '
+        '"rationale": "one sentence"}]}'
     )
     run_id = uuid.uuid4().hex
     primary, fallbacks = resolve_models(
@@ -805,3 +1284,172 @@ async def derive_brand_kit(
         logger.warning("[brand-kit] billing skipped: %s", e)
 
     return BrandKitResponse(kits=kits, run_id=run_id, model=model_used)
+
+
+# ─── On-demand image / logo generation ──────────────────────────────────────
+
+# kind → (prompt wrapper, default aspect). Logos get a clean, mark-focused brief.
+_IMAGE_KIND_STYLE = {
+    "logo": ("A clean, modern, minimal logo mark for {p}. Centered on a plain white background, "
+             "flat vector style, simple geometric forms, high contrast, no photorealism, no extra text.", "1:1"),
+    "hero": ("A polished, editorial hero photograph: {p}. Natural light, shallow depth of field, premium feel.", "16:9"),
+    "banner": ("A wide banner image: {p}. Clean composition with room for text overlay.", "16:9"),
+    "illustration": ("A modern flat vector illustration: {p}. Cohesive limited palette, friendly, professional.", "4:3"),
+    "photo": ("A high-quality photograph: {p}. Natural, authentic, well-lit.", "4:3"),
+    "image": ("{p}", "16:9"),
+}
+
+
+class GenerateImageRequest(BaseModel):
+    prompt: str
+    kind: str = "image"          # logo | hero | banner | illustration | photo | image
+    aspect_ratio: Optional[str] = None
+    count: int = 1               # 1–3 (logos often want a few options)
+
+
+class GenerateImageResponse(BaseModel):
+    urls: List[str]
+    model: str
+
+
+@router.post("/v1/image", response_model=GenerateImageResponse)
+async def generate_page_image(
+    body: GenerateImageRequest,
+    db: Session = Depends(db_dependency),
+    current_user=Depends(get_current_user),
+) -> GenerateImageResponse:
+    if not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+    if not body.prompt or not body.prompt.strip():
+        raise HTTPException(status_code=400, detail="An image prompt is required.")
+    institute_id = getattr(current_user, "institute_id", None)
+    if not institute_id:
+        raise HTTPException(status_code=400, detail="No institute context on this session.")
+    actor_user_id = getattr(current_user, "user_id", None)
+
+    wrapper, default_aspect = _IMAGE_KIND_STYLE.get(body.kind, _IMAGE_KIND_STYLE["image"])
+    prompt = wrapper.format(p=body.prompt.strip())
+    aspect = body.aspect_ratio if body.aspect_ratio in _IMAGE_ASPECTS else default_aspect
+    n = max(1, min(3, body.count))
+
+    results = await asyncio.gather(
+        *[_generate_and_upload_image(prompt, aspect, body.kind, db, institute_id, actor_user_id) for _ in range(n)],
+        return_exceptions=True,
+    )
+    urls = [r for r in results if isinstance(r, str) and r]
+    if not urls:
+        raise HTTPException(status_code=502, detail="Image generation failed — please try again.")
+    return GenerateImageResponse(urls=urls, model=_IMAGE_MODEL)
+
+
+# ─── Multi-page site (one brief → several coherent pages) ────────────────────
+
+_SITE_PAGE_LABELS = {
+    "homepage": "the main landing page",
+    "about": "an about-us / our-story page",
+    "contact": "a contact page (address, form, map)",
+    "admissions": "an admissions / how-to-enroll page",
+    "courses": "a programs overview page",
+}
+
+
+class GenerateSiteRequest(BaseModel):
+    brief: str
+    page_types: List[str] = Field(default_factory=lambda: ["homepage", "about", "contact"])
+    institute_name: Optional[str] = None
+    images: List[PageImage] = Field(default_factory=list)
+    courses: List[CourseSnapshotItem] = Field(default_factory=list)
+    terminology: Optional[Dict[str, str]] = None
+    source_url: Optional[str] = None
+    auto_images: bool = True
+    preferred_model: Optional[str] = None
+
+
+class SitePageOut(BaseModel):
+    page_type: str
+    page: Dict[str, Any]
+
+
+class GenerateSiteResponse(BaseModel):
+    pages: List[SitePageOut]
+    global_settings: Optional[Dict[str, Any]] = None
+    model: str
+    warnings: List[str] = Field(default_factory=list)
+
+
+@router.post("/v1/site", response_model=GenerateSiteResponse)
+async def generate_site(
+    body: GenerateSiteRequest,
+    db: Session = Depends(db_dependency),
+    current_user=Depends(get_current_user),
+) -> GenerateSiteResponse:
+    if not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+    if not body.brief or not body.brief.strip():
+        raise HTTPException(status_code=400, detail="A brief describing the site is required.")
+    institute_id = getattr(current_user, "institute_id", None)
+    if not institute_id:
+        raise HTTPException(status_code=400, detail="No institute context on this session.")
+    actor_user_id = getattr(current_user, "user_id", None)
+
+    # De-dup, keep order, always lead with homepage, cap at 5 pages.
+    seen: set = set()
+    page_types: List[str] = []
+    for pt in ["homepage", *body.page_types]:
+        if pt not in seen and pt in _SITE_PAGE_LABELS:
+            seen.add(pt)
+            page_types.append(pt)
+    page_types = page_types[:5]
+
+    # Pre-flight for the whole run (N × the per-page flat cost).
+    estimate = preflight_tool_credits(
+        db, tool_key=_TOOL_KEY, tool_params={}, institute_id=institute_id
+    )
+    per_page = float(estimate.get("estimated_credits") or 0)
+    balance = float(estimate.get("current_balance") or 0)
+    if per_page * len(page_types) > balance:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=(
+                f"Insufficient credits: this {len(page_types)}-page site needs ~{per_page * len(page_types):.0f} "
+                f"credits but the balance is {balance:.0f}."
+            ),
+        )
+
+    catalog = _load_catalog()
+    pages: List[SitePageOut] = []
+    warnings: List[str] = []
+    shared_global: Optional[Dict[str, Any]] = None
+    model_used = _DEFAULT_MODEL
+
+    for i, pt in enumerate(page_types):
+        sub = GeneratePageRequest(
+            brief=f"{body.brief.strip()}\n\nThis is {_SITE_PAGE_LABELS[pt]} of the site.",
+            page_type=pt,
+            institute_name=body.institute_name,
+            images=body.images,
+            # Only import the source site + real courses on the homepage — other
+            # pages inherit the theme and brief (keeps cost/latency down).
+            source_url=body.source_url if i == 0 else None,
+            courses=body.courses if pt in ("homepage", "courses") else [],
+            terminology=body.terminology,
+            auto_images=body.auto_images,
+            preferred_model=body.preferred_model,
+        )
+        try:
+            page, gs, w, model_used, _ = await _compose_one_page(
+                sub, catalog, db, institute_id, actor_user_id, fixed_global=shared_global
+            )
+        except HTTPException:
+            if pages:
+                break  # keep what we have if a later page fails
+            raise
+        if shared_global is None:
+            shared_global = gs
+        page["route"] = pt if pt != "homepage" else (page.get("route") or "home")
+        pages.append(SitePageOut(page_type=pt, page=page))
+        warnings.extend(w)
+
+    if not pages:
+        raise HTTPException(status_code=502, detail="Site generation produced no pages — please retry.")
+    return GenerateSiteResponse(pages=pages, global_settings=shared_global, model=model_used, warnings=warnings)

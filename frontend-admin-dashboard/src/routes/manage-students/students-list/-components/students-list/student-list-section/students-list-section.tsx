@@ -325,6 +325,12 @@ export const StudentsListSection = () => {
         0
     );
 
+    // Approval actions (row-level Accept/Decline and the bulk Accept action) are shown
+    // whenever the Approval Status filter (Pending for Approval / Invited) is active.
+    const showApprovalActions =
+        appliedFilters.statuses?.some((s) => ['INVITED', 'PENDING_FOR_APPROVAL'].includes(s)) ||
+        false;
+
     if (isLoading) return <DashboardLoader />;
     if (isError) return <SmartErrorPage />;
 
@@ -442,15 +448,7 @@ export const StudentsListSection = () => {
                                                 last: studentTableData.last,
                                             }}
                                             columns={(() => {
-                                                const cols = getCustomColumns(
-                                                    // Show approval actions if INVITED or PENDING_FOR_APPROVAL is in statuses
-                                                    appliedFilters.statuses?.some((s) =>
-                                                        [
-                                                            'INVITED',
-                                                            'PENDING_FOR_APPROVAL',
-                                                        ].includes(s)
-                                                    ) || false
-                                                );
+                                                const cols = getCustomColumns(showApprovalActions);
                                                 // If lead system is entirely off, return cols unchanged
                                                 if (!leadReady) return cols;
 
@@ -622,6 +620,7 @@ export const StudentsListSection = () => {
                                     selectedStudentIds={getSelectedStudentIds()}
                                     selectedStudents={getSelectedStudents()}
                                     onReset={handleResetSelections}
+                                    showApprovalActions={showApprovalActions}
                                 />
                                 <div className="flex justify-center lg:justify-end">
                                     <MyPagination

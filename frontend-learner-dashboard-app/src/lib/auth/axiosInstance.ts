@@ -9,6 +9,7 @@ import {
 } from "./sessionUtility";
 import { REFRESH_TOKEN_URL, VALIDATE_SESSION } from "@/constants/urls";
 import { maybeServeFromCache, maybeStoreInCache } from "@/lib/http/clientCache";
+import { getActiveLocale } from "@/lib/formatters";
 import { toast } from "sonner";
 
 let isHandlingSessionTermination = false;
@@ -181,6 +182,13 @@ authenticatedAxiosInstance.interceptors.request.use(
       "/public/domain-routing/",
     );
     const isOpenEndpoint = requestUrl.includes("/open/");
+
+    // Advertise the user's UI locale so backend services can localize
+    // responses (validation messages, notifications) as i18n rolls out.
+    // Don't overwrite if the caller already set it explicitly.
+    if (!request.headers["Accept-Language"]) {
+      request.headers["Accept-Language"] = getActiveLocale();
+    }
 
     // For public/open endpoints, do not attach auth or perform refresh logic
     if (isPublicDomainRouting || isOpenEndpoint) {

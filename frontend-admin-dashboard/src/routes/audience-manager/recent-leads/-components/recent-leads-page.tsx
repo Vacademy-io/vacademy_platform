@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { convertToLocalDateTime } from '@/constants/helper';
-import { parseHtmlToString } from '@/lib/utils';
+import { cn, parseHtmlToString } from '@/lib/utils';
 import {
     DownloadSimple,
     MagnifyingGlass,
@@ -63,7 +63,16 @@ import {
 import { MyDropdown } from '@/components/design-system/dropdown';
 import type { LeadCardVM } from '@/components/shared/leads/lead-view-model';
 import { MyButton } from '@/components/design-system/button';
-import { CaretDown, UserMinus, UserPlus } from '@phosphor-icons/react';
+import { isAdminForInstitute } from '@/lib/auth/roleUtils';
+import { DeleteLeadsDialog } from '@/components/shared/leads/delete-leads-dialog';
+import { restoreAudienceLeads } from '@/routes/audience-manager/list/-services/delete-audience-lead';
+import {
+    ArrowCounterClockwise,
+    CaretDown,
+    Trash,
+    UserMinus,
+    UserPlus,
+} from '@phosphor-icons/react';
 import {
     LeadEmptyState,
     LeadTable,
@@ -411,6 +420,33 @@ const RecentLeadsContent = () => {
             : leadStatusFilters.includes(ALL_CONVERTED_VALUE)
               ? 'ONLY_CONVERTED'
               : 'ALL';
+    // "Deleted leads" view — deleted leads are hidden everywhere by default; this is the one
+    // place they can be seen, and the only way to restore one from the UI.
+    const [showDeleted, setShowDeleted] = useState(false);
+    // Undefined (not EXCLUDE_DELETED) when off, so the backend's own default applies and the
+    // param stays absent from the normal request.
+    const audienceStatusFilter: 'ONLY_DELETED' | undefined = showDeleted ? 'ONLY_DELETED' : undefined;
+
+    // Restore needs no confirm dialog: unlike delete it's additive, and the rows are already
+    // sitting in a view the admin had to opt into.
+    const restoreMutation = useMutation({
+        mutationFn: () =>
+            restoreAudienceLeads({
+                responseIds: Array.from(selectedLeads.keys()),
+                instituteId: instituteId ?? '',
+            }),
+        onSuccess: (restored: number) => {
+            toast.success(restored === 1 ? 'Lead restored' : `${restored} leads restored`);
+            setSelectedLeads(new Map());
+            handleStatusUpdated();
+        },
+        onError: (error: unknown) => {
+            const message =
+                (error as { response?: { data?: { ex?: string } } })?.response?.data?.ex ??
+                'Failed to restore. Please try again.';
+            toast.error(message);
+        },
+    });
     const nonUnassignedCounsellorIds = counsellorFilters.filter(
         (v) => v !== UNASSIGNED_COUNSELLOR_VALUE
     );
@@ -430,6 +466,7 @@ const RecentLeadsContent = () => {
             leadStatusFilters.join(','),
             leadStatusId,
             conversionFilter,
+            audienceStatusFilter,
             slaFilters.join(','),
             counsellorFilters.join(','),
             sourceFilter,
@@ -450,6 +487,7 @@ const RecentLeadsContent = () => {
                 lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
                 lead_status_id: leadStatusId,
                 conversion_status_filter: conversionFilter,
+                audience_status_filter: audienceStatusFilter,
                 sla_filter:
                     slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
                 assigned_counselor_id:
@@ -543,10 +581,18 @@ const RecentLeadsContent = () => {
     };
 
     // ── Bulk assign / remove counsellor (multi-select, every view) ──
-    const [selectedLeads, setSelectedLeads] = useState<Map<string, { userId: string; name: string }>>(
+    // Keyed by RESPONSE id, not user id: a row is one campaign response and the same person
+    // can hold several, so keying by user collapsed their rows into one checkbox. The value
+    // carries the userId too, because the assign actions operate per person.
+    const [selectedLeads, setSelectedLeads] = useState<
+        Map<string, { userId: string; responseId: string; name: string }>
+    >(
         new Map()
     );
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+
+    const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+    const canDeleteLeads = isAdminForInstitute(instituteId);
     // Which flow the "Bulk actions" menu opened: assign (round-robin default)
     // or unassign (REMOVE).
     const [bulkActionMode, setBulkActionMode] = useState<BulkAssignMode>('ROUND_ROBIN');
@@ -559,11 +605,11 @@ const RecentLeadsContent = () => {
         setSelectedLeads(new Map());
     }, [counsellorFilters]);
 
-    const toggleLeadRow = (userId: string, vm: LeadCardVM) =>
+    const toggleLeadRow = (responseId: string, vm: LeadCardVM) =>
         setSelectedLeads((prev) => {
             const next = new Map(prev);
-            if (next.has(userId)) next.delete(userId);
-            else next.set(userId, { userId, name: vm.name });
+            if (next.has(responseId)) next.delete(responseId);
+            else if (vm.userId) next.set(responseId, { userId: vm.userId, responseId, name: vm.name });
             return next;
         });
 
@@ -571,9 +617,10 @@ const RecentLeadsContent = () => {
         setSelectedLeads((prev) => {
             const next = new Map(prev);
             selectableVms.forEach((v) => {
-                if (!v.userId) return;
-                if (checked) next.set(v.userId, { userId: v.userId, name: v.name });
-                else next.delete(v.userId);
+                if (!v.userId || !v.responseId) return;
+                if (checked)
+                    next.set(v.responseId, { userId: v.userId, responseId: v.responseId, name: v.name });
+                else next.delete(v.responseId);
             });
             return next;
         });
@@ -600,6 +647,7 @@ const RecentLeadsContent = () => {
                 lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
                 lead_status_id: leadStatusId,
                 conversion_status_filter: conversionFilter,
+                audience_status_filter: audienceStatusFilter,
                 sla_filter:
                     slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
                 assigned_counselor_id:
@@ -614,12 +662,15 @@ const RecentLeadsContent = () => {
                 page: 0,
                 size: totalElements,
             });
-            const map = new Map<string, { userId: string; name: string }>();
+            const map = new Map<string, { userId: string; responseId: string; name: string }>();
             (res.content ?? []).forEach((lead) => {
                 const uid = lead.user?.id || lead.user_id;
-                if (!uid) return;
-                map.set(uid, {
+                // Keyed by response id to match the per-row selection — a person with several
+                // responses is several selected rows, not one.
+                if (!uid || !lead.response_id) return;
+                map.set(lead.response_id, {
                     userId: uid,
+                    responseId: lead.response_id,
                     name: lead.user?.full_name || lead.parent_name || uid,
                 });
             });
@@ -877,6 +928,7 @@ const RecentLeadsContent = () => {
                     lead_tier: tierFilters.length > 0 ? tierFilters.join(',') : undefined,
                     lead_status_id: leadStatusId,
                     conversion_status_filter: conversionFilter,
+                    audience_status_filter: audienceStatusFilter,
                     sla_filter:
                         slaFilters.length > 0 ? (slaFilters.join(',') as SlaFilter) : undefined,
                     assigned_counselor_id:
@@ -1127,6 +1179,25 @@ const RecentLeadsContent = () => {
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
+                    {/* Deleted leads are hidden from every view by default; this is the only
+                        place they surface, and the only route back for one (Restore). Admin-only,
+                        matching the delete/restore endpoints' own check. */}
+                    {canDeleteLeads && (
+                        <Button
+                            variant={showDeleted ? 'default' : 'outline'}
+                            size="sm"
+                            className={cn('h-10', showDeleted && 'bg-danger-600 hover:bg-danger-700')}
+                            onClick={() => {
+                                setShowDeleted((v) => !v);
+                                setPage(0);
+                                setSelectedLeads(new Map());
+                            }}
+                            title={showDeleted ? 'Back to active leads' : 'Show deleted leads'}
+                        >
+                            <Trash className="mr-1.5 size-4" />
+                            {showDeleted ? 'Viewing deleted' : 'Deleted leads'}
+                        </Button>
+                    )}
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button variant="outline" size="sm" className="h-10">
@@ -1284,8 +1355,38 @@ const RecentLeadsContent = () => {
                                             value: 'unassign',
                                             icon: <UserMinus className="size-4" />,
                                         },
+                                        // Delete/restore are admin-only, matching the endpoints'
+                                        // own check. In the deleted-leads view the only sensible
+                                        // action is putting them back.
+                                        ...(canDeleteLeads
+                                            ? [
+                                                  showDeleted
+                                                      ? {
+                                                            label: 'Restore leads',
+                                                            value: 'restore',
+                                                            icon: (
+                                                                <ArrowCounterClockwise className="size-4 text-primary-600" />
+                                                            ),
+                                                        }
+                                                      : {
+                                                            label: 'Delete leads',
+                                                            value: 'delete',
+                                                            icon: (
+                                                                <Trash className="size-4 text-danger-600" />
+                                                            ),
+                                                        },
+                                              ]
+                                            : []),
                                     ]}
                                     onSelect={(value) => {
+                                        if (value === 'delete') {
+                                            setBulkDeleteOpen(true);
+                                            return;
+                                        }
+                                        if (value === 'restore') {
+                                            restoreMutation.mutate();
+                                            return;
+                                        }
                                         setBulkActionMode(
                                             value === 'unassign' ? 'REMOVE' : 'ROUND_ROBIN'
                                         );
@@ -1347,6 +1448,17 @@ const RecentLeadsContent = () => {
                     counsellorOptions={assignableCounsellorOptions}
                     initialMode={bulkActionMode}
                     onSuccess={handleBulkAssignSuccess}
+                />
+
+                <DeleteLeadsDialog
+                    open={bulkDeleteOpen}
+                    onOpenChange={setBulkDeleteOpen}
+                    instituteId={instituteId ?? ''}
+                    responseIds={Array.from(selectedLeads.keys())}
+                    onSuccess={() => {
+                        setSelectedLeads(new Map());
+                        handleStatusUpdated();
+                    }}
                 />
 
                 {noteTarget && (

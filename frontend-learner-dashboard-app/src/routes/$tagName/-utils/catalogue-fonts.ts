@@ -72,7 +72,7 @@ export function resolveFontEntry(stackOrFamily?: string | null): CatalogueFontEn
  * and components nested in layout slots.
  */
 export function collectConfigFontFamilies(config: {
-    globalSettings?: { fonts?: { enabled?: boolean; family?: string } };
+    globalSettings?: { fonts?: { enabled?: boolean; family?: string; headingFamily?: string } };
     pages?: Array<{ components?: unknown[] }>;
 } | null | undefined): string[] {
     const found = new Set<string>();
@@ -83,9 +83,10 @@ export function collectConfigFontFamilies(config: {
 
     // Global family only counts when the feature is enabled (the `enabled`
     // flag has always governed the global font; per-component typography
-    // below is independent of it).
+    // below is independent of it). headingFamily rides the same flag.
     const globalFonts = config?.globalSettings?.fonts;
     if (globalFonts?.enabled && globalFonts.family) add(globalFonts.family);
+    if (globalFonts?.enabled && globalFonts.headingFamily) add(globalFonts.headingFamily);
 
     const visitStyle = (style: any) => {
         if (!style) return;

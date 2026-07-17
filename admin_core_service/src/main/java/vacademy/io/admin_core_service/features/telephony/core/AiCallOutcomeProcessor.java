@@ -78,6 +78,7 @@ public class AiCallOutcomeProcessor {
     private final WorkflowExecutionStateRepository executionStateRepository;
     private final AiCallRecordingService aiCallRecordingService;
     private final AiCallingConfigService configService;
+    private final CallBillingService billingService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // @Lazy + field injection (NOT constructor): WorkflowTriggerService transitively
@@ -240,6 +241,59 @@ public class AiCallOutcomeProcessor {
                     });
                 } else {
                     aiCallRecordingService.persistAsync(cid);
+                }
+            }
+        }
+
+        // AI-conversation-minutes metering (CallBillingService). Runs AFTER the
+        // ownership/verification gate above (the report webhook is public — never bill
+        // off an unverified report). Review-hardened gates:
+        //  - EXPLICIT completed status only ("completed"/"complete" verbatim) — never
+        //    mapStatus, whose default-to-COMPLETED exists to keep malformed reports
+        //    flowing through the NON-billing pipeline.
+        //  - Identity comes from aiIdempotencyKey: the provider call id when present
+        //    (stable across re-POSTs), else the call-log id only when the row provably
+        //    pre-dates this report. An unbindable no-call_uuid report mints a NEW
+        //    result row (and possibly call-log row) per webhook re-delivery — any
+        //    row-derived key would bill once per delivery, so those skip with a warn.
+        //  - A verified completed call with NULL duration (isConnected treats it as
+        //    connected) bills ONE minute rather than silently riding free; an explicit
+        //    zero/negative duration is not billable.
+        //  - callLogId is NOT required: an unknown inbound caller with lead-capture off
+        //    leaves only the ai_call_result, but the STT/LLM/TTS spend was real.
+        // Applies to lead and non-lead subjects alike. Dispatched after commit, same
+        // as the recording copy; success stamps ai_call_result.credits_billed_at so
+        // the reconciliation sweep stops re-attempting.
+        String rawAiStatus = r.getStatus() == null ? "" : r.getStatus().trim().toLowerCase();
+        boolean explicitlyCompleted = "completed".equals(rawAiStatus) || "complete".equals(rawAiStatus);
+        if (billingService.isAiBillableProvider(r.getProvider()) && explicitlyCompleted
+                && (r.getDurationSeconds() == null || r.getDurationSeconds() > 0)) {
+            String billKey = CallBillingService.aiIdempotencyKey(
+                    r.getProvider(), r.getCallUuid(), r.getCorrelationId(),
+                    existing != null ? callLogId : null);
+            if (billKey == null) {
+                log.warn("ai-call billing: result {} has no stable call identity "
+                        + "(call_uuid and correlation both absent) — NOT billed", r.getId());
+            } else {
+                final String key = billKey;
+                final String billResultId = r.getId();
+                final String billInstitute = existing != null ? existing.getInstituteId()
+                        : (lead.instituteId() != null ? lead.instituteId() : r.getInstituteId());
+                final String billProvider = r.getProvider();
+                final String billDirection = existing != null && existing.getDirection() != null
+                        ? existing.getDirection() : r.getDirection();
+                final int billSecs = r.getDurationSeconds() == null ? 60 : r.getDurationSeconds();
+                if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            billingService.billAiLeg(key, billResultId, billInstitute,
+                                    billProvider, billDirection, billSecs);
+                        }
+                    });
+                } else {
+                    billingService.billAiLeg(key, billResultId, billInstitute,
+                            billProvider, billDirection, billSecs);
                 }
             }
         }
@@ -457,7 +511,12 @@ public class AiCallOutcomeProcessor {
                 .terminationReason(r.getHangupCause())
                 .rawPayload(r.getRawPayload())
                 .build();
-        callLogService.applyEvent(row, ev);
+        // voiceBillable only for rows that PRE-DATE this report (a real telephony row
+        // fed by provider webhooks). A row this promotion just minted is a bookkeeping
+        // artifact of the report — no telephony webhook will ever reference it, and
+        // voice-metering it would double-bill the physical call (the real inbound row
+        // bills off the Plivo hangup) or monetize a forged-but-authenticated report.
+        callLogService.applyEvent(row, ev, existing != null);
         return row.getId();
     }
 

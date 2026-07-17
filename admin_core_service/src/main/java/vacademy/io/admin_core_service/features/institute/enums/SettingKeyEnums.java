@@ -21,5 +21,9 @@ public enum SettingKeyEnums {
     // GenericSettingStrategy for read/write; institute_theme_code on the
     // Institute entity remains the legacy single-hue fallback.
     THEME_SETTING,
-    ONBOARDING_SETTING
+    ONBOARDING_SETTING,
+    // Institute-level language/i18n preferences (default locale, enabled
+    // locales) — tags must come from vacademy.io.common.core.i18n.LocaleRegistry.
+    // Read/write handled by GenericSettingStrategy like any other key.
+    LANGUAGE_SETTING
 }

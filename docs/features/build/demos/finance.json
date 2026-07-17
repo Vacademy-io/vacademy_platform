@@ -1,0 +1,113 @@
+{
+  "pillar": "finance",
+  "demo": {
+    "intro": "Follow the money — from the admin's fee collection dashboard to a parent paying an installment by UPI on their phone.",
+    "screens": [
+      {
+        "id": "collections",
+        "device": "desktop",
+        "title": "Fee Collection Dashboard",
+        "nav": ["Dashboard", "Study Library", "Learners", "Finance*", "Marketing", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "col-head", "title": "Fee Collection", "subtitle": "AY 2026-27 · 486 students across 9 batches", "actions": ["Collect Payment", "+ New Invoice"] },
+          { "type": "stats", "id": "col-stats", "items": [
+            { "label": "Collected this month", "value": "₹18.4L", "delta": "+12% vs June" },
+            { "label": "Due this week", "value": "₹3.2L" },
+            { "label": "Overdue", "value": "₹1.6L", "delta": "55 students" },
+            { "label": "Collection rate", "value": "87%" }
+          ]},
+          { "cols": [
+            { "type": "funnel", "id": "col-funnel", "stages": [
+              { "label": "Students with dues raised", "value": 486 },
+              { "label": "Fully paid", "value": 342 },
+              { "label": "Partially paid", "value": 89 },
+              { "label": "Overdue — needs follow-up", "value": 55 }
+            ]},
+            { "type": "list", "id": "col-recent", "items": [
+              { "title": "Rohan Verma · NEET 2027 Batch A", "sub": "Tuition Inst. 3 · UPI at counter", "right": "₹15,000", "chip": "Receipt sent", "tone": "green" },
+              { "title": "Ananya Iyer · JEE Advanced", "sub": "Online · Razorpay", "right": "₹22,500", "chip": "Paid", "tone": "green" },
+              { "title": "Aarav Gupta · Class 10 Foundation", "sub": "Cheque #004512 · pending clearance", "right": "₹9,000", "chip": "Recorded", "tone": "blue" },
+              { "title": "Priya Sharma · Class 10 Foundation", "sub": "Transport Q2 · due 12 Jul", "right": "₹4,500", "chip": "Overdue", "tone": "red" }
+            ]}
+          ]}
+        ]
+      },
+      {
+        "id": "fee-plans",
+        "device": "desktop",
+        "title": "Fee Structure — Class 10 Foundation",
+        "nav": ["Dashboard", "Study Library", "Learners", "Finance*", "Marketing", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "plan-head", "title": "Class 10 Foundation — Quarterly Plan", "subtitle": "Fee structure · 4 fee heads · attached to 2 batches", "actions": ["+ Fee Head", "Send for Approval"] },
+          { "type": "table", "id": "plan-table", "columns": ["Fee Head", "Annual Amount", "Schedule", "Late Penalty", "Status"], "rows": [
+            ["Tuition", "₹72,000", "4 installments · Apr / Jul / Oct / Jan", "2% after due date", { "chip": "Approved", "tone": "green" }],
+            ["Admission (one-time)", "₹10,000", "Full at enrollment", "—", { "chip": "Approved", "tone": "green" }],
+            ["Transport", "₹18,000", "4 installments, quarterly", "2% after due date", { "chip": "Approved", "tone": "green" }],
+            ["Caution Money (refundable)", "₹5,000", "Full at enrollment", "—", { "chip": "Pending approval", "tone": "orange" }]
+          ]},
+          { "type": "form", "id": "plan-attach", "title": "Attach & approve", "fields": [
+            { "label": "Attach to batches", "value": "Class 10 Foundation — Morning, Evening", "type": "select" },
+            { "label": "Approver", "value": "Meera Nair (Finance Head)", "type": "select" },
+            { "label": "Set as institute default plan", "value": "on", "type": "toggle" }
+          ], "submit": "Send for Approval" }
+        ]
+      },
+      {
+        "id": "invoice",
+        "device": "desktop",
+        "title": "Invoice — INV-2026-0412",
+        "nav": ["Dashboard", "Study Library", "Learners", "Finance*", "Marketing", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "inv-head", "title": "Invoice INV-2026-0412", "subtitle": "Priya Sharma · Class 10 Foundation · due 20 Jul 2026", "actions": ["Copy Payment Link", "Send Reminder"] },
+          { "cols": [
+            { "type": "invoice", "id": "inv-doc", "no": "INV-2026-0412", "to": "Mrs. Sunita Sharma (parent of Priya Sharma), 14 MG Road, Indore, MP", "rows": [
+              { "desc": "Tuition — Term 2, Class 10 Foundation", "amt": "₹18,000" },
+              { "desc": "Transport — Quarter 2", "amt": "₹4,500" },
+              { "desc": "CGST 9% + SGST 9%", "amt": "₹4,050" }
+            ], "total": "₹26,550" },
+            { "type": "form", "id": "inv-send", "title": "Send & collect", "fields": [
+              { "label": "Payment link", "value": "pay.vacademy.io/i/8f2k1x", "type": "text" },
+              { "label": "Deliver via", "value": "Email + WhatsApp to +91 98267 44310", "type": "select" },
+              { "label": "Apply GST on this invoice", "value": "on", "type": "toggle" }
+            ], "submit": "Send Invoice" }
+          ]}
+        ]
+      },
+      {
+        "id": "checkout",
+        "device": "phone",
+        "title": "Learner App — Pay Fees",
+        "nav": ["Home", "Courses", "Payments*", "Doubts", "Profile"],
+        "widgets": [
+          { "type": "header", "id": "pay-head", "title": "My Dues", "subtitle": "Priya Sharma · Class 10 Foundation" },
+          { "type": "list", "id": "pay-dues", "items": [
+            { "title": "Tuition — Term 2", "sub": "Installment 2 of 4 · due 20 Jul", "right": "₹18,000", "chip": "Due", "tone": "orange" },
+            { "title": "Transport — Q2", "sub": "Due 12 Jul · 2% late penalty applies", "right": "₹4,500", "chip": "Overdue", "tone": "red" },
+            { "title": "GST (CGST 9% + SGST 9%)", "sub": "Calculated on payable amount", "right": "₹4,050" }
+          ]},
+          { "type": "form", "id": "pay-method", "title": "Pay ₹26,550", "fields": [
+            { "label": "Payment method", "value": "UPI — via Razorpay", "type": "select" },
+            { "label": "Coupon code", "value": "SIBLING10", "type": "text" }
+          ], "submit": "Pay Securely" },
+          { "type": "stats", "id": "pay-done", "items": [
+            { "label": "Payment", "value": "Success ✅" },
+            { "label": "Receipt", "value": "#RCPT-8841" },
+            { "label": "Balance due", "value": "₹0" }
+          ]}
+        ]
+      }
+    ],
+    "steps": [
+      { "screen": "collections", "target": null, "title": "Every rupee, one dashboard", "text": "Online course sales, school-style installments and front-office cash all land in one finance view. Money settles directly into your own gateway account — Stripe, Razorpay, PhonePe, Cashfree, eWAY or PayPal — never Vacademy's." },
+      { "screen": "collections", "target": "col-funnel", "title": "Know exactly who hasn't paid", "text": "The student fee ledger flags everyone Paid, Partial, Pending or Overdue with a collection progress bar. Filter by course, fee plan or status and drill into any student's full installment schedule." },
+      { "screen": "collections", "target": "col-recent", "title": "A real counter for offline payments", "text": "The Fee Collection Desk is a guided four-step counter flow: find the student, pick installments, record cash, cheque, UPI or card — and a receipt is generated on the spot with a download link." },
+      { "screen": "fee-plans", "target": "plan-table", "title": "School fees the way schools work", "text": "Model fee heads like Tuition, Admission, Transport or Hostel — each with its own installment schedule, late-payment penalty percentage, refundable flag and built-in discounts. Templates cover Monthly, Quarterly, Term-wise and Annual." },
+      { "screen": "fee-plans", "target": "plan-attach", "title": "Maker-checker, then auto-inherit", "text": "Structures need a separate approver before going live, and every concession or penalty later runs through the same audited approval queue. Attach the plan to batches so each new admission inherits the right fees automatically." },
+      { "screen": "invoice", "target": "inv-doc", "title": "Tax-compliant invoices, your brand", "text": "Every online payment can auto-generate a branded PDF invoice, or raise one manually — even in bulk — with a pixel-accurate preview. GST splits like CGST 9% + SGST 9% render as a proper tax table with your GSTIN and place of supply." },
+      { "screen": "invoice", "target": "inv-send", "title": "A payment link on every invoice", "text": "Each invoice carries a shareable public payment page — no login needed to pay. Send it by email or WhatsApp, fire one-click reminders for unpaid invoices, and mark offline settlements paid so books stay accurate." },
+      { "screen": "checkout", "target": "pay-dues", "title": "Parents see dues, not spreadsheets", "text": "Learners and parents check pending and overdue installments across all fee heads right in the app — with amounts, due dates and past receipts — and pay online without visiting the office." },
+      { "screen": "checkout", "target": "pay-method", "title": "Checkout that matches your gateway", "text": "The pay flow adapts to your configured gateway — UPI, cards, netbanking and wallets via Razorpay or PhonePe, international cards via Stripe. Coupon codes like SIBLING10 validate live and adjust the payable amount instantly." },
+      { "screen": "checkout", "target": "pay-done", "title": "Confirmed, receipted, reconciled", "text": "The app polls the gateway for the true payment status — no manual refresh — then issues the receipt and emails the invoice automatically. Webhooks are signature-verified, so no payment is ever lost or double-counted." }
+    ]
+  }
+}

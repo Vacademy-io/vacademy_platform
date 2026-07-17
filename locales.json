@@ -1,0 +1,48 @@
+{
+    "_readme": [
+        "Canonical locale spec for the Vacademy monorepo — the single source of truth",
+        "for supported locales, their order, RTL membership, default locale, native",
+        "labels and scripts. Each frontend app carries a generated mirror at",
+        "src/i18n/locales.ts (frontend-admin-dashboard, frontend-learner-dashboard-app)",
+        "that MUST match this file. Never hand-edit those mirrors: change this file,",
+        "then run `node scripts/gen-locales.mjs` to regenerate them (the per-app",
+        "RTL_READY flag is preserved across regenerations). Locale codes are BCP-47."
+    ],
+    "supported": ["en", "ar", "hi", "ta", "te", "bn", "mr", "gu", "kn", "ml", "pa", "or", "as", "es", "fr"],
+    "default": "en",
+    "rtl": ["ar"],
+    "nativeLabels": {
+        "en": "English",
+        "ar": "العربية",
+        "hi": "हिन्दी",
+        "ta": "தமிழ்",
+        "te": "తెలుగు",
+        "bn": "বাংলা",
+        "mr": "मराठी",
+        "gu": "ગુજરાતી",
+        "kn": "ಕನ್ನಡ",
+        "ml": "മലയാളം",
+        "pa": "ਪੰਜਾਬੀ",
+        "or": "ଓଡ଼ିଆ",
+        "as": "অসমীয়া",
+        "es": "Español",
+        "fr": "Français"
+    },
+    "scripts": {
+        "en": "latin",
+        "ar": "arabic",
+        "hi": "devanagari",
+        "ta": "tamil",
+        "te": "telugu",
+        "bn": "bengali",
+        "mr": "devanagari",
+        "gu": "gujarati",
+        "kn": "kannada",
+        "ml": "malayalam",
+        "pa": "gurmukhi",
+        "or": "odia",
+        "as": "bengali",
+        "es": "latin",
+        "fr": "latin"
+    }
+}

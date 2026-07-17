@@ -1,0 +1,119 @@
+{
+  "pillar": "crm",
+  "demo": {
+    "intro": "Follow an enquiry from the moment it lands in the lead inbox to the funnel report that shows it converting — through a counsellor's workbench and a complete lead timeline.",
+    "screens": [
+      {
+        "id": "inbox",
+        "device": "desktop",
+        "title": "Lead Inbox",
+        "nav": ["Dashboard", "Leads*", "Campaigns", "Counsellors", "Admissions", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "in-head", "title": "Lead Inbox", "subtitle": "1,248 leads · 6 campaigns", "actions": ["+ Add Lead", "Import CSV"] },
+          { "type": "stats", "id": "in-stats", "items": [
+            { "label": "New today", "value": "34", "delta": "+12 vs yesterday" },
+            { "label": "First contact due", "value": "18" },
+            { "label": "Follow-ups overdue", "value": "5" },
+            { "label": "Converted this month", "value": "62", "delta": "₹9.4L collected" }
+          ]},
+          { "type": "table", "id": "in-table", "columns": ["Lead", "Course", "Source", "Score", "Stage", "Owner"], "rows": [
+            ["Aarav Mehta", "NEET 2027 Batch A", "Meta Lead Ads", "87", { "chip": "Demo Booked", "tone": "blue" }, "Priya Nair"],
+            ["Ananya Iyer", "JEE Advanced Crash", "Website form", "81", { "chip": "Contacted", "tone": "purple" }, "Rohan Gupta"],
+            ["Sneha Kulkarni", "IELTS Band 8", "Google Lead Form", "74", { "chip": "New", "tone": "green" }, "Unassigned"],
+            ["Kabir Shah", "Class 10 Foundation", "Walk-in", "69", { "chip": "Negotiation", "tone": "orange" }, "Priya Nair"],
+            ["Ishita Verma", "NEET 2027 Batch A", "CSV import", "52", { "chip": "Contacted", "tone": "purple" }, "Rohan Gupta"]
+          ]}
+        ]
+      },
+      {
+        "id": "workbench",
+        "device": "desktop",
+        "title": "Counsellor Workbench — Priya Nair",
+        "nav": ["Dashboard", "Leads", "Campaigns", "Counsellors*", "Admissions", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "wb-head", "title": "My Pipeline", "subtitle": "Priya Nair · 46 open leads · Rating 4.7", "actions": ["Reassign leads"] },
+          { "type": "kanban", "id": "wb-kanban", "columns": [
+            { "title": "New", "cards": [
+              { "title": "Sneha Kulkarni", "sub": "IELTS Band 8 · Score 74" },
+              { "title": "Devansh Rao", "sub": "NEET 2027 · Score 66" }
+            ]},
+            { "title": "Contacted", "cards": [
+              { "title": "Ananya Iyer", "sub": "JEE Advanced · Score 81" },
+              { "title": "Ishita Verma", "sub": "NEET 2027 · Score 52" }
+            ]},
+            { "title": "Demo Booked", "cards": [
+              { "title": "Aarav Mehta", "sub": "Demo class Sat 11 AM" }
+            ]},
+            { "title": "Negotiation", "cards": [
+              { "title": "Kabir Shah", "sub": "Quoted ₹45,000 · parent call" }
+            ]}
+          ]},
+          { "type": "list", "id": "wb-followups", "items": [
+            { "title": "Call Aarav's father before demo", "sub": "NEET 2027 Batch A · +91 98201 44317", "chip": "Today", "tone": "blue" },
+            { "title": "Send fee breakup to Kabir", "sub": "Class 10 Foundation · quoted ₹45,000", "chip": "Today", "tone": "blue" },
+            { "title": "Second follow-up: Ananya", "sub": "Missed SLA by 2 hrs", "chip": "Overdue", "tone": "red" },
+            { "title": "IELTS webinar invitees (12)", "sub": "Batch follow-up", "right": "Tomorrow" }
+          ]}
+        ]
+      },
+      {
+        "id": "lead-detail",
+        "device": "desktop",
+        "title": "Lead — Aarav Mehta",
+        "nav": ["Dashboard", "Leads*", "Campaigns", "Counsellors", "Admissions", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "ld-head", "title": "Aarav Mehta", "subtitle": "NEET 2027 Batch A · Score 87 · Hot · Owner: Priya Nair", "actions": ["Change stage", "Add note"] },
+          { "cols": [
+            { "type": "list", "id": "ld-timeline", "items": [
+              { "title": "Pinned note", "sub": "Father decides; prefers evening calls after 7 PM", "chip": "Pinned", "tone": "orange" },
+              { "title": "Demo class booked — Sat 11 AM", "sub": "Booking linked to this lead · Physics demo", "chip": "Booking", "tone": "blue" },
+              { "title": "Stage: Contacted → Demo Booked", "sub": "by Priya Nair · yesterday 6:42 PM" },
+              { "title": "WhatsApp: fee brochure sent", "sub": "Delivered · read 8:10 PM", "chip": "Read", "tone": "green" },
+              { "title": "Score updated 74 → 87", "sub": "Engagement + recency · auto" },
+              { "title": "Lead submitted via Meta Lead Ads", "sub": "Campaign: NEET Early Bird · Andheri center" }
+            ]},
+            { "type": "call", "id": "ld-call", "name": "Aarav Mehta (father)", "number": "+91 98201 44317", "status": "Connected", "time": "03:41", "lines": [
+              "Discussing scholarship test on Sunday",
+              "Outcome logs to timeline on hang-up"
+            ]}
+          ]}
+        ]
+      },
+      {
+        "id": "reports",
+        "device": "desktop",
+        "title": "Sales Reports",
+        "nav": ["Dashboard", "Leads", "Campaigns", "Counsellors", "Admissions", "Reports*", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "rp-head", "title": "Sales Funnel — July", "subtitle": "All campaigns · IST reporting timezone" },
+          { "cols": [
+            { "type": "funnel", "id": "rp-funnel", "stages": [
+              { "label": "Leads captured", "value": 1248 },
+              { "label": "Contacted", "value": 934 },
+              { "label": "Demo booked", "value": 402 },
+              { "label": "Negotiation", "value": 187 },
+              { "label": "Enrolled", "value": 118 }
+            ]},
+            { "type": "list", "id": "rp-leaderboard", "items": [
+              { "title": "Priya Nair", "sub": "31 conversions · target 30", "right": "4.7 ★", "chip": "103%", "tone": "green" },
+              { "title": "Rohan Gupta", "sub": "24 conversions · target 30", "right": "4.3 ★", "chip": "80%", "tone": "blue" },
+              { "title": "Meera Joshi", "sub": "19 conversions · target 25", "right": "4.1 ★", "chip": "76%", "tone": "blue" },
+              { "title": "Arjun Singh", "sub": "11 conversions · target 25", "right": "3.6 ★", "chip": "44%", "tone": "orange" }
+            ]}
+          ]}
+        ]
+      }
+    ],
+    "steps": [
+      { "screen": "inbox", "target": null, "title": "Every enquiry lands in one inbox", "text": "Meta Lead Ads, Google Lead Forms, website forms, walk-ins and CSV imports all feed one deduplicated pipeline — matched by phone or email so the same person never becomes two leads." },
+      { "screen": "inbox", "target": "in-stats", "title": "SLA clocks keep leads warm", "text": "Set first-contact and follow-up deadlines in hours. One click filters every lead that's due or missed, and reminders go to the right roles before the clock runs out." },
+      { "screen": "inbox", "target": "in-table", "title": "Scored, staged and owned", "text": "Each lead carries a live 0–100 score from source quality, completeness, recency and engagement. Change stage, tag hot/warm/cold, add a note or place a call — right from the row." },
+      { "screen": "workbench", "target": "wb-kanban", "title": "Your funnel, your stages", "text": "Define your own pipeline stages and move leads through them one by one or in bulk. New leads route themselves via counsellor pools — round-robin, by shift roster, or to the best converter." },
+      { "screen": "workbench", "target": "wb-followups", "title": "Today's call list, ready at login", "text": "Follow-ups bucket into Pending, Today and Upcoming, with a month calendar view. Close one with an outcome note and schedule the next touch in the same step." },
+      { "screen": "lead-detail", "target": "ld-timeline", "title": "The complete story of every prospect", "text": "One timeline mixes automatic events — stage changes, score updates, bookings, payments — with notes and call logs. Pin the note the next counsellor must read first." },
+      { "screen": "lead-detail", "target": "ld-call", "title": "Call without leaving the lead", "text": "Click-to-call or send an AI agent call from the lead itself; every email, WhatsApp, SMS and push also lands on the contact's communication timeline with delivery status." },
+      { "screen": "reports", "target": "rp-funnel", "title": "See exactly where leads drop off", "text": "Every stage change is time-stamped, so the funnel is built from real history — not guesses. Conversion and lost outcomes are tracked separately from the working stage." },
+      { "screen": "reports", "target": "rp-leaderboard", "title": "Targets and ratings, computed live", "text": "Set weekly or monthly targets per counsellor — conversions, leads or calls — measured from actual activity. Ratings blend conversion ratio and speed, ranked on a team leaderboard." }
+    ]
+  }
+}

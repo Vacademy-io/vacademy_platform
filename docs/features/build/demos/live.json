@@ -1,0 +1,94 @@
+{
+  "pillar": "live",
+  "demo": {
+    "intro": "Schedule a live class, run it as an interactive Volt session, watch a learner join from their phone — and let attendance write itself.",
+    "screens": [
+      {
+        "id": "schedule",
+        "device": "desktop",
+        "title": "Schedule Live Class",
+        "nav": ["Dashboard", "Study Library", "Learners", "Assessments", "Live Classes*", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "sched-head", "title": "Live Classes", "subtitle": "3 live now · 18 upcoming this week", "actions": ["+ Schedule Class", "Bulk Import CSV"] },
+          { "type": "wizard", "id": "sched-wizard", "steps": ["Class basics", "Participants & notifications"], "active": 0 },
+          { "type": "form", "id": "sched-form", "title": "New class — Rotational Motion", "fields": [
+            { "label": "Class title", "value": "Rotational Motion — Doubt Clearing", "type": "text" },
+            { "label": "Platform", "value": "Vacademy Classroom (built-in, no licence)", "type": "select" },
+            { "label": "Schedule", "value": "Weekly · Mon, Wed, Fri · 6:00 PM IST · ends 20 Dec", "type": "select" },
+            { "label": "Batch", "value": "NEET 2027 Batch A · 142 learners", "type": "select" },
+            { "label": "Record & auto-start recording", "value": "on", "type": "toggle" }
+          ], "submit": "Next: Participants" }
+        ]
+      },
+      {
+        "id": "volt",
+        "device": "desktop",
+        "title": "Volt Live — Presenter Cockpit",
+        "nav": ["Dashboard", "Study Library", "Learners", "Assessments", "Live Classes*", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "volt-head", "title": "Rotational Motion — LIVE", "subtitle": "Join code TORQ82 · 128 in room · 00:42:10", "actions": ["Quick Question", "End Session"] },
+          { "type": "whiteboard", "id": "volt-white", "title": "Slide 9 — Torque on a rigid body (annotating live)" },
+          { "cols": [
+            { "type": "chart", "id": "volt-poll", "kind": "bars", "label": "Q4 · Direction of torque? — 118/128 answered", "values": [62, 23, 27, 6] },
+            { "type": "list", "id": "volt-board", "items": [
+              { "title": "1. Ananya Sharma", "sub": "9/9 correct", "right": "920 pts", "chip": "▲ 2", "tone": "green" },
+              { "title": "2. Rohan Verma", "sub": "8/9 correct", "right": "860 pts" },
+              { "title": "3. Priya Nair", "sub": "8/9 correct · fastest on Q3", "right": "845 pts", "chip": "▲ 1", "tone": "blue" },
+              { "title": "4. Aarav Mehta", "sub": "7/9 correct", "right": "790 pts", "chip": "▼ 2", "tone": "orange" }
+            ]}
+          ]}
+        ]
+      },
+      {
+        "id": "learner",
+        "device": "phone",
+        "title": "Live Classes",
+        "nav": ["Home", "Courses", "Live*", "Tests", "Profile"],
+        "widgets": [
+          { "type": "header", "id": "l-head", "title": "Hi Ananya", "subtitle": "NEET 2027 Batch A · Today, 6:00 PM" },
+          { "type": "video", "id": "l-video", "title": "Rotational Motion — Doubt Clearing · LIVE", "time": "LIVE · 42:10" },
+          { "type": "list", "id": "l-classes", "items": [
+            { "title": "Organic Chemistry — GOC", "sub": "Tomorrow · 6:00 PM · Zoom", "chip": "Upcoming", "tone": "blue" },
+            { "title": "Physics — Work, Power, Energy", "sub": "Mon 14 Jul · recording ready", "chip": "Replay", "tone": "green" },
+            { "title": "Download worksheet", "sub": "Rotational Motion practice set", "right": "PDF" }
+          ]}
+        ]
+      },
+      {
+        "id": "attendance",
+        "device": "desktop",
+        "title": "Attendance Report",
+        "nav": ["Dashboard", "Study Library", "Learners", "Assessments", "Live Classes", "Reports*", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "att-head", "title": "Attendance — Rotational Motion", "subtitle": "Wed 16 Jul · NEET 2027 Batch A", "actions": ["Notify Parents", "Export"] },
+          { "type": "stats", "id": "att-stats", "items": [
+            { "label": "Present", "value": "128", "delta": "90% of batch" },
+            { "label": "Late", "value": "9" },
+            { "label": "Absent", "value": "5" },
+            { "label": "Avg. time in class", "value": "51 min" }
+          ]},
+          { "type": "table", "id": "att-table",
+            "columns": ["Learner", "Phone", "Joined at", "Time in class", "Status"],
+            "rows": [
+              ["Ananya Sharma", "+91 98200 41xxx", "5:57 PM", "58 min", { "chip": "Present", "tone": "green" }],
+              ["Rohan Verma", "+91 90040 77xxx", "6:01 PM", "55 min", { "chip": "Present", "tone": "green" }],
+              ["Priya Nair", "+91 98110 23xxx", "6:14 PM", "42 min", { "chip": "Late", "tone": "orange" }],
+              ["Aarav Mehta", "+91 99870 65xxx", "—", "—", { "chip": "Absent", "tone": "red" }]
+            ]
+          }
+        ]
+      }
+    ],
+    "steps": [
+      { "screen": "schedule", "target": null, "title": "Every live class starts here", "text": "One list of everything live, upcoming, past and drafted — with a calendar view and CSV bulk import when you're scheduling a whole term at once." },
+      { "screen": "schedule", "target": "sched-form", "title": "Host on any platform — or none", "text": "Pick Vacademy's built-in classroom (no Zoom licence needed), Zoom with multi-account support, Google Meet, Zoho, a YouTube live stream or any custom link. Meetings for the whole recurring series are auto-created in the background." },
+      { "screen": "schedule", "target": "sched-wizard", "title": "Recurring series in two steps", "text": "Step one sets basics — weekly Mon/Wed/Fri at 6 PM with per-day links and timings. Step two adds the batch, registration and reminders via email, WhatsApp, push or in-app before you publish." },
+      { "screen": "volt", "target": "volt-white", "title": "Teach on a live whiteboard", "text": "Volt decks are whiteboard-style slides — draw, drop LaTeX and diagrams, or annotate over any slide mid-class. Import an existing PPTX or let AI generate the whole deck, quiz questions included, from a topic." },
+      { "screen": "volt", "target": "volt-poll", "title": "Answers stream in live", "text": "Learners join from any browser with a short code — no install. MCQ, true/false, one-word, numeric and long-answer questions grade the instant responses arrive, and you can fire a quick poll on the fly without leaving the deck." },
+      { "screen": "volt", "target": "volt-board", "title": "A leaderboard that fuels the room", "text": "Points per correct answer, optional speed bonuses and negative marking rank learners in real time. Show it to the room for energy, export to CSV, and let AI email each participant a personalized summary when you end." },
+      { "screen": "learner", "target": "l-video", "title": "Class lives inside your app", "text": "Learners join with one tap and stay in your branded app — a waiting room with countdown and music before class, then Zoom in-browser, embedded YouTube or the built-in classroom. No links pasted into WhatsApp." },
+      { "screen": "learner", "target": "l-classes", "title": "Schedule, replays and worksheets", "text": "Today's and upcoming classes show in the learner's own timezone, past classes carry auto-synced recordings archived to your storage, and custom action buttons put worksheets or group links right on the class card." },
+      { "screen": "attendance", "target": "att-table", "title": "Attendance takes itself", "text": "Join and dwell data sync back from Zoom, Zoho and the built-in classroom; threshold rules mark present, late or absent automatically. Correct in bulk, pull per-learner reports for parents, or trigger WhatsApp nudges on missed-class streaks." }
+    ]
+  }
+}

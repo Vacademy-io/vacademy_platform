@@ -40,6 +40,7 @@ public class AnnouncementProcessingService {
     private final AnnouncementResourceRepository resourceRepository;
     private final AnnouncementCommunityRepository communityRepository;
     private final AnnouncementTaskRepository taskRepository;
+    private final AnnouncementAppOverlayRepository appOverlayRepository;
 
     /**
      * Process announcement delivery - called by both immediate and scheduled flows
@@ -239,7 +240,11 @@ public class AnnouncementProcessingService {
         if (!taskRepository.findByAnnouncementIdAndIsActive(announcementId, true).isEmpty()) {
             modeTypes.add(ModeType.TASKS);
         }
-        
+
+        if (!appOverlayRepository.findByAnnouncementIdAndIsActive(announcementId, true).isEmpty()) {
+            modeTypes.add(ModeType.APP_OVERLAY);
+        }
+
         // If no modes are configured, default to SYSTEM_ALERT
         if (modeTypes.isEmpty()) {
             log.warn("No modes configured for announcement: {}, defaulting to SYSTEM_ALERT", announcementId);

@@ -157,6 +157,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     if (!fonts?.enabled || !fonts?.family) {
       document.body.style.fontFamily =
         "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      document.documentElement.style.removeProperty("--catalogue-heading-font");
       return;
     }
 
@@ -164,6 +165,16 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
     const fontFamily = fonts.family.trim();
     document.body.style.fontFamily = fontFamily;
     document.documentElement.style.setProperty("--app-font-family", fontFamily);
+
+    // Optional separate heading font (serif display over sans body). Set the
+    // var consumed by the catalogue heading rule; clear it when unset so
+    // headings fall back to the body font (byte-identical to before).
+    const headingFamily = (fonts as { headingFamily?: string })?.headingFamily?.trim();
+    if (headingFamily) {
+      document.documentElement.style.setProperty("--catalogue-heading-font", headingFamily);
+    } else {
+      document.documentElement.style.removeProperty("--catalogue-heading-font");
+    }
   }, [catalogueData]);
 
   // Apply institute theme

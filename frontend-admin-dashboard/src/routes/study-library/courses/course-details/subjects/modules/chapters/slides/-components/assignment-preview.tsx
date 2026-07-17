@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Slide } from '../-hooks/use-slides';
 import { useContentStore } from '../-stores/chapter-sidebar-store';
 import {
+    ALL_FILES_VALUE,
     ALLOWED_FILE_TYPE_OPTIONS,
     assignmentFormSchema,
     AssignmentFormType,
@@ -69,7 +70,7 @@ const ShareAssignmentLink = ({ slideId }: { slideId: string }) => {
         <div className="flex flex-col gap-2">
             <h1 className="font-semibold">Share Assignment</h1>
             <div className="flex items-center gap-3">
-                <span className="max-w-[400px] truncate rounded-md border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-sm text-neutral-600">
+                <span className="max-w-sm truncate rounded-md border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-sm text-neutral-600">
                     {assignmentLink}
                 </span>
                 <MyButton
@@ -271,9 +272,14 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
                     render={({ field }) => {
                         const selected: string[] = field.value ?? [];
                         const toggle = (value: string, checked: boolean) => {
+                            if (value === ALL_FILES_VALUE) {
+                                field.onChange(checked ? [ALL_FILES_VALUE] : []);
+                                return;
+                            }
+                            const withoutAll = selected.filter((v) => v !== ALL_FILES_VALUE);
                             const next = checked
-                                ? Array.from(new Set([...selected, value]))
-                                : selected.filter((v) => v !== value);
+                                ? Array.from(new Set([...withoutAll, value]))
+                                : withoutAll.filter((v) => v !== value);
                             field.onChange(next);
                         };
                         return (
@@ -282,14 +288,18 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
                                     <div>
                                         <h1 className="font-semibold">Allowed Submission File Types</h1>
                                         <p className="text-sm text-neutral-500">
-                                            Choose which file types learners can upload. If none are
-                                            selected, all file types will be accepted.
+                                            Choose which file types learners can upload, or select
+                                            All Files to accept any file (including formats like .sb3
+                                            PictoBlox/Scratch projects).
                                         </p>
                                     </div>
                                     <FormControl>
                                         <div className="flex flex-wrap gap-4">
                                             {ALLOWED_FILE_TYPE_OPTIONS.map((opt) => {
                                                 const checked = selected.includes(opt.value);
+                                                const disabledByAll =
+                                                    opt.value !== ALL_FILES_VALUE &&
+                                                    selected.includes(ALL_FILES_VALUE);
                                                 return (
                                                     <label
                                                         key={opt.value}
@@ -297,6 +307,7 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
                                                     >
                                                         <Checkbox
                                                             checked={checked}
+                                                            disabled={disabledByAll}
                                                             onCheckedChange={(c) =>
                                                                 toggle(opt.value, c === true)
                                                             }
@@ -466,7 +477,7 @@ const StudyLibraryAssignmentPreview = ({ activeItem }: { activeItem: Slide }) =>
                                 Choose Saved Paper
                             </MyButton>
                         </DialogTrigger>
-                        <DialogContent className="no-scrollbar !m-0 flex h-[90vh] !w-full !max-w-[90vw] flex-col items-start !gap-0 overflow-y-auto !p-0 [&>button]:hidden">
+                        <DialogContent className="no-scrollbar !m-0 flex h-[90vh] !w-full !max-w-[90vw] flex-col items-start !gap-0 overflow-y-auto !p-0 [&>button]:hidden">{/* design-lint-ignore: vh/vw-based dialog height matches MyDialog primitive */}
                             <div className="flex h-14 w-full items-center justify-between rounded-md bg-primary-50">
                                 <h1 className="rounded-sm p-4 font-bold text-primary-500">
                                     Choose Saved Question Paper From List

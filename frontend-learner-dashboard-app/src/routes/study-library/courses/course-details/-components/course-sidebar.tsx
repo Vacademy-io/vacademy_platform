@@ -404,7 +404,7 @@ export const CourseSidebar = ({
                 : "[.ui-vibrant_&]:border-t-primary-300",
               "[.ui-vibrant_&]:shadow-md",
               // Play Styles — quiet white rail card (one rail language)
-              "[.ui-play_&]:rounded-play-card [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface",
+              "[.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:shadow-play-soft-card",
               "[.ui-play_&]:bg-white [.ui-play_&]:text-play-ink [.ui-play_&]:shadow-none [.ui-play_&]:hover:shadow-none",
             )}
           >
@@ -480,7 +480,7 @@ export const CourseSidebar = ({
                 className={cn(
                   "p-2 bg-amber-50 dark:bg-amber-900/10 rounded-md border border-amber-200 dark:border-amber-800",
                   // Play — quiet highlight chip
-                  "[.ui-play_&]:bg-play-highlight [.ui-play_&]:border-transparent [.ui-play_&]:rounded-xl",
+                  "[.ui-play_&]:bg-play-gold-soft [.ui-play_&]:border-transparent [.ui-play_&]:rounded-xl",
                 )}
               >
                 <p

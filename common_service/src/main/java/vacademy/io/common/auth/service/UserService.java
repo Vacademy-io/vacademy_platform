@@ -15,6 +15,7 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.auth.repository.RoleRepository;
 import vacademy.io.common.auth.repository.UserRepository;
 import vacademy.io.common.auth.repository.UserRoleRepository;
+import vacademy.io.common.core.i18n.LocaleRegistry;
 import vacademy.io.common.exceptions.*;
 
 import java.time.LocalDate;
@@ -442,6 +443,9 @@ public class UserService {
             user.setGender(userDTO.getGender());
         if (StringUtils.hasText(userDTO.getProfilePicFileId()))
             user.setProfilePicFileId(userDTO.getProfilePicFileId());
+        // Normalize to a supported tag ("hi-IN" → "hi", garbage → "en") before persisting
+        if (StringUtils.hasText(userDTO.getPreferredLocale()))
+            user.setPreferredLocale(LocaleRegistry.normalize(userDTO.getPreferredLocale()));
 
         // Only set password if it's provided
         if (StringUtils.hasText(userDTO.getPassword()))
@@ -473,6 +477,9 @@ public class UserService {
             updateIfNotNull(request.getFullName(), userOptional.get()::setFullName);
             updateIfNotNull(request.getDateOfBirth(), userOptional.get()::setDateOfBirth);
             updateIfNotNull(request.getAddressLine(), userOptional.get()::setAddressLine);
+            // Normalize to a supported tag ("hi-IN" → "hi", garbage → "en") before persisting
+            if (StringUtils.hasText(request.getPreferredLocale()))
+                userOptional.get().setPreferredLocale(LocaleRegistry.normalize(request.getPreferredLocale()));
 
             User savedUser = userRepository.save(userOptional.get());
 

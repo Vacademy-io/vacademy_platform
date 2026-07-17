@@ -52,6 +52,15 @@ public class LearnerReportController {
         return learnerReportService.getComparisonData(user, assessmentId, attemptId, instituteId);
     }
 
+    /** AI-annotated copy data: OCR layout map + all annotations for the attempt. */
+    @GetMapping("/annotated-copy")
+    public ResponseEntity<vacademy.io.assessment_service.features.learner_assessment.dto.LearnerAnnotatedCopyDto> getAnnotatedCopy(
+            @RequestAttribute("user") CustomUserDetails user,
+            @RequestParam(name = "assessmentId") String assessmentId,
+            @RequestParam(name = "attemptId") String attemptId) {
+        return ResponseEntity.ok(learnerReportService.getAnnotatedCopy(user, assessmentId, attemptId));
+    }
+
     @GetMapping("/leaderboard")
     public ResponseEntity<SmartLeaderboardDto> getStudentLeaderboard(
             @RequestAttribute("user") CustomUserDetails user,

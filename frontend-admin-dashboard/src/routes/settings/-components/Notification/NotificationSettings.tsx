@@ -75,6 +75,7 @@ import {
     getNotificationSettings,
     upsertNotificationSettings,
     mergeChatSettings,
+    mergeAppOverlaySettings,
 } from '@/services/notification-settings';
 import {
     getTerminology,
@@ -471,6 +472,49 @@ export default function NotificationSettings({ isTab = false }: Props) {
                             }
                         />
                     </div>
+                </CardContent>
+            </Card>
+
+            {/* App Overlays */}
+            <Card className="rounded-lg border-gray-200">
+                <CardHeader className="py-3">
+                    <CardTitle className="text-base">App Overlays</CardTitle>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                        Full-screen announcements {chatRoleLabelPlural('student').toLowerCase()}{' '}
+                        see when they open the app
+                    </div>
+                </CardHeader>
+                <CardContent className="grid gap-4 md:grid-cols-3">
+                    <ToggleRow
+                        label={`${chatRoleLabelPlural('student')} can send`}
+                        checked={mergeAppOverlaySettings(settings.appOverlays).students_can_send}
+                        onChange={(checked) =>
+                            update('appOverlays', (a) => ({
+                                ...mergeAppOverlaySettings(a),
+                                students_can_send: checked,
+                            }))
+                        }
+                    />
+                    <ToggleRow
+                        label={`${chatRoleLabelPlural('teacher')} can send`}
+                        checked={mergeAppOverlaySettings(settings.appOverlays).teachers_can_send}
+                        onChange={(checked) =>
+                            update('appOverlays', (a) => ({
+                                ...mergeAppOverlaySettings(a),
+                                teachers_can_send: checked,
+                            }))
+                        }
+                    />
+                    <ToggleRow
+                        label={`${chatRoleLabelPlural('admin')} can send`}
+                        checked={mergeAppOverlaySettings(settings.appOverlays).admins_can_send}
+                        onChange={(checked) =>
+                            update('appOverlays', (a) => ({
+                                ...mergeAppOverlaySettings(a),
+                                admins_can_send: checked,
+                            }))
+                        }
+                    />
                 </CardContent>
             </Card>
 

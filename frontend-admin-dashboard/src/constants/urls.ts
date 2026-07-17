@@ -7,6 +7,8 @@ export const SUPPORT_BASE_URL = `${BASE_URL}/community-service/support/v1`;
 // Super-admin-managed dashboard widgets (community-service feature/dashboardwidget). Institute is
 // taken from the `clientId` header / instituteId param; see services/institute-widgets.ts.
 export const INSTITUTE_WIDGET_BASE_URL = `${BASE_URL}/community-service/dashboard-widget/v1`;
+// Read-only product roadmap shown in the Assist Dock (community-service feature/roadmap).
+export const ROADMAP_BASE_URL = `${BASE_URL}/community-service/roadmap/v1`;
 // Local admin-core override — kept for ad-hoc dev testing. Production callers
 // must use BASE_URL; flip specific URL constants to this only while testing locally.
 export const LOCAL_ADMIN_CORE_BASE = 'http://localhost:8072';
@@ -1045,6 +1047,8 @@ export const TRIGGER_EVALUATION_URL = `${BASE_URL}/assessment-service/assessment
 export const STOP_EVALUATION_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/stop`;
 export const GET_EVALUATION_PROGRESS_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/progress`;
 export const GET_COMPLETED_QUESTIONS_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/completed-questions`;
+export const REVIEW_EVALUATION_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/review`;
+export const GET_EVALUATION_PROCESSES_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/processes`;
 // Course Catalogue Editor
 export const CATALOGUE_BASE_URL = `${BASE_URL}/admin-core-service/v1/course-catalogue`;
 export const GET_CATALOGUE_TAGS = (instituteId: string) =>
@@ -1074,6 +1078,8 @@ export const AI_PAGE_BUILDER_GENERATE = () => `${AI_SERVICE_BASE_URL}/page-build
 export const AI_PAGE_BUILDER_ESTIMATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/estimate`;
 export const AI_PAGE_BUILDER_EDIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/edit`;
 export const AI_PAGE_BUILDER_BRAND_KIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/brand-kit`;
+export const AI_PAGE_BUILDER_IMAGE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/image`;
+export const AI_PAGE_BUILDER_SITE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site`;
 
 export const LINK_COUNSELLOR = `${BASE_URL}/admin-core-service/enquiry/link-counselor`;
 export const GET_ENQUIRY_DETAILS = `${BASE_URL}/admin-core-service/enquiry/v1/admin/details`;

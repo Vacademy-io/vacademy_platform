@@ -46,6 +46,8 @@ public class ModeSettingsValidator implements ConstraintValidator<ValidModeSetti
                     return validateStreamSettings(settings, context);
                 case "TASKS":
                     return validateTasksSettings(settings, context);
+                case "APP_OVERLAY":
+                    return validateAppOverlaySettings(settings, context);
                 default:
                     return true; // Allow other modes without specific validation
             }
@@ -163,6 +165,19 @@ public class ModeSettingsValidator implements ConstraintValidator<ValidModeSetti
             return false;
         }
         
+        return true;
+    }
+
+    private boolean validateAppOverlaySettings(Map<String, Object> settings, ConstraintValidatorContext context) {
+        Object showUntil = settings.get("showUntil");
+        if (showUntil instanceof String showUntilStr && !showUntilStr.isBlank()) {
+            try {
+                LocalDateTime.parse(showUntilStr);
+            } catch (Exception e) {
+                addConstraintViolation(context, "Invalid showUntil format. Expected ISO LocalDateTime format.");
+                return false;
+            }
+        }
         return true;
     }
 

@@ -305,7 +305,15 @@ public class InstituteAnnouncementSettingsService {
         resources.setAdminsCanUpload(true);
         resources.setMaxFileSizeMb(50);
         defaultSettings.setResources(resources);
-        
+
+        // App overlay defaults (full-screen announcement on app open)
+        InstituteAnnouncementSettingsResponse.AppOverlaySettings appOverlays =
+            new InstituteAnnouncementSettingsResponse.AppOverlaySettings();
+        appOverlays.setStudentsCanSend(false);
+        appOverlays.setTeachersCanSend(true);
+        appOverlays.setAdminsCanSend(true);
+        defaultSettings.setAppOverlays(appOverlays);
+
         // General defaults
         InstituteAnnouncementSettingsResponse.GeneralSettings general = 
             new InstituteAnnouncementSettingsResponse.GeneralSettings();
@@ -426,9 +434,25 @@ public class InstituteAnnouncementSettingsService {
                 return checkStreamPermission(announcementSettings.getStreams(), roleKey, action);
             case "RESOURCES":
                 return checkResourcePermission(announcementSettings.getResources(), roleKey, action);
+            case "APP_OVERLAY":
+                return checkAppOverlayPermission(announcementSettings.getAppOverlays(), roleKey, action);
             default:
                 return false;
         }
+    }
+
+    private boolean checkAppOverlayPermission(InstituteAnnouncementSettingsResponse.AppOverlaySettings appOverlays, String role, String action) {
+        // Institutes with settings saved before APP_OVERLAY existed have no block stored —
+        // fall back to the mode defaults (teachers/admins can send) instead of denying everyone.
+        if (appOverlays == null) {
+            return "teacher".equals(role) || "faculty".equals(role) || "admin".equals(role);
+        }
+        return switch (role) {
+            case "student" -> Boolean.TRUE.equals(appOverlays.getStudentsCanSend());
+            case "teacher", "faculty" -> Boolean.TRUE.equals(appOverlays.getTeachersCanSend());
+            case "admin" -> Boolean.TRUE.equals(appOverlays.getAdminsCanSend());
+            default -> false;
+        };
     }
 
     private boolean checkCommunityPermission(InstituteAnnouncementSettingsResponse.CommunitySettings community, String role, String action) {

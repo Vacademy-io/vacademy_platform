@@ -352,7 +352,7 @@ public class AudienceController {
         String oldStatus = userLeadProfileService.getProfileDTO(userId, instituteId)
                 .map(p -> p.getConversionStatus())
                 .orElse(null);
-        userLeadProfileService.updateConversionStatus(userId, instituteId, status,
+        var updatedProfile = userLeadProfileService.updateConversionStatus(userId, instituteId, status,
                 user != null ? user.getUserId() : null);
         try {
             LeadJourneyActionType actionType = "CONVERTED".equals(status) ? LeadJourneyActionType.LEAD_CONVERTED
@@ -366,7 +366,7 @@ public class AudienceController {
             meta.put("new_status", status);
             meta.put("changed_by", user.getUsername() != null ? user.getUsername() : "");
             timelineEventService.logJourneyEvent(
-                    "USER_LEAD_PROFILE", userId,
+                    "USER_LEAD_PROFILE", updatedProfile.getId(),
                     actionType,
                     "ADMIN", user.getUserId(), user.getUsername(),
                     title, null,
@@ -388,10 +388,10 @@ public class AudienceController {
             @RequestParam String instituteId,
             @RequestParam String tier,
             @RequestAttribute("user") CustomUserDetails user) {
-        userLeadProfileService.updateLeadTier(userId, instituteId, tier);
+        var updatedProfile = userLeadProfileService.updateLeadTier(userId, instituteId, tier);
         try {
             timelineEventService.logJourneyEvent(
-                    "USER_LEAD_PROFILE", userId,
+                    "USER_LEAD_PROFILE", updatedProfile.getId(),
                     LeadJourneyActionType.STATUS_CHANGED,
                     "ADMIN", user.getUserId(), user.getUsername(),
                     "Lead tier set to " + tier, null,
@@ -404,15 +404,17 @@ public class AudienceController {
     }
 
     /**
-     * Batch fetch lead profiles for a list of user IDs.
-     * POST /admin-core-service/v1/audience/user-lead-profiles/batch
+     * Batch fetch lead profiles for a list of user IDs, scoped to one institute (a user_id
+     * can now have a profile per institute — see UserLeadProfile's uniqueConstraints).
+     * POST /admin-core-service/v1/audience/user-lead-profiles/batch?instituteId=...
      * Body: ["userId1", "userId2", ...]
      * Returns: { "userId1": { ...profile }, "userId2": { ...profile } }
      */
     @PostMapping("/user-lead-profiles/batch")
     public ResponseEntity<Map<String, UserLeadProfileDTO>> getBatchLeadProfiles(
+            @RequestParam String instituteId,
             @RequestBody List<String> userIds) {
-        return ResponseEntity.ok(userLeadProfileService.getProfilesForUsers(userIds));
+        return ResponseEntity.ok(userLeadProfileService.getProfilesForUsers(userIds, instituteId));
     }
 
     /**
@@ -454,10 +456,10 @@ public class AudienceController {
                 return ResponseEntity.ok(
                         userLeadProfileService.getProfileDTO(userId, instituteId).orElse(null));
             }
-            userLeadProfileService.assignCounselor(userId, instituteId, null, null);
+            var unassignedProfile = userLeadProfileService.assignCounselor(userId, instituteId, null, null);
             try {
                 timelineEventService.logJourneyEvent(
-                        "USER_LEAD_PROFILE", userId,
+                        "USER_LEAD_PROFILE", unassignedProfile.getId(),
                         LeadJourneyActionType.COUNSELOR_UNASSIGNED,
                         "ADMIN", user.getUserId(), user.getUsername(),
                         "Counselor removed",
@@ -472,10 +474,10 @@ public class AudienceController {
                     userLeadProfileService.getProfileDTO(userId, instituteId).orElse(null));
         }
 
-        userLeadProfileService.assignCounselor(userId, instituteId, counselorId, counselorName);
+        var assignedProfile = userLeadProfileService.assignCounselor(userId, instituteId, counselorId, counselorName);
         try {
             timelineEventService.logJourneyEvent(
-                    "USER_LEAD_PROFILE", userId,
+                    "USER_LEAD_PROFILE", assignedProfile.getId(),
                     LeadJourneyActionType.COUNSELOR_ASSIGNED,
                     "ADMIN", user.getUserId(), user.getUsername(),
                     "Counselor assigned",

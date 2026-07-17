@@ -252,13 +252,15 @@ public class SalesDashboardService {
         // human title 'Counselor reassigned'. Initial assigns vs. reassigns
         // share the same enum; the metadata "reassigned_from" key is what
         // distinguishes a reassign event, and it's already in the WHERE.
-        // type_id on USER_LEAD_PROFILE events is the lead's user_id, so we
+        // type_id on USER_LEAD_PROFILE events is user_lead_profile.id (not the
+        // raw user_id — timeline_event has no institute_id column, and a
+        // user_id alone can now resolve to a profile per institute), so we
         // join through user_lead_profile to scope by institute and stop the
         // widget from leaking other tenants' reassignment counts.
         return jdbc.query(
                 "SELECT DATE(te.created_at) AS day, COUNT(*) AS n " +
                 "FROM timeline_event te " +
-                "JOIN user_lead_profile ulp ON ulp.user_id = te.type_id " +
+                "JOIN user_lead_profile ulp ON ulp.id = te.type_id " +
                 "WHERE te.action_type = 'COUNSELOR_ASSIGNED' " +
                 "  AND te.type = 'USER_LEAD_PROFILE' " +
                 "  AND ulp.institute_id = ? " +
@@ -367,14 +369,14 @@ public class SalesDashboardService {
         // distinct lead-user_ids that had timeline_event in the window and
         // were created before the window).
         //
-        // type_id for USER_LEAD_PROFILE events is user_lead_profile.user_id
-        // (see AudienceController + CounsellorReassignService callers), NOT
-        // .id, so the join is ulp.user_id = te.type_id and we filter to type
-        // = 'USER_LEAD_PROFILE' so we don't accidentally pick up unrelated
+        // type_id for USER_LEAD_PROFILE events is user_lead_profile.id (see
+        // AudienceController + CounsellorReassignService callers), NOT the raw
+        // user_id, so the join is ulp.id = te.type_id and we filter to type =
+        // 'USER_LEAD_PROFILE' so we don't accidentally pick up unrelated
         // entity types whose type_id may collide.
         jdbc.query("SELECT DATE(te.created_at) AS day, COUNT(DISTINCT te.type_id) AS n " +
                         "FROM timeline_event te " +
-                        "JOIN user_lead_profile ulp ON ulp.user_id = te.type_id " +
+                        "JOIN user_lead_profile ulp ON ulp.id = te.type_id " +
                         "WHERE te.type = 'USER_LEAD_PROFILE' " +
                         "  AND ulp.institute_id = ? " +
                         "  AND te.created_at >= ? AND te.created_at < ? " +

@@ -2660,7 +2660,7 @@ public class AudienceService {
         // per row.
         Map<String, vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile> userIdToProfile = userIds
                 .isEmpty() ? Collections.emptyMap()
-                        : userLeadProfileRepository.findByUserIdIn(new ArrayList<>(userIds)).stream()
+                        : userLeadProfileRepository.findByUserIdInAndInstituteId(new ArrayList<>(userIds), instituteId).stream()
                                 .collect(Collectors.toMap(
                                         vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile::getUserId,
                                         p -> p,
@@ -2872,9 +2872,10 @@ public class AudienceService {
      * <p>Restricted to ADMIN. A lead that has already converted cannot be deleted (409): the
      * row is now the head of an admission/payment trail, and hiding it would strand that trail.</p>
      *
-     * <p>Deliberately does NOT touch {@code user_lead_profile}: that is one row per person and
-     * carries the counsellor assignment, while this is per response. Deleting one of a person's
-     * leads must not drop their assignment. The workbench derives its own visibility instead.</p>
+     * <p>Deliberately does NOT touch {@code user_lead_profile}: that is one row per person per
+     * institute and carries the counsellor assignment, while this is per response. Deleting one
+     * of a person's leads must not drop their assignment. The workbench derives its own
+     * visibility instead.</p>
      *
      * @return the number of leads actually flipped ACTIVE -> INACTIVE.
      */
@@ -2886,7 +2887,7 @@ public class AudienceService {
         // converted lead fails whole rather than half-applying.
         for (AudienceResponse response : targets) {
             String leadUserId = response.getUserId() != null ? response.getUserId() : response.getStudentUserId();
-            if (leadUserId != null && isConverted(leadUserId)) {
+            if (leadUserId != null && isConverted(leadUserId, request.getInstituteId())) {
                 throw new ConflictException(
                         "This lead has already converted and cannot be deleted.");
             }
@@ -2900,7 +2901,7 @@ public class AudienceService {
             response.setAudienceStatus(AudienceStatusEnum.INACTIVE.name());
             audienceResponseRepository.save(response);
             logLeadCurationEvent(response, actor, LeadJourneyActionType.LEAD_DELETED,
-                    "Lead deleted", "Lead removed from the CRM", request.getScope());
+                    "Lead deleted", "Lead removed from the CRM", request.getScope(), request.getInstituteId());
             deleted++;
         }
         logger.info("Soft-deleted {} lead(s) (scope={}) by user {}",
@@ -2925,7 +2926,7 @@ public class AudienceService {
             response.setAudienceStatus(AudienceStatusEnum.ACTIVE.name());
             audienceResponseRepository.save(response);
             logLeadCurationEvent(response, actor, LeadJourneyActionType.LEAD_RESTORED,
-                    "Lead restored", "Lead restored to the CRM", request.getScope());
+                    "Lead restored", "Lead restored to the CRM", request.getScope(), request.getInstituteId());
             restored++;
         }
         logger.info("Restored {} lead(s) (scope={}) by user {}",
@@ -3015,16 +3016,17 @@ public class AudienceService {
         return StringUtils.hasText(request.getScope()) ? request.getScope().toUpperCase() : "RESPONSE";
     }
 
-    /** True when this user's lead profile is marked CONVERTED. */
-    private boolean isConverted(String leadUserId) {
-        return userLeadProfileRepository.findByUserId(leadUserId)
+    /** True when this user's lead profile at this institute is marked CONVERTED. */
+    private boolean isConverted(String leadUserId, String instituteId) {
+        return userLeadProfileRepository.findByUserIdAndInstituteId(leadUserId, instituteId)
                 .map(p -> "CONVERTED".equalsIgnoreCase(p.getConversionStatus()))
                 .orElse(false);
     }
 
     /** Best-effort audit trail — a delete must be attributable, but must not fail over logging. */
     private void logLeadCurationEvent(AudienceResponse response, CustomUserDetails actor,
-            LeadJourneyActionType actionType, String title, String description, String scope) {
+            LeadJourneyActionType actionType, String title, String description, String scope,
+            String instituteId) {
         String leadUserId = response.getUserId() != null ? response.getUserId() : response.getStudentUserId();
         if (!StringUtils.hasText(leadUserId)) {
             return;
@@ -3038,8 +3040,9 @@ public class AudienceService {
             metadata.put("scope", scope != null ? scope.toUpperCase() : "RESPONSE");
             metadata.put("campaign_name", campaignName != null ? campaignName : "");
             metadata.put("actor", actor.getUsername() != null ? actor.getUsername() : "");
+            String typeId = userLeadProfileService.resolveProfileId(leadUserId, instituteId);
             timelineEventService.logJourneyEvent(
-                    "USER_LEAD_PROFILE", leadUserId, actionType,
+                    "USER_LEAD_PROFILE", typeId, actionType,
                     "ADMIN", actor.getUserId(), actor.getUsername(),
                     title, description, metadata, leadUserId);
         } catch (Exception e) {

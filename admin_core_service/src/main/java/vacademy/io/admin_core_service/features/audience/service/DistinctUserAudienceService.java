@@ -150,7 +150,7 @@ public class DistinctUserAudienceService {
 
         // ── Step 5: Lead profiles for ONLY these user IDs ─────────────────────
         Map<String, UserLeadProfileDTO> leadProfilesByUserId = userLeadProfileService
-                .getProfilesForUsers(pagedUserIds);
+                .getProfilesForUsers(pagedUserIds, request.getInstituteId());
 
         // ── Step 6: Audience membership for these user IDs ────────────────────
         Set<String> instituteUserIdSet = v2DataByUserId.keySet();

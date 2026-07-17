@@ -663,7 +663,18 @@ export default function ScheduleStep2() {
 
             for (const targetId of targetSessionIds) {
                 try {
-                    const body = transformFormToDTOStep2(data, targetId, packageSessionIds);
+                    // sessionDetails is snapshotted when the admin opens the session for
+                    // editing and is not refetched after step 1, so it still holds the
+                    // pre-edit schedule the reschedule mail needs for {{OLD_TIME}}.
+                    // Only meaningful when editing a single existing session.
+                    const previousSchedule =
+                        isEditState && !isBulkFlow ? sessionDetails?.schedule : null;
+                    const body = transformFormToDTOStep2(
+                        data,
+                        targetId,
+                        packageSessionIds,
+                        previousSchedule
+                    );
                     await createLiveSessionStep2(body);
                     fanOutResults.push({ id: targetId, ok: true });
                 } catch (err) {

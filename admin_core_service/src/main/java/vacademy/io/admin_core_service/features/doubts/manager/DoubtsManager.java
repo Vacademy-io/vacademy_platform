@@ -438,7 +438,7 @@ public class DoubtsManager {
         // Step 2: batch-wide faculty (this is what BATCH_TEACHER mode hits directly, and what
         // SUBJECT_TEACHER mode falls back to when subject teacher is empty).
         List<String> batchFaculty = activeUserIdsFromMappings(
-                facultyMappingRepository.findByPackageSessionId(packageSessionId));
+                facultyMappingRepository.findRealTeachersByPackageSessionId(packageSessionId));
         if (!batchFaculty.isEmpty()) return batchFaculty;
 
         // Step 3: final fallback — institute admin(s).

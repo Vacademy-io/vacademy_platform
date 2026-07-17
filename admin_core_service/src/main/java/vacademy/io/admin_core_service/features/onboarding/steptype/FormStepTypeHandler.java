@@ -17,6 +17,7 @@ import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingStep;
 import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingStepInstance;
 import vacademy.io.admin_core_service.features.onboarding.enums.OnboardingStepInstanceStatus;
 import vacademy.io.admin_core_service.features.onboarding.enums.OnboardingStepTypeEnum;
+import vacademy.io.admin_core_service.features.onboarding.service.OnboardingRoleAccessResolutionService;
 import vacademy.io.admin_core_service.features.onboarding.service.OnboardingStudentCreationService;
 import vacademy.io.common.exceptions.InvalidRequestException;
 
@@ -40,6 +41,7 @@ public class FormStepTypeHandler implements OnboardingStepTypeHandler {
     private final InstituteCustomFieldRepository instituteCustomFieldRepository;
     private final CustomFieldValueService customFieldValueService;
     private final OnboardingStudentCreationService onboardingStudentCreationService;
+    private final OnboardingRoleAccessResolutionService roleAccessResolutionService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Override
@@ -68,8 +70,18 @@ public class FormStepTypeHandler implements OnboardingStepTypeHandler {
                 continue;
             }
 
+            // Never trust the client's edit intent: re-check per-field permission for the
+            // actual caller role server-side, exactly like every other field below relies on
+            // fieldConfig.isMandatory rather than trusting what the client claims. A field the
+            // caller can't edit is treated as not submitted, so a tampered/naive payload can't
+            // write to it -- it just falls through to the mandatory-field check like any other
+            // absent value.
+            boolean canEdit = roleAccessResolutionService
+                    .resolveFieldAccess(step.getId(), fieldConfig.getInstituteCustomFieldId(), actorRoleKey)
+                    .canEdit;
+
             String customFieldId = instituteCustomField.get().getCustomFieldId();
-            Object rawValue = payload == null ? null : payload.get(fieldConfig.getInstituteCustomFieldId());
+            Object rawValue = (!canEdit || payload == null) ? null : payload.get(fieldConfig.getInstituteCustomFieldId());
             String value = rawValue == null ? null : String.valueOf(rawValue);
 
             if (Boolean.TRUE.equals(fieldConfig.getIsMandatory()) && !StringUtils.hasText(value)) {

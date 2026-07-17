@@ -50,6 +50,23 @@ public class EvaluationAccessValidator {
         assertCallerOwnsAttempt(user, instituteId, process.getStudentAttempt());
     }
 
+    /**
+     * Assert the caller is an authenticated member of {@code instituteId}. Used
+     * for list endpoints where the resource is scoped by an institute filter in
+     * the query itself (so there is no single attempt to bind to).
+     */
+    public void requireInstituteMembership(CustomUserDetails user, String instituteId) {
+        if (user == null || user.getUserId() == null) {
+            throw new ForbiddenException("Authentication is required for AI evaluation");
+        }
+        if (user.getAuthorities() == null || user.getAuthorities().isEmpty()) {
+            throw new ForbiddenException("You do not have a role in this institute");
+        }
+        if (instituteId == null || instituteId.isBlank()) {
+            throw new ForbiddenException("Institute context is required");
+        }
+    }
+
     private void assertCallerOwnsAttempt(CustomUserDetails user, String instituteId, StudentAttempt attempt) {
         if (user == null || user.getUserId() == null) {
             throw new ForbiddenException("Authentication is required for AI evaluation");

@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.AiEvaluationTriggerRequest;
+import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.EvaluationProcessSummaryDto;
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.EvaluationProgressDto;
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.QuestionEvaluationResultDto;
 import vacademy.io.assessment_service.features.assessment.dto.evaluation_ai.QuestionOverrideRequest;
@@ -31,6 +32,20 @@ public class AiEvaluationController {
                         @RequestHeader(value = "clientId", required = false) String instituteId,
                         @RequestBody AiEvaluationTriggerRequest request) {
                 return ResponseEntity.ok(aiEvaluationService.triggerEvaluation(request, user, instituteId));
+        }
+
+        /**
+         * List all AI-evaluation runs for an assessment (evaluations dashboard).
+         * Scoped to the caller's institute — a running/failed run stays findable
+         * after the teacher navigates away.
+         */
+        @GetMapping("/processes")
+        public ResponseEntity<List<EvaluationProcessSummaryDto>> listProcesses(
+                        @RequestAttribute("user") CustomUserDetails user,
+                        @RequestHeader(value = "clientId", required = false) String instituteId,
+                        @RequestParam String assessmentId) {
+                accessValidator.requireInstituteMembership(user, instituteId);
+                return ResponseEntity.ok(progressService.listProcessesForAssessment(assessmentId, instituteId));
         }
 
         /**

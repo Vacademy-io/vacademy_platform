@@ -46,6 +46,9 @@ public class InstituteAnnouncementSettingsRequest {
         private ResourceSettings resources;
         
         @Valid
+        private AppOverlaySettings appOverlays;
+
+        @Valid
         private GeneralSettings general;
 
         @Valid
@@ -187,6 +190,20 @@ public class InstituteAnnouncementSettingsRequest {
         private Integer maxFileSizeMb = 50;
     }
     
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class AppOverlaySettings {
+        @JsonProperty("students_can_send")
+        private Boolean studentsCanSend = false;
+
+        @JsonProperty("teachers_can_send")
+        private Boolean teachersCanSend = true;
+
+        @JsonProperty("admins_can_send")
+        private Boolean adminsCanSend = true;
+    }
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor

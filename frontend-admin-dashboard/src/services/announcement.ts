@@ -11,7 +11,8 @@ export type ModeType =
     | 'STREAM'
     | 'RESOURCES'
     | 'COMMUNITY'
-    | 'TASKS';
+    | 'TASKS'
+    | 'APP_OVERLAY';
 
 export type MediumType = 'WHATSAPP' | 'PUSH_NOTIFICATION' | 'EMAIL';
 
@@ -60,6 +61,27 @@ export interface CreateAnnouncementRequest {
         startDate?: string;
         endDate?: string;
     };
+}
+
+// One row of GET /announcements/{id}/recipients — per-recipient delivery status.
+export interface AnnouncementRecipientRow {
+    recipientMessageId: string;
+    userId: string;
+    userName: string | null;
+    modeType: ModeType;
+    status: string;
+    deliveredAt: string | null;
+    readAt: string | null;
+    dismissedAt: string | null;
+}
+
+// Spring Page envelope returned by the /recipients endpoint.
+export interface AnnouncementRecipientsPage {
+    content: AnnouncementRecipientRow[];
+    totalPages: number;
+    totalElements: number;
+    number: number;
+    size: number;
 }
 
 export const AnnouncementService = {
@@ -155,6 +177,20 @@ export const AnnouncementService = {
 
     stats: async (announcementId: string) => {
         const { data } = await axios.get(`${BASE}/announcements/${announcementId}/stats`);
+        return data;
+    },
+
+    recipients: async (
+        announcementId: string,
+        params: { modeType?: ModeType; page?: number; size?: number }
+    ): Promise<AnnouncementRecipientsPage> => {
+        const search = new URLSearchParams();
+        if (params.modeType) search.set('modeType', params.modeType);
+        if (params.page !== undefined) search.set('page', String(params.page));
+        if (params.size !== undefined) search.set('size', String(params.size));
+        const { data } = await axios.get(
+            `${BASE}/announcements/${announcementId}/recipients?${search.toString()}`
+        );
         return data;
     },
 

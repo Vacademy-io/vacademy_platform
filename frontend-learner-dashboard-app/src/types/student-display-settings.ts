@@ -179,6 +179,28 @@ export interface StudentNotificationSettings {
   allowSystemAlerts: boolean;
   allowDashboardPins: boolean;
   allowBatchStream: boolean;
+  // Full-screen APP_OVERLAY announcements shown when the app is opened
+  allowAppOverlays: boolean;
+}
+
+// Guided tutorials (intro tours). Keys must match the admin dashboard's
+// Student Display settings tour registry — do not rename.
+export const LEARNER_TOUR_KEYS = [
+  "dashboard-overview",
+  "browse-courses",
+  "watch-content",
+  "take-assessment",
+  "join-live-class",
+  "view-progress",
+] as const;
+
+export type LearnerTourKey = (typeof LEARNER_TOUR_KEYS)[number];
+
+export interface StudentTutorialSettings {
+  // Master switch — institutes opt in from admin Student Display settings
+  enabled: boolean;
+  // Which predefined tours learners can run (subset of LEARNER_TOUR_KEYS)
+  enabledTours: string[];
 }
 
 // Certificates
@@ -227,6 +249,7 @@ export interface StudentDisplaySettingsData {
   courseSettings: StudentCourseSettings;
   allCourses: StudentAllCoursesSettings;
   notifications: StudentNotificationSettings;
+  tutorials: StudentTutorialSettings;
   certificates: StudentCertificateSettings;
   concentration: ConcentrationSettings;
   ui: StudentUISettings;

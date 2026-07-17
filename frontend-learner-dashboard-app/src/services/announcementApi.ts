@@ -132,6 +132,66 @@ export const getDashboardPins = async (): Promise<UserMessage[]> => {
   }
 };
 
+// App Overlays API (APP_OVERLAY announcements — full-screen HTML shown on app open)
+export const getAppOverlays = async (): Promise<UserMessage[]> => {
+  try {
+    const { userId } = await getUserContext();
+    if (!userId) throw new Error('User ID not found');
+
+    const response = await notificationApi.get(
+      `/user-messages/user/${userId}/app-overlays`
+    );
+    // Same normalization as dashboard pins: never hand a non-array downstream.
+    const data = response.data as unknown;
+    if (Array.isArray(data)) return data as UserMessage[];
+    if (data && Array.isArray((data as { content?: unknown }).content)) {
+      return (data as { content: UserMessage[] }).content;
+    }
+    return [];
+  } catch (error) {
+    console.error('Error fetching app overlays:', error);
+    return [];
+  }
+};
+
+/**
+ * Silent + idempotent interaction writes for overlays. The generic
+ * `/interactions` endpoint inserts a new row per call (duplicates inflate the
+ * admin's seen/dismissed counts) and the markAsRead/dismissMessage wrappers
+ * above fire toasts — both wrong for an automatic full-screen overlay.
+ */
+export const markOverlaySeen = async (recipientMessageId: string) => {
+  try {
+    const { userId } = await getUserContext();
+    if (!userId) throw new Error('User ID not found');
+
+    const payload: MessageInteractionRequest = {
+      recipientMessageId,
+      userId,
+      interactionType: 'READ',
+    };
+    await notificationApi.post('/user-messages/interactions/read', payload);
+  } catch (error) {
+    console.error('Error marking overlay as seen:', error);
+  }
+};
+
+export const dismissOverlay = async (recipientMessageId: string) => {
+  try {
+    const { userId } = await getUserContext();
+    if (!userId) throw new Error('User ID not found');
+
+    const payload: MessageInteractionRequest = {
+      recipientMessageId,
+      userId,
+      interactionType: 'DISMISSED',
+    };
+    await notificationApi.post('/user-messages/interactions/dismiss', payload);
+  } catch (error) {
+    console.error('Error dismissing overlay:', error);
+  }
+};
+
 // Stream Messages API
 export const getStreamMessages = async (
   packageSessionId: string,

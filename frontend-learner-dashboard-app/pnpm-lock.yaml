@@ -311,6 +311,9 @@ importers:
       docx-preview:
         specifier: ^0.3.5
         version: 0.3.5
+      driver.js:
+        specifier: ^1.7.0
+        version: 1.7.0
       firebase:
         specifier: ^10.7.0
         version: 10.14.1
@@ -5004,6 +5007,9 @@ packages:
   dot-prop@5.3.0:
     resolution: {integrity: sha512-QM8q3zDe58hqUqjraQOmzZ1LIH9SWQJTlEKCH4kJ2oQvLZk7RbQXvtDM2XEq3fwkV9CCvvH4LA0AV+ogFsBM2Q==}
     engines: {node: '>=8'}
+
+  driver.js@1.7.0:
+    resolution: {integrity: sha512-IWkESaVWaoxIWu3TqTpLRDgOFmDdjZsg/Oz7hrrr4ApBUapTFm9YCXYnptu3mKN8l4eAdtrxpU54l7kHLK96tw==}
 
   dunder-proto@1.0.1:
     resolution: {integrity: sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==}
@@ -13465,6 +13471,8 @@ snapshots:
   dot-prop@5.3.0:
     dependencies:
       is-obj: 2.0.0
+
+  driver.js@1.7.0: {}
 
   dunder-proto@1.0.1:
     dependencies:

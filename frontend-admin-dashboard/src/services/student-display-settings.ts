@@ -223,6 +223,8 @@ function mergeWithDefaults(
                 incoming?.notifications?.allowDashboardPins ?? d.notifications.allowDashboardPins,
             allowBatchStream:
                 incoming?.notifications?.allowBatchStream ?? d.notifications.allowBatchStream,
+            allowAppOverlays:
+                incoming?.notifications?.allowAppOverlays ?? d.notifications.allowAppOverlays,
         },
         certificates: {
             enabled: incoming?.certificates?.enabled ?? d.certificates.enabled,
@@ -241,6 +243,10 @@ function mergeWithDefaults(
                 incoming?.liveClasses?.showActivityStats ?? d.liveClasses.showActivityStats,
             showClassMaterials:
                 incoming?.liveClasses?.showClassMaterials ?? d.liveClasses.showClassMaterials,
+        },
+        tutorials: {
+            enabled: incoming?.tutorials?.enabled ?? d.tutorials.enabled,
+            enabledTours: incoming?.tutorials?.enabledTours ?? d.tutorials.enabledTours,
         },
         postLoginRedirectRoute: incoming?.postLoginRedirectRoute ?? d.postLoginRedirectRoute,
     };

@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -292,6 +293,7 @@ public class LeadScoringService {
      * Percentile is an expensive operation (touches all rows) so it runs as batch.
      */
     @Scheduled(fixedRate = 15 * 60 * 1000) // 15 minutes
+    @SchedulerLock(name = "LeadScoringService_batchRecalculatePercentiles", lockAtMostFor = "PT14M", lockAtLeastFor = "PT30S")
     @Transactional
     public void batchRecalculatePercentiles() {
         logger.info("Starting batch percentile recalculation...");

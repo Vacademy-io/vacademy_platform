@@ -1,6 +1,7 @@
 import {
     BASE_URL,
     GET_COMPLETED_QUESTIONS_URL,
+    GET_EVALUATION_PROCESSES_URL,
     GET_EVALUATION_PROGRESS_URL,
     REVIEW_EVALUATION_URL,
     STOP_EVALUATION_URL,
@@ -230,6 +231,34 @@ export const useStopEvaluation = () => {
         mutationKey: ['STOP_EVALUATION'],
         mutationFn: (processId: string) => stopEvaluation(processId),
     };
+};
+
+export interface EvaluationProcessSummary {
+    process_id: string;
+    attempt_id: string;
+    participant_name?: string | null;
+    status: string;
+    questions_completed?: number | null;
+    questions_total?: number | null;
+    needs_review_count?: number | null;
+    started_at?: string | null;
+    completed_at?: string | null;
+}
+
+/**
+ * List every AI-evaluation run for an assessment (evaluations dashboard). Lets a
+ * teacher find a running/failed run again after navigating away — no longer
+ * dependent on localStorage.
+ */
+export const getEvaluationProcesses = async (
+    assessmentId: string
+): Promise<EvaluationProcessSummary[]> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: GET_EVALUATION_PROCESSES_URL,
+        params: { assessmentId },
+    });
+    return response?.data ?? [];
 };
 
 /**

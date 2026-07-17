@@ -3,6 +3,7 @@ import type {
   StudentDashboardWidgetConfig,
   StudentSidebarTabConfig,
 } from "@/types/student-display-settings";
+import { LEARNER_TOUR_KEYS } from "@/types/student-display-settings";
 
 function defaultSidebarTabs(): StudentSidebarTabConfig[] {
   return [
@@ -180,6 +181,12 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     allowSystemAlerts: true,
     allowDashboardPins: true,
     allowBatchStream: true,
+    allowAppOverlays: true,
+  },
+  tutorials: {
+    // Off by default — institutes opt in via Settings > Student Display.
+    enabled: false,
+    enabledTours: [...LEARNER_TOUR_KEYS],
   },
   certificates: {
     enabled: true,

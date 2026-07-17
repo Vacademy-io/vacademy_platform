@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.audience.job;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -72,6 +73,7 @@ public class MetaLeadPollingJob {
     private int maxPages;
 
     @Scheduled(cron = "${meta.lead.polling.cron:0 */10 * * * ?}")
+    @SchedulerLock(name = "MetaLeadPollingJob", lockAtMostFor = "PT9M", lockAtLeastFor = "PT10S")
     public void pollMetaLeads() {
         if (!enabled) {
             log.debug("MetaLeadPollingJob: disabled, skipping");

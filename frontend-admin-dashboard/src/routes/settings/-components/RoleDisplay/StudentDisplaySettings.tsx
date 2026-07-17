@@ -28,19 +28,24 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import type {
-    StudentDisplaySettingsData,
-    StudentCourseDetailsTabId,
-    StudentAllCoursesTabId,
-    OutlineMode,
-    StudentDefaultProvider,
-    UsernameStrategy,
-    PasswordStrategy,
-    PasswordDelivery,
-    StudentAuthPresentation,
-    StudentUiType,
-    SlidesSidebarNavigation,
+import {
+    getLearnerTourOptions,
+    LEARNER_TOUR_KEYS,
+    type StudentDisplaySettingsData,
+    type StudentCourseDetailsTabId,
+    type StudentAllCoursesTabId,
+    type OutlineMode,
+    type StudentDefaultProvider,
+    type UsernameStrategy,
+    type PasswordStrategy,
+    type PasswordDelivery,
+    type StudentAuthPresentation,
+    type StudentUiType,
+    type SlidesSidebarNavigation,
 } from '@/types/student-display-settings';
+import { Checkbox } from '@/components/ui/checkbox';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import {
     getStudentDisplaySettings,
     saveStudentDisplaySettings,
@@ -1213,6 +1218,69 @@ export default function StudentDisplaySettings(): JSX.Element {
                     </div>
                 </div>
             </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>App Tutorials</CardTitle>
+                    <CardDescription>
+                        Guided step-by-step tours{' '}
+                        {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner).toLowerCase()}{' '}
+                        can replay from their Help menu
+                    </CardDescription>
+                </CardHeader>
+                <div className="space-y-2 p-4 pt-0">
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.tutorials.enabled}
+                            onCheckedChange={(v) =>
+                                update('tutorials', {
+                                    ...settings.tutorials,
+                                    enabled: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Enable guided tutorials</Label>
+                    </div>
+                    {settings.tutorials.enabled && (
+                        <div className="space-y-2 border-t pt-3">
+                            <div className="text-xs font-medium text-muted-foreground">
+                                Available tours
+                            </div>
+                            {getLearnerTourOptions().map((tour) => (
+                                <div key={tour.key} className="flex items-start gap-2">
+                                    <Checkbox
+                                        id={`tour-${tour.key}`}
+                                        checked={settings.tutorials.enabledTours.includes(tour.key)}
+                                        onCheckedChange={(checked) => {
+                                            const next = new Set(settings.tutorials.enabledTours);
+                                            if (checked) next.add(tour.key);
+                                            else next.delete(tour.key);
+                                            update('tutorials', {
+                                                ...settings.tutorials,
+                                                // Keep canonical registry order regardless of click order
+                                                enabledTours: LEARNER_TOUR_KEYS.filter((k) =>
+                                                    next.has(k)
+                                                ),
+                                            });
+                                        }}
+                                    />
+                                    <div className="grid gap-0.5">
+                                        <Label
+                                            htmlFor={`tour-${tour.key}`}
+                                            className="text-xs font-medium"
+                                        >
+                                            {tour.label}
+                                        </Label>
+                                        <p className="text-xs text-muted-foreground">
+                                            {tour.description}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </Card>
             </section>
 
             <section id="grp-notifications" className="space-y-6">
@@ -1257,6 +1325,23 @@ export default function StudentDisplaySettings(): JSX.Element {
                             }
                         />
                         <Label className="text-xs">Allow Batch Stream</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.notifications.allowAppOverlays}
+                            onCheckedChange={(v) =>
+                                update('notifications', {
+                                    ...settings.notifications,
+                                    allowAppOverlays: v,
+                                })
+                            }
+                        />
+                        <div>
+                            <Label className="text-xs">Allow App Overlays</Label>
+                            <p className="text-xs text-muted-foreground">
+                                Full-screen announcements on app open
+                            </p>
+                        </div>
                     </div>
                 </div>
             </Card>

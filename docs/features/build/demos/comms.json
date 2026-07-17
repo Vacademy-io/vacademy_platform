@@ -1,0 +1,110 @@
+{
+  "pillar": "comms",
+  "demo": {
+    "intro": "Follow one announcement from the composer to every learner's screen, then work the WhatsApp inbox and check what actually got read.",
+    "screens": [
+      {
+        "id": "composer",
+        "device": "desktop",
+        "title": "New Announcement",
+        "nav": ["Dashboard", "Study Library", "Learners", "Communication*", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "comp-head", "title": "New Announcement — PTM & Fee Reminder", "subtitle": "Priority: High · Draft", "actions": ["Save Draft", "Submit for Approval"] },
+          { "type": "wizard", "id": "comp-wizard", "steps": ["Content", "Audience", "Channels", "Schedule"], "active": 1 },
+          { "cols": [
+            { "type": "form", "id": "comp-audience", "title": "Audience", "fields": [
+              { "label": "Recipients", "value": "All Learners · NEET 2027 Batch A", "type": "select" },
+              { "label": "Also include", "value": "Tag: Hostel Students (142)", "type": "select" },
+              { "label": "Custom-field filter", "value": "City equals Kota", "type": "select" },
+              { "label": "Exclude", "value": "Batch: JEE Advanced Evening", "type": "select" },
+              { "label": "Estimated reach", "value": "1,286 recipients", "type": "text" }
+            ]},
+            { "type": "form", "id": "comp-channels", "title": "Channels & schedule", "fields": [
+              { "label": "Email subject", "value": "PTM on Sat, 26 Jul — please confirm your slot", "type": "text" },
+              { "label": "WhatsApp template", "value": "ptm_fee_reminder_v2 · {{1}} name, {{2}} date", "type": "select" },
+              { "label": "Push notification", "value": "Auto-filled from content", "type": "select" },
+              { "label": "Send", "value": "Next Monday, 9:00 AM IST", "type": "select" }
+            ], "submit": "Schedule Send" }
+          ]}
+        ]
+      },
+      {
+        "id": "learner-phone",
+        "device": "phone",
+        "title": "Learner App",
+        "nav": ["Home*", "Courses", "Messages", "Profile"],
+        "widgets": [
+          { "type": "header", "id": "lp-head", "title": "Hi Rohan", "subtitle": "NEET 2027 Batch A · Kota" },
+          { "type": "notify", "id": "lp-notify", "items": [
+            { "channel": "WhatsApp", "text": "PTM on Sat 26 Jul, 10 AM. Reply YES to confirm — Nalanda Academy" },
+            { "channel": "Email", "text": "PTM on Sat, 26 Jul — please confirm your slot" },
+            { "channel": "Push", "text": "PTM this Saturday · Fee due 31 Jul" },
+            { "channel": "In-app", "text": "Pinned to your dashboard until 26 Jul" }
+          ]},
+          { "type": "list", "id": "lp-surfaces", "items": [
+            { "title": "Alert: PTM this Saturday", "sub": "Auto-dismisses after 7 days", "chip": "Urgent", "tone": "red" },
+            { "title": "Task: Confirm your PTM slot", "sub": "Due Fri, 25 Jul · Mandatory", "chip": "Live", "tone": "green" },
+            { "title": "Batch A stream · Announcement", "sub": "Posted by Priya Ma'am", "chip": "New", "tone": "blue" }
+          ]}
+        ]
+      },
+      {
+        "id": "wa-inbox",
+        "device": "desktop",
+        "title": "WhatsApp Team Inbox",
+        "nav": ["Dashboard", "Study Library", "Learners", "Communication*", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "wa-head", "title": "WhatsApp Inbox", "subtitle": "+91 98220 04xxx · Meta Cloud API", "actions": ["New Template"] },
+          { "cols": [
+            { "type": "list", "id": "wa-convos", "items": [
+              { "title": "Sunita Sharma (Parent)", "sub": "YES, we will attend", "right": "2m", "chip": "2 new", "tone": "green" },
+              { "title": "Aarav Mehta · NEET Batch A", "sub": "Can I pay the fee in two parts?", "right": "18m", "chip": "1 new", "tone": "green" },
+              { "title": "Priya Nair · IELTS lead", "sub": "What are the batch timings?", "right": "1h" },
+              { "title": "Kavya Reddy (Parent)", "sub": "Received, thank you", "right": "Yesterday" }
+            ]},
+            { "type": "chat", "id": "wa-chat", "messages": [
+              { "from": "agent", "text": "PTM on Sat 26 Jul, 10 AM. Reply YES to confirm — Nalanda Academy" },
+              { "from": "user", "text": "Can I pay the fee in two parts?" },
+              { "from": "agent", "text": "Yes Aarav — ₹22,500 now and ₹22,500 by 30 Aug. Sending your payment link." },
+              { "from": "system", "text": "24-hour reply window open · closes today 6:42 PM" }
+            ], "composer": "Reply to Aarav…" }
+          ]}
+        ]
+      },
+      {
+        "id": "analytics",
+        "device": "desktop",
+        "title": "Communication Hub",
+        "nav": ["Dashboard", "Study Library", "Learners", "Communication*", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "hub-head", "title": "Communication Hub", "subtitle": "Last 30 days · All batches" },
+          { "type": "stats", "id": "hub-stats", "items": [
+            { "label": "Delivered", "value": "12,480", "delta": "+9% vs June" },
+            { "label": "Read", "value": "9,734", "delta": "78% read rate" },
+            { "label": "WhatsApp replies", "value": "1,214" },
+            { "label": "Bounces suppressed", "value": "37" }
+          ]},
+          { "cols": [
+            { "type": "chart", "id": "hub-chart", "kind": "bars", "label": "Read rate by channel (%)", "values": [92, 81, 78, 64] },
+            { "type": "list", "id": "hub-suppress", "items": [
+              { "title": "rohit.k@gmali.com", "sub": "Hard bounce · suppressed 12 Jul", "chip": "Blocked", "tone": "red" },
+              { "title": "PTM & Fee Reminder", "sub": "1,286 sent · 1,271 delivered · 8 failed", "chip": "Re-deliver", "tone": "orange" },
+              { "title": "Weekly digest · every Mon 9 AM", "sub": "Recurring · next run 21 Jul", "chip": "Scheduled", "tone": "blue" }
+            ]}
+          ]}
+        ]
+      }
+    ],
+    "steps": [
+      { "screen": "composer", "target": null, "title": "Compose once, reach everyone", "text": "Write an announcement in a rich-text editor (or raw HTML), attach PDFs and videos, and mark priority up to Urgent. Every announcement has a lifecycle — draft, approval, scheduled, active — so nothing goes out half-baked." },
+      { "screen": "composer", "target": "comp-audience", "title": "Target exactly who should hear it", "text": "Mix seven recipient types — roles, users, batches, tags, custom-field filters, campaign audiences — and layer exclusions on top. A live estimate shows 1,286 recipients before you commit to sending." },
+      { "screen": "composer", "target": "comp-channels", "title": "Email, WhatsApp and push in one send", "text": "Each channel keeps its own settings: email subject and from-address, an approved WhatsApp template with variable mapping, and push that auto-fills from your content. Send now, next Monday 9 AM, or on a weekly repeat." },
+      { "screen": "learner-phone", "target": "lp-notify", "title": "One send lands on every screen", "text": "The same announcement arrives on WhatsApp (via Meta Cloud API, WATI or Combot), email, Firebase push — even with the app closed — and in-app, with delivery tracked per recipient on every channel." },
+      { "screen": "learner-phone", "target": "lp-surfaces", "title": "Nine in-app surfaces, streamed live", "text": "Beyond notifications: dashboard pins, urgent alerts, class-stream posts, even announcements-as-tasks with deadlines and mandatory flags. Everything streams to open apps in real time — no refresh." },
+      { "screen": "wa-inbox", "target": "wa-convos", "title": "A shared WhatsApp inbox for your team", "text": "Parent and learner replies flow back through provider webhooks into one team inbox, sorted by recency with unread counts. Numbers match to platform users, so staff always know it's Aarav from NEET Batch A." },
+      { "screen": "wa-inbox", "target": "wa-chat", "title": "Compliant with WhatsApp's rules, always", "text": "Reply free-text inside the 24-hour customer-service window; once it closes, send a Meta-approved template to re-open the thread. Build and submit templates to Meta in-app, in 13 languages." },
+      { "screen": "analytics", "target": "hub-stats", "title": "Know what landed — and what got read", "text": "Per-announcement stats track delivered, read and dismissed counts down to per-recipient timestamps. Failed sends are flagged with one-click re-delivery, and WhatsApp receipts confirm sent, delivered, read." },
+      { "screen": "analytics", "target": "hub-suppress", "title": "Deliverability protected automatically", "text": "Hard bounces and complaints are suppressed from future sends automatically, recipients get one-click unsubscribe, and you can check a whole list against suppressions before any bulk send." }
+    ]
+  }
+}

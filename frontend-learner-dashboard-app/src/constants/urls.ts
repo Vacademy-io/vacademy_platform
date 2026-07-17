@@ -59,6 +59,7 @@ export const STUDENT_REPORT_URL = `${BASE_URL}/assessment-service/assessment/lea
 export const STUDENT_REPORT_DETAIL_URL = `${BASE_URL}/assessment-service/assessment/learner/report/detail`;
 export const LEARNER_REPORT_COMPARISON_URL = `${BASE_URL}/assessment-service/assessment/learner/report/comparison`;
 export const LEARNER_OPTION_DISTRIBUTION_URL = `${BASE_URL}/assessment-service/assessment/learner/report/option-distribution`;
+export const LEARNER_ANNOTATED_COPY_URL = `${BASE_URL}/assessment-service/assessment/learner/report/annotated-copy`;
 export const LEARNER_REPORT_LEADERBOARD_URL = `${BASE_URL}/assessment-service/assessment/learner/report/leaderboard`;
 export const SURVEY_STUDENT_REPORT_URL = `${BASE_URL}/assessment-service/assessment/survey/student-report`;
 export const GET_ASSESSMENT_DETAILS = `${BASE_URL}/assessment-service/assessment/create/v1/status`;

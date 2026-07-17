@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
-import { CheckCircle, Question } from '@phosphor-icons/react';
+import { toast } from 'sonner';
+import {
+  CheckCircle,
+  CircleNotch,
+  FilePdf,
+  Question,
+} from '@phosphor-icons/react';
 import {
   Sheet,
   SheetContent,
@@ -11,8 +17,10 @@ import {
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import { getStudentDisplaySettings } from '@/services/student-display-settings';
+import type { StudentTutorialSettings } from '@/types/student-display-settings';
 import { getLearnerTours, type LearnerTour } from '@/lib/tours/tour-registry';
 import { runTour } from '@/lib/tours/run-tour';
+import { downloadTutorialGuidePdf } from '@/lib/tours/download-guide';
 
 const VIEWED_TOURS_KEY = 'learner-viewed-tours';
 
@@ -42,9 +50,11 @@ function rememberViewedTour(key: string) {
  * starts the intro-style walkthrough.
  */
 export const TutorialsHelpButton = ({ className }: { className?: string }) => {
-  const [enabledTourKeys, setEnabledTourKeys] = useState<string[] | null>(null);
+  const [tutorialSettings, setTutorialSettings] =
+    useState<StudentTutorialSettings | null>(null);
   const [open, setOpen] = useState(false);
   const [viewed, setViewed] = useState<Set<string>>(() => readViewedTours());
+  const [downloadingGuide, setDownloadingGuide] = useState(false);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
@@ -53,25 +63,47 @@ export const TutorialsHelpButton = ({ className }: { className?: string }) => {
     getStudentDisplaySettings()
       .then((settings) => {
         if (cancelled) return;
-        setEnabledTourKeys(
-          settings?.tutorials?.enabled ? settings.tutorials.enabledTours : []
-        );
+        setTutorialSettings(settings?.tutorials ?? null);
       })
       .catch(() => {
         // Settings unavailable — keep tutorials hidden rather than guessing
-        if (!cancelled) setEnabledTourKeys([]);
+        if (!cancelled) setTutorialSettings(null);
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
+  const enabledTourKeys = useMemo(
+    () => (tutorialSettings?.enabled ? tutorialSettings.enabledTours : []),
+    [tutorialSettings]
+  );
+
   const tours = useMemo(() => {
-    if (!enabledTourKeys || enabledTourKeys.length === 0) return [];
+    if (enabledTourKeys.length === 0) return [];
     return getLearnerTours().filter((t) => enabledTourKeys.includes(t.key));
   }, [enabledTourKeys]);
 
-  if (tours.length === 0) return null;
+  const showPdfGuide = Boolean(
+    tutorialSettings?.enabled &&
+      tutorialSettings.pdfGuideEnabled &&
+      enabledTourKeys.length > 0
+  );
+
+  if (tours.length === 0 && !showPdfGuide) return null;
+
+  const handleDownloadGuide = async () => {
+    if (downloadingGuide) return;
+    setDownloadingGuide(true);
+    try {
+      await downloadTutorialGuidePdf(enabledTourKeys);
+    } catch (error) {
+      console.error('Error downloading tutorial guide PDF:', error);
+      toast.error('Could not download the guide. Please try again.');
+    } finally {
+      setDownloadingGuide(false);
+    }
+  };
 
   const startTour = async (tour: LearnerTour) => {
     setOpen(false);
@@ -155,6 +187,39 @@ export const TutorialsHelpButton = ({ className }: { className?: string }) => {
               </li>
             );
           })}
+          {showPdfGuide && (
+            <li>
+              <button
+                type="button"
+                onClick={() => void handleDownloadGuide()}
+                disabled={downloadingGuide}
+                className={cn(
+                  'flex w-full items-center gap-3 rounded-lg border border-dashed border-primary-200 bg-primary-50/40 p-3 text-left',
+                  'transition-colors duration-200 hover:border-primary-300 hover:bg-primary-50',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'disabled:cursor-not-allowed disabled:opacity-70'
+                )}
+              >
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-100 text-primary-500">
+                  {downloadingGuide ? (
+                    <CircleNotch size={22} className="animate-spin" />
+                  ) : (
+                    <FilePdf size={22} weight="duotone" />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-body font-semibold text-neutral-700">
+                    {downloadingGuide
+                      ? 'Preparing your guide...'
+                      : 'Complete how-to guide (PDF)'}
+                  </span>
+                  <span className="block truncate text-caption text-neutral-500">
+                    Download a step-by-step handbook for all of the above.
+                  </span>
+                </span>
+              </button>
+            </li>
+          )}
         </ul>
       </SheetContent>
     </Sheet>

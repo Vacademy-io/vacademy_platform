@@ -37,6 +37,10 @@ class RubricSnapshot:
     rubric_version: Optional[int] = None
     fixed_rubric: dict[str, Any] = field(default_factory=dict)  # question_id -> CriteriaRubricDto
     per_question_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # question_id -> teacher-authored model answer text. Fed to the grader as a
+    # reference for what a full-marks answer contains (previously stored but
+    # never read by grading).
+    model_answers: dict[str, str] = field(default_factory=dict)
 
 
 def load_snapshot(db: Session, assessment_id: str) -> RubricSnapshot:
@@ -53,6 +57,15 @@ def load_snapshot(db: Session, assessment_id: str) -> RubricSnapshot:
             snapshot.fixed_rubric = json.loads(fixed.rubric_json) if fixed.rubric_json else {}
         except Exception as e:
             logger.warning(f"Bad rubric_json for {assessment_id}: {e}")
+        # Assessment-level model answers (per-question CopyCheckQuestionAnswer
+        # entries below override these).
+        try:
+            if fixed.model_answers_json:
+                answers = json.loads(fixed.model_answers_json)
+                if isinstance(answers, dict):
+                    snapshot.model_answers.update({k: v for k, v in answers.items() if v})
+        except Exception as e:
+            logger.warning(f"Bad model_answers_json for {assessment_id}: {e}")
 
     for qa in qa_repo.list_for_assessment(assessment_id):
         if qa.step_rubric_json:
@@ -62,6 +75,8 @@ def load_snapshot(db: Session, assessment_id: str) -> RubricSnapshot:
                 logger.warning(
                     f"Bad step_rubric_json for {assessment_id}/{qa.question_id}: {e}"
                 )
+        if qa.model_answer:
+            snapshot.model_answers[qa.question_id] = qa.model_answer
     return snapshot
 
 
@@ -94,6 +109,22 @@ class RubricResolver:
         self.snapshot = snapshot
         self.llm_call = llm_call
 
+    def has_rubric(self, question_id: str) -> bool:
+        """True if a pre-authored / already-persisted rubric exists for this
+        question (override or fixed) — i.e. no LLM generation is needed."""
+        if self.snapshot.per_question_overrides.get(question_id) is not None:
+            return True
+        return bool(self.snapshot.fixed_rubric) and self.snapshot.fixed_rubric.get(question_id) is not None
+
+    async def generate(
+        self,
+        question: dict[str, Any],
+        preferred_model: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Public entry for pre-generating a rubric up front (the orchestrator
+        persists it so every student's job reuses the same criteria)."""
+        return await self._generate(question, preferred_model)
+
     async def resolve(
         self,
         question: dict[str, Any],
@@ -107,12 +138,14 @@ class RubricResolver:
         if override is not None:
             return _normalize_marks(override, max_marks)
 
-        # 2. Assessment-level fixed rubric (pre-loaded).
+        # 2. Assessment-level fixed rubric (pre-loaded). After the orchestrator's
+        # up-front generate-and-persist step, generated rubrics live here too, so
+        # every student's job resolves the same criteria instead of re-inventing.
         fixed = self.snapshot.fixed_rubric.get(question_id) if self.snapshot.fixed_rubric else None
         if fixed is not None:
             return _normalize_marks(fixed, max_marks)
 
-        # 3. LLM-derived
+        # 3. LLM-derived (only if persistence was unavailable, e.g. no institute_id).
         return await self._generate(question, preferred_model)
 
     async def _generate(

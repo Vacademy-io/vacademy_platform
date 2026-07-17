@@ -1,0 +1,106 @@
+{
+  "pillar": "assessments",
+  "demo": {
+    "intro": "Build a NEET mock test in the wizard, watch the exam hall live, sit the paper as a learner, and let AI grade the answer sheets.",
+    "screens": [
+      {
+        "id": "create",
+        "device": "desktop",
+        "title": "Create Assessment — NEET Mock 4",
+        "nav": ["Dashboard", "Study Library", "Learners", "Assessments*", "Live Classes", "Reports", "Settings"],
+        "widgets": [
+          { "type": "wizard", "id": "create-wizard", "steps": ["Basic Info", "Add Questions", "Add Participants", "Access Control"], "active": 1 },
+          { "type": "form", "id": "create-form", "title": "Basic details", "fields": [
+            { "label": "Assessment type", "value": "Mock test", "type": "select" },
+            { "label": "Live window", "value": "20 Jul, 2:00 PM → 5:00 PM", "type": "text" },
+            { "label": "Evaluation", "value": "Automatic · release results after exam ends", "type": "select" },
+            { "label": "Allow re-attempt requests", "value": "on", "type": "toggle" }
+          ], "submit": "Save & Continue" },
+          { "type": "table", "id": "create-questions", "columns": ["#", "Question", "Type", "Marks"], "rows": [
+            ["1", "Two blocks joined by a string over a frictionless pulley…", { "chip": "MCQ Single", "tone": "blue" }, "+4 / −1"],
+            ["2", "Match each physical quantity with its SI unit", { "chip": "Match", "tone": "purple" }, "+4"],
+            ["3", "A projectile fired at 45° covers what range (in m)?", { "chip": "Numeric", "tone": "green" }, "+4 / −1"],
+            ["4", "Explain Kirchhoff's junction rule with one example", { "chip": "Long answer", "tone": "orange" }, "+5"],
+            ["5", "Passage: Photoelectric effect (Q5–Q7 attached)", { "chip": "Comprehension", "tone": "gray" }, "+12"]
+          ]}
+        ]
+      },
+      {
+        "id": "monitor",
+        "device": "desktop",
+        "title": "Live Monitoring — NEET Mock 4",
+        "nav": ["Dashboard", "Study Library", "Learners", "Assessments*", "Live Classes", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "mon-head", "title": "NEET Mock 4 — Full Syllabus", "subtitle": "Live · ends 5:00 PM · 186 registered", "actions": ["Send Reminders", "Close Submissions"] },
+          { "type": "stats", "id": "mon-stats", "items": [
+            { "label": "Attempted", "value": "92" },
+            { "label": "Ongoing", "value": "61" },
+            { "label": "Pending", "value": "33" },
+            { "label": "Extra-time requests", "value": "2", "delta": "awaiting approval" }
+          ]},
+          { "type": "table", "id": "mon-table", "columns": ["Learner", "Batch", "Progress", "Status"], "rows": [
+            ["Ananya Iyer", "NEET 2027 Batch A", "180/180 · submitted 4:12 PM", { "chip": "Attempted", "tone": "green" }],
+            ["Rohan Gupta", "NEET 2027 Batch A", "112/180 · 41 min left", { "chip": "Ongoing", "tone": "blue" }],
+            ["Priya Sharma", "NEET 2027 Batch B", "96/180 · requested +15 min", { "chip": "Extra time", "tone": "purple" }],
+            ["Aarav Mehta", "NEET 2027 Batch B", "Not started · +91 98201 44xxx", { "chip": "Pending", "tone": "orange" }]
+          ]}
+        ]
+      },
+      {
+        "id": "exam",
+        "device": "phone",
+        "title": "Exam — Section A: Physics",
+        "nav": ["Home", "Courses", "Tests*", "Doubts", "Profile"],
+        "widgets": [
+          { "type": "stats", "id": "exam-timer", "items": [
+            { "label": "Time left", "value": "41:26" },
+            { "label": "Answered", "value": "31/45" },
+            { "label": "Marked", "value": "3" }
+          ]},
+          { "type": "cards", "id": "exam-question", "items": [
+            { "title": "Q34 · Physics", "sub": "A 2 kg block slides down a 30° frictionless incline. Find its acceleration in m/s².", "chip": "Numeric · +4, −1", "tone": "blue" }
+          ]},
+          { "type": "cards", "id": "exam-palette", "items": [
+            { "title": "Q32", "sub": "Kinematics", "chip": "Answered", "tone": "green" },
+            { "title": "Q33", "sub": "Work & energy", "chip": "Marked", "tone": "purple" },
+            { "title": "Q34", "sub": "Laws of motion", "chip": "Current", "tone": "blue" },
+            { "title": "Q35", "sub": "Gravitation", "chip": "Skipped", "tone": "orange" }
+          ]}
+        ]
+      },
+      {
+        "id": "results",
+        "device": "desktop",
+        "title": "Submissions — NEET Mock 4",
+        "nav": ["Dashboard", "Study Library", "Learners", "Assessments*", "Live Classes", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "res-head", "title": "Results & Evaluation", "subtitle": "186 attempts · 174 evaluated", "actions": ["Release Results", "Re-evaluate"] },
+          { "type": "stats", "id": "res-stats", "items": [
+            { "label": "Average score", "value": "412 / 720" },
+            { "label": "Topper", "value": "668", "delta": "Ananya Iyer" },
+            { "label": "AI-checked sheets", "value": "142" },
+            { "label": "Awaiting review", "value": "12" }
+          ]},
+          { "type": "list", "id": "res-list", "items": [
+            { "title": "Ananya Iyer", "sub": "668/720 · Rank 1 · feedback drafted", "right": "92.8%", "chip": "AI checked", "tone": "green" },
+            { "title": "Rohan Gupta", "sub": "521/720 · Rank 14 · 2 marks adjusted by teacher", "right": "72.4%", "chip": "AI checked", "tone": "green" },
+            { "title": "Priya Sharma", "sub": "Long answers graded · Q4 flagged for review", "right": "—", "chip": "Review marks", "tone": "orange" },
+            { "title": "Aarav Mehta", "sub": "Answer sheet PDF · extracting answers", "right": "—", "chip": "Processing", "tone": "blue" }
+          ]}
+        ]
+      }
+    ],
+    "steps": [
+      { "screen": "create", "target": null, "title": "Five exam types, four guided steps", "text": "One wizard builds Exams, Mock tests, Practice tests, Surveys and Manual-Upload exams where learners submit PDFs or videos. Everything stays in draft until you publish, so nothing goes live by accident." },
+      { "screen": "create", "target": "create-form", "title": "Exam-day rules, decided upfront", "text": "Set the live window, timed preview, auto- or manual submission, and whether results release automatically or on your say-so. Re-attempt and extra-time requests can be switched on for admin approval." },
+      { "screen": "create", "target": "create-questions", "title": "Nine question types, or import Word", "text": "Mix MCQs, numeric, match-the-following, comprehension passages, even coding questions run against test cases. Or upload a .docx paper — options, answers, images and math formulas convert automatically." },
+      { "screen": "monitor", "target": "mon-stats", "title": "See the whole exam hall live", "text": "While the exam runs, participants split into Attempted, Ongoing and Pending tabs with live counters, search and filters — 186 learners, one glance." },
+      { "screen": "monitor", "target": "mon-table", "title": "Extend, close, remind — in bulk", "text": "Approve Priya's extra-time request, force-close stragglers, remove no-shows, grant re-attempts and nudge pending learners with reminders — per learner or in bulk, without leaving this console." },
+      { "screen": "exam", "target": "exam-timer", "title": "Timers that never lose an answer", "text": "Countdowns run at exam, section and question level with auto-submit at expiry. Answers stream to the server continuously — a crash or dropped network loses nothing, and learners resume exactly where they were." },
+      { "screen": "exam", "target": "exam-palette", "title": "A palette built for exam strategy", "text": "Answered, marked and skipped questions are one tap away, and the institute controls whether learners can move between sections. Tab-switch events are recorded with the attempt for the institute to review." },
+      { "screen": "results", "target": "res-list", "title": "AI grades a classroom in minutes", "text": "Upload scanned answer sheets and AI reads them — handwriting and math included — applies your rubric, and awards question-wise marks with written feedback. Watch per-student status live, from processing to completed." },
+      { "screen": "results", "target": "res-stats", "title": "Teachers keep the final say", "text": "Every AI mark can be reviewed and overridden, with annotated PDFs anchored to the learner's actual writing. Changed the answer key? Re-evaluate the whole exam or single questions, with an audit log of every regrade." },
+      { "screen": "results", "target": "res-head", "title": "Results learners actually read", "text": "Release results in bulk or per learner. Each learner gets peer comparison, option-wise distributions, a leaderboard rank and a downloadable AI-narrated report card — with alerts to parents over email, WhatsApp and push." }
+    ]
+  }
+}

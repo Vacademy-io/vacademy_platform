@@ -239,6 +239,8 @@ function mergeWithDefaults(
       enabled: incoming?.tutorials?.enabled ?? d.tutorials.enabled,
       enabledTours:
         incoming?.tutorials?.enabledTours ?? [...d.tutorials.enabledTours],
+      pdfGuideEnabled:
+        incoming?.tutorials?.pdfGuideEnabled ?? d.tutorials.pdfGuideEnabled,
     },
     certificates: {
       enabled: incoming?.certificates?.enabled ?? d.certificates.enabled,

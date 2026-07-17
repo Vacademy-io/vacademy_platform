@@ -1,0 +1,114 @@
+{
+  "pillar": "video",
+  "demo": {
+    "intro": "Follow one NEET physics topic from a plain-text prompt to a finished branded video, week of reels and localized cuts — no camera, crew or editor.",
+    "screens": [
+      {
+        "id": "create",
+        "device": "desktop",
+        "title": "Vimotion Studio — Create Video",
+        "nav": ["Dashboard", "Create*", "My Videos", "Reels", "Avatars", "Brand Kits", "Team"],
+        "widgets": [
+          { "type": "header", "id": "create-head", "title": "Create a video", "subtitle": "Prompt to finished MP4 — script, visuals, voiceover and captions, automatically", "actions": ["Generate", "Preview Cost"] },
+          { "type": "form", "id": "create-brief", "title": "Your brief", "fields": [
+            { "label": "Topic or brief", "value": "Newton's Laws of Motion — open with a cricket-ball hook, for NEET 2027 Batch A", "type": "text" },
+            { "label": "Narration voice", "value": "Kavya — Hindi (Premium Indian)", "type": "select" },
+            { "label": "Target audience", "value": "Class 11–12 (NEET)", "type": "select" },
+            { "label": "Target duration", "value": "3 minutes", "type": "select" },
+            { "label": "Burned-in captions", "value": "on", "type": "toggle" }
+          ], "submit": "Generate video" },
+          { "type": "cols", "cols": [
+            { "type": "stats", "id": "create-cost", "items": [
+              { "label": "Estimated cost", "value": "142 credits" },
+              { "label": "Your balance", "value": "2,450 credits" },
+              { "label": "Quality tier", "value": "Premium" }
+            ]},
+            { "type": "list", "id": "create-history", "items": [
+              { "title": "Thermodynamics — Carnot engine", "sub": "Yesterday · Hindi · 4:10", "chip": "Done", "tone": "green" },
+              { "title": "IELTS Band 8 — Writing Task 2", "sub": "Tue · English (India) · 2:45", "chip": "Done", "tone": "green" },
+              { "title": "Class 10 — Light: Refraction", "sub": "Mon · resumed from script stage", "chip": "Draft", "tone": "orange" }
+            ]}
+          ]}
+        ]
+      },
+      {
+        "id": "storyboard",
+        "device": "desktop",
+        "title": "Production — Newton's Laws of Motion",
+        "nav": ["Dashboard", "Create*", "My Videos", "Reels", "Avatars", "Brand Kits", "Team"],
+        "widgets": [
+          { "type": "wizard", "id": "gen-stages", "steps": ["Script", "Voiceover", "Storyboard", "Final render"], "active": 2 },
+          { "type": "cards", "id": "shot-cards", "items": [
+            { "title": "Hook — cricket ball at Wankhede", "sub": "Shot 1 · Kinetic title + AI hero clip", "chip": "Approved", "tone": "green" },
+            { "title": "First Law — inertia explained", "sub": "Shot 2 · Equation build · Chalkboard theme", "chip": "Rendered", "tone": "green" },
+            { "title": "F = ma in real numbers", "sub": "Shot 3 · Animated data story", "chip": "Vision review", "tone": "blue" },
+            { "title": "Recap — Rohan Sir on camera", "sub": "Shot 4 · Avatar presenter, lip-synced", "chip": "Queued", "tone": "orange" }
+          ]},
+          { "type": "chat", "id": "assist-chat", "messages": [
+            { "from": "ai", "text": "Shot plan ready: 12 scenes in 3 acts, equation builds for the derivations. Approve, edit, or redirect?" },
+            { "from": "user", "text": "Make shot 3 a step-by-step process scene instead of a chart." },
+            { "from": "ai", "text": "Done — shot 3 is now a 4-step process build. Regenerating only that scene." }
+          ], "composer": "Type direction for the AI Director…" }
+        ]
+      },
+      {
+        "id": "editor",
+        "device": "desktop",
+        "title": "Editor — Newton's Laws of Motion",
+        "nav": ["Dashboard", "Create", "My Videos*", "Reels", "Avatars", "Brand Kits", "Team"],
+        "widgets": [
+          { "type": "video", "id": "ed-preview", "title": "Newton's Laws of Motion — Premium cut", "time": "03:04" },
+          { "type": "cols", "cols": [
+            { "type": "form", "id": "ed-settings", "title": "Quality & presenter", "fields": [
+              { "label": "Quality tier", "value": "Premium — AI Director + vision review", "type": "select" },
+              { "label": "Voice", "value": "Kavya — Hindi (Premium Indian)", "type": "select" },
+              { "label": "Presenter avatar", "value": "Rohan Sir — custom avatar", "type": "select" },
+              { "label": "Background music", "value": "on", "type": "toggle" }
+            ], "submit": "Re-render" },
+            { "type": "list", "id": "ed-edits", "items": [
+              { "title": "\"Cut the intro by 10 seconds\"", "sub": "Targeted patch — no full regeneration", "chip": "Applied", "tone": "green" },
+              { "title": "Re-narrated sentence 14, same voice", "sub": "Spliced with crossfade · timings rippled", "chip": "Applied", "tone": "green" },
+              { "title": "\"Add Tamil captions\"", "sub": "Preview ready — accept, reject or refine", "chip": "Preview", "tone": "blue" }
+            ]}
+          ]}
+        ]
+      },
+      {
+        "id": "publish",
+        "device": "desktop",
+        "title": "Export & Reels",
+        "nav": ["Dashboard", "Create", "My Videos", "Reels*", "Avatars", "Brand Kits", "Team"],
+        "widgets": [
+          { "type": "stats", "id": "pub-stats", "items": [
+            { "label": "Reel candidates found", "value": "18", "delta": "from one 62-min lecture" },
+            { "label": "Final render", "value": "1080p · 30fps" },
+            { "label": "Languages shipped", "value": "6" },
+            { "label": "Credits used", "value": "139" }
+          ]},
+          { "type": "list", "id": "reel-list", "items": [
+            { "title": "\"Why the ball comes back\" — hook", "sub": "0:42 · 9:16 · karaoke captions", "chip": "Rendered", "tone": "green" },
+            { "title": "Inertia in 30 seconds", "sub": "0:31 · hook score 92 · auto b-roll", "chip": "Rendered", "tone": "green" },
+            { "title": "F = ma numerical trick", "sub": "0:58 · silence-trimmed, 1.2x pace", "chip": "Rendering", "tone": "blue" }
+          ]},
+          { "type": "list", "id": "locale-list", "items": [
+            { "title": "Tamil — lip-synced dub", "sub": "Glossary protected: \"NEET\", \"Vacademy\"", "chip": "Approved", "tone": "green" },
+            { "title": "Bengali — lip-synced dub", "sub": "Per-segment review by Ananya", "chip": "In review", "tone": "blue" },
+            { "title": "Marathi — lip-synced dub", "sub": "Batch render queued", "chip": "Queued", "tone": "orange" }
+          ]}
+        ]
+      }
+    ],
+    "steps": [
+      { "screen": "create", "target": null, "title": "Type a topic, get a finished video", "text": "This is Vimotion, Vacademy's AI video studio. Type a brief — or paste a PDF, deck or URL — and the AI writes the script, records the voiceover, designs every animated scene and renders a branded MP4 in minutes." },
+      { "screen": "create", "target": "create-brief", "title": "Speak to every learner, in their language", "text": "Pick from 200+ voices across 60+ narration languages — including 9 Indian languages with 35+ authentic Indian voices — set the audience from Class 1–2 to Graduate, and choose any length from 30 seconds to 10 minutes." },
+      { "screen": "create", "target": "create-cost", "title": "Know the cost before you generate", "text": "An itemized credit estimate prices your exact setup — tier, duration, voice, avatar — next to your live balance, before you press Generate. Past runs sit in history, so you can reopen results or reuse their settings." },
+      { "screen": "storyboard", "target": "gen-stages", "title": "Watch production, stage by stage", "text": "Live progress streams through script, voiceover, storyboard and render. Pause at the script to review the narration, leave and come back, or resume a failed run from its last checkpoint without losing spend." },
+      { "screen": "storyboard", "target": "shot-cards", "title": "Real motion design, not templates", "text": "Scenes come from a library of 18+ animated types — equation builds, data stories, kinetic titles — across 8 visual themes. On Premium and above, an AI vision pass inspects every rendered frame for defects before it ships." },
+      { "screen": "storyboard", "target": "assist-chat", "title": "Direct the AI like a filmmaker", "text": "Assist Mode pauses at checkpoints you choose — concept, shot plan, narration, casting — and asks for your call in chat. Put a presenter on camera too: pick from 30+ avatars or build one from a single photo of your teacher." },
+      { "screen": "editor", "target": "ed-settings", "title": "Five quality tiers, your presenter", "text": "Trade cost for polish across Free to Super Ultra tiers. Your avatar — cloned from a photo or a 2-minute phone recording — presents lip-synced in 80+ languages, and a 2-minute audio sample clones the voice to match." },
+      { "screen": "editor", "target": "ed-edits", "title": "Edit in plain English", "text": "Rewrite one sentence and only that line is re-recorded in the same voice and spliced in. Or type instructions like \"cut the intro\" — the assistant shows a preview and applies a surgical patch, never a costly full regeneration." },
+      { "screen": "publish", "target": "reel-list", "title": "One lecture, a week of reels", "text": "Point Vimotion at any long recording: a free scan scores up to 50 moments on hook strength and pacing, then renders the winners as 9:16 reels with karaoke captions, auto b-roll and silence trimming — you pay only for keepers." },
+      { "screen": "publish", "target": "locale-list", "title": "Localized into 80+ markets", "text": "Translate the finished video into 80+ languages with frame-accurate lip sync, so it looks filmed in Tamil or Bengali — not dubbed. A brand glossary protects names like \"NEET\", and reviewers approve lines per market before render." }
+    ]
+  }
+}

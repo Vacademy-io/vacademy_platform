@@ -187,6 +187,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     // Off by default — institutes opt in via Settings > Student Display.
     enabled: false,
     enabledTours: [...LEARNER_TOUR_KEYS],
+    pdfGuideEnabled: false,
   },
   certificates: {
     enabled: true,

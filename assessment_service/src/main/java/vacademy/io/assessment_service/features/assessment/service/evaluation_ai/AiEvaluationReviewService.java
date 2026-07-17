@@ -71,6 +71,11 @@ public class AiEvaluationReviewService {
                 marksRow.setMarks(clamped);
                 marksRow.setAiEvaluatedAt(new Date());
                 marksRow.setMarksSource("AI_REVIEWED");
+                // The teacher's edited feedback becomes the authoritative,
+                // learner-visible remark for this question.
+                if (feedback != null) {
+                    marksRow.setEvaluatorFeedback(feedback);
+                }
                 questionWiseMarksRepository.save(marksRow);
             }
         }

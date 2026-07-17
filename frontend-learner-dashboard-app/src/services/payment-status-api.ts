@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { BASE_URL } from '@/constants/urls';
+import { getActiveLocale } from '@/lib/formatters';
 
 // Types for the payment status API response
 export interface UserPlanStatusResponse {
@@ -36,7 +37,7 @@ export const fetchUserPlanStatus = async (
         },
         headers: {
           'accept': '*/*',
-          'accept-language': 'en-US,en;q=0.9',
+          'accept-language': getActiveLocale(),
           'authorization': `Bearer ${accessToken}`,
           'content-type': 'application/json',
         },

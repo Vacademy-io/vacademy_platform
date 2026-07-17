@@ -3,6 +3,24 @@
  */
 
 /**
+ * Parse a backend timestamp as UTC.
+ *
+ * Backend services store and serialize timestamps in UTC but without a
+ * timezone suffix (e.g. "2026-07-16T17:32:00.123456"). `new Date(...)` would
+ * interpret that as *local* time, shifting every displayed time by the user's
+ * UTC offset. This helper appends "Z" when no timezone info is present so the
+ * value is correctly parsed as UTC; strings that already carry a timezone
+ * (Z or ±hh:mm) are parsed as-is.
+ */
+export const parseUtcDate = (value: string): Date => {
+    const hasTimezone = /(Z|[+-]\d{2}:?\d{2})$/.test(value);
+    // Date-only strings ("2026-07-16") are already parsed as UTC by spec
+    const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+    if (hasTimezone || isDateOnly) return new Date(value);
+    return new Date(`${value.replace(' ', 'T')}Z`);
+};
+
+/**
  * Get yesterday's date in YYYY-MM-DD format
  * @returns Yesterday's date as ISO string (YYYY-MM-DD)
  */

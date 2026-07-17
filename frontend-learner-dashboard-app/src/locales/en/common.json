@@ -1,0 +1,36 @@
+{
+    "login": {
+        "heading": "Glad To Have You Back!",
+        "subheading": "Login and continue your learning journey!",
+        "emailPlaceholder": "you@email.com",
+        "passwordPlaceholder": "Password",
+        "forgotPasswordLink": "Forgot Password?",
+        "loginButton": "Login",
+        "forgotPasswordHeading": "Forgot Password",
+        "forgotPasswordSubheading": "Enter your email, and we'll send your password to your inbox",
+        "forgotPasswordEmailPlaceholder": "you@email.com",
+        "forgotPasswordButton": "Send Reset Link",
+        "forgotPasswordBottomText": "Remember your password?",
+        "setPasswordHeading": "Set New Password",
+        "setPasswordSubheading": "Secure your account with a new password",
+        "setPasswordNewPlaceholder": "New password",
+        "setPasswordConfirmPlaceholder": "Confirm new password",
+        "setPasswordButton": "Reset Password",
+        "setPasswordBottomText": "Back to Login?"
+    },
+    "profile": {
+        "language": "Language",
+        "languageHint": "Choose the language for menus and buttons."
+    },
+    "actions": {
+        "save": "Save",
+        "cancel": "Cancel",
+        "delete": "Delete"
+    },
+    "table": {
+        "noResults": "No results found"
+    },
+    "common": {
+        "loading": "Loading..."
+    }
+}

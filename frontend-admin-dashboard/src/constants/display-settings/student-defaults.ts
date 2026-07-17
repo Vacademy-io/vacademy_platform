@@ -173,6 +173,7 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         // Off by default; admins opt in from Student Display settings.
         enabled: false,
         enabledTours: [...LEARNER_TOUR_KEYS],
+        pdfGuideEnabled: false,
     },
     postLoginRedirectRoute: '/dashboard',
 };

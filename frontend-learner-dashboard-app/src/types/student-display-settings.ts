@@ -201,6 +201,9 @@ export interface StudentTutorialSettings {
   enabled: boolean;
   // Which predefined tours learners can run (subset of LEARNER_TOUR_KEYS)
   enabledTours: string[];
+  // Offer a downloadable, institute-branded how-to PDF (chapters follow
+  // enabledTours) from the Help & tutorials menu
+  pdfGuideEnabled: boolean;
 }
 
 // Certificates

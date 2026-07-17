@@ -247,6 +247,8 @@ function mergeWithDefaults(
         tutorials: {
             enabled: incoming?.tutorials?.enabled ?? d.tutorials.enabled,
             enabledTours: incoming?.tutorials?.enabledTours ?? d.tutorials.enabledTours,
+            pdfGuideEnabled:
+                incoming?.tutorials?.pdfGuideEnabled ?? d.tutorials.pdfGuideEnabled,
         },
         postLoginRedirectRoute: incoming?.postLoginRedirectRoute ?? d.postLoginRedirectRoute,
     };

@@ -192,6 +192,9 @@ export interface StudentTutorialSettings {
     enabled: boolean;
     // Which tours are offered. Default: all LEARNER_TOUR_KEYS.
     enabledTours: string[];
+    // Offer a downloadable, institute-branded how-to PDF (chapters follow
+    // enabledTours) in the learner Help menu. Default false.
+    pdfGuideEnabled: boolean;
 }
 
 // Fixed tour registry keys — the learner app matches on these exact strings.

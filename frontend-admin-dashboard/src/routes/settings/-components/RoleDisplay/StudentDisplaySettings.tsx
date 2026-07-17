@@ -11,11 +11,15 @@ import {
     Check,
     CaretDown,
     CaretRight,
+    CircleNotch,
+    FilePdf,
     SquaresFour,
     SignIn,
     GraduationCap,
     BellSimple,
 } from '@phosphor-icons/react';
+import { toast } from 'sonner';
+import { downloadTutorialGuidePdf } from '@/routes/settings/-utils/tutorial-guide';
 import {
     SettingsPageShell,
     SettingsSectionsLayout,
@@ -71,6 +75,7 @@ export default function StudentDisplaySettings(): JSX.Element {
     const [settings, setSettings] = useState<StudentDisplaySettingsData | null>(null);
     const [saving, setSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
+    const [downloadingGuide, setDownloadingGuide] = useState(false);
 
     // Snapshot of the last loaded/saved state for the Discard button in the
     // sticky unsaved-changes bar.
@@ -1277,6 +1282,70 @@ export default function StudentDisplaySettings(): JSX.Element {
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    )}
+                    {settings.tutorials.enabled && (
+                        <div className="space-y-3 border-t pt-3">
+                            <div className="flex items-center gap-2">
+                                <Switch
+                                    checked={settings.tutorials.pdfGuideEnabled}
+                                    onCheckedChange={(v) =>
+                                        update('tutorials', {
+                                            ...settings.tutorials,
+                                            pdfGuideEnabled: v,
+                                        })
+                                    }
+                                />
+                                <div className="grid gap-0.5">
+                                    <Label className="text-xs">How-to guide (PDF)</Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        Let{' '}
+                                        {getTerminologyPlural(
+                                            RoleTerms.Learner,
+                                            SystemTerms.Learner
+                                        ).toLowerCase()}{' '}
+                                        download a branded step-by-step PDF from their Help
+                                        menu. Chapters follow the tours checked above.
+                                    </p>
+                                </div>
+                            </div>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={
+                                    downloadingGuide ||
+                                    settings.tutorials.enabledTours.length === 0
+                                }
+                                onClick={async () => {
+                                    setDownloadingGuide(true);
+                                    try {
+                                        await downloadTutorialGuidePdf(
+                                            settings.tutorials.enabledTours
+                                        );
+                                    } catch (error) {
+                                        console.error(
+                                            'Error downloading tutorial guide PDF:',
+                                            error
+                                        );
+                                        toast.error(
+                                            'Could not generate the guide PDF. Please try again.'
+                                        );
+                                    } finally {
+                                        setDownloadingGuide(false);
+                                    }
+                                }}
+                                className="gap-2"
+                            >
+                                {downloadingGuide ? (
+                                    <CircleNotch className="size-4 animate-spin" />
+                                ) : (
+                                    <FilePdf className="size-4" />
+                                )}
+                                {downloadingGuide
+                                    ? 'Generating...'
+                                    : 'Download guide (PDF)'}
+                            </Button>
                         </div>
                     )}
                 </div>

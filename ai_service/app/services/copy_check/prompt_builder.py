@@ -141,6 +141,23 @@ def _type_instructions(question_type: str) -> str:
     return ""
 
 
+def _model_answer_block(question: dict[str, Any]) -> str:
+    """Teacher-authored reference answer, if provided. Used as a grading guide —
+    NOT a required verbatim match — so a teacher who writes a model answer
+    actually influences the grade (previously it was stored but never read)."""
+    model_answer = question.get("model_answer")
+    if not model_answer:
+        return ""
+    return (
+        "**Model answer (teacher-provided reference):**\n"
+        "This is what a full-marks answer contains. Use it as your guide to award "
+        "marks per the rubric — reward answers that reach the same understanding, "
+        "even in different words or order. Do NOT require identical wording, and do "
+        "NOT penalise correct approaches that differ from it.\n"
+        f"{model_answer}\n"
+    )
+
+
 def build_grading_prompt(
     question: dict[str, Any],
     rubric: dict[str, Any],
@@ -157,6 +174,7 @@ def build_grading_prompt(
 
 {_question_context(question)}
 
+{_model_answer_block(question)}
 **Evaluation rubric (JSON):**
 {rubric_json}
 

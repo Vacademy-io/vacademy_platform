@@ -1,0 +1,95 @@
+{
+  "pillar": "community",
+  "demo": {
+    "intro": "Borrow the network's best question papers, share your own, then see how XP, leaderboards and batch chat keep learners showing up daily.",
+    "screens": [
+      {
+        "id": "hub",
+        "device": "desktop",
+        "title": "Community Hub — Question Papers",
+        "nav": ["Dashboard", "Study Library", "Community*", "Assessments", "Learners", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "hub-head", "title": "Community Question Papers", "subtitle": "12,400+ papers shared across the Vacademy network", "actions": ["Share & Explore", "My Question Bank"] },
+          { "type": "form", "id": "hub-filters", "title": "Filters", "fields": [
+            { "label": "Level / Grade", "value": "Class 12", "type": "select" },
+            { "label": "Stream", "value": "Science (PCM)", "type": "select" },
+            { "label": "Subject", "value": "Physics", "type": "select" },
+            { "label": "Difficulty", "value": "Medium", "type": "select" }
+          ], "submit": "Apply filters" },
+          { "type": "table", "id": "hub-table", "columns": ["Question Paper", "Subject", "Difficulty", "Qs", "Shared by"], "rows": [
+            ["Kinematics Mains Mock — Paper 7", "Physics", { "chip": "Medium", "tone": "orange" }, "45", "Prakash Career Institute, Indore"],
+            ["Rotational Motion Sprint Test", "Physics", { "chip": "Hard", "tone": "red" }, "30", "Dakshana Academy, Pune"],
+            ["Ray Optics Chapter Test", "Physics", { "chip": "Easy", "tone": "green" }, "25", "Sunrise Tutorials, Jaipur"],
+            ["Electrostatics PYQ Compilation", "Physics", { "chip": "Medium", "tone": "orange" }, "60", "Vidya Mandir Classes, Chennai"]
+          ]}
+        ]
+      },
+      {
+        "id": "paper",
+        "device": "desktop",
+        "title": "Paper Preview — Kinematics Mains Mock",
+        "nav": ["Dashboard", "Study Library", "Community*", "Assessments", "Learners", "Reports", "Settings"],
+        "widgets": [
+          { "type": "header", "id": "paper-head", "title": "Kinematics Mains Mock — Paper 7", "subtitle": "45 questions · Class 12 · PCM · Physics · Medium · by Prakash Career Institute", "actions": ["+ Add to My Question Bank", "Share"] },
+          { "type": "list", "id": "paper-questions", "items": [
+            { "title": "Q1. A particle starts from rest with a = 2t m/s²…", "sub": "MCQ · Topic: Non-uniform acceleration", "chip": "Answer: B", "tone": "green" },
+            { "title": "Q2. A projectile is fired at 45° with speed 20 m/s…", "sub": "Numeric · Topic: Projectile motion", "chip": "Answer: 40 m", "tone": "green" },
+            { "title": "Q3. The velocity–time graph shown gives displacement…", "sub": "MCQ with image · Topic: Graphs", "right": "Show answer" }
+          ]},
+          { "type": "form", "id": "share-form", "title": "Publish your own papers", "fields": [
+            { "label": "Paper", "value": "JEE Physics Grand Test 4 (Ravi Sir)", "type": "select" },
+            { "label": "Access", "value": "Public — visible to the community", "type": "select" },
+            { "label": "Keep authorship & history", "value": "on", "type": "toggle" }
+          ], "submit": "Publish to Community" }
+        ]
+      },
+      {
+        "id": "leaderboard",
+        "device": "phone",
+        "title": "Leaderboard",
+        "nav": ["Home", "Courses", "Leaderboard*", "Chat", "Profile"],
+        "widgets": [
+          { "type": "header", "id": "lb-head", "title": "Leaderboard", "subtitle": "NEET 2027 Batch A · July" },
+          { "type": "stats", "id": "lb-stats", "items": [
+            { "label": "Your rank", "value": "#4", "delta": "+3 this week" },
+            { "label": "XP", "value": "2,180" },
+            { "label": "Day streak", "value": "🔥 21" }
+          ]},
+          { "type": "list", "id": "lb-list", "items": [
+            { "title": "1. Ananya Sharma", "sub": "12 badges · 26-day streak", "right": "2,640 XP" },
+            { "title": "2. Rohan Verma", "sub": "9 badges · 18-day streak", "right": "2,455 XP" },
+            { "title": "3. Priya Nair", "sub": "10 badges · 14-day streak", "right": "2,310 XP" },
+            { "title": "4. Aarav Gupta", "sub": "8 badges · 21-day streak", "chip": "You", "tone": "blue", "right": "2,180 XP" }
+          ]}
+        ]
+      },
+      {
+        "id": "chat",
+        "device": "phone",
+        "title": "Batch Chat",
+        "nav": ["Home", "Courses", "Leaderboard", "Chat*", "Profile"],
+        "widgets": [
+          { "type": "header", "id": "chat-head", "title": "NEET 2027 Batch A", "subtitle": "64 members · Slow mode: 30s" },
+          { "type": "chat", "id": "batch-chat", "messages": [
+            { "from": "system", "text": "Please read and acknowledge the channel rules before posting." },
+            { "from": "agent", "text": "Doubt-clearing at 6 PM today — bring your Kinematics mock corrections. — Meera Ma'am" },
+            { "from": "user", "text": "Ma'am, is Q12 from the mock inside the reduced syllabus?" },
+            { "from": "agent", "text": "Yes — projectile motion. I'll solve it on the whiteboard today. 📎 Q12_solution.pdf" }
+          ], "composer": "Message NEET 2027 Batch A…" }
+        ]
+      }
+    ],
+    "steps": [
+      { "screen": "hub", "target": null, "title": "A network-wide paper library", "text": "The Community hub inside the admin portal pools question papers and practice content shared by institutes across the Vacademy network — with instant search that refreshes results as you type." },
+      { "screen": "hub", "target": "hub-filters", "title": "Filters that mirror real syllabi", "text": "Cascading dropdowns narrow by Level, then Stream, then Subject — each showing only relevant options. Stack on difficulty (Easy/Medium/Hard), content type and one-click topic chips for precise discovery." },
+      { "screen": "hub", "target": "hub-table", "title": "Provenance on every paper", "text": "Each paper keeps its creator, dates and full tag set — level, stream, subject, topic, difficulty — so you know exactly what it covers and who built it. Click any paper to open the full preview." },
+      { "screen": "paper", "target": "paper-questions", "title": "Preview before you adopt", "text": "Read every question in order with images, tables and math rendered correctly, then toggle the answer key on or off with one click — judge a paper's quality before it touches your question bank." },
+      { "screen": "paper", "target": "paper-head", "title": "One click into your question bank", "text": "'Add to My Question Bank' copies the paper into your institute's private collection as a fully editable copy, ready to drop into your own assessments — confirmed the moment it lands." },
+      { "screen": "paper", "target": "share-form", "title": "Share yours, on your terms", "text": "The Share & Explore flow publishes your papers to the network with authorship preserved. Every paper carries a public/private access setting, so nothing leaves your walls unless you mark it public." },
+      { "screen": "leaderboard", "target": "lb-stats", "title": "XP and streaks make study a habit", "text": "Learners earn XP for studying, attending live classes and scoring well on assessments, rolling up into levels. Daily streaks reward consistency, and badges unlock from triggers you configure — or design your own." },
+      { "screen": "leaderboard", "target": "lb-list", "title": "Batch and institute leaderboards", "text": "Rankings run inside each batch and across the whole institute, driven by real activity — study time, attendance, badges earned. Standings can be shared publicly and exported to CSV for prize day." },
+      { "screen": "chat", "target": "batch-chat", "title": "Every batch gets its own group chat", "text": "Membership syncs automatically with enrollment — no phone numbers exchanged. DMs, batch groups and an institute-wide channel carry text, images and files in real time, with push for offline members." },
+      { "screen": "chat", "target": "chat-head", "title": "Safety tools built for education", "text": "Slow mode, banned-keyword filters, link controls and a new-member read-only period keep channels calm. Reported messages land in an Open → Reviewing → Actioned moderation queue, and a role matrix decides who can message whom." }
+    ]
+  }
+}

@@ -1,0 +1,55 @@
+{
+    "login": {
+        "heading": "Glad To Have You Back!",
+        "subheading": "Login and take the reins - your admin tools are waiting!",
+        "emailPlaceholder": "you@email.com",
+        "passwordPlaceholder": "Password",
+        "forgotPasswordLink": "Forgot Password?",
+        "loginButton": "Login",
+        "forgotPasswordHeading": "Forgot Password",
+        "forgotPasswordSubheading": "Enter your email, and we'll send your password to your inbox",
+        "forgotPasswordEmailPlaceholder": "you@email.com",
+        "forgotPasswordButton": "Send Reset Link",
+        "forgotPasswordBottomText": "Remember your password?",
+        "setPasswordHeading": "Set New Password",
+        "setPasswordSubheading": "Secure your account with a new password",
+        "setPasswordNewPlaceholder": "New password",
+        "setPasswordConfirmPlaceholder": "Confirm new password",
+        "setPasswordButton": "Reset Password",
+        "setPasswordBottomText": "Back to Login?"
+    },
+    "actions": {
+        "save": "Save",
+        "cancel": "Cancel",
+        "delete": "Delete"
+    },
+    "table": {
+        "noResults": "No results found"
+    },
+    "common": {
+        "loading": "Loading..."
+    },
+    "settings": {
+        "language": {
+            "title": "Language",
+            "description": "Choose which languages this institute's portal offers and how content is localized.",
+            "defaultLabel": "Default language",
+            "defaultHelp": "The language users see before they pick one themselves.",
+            "enabledLabel": "Enabled languages",
+            "enabledHelp": "Languages users can switch to. The default language is always included.",
+            "enabledPlaceholder": "Select languages",
+            "enabledRequired": "Enable at least one language",
+            "contentSourceLabel": "Content source language",
+            "contentSourceHelp": "The language your content is originally authored in.",
+            "timezoneLabel": "Institute timezone",
+            "timezoneHelp": "Used for date and time display across the portal.",
+            "timezonePlaceholder": "Select timezone",
+            "selectPlaceholder": "Select language",
+            "loading": "Loading language settings…",
+            "save": "Save language settings",
+            "saving": "Saving…",
+            "saved": "Language settings saved",
+            "saveFailed": "Failed to save language settings"
+        }
+    }
+}

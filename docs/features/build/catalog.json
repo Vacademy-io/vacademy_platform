@@ -1,7 +1,7 @@
 {
  "meta": {
   "name": "Vacademy",
-  "headline": "Everything your institute needs.<br><em>One platform.</em>",
+  "headline": "every feature.<br>one platform.",
   "subhead": "Vacademy unifies LMS, assessments, live classrooms, CRM & admissions, marketing, communication, finance, HR and a full AI studio — so coaching institutes, schools and edtech companies can run everything from one place, under their own brand.",
   "updated": "2026-07-17",
   "terminologyNote": "Every term below (Course, Level, Session, Batch, Learner, …) is configurable per institute via Settings → Naming Settings — your clients can rename them to match their own vocabulary (e.g. \"Course\" → \"Program\", \"Learner\" → \"Student\")."
@@ -898,7 +898,297 @@
       }
      ]
     }
-   ]
+   ],
+   "demo": {
+    "intro": "Follow a course from the admin's course builder to a learner finishing a lesson on their phone.",
+    "screens": [
+     {
+      "id": "library",
+      "device": "desktop",
+      "title": "Study Library",
+      "nav": [
+       "Dashboard",
+       "Study Library*",
+       "Learners",
+       "Assessments",
+       "Live Classes",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "lib-head",
+        "title": "Courses",
+        "subtitle": "24 published · 3 drafts",
+        "actions": [
+         "+ Create Course",
+         "Bulk Upload"
+        ]
+       },
+       {
+        "type": "stats",
+        "id": "lib-stats",
+        "items": [
+         {
+          "label": "Active learners",
+          "value": "1,842",
+          "delta": "+126 this month"
+         },
+         {
+          "label": "Courses",
+          "value": "27"
+         },
+         {
+          "label": "Avg. completion",
+          "value": "72%"
+         },
+         {
+          "label": "Avg. rating",
+          "value": "4.6 ★"
+         }
+        ]
+       },
+       {
+        "type": "cards",
+        "id": "lib-cards",
+        "items": [
+         {
+          "title": "NEET 2027 — Physics",
+          "sub": "3 levels · 214 slides",
+          "chip": "Published",
+          "tone": "green"
+         },
+         {
+          "title": "Class 10 Maths Foundation",
+          "sub": "2 levels · 168 slides",
+          "chip": "Published",
+          "tone": "green"
+         },
+         {
+          "title": "IELTS Band 8 Sprint",
+          "sub": "1 level · 96 slides",
+          "chip": "Draft",
+          "tone": "orange"
+         },
+         {
+          "title": "JEE Chemistry Crash Course",
+          "sub": "2 levels · 143 slides",
+          "chip": "In review",
+          "tone": "blue"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "authoring",
+      "device": "desktop",
+      "title": "Course Editor — NEET 2027 Physics",
+      "nav": [
+       "Dashboard",
+       "Study Library*",
+       "Learners",
+       "Assessments",
+       "Live Classes",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "wizard",
+        "id": "auth-crumbs",
+        "steps": [
+         "Course",
+         "Level: Class 12",
+         "Subject: Mechanics",
+         "Chapter: Laws of Motion"
+        ],
+        "active": 3
+       },
+       {
+        "type": "player",
+        "id": "auth-slides",
+        "outline": [
+         {
+          "title": "Laws of Motion",
+          "items": [
+           {
+            "t": "Intro video: Newton's laws",
+            "done": true
+           },
+           {
+            "t": "Reading: Inertia & mass",
+            "done": true
+           },
+           {
+            "t": "In-video quiz checkpoint",
+            "on": true
+           },
+           {
+            "t": "Numericals worksheet (PDF)"
+           },
+           {
+            "t": "Homework: 12 problems"
+           }
+          ]
+         }
+        ],
+        "slide": {
+         "title": "In-video quiz checkpoint",
+         "body": "Question appears at 04:32 of the video — learners must answer before the lesson continues. Supports MCQ, numeric and one-word answers, with instant explanations."
+        }
+       },
+       {
+        "type": "form",
+        "id": "auth-drip",
+        "title": "Publish settings",
+        "fields": [
+         {
+          "label": "Visibility",
+          "value": "Publish to NEET 2027 Batch A",
+          "type": "select"
+         },
+         {
+          "label": "Drip schedule",
+          "value": "Unlock chapter-by-chapter, every Monday",
+          "type": "select"
+         },
+         {
+          "label": "Downloads allowed",
+          "value": "on",
+          "type": "toggle"
+         }
+        ],
+        "submit": "Publish"
+       }
+      ]
+     },
+     {
+      "id": "learner",
+      "device": "phone",
+      "title": "Learner App",
+      "nav": [
+       "Home*",
+       "Courses",
+       "Tests",
+       "Doubts",
+       "Profile"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "l-head",
+        "title": "Hi Ananya 👋",
+        "subtitle": "NEET 2027 Batch A"
+       },
+       {
+        "type": "video",
+        "id": "l-video",
+        "title": "Newton's Laws — Lesson 3",
+        "time": "12:40"
+       },
+       {
+        "type": "list",
+        "id": "l-next",
+        "items": [
+         {
+          "title": "Continue: Laws of Motion",
+          "sub": "3 of 5 slides done",
+          "right": "60%"
+         },
+         {
+          "title": "Homework due Friday",
+          "sub": "12 numericals",
+          "chip": "Due",
+          "tone": "orange"
+         },
+         {
+          "title": "Chapter test unlocked",
+          "sub": "Laws of Motion · 30 min",
+          "chip": "New",
+          "tone": "green"
+         }
+        ]
+       },
+       {
+        "type": "stats",
+        "id": "l-streak",
+        "items": [
+         {
+          "label": "Day streak",
+          "value": "🔥 14"
+         },
+         {
+          "label": "XP this week",
+          "value": "480"
+         },
+         {
+          "label": "Certificates",
+          "value": "2"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "screen": "library",
+      "target": null,
+      "title": "One library for every course",
+      "text": "Admins and teachers manage every offering here — courses, memberships, even one-off services. Live stats show enrollment, completion and ratings at a glance."
+     },
+     {
+      "screen": "library",
+      "target": "lib-cards",
+      "title": "Courses with a real lifecycle",
+      "text": "Each course moves through draft, editorial review and publish. Batches, levels and academic sessions hang off the same card — no duplicate content per batch."
+     },
+     {
+      "screen": "library",
+      "target": "lib-head",
+      "title": "Create by hand or in bulk",
+      "text": "Start a course with the guided wizard, or bulk-upload existing folders of videos and PDFs — Vacademy maps them into chapters and slides automatically."
+     },
+     {
+      "screen": "authoring",
+      "target": "auth-crumbs",
+      "title": "Structure that matches how you teach",
+      "text": "Choose 2 to 5 levels of depth per course — from a flat chapter list up to Level → Session → Subject → Module → Chapter trees."
+     },
+     {
+      "screen": "authoring",
+      "target": "auth-slides",
+      "title": "A dozen slide types in one editor",
+      "text": "Mix video with in-video questions, PDFs, quizzes, code labs, whiteboards and homework in a single chapter. Slides keep full version history with restore."
+     },
+     {
+      "screen": "authoring",
+      "target": "auth-drip",
+      "title": "Publish with drip and controls",
+      "text": "Publish to specific batches, drip content on a schedule or after prerequisites, and control downloads and watermarking per course."
+     },
+     {
+      "screen": "learner",
+      "target": "l-video",
+      "title": "The learner side, on any device",
+      "text": "Learners get the same course in a distraction-free player — web, Android app or desktop app — with resume, playback speed and offline-friendly viewing."
+     },
+     {
+      "screen": "learner",
+      "target": "l-next",
+      "title": "Progress that drives itself",
+      "text": "True completion tracking (not just 'opened'), homework deadlines and newly unlocked tests surface right on the home screen."
+     },
+     {
+      "screen": "learner",
+      "target": "l-streak",
+      "title": "Momentum built in",
+      "text": "Streaks, XP and certificates keep learners coming back — and every bit of this activity feeds the reports admins see."
+     }
+    ]
+   }
   },
   {
    "id": "assessments",
@@ -1834,7 +2124,440 @@
       }
      ]
     }
-   ]
+   ],
+   "demo": {
+    "intro": "Build a NEET mock test in the wizard, watch the exam hall live, sit the paper as a learner, and let AI grade the answer sheets.",
+    "screens": [
+     {
+      "id": "create",
+      "device": "desktop",
+      "title": "Create Assessment — NEET Mock 4",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Assessments*",
+       "Live Classes",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "wizard",
+        "id": "create-wizard",
+        "steps": [
+         "Basic Info",
+         "Add Questions",
+         "Add Participants",
+         "Access Control"
+        ],
+        "active": 1
+       },
+       {
+        "type": "form",
+        "id": "create-form",
+        "title": "Basic details",
+        "fields": [
+         {
+          "label": "Assessment type",
+          "value": "Mock test",
+          "type": "select"
+         },
+         {
+          "label": "Live window",
+          "value": "20 Jul, 2:00 PM → 5:00 PM",
+          "type": "text"
+         },
+         {
+          "label": "Evaluation",
+          "value": "Automatic · release results after exam ends",
+          "type": "select"
+         },
+         {
+          "label": "Allow re-attempt requests",
+          "value": "on",
+          "type": "toggle"
+         }
+        ],
+        "submit": "Save & Continue"
+       },
+       {
+        "type": "table",
+        "id": "create-questions",
+        "columns": [
+         "#",
+         "Question",
+         "Type",
+         "Marks"
+        ],
+        "rows": [
+         [
+          "1",
+          "Two blocks joined by a string over a frictionless pulley…",
+          {
+           "chip": "MCQ Single",
+           "tone": "blue"
+          },
+          "+4 / −1"
+         ],
+         [
+          "2",
+          "Match each physical quantity with its SI unit",
+          {
+           "chip": "Match",
+           "tone": "purple"
+          },
+          "+4"
+         ],
+         [
+          "3",
+          "A projectile fired at 45° covers what range (in m)?",
+          {
+           "chip": "Numeric",
+           "tone": "green"
+          },
+          "+4 / −1"
+         ],
+         [
+          "4",
+          "Explain Kirchhoff's junction rule with one example",
+          {
+           "chip": "Long answer",
+           "tone": "orange"
+          },
+          "+5"
+         ],
+         [
+          "5",
+          "Passage: Photoelectric effect (Q5–Q7 attached)",
+          {
+           "chip": "Comprehension",
+           "tone": "gray"
+          },
+          "+12"
+         ]
+        ]
+       }
+      ]
+     },
+     {
+      "id": "monitor",
+      "device": "desktop",
+      "title": "Live Monitoring — NEET Mock 4",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Assessments*",
+       "Live Classes",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "mon-head",
+        "title": "NEET Mock 4 — Full Syllabus",
+        "subtitle": "Live · ends 5:00 PM · 186 registered",
+        "actions": [
+         "Send Reminders",
+         "Close Submissions"
+        ]
+       },
+       {
+        "type": "stats",
+        "id": "mon-stats",
+        "items": [
+         {
+          "label": "Attempted",
+          "value": "92"
+         },
+         {
+          "label": "Ongoing",
+          "value": "61"
+         },
+         {
+          "label": "Pending",
+          "value": "33"
+         },
+         {
+          "label": "Extra-time requests",
+          "value": "2",
+          "delta": "awaiting approval"
+         }
+        ]
+       },
+       {
+        "type": "table",
+        "id": "mon-table",
+        "columns": [
+         "Learner",
+         "Batch",
+         "Progress",
+         "Status"
+        ],
+        "rows": [
+         [
+          "Ananya Iyer",
+          "NEET 2027 Batch A",
+          "180/180 · submitted 4:12 PM",
+          {
+           "chip": "Attempted",
+           "tone": "green"
+          }
+         ],
+         [
+          "Rohan Gupta",
+          "NEET 2027 Batch A",
+          "112/180 · 41 min left",
+          {
+           "chip": "Ongoing",
+           "tone": "blue"
+          }
+         ],
+         [
+          "Priya Sharma",
+          "NEET 2027 Batch B",
+          "96/180 · requested +15 min",
+          {
+           "chip": "Extra time",
+           "tone": "purple"
+          }
+         ],
+         [
+          "Aarav Mehta",
+          "NEET 2027 Batch B",
+          "Not started · +91 98201 44xxx",
+          {
+           "chip": "Pending",
+           "tone": "orange"
+          }
+         ]
+        ]
+       }
+      ]
+     },
+     {
+      "id": "exam",
+      "device": "phone",
+      "title": "Exam — Section A: Physics",
+      "nav": [
+       "Home",
+       "Courses",
+       "Tests*",
+       "Doubts",
+       "Profile"
+      ],
+      "widgets": [
+       {
+        "type": "stats",
+        "id": "exam-timer",
+        "items": [
+         {
+          "label": "Time left",
+          "value": "41:26"
+         },
+         {
+          "label": "Answered",
+          "value": "31/45"
+         },
+         {
+          "label": "Marked",
+          "value": "3"
+         }
+        ]
+       },
+       {
+        "type": "cards",
+        "id": "exam-question",
+        "items": [
+         {
+          "title": "Q34 · Physics",
+          "sub": "A 2 kg block slides down a 30° frictionless incline. Find its acceleration in m/s².",
+          "chip": "Numeric · +4, −1",
+          "tone": "blue"
+         }
+        ]
+       },
+       {
+        "type": "cards",
+        "id": "exam-palette",
+        "items": [
+         {
+          "title": "Q32",
+          "sub": "Kinematics",
+          "chip": "Answered",
+          "tone": "green"
+         },
+         {
+          "title": "Q33",
+          "sub": "Work & energy",
+          "chip": "Marked",
+          "tone": "purple"
+         },
+         {
+          "title": "Q34",
+          "sub": "Laws of motion",
+          "chip": "Current",
+          "tone": "blue"
+         },
+         {
+          "title": "Q35",
+          "sub": "Gravitation",
+          "chip": "Skipped",
+          "tone": "orange"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "results",
+      "device": "desktop",
+      "title": "Submissions — NEET Mock 4",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Assessments*",
+       "Live Classes",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "res-head",
+        "title": "Results & Evaluation",
+        "subtitle": "186 attempts · 174 evaluated",
+        "actions": [
+         "Release Results",
+         "Re-evaluate"
+        ]
+       },
+       {
+        "type": "stats",
+        "id": "res-stats",
+        "items": [
+         {
+          "label": "Average score",
+          "value": "412 / 720"
+         },
+         {
+          "label": "Topper",
+          "value": "668",
+          "delta": "Ananya Iyer"
+         },
+         {
+          "label": "AI-checked sheets",
+          "value": "142"
+         },
+         {
+          "label": "Awaiting review",
+          "value": "12"
+         }
+        ]
+       },
+       {
+        "type": "list",
+        "id": "res-list",
+        "items": [
+         {
+          "title": "Ananya Iyer",
+          "sub": "668/720 · Rank 1 · feedback drafted",
+          "right": "92.8%",
+          "chip": "AI checked",
+          "tone": "green"
+         },
+         {
+          "title": "Rohan Gupta",
+          "sub": "521/720 · Rank 14 · 2 marks adjusted by teacher",
+          "right": "72.4%",
+          "chip": "AI checked",
+          "tone": "green"
+         },
+         {
+          "title": "Priya Sharma",
+          "sub": "Long answers graded · Q4 flagged for review",
+          "right": "—",
+          "chip": "Review marks",
+          "tone": "orange"
+         },
+         {
+          "title": "Aarav Mehta",
+          "sub": "Answer sheet PDF · extracting answers",
+          "right": "—",
+          "chip": "Processing",
+          "tone": "blue"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "screen": "create",
+      "target": null,
+      "title": "Five exam types, four guided steps",
+      "text": "One wizard builds Exams, Mock tests, Practice tests, Surveys and Manual-Upload exams where learners submit PDFs or videos. Everything stays in draft until you publish, so nothing goes live by accident."
+     },
+     {
+      "screen": "create",
+      "target": "create-form",
+      "title": "Exam-day rules, decided upfront",
+      "text": "Set the live window, timed preview, auto- or manual submission, and whether results release automatically or on your say-so. Re-attempt and extra-time requests can be switched on for admin approval."
+     },
+     {
+      "screen": "create",
+      "target": "create-questions",
+      "title": "Nine question types, or import Word",
+      "text": "Mix MCQs, numeric, match-the-following, comprehension passages, even coding questions run against test cases. Or upload a .docx paper — options, answers, images and math formulas convert automatically."
+     },
+     {
+      "screen": "monitor",
+      "target": "mon-stats",
+      "title": "See the whole exam hall live",
+      "text": "While the exam runs, participants split into Attempted, Ongoing and Pending tabs with live counters, search and filters — 186 learners, one glance."
+     },
+     {
+      "screen": "monitor",
+      "target": "mon-table",
+      "title": "Extend, close, remind — in bulk",
+      "text": "Approve Priya's extra-time request, force-close stragglers, remove no-shows, grant re-attempts and nudge pending learners with reminders — per learner or in bulk, without leaving this console."
+     },
+     {
+      "screen": "exam",
+      "target": "exam-timer",
+      "title": "Timers that never lose an answer",
+      "text": "Countdowns run at exam, section and question level with auto-submit at expiry. Answers stream to the server continuously — a crash or dropped network loses nothing, and learners resume exactly where they were."
+     },
+     {
+      "screen": "exam",
+      "target": "exam-palette",
+      "title": "A palette built for exam strategy",
+      "text": "Answered, marked and skipped questions are one tap away, and the institute controls whether learners can move between sections. Tab-switch events are recorded with the attempt for the institute to review."
+     },
+     {
+      "screen": "results",
+      "target": "res-list",
+      "title": "AI grades a classroom in minutes",
+      "text": "Upload scanned answer sheets and AI reads them — handwriting and math included — applies your rubric, and awards question-wise marks with written feedback. Watch per-student status live, from processing to completed."
+     },
+     {
+      "screen": "results",
+      "target": "res-stats",
+      "title": "Teachers keep the final say",
+      "text": "Every AI mark can be reviewed and overridden, with annotated PDFs anchored to the learner's actual writing. Changed the answer key? Re-evaluate the whole exam or single questions, with an audit log of every regrade."
+     },
+     {
+      "screen": "results",
+      "target": "res-head",
+      "title": "Results learners actually read",
+      "text": "Release results in bulk or per learner. Each learner gets peer comparison, option-wise distributions, a leaderboard rank and a downloadable AI-narrated report card — with alerts to parents over email, WhatsApp and push."
+     }
+    ]
+   }
   },
   {
    "id": "live",
@@ -2649,7 +3372,366 @@
       }
      ]
     }
-   ]
+   ],
+   "demo": {
+    "intro": "Schedule a live class, run it as an interactive Volt session, watch a learner join from their phone — and let attendance write itself.",
+    "screens": [
+     {
+      "id": "schedule",
+      "device": "desktop",
+      "title": "Schedule Live Class",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Assessments",
+       "Live Classes*",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "sched-head",
+        "title": "Live Classes",
+        "subtitle": "3 live now · 18 upcoming this week",
+        "actions": [
+         "+ Schedule Class",
+         "Bulk Import CSV"
+        ]
+       },
+       {
+        "type": "wizard",
+        "id": "sched-wizard",
+        "steps": [
+         "Class basics",
+         "Participants & notifications"
+        ],
+        "active": 0
+       },
+       {
+        "type": "form",
+        "id": "sched-form",
+        "title": "New class — Rotational Motion",
+        "fields": [
+         {
+          "label": "Class title",
+          "value": "Rotational Motion — Doubt Clearing",
+          "type": "text"
+         },
+         {
+          "label": "Platform",
+          "value": "Vacademy Classroom (built-in, no licence)",
+          "type": "select"
+         },
+         {
+          "label": "Schedule",
+          "value": "Weekly · Mon, Wed, Fri · 6:00 PM IST · ends 20 Dec",
+          "type": "select"
+         },
+         {
+          "label": "Batch",
+          "value": "NEET 2027 Batch A · 142 learners",
+          "type": "select"
+         },
+         {
+          "label": "Record & auto-start recording",
+          "value": "on",
+          "type": "toggle"
+         }
+        ],
+        "submit": "Next: Participants"
+       }
+      ]
+     },
+     {
+      "id": "volt",
+      "device": "desktop",
+      "title": "Volt Live — Presenter Cockpit",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Assessments",
+       "Live Classes*",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "volt-head",
+        "title": "Rotational Motion — LIVE",
+        "subtitle": "Join code TORQ82 · 128 in room · 00:42:10",
+        "actions": [
+         "Quick Question",
+         "End Session"
+        ]
+       },
+       {
+        "type": "whiteboard",
+        "id": "volt-white",
+        "title": "Slide 9 — Torque on a rigid body (annotating live)"
+       },
+       {
+        "cols": [
+         {
+          "type": "chart",
+          "id": "volt-poll",
+          "kind": "bars",
+          "label": "Q4 · Direction of torque? — 118/128 answered",
+          "values": [
+           62,
+           23,
+           27,
+           6
+          ]
+         },
+         {
+          "type": "list",
+          "id": "volt-board",
+          "items": [
+           {
+            "title": "1. Ananya Sharma",
+            "sub": "9/9 correct",
+            "right": "920 pts",
+            "chip": "▲ 2",
+            "tone": "green"
+           },
+           {
+            "title": "2. Rohan Verma",
+            "sub": "8/9 correct",
+            "right": "860 pts"
+           },
+           {
+            "title": "3. Priya Nair",
+            "sub": "8/9 correct · fastest on Q3",
+            "right": "845 pts",
+            "chip": "▲ 1",
+            "tone": "blue"
+           },
+           {
+            "title": "4. Aarav Mehta",
+            "sub": "7/9 correct",
+            "right": "790 pts",
+            "chip": "▼ 2",
+            "tone": "orange"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "learner",
+      "device": "phone",
+      "title": "Live Classes",
+      "nav": [
+       "Home",
+       "Courses",
+       "Live*",
+       "Tests",
+       "Profile"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "l-head",
+        "title": "Hi Ananya",
+        "subtitle": "NEET 2027 Batch A · Today, 6:00 PM"
+       },
+       {
+        "type": "video",
+        "id": "l-video",
+        "title": "Rotational Motion — Doubt Clearing · LIVE",
+        "time": "LIVE · 42:10"
+       },
+       {
+        "type": "list",
+        "id": "l-classes",
+        "items": [
+         {
+          "title": "Organic Chemistry — GOC",
+          "sub": "Tomorrow · 6:00 PM · Zoom",
+          "chip": "Upcoming",
+          "tone": "blue"
+         },
+         {
+          "title": "Physics — Work, Power, Energy",
+          "sub": "Mon 14 Jul · recording ready",
+          "chip": "Replay",
+          "tone": "green"
+         },
+         {
+          "title": "Download worksheet",
+          "sub": "Rotational Motion practice set",
+          "right": "PDF"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "attendance",
+      "device": "desktop",
+      "title": "Attendance Report",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Assessments",
+       "Live Classes",
+       "Reports*",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "att-head",
+        "title": "Attendance — Rotational Motion",
+        "subtitle": "Wed 16 Jul · NEET 2027 Batch A",
+        "actions": [
+         "Notify Parents",
+         "Export"
+        ]
+       },
+       {
+        "type": "stats",
+        "id": "att-stats",
+        "items": [
+         {
+          "label": "Present",
+          "value": "128",
+          "delta": "90% of batch"
+         },
+         {
+          "label": "Late",
+          "value": "9"
+         },
+         {
+          "label": "Absent",
+          "value": "5"
+         },
+         {
+          "label": "Avg. time in class",
+          "value": "51 min"
+         }
+        ]
+       },
+       {
+        "type": "table",
+        "id": "att-table",
+        "columns": [
+         "Learner",
+         "Phone",
+         "Joined at",
+         "Time in class",
+         "Status"
+        ],
+        "rows": [
+         [
+          "Ananya Sharma",
+          "+91 98200 41xxx",
+          "5:57 PM",
+          "58 min",
+          {
+           "chip": "Present",
+           "tone": "green"
+          }
+         ],
+         [
+          "Rohan Verma",
+          "+91 90040 77xxx",
+          "6:01 PM",
+          "55 min",
+          {
+           "chip": "Present",
+           "tone": "green"
+          }
+         ],
+         [
+          "Priya Nair",
+          "+91 98110 23xxx",
+          "6:14 PM",
+          "42 min",
+          {
+           "chip": "Late",
+           "tone": "orange"
+          }
+         ],
+         [
+          "Aarav Mehta",
+          "+91 99870 65xxx",
+          "—",
+          "—",
+          {
+           "chip": "Absent",
+           "tone": "red"
+          }
+         ]
+        ]
+       }
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "screen": "schedule",
+      "target": null,
+      "title": "Every live class starts here",
+      "text": "One list of everything live, upcoming, past and drafted — with a calendar view and CSV bulk import when you're scheduling a whole term at once."
+     },
+     {
+      "screen": "schedule",
+      "target": "sched-form",
+      "title": "Host on any platform — or none",
+      "text": "Pick Vacademy's built-in classroom (no Zoom licence needed), Zoom with multi-account support, Google Meet, Zoho, a YouTube live stream or any custom link. Meetings for the whole recurring series are auto-created in the background."
+     },
+     {
+      "screen": "schedule",
+      "target": "sched-wizard",
+      "title": "Recurring series in two steps",
+      "text": "Step one sets basics — weekly Mon/Wed/Fri at 6 PM with per-day links and timings. Step two adds the batch, registration and reminders via email, WhatsApp, push or in-app before you publish."
+     },
+     {
+      "screen": "volt",
+      "target": "volt-white",
+      "title": "Teach on a live whiteboard",
+      "text": "Volt decks are whiteboard-style slides — draw, drop LaTeX and diagrams, or annotate over any slide mid-class. Import an existing PPTX or let AI generate the whole deck, quiz questions included, from a topic."
+     },
+     {
+      "screen": "volt",
+      "target": "volt-poll",
+      "title": "Answers stream in live",
+      "text": "Learners join from any browser with a short code — no install. MCQ, true/false, one-word, numeric and long-answer questions grade the instant responses arrive, and you can fire a quick poll on the fly without leaving the deck."
+     },
+     {
+      "screen": "volt",
+      "target": "volt-board",
+      "title": "A leaderboard that fuels the room",
+      "text": "Points per correct answer, optional speed bonuses and negative marking rank learners in real time. Show it to the room for energy, export to CSV, and let AI email each participant a personalized summary when you end."
+     },
+     {
+      "screen": "learner",
+      "target": "l-video",
+      "title": "Class lives inside your app",
+      "text": "Learners join with one tap and stay in your branded app — a waiting room with countdown and music before class, then Zoom in-browser, embedded YouTube or the built-in classroom. No links pasted into WhatsApp."
+     },
+     {
+      "screen": "learner",
+      "target": "l-classes",
+      "title": "Schedule, replays and worksheets",
+      "text": "Today's and upcoming classes show in the learner's own timezone, past classes carry auto-synced recordings archived to your storage, and custom action buttons put worksheets or group links right on the class card."
+     },
+     {
+      "screen": "attendance",
+      "target": "att-table",
+      "title": "Attendance takes itself",
+      "text": "Join and dwell data sync back from Zoom, Zoho and the built-in classroom; threshold rules mark present, late or absent automatically. Correct in bulk, pull per-learner reports for parents, or trigger WhatsApp nudges on missed-class streaks."
+     }
+    ]
+   }
   },
   {
    "id": "crm",
@@ -3604,7 +4686,455 @@
       }
      ]
     }
-   ]
+   ],
+   "demo": {
+    "intro": "Follow an enquiry from the moment it lands in the lead inbox to the funnel report that shows it converting — through a counsellor's workbench and a complete lead timeline.",
+    "screens": [
+     {
+      "id": "inbox",
+      "device": "desktop",
+      "title": "Lead Inbox",
+      "nav": [
+       "Dashboard",
+       "Leads*",
+       "Campaigns",
+       "Counsellors",
+       "Admissions",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "in-head",
+        "title": "Lead Inbox",
+        "subtitle": "1,248 leads · 6 campaigns",
+        "actions": [
+         "+ Add Lead",
+         "Import CSV"
+        ]
+       },
+       {
+        "type": "stats",
+        "id": "in-stats",
+        "items": [
+         {
+          "label": "New today",
+          "value": "34",
+          "delta": "+12 vs yesterday"
+         },
+         {
+          "label": "First contact due",
+          "value": "18"
+         },
+         {
+          "label": "Follow-ups overdue",
+          "value": "5"
+         },
+         {
+          "label": "Converted this month",
+          "value": "62",
+          "delta": "₹9.4L collected"
+         }
+        ]
+       },
+       {
+        "type": "table",
+        "id": "in-table",
+        "columns": [
+         "Lead",
+         "Course",
+         "Source",
+         "Score",
+         "Stage",
+         "Owner"
+        ],
+        "rows": [
+         [
+          "Aarav Mehta",
+          "NEET 2027 Batch A",
+          "Meta Lead Ads",
+          "87",
+          {
+           "chip": "Demo Booked",
+           "tone": "blue"
+          },
+          "Priya Nair"
+         ],
+         [
+          "Ananya Iyer",
+          "JEE Advanced Crash",
+          "Website form",
+          "81",
+          {
+           "chip": "Contacted",
+           "tone": "purple"
+          },
+          "Rohan Gupta"
+         ],
+         [
+          "Sneha Kulkarni",
+          "IELTS Band 8",
+          "Google Lead Form",
+          "74",
+          {
+           "chip": "New",
+           "tone": "green"
+          },
+          "Unassigned"
+         ],
+         [
+          "Kabir Shah",
+          "Class 10 Foundation",
+          "Walk-in",
+          "69",
+          {
+           "chip": "Negotiation",
+           "tone": "orange"
+          },
+          "Priya Nair"
+         ],
+         [
+          "Ishita Verma",
+          "NEET 2027 Batch A",
+          "CSV import",
+          "52",
+          {
+           "chip": "Contacted",
+           "tone": "purple"
+          },
+          "Rohan Gupta"
+         ]
+        ]
+       }
+      ]
+     },
+     {
+      "id": "workbench",
+      "device": "desktop",
+      "title": "Counsellor Workbench — Priya Nair",
+      "nav": [
+       "Dashboard",
+       "Leads",
+       "Campaigns",
+       "Counsellors*",
+       "Admissions",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "wb-head",
+        "title": "My Pipeline",
+        "subtitle": "Priya Nair · 46 open leads · Rating 4.7",
+        "actions": [
+         "Reassign leads"
+        ]
+       },
+       {
+        "type": "kanban",
+        "id": "wb-kanban",
+        "columns": [
+         {
+          "title": "New",
+          "cards": [
+           {
+            "title": "Sneha Kulkarni",
+            "sub": "IELTS Band 8 · Score 74"
+           },
+           {
+            "title": "Devansh Rao",
+            "sub": "NEET 2027 · Score 66"
+           }
+          ]
+         },
+         {
+          "title": "Contacted",
+          "cards": [
+           {
+            "title": "Ananya Iyer",
+            "sub": "JEE Advanced · Score 81"
+           },
+           {
+            "title": "Ishita Verma",
+            "sub": "NEET 2027 · Score 52"
+           }
+          ]
+         },
+         {
+          "title": "Demo Booked",
+          "cards": [
+           {
+            "title": "Aarav Mehta",
+            "sub": "Demo class Sat 11 AM"
+           }
+          ]
+         },
+         {
+          "title": "Negotiation",
+          "cards": [
+           {
+            "title": "Kabir Shah",
+            "sub": "Quoted ₹45,000 · parent call"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "list",
+        "id": "wb-followups",
+        "items": [
+         {
+          "title": "Call Aarav's father before demo",
+          "sub": "NEET 2027 Batch A · +91 98201 44317",
+          "chip": "Today",
+          "tone": "blue"
+         },
+         {
+          "title": "Send fee breakup to Kabir",
+          "sub": "Class 10 Foundation · quoted ₹45,000",
+          "chip": "Today",
+          "tone": "blue"
+         },
+         {
+          "title": "Second follow-up: Ananya",
+          "sub": "Missed SLA by 2 hrs",
+          "chip": "Overdue",
+          "tone": "red"
+         },
+         {
+          "title": "IELTS webinar invitees (12)",
+          "sub": "Batch follow-up",
+          "right": "Tomorrow"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "lead-detail",
+      "device": "desktop",
+      "title": "Lead — Aarav Mehta",
+      "nav": [
+       "Dashboard",
+       "Leads*",
+       "Campaigns",
+       "Counsellors",
+       "Admissions",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "ld-head",
+        "title": "Aarav Mehta",
+        "subtitle": "NEET 2027 Batch A · Score 87 · Hot · Owner: Priya Nair",
+        "actions": [
+         "Change stage",
+         "Add note"
+        ]
+       },
+       {
+        "cols": [
+         {
+          "type": "list",
+          "id": "ld-timeline",
+          "items": [
+           {
+            "title": "Pinned note",
+            "sub": "Father decides; prefers evening calls after 7 PM",
+            "chip": "Pinned",
+            "tone": "orange"
+           },
+           {
+            "title": "Demo class booked — Sat 11 AM",
+            "sub": "Booking linked to this lead · Physics demo",
+            "chip": "Booking",
+            "tone": "blue"
+           },
+           {
+            "title": "Stage: Contacted → Demo Booked",
+            "sub": "by Priya Nair · yesterday 6:42 PM"
+           },
+           {
+            "title": "WhatsApp: fee brochure sent",
+            "sub": "Delivered · read 8:10 PM",
+            "chip": "Read",
+            "tone": "green"
+           },
+           {
+            "title": "Score updated 74 → 87",
+            "sub": "Engagement + recency · auto"
+           },
+           {
+            "title": "Lead submitted via Meta Lead Ads",
+            "sub": "Campaign: NEET Early Bird · Andheri center"
+           }
+          ]
+         },
+         {
+          "type": "call",
+          "id": "ld-call",
+          "name": "Aarav Mehta (father)",
+          "number": "+91 98201 44317",
+          "status": "Connected",
+          "time": "03:41",
+          "lines": [
+           "Discussing scholarship test on Sunday",
+           "Outcome logs to timeline on hang-up"
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "reports",
+      "device": "desktop",
+      "title": "Sales Reports",
+      "nav": [
+       "Dashboard",
+       "Leads",
+       "Campaigns",
+       "Counsellors",
+       "Admissions",
+       "Reports*",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "rp-head",
+        "title": "Sales Funnel — July",
+        "subtitle": "All campaigns · IST reporting timezone"
+       },
+       {
+        "cols": [
+         {
+          "type": "funnel",
+          "id": "rp-funnel",
+          "stages": [
+           {
+            "label": "Leads captured",
+            "value": 1248
+           },
+           {
+            "label": "Contacted",
+            "value": 934
+           },
+           {
+            "label": "Demo booked",
+            "value": 402
+           },
+           {
+            "label": "Negotiation",
+            "value": 187
+           },
+           {
+            "label": "Enrolled",
+            "value": 118
+           }
+          ]
+         },
+         {
+          "type": "list",
+          "id": "rp-leaderboard",
+          "items": [
+           {
+            "title": "Priya Nair",
+            "sub": "31 conversions · target 30",
+            "right": "4.7 ★",
+            "chip": "103%",
+            "tone": "green"
+           },
+           {
+            "title": "Rohan Gupta",
+            "sub": "24 conversions · target 30",
+            "right": "4.3 ★",
+            "chip": "80%",
+            "tone": "blue"
+           },
+           {
+            "title": "Meera Joshi",
+            "sub": "19 conversions · target 25",
+            "right": "4.1 ★",
+            "chip": "76%",
+            "tone": "blue"
+           },
+           {
+            "title": "Arjun Singh",
+            "sub": "11 conversions · target 25",
+            "right": "3.6 ★",
+            "chip": "44%",
+            "tone": "orange"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "screen": "inbox",
+      "target": null,
+      "title": "Every enquiry lands in one inbox",
+      "text": "Meta Lead Ads, Google Lead Forms, website forms, walk-ins and CSV imports all feed one deduplicated pipeline — matched by phone or email so the same person never becomes two leads."
+     },
+     {
+      "screen": "inbox",
+      "target": "in-stats",
+      "title": "SLA clocks keep leads warm",
+      "text": "Set first-contact and follow-up deadlines in hours. One click filters every lead that's due or missed, and reminders go to the right roles before the clock runs out."
+     },
+     {
+      "screen": "inbox",
+      "target": "in-table",
+      "title": "Scored, staged and owned",
+      "text": "Each lead carries a live 0–100 score from source quality, completeness, recency and engagement. Change stage, tag hot/warm/cold, add a note or place a call — right from the row."
+     },
+     {
+      "screen": "workbench",
+      "target": "wb-kanban",
+      "title": "Your funnel, your stages",
+      "text": "Define your own pipeline stages and move leads through them one by one or in bulk. New leads route themselves via counsellor pools — round-robin, by shift roster, or to the best converter."
+     },
+     {
+      "screen": "workbench",
+      "target": "wb-followups",
+      "title": "Today's call list, ready at login",
+      "text": "Follow-ups bucket into Pending, Today and Upcoming, with a month calendar view. Close one with an outcome note and schedule the next touch in the same step."
+     },
+     {
+      "screen": "lead-detail",
+      "target": "ld-timeline",
+      "title": "The complete story of every prospect",
+      "text": "One timeline mixes automatic events — stage changes, score updates, bookings, payments — with notes and call logs. Pin the note the next counsellor must read first."
+     },
+     {
+      "screen": "lead-detail",
+      "target": "ld-call",
+      "title": "Call without leaving the lead",
+      "text": "Click-to-call or send an AI agent call from the lead itself; every email, WhatsApp, SMS and push also lands on the contact's communication timeline with delivery status."
+     },
+     {
+      "screen": "reports",
+      "target": "rp-funnel",
+      "title": "See exactly where leads drop off",
+      "text": "Every stage change is time-stamped, so the funnel is built from real history — not guesses. Conversion and lost outcomes are tracked separately from the working stage."
+     },
+     {
+      "screen": "reports",
+      "target": "rp-leaderboard",
+      "title": "Targets and ratings, computed live",
+      "text": "Set weekly or monthly targets per counsellor — conversions, leads or calls — measured from actual activity. Ratings blend conversion ratio and speed, ranked on a team leaderboard."
+     }
+    ]
+   }
   },
   {
    "id": "marketing",
@@ -4412,7 +5942,427 @@
       }
      ]
     }
-   ]
+   ],
+   "demo": {
+    "intro": "Follow a marketing funnel end to end: build the institute's website, sell a course with built-in checkout, grow through referrals and coupons, and watch ad leads flow straight into your CRM.",
+    "screens": [
+     {
+      "id": "builder",
+      "device": "desktop",
+      "title": "Website Builder — Prakash Career Academy",
+      "nav": [
+       "Dashboard",
+       "Marketing*",
+       "Study Library",
+       "Learners",
+       "Assessments",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "wb-head",
+        "title": "prakashacademy.in — Home",
+        "subtitle": "Draft · last edited 10 min ago by Priya",
+        "actions": [
+         "Preview Mobile",
+         "Publish"
+        ]
+       },
+       {
+        "type": "builder",
+        "id": "wb-canvas",
+        "tray": [
+         "Hero",
+         "Course Catalogue",
+         "Pricing Table",
+         "Testimonials",
+         "FAQ Accordion",
+         "Countdown Timer",
+         "Contact Form",
+         "Custom HTML"
+        ],
+        "canvas": [
+         "Header — logo, nav, 'Book Free Counselling' CTA",
+         "Hero — NEET 2027 Admissions Open · Split layout",
+         "Course Catalogue Grid — pulls live courses",
+         "Testimonials — 6 parent reviews",
+         "FAQ Accordion — 8 questions",
+         "Footer — contact, policies, map"
+        ]
+       },
+       {
+        "type": "form",
+        "id": "wb-publish",
+        "title": "Design & publish",
+        "fields": [
+         {
+          "label": "Theme",
+          "value": "Ocean · custom brand #1B5FA8",
+          "type": "select"
+         },
+         {
+          "label": "Fonts",
+          "value": "Playfair Display / Inter",
+          "type": "select"
+         },
+         {
+          "label": "SEO title",
+          "value": "NEET & JEE Coaching in Indore | Prakash Career Academy",
+          "type": "text"
+         },
+         {
+          "label": "Sticky header",
+          "value": "on",
+          "type": "toggle"
+         }
+        ],
+        "submit": "Publish site"
+       }
+      ]
+     },
+     {
+      "id": "salespage",
+      "device": "phone",
+      "title": "Course Page — Buyer View",
+      "nav": [
+       "Courses*",
+       "Search",
+       "Cart",
+       "Account"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "sp-head",
+        "title": "Prakash Career Academy",
+        "subtitle": "prakashacademy.in/neet-2027"
+       },
+       {
+        "type": "cards",
+        "id": "sp-cards",
+        "items": [
+         {
+          "title": "NEET 2027 Batch A",
+          "sub": "₹45,000/yr · 4.7 ★ · 18 seats left",
+          "chip": "Bestseller",
+          "tone": "green"
+         },
+         {
+          "title": "NEET 2027 Crash Course",
+          "sub": "₹18,500 · starts 1 Aug",
+          "chip": "New",
+          "tone": "blue"
+         },
+         {
+          "title": "Class 10 Foundation",
+          "sub": "₹24,000/yr · 4.6 ★",
+          "chip": "Open",
+          "tone": "gray"
+         }
+        ]
+       },
+       {
+        "type": "form",
+        "id": "sp-checkout",
+        "title": "Checkout — NEET 2027 Batch A",
+        "fields": [
+         {
+          "label": "Name",
+          "value": "Aarav Deshmukh",
+          "type": "text"
+         },
+         {
+          "label": "Phone",
+          "value": "+91 98230 41567",
+          "type": "text"
+         },
+         {
+          "label": "Coupon",
+          "value": "EARLYBIRD25 ✓ — you pay ₹33,750",
+          "type": "text"
+         },
+         {
+          "label": "I accept the terms",
+          "value": "on",
+          "type": "toggle"
+         }
+        ],
+        "submit": "Pay ₹33,750"
+       }
+      ]
+     },
+     {
+      "id": "growth",
+      "device": "desktop",
+      "title": "Referrals & Coupons",
+      "nav": [
+       "Dashboard",
+       "Marketing*",
+       "Study Library",
+       "Learners",
+       "Assessments",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "gr-head",
+        "title": "Growth",
+        "subtitle": "Referral program: 'Bring a Friend 2026' (default)",
+        "actions": [
+         "+ New Coupon",
+         "+ New Program"
+        ]
+       },
+       {
+        "type": "stats",
+        "id": "gr-stats",
+        "items": [
+         {
+          "label": "Referral joins",
+          "value": "142",
+          "delta": "+31 this month"
+         },
+         {
+          "label": "Revenue via referrals",
+          "value": "₹6.4L"
+         },
+         {
+          "label": "Coupon redemptions",
+          "value": "389"
+         },
+         {
+          "label": "Top referrer",
+          "value": "Ananya S. · 9"
+         }
+        ]
+       },
+       {
+        "type": "table",
+        "id": "gr-coupons",
+        "columns": [
+         "Code",
+         "Discount",
+         "Scope",
+         "Used",
+         "Status"
+        ],
+        "rows": [
+         [
+          "EARLYBIRD25",
+          "25% (cap ₹12,000)",
+          "NEET 2027 Batch A",
+          "212 / 500",
+          {
+           "chip": "Active",
+           "tone": "green"
+          }
+         ],
+         [
+          "TOPPER5000",
+          "₹5,000 flat",
+          "JEE Advanced Dropper",
+          "64 / 100",
+          {
+           "chip": "Active",
+           "tone": "green"
+          }
+         ],
+         [
+          "ALUMNI-ONLY",
+          "40%",
+          "12 invited emails",
+          "9 / 12",
+          {
+           "chip": "Active",
+           "tone": "blue"
+          }
+         ],
+         [
+          "DIWALI24",
+          "15%",
+          "All courses",
+          "104 / 104",
+          {
+           "chip": "Expired",
+           "tone": "gray"
+          }
+         ]
+        ]
+       }
+      ]
+     },
+     {
+      "id": "leads",
+      "device": "desktop",
+      "title": "Lead Ads Connectors",
+      "nav": [
+       "Dashboard",
+       "Marketing*",
+       "Study Library",
+       "Learners",
+       "Assessments",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "ld-head",
+        "title": "Lead Connectors",
+        "subtitle": "3 active · last lead 40 sec ago",
+        "actions": [
+         "+ Connect Meta",
+         "Sync leads now"
+        ]
+       },
+       {
+        "cols": [
+         {
+          "type": "form",
+          "id": "ld-connect",
+          "title": "Meta Lead Ads — setup",
+          "fields": [
+           {
+            "label": "Facebook Page",
+            "value": "Prakash Career Academy (verified)",
+            "type": "select"
+           },
+           {
+            "label": "Lead form",
+            "value": "NEET 2027 — Free Demo Class",
+            "type": "select"
+           },
+           {
+            "label": "Map 'full_name' →",
+            "value": "Student Name",
+            "type": "select"
+           },
+           {
+            "label": "Route to",
+            "value": "Audience list: NEET Enquiries · tag: Indore Centre",
+            "type": "select"
+           }
+          ],
+          "submit": "Activate connector"
+         },
+         {
+          "type": "notify",
+          "id": "ld-feed",
+          "items": [
+           {
+            "channel": "Meta Ads",
+            "text": "New lead: Rohan Verma · +91 98765 20143 · NEET Demo form"
+           },
+           {
+            "channel": "Google Ads",
+            "text": "New lead: Sneha Kulkarni · JEE lead form extension"
+           },
+           {
+            "channel": "Zoho Forms",
+            "text": "New lead: Kabir Mehta · scholarship test signup"
+           },
+           {
+            "channel": "Website",
+            "text": "Enquiry from course page: Class 10 Foundation"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "list",
+        "id": "ld-health",
+        "items": [
+         {
+          "title": "Meta · NEET Demo form",
+          "sub": "Last lead 40 sec ago · token OK",
+          "chip": "Healthy",
+          "tone": "green"
+         },
+         {
+          "title": "Google · JEE lead form",
+          "sub": "Webhook key active · 26 leads today",
+          "chip": "Healthy",
+          "tone": "green"
+         },
+         {
+          "title": "Meta · Old Diwali campaign",
+          "sub": "Page permission revoked · 1-click re-subscribe",
+          "chip": "Fix",
+          "tone": "orange"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "screen": "builder",
+      "target": null,
+      "title": "Your website, without an agency",
+      "text": "This is the visual site builder — an Elementor-style editor for your institute's public website and course catalogue. Sites are drafted, versioned and role-permissioned, and everything publishes to your own domain."
+     },
+     {
+      "screen": "builder",
+      "target": "wb-canvas",
+      "title": "Assemble pages from 40+ sections",
+      "text": "Drag sections — hero, course catalogue grid, pricing table, FAQ, countdown timer — onto the canvas while a pixel-accurate live preview renders alongside. Check desktop, tablet and mobile widths before anything goes live."
+     },
+     {
+      "screen": "builder",
+      "target": "wb-publish",
+      "title": "Agency-grade design, one click live",
+      "text": "Pick from 9 color themes or your exact brand color, pair fonts from a curated library, and set per-page SEO. Drafts stay invisible until you publish, and full version history restores any old revision in one click."
+     },
+     {
+      "screen": "salespage",
+      "target": "sp-cards",
+      "title": "A storefront that updates itself",
+      "text": "The catalogue widget pulls your real published courses — prices, ratings, even live seat availability from seat inventory. Tag-based pages like /neet stay current automatically as courses change."
+     },
+     {
+      "screen": "salespage",
+      "target": "sp-checkout",
+      "title": "Checkout built into the page",
+      "text": "Sales pages bundle courses and payment plans with a real checkout: coupons validate live and show the exact discounted amount, terms acceptance is enforced, and invoices go out automatically by email or WhatsApp."
+     },
+     {
+      "screen": "growth",
+      "target": "gr-stats",
+      "title": "Learners become your ad channel",
+      "text": "Referral programs offer five reward types — discounts, bonus content, free membership days, points — with tiers, vesting against refunds, and automatic reward delivery via email or WhatsApp when a referral converts."
+     },
+     {
+      "screen": "growth",
+      "target": "gr-coupons",
+      "title": "Coupons with real controls",
+      "text": "Percentage or flat discounts with caps, redemption windows, usage limits, email-restricted private offers and batch scoping. Every applied discount is recorded against the payment for auditing."
+     },
+     {
+      "screen": "leads",
+      "target": "ld-connect",
+      "title": "Connect Meta in one guided flow",
+      "text": "Sign in once, pick the Page and lead form, and map every ad-form field to your campaign's custom fields — auto-matched by name. Route each connector to an audience list with default tags like branch or centre."
+     },
+     {
+      "screen": "leads",
+      "target": "ld-feed",
+      "title": "Every lead, in seconds",
+      "text": "Meta leads arrive via push within seconds; Google lead forms, Zoho and website enquiries flow in through webhooks. Each lead is stamped with its source, and repeat submissions merge into the existing lead."
+     },
+     {
+      "screen": "leads",
+      "target": "ld-health",
+      "title": "Connectors that never fail silently",
+      "text": "Per-connector health checks show last-lead-received time, refresh tokens automatically and offer a one-click re-subscribe fix. A backup poller and 'Sync leads now' re-fetch leads even if push delivery breaks."
+     }
+    ]
+   }
   },
   {
    "id": "comms",
@@ -5109,7 +7059,399 @@
       }
      ]
     }
-   ]
+   ],
+   "demo": {
+    "intro": "Follow one announcement from the composer to every learner's screen, then work the WhatsApp inbox and check what actually got read.",
+    "screens": [
+     {
+      "id": "composer",
+      "device": "desktop",
+      "title": "New Announcement",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Communication*",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "comp-head",
+        "title": "New Announcement — PTM & Fee Reminder",
+        "subtitle": "Priority: High · Draft",
+        "actions": [
+         "Save Draft",
+         "Submit for Approval"
+        ]
+       },
+       {
+        "type": "wizard",
+        "id": "comp-wizard",
+        "steps": [
+         "Content",
+         "Audience",
+         "Channels",
+         "Schedule"
+        ],
+        "active": 1
+       },
+       {
+        "cols": [
+         {
+          "type": "form",
+          "id": "comp-audience",
+          "title": "Audience",
+          "fields": [
+           {
+            "label": "Recipients",
+            "value": "All Learners · NEET 2027 Batch A",
+            "type": "select"
+           },
+           {
+            "label": "Also include",
+            "value": "Tag: Hostel Students (142)",
+            "type": "select"
+           },
+           {
+            "label": "Custom-field filter",
+            "value": "City equals Kota",
+            "type": "select"
+           },
+           {
+            "label": "Exclude",
+            "value": "Batch: JEE Advanced Evening",
+            "type": "select"
+           },
+           {
+            "label": "Estimated reach",
+            "value": "1,286 recipients",
+            "type": "text"
+           }
+          ]
+         },
+         {
+          "type": "form",
+          "id": "comp-channels",
+          "title": "Channels & schedule",
+          "fields": [
+           {
+            "label": "Email subject",
+            "value": "PTM on Sat, 26 Jul — please confirm your slot",
+            "type": "text"
+           },
+           {
+            "label": "WhatsApp template",
+            "value": "ptm_fee_reminder_v2 · {{1}} name, {{2}} date",
+            "type": "select"
+           },
+           {
+            "label": "Push notification",
+            "value": "Auto-filled from content",
+            "type": "select"
+           },
+           {
+            "label": "Send",
+            "value": "Next Monday, 9:00 AM IST",
+            "type": "select"
+           }
+          ],
+          "submit": "Schedule Send"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "learner-phone",
+      "device": "phone",
+      "title": "Learner App",
+      "nav": [
+       "Home*",
+       "Courses",
+       "Messages",
+       "Profile"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "lp-head",
+        "title": "Hi Rohan",
+        "subtitle": "NEET 2027 Batch A · Kota"
+       },
+       {
+        "type": "notify",
+        "id": "lp-notify",
+        "items": [
+         {
+          "channel": "WhatsApp",
+          "text": "PTM on Sat 26 Jul, 10 AM. Reply YES to confirm — Nalanda Academy"
+         },
+         {
+          "channel": "Email",
+          "text": "PTM on Sat, 26 Jul — please confirm your slot"
+         },
+         {
+          "channel": "Push",
+          "text": "PTM this Saturday · Fee due 31 Jul"
+         },
+         {
+          "channel": "In-app",
+          "text": "Pinned to your dashboard until 26 Jul"
+         }
+        ]
+       },
+       {
+        "type": "list",
+        "id": "lp-surfaces",
+        "items": [
+         {
+          "title": "Alert: PTM this Saturday",
+          "sub": "Auto-dismisses after 7 days",
+          "chip": "Urgent",
+          "tone": "red"
+         },
+         {
+          "title": "Task: Confirm your PTM slot",
+          "sub": "Due Fri, 25 Jul · Mandatory",
+          "chip": "Live",
+          "tone": "green"
+         },
+         {
+          "title": "Batch A stream · Announcement",
+          "sub": "Posted by Priya Ma'am",
+          "chip": "New",
+          "tone": "blue"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "wa-inbox",
+      "device": "desktop",
+      "title": "WhatsApp Team Inbox",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Communication*",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "wa-head",
+        "title": "WhatsApp Inbox",
+        "subtitle": "+91 98220 04xxx · Meta Cloud API",
+        "actions": [
+         "New Template"
+        ]
+       },
+       {
+        "cols": [
+         {
+          "type": "list",
+          "id": "wa-convos",
+          "items": [
+           {
+            "title": "Sunita Sharma (Parent)",
+            "sub": "YES, we will attend",
+            "right": "2m",
+            "chip": "2 new",
+            "tone": "green"
+           },
+           {
+            "title": "Aarav Mehta · NEET Batch A",
+            "sub": "Can I pay the fee in two parts?",
+            "right": "18m",
+            "chip": "1 new",
+            "tone": "green"
+           },
+           {
+            "title": "Priya Nair · IELTS lead",
+            "sub": "What are the batch timings?",
+            "right": "1h"
+           },
+           {
+            "title": "Kavya Reddy (Parent)",
+            "sub": "Received, thank you",
+            "right": "Yesterday"
+           }
+          ]
+         },
+         {
+          "type": "chat",
+          "id": "wa-chat",
+          "messages": [
+           {
+            "from": "agent",
+            "text": "PTM on Sat 26 Jul, 10 AM. Reply YES to confirm — Nalanda Academy"
+           },
+           {
+            "from": "user",
+            "text": "Can I pay the fee in two parts?"
+           },
+           {
+            "from": "agent",
+            "text": "Yes Aarav — ₹22,500 now and ₹22,500 by 30 Aug. Sending your payment link."
+           },
+           {
+            "from": "system",
+            "text": "24-hour reply window open · closes today 6:42 PM"
+           }
+          ],
+          "composer": "Reply to Aarav…"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "analytics",
+      "device": "desktop",
+      "title": "Communication Hub",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Communication*",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "hub-head",
+        "title": "Communication Hub",
+        "subtitle": "Last 30 days · All batches"
+       },
+       {
+        "type": "stats",
+        "id": "hub-stats",
+        "items": [
+         {
+          "label": "Delivered",
+          "value": "12,480",
+          "delta": "+9% vs June"
+         },
+         {
+          "label": "Read",
+          "value": "9,734",
+          "delta": "78% read rate"
+         },
+         {
+          "label": "WhatsApp replies",
+          "value": "1,214"
+         },
+         {
+          "label": "Bounces suppressed",
+          "value": "37"
+         }
+        ]
+       },
+       {
+        "cols": [
+         {
+          "type": "chart",
+          "id": "hub-chart",
+          "kind": "bars",
+          "label": "Read rate by channel (%)",
+          "values": [
+           92,
+           81,
+           78,
+           64
+          ]
+         },
+         {
+          "type": "list",
+          "id": "hub-suppress",
+          "items": [
+           {
+            "title": "rohit.k@gmali.com",
+            "sub": "Hard bounce · suppressed 12 Jul",
+            "chip": "Blocked",
+            "tone": "red"
+           },
+           {
+            "title": "PTM & Fee Reminder",
+            "sub": "1,286 sent · 1,271 delivered · 8 failed",
+            "chip": "Re-deliver",
+            "tone": "orange"
+           },
+           {
+            "title": "Weekly digest · every Mon 9 AM",
+            "sub": "Recurring · next run 21 Jul",
+            "chip": "Scheduled",
+            "tone": "blue"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "screen": "composer",
+      "target": null,
+      "title": "Compose once, reach everyone",
+      "text": "Write an announcement in a rich-text editor (or raw HTML), attach PDFs and videos, and mark priority up to Urgent. Every announcement has a lifecycle — draft, approval, scheduled, active — so nothing goes out half-baked."
+     },
+     {
+      "screen": "composer",
+      "target": "comp-audience",
+      "title": "Target exactly who should hear it",
+      "text": "Mix seven recipient types — roles, users, batches, tags, custom-field filters, campaign audiences — and layer exclusions on top. A live estimate shows 1,286 recipients before you commit to sending."
+     },
+     {
+      "screen": "composer",
+      "target": "comp-channels",
+      "title": "Email, WhatsApp and push in one send",
+      "text": "Each channel keeps its own settings: email subject and from-address, an approved WhatsApp template with variable mapping, and push that auto-fills from your content. Send now, next Monday 9 AM, or on a weekly repeat."
+     },
+     {
+      "screen": "learner-phone",
+      "target": "lp-notify",
+      "title": "One send lands on every screen",
+      "text": "The same announcement arrives on WhatsApp (via Meta Cloud API, WATI or Combot), email, Firebase push — even with the app closed — and in-app, with delivery tracked per recipient on every channel."
+     },
+     {
+      "screen": "learner-phone",
+      "target": "lp-surfaces",
+      "title": "Nine in-app surfaces, streamed live",
+      "text": "Beyond notifications: dashboard pins, urgent alerts, class-stream posts, even announcements-as-tasks with deadlines and mandatory flags. Everything streams to open apps in real time — no refresh."
+     },
+     {
+      "screen": "wa-inbox",
+      "target": "wa-convos",
+      "title": "A shared WhatsApp inbox for your team",
+      "text": "Parent and learner replies flow back through provider webhooks into one team inbox, sorted by recency with unread counts. Numbers match to platform users, so staff always know it's Aarav from NEET Batch A."
+     },
+     {
+      "screen": "wa-inbox",
+      "target": "wa-chat",
+      "title": "Compliant with WhatsApp's rules, always",
+      "text": "Reply free-text inside the 24-hour customer-service window; once it closes, send a Meta-approved template to re-open the thread. Build and submit templates to Meta in-app, in 13 languages."
+     },
+     {
+      "screen": "analytics",
+      "target": "hub-stats",
+      "title": "Know what landed — and what got read",
+      "text": "Per-announcement stats track delivered, read and dismissed counts down to per-recipient timestamps. Failed sends are flagged with one-click re-delivery, and WhatsApp receipts confirm sent, delivered, read."
+     },
+     {
+      "screen": "analytics",
+      "target": "hub-suppress",
+      "title": "Deliverability protected automatically",
+      "text": "Hard bounces and complaints are suppressed from future sends automatically, recipients get one-click unsubscribe, and you can check a whole list against suppressions before any bulk send."
+     }
+    ]
+   }
   },
   {
    "id": "voice",
@@ -5827,7 +8169,417 @@
       }
      ]
     }
-   ]
+   ],
+   "demo": {
+    "intro": "Watch an admissions phone line run itself — from the team call log to a live AI agent call, the IVR menu behind it, and the coaching insights AI extracts from every conversation.",
+    "screens": [
+     {
+      "id": "call-log",
+      "device": "desktop",
+      "title": "Call Log",
+      "nav": [
+       "Dashboard",
+       "Leads",
+       "Call Log*",
+       "Automations",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "log-head",
+        "title": "Call Log",
+        "subtitle": "All providers · Last 7 days",
+        "actions": [
+         "Export CSV",
+         "Filters"
+        ]
+       },
+       {
+        "type": "stats",
+        "id": "log-kpis",
+        "items": [
+         {
+          "label": "Total calls",
+          "value": "1,284",
+          "delta": "+18% vs prev 7d"
+         },
+         {
+          "label": "Connect rate",
+          "value": "71%"
+         },
+         {
+          "label": "Talk time",
+          "value": "38h 12m"
+         },
+         {
+          "label": "Missed inbound",
+          "value": "6",
+          "delta": "call back now"
+         }
+        ]
+       },
+       {
+        "type": "table",
+        "id": "log-table",
+        "columns": [
+         "Lead",
+         "Direction",
+         "Type",
+         "Counsellor / Agent",
+         "Duration",
+         "Outcome"
+        ],
+        "rows": [
+         [
+          "Ananya Sharma",
+          "Outbound",
+          {
+           "chip": "AI · Attempt 1",
+           "tone": "purple"
+          },
+          "Diya (AI Agent)",
+          "3:42",
+          {
+           "chip": "Interested",
+           "tone": "green"
+          }
+         ],
+         [
+          "Rohan Verma",
+          "Outbound",
+          "Human",
+          "Priya Nair",
+          "6:15",
+          {
+           "chip": "Demo booked",
+           "tone": "green"
+          }
+         ],
+         [
+          "+91 98••• ••210",
+          "Inbound",
+          {
+           "chip": "AI · Inbound",
+           "tone": "purple"
+          },
+          "Diya (AI Agent)",
+          "2:58",
+          {
+           "chip": "New lead created",
+           "tone": "blue"
+          }
+         ],
+         [
+          "Aarav Gupta",
+          "Outbound",
+          {
+           "chip": "AI · Attempt 2",
+           "tone": "purple"
+          },
+          "Diya (AI Agent)",
+          "0:00",
+          {
+           "chip": "Retry at 4 PM",
+           "tone": "orange"
+          }
+         ],
+         [
+          "Meera Iyer",
+          "Inbound",
+          "Human",
+          "Kabir Singh",
+          "4:03",
+          {
+           "chip": "Callback Fri 11 AM",
+           "tone": "orange"
+          }
+         ]
+        ]
+       }
+      ]
+     },
+     {
+      "id": "live-call",
+      "device": "desktop",
+      "title": "AI Call — Ananya Sharma",
+      "nav": [
+       "Dashboard",
+       "Leads",
+       "Call Log*",
+       "Automations",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "call",
+        "id": "ai-call",
+        "name": "Ananya Sharma",
+        "number": "+91 98765 43210",
+        "status": "Live",
+        "time": "01:47",
+        "lines": [
+         {
+          "from": "agent",
+          "text": "Namaste! Main Diya bol rahi hoon, Aakash Career Institute se. Aapne NEET 2027 Batch A ke liye enquiry ki thi?"
+         },
+         {
+          "from": "user",
+          "text": "Haan, actually I wanted to know the fees and batch timing."
+         },
+         {
+          "from": "agent",
+          "text": "Sure! Weekend batch Sat–Sun 9 AM, fee ₹85,000 per year with scholarship test option. Aap Class 11 mein hain?"
+         },
+         {
+          "from": "user",
+          "text": "Yes, Class 11. Can I talk to a counsellor about the scholarship?"
+         },
+         {
+          "from": "agent",
+          "text": "Bilkul — main aapko Priya ma'am se connect kar rahi hoon, ek second..."
+         }
+        ]
+       },
+       {
+        "type": "form",
+        "id": "agent-config",
+        "title": "Agent: Diya — Admissions",
+        "fields": [
+         {
+          "label": "Language",
+          "value": "Hinglish (auto-switch)",
+          "type": "select"
+         },
+         {
+          "label": "Voice",
+          "value": "Kavya · 1.1x pace",
+          "type": "select"
+         },
+         {
+          "label": "Extract answers",
+          "value": "Class, budget, timeline",
+          "type": "text"
+         },
+         {
+          "label": "Handoff to counsellor",
+          "value": "on",
+          "type": "toggle"
+         },
+         {
+          "label": "Max call length",
+          "value": "8 min",
+          "type": "select"
+         }
+        ],
+        "submit": "Save Agent"
+       }
+      ]
+     },
+     {
+      "id": "ivr",
+      "device": "desktop",
+      "title": "Calling Settings — IVR Builder",
+      "nav": [
+       "Dashboard",
+       "Leads",
+       "Call Log",
+       "Automations",
+       "Reports",
+       "Settings*"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "ivr-head",
+        "title": "IVR Menu: Admissions Line",
+        "subtitle": "Attached to +91 80471 22334 · Live",
+        "actions": [
+         "+ Add Step",
+         "Save Menu"
+        ]
+       },
+       {
+        "type": "tree",
+        "id": "ivr-tree",
+        "nodes": [
+         {
+          "label": "Play: 'Welcome to Aakash Career Institute'",
+          "children": [
+           {
+            "label": "Press 1 — Admissions → ring Priya, Kabir"
+           },
+           {
+            "label": "Press 2 — Fees & payments → ring Accounts desk"
+           },
+           {
+            "label": "Press 3 — Talk to Diya (AI admissions assistant)"
+           },
+           {
+            "label": "Press 9 — After hours → voicemail"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "form",
+        "id": "ivr-number",
+        "title": "Number settings",
+        "fields": [
+         {
+          "label": "Inbound number",
+          "value": "+91 80471 22334 (Admissions)",
+          "type": "select"
+         },
+         {
+          "label": "Unknown caller → create lead",
+          "value": "on",
+          "type": "toggle"
+         },
+         {
+          "label": "Record all calls",
+          "value": "on",
+          "type": "toggle"
+         }
+        ],
+        "submit": "Apply"
+       }
+      ]
+     },
+     {
+      "id": "coaching",
+      "device": "desktop",
+      "title": "Team Call Intelligence",
+      "nav": [
+       "Dashboard",
+       "Leads",
+       "Call Log",
+       "Automations",
+       "Reports*",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "coach-head",
+        "title": "Counsellor Coaching",
+        "subtitle": "Last 30 days · vs previous 30 days",
+        "actions": [
+         "7d",
+         "30d",
+         "90d"
+        ]
+       },
+       {
+        "type": "list",
+        "id": "coach-list",
+        "items": [
+         {
+          "title": "Priya Nair",
+          "sub": "84 calls analyzed · Coach on: next step secured",
+          "right": "8.4 / 10",
+          "chip": "+0.6",
+          "tone": "green"
+         },
+         {
+          "title": "Kabir Singh",
+          "sub": "71 calls analyzed · Coach on: objection handling",
+          "right": "7.1 / 10",
+          "chip": "+0.2",
+          "tone": "green"
+         },
+         {
+          "title": "Sneha Kulkarni",
+          "sub": "63 calls analyzed · Coach on: needs discovery",
+          "right": "6.2 / 10",
+          "chip": "-0.4",
+          "tone": "red"
+         },
+         {
+          "title": "Diya (AI Agent)",
+          "sub": "412 calls analyzed · 38% rated Interested",
+          "right": "7.8 / 10",
+          "chip": "+0.3",
+          "tone": "green"
+         }
+        ]
+       },
+       {
+        "type": "chart",
+        "id": "coach-chart",
+        "kind": "bars",
+        "label": "Top objections this month (mentions)",
+        "values": [
+         46,
+         38,
+         27,
+         19,
+         11
+        ]
+       }
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "screen": "call-log",
+      "target": null,
+      "title": "Every call, one log",
+      "text": "Human and AI, inbound and outbound, across Exotel, Plivo, Airtel IQ or Vacademy's own telephony — the whole team's calling lands in one log, scoped by reporting line so managers see their team and counsellors see their own."
+     },
+     {
+      "screen": "call-log",
+      "target": "log-kpis",
+      "title": "Know the line's pulse instantly",
+      "text": "Headline KPIs for any period — total calls, connect rate, talk time — plus worklist chips like Missed Inbound and Callbacks Due, so promised follow-ups actually happen."
+     },
+     {
+      "screen": "call-log",
+      "target": "log-table",
+      "title": "Filter, replay, export",
+      "text": "Filter by counsellor, disposition, provider or call type, play any recording in-app, and export up to 25,000 rows to CSV or Excel. Phone numbers stay masked unless a staff member holds the view-numbers permission."
+     },
+     {
+      "screen": "live-call",
+      "target": "ai-call",
+      "title": "An AI that phones leads in Hinglish",
+      "text": "New enquiries are dialled within about 60 seconds by Vacademy's AI voice agent, which converses naturally in Hindi, English or mixed Hinglish — and hands the live call to a human counsellor the moment the caller asks."
+     },
+     {
+      "screen": "live-call",
+      "target": "agent-config",
+      "title": "Author your own agent personas",
+      "text": "Each named agent gets its own script, one of 37 Indian voices with pace control, the questions to extract (class, budget, timeline) and a call-length cap. Answers, outcome and a lead rating are written onto the lead record after every call."
+     },
+     {
+      "screen": "ivr",
+      "target": "ivr-tree",
+      "title": "Build phone menus visually",
+      "text": "Design 'Press 1 for admissions' trees to any depth — spoken prompts, forward-to-team, voicemail, even a menu key that hands the caller to your AI agent — with no telecom vendor involved. Attach a menu to a number and it's live."
+     },
+     {
+      "screen": "ivr",
+      "target": "ivr-number",
+      "title": "No inbound enquiry ever lost",
+      "text": "Unknown callers can auto-create a de-duplicated lead by phone number, known callers route back to the counsellor who last spoke to them, and recording plus India-compliance guardrails (DND scrubbing, 9 AM–9 PM window) are enforced per institute."
+     },
+     {
+      "screen": "coaching",
+      "target": "coach-list",
+      "title": "Coach from evidence, not hunches",
+      "text": "Every recording is transcribed (Hindi, English, Hinglish) and AI-scored against your own rubric. Roll-ups show each counsellor's weakest skill and recurring coaching tips, with the actual calls one click away."
+     },
+     {
+      "screen": "coaching",
+      "target": "coach-chart",
+      "title": "See what your market objects to",
+      "text": "Objections, sentiment and conversion likelihood are extracted from thousands of calls, with deltas against the previous period — so managers fix the script, not just the rep. Analysis is credit-metered with an on/off switch."
+     }
+    ]
+   }
   },
   {
    "id": "ai",
@@ -6632,7 +9384,412 @@
       }
      ]
     }
-   ]
+   ],
+   "demo": {
+    "intro": "Watch AI draft a full NEET course from one prompt, turn a PDF into an exam paper, and tutor a learner at 11pm — all inside Vacademy.",
+    "screens": [
+     {
+      "id": "builder",
+      "device": "desktop",
+      "title": "AI Course Builder",
+      "nav": [
+       "Dashboard",
+       "AI Studio*",
+       "Study Library",
+       "Assessments",
+       "Learners",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "b-head",
+        "title": "Create a course with AI",
+        "subtitle": "Powered by CourseCrafter AI — your white-labeled builder",
+        "actions": [
+         "Resume saved draft",
+         "My AI Tasks"
+        ]
+       },
+       {
+        "type": "form",
+        "id": "b-form",
+        "title": "Describe your course",
+        "fields": [
+         {
+          "label": "Prompt",
+          "value": "NEET 2027 Physics — Ray Optics for droppers, exam-focused with numericals",
+          "type": "text"
+         },
+         {
+          "label": "Reference material",
+          "value": "HC-Verma-Optics.pdf · allencareer.in/ray-optics",
+          "type": "text"
+         },
+         {
+          "label": "Audience",
+          "value": "Age 17-19 · Advanced · English",
+          "type": "select"
+         },
+         {
+          "label": "AI videos & slide decks",
+          "value": "on",
+          "type": "toggle"
+         },
+         {
+          "label": "Quizzes, homework & solutions",
+          "value": "on",
+          "type": "toggle"
+         },
+         {
+          "label": "AI model",
+          "value": "Auto (recommended)",
+          "type": "select"
+         }
+        ],
+        "submit": "Generate course · 220 credits"
+       },
+       {
+        "type": "cards",
+        "id": "b-cost",
+        "items": [
+         {
+          "title": "Cost preview",
+          "sub": "220 credits · balance 4,180",
+          "chip": "Before you run",
+          "tone": "blue"
+         },
+         {
+          "title": "Grounded in your PDFs",
+          "sub": "Real figures pulled from HC-Verma-Optics.pdf",
+          "chip": "OCR",
+          "tone": "purple"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "outline",
+      "device": "desktop",
+      "title": "Review AI Outline — Ray Optics",
+      "nav": [
+       "Dashboard",
+       "AI Studio*",
+       "Study Library",
+       "Assessments",
+       "Learners",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "o-head",
+        "title": "Ray Optics — NEET 2027 Droppers",
+        "subtitle": "3 chapters · 22 pages · generating in background (14/22 done)",
+        "actions": [
+         "Regenerate with feedback",
+         "Create course"
+        ]
+       },
+       {
+        "type": "tree",
+        "id": "o-tree",
+        "nodes": [
+         {
+          "label": "Ch 1 · Reflection & Spherical Mirrors",
+          "children": [
+           {
+            "label": "Learning objectives"
+           },
+           {
+            "label": "Topic: Mirror formula & magnification"
+           },
+           {
+            "label": "AI video: Sign convention in 6 min"
+           },
+           {
+            "label": "Quiz: 10 MCQs"
+           }
+          ]
+         },
+         {
+          "label": "Ch 2 · Refraction & Lenses",
+          "children": [
+           {
+            "label": "Topic: Lensmaker's equation"
+           },
+           {
+            "label": "AI slide deck: Total internal reflection"
+           },
+           {
+            "label": "Homework: 12 numericals + solutions"
+           }
+          ]
+         },
+         {
+          "label": "Ch 3 · Optical Instruments"
+         }
+        ]
+       },
+       {
+        "type": "player",
+        "id": "o-page",
+        "outline": [
+         {
+          "title": "Page prompt",
+          "items": [
+           {
+            "t": "Derive mirror formula step-by-step",
+            "done": true
+           },
+           {
+            "t": "Use Fig 18.3 from HC-Verma-Optics.pdf",
+            "done": true
+           },
+           {
+            "t": "End with 3 NEET-style numericals",
+            "on": true
+           }
+          ]
+         }
+        ],
+        "slide": {
+         "title": "Topic: Mirror formula & magnification",
+         "body": "Every planned page carries an editable AI prompt. Refine it, regenerate just this page, or drag it to a new chapter — the course is created in exactly the order you arrange."
+        }
+       }
+      ]
+     },
+     {
+      "id": "vsmart",
+      "device": "desktop",
+      "title": "Vsmart Question Paper Generator",
+      "nav": [
+       "Dashboard",
+       "AI Studio*",
+       "Study Library",
+       "Assessments",
+       "Learners",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "v-head",
+        "title": "Vsmart Upload",
+        "subtitle": "Paper from PDF, photo, audio or a plain prompt",
+        "actions": [
+         "My Resources",
+         "My AI Tasks"
+        ]
+       },
+       {
+        "type": "form",
+        "id": "v-form",
+        "title": "Generate from document",
+        "fields": [
+         {
+          "label": "Source file",
+          "value": "Class-11-Thermodynamics-Notes.pdf",
+          "type": "select"
+         },
+         {
+          "label": "Questions",
+          "value": "20 · Medium difficulty",
+          "type": "select"
+         },
+         {
+          "label": "Question type",
+          "value": "MCQ single-correct + True/False",
+          "type": "select"
+         },
+         {
+          "label": "Language",
+          "value": "English",
+          "type": "select"
+         }
+        ],
+        "submit": "Generate paper"
+       },
+       {
+        "type": "list",
+        "id": "v-questions",
+        "items": [
+         {
+          "title": "Q1. An ideal gas expands isothermally...",
+          "sub": "MCQ · 4 options · answer key attached",
+          "chip": "Ready",
+          "tone": "green"
+         },
+         {
+          "title": "Q2. First law of thermodynamics states...",
+          "sub": "True/False · with explanation",
+          "chip": "Ready",
+          "tone": "green"
+         },
+         {
+          "title": "Q3. Work done in an adiabatic process...",
+          "sub": "MCQ · numerical",
+          "chip": "Ready",
+          "tone": "green"
+         },
+         {
+          "title": "17 more questions",
+          "sub": "Auto-grouped by topic via Vsmart Organizer",
+          "right": "20/20"
+         }
+        ]
+       },
+       {
+        "type": "chat",
+        "id": "v-chat",
+        "messages": [
+         {
+          "from": "user",
+          "text": "Add 5 higher-order questions on entropy and make Q3 easier"
+         },
+         {
+          "from": "ai",
+          "text": "Done — added 5 HOTS questions on entropy and simplified Q3 to a single-step calculation. Paper is now 25 questions."
+         }
+        ],
+        "composer": "Refine the paper..."
+       }
+      ]
+     },
+     {
+      "id": "tutor",
+      "device": "phone",
+      "title": "Learner AI Tutor",
+      "nav": [
+       "Home",
+       "Courses",
+       "AI Tutor*",
+       "Tests",
+       "Profile"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "t-head",
+        "title": "Shiksha Buddy",
+        "subtitle": "Your 24/7 tutor · knows this lesson"
+       },
+       {
+        "type": "chat",
+        "id": "t-chat",
+        "messages": [
+         {
+          "from": "user",
+          "text": "I don't get sign convention in mirrors 😩"
+         },
+         {
+          "from": "ai",
+          "text": "Think of the mirror as origin: distances measured against incoming light are negative. So for a concave mirror, object distance u is always negative. Want a quick check?"
+         },
+         {
+          "from": "user",
+          "text": "Quiz me"
+         },
+         {
+          "from": "ai",
+          "text": "Timed quiz: 5 questions on sign convention, 5 minutes. Q1: An object is 30 cm in front of a concave mirror of f = 20 cm. What is u?"
+         }
+        ],
+        "composer": "Ask anything · 🎤 voice"
+       },
+       {
+        "type": "list",
+        "id": "t-modes",
+        "items": [
+         {
+          "title": "Explain this · Summarize · Hint",
+          "sub": "One-tap actions on the open lesson"
+         },
+         {
+          "title": "Voice doubt-solving",
+          "sub": "Speak in Hindi or English",
+          "chip": "Voice",
+          "tone": "purple"
+         },
+         {
+          "title": "AI mock interview & oral test",
+          "sub": "Scored, with feedback",
+          "chip": "New",
+          "tone": "green"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "screen": "builder",
+      "target": null,
+      "title": "A course from one prompt",
+      "text": "Describe what you want to teach and the AI drafts the whole course — structure, lesson pages, diagrams, videos, quizzes and homework. Admins can even white-label the builder under their own name."
+     },
+     {
+      "screen": "builder",
+      "target": "b-form",
+      "title": "Grounded in YOUR syllabus",
+      "text": "Attach reference PDFs and website URLs — math-aware OCR pulls real figures and equations from your material, so lessons reflect your actual syllabus, not generic AI knowledge. Set audience age, level and language too."
+     },
+     {
+      "screen": "builder",
+      "target": "b-cost",
+      "title": "See the cost before you commit",
+      "text": "Every generation shows its exact credit price up front, drawn from a prepaid institute balance. Pick a specific AI model or bring your own OpenAI or Gemini keys."
+     },
+     {
+      "screen": "outline",
+      "target": "o-tree",
+      "title": "Review every page before it exists",
+      "text": "The draft lands as an interactive outline: chapters and pages spanning topic pages, AI videos, slide decks, quizzes, homework and solutions. Rename, delete or drag anything into a new order."
+     },
+     {
+      "screen": "outline",
+      "target": "o-page",
+      "title": "Edit the prompt behind each page",
+      "text": "Every planned page carries an editable AI prompt. Refine it, regenerate a single page, or give course-wide corrective feedback — content fills in via background generation while you keep editing, then publishes to your study library in one click."
+     },
+     {
+      "screen": "vsmart",
+      "target": "v-form",
+      "title": "Question papers from anything",
+      "text": "Vsmart builds editable papers from a PDF or PPT, a photographed printed paper, an audio lecture, or a plain topic prompt — with control over count, difficulty, question type and language."
+     },
+     {
+      "screen": "vsmart",
+      "target": "v-questions",
+      "title": "Straight into your question bank",
+      "text": "Generated questions land ready with answer keys, auto-grouped by topic for chapter-wise tests. Export as a formatted PDF or DOC paper, or push directly into a live assessment."
+     },
+     {
+      "screen": "vsmart",
+      "target": "v-chat",
+      "title": "Refine the paper by chatting",
+      "text": "Not happy? Just tell Vsmart Chat: add more MCQs, add higher-order questions, simplify Q3. Jobs run in the background with a task tracker, so you can navigate away and come back."
+     },
+     {
+      "screen": "tutor",
+      "target": "t-chat",
+      "title": "A 24/7 tutor that knows the lesson",
+      "text": "On every learner screen, a branded tutor aware of the open course and lesson. Ananya asks a doubt at 11pm, says 'Quiz me', and gets a timed practice quiz graded with per-question feedback."
+     },
+     {
+      "screen": "tutor",
+      "target": "t-modes",
+      "title": "Voice tutoring, on your terms",
+      "text": "Voice doubt-solving, AI-led mock interviews and oral tests in the learner's language. Admins design the persona, hard rules, voices and exactly which pages the tutor appears on."
+     }
+    ]
+   }
   },
   {
    "id": "video",
@@ -7958,7 +11115,422 @@
       }
      ]
     }
-   ]
+   ],
+   "demo": {
+    "intro": "Follow one NEET physics topic from a plain-text prompt to a finished branded video, week of reels and localized cuts — no camera, crew or editor.",
+    "screens": [
+     {
+      "id": "create",
+      "device": "desktop",
+      "title": "Vimotion Studio — Create Video",
+      "nav": [
+       "Dashboard",
+       "Create*",
+       "My Videos",
+       "Reels",
+       "Avatars",
+       "Brand Kits",
+       "Team"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "create-head",
+        "title": "Create a video",
+        "subtitle": "Prompt to finished MP4 — script, visuals, voiceover and captions, automatically",
+        "actions": [
+         "Generate",
+         "Preview Cost"
+        ]
+       },
+       {
+        "type": "form",
+        "id": "create-brief",
+        "title": "Your brief",
+        "fields": [
+         {
+          "label": "Topic or brief",
+          "value": "Newton's Laws of Motion — open with a cricket-ball hook, for NEET 2027 Batch A",
+          "type": "text"
+         },
+         {
+          "label": "Narration voice",
+          "value": "Kavya — Hindi (Premium Indian)",
+          "type": "select"
+         },
+         {
+          "label": "Target audience",
+          "value": "Class 11–12 (NEET)",
+          "type": "select"
+         },
+         {
+          "label": "Target duration",
+          "value": "3 minutes",
+          "type": "select"
+         },
+         {
+          "label": "Burned-in captions",
+          "value": "on",
+          "type": "toggle"
+         }
+        ],
+        "submit": "Generate video"
+       },
+       {
+        "type": "cols",
+        "cols": [
+         {
+          "type": "stats",
+          "id": "create-cost",
+          "items": [
+           {
+            "label": "Estimated cost",
+            "value": "142 credits"
+           },
+           {
+            "label": "Your balance",
+            "value": "2,450 credits"
+           },
+           {
+            "label": "Quality tier",
+            "value": "Premium"
+           }
+          ]
+         },
+         {
+          "type": "list",
+          "id": "create-history",
+          "items": [
+           {
+            "title": "Thermodynamics — Carnot engine",
+            "sub": "Yesterday · Hindi · 4:10",
+            "chip": "Done",
+            "tone": "green"
+           },
+           {
+            "title": "IELTS Band 8 — Writing Task 2",
+            "sub": "Tue · English (India) · 2:45",
+            "chip": "Done",
+            "tone": "green"
+           },
+           {
+            "title": "Class 10 — Light: Refraction",
+            "sub": "Mon · resumed from script stage",
+            "chip": "Draft",
+            "tone": "orange"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "storyboard",
+      "device": "desktop",
+      "title": "Production — Newton's Laws of Motion",
+      "nav": [
+       "Dashboard",
+       "Create*",
+       "My Videos",
+       "Reels",
+       "Avatars",
+       "Brand Kits",
+       "Team"
+      ],
+      "widgets": [
+       {
+        "type": "wizard",
+        "id": "gen-stages",
+        "steps": [
+         "Script",
+         "Voiceover",
+         "Storyboard",
+         "Final render"
+        ],
+        "active": 2
+       },
+       {
+        "type": "cards",
+        "id": "shot-cards",
+        "items": [
+         {
+          "title": "Hook — cricket ball at Wankhede",
+          "sub": "Shot 1 · Kinetic title + AI hero clip",
+          "chip": "Approved",
+          "tone": "green"
+         },
+         {
+          "title": "First Law — inertia explained",
+          "sub": "Shot 2 · Equation build · Chalkboard theme",
+          "chip": "Rendered",
+          "tone": "green"
+         },
+         {
+          "title": "F = ma in real numbers",
+          "sub": "Shot 3 · Animated data story",
+          "chip": "Vision review",
+          "tone": "blue"
+         },
+         {
+          "title": "Recap — Rohan Sir on camera",
+          "sub": "Shot 4 · Avatar presenter, lip-synced",
+          "chip": "Queued",
+          "tone": "orange"
+         }
+        ]
+       },
+       {
+        "type": "chat",
+        "id": "assist-chat",
+        "messages": [
+         {
+          "from": "ai",
+          "text": "Shot plan ready: 12 scenes in 3 acts, equation builds for the derivations. Approve, edit, or redirect?"
+         },
+         {
+          "from": "user",
+          "text": "Make shot 3 a step-by-step process scene instead of a chart."
+         },
+         {
+          "from": "ai",
+          "text": "Done — shot 3 is now a 4-step process build. Regenerating only that scene."
+         }
+        ],
+        "composer": "Type direction for the AI Director…"
+       }
+      ]
+     },
+     {
+      "id": "editor",
+      "device": "desktop",
+      "title": "Editor — Newton's Laws of Motion",
+      "nav": [
+       "Dashboard",
+       "Create",
+       "My Videos*",
+       "Reels",
+       "Avatars",
+       "Brand Kits",
+       "Team"
+      ],
+      "widgets": [
+       {
+        "type": "video",
+        "id": "ed-preview",
+        "title": "Newton's Laws of Motion — Premium cut",
+        "time": "03:04"
+       },
+       {
+        "type": "cols",
+        "cols": [
+         {
+          "type": "form",
+          "id": "ed-settings",
+          "title": "Quality & presenter",
+          "fields": [
+           {
+            "label": "Quality tier",
+            "value": "Premium — AI Director + vision review",
+            "type": "select"
+           },
+           {
+            "label": "Voice",
+            "value": "Kavya — Hindi (Premium Indian)",
+            "type": "select"
+           },
+           {
+            "label": "Presenter avatar",
+            "value": "Rohan Sir — custom avatar",
+            "type": "select"
+           },
+           {
+            "label": "Background music",
+            "value": "on",
+            "type": "toggle"
+           }
+          ],
+          "submit": "Re-render"
+         },
+         {
+          "type": "list",
+          "id": "ed-edits",
+          "items": [
+           {
+            "title": "\"Cut the intro by 10 seconds\"",
+            "sub": "Targeted patch — no full regeneration",
+            "chip": "Applied",
+            "tone": "green"
+           },
+           {
+            "title": "Re-narrated sentence 14, same voice",
+            "sub": "Spliced with crossfade · timings rippled",
+            "chip": "Applied",
+            "tone": "green"
+           },
+           {
+            "title": "\"Add Tamil captions\"",
+            "sub": "Preview ready — accept, reject or refine",
+            "chip": "Preview",
+            "tone": "blue"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "publish",
+      "device": "desktop",
+      "title": "Export & Reels",
+      "nav": [
+       "Dashboard",
+       "Create",
+       "My Videos",
+       "Reels*",
+       "Avatars",
+       "Brand Kits",
+       "Team"
+      ],
+      "widgets": [
+       {
+        "type": "stats",
+        "id": "pub-stats",
+        "items": [
+         {
+          "label": "Reel candidates found",
+          "value": "18",
+          "delta": "from one 62-min lecture"
+         },
+         {
+          "label": "Final render",
+          "value": "1080p · 30fps"
+         },
+         {
+          "label": "Languages shipped",
+          "value": "6"
+         },
+         {
+          "label": "Credits used",
+          "value": "139"
+         }
+        ]
+       },
+       {
+        "type": "list",
+        "id": "reel-list",
+        "items": [
+         {
+          "title": "\"Why the ball comes back\" — hook",
+          "sub": "0:42 · 9:16 · karaoke captions",
+          "chip": "Rendered",
+          "tone": "green"
+         },
+         {
+          "title": "Inertia in 30 seconds",
+          "sub": "0:31 · hook score 92 · auto b-roll",
+          "chip": "Rendered",
+          "tone": "green"
+         },
+         {
+          "title": "F = ma numerical trick",
+          "sub": "0:58 · silence-trimmed, 1.2x pace",
+          "chip": "Rendering",
+          "tone": "blue"
+         }
+        ]
+       },
+       {
+        "type": "list",
+        "id": "locale-list",
+        "items": [
+         {
+          "title": "Tamil — lip-synced dub",
+          "sub": "Glossary protected: \"NEET\", \"Vacademy\"",
+          "chip": "Approved",
+          "tone": "green"
+         },
+         {
+          "title": "Bengali — lip-synced dub",
+          "sub": "Per-segment review by Ananya",
+          "chip": "In review",
+          "tone": "blue"
+         },
+         {
+          "title": "Marathi — lip-synced dub",
+          "sub": "Batch render queued",
+          "chip": "Queued",
+          "tone": "orange"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "screen": "create",
+      "target": null,
+      "title": "Type a topic, get a finished video",
+      "text": "This is Vimotion, Vacademy's AI video studio. Type a brief — or paste a PDF, deck or URL — and the AI writes the script, records the voiceover, designs every animated scene and renders a branded MP4 in minutes."
+     },
+     {
+      "screen": "create",
+      "target": "create-brief",
+      "title": "Speak to every learner, in their language",
+      "text": "Pick from 200+ voices across 60+ narration languages — including 9 Indian languages with 35+ authentic Indian voices — set the audience from Class 1–2 to Graduate, and choose any length from 30 seconds to 10 minutes."
+     },
+     {
+      "screen": "create",
+      "target": "create-cost",
+      "title": "Know the cost before you generate",
+      "text": "An itemized credit estimate prices your exact setup — tier, duration, voice, avatar — next to your live balance, before you press Generate. Past runs sit in history, so you can reopen results or reuse their settings."
+     },
+     {
+      "screen": "storyboard",
+      "target": "gen-stages",
+      "title": "Watch production, stage by stage",
+      "text": "Live progress streams through script, voiceover, storyboard and render. Pause at the script to review the narration, leave and come back, or resume a failed run from its last checkpoint without losing spend."
+     },
+     {
+      "screen": "storyboard",
+      "target": "shot-cards",
+      "title": "Real motion design, not templates",
+      "text": "Scenes come from a library of 18+ animated types — equation builds, data stories, kinetic titles — across 8 visual themes. On Premium and above, an AI vision pass inspects every rendered frame for defects before it ships."
+     },
+     {
+      "screen": "storyboard",
+      "target": "assist-chat",
+      "title": "Direct the AI like a filmmaker",
+      "text": "Assist Mode pauses at checkpoints you choose — concept, shot plan, narration, casting — and asks for your call in chat. Put a presenter on camera too: pick from 30+ avatars or build one from a single photo of your teacher."
+     },
+     {
+      "screen": "editor",
+      "target": "ed-settings",
+      "title": "Five quality tiers, your presenter",
+      "text": "Trade cost for polish across Free to Super Ultra tiers. Your avatar — cloned from a photo or a 2-minute phone recording — presents lip-synced in 80+ languages, and a 2-minute audio sample clones the voice to match."
+     },
+     {
+      "screen": "editor",
+      "target": "ed-edits",
+      "title": "Edit in plain English",
+      "text": "Rewrite one sentence and only that line is re-recorded in the same voice and spliced in. Or type instructions like \"cut the intro\" — the assistant shows a preview and applies a surgical patch, never a costly full regeneration."
+     },
+     {
+      "screen": "publish",
+      "target": "reel-list",
+      "title": "One lecture, a week of reels",
+      "text": "Point Vimotion at any long recording: a free scan scores up to 50 moments on hook strength and pacing, then renders the winners as 9:16 reels with karaoke captions, auto b-roll and silence trimming — you pay only for keepers."
+     },
+     {
+      "screen": "publish",
+      "target": "locale-list",
+      "title": "Localized into 80+ markets",
+      "text": "Translate the finished video into 80+ languages with frame-accurate lip sync, so it looks filmed in Tamil or Bengali — not dubbed. A brand glossary protects names like \"NEET\", and reviewers approve lines per market before render."
+     }
+    ]
+   }
   },
   {
    "id": "automation",
@@ -8281,7 +11853,382 @@
       }
      ]
     }
-   ]
+   ],
+   "demo": {
+    "intro": "Watch a fee-reminder automation go from a visual canvas to messages on a parent's phone — and the run log that proves it all happened.",
+    "screens": [
+     {
+      "id": "builder",
+      "device": "desktop",
+      "title": "Workflow Builder — Daily Fee Reminder",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Automations*",
+       "Payments",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "wf-head",
+        "title": "Daily Fee Reminder",
+        "subtitle": "Scheduled · Every day, 9:00 AM IST · Next run in 14h",
+        "actions": [
+         "Test Run",
+         "Publish"
+        ]
+       },
+       {
+        "type": "tree",
+        "id": "flow-tree",
+        "nodes": [
+         {
+          "label": "Trigger — Schedule: daily, 9:00 AM IST",
+          "children": [
+           {
+            "label": "Query — Fee installments due in 3 days",
+            "children": [
+             {
+              "label": "If/Else — Installment still unpaid?",
+              "children": [
+               {
+                "label": "Yes → Send WhatsApp: 'fee_reminder_v2' template",
+                "children": [
+                 {
+                  "label": "Send Email — reminder with payment link"
+                 }
+                ]
+               },
+               {
+                "label": "No → End (already paid)"
+               }
+              ]
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "type": "chat",
+        "id": "ai-draft",
+        "messages": [
+         {
+          "from": "user",
+          "text": "Remind parents on WhatsApp 3 days before a fee installment is due"
+         },
+         {
+          "from": "ai",
+          "text": "Drafted a 5-node workflow: daily schedule → fee-installments query → unpaid filter → WhatsApp + email. Which batches should it cover — all, or NEET 2027 Batch A only?"
+         }
+        ],
+        "composer": "Describe an automation..."
+       }
+      ]
+     },
+     {
+      "id": "library",
+      "device": "desktop",
+      "title": "One-Click Automations",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Automations*",
+       "Payments",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "lib-head",
+        "title": "Automations Library",
+        "subtitle": "26 ready-made recipes · 9 active",
+        "actions": [
+         "Open Workflow Builder"
+        ]
+       },
+       {
+        "type": "form",
+        "id": "auto-toggles",
+        "title": "Payments & Fees",
+        "fields": [
+         {
+          "label": "Daily fee-due reminders (WhatsApp + email)",
+          "value": "on",
+          "type": "toggle"
+         },
+         {
+          "label": "Instant payment-success receipt",
+          "value": "on",
+          "type": "toggle"
+         },
+         {
+          "label": "Payment-failed email with retry link",
+          "value": "on",
+          "type": "toggle"
+         },
+         {
+          "label": "Abandoned-checkout nudge",
+          "value": "off",
+          "type": "toggle"
+         }
+        ]
+       },
+       {
+        "type": "cards",
+        "id": "lib-cards",
+        "items": [
+         {
+          "title": "Live class alerts",
+          "sub": "'We're live now' + separate recaps for absentees",
+          "chip": "3 active",
+          "tone": "green"
+         },
+         {
+          "title": "Parent updates",
+          "sub": "Attended vs missed, weekly attendance roll-ups",
+          "chip": "2 active",
+          "tone": "green"
+         },
+         {
+          "title": "Enrollment & onboarding",
+          "sub": "Welcome email with login credentials",
+          "chip": "On",
+          "tone": "green"
+         },
+         {
+          "title": "Membership renewals",
+          "sub": "Expiry scans, renewal nudges, win-back emails",
+          "chip": "Off",
+          "tone": "gray"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "run",
+      "device": "phone",
+      "title": "Parent's Phone — 9:00 AM",
+      "nav": [
+       "Chats*",
+       "Updates",
+       "Calls",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "p-head",
+        "title": "Mrs. Verma",
+        "subtitle": "+91 98201 44573 · Rohan, NEET 2027 Batch A"
+       },
+       {
+        "type": "notify",
+        "id": "sent-msgs",
+        "items": [
+         {
+          "channel": "WhatsApp",
+          "text": "Hi Mrs. Verma, Rohan's installment #2 of ₹12,500 for NEET 2027 Batch A is due 20 Jul. Pay securely: vacademy.io/pay/8k2f"
+         },
+         {
+          "channel": "Email",
+          "text": "Fee reminder — ₹12,500 due 20 Jul · invoice and payment link attached"
+         },
+         {
+          "channel": "Push",
+          "text": "Reminder: Rohan's fee installment is due in 3 days"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "history",
+      "device": "desktop",
+      "title": "Execution History — Daily Fee Reminder",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Automations*",
+       "Payments",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "stats",
+        "id": "run-stats",
+        "items": [
+         {
+          "label": "Runs this month",
+          "value": "312"
+         },
+         {
+          "label": "Success rate",
+          "value": "98.7%"
+         },
+         {
+          "label": "Messages sent",
+          "value": "1,046",
+          "delta": "+41 today"
+         },
+         {
+          "label": "Avg duration",
+          "value": "6.2s"
+         }
+        ]
+       },
+       {
+        "type": "table",
+        "id": "run-table",
+        "columns": [
+         "Run",
+         "Trigger",
+         "Recipients",
+         "Status",
+         "Duration"
+        ],
+        "rows": [
+         [
+          "17 Jul, 9:00 AM",
+          "Schedule",
+          "41 parents",
+          {
+           "chip": "Completed",
+           "tone": "green"
+          },
+          "5.8s"
+         ],
+         [
+          "16 Jul, 9:00 AM",
+          "Schedule",
+          "38 parents",
+          {
+           "chip": "Completed",
+           "tone": "green"
+          },
+          "6.1s"
+         ],
+         [
+          "15 Jul, 9:00 AM",
+          "Schedule",
+          "44 parents",
+          {
+           "chip": "1 failed",
+           "tone": "red"
+          },
+          "7.4s"
+         ],
+         [
+          "14 Jul, 9:00 AM",
+          "Schedule",
+          "36 parents",
+          {
+           "chip": "Completed",
+           "tone": "green"
+          },
+          "5.9s"
+         ]
+        ]
+       },
+       {
+        "type": "list",
+        "id": "step-log",
+        "items": [
+         {
+          "title": "Trigger fired",
+          "sub": "15 Jul, 9:00:00 AM IST",
+          "chip": "OK",
+          "tone": "green"
+         },
+         {
+          "title": "Query: fee installments due in 3 days",
+          "sub": "44 unpaid installments found",
+          "chip": "OK",
+          "tone": "green"
+         },
+         {
+          "title": "Send WhatsApp × 44",
+          "sub": "fee_reminder_v2 · all delivered",
+          "chip": "OK",
+          "tone": "green"
+         },
+         {
+          "title": "Send Email × 44",
+          "sub": "1 bounced — invalid address for Kabir Shah",
+          "chip": "1 failed",
+          "tone": "red"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "screen": "builder",
+      "target": null,
+      "title": "Every event becomes the next action",
+      "text": "Vacademy's workflow engine listens to 35+ events — enrollments, payments, missed classes, new leads — and fires the right response automatically. This flow chases unpaid fee installments every morning."
+     },
+     {
+      "screen": "builder",
+      "target": "flow-tree",
+      "title": "Wire it up on a visual canvas",
+      "text": "Drag from 20 node types — triggers, queries, If/Else branches, loops, delays, WhatsApp, email, push, webhooks — and connect them. Prebuilt lookups like 'fee installments due' mean zero technical setup."
+     },
+     {
+      "screen": "builder",
+      "target": "ai-draft",
+      "title": "Or describe it — AI drafts the flow",
+      "text": "Type your goal in plain language and AI assembles the whole workflow, asking clarifying questions — which batch? which template? — and explaining every step. Nothing goes live until you review and publish."
+     },
+     {
+      "screen": "builder",
+      "target": "wf-head",
+      "title": "Test safely before anything goes live",
+      "text": "Run a safe test with clear warnings before real messages go out. Pre-publish validation flags misconfigured steps, and duplicate-safe delivery ensures no one ever gets the same message twice for one event."
+     },
+     {
+      "screen": "library",
+      "target": "lib-cards",
+      "title": "26 automations, ready to switch on",
+      "text": "No canvas needed — the curated library covers live class alerts, parent updates, enrollment welcomes with login credentials, renewal nudges and admin team alerts. Each recipe is a full workflow you can open and extend later."
+     },
+     {
+      "screen": "library",
+      "target": "auto-toggles",
+      "title": "Fee follow-ups in one click",
+      "text": "Flip a switch and answer one or two friendly questions — which template, what time, how many days before due. Daily reminders, payment receipts and failed-payment retry links start running immediately."
+     },
+     {
+      "screen": "run",
+      "target": "sent-msgs",
+      "title": "The right message, on every channel",
+      "text": "At 9:00 AM the run finds Rohan's unpaid ₹12,500 installment and reaches his parent on WhatsApp, email and push — template variables filled from his record, with a secure payment link in each message."
+     },
+     {
+      "screen": "history",
+      "target": "run-table",
+      "title": "Every run, on the record",
+      "text": "The history tab logs each execution with recipients, status and duration — plus summary cards for runs, success rate and average time. When a parent says 'I never got it', you have the receipt."
+     },
+     {
+      "screen": "history",
+      "target": "step-log",
+      "title": "Drill into any run, node by node",
+      "text": "Open a run to see the execution flow step by step: what the query found, exactly which messages went out, and what failed and why — like the one bounced email here — so nothing is a black box."
+     }
+    ]
+   }
   },
   {
    "id": "finance",
@@ -8977,7 +12924,441 @@
       }
      ]
     }
-   ]
+   ],
+   "demo": {
+    "intro": "Follow the money — from the admin's fee collection dashboard to a parent paying an installment by UPI on their phone.",
+    "screens": [
+     {
+      "id": "collections",
+      "device": "desktop",
+      "title": "Fee Collection Dashboard",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Finance*",
+       "Marketing",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "col-head",
+        "title": "Fee Collection",
+        "subtitle": "AY 2026-27 · 486 students across 9 batches",
+        "actions": [
+         "Collect Payment",
+         "+ New Invoice"
+        ]
+       },
+       {
+        "type": "stats",
+        "id": "col-stats",
+        "items": [
+         {
+          "label": "Collected this month",
+          "value": "₹18.4L",
+          "delta": "+12% vs June"
+         },
+         {
+          "label": "Due this week",
+          "value": "₹3.2L"
+         },
+         {
+          "label": "Overdue",
+          "value": "₹1.6L",
+          "delta": "55 students"
+         },
+         {
+          "label": "Collection rate",
+          "value": "87%"
+         }
+        ]
+       },
+       {
+        "cols": [
+         {
+          "type": "funnel",
+          "id": "col-funnel",
+          "stages": [
+           {
+            "label": "Students with dues raised",
+            "value": 486
+           },
+           {
+            "label": "Fully paid",
+            "value": 342
+           },
+           {
+            "label": "Partially paid",
+            "value": 89
+           },
+           {
+            "label": "Overdue — needs follow-up",
+            "value": 55
+           }
+          ]
+         },
+         {
+          "type": "list",
+          "id": "col-recent",
+          "items": [
+           {
+            "title": "Rohan Verma · NEET 2027 Batch A",
+            "sub": "Tuition Inst. 3 · UPI at counter",
+            "right": "₹15,000",
+            "chip": "Receipt sent",
+            "tone": "green"
+           },
+           {
+            "title": "Ananya Iyer · JEE Advanced",
+            "sub": "Online · Razorpay",
+            "right": "₹22,500",
+            "chip": "Paid",
+            "tone": "green"
+           },
+           {
+            "title": "Aarav Gupta · Class 10 Foundation",
+            "sub": "Cheque #004512 · pending clearance",
+            "right": "₹9,000",
+            "chip": "Recorded",
+            "tone": "blue"
+           },
+           {
+            "title": "Priya Sharma · Class 10 Foundation",
+            "sub": "Transport Q2 · due 12 Jul",
+            "right": "₹4,500",
+            "chip": "Overdue",
+            "tone": "red"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "fee-plans",
+      "device": "desktop",
+      "title": "Fee Structure — Class 10 Foundation",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Finance*",
+       "Marketing",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "plan-head",
+        "title": "Class 10 Foundation — Quarterly Plan",
+        "subtitle": "Fee structure · 4 fee heads · attached to 2 batches",
+        "actions": [
+         "+ Fee Head",
+         "Send for Approval"
+        ]
+       },
+       {
+        "type": "table",
+        "id": "plan-table",
+        "columns": [
+         "Fee Head",
+         "Annual Amount",
+         "Schedule",
+         "Late Penalty",
+         "Status"
+        ],
+        "rows": [
+         [
+          "Tuition",
+          "₹72,000",
+          "4 installments · Apr / Jul / Oct / Jan",
+          "2% after due date",
+          {
+           "chip": "Approved",
+           "tone": "green"
+          }
+         ],
+         [
+          "Admission (one-time)",
+          "₹10,000",
+          "Full at enrollment",
+          "—",
+          {
+           "chip": "Approved",
+           "tone": "green"
+          }
+         ],
+         [
+          "Transport",
+          "₹18,000",
+          "4 installments, quarterly",
+          "2% after due date",
+          {
+           "chip": "Approved",
+           "tone": "green"
+          }
+         ],
+         [
+          "Caution Money (refundable)",
+          "₹5,000",
+          "Full at enrollment",
+          "—",
+          {
+           "chip": "Pending approval",
+           "tone": "orange"
+          }
+         ]
+        ]
+       },
+       {
+        "type": "form",
+        "id": "plan-attach",
+        "title": "Attach & approve",
+        "fields": [
+         {
+          "label": "Attach to batches",
+          "value": "Class 10 Foundation — Morning, Evening",
+          "type": "select"
+         },
+         {
+          "label": "Approver",
+          "value": "Meera Nair (Finance Head)",
+          "type": "select"
+         },
+         {
+          "label": "Set as institute default plan",
+          "value": "on",
+          "type": "toggle"
+         }
+        ],
+        "submit": "Send for Approval"
+       }
+      ]
+     },
+     {
+      "id": "invoice",
+      "device": "desktop",
+      "title": "Invoice — INV-2026-0412",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Finance*",
+       "Marketing",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "inv-head",
+        "title": "Invoice INV-2026-0412",
+        "subtitle": "Priya Sharma · Class 10 Foundation · due 20 Jul 2026",
+        "actions": [
+         "Copy Payment Link",
+         "Send Reminder"
+        ]
+       },
+       {
+        "cols": [
+         {
+          "type": "invoice",
+          "id": "inv-doc",
+          "no": "INV-2026-0412",
+          "to": "Mrs. Sunita Sharma (parent of Priya Sharma), 14 MG Road, Indore, MP",
+          "rows": [
+           {
+            "desc": "Tuition — Term 2, Class 10 Foundation",
+            "amt": "₹18,000"
+           },
+           {
+            "desc": "Transport — Quarter 2",
+            "amt": "₹4,500"
+           },
+           {
+            "desc": "CGST 9% + SGST 9%",
+            "amt": "₹4,050"
+           }
+          ],
+          "total": "₹26,550"
+         },
+         {
+          "type": "form",
+          "id": "inv-send",
+          "title": "Send & collect",
+          "fields": [
+           {
+            "label": "Payment link",
+            "value": "pay.vacademy.io/i/8f2k1x",
+            "type": "text"
+           },
+           {
+            "label": "Deliver via",
+            "value": "Email + WhatsApp to +91 98267 44310",
+            "type": "select"
+           },
+           {
+            "label": "Apply GST on this invoice",
+            "value": "on",
+            "type": "toggle"
+           }
+          ],
+          "submit": "Send Invoice"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "checkout",
+      "device": "phone",
+      "title": "Learner App — Pay Fees",
+      "nav": [
+       "Home",
+       "Courses",
+       "Payments*",
+       "Doubts",
+       "Profile"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "pay-head",
+        "title": "My Dues",
+        "subtitle": "Priya Sharma · Class 10 Foundation"
+       },
+       {
+        "type": "list",
+        "id": "pay-dues",
+        "items": [
+         {
+          "title": "Tuition — Term 2",
+          "sub": "Installment 2 of 4 · due 20 Jul",
+          "right": "₹18,000",
+          "chip": "Due",
+          "tone": "orange"
+         },
+         {
+          "title": "Transport — Q2",
+          "sub": "Due 12 Jul · 2% late penalty applies",
+          "right": "₹4,500",
+          "chip": "Overdue",
+          "tone": "red"
+         },
+         {
+          "title": "GST (CGST 9% + SGST 9%)",
+          "sub": "Calculated on payable amount",
+          "right": "₹4,050"
+         }
+        ]
+       },
+       {
+        "type": "form",
+        "id": "pay-method",
+        "title": "Pay ₹26,550",
+        "fields": [
+         {
+          "label": "Payment method",
+          "value": "UPI — via Razorpay",
+          "type": "select"
+         },
+         {
+          "label": "Coupon code",
+          "value": "SIBLING10",
+          "type": "text"
+         }
+        ],
+        "submit": "Pay Securely"
+       },
+       {
+        "type": "stats",
+        "id": "pay-done",
+        "items": [
+         {
+          "label": "Payment",
+          "value": "Success ✅"
+         },
+         {
+          "label": "Receipt",
+          "value": "#RCPT-8841"
+         },
+         {
+          "label": "Balance due",
+          "value": "₹0"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "screen": "collections",
+      "target": null,
+      "title": "Every rupee, one dashboard",
+      "text": "Online course sales, school-style installments and front-office cash all land in one finance view. Money settles directly into your own gateway account — Stripe, Razorpay, PhonePe, Cashfree, eWAY or PayPal — never Vacademy's."
+     },
+     {
+      "screen": "collections",
+      "target": "col-funnel",
+      "title": "Know exactly who hasn't paid",
+      "text": "The student fee ledger flags everyone Paid, Partial, Pending or Overdue with a collection progress bar. Filter by course, fee plan or status and drill into any student's full installment schedule."
+     },
+     {
+      "screen": "collections",
+      "target": "col-recent",
+      "title": "A real counter for offline payments",
+      "text": "The Fee Collection Desk is a guided four-step counter flow: find the student, pick installments, record cash, cheque, UPI or card — and a receipt is generated on the spot with a download link."
+     },
+     {
+      "screen": "fee-plans",
+      "target": "plan-table",
+      "title": "School fees the way schools work",
+      "text": "Model fee heads like Tuition, Admission, Transport or Hostel — each with its own installment schedule, late-payment penalty percentage, refundable flag and built-in discounts. Templates cover Monthly, Quarterly, Term-wise and Annual."
+     },
+     {
+      "screen": "fee-plans",
+      "target": "plan-attach",
+      "title": "Maker-checker, then auto-inherit",
+      "text": "Structures need a separate approver before going live, and every concession or penalty later runs through the same audited approval queue. Attach the plan to batches so each new admission inherits the right fees automatically."
+     },
+     {
+      "screen": "invoice",
+      "target": "inv-doc",
+      "title": "Tax-compliant invoices, your brand",
+      "text": "Every online payment can auto-generate a branded PDF invoice, or raise one manually — even in bulk — with a pixel-accurate preview. GST splits like CGST 9% + SGST 9% render as a proper tax table with your GSTIN and place of supply."
+     },
+     {
+      "screen": "invoice",
+      "target": "inv-send",
+      "title": "A payment link on every invoice",
+      "text": "Each invoice carries a shareable public payment page — no login needed to pay. Send it by email or WhatsApp, fire one-click reminders for unpaid invoices, and mark offline settlements paid so books stay accurate."
+     },
+     {
+      "screen": "checkout",
+      "target": "pay-dues",
+      "title": "Parents see dues, not spreadsheets",
+      "text": "Learners and parents check pending and overdue installments across all fee heads right in the app — with amounts, due dates and past receipts — and pay online without visiting the office."
+     },
+     {
+      "screen": "checkout",
+      "target": "pay-method",
+      "title": "Checkout that matches your gateway",
+      "text": "The pay flow adapts to your configured gateway — UPI, cards, netbanking and wallets via Razorpay or PhonePe, international cards via Stripe. Coupon codes like SIBLING10 validate live and adjust the payable amount instantly."
+     },
+     {
+      "screen": "checkout",
+      "target": "pay-done",
+      "title": "Confirmed, receipted, reconciled",
+      "text": "The app polls the gateway for the true payment status — no manual refresh — then issues the receipt and emails the invoice automatically. Webhooks are signature-verified, so no payment is ever lost or double-counted."
+     }
+    ]
+   }
   },
   {
    "id": "erp",
@@ -10245,7 +14626,494 @@
       }
      ]
     }
-   ]
+   ],
+   "demo": {
+    "intro": "Run the whole institute from one place — follow a registrar's day from the learner directory through bulk enrollment, batches and branches, to payroll.",
+    "screens": [
+     {
+      "id": "directory",
+      "device": "desktop",
+      "title": "Learner Directory",
+      "nav": [
+       "Dashboard",
+       "Learners*",
+       "Batches",
+       "Sub-Orgs",
+       "HR",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "dir-head",
+        "title": "Learners",
+        "subtitle": "2,318 across 4 sessions",
+        "actions": [
+         "+ Enroll Learner",
+         "CSV Import",
+         "Export"
+        ]
+       },
+       {
+        "type": "stats",
+        "id": "dir-stats",
+        "items": [
+         {
+          "label": "Active",
+          "value": "2,046",
+          "delta": "+184 this month"
+         },
+         {
+          "label": "Pending approval",
+          "value": "37"
+         },
+         {
+          "label": "Expiring in 30 days",
+          "value": "112"
+         },
+         {
+          "label": "Payment overdue",
+          "value": "58"
+         }
+        ]
+       },
+       {
+        "type": "table",
+        "id": "dir-table",
+        "columns": [
+         "Learner",
+         "Batch",
+         "Status",
+         "Payment",
+         "Expiry"
+        ],
+        "rows": [
+         [
+          "Ananya Sharma",
+          "NEET 2027 Batch A",
+          {
+           "chip": "Active",
+           "tone": "green"
+          },
+          {
+           "chip": "Paid",
+           "tone": "green"
+          },
+          "31 Mar 2027"
+         ],
+         [
+          "Rohan Verma",
+          "JEE Advanced Batch B",
+          {
+           "chip": "Active",
+           "tone": "green"
+          },
+          {
+           "chip": "Overdue ₹12,500",
+           "tone": "red"
+          },
+          "15 Jan 2027"
+         ],
+         [
+          "Priya Nair",
+          "IELTS Band 8",
+          {
+           "chip": "Pending approval",
+           "tone": "orange"
+          },
+          {
+           "chip": "Unpaid",
+           "tone": "gray"
+          },
+          "—"
+         ],
+         [
+          "Aarav Kulkarni",
+          "Class 10 Foundation",
+          {
+           "chip": "Active",
+           "tone": "green"
+          },
+          {
+           "chip": "Installment 2/4",
+           "tone": "blue"
+          },
+          "30 Apr 2027"
+         ],
+         [
+          "Ishita Reddy",
+          "NEET 2027 Batch A",
+          {
+           "chip": "Inactive",
+           "tone": "gray"
+          },
+          {
+           "chip": "Paid",
+           "tone": "green"
+          },
+          "Expired 01 Jul"
+         ]
+        ]
+       }
+      ]
+     },
+     {
+      "id": "bulk-ops",
+      "device": "desktop",
+      "title": "Bulk Assign Learners",
+      "nav": [
+       "Dashboard",
+       "Learners*",
+       "Batches",
+       "Sub-Orgs",
+       "HR",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "wizard",
+        "id": "bulk-wizard",
+        "steps": [
+         "Pick learners",
+         "Choose batches",
+         "Payment & access",
+         "Dry-run preview",
+         "Commit"
+        ],
+        "active": 3
+       },
+       {
+        "cols": [
+         {
+          "type": "form",
+          "id": "bulk-form",
+          "title": "Assignment",
+          "fields": [
+           {
+            "label": "Source",
+            "value": "Filter: Class 10 Foundation · Active",
+            "type": "select"
+           },
+           {
+            "label": "Destination batch",
+            "value": "Class 11 Science — 2026-27",
+            "type": "select"
+           },
+           {
+            "label": "Access days",
+            "value": "365",
+            "type": "text"
+           },
+           {
+            "label": "Offline payment",
+            "value": "₹18,000 · UPI · per learner",
+            "type": "text"
+           },
+           {
+            "label": "Skip already-enrolled",
+            "value": "on",
+            "type": "toggle"
+           },
+           {
+            "label": "Send credentials on enroll",
+            "value": "on",
+            "type": "toggle"
+           }
+          ],
+          "submit": "Run dry-run"
+         },
+         {
+          "type": "list",
+          "id": "bulk-preview",
+          "items": [
+           {
+            "title": "412 will be enrolled",
+            "sub": "New membership in Class 11 Science",
+            "chip": "OK",
+            "tone": "green"
+           },
+           {
+            "title": "23 skipped",
+            "sub": "Already enrolled — duplicate rule",
+            "chip": "Skip",
+            "tone": "blue"
+           },
+           {
+            "title": "6 need fixes",
+            "sub": "Missing guardian mobile in profile",
+            "chip": "Fix",
+            "tone": "orange"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "batches",
+      "device": "desktop",
+      "title": "Batches & Sub-Organizations",
+      "nav": [
+       "Dashboard",
+       "Learners",
+       "Batches*",
+       "Sub-Orgs",
+       "HR",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "stats",
+        "id": "seat-stats",
+        "items": [
+         {
+          "label": "Batches",
+          "value": "46"
+         },
+         {
+          "label": "Total capacity",
+          "value": "3,900"
+         },
+         {
+          "label": "Seats remaining",
+          "value": "412"
+         },
+         {
+          "label": "Nearly full",
+          "value": "5",
+          "delta": "2 critical"
+         }
+        ]
+       },
+       {
+        "type": "cards",
+        "id": "batch-cards",
+        "items": [
+         {
+          "title": "NEET 2027 Batch A",
+          "sub": "118 / 120 seats · starts 6:30 AM",
+          "chip": "2 left",
+          "tone": "red"
+         },
+         {
+          "title": "JEE Advanced Batch B",
+          "sub": "92 / 100 seats · evening",
+          "chip": "8 left",
+          "tone": "orange"
+         },
+         {
+          "title": "Class 10 Foundation",
+          "sub": "412 / 500 seats",
+          "chip": "Open",
+          "tone": "green"
+         },
+         {
+          "title": "IELTS Band 8 Sprint",
+          "sub": "Unlimited seats",
+          "chip": "Open",
+          "tone": "green"
+         }
+        ]
+       },
+       {
+        "type": "list",
+        "id": "suborg-list",
+        "items": [
+         {
+          "title": "Indore Branch",
+          "sub": "Seats 240/300 · ₹1,84,000 collected",
+          "chip": "Active",
+          "tone": "green"
+         },
+         {
+          "title": "Bhopal Franchise — Sharma Classes",
+          "sub": "Seats 96/100 · invoice due ₹45,000",
+          "chip": "Due",
+          "tone": "orange"
+         },
+         {
+          "title": "TechCorp L&D (client org)",
+          "sub": "Seats 55/200 · subscription till Mar 2027",
+          "chip": "Active",
+          "tone": "green"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "hr",
+      "device": "desktop",
+      "title": "HR & Payroll",
+      "nav": [
+       "Dashboard",
+       "Learners",
+       "Batches",
+       "Sub-Orgs",
+       "HR*",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "stats",
+        "id": "hr-stats",
+        "items": [
+         {
+          "label": "Employees",
+          "value": "84"
+         },
+         {
+          "label": "Present today",
+          "value": "76",
+          "delta": "3 on leave"
+         },
+         {
+          "label": "Pending approvals",
+          "value": "9"
+         },
+         {
+          "label": "July payroll",
+          "value": "₹28.4L",
+          "delta": "Run: Processed"
+         }
+        ]
+       },
+       {
+        "type": "table",
+        "id": "payroll-table",
+        "columns": [
+         "Employee",
+         "Designation",
+         "Net Pay",
+         "Payslip",
+         "Payout"
+        ],
+        "rows": [
+         [
+          "Rajesh Iyer",
+          "Senior Physics Faculty",
+          "₹92,400",
+          {
+           "chip": "Generated",
+           "tone": "green"
+          },
+          {
+           "chip": "Released",
+           "tone": "green"
+          }
+         ],
+         [
+          "Meena Joshi",
+          "Counsellor",
+          "₹38,750",
+          {
+           "chip": "Generated",
+           "tone": "green"
+          },
+          {
+           "chip": "Released",
+           "tone": "green"
+          }
+         ],
+         [
+          "Vikram Singh",
+          "Centre Manager",
+          "₹64,200",
+          {
+           "chip": "Generated",
+           "tone": "green"
+          },
+          {
+           "chip": "On hold",
+           "tone": "orange"
+          }
+         ],
+         [
+          "Kavya Menon",
+          "Maths Faculty",
+          "₹71,300",
+          {
+           "chip": "Pending",
+           "tone": "gray"
+          },
+          {
+           "chip": "—",
+           "tone": "gray"
+          }
+         ]
+        ]
+       }
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "screen": "directory",
+      "target": null,
+      "title": "Every learner, one directory",
+      "text": "Search 2,000+ learners with type-ahead, filter by batch, status, payment, session-expiry window or any custom field, and export any view to CSV — including a credentials export for offline distribution."
+     },
+     {
+      "screen": "directory",
+      "target": "dir-stats",
+      "title": "Registrar problems surface themselves",
+      "text": "Live headcounts flag what needs action today: pending approvals to accept or decline, enrollments expiring within 30 days, and overdue payments — before parents call to complain."
+     },
+     {
+      "screen": "directory",
+      "target": "dir-table",
+      "title": "Act on any row, or any selection",
+      "text": "Open a side-panel profile — guardian info, batch memberships, per-chapter progress — or multi-select to change batch, extend access, re-register for the next session, or blast WhatsApp and email."
+     },
+     {
+      "screen": "bulk-ops",
+      "target": "bulk-form",
+      "title": "Move thousands of learners at once",
+      "text": "Bulk-assign a CSV of new users, an explicit list, or a saved filter into one or more batches — with access days, offline payment capture (amount, mode, transaction ID) and optional credential delivery."
+     },
+     {
+      "screen": "bulk-ops",
+      "target": "bulk-preview",
+      "title": "Dry-run before you commit",
+      "text": "A simulation shows the per-learner outcome first: who gets enrolled, who's skipped by the duplicate rule, and which rows need fixes. Re-runs are always safe — nothing changes until you commit."
+     },
+     {
+      "screen": "batches",
+      "target": "seat-stats",
+      "title": "Seat inventory, live",
+      "text": "Cap seats per batch and watch capacity institute-wide. Seats reserve and release automatically during enrollment — no overselling — and nearly-full batches are flagged so you add capacity or push urgency."
+     },
+     {
+      "screen": "batches",
+      "target": "batch-cards",
+      "title": "Sessions, levels and batches",
+      "text": "A guided wizard creates course, level and academic session in sequence, producing a ready-to-enroll batch. Parent-child hierarchies and learner groups keep large cohorts organized."
+     },
+     {
+      "screen": "batches",
+      "target": "suborg-list",
+      "title": "Branches and franchises under one roof",
+      "text": "Each sub-org gets its own team, seat allocation and financial ledger — invoices, payments, waivers, penalties. Partners manage their own rosters through a self-serve screen, even by public self-registration link."
+     },
+     {
+      "screen": "hr",
+      "target": "hr-stats",
+      "title": "A real HR suite, built in",
+      "text": "Staff check in manually, by biometric device or geo-location; leave policies accrue monthly or yearly; and regularizations, leave and reimbursements route through multi-step approval chains."
+     },
+     {
+      "screen": "hr",
+      "target": "payroll-table",
+      "title": "Payroll from calculation to paid",
+      "text": "Monthly runs auto-calculate every entry from salary structures with regime-aware Indian tax. Hold or release individual payouts, generate payslips in bulk, and export bank-ready transfer files."
+     }
+    ]
+   }
   },
   {
    "id": "analytics",
@@ -10968,7 +15836,432 @@
       }
      ]
     }
-   ]
+   ],
+   "demo": {
+    "intro": "Run the institute on live data — from the admin command center through sales and learner analytics, down to an AI-written report card on a student's phone.",
+    "screens": [
+     {
+      "id": "home",
+      "device": "desktop",
+      "title": "Admin Home Dashboard",
+      "nav": [
+       "Dashboard*",
+       "Study Library",
+       "Learners",
+       "CRM",
+       "Assessments",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "home-head",
+        "title": "Good morning, Vikram",
+        "subtitle": "Sunrise Career Academy · Admin view",
+        "actions": [
+         "+ Add Student",
+         "New Announcement"
+        ]
+       },
+       {
+        "type": "stats",
+        "id": "home-kpis",
+        "items": [
+         {
+          "label": "Active learners",
+          "value": "2,314",
+          "delta": "+184 this month"
+         },
+         {
+          "label": "Fees collected (Jul)",
+          "value": "₹18.4L",
+          "delta": "+₹2.1L vs Jun"
+         },
+         {
+          "label": "Online right now",
+          "value": "142"
+         },
+         {
+          "label": "Unresolved doubts",
+          "value": "23",
+          "delta": "-9 this week"
+         }
+        ]
+       },
+       {
+        "cols": [
+         {
+          "type": "chart",
+          "id": "home-activity",
+          "kind": "bars",
+          "label": "Learner activity by hour — today",
+          "values": [
+           12,
+           18,
+           34,
+           52,
+           61,
+           78,
+           96,
+           142,
+           121,
+           88,
+           64,
+           41
+          ]
+         },
+         {
+          "type": "list",
+          "id": "home-finance",
+          "items": [
+           {
+            "title": "Ananya Iyer — ₹42,000",
+            "sub": "NEET 2027 Batch A · UPI",
+            "chip": "Paid",
+            "tone": "green"
+           },
+           {
+            "title": "Rohan Mehta — ₹15,500",
+            "sub": "Class 10 Foundation · Card",
+            "chip": "Failed",
+            "tone": "red"
+           },
+           {
+            "title": "Kabir Singh — ₹28,000",
+            "sub": "JEE Advanced · Razorpay",
+            "chip": "Paid",
+            "tone": "green"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "crm-reports",
+      "device": "desktop",
+      "title": "CRM Reports Center",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "CRM*",
+       "Assessments",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "crm-head",
+        "title": "CRM Reports",
+        "subtitle": "Jul 1 – Jul 16 · Team: Admissions · All counsellors",
+        "actions": [
+         "Export CSV",
+         "Copy report link"
+        ]
+       },
+       {
+        "type": "wizard",
+        "id": "crm-tabs",
+        "steps": [
+         "Overview",
+         "Sources",
+         "Funnel",
+         "Revenue",
+         "Cohorts",
+         "Forecast"
+        ],
+        "active": 2
+       },
+       {
+        "cols": [
+         {
+          "type": "funnel",
+          "id": "crm-funnel",
+          "stages": [
+           {
+            "label": "Leads",
+            "value": 1240
+           },
+           {
+            "label": "Contacted",
+            "value": 986
+           },
+           {
+            "label": "Demo booked",
+            "value": 412
+           },
+           {
+            "label": "Application",
+            "value": 263
+           },
+           {
+            "label": "Admission",
+            "value": 148
+           }
+          ]
+         },
+         {
+          "type": "table",
+          "id": "crm-revenue",
+          "columns": [
+           "Source",
+           "Leads",
+           "Admissions",
+           "Revenue"
+          ],
+          "rows": [
+           [
+            "Meta Ads",
+            "512",
+            "61",
+            "₹9.2L"
+           ],
+           [
+            "Google",
+            "306",
+            "38",
+            "₹5.6L"
+           ],
+           [
+            "Website",
+            "241",
+            "27",
+            "₹4.1L"
+           ],
+           [
+            "Walk-in",
+            "181",
+            "22",
+            "₹3.3L"
+           ]
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "learner-insights",
+      "device": "desktop",
+      "title": "Learner Activity & Progress",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners*",
+       "CRM",
+       "Assessments",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "li-head",
+        "title": "NEET 2027 Batch A",
+        "subtitle": "96 learners · Avg 48 min/day study time",
+        "actions": [
+         "Export PDF",
+         "Email digest settings"
+        ]
+       },
+       {
+        "type": "chart",
+        "id": "li-trend",
+        "kind": "line",
+        "label": "Daily active learners — last 30 days",
+        "values": [
+         61,
+         64,
+         58,
+         66,
+         72,
+         69,
+         74,
+         71,
+         63,
+         55,
+         52,
+         58,
+         67,
+         73,
+         76
+        ]
+       },
+       {
+        "type": "list",
+        "id": "li-atrisk",
+        "items": [
+         {
+          "title": "Rohan Mehta",
+          "sub": "Last login 9 days ago · 12% chapter progress",
+          "chip": "At risk",
+          "tone": "red"
+         },
+         {
+          "title": "Priya Sharma",
+          "sub": "Study time down 74 → 22 min/day",
+          "chip": "Watch",
+          "tone": "orange"
+         },
+         {
+          "title": "Aarav Nair",
+          "sub": "#1 on batch leaderboard · 21-day streak",
+          "chip": "Champion",
+          "tone": "green"
+         },
+         {
+          "title": "Ishita Rao",
+          "sub": "Physics 82% done · Chemistry 34% done",
+          "chip": "On track",
+          "tone": "blue"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "report-card",
+      "device": "phone",
+      "title": "My Reports",
+      "nav": [
+       "Home",
+       "Courses",
+       "Tests",
+       "Reports*",
+       "Profile"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "rc-head",
+        "title": "Report Card — Rohan Mehta",
+        "subtitle": "June 2026 · Generated by AI · NEET 2027 Batch A"
+       },
+       {
+        "type": "stats",
+        "id": "rc-stats",
+        "items": [
+         {
+          "label": "Attendance",
+          "value": "68%"
+         },
+         {
+          "label": "Avg test score",
+          "value": "54%",
+          "delta": "-6% vs May"
+         },
+         {
+          "label": "Study time",
+          "value": "6.2 hr/wk"
+         }
+        ]
+       },
+       {
+        "type": "chart",
+        "id": "rc-marks",
+        "kind": "bars",
+        "label": "Subject scores — June tests",
+        "values": [
+         42,
+         58,
+         61,
+         55
+        ]
+       },
+       {
+        "type": "list",
+        "id": "rc-insights",
+        "items": [
+         {
+          "title": "Kinematics needs attention",
+          "sub": "AI confidence: Low · 3 of 5 quiz checkpoints missed",
+          "chip": "Focus",
+          "tone": "red"
+         },
+         {
+          "title": "Organic Chemistry is a strength",
+          "sub": "AI confidence: High · 87% accuracy across tests",
+          "chip": "Strong",
+          "tone": "green"
+         },
+         {
+          "title": "Login regularity slipping",
+          "sub": "4 logins last week vs 11 in May",
+          "chip": "Habit",
+          "tone": "orange"
+         }
+        ]
+       }
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "screen": "home",
+      "target": null,
+      "title": "One command center, live all day",
+      "text": "The home dashboard adapts to each role — admins see institute-wide KPIs and finance, teachers see today's classes. Payments, doubts, live classes and real-time usage all land on one screen."
+     },
+     {
+      "screen": "home",
+      "target": "home-kpis",
+      "title": "KPIs with deltas, not spreadsheets",
+      "text": "Enrollments, fee collection, learners online this minute and unresolved doubts — every headline number carries its change over the period, so trends are obvious without opening a report."
+     },
+     {
+      "screen": "home",
+      "target": "home-activity",
+      "title": "See when your learners actually study",
+      "text": "Real-time usage widgets chart hourly and daily activity, most active learners and the web/mobile/desktop device split — so you schedule live classes when students are genuinely online."
+     },
+     {
+      "screen": "crm-reports",
+      "target": "crm-tabs",
+      "title": "A dozen sales reports, one filter bar",
+      "text": "Overview, sources, funnel, revenue, cohorts and forecast tabs share the same date, team and counsellor filters. The active tab lives in the URL, so any view is a shareable deep link."
+     },
+     {
+      "screen": "crm-reports",
+      "target": "crm-funnel",
+      "title": "Know exactly where leads drop off",
+      "text": "The funnel report tracks every stage from first enquiry to admission. Here, 412 demo bookings became 148 admissions — the drop after application is where counsellors should focus."
+     },
+     {
+      "screen": "crm-reports",
+      "target": "crm-revenue",
+      "title": "Revenue attributed to every source",
+      "text": "Meta, Google, website and walk-in leads are compared on volume, admissions and actual ₹ revenue. Every tab exports to CSV, and PDF reports go out under your own letterhead."
+     },
+     {
+      "screen": "learner-insights",
+      "target": "li-trend",
+      "title": "Spot engagement dips before dropouts",
+      "text": "Daily activity trends per batch reveal momentum or drop-off early — like this mid-month slump. Drill from batch to subject, chapter and even slide-level progress per learner."
+     },
+     {
+      "screen": "learner-insights",
+      "target": "li-atrisk",
+      "title": "At-risk learners flag themselves",
+      "text": "Login recency, study-time trends and leaderboard ranks combine into per-learner flags. Daily, weekly and monthly email digests then keep parents informed automatically — no one lifts a finger."
+     },
+     {
+      "screen": "report-card",
+      "target": "rc-stats",
+      "title": "An AI report card, one click away",
+      "text": "For any student, AI pulls attendance, marks, course progress, assignments, live-class participation, doubts and login habits into one report — readable in the app or emailed to parents as a branded PDF."
+     },
+     {
+      "screen": "report-card",
+      "target": "rc-insights",
+      "title": "Insights a teacher would write",
+      "text": "The AI adds a plain-language narrative with per-topic confidence ratings — what's strong, what needs work, and the habits behind the numbers. Learners open every report from their own 'My Reports' hub."
+     }
+    ]
+   }
   },
   {
    "id": "community",
@@ -11364,7 +16657,363 @@
       }
      ]
     }
-   ]
+   ],
+   "demo": {
+    "intro": "Borrow the network's best question papers, share your own, then see how XP, leaderboards and batch chat keep learners showing up daily.",
+    "screens": [
+     {
+      "id": "hub",
+      "device": "desktop",
+      "title": "Community Hub — Question Papers",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Community*",
+       "Assessments",
+       "Learners",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "hub-head",
+        "title": "Community Question Papers",
+        "subtitle": "12,400+ papers shared across the Vacademy network",
+        "actions": [
+         "Share & Explore",
+         "My Question Bank"
+        ]
+       },
+       {
+        "type": "form",
+        "id": "hub-filters",
+        "title": "Filters",
+        "fields": [
+         {
+          "label": "Level / Grade",
+          "value": "Class 12",
+          "type": "select"
+         },
+         {
+          "label": "Stream",
+          "value": "Science (PCM)",
+          "type": "select"
+         },
+         {
+          "label": "Subject",
+          "value": "Physics",
+          "type": "select"
+         },
+         {
+          "label": "Difficulty",
+          "value": "Medium",
+          "type": "select"
+         }
+        ],
+        "submit": "Apply filters"
+       },
+       {
+        "type": "table",
+        "id": "hub-table",
+        "columns": [
+         "Question Paper",
+         "Subject",
+         "Difficulty",
+         "Qs",
+         "Shared by"
+        ],
+        "rows": [
+         [
+          "Kinematics Mains Mock — Paper 7",
+          "Physics",
+          {
+           "chip": "Medium",
+           "tone": "orange"
+          },
+          "45",
+          "Prakash Career Institute, Indore"
+         ],
+         [
+          "Rotational Motion Sprint Test",
+          "Physics",
+          {
+           "chip": "Hard",
+           "tone": "red"
+          },
+          "30",
+          "Dakshana Academy, Pune"
+         ],
+         [
+          "Ray Optics Chapter Test",
+          "Physics",
+          {
+           "chip": "Easy",
+           "tone": "green"
+          },
+          "25",
+          "Sunrise Tutorials, Jaipur"
+         ],
+         [
+          "Electrostatics PYQ Compilation",
+          "Physics",
+          {
+           "chip": "Medium",
+           "tone": "orange"
+          },
+          "60",
+          "Vidya Mandir Classes, Chennai"
+         ]
+        ]
+       }
+      ]
+     },
+     {
+      "id": "paper",
+      "device": "desktop",
+      "title": "Paper Preview — Kinematics Mains Mock",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Community*",
+       "Assessments",
+       "Learners",
+       "Reports",
+       "Settings"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "paper-head",
+        "title": "Kinematics Mains Mock — Paper 7",
+        "subtitle": "45 questions · Class 12 · PCM · Physics · Medium · by Prakash Career Institute",
+        "actions": [
+         "+ Add to My Question Bank",
+         "Share"
+        ]
+       },
+       {
+        "type": "list",
+        "id": "paper-questions",
+        "items": [
+         {
+          "title": "Q1. A particle starts from rest with a = 2t m/s²…",
+          "sub": "MCQ · Topic: Non-uniform acceleration",
+          "chip": "Answer: B",
+          "tone": "green"
+         },
+         {
+          "title": "Q2. A projectile is fired at 45° with speed 20 m/s…",
+          "sub": "Numeric · Topic: Projectile motion",
+          "chip": "Answer: 40 m",
+          "tone": "green"
+         },
+         {
+          "title": "Q3. The velocity–time graph shown gives displacement…",
+          "sub": "MCQ with image · Topic: Graphs",
+          "right": "Show answer"
+         }
+        ]
+       },
+       {
+        "type": "form",
+        "id": "share-form",
+        "title": "Publish your own papers",
+        "fields": [
+         {
+          "label": "Paper",
+          "value": "JEE Physics Grand Test 4 (Ravi Sir)",
+          "type": "select"
+         },
+         {
+          "label": "Access",
+          "value": "Public — visible to the community",
+          "type": "select"
+         },
+         {
+          "label": "Keep authorship & history",
+          "value": "on",
+          "type": "toggle"
+         }
+        ],
+        "submit": "Publish to Community"
+       }
+      ]
+     },
+     {
+      "id": "leaderboard",
+      "device": "phone",
+      "title": "Leaderboard",
+      "nav": [
+       "Home",
+       "Courses",
+       "Leaderboard*",
+       "Chat",
+       "Profile"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "lb-head",
+        "title": "Leaderboard",
+        "subtitle": "NEET 2027 Batch A · July"
+       },
+       {
+        "type": "stats",
+        "id": "lb-stats",
+        "items": [
+         {
+          "label": "Your rank",
+          "value": "#4",
+          "delta": "+3 this week"
+         },
+         {
+          "label": "XP",
+          "value": "2,180"
+         },
+         {
+          "label": "Day streak",
+          "value": "🔥 21"
+         }
+        ]
+       },
+       {
+        "type": "list",
+        "id": "lb-list",
+        "items": [
+         {
+          "title": "1. Ananya Sharma",
+          "sub": "12 badges · 26-day streak",
+          "right": "2,640 XP"
+         },
+         {
+          "title": "2. Rohan Verma",
+          "sub": "9 badges · 18-day streak",
+          "right": "2,455 XP"
+         },
+         {
+          "title": "3. Priya Nair",
+          "sub": "10 badges · 14-day streak",
+          "right": "2,310 XP"
+         },
+         {
+          "title": "4. Aarav Gupta",
+          "sub": "8 badges · 21-day streak",
+          "chip": "You",
+          "tone": "blue",
+          "right": "2,180 XP"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "chat",
+      "device": "phone",
+      "title": "Batch Chat",
+      "nav": [
+       "Home",
+       "Courses",
+       "Leaderboard",
+       "Chat*",
+       "Profile"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "chat-head",
+        "title": "NEET 2027 Batch A",
+        "subtitle": "64 members · Slow mode: 30s"
+       },
+       {
+        "type": "chat",
+        "id": "batch-chat",
+        "messages": [
+         {
+          "from": "system",
+          "text": "Please read and acknowledge the channel rules before posting."
+         },
+         {
+          "from": "agent",
+          "text": "Doubt-clearing at 6 PM today — bring your Kinematics mock corrections. — Meera Ma'am"
+         },
+         {
+          "from": "user",
+          "text": "Ma'am, is Q12 from the mock inside the reduced syllabus?"
+         },
+         {
+          "from": "agent",
+          "text": "Yes — projectile motion. I'll solve it on the whiteboard today. 📎 Q12_solution.pdf"
+         }
+        ],
+        "composer": "Message NEET 2027 Batch A…"
+       }
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "screen": "hub",
+      "target": null,
+      "title": "A network-wide paper library",
+      "text": "The Community hub inside the admin portal pools question papers and practice content shared by institutes across the Vacademy network — with instant search that refreshes results as you type."
+     },
+     {
+      "screen": "hub",
+      "target": "hub-filters",
+      "title": "Filters that mirror real syllabi",
+      "text": "Cascading dropdowns narrow by Level, then Stream, then Subject — each showing only relevant options. Stack on difficulty (Easy/Medium/Hard), content type and one-click topic chips for precise discovery."
+     },
+     {
+      "screen": "hub",
+      "target": "hub-table",
+      "title": "Provenance on every paper",
+      "text": "Each paper keeps its creator, dates and full tag set — level, stream, subject, topic, difficulty — so you know exactly what it covers and who built it. Click any paper to open the full preview."
+     },
+     {
+      "screen": "paper",
+      "target": "paper-questions",
+      "title": "Preview before you adopt",
+      "text": "Read every question in order with images, tables and math rendered correctly, then toggle the answer key on or off with one click — judge a paper's quality before it touches your question bank."
+     },
+     {
+      "screen": "paper",
+      "target": "paper-head",
+      "title": "One click into your question bank",
+      "text": "'Add to My Question Bank' copies the paper into your institute's private collection as a fully editable copy, ready to drop into your own assessments — confirmed the moment it lands."
+     },
+     {
+      "screen": "paper",
+      "target": "share-form",
+      "title": "Share yours, on your terms",
+      "text": "The Share & Explore flow publishes your papers to the network with authorship preserved. Every paper carries a public/private access setting, so nothing leaves your walls unless you mark it public."
+     },
+     {
+      "screen": "leaderboard",
+      "target": "lb-stats",
+      "title": "XP and streaks make study a habit",
+      "text": "Learners earn XP for studying, attending live classes and scoring well on assessments, rolling up into levels. Daily streaks reward consistency, and badges unlock from triggers you configure — or design your own."
+     },
+     {
+      "screen": "leaderboard",
+      "target": "lb-list",
+      "title": "Batch and institute leaderboards",
+      "text": "Rankings run inside each batch and across the whole institute, driven by real activity — study time, attendance, badges earned. Standings can be shared publicly and exported to CSV for prize day."
+     },
+     {
+      "screen": "chat",
+      "target": "batch-chat",
+      "title": "Every batch gets its own group chat",
+      "text": "Membership syncs automatically with enrollment — no phone numbers exchanged. DMs, batch groups and an institute-wide channel carry text, images and files in real time, with push for offline members."
+     },
+     {
+      "screen": "chat",
+      "target": "chat-head",
+      "title": "Safety tools built for education",
+      "text": "Slow mode, banned-keyword filters, link controls and a new-member read-only period keep channels calm. Reported messages land in an Open → Reviewing → Actioned moderation queue, and a role matrix decides who can message whom."
+     }
+    ]
+   }
   },
   {
    "id": "platform",
@@ -12429,7 +18078,454 @@
       }
      ]
     }
-   ]
+   ],
+   "demo": {
+    "intro": "Turn Vacademy into your own product — your domain, your vocabulary, your branded apps, your sign-in rules.",
+    "screens": [
+     {
+      "id": "whitelabel",
+      "device": "desktop",
+      "title": "Settings — White-Label & Domains",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Assessments",
+       "Reports",
+       "Settings*"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "wl-head",
+        "title": "White-Label Portals",
+        "subtitle": "Prakash Career Institute · 3 domains live",
+        "actions": [
+         "+ Add Domain"
+        ]
+       },
+       {
+        "cols": [
+         {
+          "type": "form",
+          "id": "wl-form",
+          "title": "learn.prakashinstitute.in",
+          "fields": [
+           {
+            "label": "Portal",
+            "value": "Learner portal (primary)",
+            "type": "select"
+           },
+           {
+            "label": "Logo",
+            "value": "prakash-logo.svg · 240×64",
+            "type": "text"
+           },
+           {
+            "label": "Theme color",
+            "value": "#1A5FB4 · Font: Poppins",
+            "type": "text"
+           },
+           {
+            "label": "Browser tab title",
+            "value": "Prakash Career Institute",
+            "type": "text"
+           },
+           {
+            "label": "Hide Vacademy branding",
+            "value": "on",
+            "type": "toggle"
+           }
+          ],
+          "submit": "Save & Provision"
+         },
+         {
+          "type": "list",
+          "id": "wl-portals",
+          "items": [
+           {
+            "title": "learn.prakashinstitute.in",
+            "sub": "Learner portal · SSL active",
+            "chip": "Live",
+            "tone": "green"
+           },
+           {
+            "title": "admin.prakashinstitute.in",
+            "sub": "Admin portal · SSL active",
+            "chip": "Live",
+            "tone": "green"
+           },
+           {
+            "title": "kota.prakashinstitute.in",
+            "sub": "Sub-org: Kota branch",
+            "chip": "DNS pending",
+            "tone": "orange"
+           },
+           {
+            "title": "Play Store · App Store links",
+            "sub": "Attached to learner portal",
+            "right": "2 apps"
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "naming",
+      "device": "desktop",
+      "title": "Settings — Naming Settings",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Assessments",
+       "Reports",
+       "Settings*"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "nm-head",
+        "title": "Naming Settings",
+        "subtitle": "Rename what the platform calls things — changes apply everywhere"
+       },
+       {
+        "type": "table",
+        "id": "nm-table",
+        "columns": [
+         "System term",
+         "Your term",
+         "Plural",
+         "Status"
+        ],
+        "rows": [
+         [
+          "Course",
+          "Program",
+          "Programs",
+          {
+           "chip": "Renamed",
+           "tone": "blue"
+          }
+         ],
+         [
+          "Batch",
+          "Cohort",
+          "Cohorts",
+          {
+           "chip": "Renamed",
+           "tone": "blue"
+          }
+         ],
+         [
+          "Learner",
+          "Student",
+          "Students",
+          {
+           "chip": "Renamed",
+           "tone": "blue"
+          }
+         ],
+         [
+          "Teacher",
+          "Faculty",
+          "Faculty",
+          {
+           "chip": "Renamed",
+           "tone": "blue"
+          }
+         ],
+         [
+          "Session",
+          "Academic Year",
+          "Academic Years",
+          {
+           "chip": "Renamed",
+           "tone": "blue"
+          }
+         ],
+         [
+          "Chapter",
+          "Chapter",
+          "Chapters",
+          {
+           "chip": "Default",
+           "tone": "gray"
+          }
+         ]
+        ]
+       },
+       {
+        "type": "form",
+        "id": "nm-edit",
+        "title": "Edit term: Teacher",
+        "fields": [
+         {
+          "label": "What it means",
+          "value": "A staff member who teaches and manages content",
+          "type": "text"
+         },
+         {
+          "label": "Singular",
+          "value": "Faculty",
+          "type": "text"
+         },
+         {
+          "label": "Plural",
+          "value": "Faculty",
+          "type": "text"
+         },
+         {
+          "label": "Apply on white-label domains",
+          "value": "on",
+          "type": "toggle"
+         }
+        ],
+        "submit": "Save Term"
+       }
+      ]
+     },
+     {
+      "id": "brandedapp",
+      "device": "phone",
+      "title": "Prakash Learning App",
+      "nav": [
+       "Home*",
+       "Programs",
+       "Tests",
+       "Profile"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "app-head",
+        "title": "Prakash Career Institute",
+        "subtitle": "Hi Aarav · NEET 2027 Cohort A"
+       },
+       {
+        "type": "cards",
+        "id": "app-programs",
+        "items": [
+         {
+          "title": "NEET 2027 — Program A",
+          "sub": "Physics · 62% complete",
+          "chip": "Continue",
+          "tone": "blue"
+         },
+         {
+          "title": "Class 12 Boards Booster",
+          "sub": "New chapter unlocked",
+          "chip": "New",
+          "tone": "green"
+         }
+        ]
+       },
+       {
+        "type": "list",
+        "id": "app-update",
+        "items": [
+         {
+          "title": "Update ready — v2.4.1",
+          "sub": "Improved test player · 4.2 MB",
+          "chip": "Update",
+          "tone": "orange"
+         },
+         {
+          "title": "Mock Test 6 on Sunday",
+          "sub": "Reminder from Prakash Institute",
+          "right": "9:00 AM"
+         },
+         {
+          "title": "Screenshot blocked",
+          "sub": "This content is protected",
+          "right": "🔒"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "security",
+      "device": "desktop",
+      "title": "Settings — Team, Login & Security",
+      "nav": [
+       "Dashboard",
+       "Study Library",
+       "Learners",
+       "Assessments",
+       "Reports",
+       "Settings*"
+      ],
+      "widgets": [
+       {
+        "type": "header",
+        "id": "sec-head",
+        "title": "Team & Access",
+        "subtitle": "12 staff members · 2 sub-organizations",
+        "actions": [
+         "+ Invite Staff"
+        ]
+       },
+       {
+        "type": "table",
+        "id": "sec-roles",
+        "columns": [
+         "Name",
+         "Role",
+         "Workspace",
+         "Status"
+        ],
+        "rows": [
+         [
+          "Priya Deshmukh",
+          {
+           "chip": "Admin",
+           "tone": "purple"
+          },
+          "Main campus",
+          {
+           "chip": "Active",
+           "tone": "green"
+          }
+         ],
+         [
+          "Rohan Mehta",
+          {
+           "chip": "Faculty",
+           "tone": "blue"
+          },
+          "Main campus",
+          {
+           "chip": "Active",
+           "tone": "green"
+          }
+         ],
+         [
+          "Ananya Iyer",
+          {
+           "chip": "Evaluator",
+           "tone": "orange"
+          },
+          "Kota branch",
+          {
+           "chip": "Active",
+           "tone": "green"
+          }
+         ],
+         [
+          "Vikram Singh",
+          {
+           "chip": "Course Creator",
+           "tone": "blue"
+          },
+          "Main + Kota",
+          {
+           "chip": "Active",
+           "tone": "green"
+          }
+         ]
+        ]
+       },
+       {
+        "type": "form",
+        "id": "sec-login",
+        "title": "Sign-in methods · learn.prakashinstitute.in",
+        "fields": [
+         {
+          "label": "Password login",
+          "value": "on",
+          "type": "toggle"
+         },
+         {
+          "label": "Email OTP",
+          "value": "on",
+          "type": "toggle"
+         },
+         {
+          "label": "WhatsApp OTP",
+          "value": "on",
+          "type": "toggle"
+         },
+         {
+          "label": "Google sign-in",
+          "value": "on",
+          "type": "toggle"
+         },
+         {
+          "label": "Open self-signup",
+          "value": "off",
+          "type": "toggle"
+         },
+         {
+          "label": "Device limit per student",
+          "value": "2 devices",
+          "type": "select"
+         }
+        ],
+        "submit": "Save Sign-in Rules"
+       }
+      ]
+     }
+    ],
+    "steps": [
+     {
+      "screen": "whitelabel",
+      "target": null,
+      "title": "Your platform, not ours",
+      "text": "Everything a learner or parent touches runs on your domains under your brand — Vacademy stays invisible. This is the control room where Prakash Career Institute makes the platform its own."
+     },
+     {
+      "screen": "whitelabel",
+      "target": "wl-form",
+      "title": "One-click domain, DNS and SSL",
+      "text": "Point learn.prakashinstitute.in at your learner portal and the wizard provisions DNS and SSL automatically. Each domain carries its own logo, theme color, fonts, tab title and legal links."
+     },
+     {
+      "screen": "whitelabel",
+      "target": "wl-portals",
+      "title": "Separate domains per portal",
+      "text": "Run distinct domains for learner and admin portals, and give each branch or partner brand its own sub-org entry point. Attach your Play Store and App Store links so every portal promotes your apps."
+     },
+     {
+      "screen": "naming",
+      "target": "nm-table",
+      "title": "The platform speaks your language",
+      "text": "Rename 16+ terms — Course, Batch, Learner, Session, Module and more — per institute. Call a Course a Program and a Batch a Cohort; the change flows through menus, dialogs, reports and your white-label domains."
+     },
+     {
+      "screen": "naming",
+      "target": "nm-edit",
+      "title": "Real plurals, not just an 's'",
+      "text": "Every term has independent singular and plural forms — 'Faculty/Faculty', 'Child/Children' — plus a plain-language explanation of what it controls, so you rename with confidence."
+     },
+     {
+      "screen": "brandedapp",
+      "target": "app-head",
+      "title": "Your own app in the stores",
+      "text": "The learner app ships as a branded Android and iOS build under your institute's name, icon and store listing — published on your developer account. Windows and Mac desktop apps too."
+     },
+     {
+      "screen": "brandedapp",
+      "target": "app-update",
+      "title": "Instant updates, protected content",
+      "text": "Over-the-air releases push fixes straight to devices — no app-store wait, with one-click rollback. Push notifications go out under your app identity, and privacy screens block screenshots of paid content."
+     },
+     {
+      "screen": "security",
+      "target": "sec-roles",
+      "title": "Roles across every branch",
+      "text": "Staff carry roles like Admin, Faculty, Evaluator and Course Creator — renamed to your terms. One person can work across the main campus and the Kota branch, switching workspaces without re-login."
+     },
+     {
+      "screen": "security",
+      "target": "sec-login",
+      "title": "Sign-in rules you control",
+      "text": "Per portal, switch on password, email OTP, WhatsApp OTP, Google or GitHub sign-in — and keep access invite-only. A 2-device limit stops account sharing; students log out an old device themselves."
+     }
+    ]
+   }
   }
  ]
 }

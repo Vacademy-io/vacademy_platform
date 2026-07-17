@@ -876,6 +876,25 @@ public class AssessmentParticipantsManager {
                 throw new VacademyException("Invalid Question Type for Question ID: " + currentQuestion.getId());
             }
 
+            // Surface the AI evaluation to the learner: per-question feedback +
+            // criteria breakdown from the persisted copy-check verdict.
+            String aiFeedback = null;
+            String aiCriteriaBreakdown = null;
+            String aiJson = questionWiseMarks.getAiEvaluationDetailsJson();
+            if (aiJson != null && !aiJson.isBlank()) {
+                try {
+                    com.fasterxml.jackson.databind.JsonNode node = new ObjectMapper().readTree(aiJson);
+                    if (node.hasNonNull("feedback")) {
+                        aiFeedback = node.get("feedback").asText();
+                    }
+                    if (node.has("criteria_breakdown") && node.get("criteria_breakdown").isArray()) {
+                        aiCriteriaBreakdown = node.get("criteria_breakdown").toString();
+                    }
+                } catch (Exception ignored) {
+                    // Non-fatal — leave AI fields null.
+                }
+            }
+
             return StudentReportAnswerReviewDto.builder()
                     .questionId(currentQuestion.getId())
                     .questionText(currentQuestion.getTextData() != null ? currentQuestion.getTextData().toDTO() : null)
@@ -898,6 +917,9 @@ public class AssessmentParticipantsManager {
                             : null)
                     .timeTakenInSeconds(questionWiseMarks.getTimeTakenInSeconds())
                     .evaluatorFeedback(questionWiseMarks.getEvaluatorFeedback())
+                    .aiFeedback(aiFeedback)
+                    .aiCriteriaBreakdown(aiCriteriaBreakdown)
+                    .evaluationSource(questionWiseMarks.getMarksSource())
                     .build();
         } catch (Exception e) {
             // G: Return null instead of empty DTO — caller filters nulls

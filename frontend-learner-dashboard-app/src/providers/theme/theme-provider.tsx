@@ -12,6 +12,7 @@ import {
   type ThemeRoleSettings,
 } from "@/types/theme-role-settings";
 import { rampFromHsl, hslVar, SHADES } from "@/lib/theme-ramp";
+import { applyInstituteBackground } from "@/utils/institute-theme-roles";
 
 // Generates a full 50-500 shade ramp around an arbitrary HSL base — same
 // tint curve for every caller (primary, secondary, tertiary) and identical
@@ -54,41 +55,6 @@ const applySecondaryTertiaryOverrides = () => {
   };
   applyOne("secondary", secondary);
   applyOne("tertiary", tertiary);
-};
-
-// Institute-authored page background (THEME_SETTING `background` role).
-// Repaints the canvas only — --card stays white, so cards keep reading as
-// raised surfaces on a tinted page. Inline custom properties outrank the
-// stylesheet, so this also wins over cleaner-play-theme.css's
-// `html.ui-cleaner-play { --background: 0 0% 100% }`; --cp-bg is set too so
-// that skin's own canvas rule follows along.
-const applyBackgroundRole = () => {
-  let background: string | undefined;
-  try {
-    const raw = localStorage.getItem(THEME_ROLE_SETTINGS_KEY);
-    const parsed: ThemeRoleSettings | null = raw ? JSON.parse(raw) : null;
-    background = parsed?.roles?.background;
-  } catch {
-    background = undefined;
-  }
-
-  const root = document.documentElement;
-  if (!background) {
-    // No override (or it was cleared): drop any inline value so the
-    // stylesheet default — white, per skin — applies again.
-    root.style.removeProperty("--background");
-    root.style.removeProperty("--cp-bg");
-    return;
-  }
-
-  try {
-    const [h, s, l] = convert.hex.hsl(background.replace("#", ""));
-    const value = hslVar([h, s, l]);
-    root.style.setProperty("--background", value);
-    root.style.setProperty("--cp-bg", value);
-  } catch {
-    // ignore malformed institute-authored hex
-  }
 };
 
 // Applies the `nav` role (sidebar/rail surface, hover, active, active-text,
@@ -268,7 +234,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       // the preset's bundled shades set above.
       applySecondaryTertiaryOverrides();
       // Institute-authored page canvas, if any.
-      applyBackgroundRole();
+      applyInstituteBackground();
 
       // Store the theme selection
       localStorage.setItem("theme-code", primaryColor);
@@ -296,7 +262,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       // the hue-shifted defaults set above.
       applySecondaryTertiaryOverrides();
       // Institute-authored page canvas, if any.
-      applyBackgroundRole();
+      applyInstituteBackground();
 
       // Store the custom color
       localStorage.setItem("theme-custom-color", primaryColor);

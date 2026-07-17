@@ -1,5 +1,9 @@
 import { Route } from "@/routes/learner-invitation-response";
 import { cn } from "@/lib/utils";
+import {
+  syncThemeRoleSettingsFromSettingJson,
+  applyInstituteBackground,
+} from "@/utils/institute-theme-roles";
 import { Preferences } from "@capacitor/preferences";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { applyTabBranding } from "@/utils/branding";
@@ -2895,6 +2899,14 @@ const EnrollByInvite = ({
           mappedDetails as unknown as Record<string, unknown>,
         );
 
+        // Load the institute's role-based theme (page background) the same way
+        // the logged-in path does — otherwise an admin-set background never
+        // reaches the invite page (its --background stays the stylesheet
+        // default). Runs before applyTabBranding; the ThemeProvider also
+        // re-applies it whenever the brand color is (re)set.
+        syncThemeRoleSettingsFromSettingJson(instituteData?.setting);
+        applyInstituteBackground();
+
         // Store learner branding subset used by applyTabBranding
         const learnerKey = `LEARNER_${instituteId}`;
         const learnerSettings = {
@@ -2967,7 +2979,10 @@ const EnrollByInvite = ({
   };
 
   return (
-    <div className="min-h-screen w-full bg-gray-50">
+    // Canvas follows --background (white by default, institute-tinted when a
+    // background role is set) instead of a hardcoded gray, so an admin-set
+    // page background reaches the invite flow. The header/cards stay white.
+    <div className="min-h-screen w-full bg-background">
       {/* Compact Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">

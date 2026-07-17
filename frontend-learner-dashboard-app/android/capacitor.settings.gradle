@@ -2,6 +2,9 @@
 include ':capacitor-android'
 project(':capacitor-android').projectDir = new File('../node_modules/.pnpm/@capacitor+android@7.4.2_@capacitor+core@7.4.2/node_modules/@capacitor/android/capacitor')
 
+include ':capacitor-community-apple-sign-in'
+project(':capacitor-community-apple-sign-in').projectDir = new File('../node_modules/.pnpm/@capacitor-community+apple-sign-in@7.1.0_@capacitor+core@7.4.2/node_modules/@capacitor-community/apple-sign-in/android')
+
 include ':capacitor-community-privacy-screen'
 project(':capacitor-community-privacy-screen').projectDir = new File('../node_modules/.pnpm/@capacitor-community+privacy-screen@6.0.0_@capacitor+core@7.4.2/node_modules/@capacitor-community/privacy-screen/android')
 
@@ -10,6 +13,9 @@ project(':capacitor-firebase-messaging').projectDir = new File('../node_modules/
 
 include ':capacitor-app'
 project(':capacitor-app').projectDir = new File('../node_modules/.pnpm/@capacitor+app@7.0.1_@capacitor+core@7.4.2/node_modules/@capacitor/app/android')
+
+include ':capacitor-app-launcher'
+project(':capacitor-app-launcher').projectDir = new File('../node_modules/.pnpm/@capacitor+app-launcher@7.0.4_@capacitor+core@7.4.2/node_modules/@capacitor/app-launcher/android')
 
 include ':capacitor-browser'
 project(':capacitor-browser').projectDir = new File('../node_modules/.pnpm/@capacitor+browser@7.0.5_@capacitor+core@7.4.2/node_modules/@capacitor/browser/android')

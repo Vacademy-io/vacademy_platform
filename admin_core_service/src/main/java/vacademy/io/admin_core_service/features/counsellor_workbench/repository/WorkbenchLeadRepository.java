@@ -57,7 +57,7 @@ public class WorkbenchLeadRepository {
         // type_id for USER_LEAD_PROFILE timeline events is user_lead_profile.id
         // (TimelineEventService writes the enum NAME as action_type —
         // 'COUNSELOR_ASSIGNED'). Was user_lead_profile.user_id before user_id
-        // became non-unique per V379 (a user can now have a profile per
+        // became non-unique per V387 (a user can now have a profile per
         // institute) — all writers switched to profile id, and existing rows
         // were backfilled in the same migration, so ulp.id is the only
         // correlation that stays correct as a person gains more profiles.

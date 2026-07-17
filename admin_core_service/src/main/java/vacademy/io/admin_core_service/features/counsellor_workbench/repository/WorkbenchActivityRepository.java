@@ -112,7 +112,7 @@ public class WorkbenchActivityRepository {
             // NOT treat lead_id as directly joinable to user_lead_profile
             // without also checking source_table/type first. For
             // USER_LEAD_PROFILE rows specifically it is user_lead_profile.id
-            // (not user_id) as of V379 — see UserLeadProfile's uniqueConstraints.
+            // (not user_id) as of V387 — see UserLeadProfile's uniqueConstraints.
             "         te.type_id AS lead_id, " +
             "         te.title AS title, " +
             "         te.description AS description, " +

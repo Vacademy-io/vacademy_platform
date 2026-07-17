@@ -24,7 +24,7 @@ public class OnboardingInstanceController {
 
     @PostMapping
     public ResponseEntity<OnboardingInstanceDTO> startInstance(
-            @RequestParam("user") CustomUserDetails userDetails,
+            @RequestAttribute("user") CustomUserDetails userDetails,
             @RequestParam("instituteId") String instituteId,
             @RequestBody StartOnboardingInstanceRequest request) {
         OnboardingInstance instance = onboardingInstanceService.startInstance(

@@ -14,7 +14,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CheckCircle, Circle, PauseCircle, Path, PlayCircle, SkipForward } from '@phosphor-icons/react';
+import { CheckCircle, Circle, PauseCircle, Path, PlayCircle, SkipForward, UserCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyInput } from '@/components/design-system/input';
@@ -274,6 +274,21 @@ function OnboardingInstanceCard({
             heading={`Onboarding — ${instance.status}`}
             action={<InstanceStatusBadge status={instance.status} />}
         >
+            {instance.resolved_subject_user_id && (
+                <div className="mb-3 flex items-start gap-2 rounded-lg border border-success-200 bg-success-50 p-3">
+                    <UserCircle size={18} className="mt-0.5 shrink-0 text-success-600" weight="fill" />
+                    <div className="text-caption text-success-700">
+                        A parent filled this on behalf of a student. The actual student is{' '}
+                        <span className="font-medium">
+                            {instance.resolved_subject_name || instance.resolved_subject_email || 'created'}
+                        </span>
+                        {instance.resolved_subject_email && instance.resolved_subject_name
+                            ? ` (${instance.resolved_subject_email})`
+                            : ''}{' '}
+                        — this onboarding stays visible here, on the original lead/contact.
+                    </div>
+                </div>
+            )}
             <div className="flex flex-col divide-y divide-border">
                 {steps.map((si, index) => {
                     const stepDef = stepById.get(si.step_id);

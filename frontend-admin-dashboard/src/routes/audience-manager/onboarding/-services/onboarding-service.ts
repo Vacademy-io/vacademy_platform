@@ -153,6 +153,12 @@ export interface OnboardingInstanceDTO {
     flow_id: string;
     institute_id: string;
     subject_user_id: string;
+    /** Set once a "filled by a parent" step resolves the real student — the instance stays
+     *  visible under subject_user_id's profile throughout; this is who role/credentials/
+     *  enrollment actually went to. */
+    resolved_subject_user_id?: string | null;
+    resolved_subject_name?: string | null;
+    resolved_subject_email?: string | null;
     current_step_id: string | null;
     status: OnboardingInstanceStatus;
     started_by: string | null;
@@ -386,6 +392,8 @@ export interface OnboardingInstanceSummaryDTO {
     subject_user_id: string;
     subject_name: string | null;
     subject_email: string | null;
+    /** Set once a "filled by a parent" step resolved the real student. */
+    resolved_subject_name: string | null;
     current_step_id: string | null;
     current_step_name: string | null;
     status: OnboardingInstanceStatus;

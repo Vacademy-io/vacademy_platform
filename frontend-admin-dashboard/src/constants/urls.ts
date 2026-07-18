@@ -925,6 +925,20 @@ export const REFERRAL_DELETE = `${BASE_URL}/admin-core-service/v1/referral-optio
 export const GET_INSITITUTE_SETTINGS = `${BASE_URL}/admin-core-service/institute/setting/v1/get`;
 export const SAVE_INSTITUTE_SETTING = `${BASE_URL}/admin-core-service/institute/setting/v1/save-setting`;
 export const GET_INSTITUTE_SETTING_DATA = `${BASE_URL}/admin-core-service/institute/setting/v1/data`;
+
+// Onboarding Flows — ordered checklists (FORM steps built from institute custom
+// fields) that a lead/student goes through between "agreed to join" and "fully
+// enrolled". Gated behind institute setting ONBOARDING_SETTING (see
+// useOnboardingSettings / OnboardingSettings.tsx).
+export const ONBOARDING_FLOWS_BASE = `${BASE_URL}/admin-core-service/onboarding/flows`;
+export const ONBOARDING_INSTANCES_BASE = `${BASE_URL}/admin-core-service/onboarding/instances`;
+// NOTE: OnboardingInstanceController mounts /side-view UNDER /instances
+// (class-level @RequestMapping("/onboarding/instances") + method
+// @GetMapping("/side-view")) — actual path is .../instances/side-view, not a
+// sibling of /instances as an earlier draft of this spec assumed.
+export const ONBOARDING_SIDE_VIEW = `${ONBOARDING_INSTANCES_BASE}/side-view`;
+export const ONBOARDING_STEP_INSTANCES_BASE = `${BASE_URL}/admin-core-service/onboarding/step-instances`;
+export const ONBOARDING_STEP_FEATURE_FIELDS = `${BASE_URL}/admin-core-service/common/custom-fields/feature-fields`;
 export const UPDATE_CUSTOM_FIELD_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/custom-field/create-or-update`;
 export const GET_CUSTOM_FIELD_LIST_WITH_USAGE = `${BASE_URL}/admin-core-service/institute/v1/custom-field/list-with-usage`;
 // Message Templates

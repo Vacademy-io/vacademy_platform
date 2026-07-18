@@ -22,6 +22,7 @@ import {
 } from "@/lib/auth/sessionUtility";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
+import { hydrateParentSession } from "@/lib/auth/detect-user-role";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
@@ -134,6 +135,7 @@ export function UsernameLogin({
 
           const upperRoles = allRoles.map((r) => r.toUpperCase());
           isParent = upperRoles.includes("PARENT");
+          const isStudentToo = upperRoles.includes("STUDENT");
 
           console.log("[UsernameLogin] Token decoded:", {
             user: userId,
@@ -143,27 +145,22 @@ export function UsernameLogin({
             isParent: isParent,
           });
 
-          // Redirect parent users to parent portal
-          if (isParent) {
-            console.log(
-              "[UsernameLogin] ✅ PARENT role detected - redirecting to /parent",
-            );
-
-            const instituteId = authorities
+          // PARENT-only guardians route to the monitoring portal after a minimal
+          // session hydration (they have no student row, so fetchAndStoreStudentDetails
+          // alone never satisfies isAuthenticated). Dual-role users fall through to
+          // their own learner dashboard.
+          if (isParent && !isStudentToo) {
+            const parentInstituteId = authorities
               ? Object.keys(authorities)[0]
               : undefined;
-            if (instituteId && userId) {
-              try {
-                await fetchAndStoreInstituteDetails(instituteId, userId);
-              } catch (error) {
-                console.error(
-                  "Error fetching institute details for parent:",
-                  error,
-                );
-              }
+            if (parentInstituteId && userId) {
+              await hydrateParentSession(userId, parentInstituteId, {
+                user: userId,
+                authorities,
+              });
             }
             setIsLoading(false);
-            navigate({ to: "/parent" });
+            navigate({ to: "/parent/child" });
             return;
           }
 

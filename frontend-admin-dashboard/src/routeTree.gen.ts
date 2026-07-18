@@ -106,6 +106,7 @@ import { Route as CertificateGenerationStudentDataIndexRouteImport } from "./rou
 import { Route as AutomationChatbotFlowsIndexRouteImport } from "./routes/automation/chatbot-flows/index"
 import { Route as AudienceManagerReportsIndexRouteImport } from "./routes/audience-manager/reports/index"
 import { Route as AudienceManagerRecentLeadsIndexRouteImport } from "./routes/audience-manager/recent-leads/index"
+import { Route as AudienceManagerOnboardingIndexRouteImport } from "./routes/audience-manager/onboarding/index"
 import { Route as AudienceManagerListIndexRouteImport } from "./routes/audience-manager/list/index"
 import { Route as AudienceManagerFollowUpsIndexRouteImport } from "./routes/audience-manager/follow-ups/index"
 import { Route as AudienceManagerCallLogIndexRouteImport } from "./routes/audience-manager/call-log/index"
@@ -138,6 +139,7 @@ import { Route as ManagePagesEditorTagNameRouteImport } from "./routes/manage-pa
 import { Route as ManageCustomTeamsSubOrgsSubOrgSlugRouteImport } from "./routes/manage-custom-teams/sub-orgs/$subOrgSlug"
 import { Route as LoginOauthRedirectRouteImport } from "./routes/login/oauth/redirect"
 import { Route as AutomationChatbotFlowsFlowIdRouteImport } from "./routes/automation/chatbot-flows/$flowId"
+import { Route as AudienceManagerOnboardingFlowIdRouteImport } from "./routes/audience-manager/onboarding/$flowId"
 import { Route as WorkflowWorkflowIdEditIndexRouteImport } from "./routes/workflow/$workflowId/edit/index"
 import { Route as VimStudioProjectIdIndexRouteImport } from "./routes/vim/studio/$projectId/index"
 import { Route as VimReelsReelIdIndexRouteImport } from "./routes/vim/reels/$reelId/index"
@@ -929,6 +931,16 @@ const AudienceManagerRecentLeadsIndexRoute =
       (d) => d.Route,
     ),
   )
+const AudienceManagerOnboardingIndexRoute =
+  AudienceManagerOnboardingIndexRouteImport.update({
+    id: "/audience-manager/onboarding/",
+    path: "/audience-manager/onboarding/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/audience-manager/onboarding/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const AudienceManagerListIndexRoute =
   AudienceManagerListIndexRouteImport.update({
     id: "/audience-manager/list/",
@@ -1180,6 +1192,16 @@ const AutomationChatbotFlowsFlowIdRoute =
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
     import("./routes/automation/chatbot-flows/$flowId.lazy").then(
+      (d) => d.Route,
+    ),
+  )
+const AudienceManagerOnboardingFlowIdRoute =
+  AudienceManagerOnboardingFlowIdRouteImport.update({
+    id: "/audience-manager/onboarding/$flowId",
+    path: "/audience-manager/onboarding/$flowId",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/audience-manager/onboarding/$flowId.lazy").then(
       (d) => d.Route,
     ),
   )
@@ -1677,6 +1699,7 @@ export interface FileRoutesByFullPath {
   "/study-library/": typeof StudyLibraryIndexRoute
   "/video-api-studio/": typeof VideoApiStudioIndexRoute
   "/vim/": typeof VimIndexRoute
+  "/audience-manager/onboarding/$flowId": typeof AudienceManagerOnboardingFlowIdRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
@@ -1709,6 +1732,7 @@ export interface FileRoutesByFullPath {
   "/audience-manager/call-log/": typeof AudienceManagerCallLogIndexRoute
   "/audience-manager/follow-ups/": typeof AudienceManagerFollowUpsIndexRoute
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
+  "/audience-manager/onboarding/": typeof AudienceManagerOnboardingIndexRoute
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
@@ -1862,6 +1886,7 @@ export interface FileRoutesByTo {
   "/study-library": typeof StudyLibraryIndexRoute
   "/video-api-studio": typeof VideoApiStudioIndexRoute
   "/vim": typeof VimIndexRoute
+  "/audience-manager/onboarding/$flowId": typeof AudienceManagerOnboardingFlowIdRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
@@ -1894,6 +1919,7 @@ export interface FileRoutesByTo {
   "/audience-manager/call-log": typeof AudienceManagerCallLogIndexRoute
   "/audience-manager/follow-ups": typeof AudienceManagerFollowUpsIndexRoute
   "/audience-manager/list": typeof AudienceManagerListIndexRoute
+  "/audience-manager/onboarding": typeof AudienceManagerOnboardingIndexRoute
   "/audience-manager/recent-leads": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows": typeof AutomationChatbotFlowsIndexRoute
@@ -2049,6 +2075,7 @@ export interface FileRoutesById {
   "/study-library/": typeof StudyLibraryIndexRoute
   "/video-api-studio/": typeof VideoApiStudioIndexRoute
   "/vim/": typeof VimIndexRoute
+  "/audience-manager/onboarding/$flowId": typeof AudienceManagerOnboardingFlowIdRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
@@ -2081,6 +2108,7 @@ export interface FileRoutesById {
   "/audience-manager/call-log/": typeof AudienceManagerCallLogIndexRoute
   "/audience-manager/follow-ups/": typeof AudienceManagerFollowUpsIndexRoute
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
+  "/audience-manager/onboarding/": typeof AudienceManagerOnboardingIndexRoute
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
@@ -2237,6 +2265,7 @@ export interface FileRouteTypes {
     | "/study-library/"
     | "/video-api-studio/"
     | "/vim/"
+    | "/audience-manager/onboarding/$flowId"
     | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
     | "/manage-custom-teams/sub-orgs/$subOrgSlug"
@@ -2269,6 +2298,7 @@ export interface FileRouteTypes {
     | "/audience-manager/call-log/"
     | "/audience-manager/follow-ups/"
     | "/audience-manager/list/"
+    | "/audience-manager/onboarding/"
     | "/audience-manager/recent-leads/"
     | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
@@ -2422,6 +2452,7 @@ export interface FileRouteTypes {
     | "/study-library"
     | "/video-api-studio"
     | "/vim"
+    | "/audience-manager/onboarding/$flowId"
     | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
     | "/manage-custom-teams/sub-orgs/$subOrgSlug"
@@ -2454,6 +2485,7 @@ export interface FileRouteTypes {
     | "/audience-manager/call-log"
     | "/audience-manager/follow-ups"
     | "/audience-manager/list"
+    | "/audience-manager/onboarding"
     | "/audience-manager/recent-leads"
     | "/audience-manager/reports"
     | "/automation/chatbot-flows"
@@ -2608,6 +2640,7 @@ export interface FileRouteTypes {
     | "/study-library/"
     | "/video-api-studio/"
     | "/vim/"
+    | "/audience-manager/onboarding/$flowId"
     | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
     | "/manage-custom-teams/sub-orgs/$subOrgSlug"
@@ -2640,6 +2673,7 @@ export interface FileRouteTypes {
     | "/audience-manager/call-log/"
     | "/audience-manager/follow-ups/"
     | "/audience-manager/list/"
+    | "/audience-manager/onboarding/"
     | "/audience-manager/recent-leads/"
     | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
@@ -2794,6 +2828,7 @@ export interface RootRouteChildren {
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
   VideoApiStudioIndexRoute: typeof VideoApiStudioIndexRoute
   VimIndexRoute: typeof VimIndexRoute
+  AudienceManagerOnboardingFlowIdRoute: typeof AudienceManagerOnboardingFlowIdRoute
   AutomationChatbotFlowsFlowIdRoute: typeof AutomationChatbotFlowsFlowIdRoute
   LoginOauthRedirectRoute: typeof LoginOauthRedirectRoute
   ManageCustomTeamsSubOrgsSubOrgSlugRoute: typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
@@ -2826,6 +2861,7 @@ export interface RootRouteChildren {
   AudienceManagerCallLogIndexRoute: typeof AudienceManagerCallLogIndexRoute
   AudienceManagerFollowUpsIndexRoute: typeof AudienceManagerFollowUpsIndexRoute
   AudienceManagerListIndexRoute: typeof AudienceManagerListIndexRoute
+  AudienceManagerOnboardingIndexRoute: typeof AudienceManagerOnboardingIndexRoute
   AudienceManagerRecentLeadsIndexRoute: typeof AudienceManagerRecentLeadsIndexRoute
   AudienceManagerReportsIndexRoute: typeof AudienceManagerReportsIndexRoute
   AutomationChatbotFlowsIndexRoute: typeof AutomationChatbotFlowsIndexRoute
@@ -3628,6 +3664,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof AudienceManagerRecentLeadsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/audience-manager/onboarding/": {
+      id: "/audience-manager/onboarding/"
+      path: "/audience-manager/onboarding"
+      fullPath: "/audience-manager/onboarding/"
+      preLoaderRoute: typeof AudienceManagerOnboardingIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/audience-manager/list/": {
       id: "/audience-manager/list/"
       path: "/audience-manager/list"
@@ -3850,6 +3893,13 @@ declare module "@tanstack/react-router" {
       path: "/automation/chatbot-flows/$flowId"
       fullPath: "/automation/chatbot-flows/$flowId"
       preLoaderRoute: typeof AutomationChatbotFlowsFlowIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/audience-manager/onboarding/$flowId": {
+      id: "/audience-manager/onboarding/$flowId"
+      path: "/audience-manager/onboarding/$flowId"
+      fullPath: "/audience-manager/onboarding/$flowId"
+      preLoaderRoute: typeof AudienceManagerOnboardingFlowIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/workflow/$workflowId/edit/": {
@@ -4284,6 +4334,7 @@ const rootRouteChildren: RootRouteChildren = {
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
   VideoApiStudioIndexRoute: VideoApiStudioIndexRoute,
   VimIndexRoute: VimIndexRoute,
+  AudienceManagerOnboardingFlowIdRoute: AudienceManagerOnboardingFlowIdRoute,
   AutomationChatbotFlowsFlowIdRoute: AutomationChatbotFlowsFlowIdRoute,
   LoginOauthRedirectRoute: LoginOauthRedirectRoute,
   ManageCustomTeamsSubOrgsSubOrgSlugRoute:
@@ -4321,6 +4372,7 @@ const rootRouteChildren: RootRouteChildren = {
   AudienceManagerCallLogIndexRoute: AudienceManagerCallLogIndexRoute,
   AudienceManagerFollowUpsIndexRoute: AudienceManagerFollowUpsIndexRoute,
   AudienceManagerListIndexRoute: AudienceManagerListIndexRoute,
+  AudienceManagerOnboardingIndexRoute: AudienceManagerOnboardingIndexRoute,
   AudienceManagerRecentLeadsIndexRoute: AudienceManagerRecentLeadsIndexRoute,
   AudienceManagerReportsIndexRoute: AudienceManagerReportsIndexRoute,
   AutomationChatbotFlowsIndexRoute: AutomationChatbotFlowsIndexRoute,

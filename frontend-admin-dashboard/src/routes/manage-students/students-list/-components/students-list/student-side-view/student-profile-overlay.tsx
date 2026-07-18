@@ -360,7 +360,7 @@ export const StudentProfileOverlay = () => {
                                 <div className="flex flex-wrap items-center gap-2">
                                     <h1
                                         className={cn(
-                                            'truncate text-h3 font-semibold leading-tight',
+                                            'min-w-0 max-w-full truncate text-h3 font-semibold leading-tight',
                                             selectedStudent.full_name
                                                 ? 'text-neutral-900'
                                                 : 'text-neutral-400'

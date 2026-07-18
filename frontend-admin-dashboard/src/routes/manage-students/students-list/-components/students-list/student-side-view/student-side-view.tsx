@@ -341,7 +341,7 @@ export const StudentSidebar = ({
                             <div className="flex min-w-0 flex-1 items-center gap-2">
                                 <h2
                                     className={cn(
-                                        'truncate text-base font-semibold leading-tight',
+                                        'min-w-0 truncate text-base font-semibold leading-tight',
                                         selectedStudent?.full_name
                                             ? 'text-neutral-900'
                                             : 'text-neutral-400'
@@ -351,7 +351,9 @@ export const StudentSidebar = ({
                                     {selectedStudent?.full_name || 'Unknown'}
                                 </h2>
                                 {selectedStudent?.status && (
-                                    <StatusChips status={selectedStudent.status} />
+                                    <div className="shrink-0">
+                                        <StatusChips status={selectedStudent.status} />
+                                    </div>
                                 )}
                             </div>
 

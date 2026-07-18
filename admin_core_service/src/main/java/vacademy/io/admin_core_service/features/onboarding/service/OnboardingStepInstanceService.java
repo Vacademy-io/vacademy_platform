@@ -1,5 +1,7 @@
 package vacademy.io.admin_core_service.features.onboarding.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -7,7 +9,16 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
+import vacademy.io.admin_core_service.features.common.entity.CustomFields;
+import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
+import vacademy.io.admin_core_service.features.common.enums.CustomFieldValueSourceTypeEnum;
+import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
+import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
+import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
+import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingStepFieldConfigDTO;
 import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingStepInstanceDTO;
+import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingSubmittedFieldDTO;
 import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingInstance;
 import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingStep;
 import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingStepInstance;
@@ -20,9 +31,11 @@ import vacademy.io.admin_core_service.features.onboarding.steptype.OnboardingSte
 import vacademy.io.admin_core_service.features.onboarding.steptype.OnboardingStepTypeHandlerRegistry;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
+import vacademy.io.common.exceptions.ForbiddenException;
 import vacademy.io.common.exceptions.InvalidRequestException;
 import vacademy.io.common.exceptions.ResourceNotFoundException;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +57,10 @@ public class OnboardingStepInstanceService {
     private final OnboardingStepTypeHandlerRegistry stepTypeHandlerRegistry;
     private final OnboardingTriggerContextBuilder triggerContextBuilder;
     private final AuthService authService;
+    private final InstituteCustomFieldRepository instituteCustomFieldRepository;
+    private final CustomFieldRepository customFieldRepository;
+    private final CustomFieldValuesRepository customFieldValuesRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * @Lazy breaks the same init-time bean cycle CallAiNodeHandler/SetLeadStatusNodeHandler guard
@@ -93,6 +110,14 @@ public class OnboardingStepInstanceService {
                 .orElseThrow(() -> new ResourceNotFoundException("Onboarding step not found: " + stepInstance.getStepId()));
         OnboardingInstance instance = onboardingInstanceRepository.findById(stepInstance.getOnboardingInstanceId())
                 .orElseThrow(() -> new ResourceNotFoundException("Onboarding instance not found: " + stepInstance.getOnboardingInstanceId()));
+
+        // A step that assigns a course is an administrative action, not something a learner
+        // self-serves -- otherwise a caller with an empty course pool (open choice) could pick
+        // ANY course and enroll themselves. Enforced here (not just in the learner-app UI) since
+        // the learner endpoint always resolves the caller's real role before calling this.
+        if (isCreateStudentConfigured(step) && !OnboardingRoleKey.ADMIN.name().equals(actorRoleKey)) {
+            throw new ForbiddenException("This step assigns a course and must be completed by an admin.");
+        }
 
         OnboardingStepTypeHandler handler = stepTypeHandlerRegistry.getHandler(step.getStepType());
         OnboardingStepInstanceStatus resultStatus = handler != null
@@ -217,5 +242,60 @@ public class OnboardingStepInstanceService {
         return stepInstances.stream()
                 .map(si -> OnboardingStepInstanceDTO.fromEntity(si, stepsById.get(si.getStepId())))
                 .toList();
+    }
+
+    /**
+     * The actual values submitted for a FORM step instance -- previously unavailable via any
+     * onboarding endpoint, so the side-view's "View form" dialog could only show field NAMES.
+     * Resolves each of the step's configured fields to its submitted value (null if that
+     * particular field was never filled in, e.g. an optional field left blank).
+     */
+    public List<OnboardingSubmittedFieldDTO> getSubmittedFieldValues(String stepInstanceId) {
+        OnboardingStepInstance stepInstance = getStepInstance(stepInstanceId);
+        OnboardingStep step = onboardingStepRepository.findById(stepInstance.getStepId())
+                .orElseThrow(() -> new ResourceNotFoundException("Onboarding step not found: " + stepInstance.getStepId()));
+        List<OnboardingStepFieldConfigDTO> fieldConfigs = parseFieldConfigs(step.getFieldsConfig());
+        if (fieldConfigs.isEmpty()) return List.of();
+
+        Map<String, String> valueByCustomFieldId = customFieldValuesRepository
+                .findBySourceTypeAndSourceId(CustomFieldValueSourceTypeEnum.ONBOARDING_STEP_INSTANCE.name(), stepInstanceId)
+                .stream()
+                .collect(Collectors.toMap(CustomFieldValues::getCustomFieldId, CustomFieldValues::getValue, (a, b) -> a));
+
+        List<OnboardingSubmittedFieldDTO> out = new ArrayList<>();
+        for (OnboardingStepFieldConfigDTO fieldConfig : fieldConfigs) {
+            Optional<InstituteCustomField> instituteCustomField =
+                    instituteCustomFieldRepository.findById(fieldConfig.getInstituteCustomFieldId());
+            if (instituteCustomField.isEmpty()) continue;
+            String customFieldId = instituteCustomField.get().getCustomFieldId();
+            String fieldName = customFieldRepository.findById(customFieldId)
+                    .map(CustomFields::getFieldName).orElse(null);
+            out.add(OnboardingSubmittedFieldDTO.builder()
+                    .instituteCustomFieldId(fieldConfig.getInstituteCustomFieldId())
+                    .fieldName(fieldName)
+                    .value(valueByCustomFieldId.get(customFieldId))
+                    .build());
+        }
+        return out;
+    }
+
+    private boolean isCreateStudentConfigured(OnboardingStep step) {
+        String json = step.getStepTypeConfig();
+        if (json == null || json.isBlank()) return false;
+        try {
+            JsonNode v = objectMapper.readTree(json).get("create_student");
+            return v != null && ("true".equalsIgnoreCase(v.asText()) || v.asBoolean(false));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private List<OnboardingStepFieldConfigDTO> parseFieldConfigs(String json) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            return List.of(objectMapper.readValue(json, OnboardingStepFieldConfigDTO[].class));
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 }

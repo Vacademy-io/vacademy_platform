@@ -71,7 +71,7 @@ export function CreateFlowDialog({ instituteId, open, onOpenChange, onCreated }:
     );
 
     return (
-        <MyDialog open={open} onOpenChange={onOpenChange} heading="Create Onboarding Flow" footer={footer} dialogWidth="max-w-lg">
+        <MyDialog open={open} onOpenChange={onOpenChange} heading="Create Onboarding Flow" footer={footer} dialogWidth="max-w-md">
             <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4 px-6 py-6">
                     <FormField

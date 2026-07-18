@@ -11,6 +11,7 @@ import {
   Password,
   UserCircle,
   UserCircleMinus,
+  ClipboardText,
 } from "@phosphor-icons/react";
 import i18next from "i18next";
 import {
@@ -318,6 +319,7 @@ export const HamBurgerSidebarItemsData: SidebarItemsType[] = [
     to: "/my-files",
   },
   { icon: AddressBook, id: "my-reports", title: "My Reports", to: "/my-reports" },
+  { icon: ClipboardText, id: "onboarding", title: "Onboarding", to: "/onboarding" },
   // {
   //   icon: CreditCard,
   //   title: "Membership Details",

@@ -28,9 +28,11 @@ import { StudentApplication } from './student-application/student-application';
 import { StudentLeadProfile } from './student-lead-profile/student-lead-profile';
 import { StudentFullHistory } from './student-full-history/student-full-history';
 import { StudentParentProfile } from './student-parent/student-parent-profile';
+import { StudentOnboardingProfile } from './student-onboarding/student-onboarding-profile';
 import { LeadFormResponseCard } from '@/routes/audience-manager/list/-components/campaign-users/lead-form-response-card';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useParentSettings } from '@/hooks/use-parent-settings';
+import { useOnboardingSettings } from '@/hooks/use-onboarding-settings';
 import { getPublicUrl } from '@/services/upload_file';
 import { ErrorBoundary } from '@/components/core/dashboard-loader';
 import { useStudentSidebar } from '../../../-context/selected-student-sidebar-context';
@@ -86,6 +88,7 @@ function orderedVisibleTabIds(settings: StudentSideViewSettings): StudentSideVie
         'lead',
         'fullHistory',
         'parent',
+        'onboarding',
     ];
     const orders = settings.tabOrders ?? {};
     return all
@@ -176,6 +179,7 @@ export const StudentSidebar = ({
     const activeTabRef = useRef<HTMLButtonElement>(null);
     const leadSettings = useLeadSettings();
     const parentSettings = useParentSettings();
+    const onboardingSettings = useOnboardingSettings();
 
     useEffect(() => {
         if (state == 'expanded') {
@@ -459,6 +463,15 @@ export const StudentSidebar = ({
                                         ) {
                                             return null;
                                         }
+                                        // onboarding requires the Onboarding
+                                        // Flows feature to be enabled — its
+                                        // own toggle, independent of leads.
+                                        if (
+                                            tabId === 'onboarding' &&
+                                            (onboardingSettings.isLoading || !onboardingSettings.enabled)
+                                        ) {
+                                            return null;
+                                        }
                                         const label =
                                             tabId === 'courses'
                                                 ? getTerminologyPlural(
@@ -573,6 +586,14 @@ export const StudentSidebar = ({
                                         if (
                                             isParentGated &&
                                             (!parentSettings.enabled || parentSettings.isLoading)
+                                        )
+                                            return false;
+                                        // Onboarding section — gated on its own
+                                        // feature toggle, separate from leads.
+                                        const isOnboardingGated = s.id === 'onboarding';
+                                        if (
+                                            isOnboardingGated &&
+                                            (!onboardingSettings.enabled || onboardingSettings.isLoading)
                                         )
                                             return false;
                                         return flag;
@@ -691,6 +712,14 @@ export const StudentSidebar = ({
                             !isEnrollRequestStudentList &&
                             selectedStudent?.user_id && (
                                 <StudentParentProfile userId={selectedStudent.user_id} />
+                            )}
+                        {category === 'onboarding' &&
+                            tabSettings?.onboardingTab &&
+                            !onboardingSettings.isLoading &&
+                            onboardingSettings.enabled &&
+                            !isEnrollRequestStudentList &&
+                            selectedStudent?.user_id && (
+                                <StudentOnboardingProfile userId={selectedStudent.user_id} />
                             )}
                     </ErrorBoundary>
                 </div>

@@ -216,6 +216,7 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         leadTab: false,
         fullHistoryTab: false,
         parentTab: false,
+        onboardingTab: false,
         tabOrders: {
             overview: 1,
             courses: 2,

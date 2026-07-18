@@ -91,6 +91,23 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("userId") String userId,
       @Param("instituteId") String instituteId);
 
+  /**
+   * All package_session_ids a learner is enrolled in within one institute, filtered
+   * by status. Used by the parent-portal guard's enrolment leg (empty = the child is
+   * not enrolled in this institute, so the guardian may not read institute-scoped data)
+   * and to scope per-child fan-out queries. Distinct so a re-enrolled learner isn't doubled.
+   */
+  @Query(value = """
+      SELECT DISTINCT package_session_id FROM student_session_institute_group_mapping
+      WHERE user_id = :userId
+        AND institute_id = :instituteId
+        AND status IN (:statuses)
+      """, nativeQuery = true)
+  List<String> findPackageSessionIdsByUserIdAndInstituteAndStatusIn(
+      @Param("userId") String userId,
+      @Param("instituteId") String instituteId,
+      @Param("statuses") List<String> statuses);
+
   @Query(value = """
       SELECT * FROM student_session_institute_group_mapping
       WHERE user_id = :userId

@@ -250,12 +250,22 @@ function CompletedView({ ci }: { ci: CallIntelligenceDto }) {
 export function CallIntelligencePanel({
     callLogId,
     className,
+    defaultExpanded = false,
+    confirmBeforeAnalyze,
 }: {
     callLogId: string;
     className?: string;
+    /** Start expanded (e.g. when hosted inside a dialog opened on demand). */
+    defaultExpanded?: boolean;
+    /**
+     * Gate run before every analyze / re-analyze / retry. Resolve `true` to proceed,
+     * `false` to abort — used to show a credits-cost confirmation first. When omitted,
+     * analysis triggers immediately (unchanged behaviour for existing callers).
+     */
+    confirmBeforeAnalyze?: () => Promise<boolean>;
 }) {
     const featureEnabled = useCallIntelligenceEnabled();
-    const [expanded, setExpanded] = useState(false);
+    const [expanded, setExpanded] = useState(defaultExpanded);
     const query = useQuery({
         queryKey: ['call-intelligence', callLogId],
         queryFn: () => fetchCallIntelligence(callLogId),
@@ -292,11 +302,19 @@ export function CallIntelligencePanel({
     // showing it would just promise an analysis that never runs.
     if (!featureEnabled) return null;
 
+    const runAnalyze = async () => {
+        if (confirmBeforeAnalyze) {
+            const ok = await confirmBeforeAnalyze();
+            if (!ok) return;
+        }
+        analyze.mutate();
+    };
+
     const AnalyzeButton = ({ label }: { label: string }) => (
         <button
             type="button"
             disabled={analyze.isPending}
-            onClick={() => analyze.mutate()}
+            onClick={() => void runAnalyze()}
             className="mt-2 inline-flex items-center gap-1 rounded-md border border-primary-200 bg-white px-2 py-1 text-caption text-primary-700 hover:bg-primary-50 disabled:opacity-60"
         >
             <ArrowsClockwise className={cn('size-4', analyze.isPending && 'animate-spin')} />

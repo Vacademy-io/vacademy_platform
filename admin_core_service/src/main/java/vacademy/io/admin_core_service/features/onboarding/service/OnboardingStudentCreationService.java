@@ -62,6 +62,17 @@ public class OnboardingStudentCreationService {
     public void resolveSubjectUserId(OnboardingInstance instance, boolean isParent, String studentFullName,
                                       String studentEmail, String studentMobileNumber) {
         if (!isParent) return;
+
+        // Guards against a step being (re)completed with is_parent=true after a PRIOR step on
+        // this same instance already resolved the real student -- without this, the already-
+        // resolved child would get treated as a parent adding a second, spurious new student.
+        List<UserDTO> currentSubject = authService.getUsersFromAuthServiceByUserIds(List.of(instance.getSubjectUserId()));
+        if (!currentSubject.isEmpty() && StringUtils.hasText(currentSubject.get(0).getLinkedParentId())) {
+            log.info("Subject {} is already a linked child (parent {}); skipping duplicate parent resolution",
+                    instance.getSubjectUserId(), currentSubject.get(0).getLinkedParentId());
+            return;
+        }
+
         if (!StringUtils.hasText(studentFullName)
                 || (!StringUtils.hasText(studentEmail) && !StringUtils.hasText(studentMobileNumber))) {
             throw new InvalidRequestException(

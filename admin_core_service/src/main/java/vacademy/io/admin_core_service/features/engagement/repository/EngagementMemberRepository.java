@@ -168,6 +168,12 @@ public interface EngagementMemberRepository extends JpaRepository<EngagementMemb
      * window is still open, matched by last-10 phone digits. Ordered most-recently-engaged first so a
      * person in several engines is answered by ONE — the engine that last reached out (the one they're
      * most plausibly replying to) — not spammed by all of them.
+     *
+     * The kill switch (auto_send_killed) is honored HERE too: an auto-reply is the ONLY continuously
+     * autonomous send in the system, so a killed engine must stop answering — otherwise the emergency
+     * brake that stops proactive sends would leave the reply path sending unstoppably. A killed engine
+     * returns no candidate; the inbound reply still surfaces as a human copilot task via the promotion
+     * pass (promoteByPhones) that runs before this, so nothing is dropped — it just is not auto-sent.
      */
     @Query(value = """
             SELECT m.id AS memberId, m.engine_id AS engineId, m.last_reply_wamid AS lastReplyWamid
@@ -176,6 +182,7 @@ public interface EngagementMemberRepository extends JpaRepository<EngagementMemb
             WHERE m.institute_id = :instituteId AND m.status = 'ACTIVE'
               AND m.is_holdout = false
               AND e.status = 'ACTIVE'
+              AND e.auto_send_killed = false
               AND e.channels -> 'WHATSAPP' ->> 'enabled' = 'true'
               AND e.channels -> 'WHATSAPP' ->> 'autoReply' = 'true'
               AND m.window_open_until IS NOT NULL AND m.window_open_until > :now

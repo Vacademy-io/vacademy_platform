@@ -16,7 +16,6 @@ import vacademy.io.common.exceptions.VacademyException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
@@ -53,13 +52,11 @@ public class EngagementDispatchJob {
     @Value("${engagement.credits.per-message:1.0}")
     private BigDecimal perMessageCredits;
 
-    /** Circuit breaker: if an institute has this many UNBILLED-but-SENT messages recently, its charge
-     *  path is failing — stop auto-sending for it (demote to copilot) until reconciliation clears them. */
+    /** Circuit breaker: if an institute has this many UNBILLED-but-SENT messages (its full standing
+     *  backlog, not a recent window), its charge path is failing — stop auto-sending for it (demote to
+     *  copilot) until reconciliation actually clears them (credits_billed_at set), not until they age. */
     @Value("${engagement.credits.max-unbilled:25}")
     private int maxUnbilled;
-
-    @Value("${engagement.credits.unbilled-window-hours:6}")
-    private int unbilledWindowHours;
 
     @Scheduled(fixedDelayString = "${engagement.dispatch.delay-ms:120000}")
     @SchedulerLock(name = "EngagementAutoDispatch", lockAtMostFor = "PT15M", lockAtLeastFor = "PT10S")
@@ -105,8 +102,7 @@ public class EngagementDispatchJob {
         // reads > 0 — the affordability gate below can't see that. A pile of recently-SENT-but-UNBILLED
         // messages IS that signal: stop auto-sending for this institute (demote to copilot) so a broken
         // charge path can't silently bleed unbounded unbilled sends. Reconciliation clears the backlog.
-        long unbilled = actionRepository.countUnbilledSentForInstitute(
-                instituteId, now.minus(Duration.ofHours(unbilledWindowHours)));
+        long unbilled = actionRepository.countUnbilledSentForInstitute(instituteId);
         if (unbilled >= maxUnbilled) {
             actionRepository.demoteSendToTask(action.getId(),
                     "Billing is failing for this institute — auto-send paused; sent to the inbox for review.", now);
@@ -181,8 +177,7 @@ public class EngagementDispatchJob {
 
     /** Re-charge SENT autonomous sends whose deduct call was lost (idempotent via action id). */
     private int reconcileBilling(Instant now) {
-        List<EngagementAction> unbilled =
-                actionRepository.findUnbilledSent(now.minus(Duration.ofDays(2)), batch);
+        List<EngagementAction> unbilled = actionRepository.findUnbilledSent(batch);
         int fixed = 0;
         for (EngagementAction a : unbilled) {
             try {

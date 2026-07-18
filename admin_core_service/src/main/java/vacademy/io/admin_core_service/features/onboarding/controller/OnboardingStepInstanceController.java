@@ -5,10 +5,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.onboarding.dto.CompleteStepInstanceRequest;
 import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingStepInstanceDTO;
+import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingSubmittedFieldDTO;
 import vacademy.io.admin_core_service.features.onboarding.dto.SkipStepInstanceRequest;
 import vacademy.io.admin_core_service.features.onboarding.enums.OnboardingRoleKey;
 import vacademy.io.admin_core_service.features.onboarding.service.OnboardingStepInstanceService;
 import vacademy.io.common.auth.model.CustomUserDetails;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/admin-core-service/onboarding/step-instances")
@@ -34,5 +37,12 @@ public class OnboardingStepInstanceController {
             @RequestBody SkipStepInstanceRequest request) {
         return ResponseEntity.ok(onboardingStepInstanceService.toDto(
                 onboardingStepInstanceService.skipStep(stepInstanceId, request.getReason(), userDetails.getUserId())));
+    }
+
+    /** Actual submitted values for a FORM step instance -- previously only field names were viewable. */
+    @GetMapping("/{stepInstanceId}/submitted-values")
+    public ResponseEntity<List<OnboardingSubmittedFieldDTO>> getSubmittedValues(
+            @PathVariable("stepInstanceId") String stepInstanceId) {
+        return ResponseEntity.ok(onboardingStepInstanceService.getSubmittedFieldValues(stepInstanceId));
     }
 }

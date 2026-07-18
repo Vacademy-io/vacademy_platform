@@ -462,6 +462,23 @@ export async function skipStepInstance(
     return data;
 }
 
+/** One field's actual submitted value for a completed FORM step instance. */
+export interface OnboardingSubmittedFieldDTO {
+    institute_custom_field_id: string;
+    field_name: string | null;
+    value: string | null;
+}
+
+/** Actual submitted answers for a step instance — not just the attached field names. */
+export async function fetchSubmittedFieldValues(
+    stepInstanceId: string
+): Promise<OnboardingSubmittedFieldDTO[]> {
+    const { data } = await authenticatedAxiosInstance.get(
+        `${ONBOARDING_STEP_INSTANCES_BASE}/${stepInstanceId}/submitted-values`
+    );
+    return Array.isArray(data) ? data : [];
+}
+
 // ── Package session picker (for the FORM step "create student" target) ─────
 
 export interface PackageSessionOption {

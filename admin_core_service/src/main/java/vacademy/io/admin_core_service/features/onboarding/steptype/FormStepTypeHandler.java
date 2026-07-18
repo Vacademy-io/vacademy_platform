@@ -113,7 +113,15 @@ public class FormStepTypeHandler implements OnboardingStepTypeHandler {
 
         if (isCreateStudentConfigured(step)) {
             String selectedPackageSessionId = resolveSelectedPackageSessionId(step, payload);
-            onboardingStudentCreationService.createStudentIfAbsent(stepInstance, selectedPackageSessionId);
+            // Leads can be filled out by either the student or a parent on their behalf --
+            // "is_parent" (+ the student_* fields) tells createStudentIfAbsent which one it is,
+            // so it enrolls the right person, not whoever the lead form happened to be under.
+            boolean isParent = payload != null && "true".equalsIgnoreCase(String.valueOf(payload.get("is_parent")));
+            String studentFullName = readPayloadString(payload, "student_full_name");
+            String studentEmail = readPayloadString(payload, "student_email");
+            String studentMobileNumber = readPayloadString(payload, "student_mobile_number");
+            onboardingStudentCreationService.createStudentIfAbsent(stepInstance, selectedPackageSessionId,
+                    isParent, studentFullName, studentEmail, studentMobileNumber);
         }
 
         return OnboardingStepInstanceStatus.COMPLETED;
@@ -139,6 +147,12 @@ public class FormStepTypeHandler implements OnboardingStepTypeHandler {
             throw new InvalidRequestException("Selected course is not one of the allowed courses for this step");
         }
         return selected;
+    }
+
+    private String readPayloadString(Map<String, Object> payload, String key) {
+        if (payload == null) return null;
+        Object raw = payload.get(key);
+        return raw == null ? null : String.valueOf(raw);
     }
 
     private boolean isCreateStudentConfigured(OnboardingStep step) {

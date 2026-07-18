@@ -38,7 +38,6 @@ import java.util.List;
 public class GuardianAccessGuard {
 
     private static final String PARENT_ROLE = "PARENT";
-    private static final List<String> ACTIVE_STATUSES = List.of("ACTIVE");
 
     private final GuardianLinkCacheService guardianLinkCacheService;
     private final InstituteAccessValidator instituteAccessValidator;
@@ -175,7 +174,7 @@ public class GuardianAccessGuard {
 
     private GuardedChild buildContext(String childUserId, String instituteId, String fullName) {
         List<String> packageSessionIds = ssigmRepository
-                .findPackageSessionIdsByUserIdAndInstituteAndStatusIn(childUserId, instituteId, ACTIVE_STATUSES);
+                .findEnrolledPackageSessionIds(childUserId, instituteId);
         if (packageSessionIds == null || packageSessionIds.isEmpty()) {
             throw new ForbiddenException("Child is not enrolled in this institute");
         }

@@ -60,6 +60,7 @@ public class OnboardingStepInstanceService {
     private final InstituteCustomFieldRepository instituteCustomFieldRepository;
     private final CustomFieldRepository customFieldRepository;
     private final CustomFieldValuesRepository customFieldValuesRepository;
+    private final OnboardingStudentCreationService onboardingStudentCreationService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -117,6 +118,23 @@ public class OnboardingStepInstanceService {
         // the learner endpoint always resolves the caller's real role before calling this.
         if (isCreateStudentConfigured(step) && !OnboardingRoleKey.ADMIN.name().equals(actorRoleKey)) {
             throw new ForbiddenException("This step assigns a course and must be completed by an admin.");
+        }
+
+        // Leads can be filled out by either the student or a parent on their behalf. Resolve
+        // that BEFORE any identity-touching side effect -- role grant, credentials, or course
+        // enrollment can each live on their own, independent step, so this can't be scoped to
+        // just the create_student step. Once resolved, instance.subjectUserId is reassigned to
+        // the real student for the rest of this completion AND every later step (same managed
+        // entity within this transaction, visible to applyCompletionSideEffects below and to
+        // FormStepTypeHandler's own instance lookup).
+        boolean touchesIdentity = Boolean.TRUE.equals(step.getGrantsStudentRole())
+                || Boolean.TRUE.equals(step.getSendsLoginCredentials())
+                || isCreateStudentConfigured(step);
+        if (touchesIdentity && payload != null && "true".equalsIgnoreCase(String.valueOf(payload.get("is_parent")))) {
+            onboardingStudentCreationService.resolveSubjectUserId(instance, true,
+                    readPayloadString(payload, "student_full_name"),
+                    readPayloadString(payload, "student_email"),
+                    readPayloadString(payload, "student_mobile_number"));
         }
 
         OnboardingStepTypeHandler handler = stepTypeHandlerRegistry.getHandler(step.getStepType());
@@ -277,6 +295,12 @@ public class OnboardingStepInstanceService {
                     .build());
         }
         return out;
+    }
+
+    private String readPayloadString(Map<String, Object> payload, String key) {
+        if (payload == null) return null;
+        Object raw = payload.get(key);
+        return raw == null ? null : String.valueOf(raw);
     }
 
     private boolean isCreateStudentConfigured(OnboardingStep step) {

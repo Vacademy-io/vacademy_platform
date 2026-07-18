@@ -108,6 +108,24 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("instituteId") String instituteId,
       @Param("statuses") List<String> statuses);
 
+  /**
+   * Package sessions a learner is enrolled in within one institute, excluding only
+   * TERMINAL states. Used by the parent-portal guard's enrolment leg. Deliberately an
+   * EXCLUDE-list, case-insensitive: the status column is dirty in prod ('ACTIVE' vs
+   * 'Active', plus INVITED/PENDING/INACTIVE/null), so an ACTIVE-only allow-list wrongly
+   * 403s genuinely-enrolled children. Empty result = the child is not in this institute.
+   */
+  @Query(value = """
+      SELECT DISTINCT package_session_id FROM student_session_institute_group_mapping
+      WHERE user_id = :userId
+        AND institute_id = :instituteId
+        AND package_session_id IS NOT NULL
+        AND (status IS NULL OR UPPER(status) NOT IN ('DELETED', 'DELETED1', 'TERMINATED', 'EXPIRED'))
+      """, nativeQuery = true)
+  List<String> findEnrolledPackageSessionIds(
+      @Param("userId") String userId,
+      @Param("instituteId") String instituteId);
+
   @Query(value = """
       SELECT * FROM student_session_institute_group_mapping
       WHERE user_id = :userId

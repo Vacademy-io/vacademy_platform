@@ -79,6 +79,11 @@ export function OnboardingDashboardPage({ instituteId }: { instituteId: string }
                         {row.original.subject_email && (
                             <span className="text-2xs text-neutral-500">{row.original.subject_email}</span>
                         )}
+                        {row.original.resolved_subject_name && (
+                            <span className="text-2xs text-success-600">
+                                → student: {row.original.resolved_subject_name}
+                            </span>
+                        )}
                     </div>
                 ),
             },

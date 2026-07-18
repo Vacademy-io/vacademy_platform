@@ -112,12 +112,18 @@ public class OnboardingStepInstanceService {
         OnboardingInstance instance = onboardingInstanceRepository.findById(stepInstance.getOnboardingInstanceId())
                 .orElseThrow(() -> new ResourceNotFoundException("Onboarding instance not found: " + stepInstance.getOnboardingInstanceId()));
 
-        // A step that assigns a course is an administrative action, not something a learner
-        // self-serves -- otherwise a caller with an empty course pool (open choice) could pick
-        // ANY course and enroll themselves. Enforced here (not just in the learner-app UI) since
-        // the learner endpoint always resolves the caller's real role before calling this.
-        if (isCreateStudentConfigured(step) && !OnboardingRoleKey.ADMIN.name().equals(actorRoleKey)) {
-            throw new ForbiddenException("This step assigns a course and must be completed by an admin.");
+        boolean requestsParentResolution = payload != null
+                && "true".equalsIgnoreCase(String.valueOf(payload.get("is_parent")));
+
+        // A step that assigns a course, or that resolves "filled by a parent" into a brand-new
+        // user account, is an administrative action, not something a learner self-serves --
+        // otherwise a caller could either enroll themselves in any course (empty pool) or create
+        // arbitrary new accounts under themselves-as-parent with zero oversight. Enforced here
+        // (not just in the learner-app UI) since the learner endpoint always resolves the
+        // caller's real role before calling this.
+        if ((isCreateStudentConfigured(step) || requestsParentResolution)
+                && !OnboardingRoleKey.ADMIN.name().equals(actorRoleKey)) {
+            throw new ForbiddenException("This action must be completed by an admin.");
         }
 
         // Leads can be filled out by either the student or a parent on their behalf. Resolve
@@ -130,7 +136,7 @@ public class OnboardingStepInstanceService {
         boolean touchesIdentity = Boolean.TRUE.equals(step.getGrantsStudentRole())
                 || Boolean.TRUE.equals(step.getSendsLoginCredentials())
                 || isCreateStudentConfigured(step);
-        if (touchesIdentity && payload != null && "true".equalsIgnoreCase(String.valueOf(payload.get("is_parent")))) {
+        if (touchesIdentity && requestsParentResolution) {
             onboardingStudentCreationService.resolveSubjectUserId(instance, true,
                     readPayloadString(payload, "student_full_name"),
                     readPayloadString(payload, "student_email"),
@@ -186,15 +192,16 @@ public class OnboardingStepInstanceService {
     }
 
     private void applyCompletionSideEffects(OnboardingInstance instance, OnboardingStep step) {
+        String targetUserId = instance.getEffectiveSubjectUserId();
         if (Boolean.TRUE.equals(step.getGrantsStudentRole())) {
-            authService.addRolesToUserInternal(instance.getSubjectUserId(), List.of("STUDENT"), instance.getInstituteId());
+            authService.addRolesToUserInternal(targetUserId, List.of("STUDENT"), instance.getInstituteId());
         }
         if (Boolean.TRUE.equals(step.getSendsLoginCredentials())) {
             try {
-                authService.sendCredToUsers(List.of(instance.getSubjectUserId()));
+                authService.sendCredToUsers(List.of(targetUserId));
             } catch (Exception e) {
                 log.warn("Failed to send login credentials to {} for onboarding step {}: {}",
-                        instance.getSubjectUserId(), step.getId(), e.getMessage());
+                        targetUserId, step.getId(), e.getMessage());
             }
         }
     }

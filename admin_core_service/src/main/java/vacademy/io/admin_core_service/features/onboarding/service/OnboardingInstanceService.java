@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Starts and looks up onboarding_instance runs. Manual starts always name one explicit
@@ -93,8 +94,13 @@ public class OnboardingInstanceService {
                 .orElseThrow(() -> new ResourceNotFoundException("Onboarding instance not found: " + instanceId));
     }
 
+    /**
+     * Every instance visible from this profile's side-view -- matches instances originally
+     * started for this person AND instances where they were later resolved as the real student
+     * (a parent filled the lead form; this person is the child that got created/linked).
+     */
     public List<OnboardingInstance> listBySubject(String subjectUserId, String instituteId) {
-        return onboardingInstanceRepository.findBySubjectUserIdAndInstituteId(subjectUserId, instituteId);
+        return onboardingInstanceRepository.findVisibleToUser(subjectUserId, instituteId);
     }
 
     /**
@@ -121,12 +127,16 @@ public class OnboardingInstanceService {
         Map<String, String> stepNames = stepIds.isEmpty() ? Map.of() : onboardingStepRepository.findAllById(stepIds)
                 .stream().collect(Collectors.toMap(OnboardingStep::getId, OnboardingStep::getStepName));
 
-        List<String> subjectIds = instances.stream().map(OnboardingInstance::getSubjectUserId).distinct().toList();
+        List<String> subjectIds = instances.stream()
+                .flatMap(i -> Stream.of(i.getSubjectUserId(), i.getResolvedSubjectUserId()))
+                .filter(StringUtils::hasText).distinct().toList();
         Map<String, UserDTO> usersById = authService.getUsersFromAuthServiceByUserIds(subjectIds)
                 .stream().collect(Collectors.toMap(UserDTO::getId, Function.identity(), (a, b) -> a));
 
         List<OnboardingInstanceSummaryDTO> content = instances.stream().map(instance -> {
             UserDTO subject = usersById.get(instance.getSubjectUserId());
+            UserDTO resolvedSubject = StringUtils.hasText(instance.getResolvedSubjectUserId())
+                    ? usersById.get(instance.getResolvedSubjectUserId()) : null;
             return OnboardingInstanceSummaryDTO.builder()
                     .id(instance.getId())
                     .flowId(instance.getFlowId())
@@ -134,6 +144,7 @@ public class OnboardingInstanceService {
                     .subjectUserId(instance.getSubjectUserId())
                     .subjectName(subject != null ? subject.getFullName() : null)
                     .subjectEmail(subject != null ? subject.getEmail() : null)
+                    .resolvedSubjectName(resolvedSubject != null ? resolvedSubject.getFullName() : null)
                     .currentStepId(instance.getCurrentStepId())
                     .currentStepName(instance.getCurrentStepId() != null
                             ? stepNames.get(instance.getCurrentStepId()) : null)

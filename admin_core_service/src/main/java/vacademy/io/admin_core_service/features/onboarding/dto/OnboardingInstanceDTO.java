@@ -21,6 +21,11 @@ public class OnboardingInstanceDTO {
     private String flowId;
     private String instituteId;
     private String subjectUserId;
+    /** Set once a "filled by a parent" step resolves the real student -- null until then. */
+    private String resolvedSubjectUserId;
+    /** Populated by the controller (needs an AuthService lookup) when resolvedSubjectUserId is set. */
+    private String resolvedSubjectName;
+    private String resolvedSubjectEmail;
     private String currentStepId;
     private String status;
     private String startedBy;
@@ -35,6 +40,7 @@ public class OnboardingInstanceDTO {
                 .flowId(instance.getFlowId())
                 .instituteId(instance.getInstituteId())
                 .subjectUserId(instance.getSubjectUserId())
+                .resolvedSubjectUserId(instance.getResolvedSubjectUserId())
                 .currentStepId(instance.getCurrentStepId())
                 .status(instance.getStatus())
                 .startedBy(instance.getStartedBy())

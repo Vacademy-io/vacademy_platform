@@ -3,7 +3,9 @@ package vacademy.io.admin_core_service.features.onboarding.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingInstanceDTO;
 import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingInstanceSummaryDTO;
 import vacademy.io.admin_core_service.features.onboarding.dto.StartOnboardingInstanceRequest;
@@ -12,6 +14,7 @@ import vacademy.io.admin_core_service.features.onboarding.enums.OnboardingStarte
 import vacademy.io.admin_core_service.features.onboarding.service.OnboardingInstanceService;
 import vacademy.io.admin_core_service.features.onboarding.service.OnboardingStepInstanceService;
 import vacademy.io.common.auth.config.PageConstants;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
@@ -23,6 +26,7 @@ public class OnboardingInstanceController {
 
     private final OnboardingInstanceService onboardingInstanceService;
     private final OnboardingStepInstanceService onboardingStepInstanceService;
+    private final AuthService authService;
 
     @PostMapping
     public ResponseEntity<OnboardingInstanceDTO> startInstance(
@@ -77,6 +81,14 @@ public class OnboardingInstanceController {
         OnboardingInstanceDTO dto = OnboardingInstanceDTO.fromEntity(instance);
         dto.setStepInstances(onboardingStepInstanceService.toDtos(
                 onboardingStepInstanceService.listStepInstances(instance.getId())));
+        if (StringUtils.hasText(instance.getResolvedSubjectUserId())) {
+            List<UserDTO> resolved = authService.getUsersFromAuthServiceByUserIds(
+                    List.of(instance.getResolvedSubjectUserId()));
+            if (!resolved.isEmpty()) {
+                dto.setResolvedSubjectName(resolved.get(0).getFullName());
+                dto.setResolvedSubjectEmail(resolved.get(0).getEmail());
+            }
+        }
         return dto;
     }
 }

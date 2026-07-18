@@ -10,7 +10,15 @@ import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingInsta
 import java.util.List;
 
 public interface OnboardingInstanceRepository extends JpaRepository<OnboardingInstance, String> {
-    List<OnboardingInstance> findBySubjectUserIdAndInstituteId(String subjectUserId, String instituteId);
+    /**
+     * Every instance visible under this profile -- whether they're the original subject (e.g. a
+     * lead onboarding was started for) OR the resolved student a parent later created/linked on
+     * their behalf. Powers the side-view "Onboarding" tab so it shows up under BOTH profiles once
+     * a parent resolution has happened, not just the one the flow was originally started from.
+     */
+    @Query("SELECT o FROM OnboardingInstance o WHERE o.instituteId = :instituteId " +
+            "AND (o.subjectUserId = :userId OR o.resolvedSubjectUserId = :userId)")
+    List<OnboardingInstance> findVisibleToUser(@Param("userId") String userId, @Param("instituteId") String instituteId);
 
     List<OnboardingInstance> findByFlowIdAndStatus(String flowId, String status);
 

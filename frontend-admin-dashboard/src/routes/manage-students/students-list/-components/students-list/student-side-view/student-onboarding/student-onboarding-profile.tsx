@@ -8,11 +8,8 @@
  * `is_optional` is true — checked client-side against the flow's own step
  * list, since the step-instance payload doesn't carry `is_optional` itself).
  *
- * For a COMPLETED FORM step, the submitted answers aren't returned by any
- * onboarding endpoint (the backend only exposes the step-instance status +
- * timestamps) — so "viewing submitted values" here shows the attached field
- * NAMES (from the feature-fields lookup) with a note that per-submission
- * answers aren't exposed by the API yet, rather than fabricating data.
+ * For a COMPLETED FORM step, "View form" shows the actual submitted values via
+ * GET .../step-instances/{id}/submitted-values.
  */
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,6 +19,7 @@ import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyInput } from '@/components/design-system/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AsyncSearchableSelect } from '@/components/design-system/async-searchable-select';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
@@ -36,6 +34,7 @@ import {
     fetchOnboardingSteps,
     fetchOnboardingFlows,
     fetchStepFields,
+    fetchSubmittedFieldValues,
     completeStepInstance,
     skipStepInstance,
     startOnboardingInstance,
@@ -337,7 +336,6 @@ function OnboardingInstanceCard({
 
             {viewingFormFor && (
                 <SubmittedFormDialog
-                    instituteId={instituteId}
                     stepInstance={viewingFormFor}
                     onClose={() => setViewingFormFor(null)}
                 />
@@ -462,7 +460,18 @@ function CompleteFormStepDialog({
         coursePool.includes(o.package_session_id)
     );
 
+    // Leads can be filled out by either the student or a parent on their behalf. When a
+    // parent fills it, the person we have on file (the onboarding subject) isn't who should
+    // be enrolled — their child is. This resolves/creates the real student and redirects the
+    // rest of the flow to them (see OnboardingStudentCreationService).
+    const [isParent, setIsParent] = useState(false);
+    const [studentFullName, setStudentFullName] = useState('');
+    const [studentEmail, setStudentEmail] = useState('');
+    const [studentMobileNumber, setStudentMobileNumber] = useState('');
+
     const missingCourseChoice = createsStudent && !packageSessionId;
+    const missingStudentDetails =
+        createsStudent && isParent && (!studentFullName.trim() || (!studentEmail.trim() && !studentMobileNumber.trim()));
 
     return (
         <MyDialog
@@ -478,11 +487,22 @@ function CompleteFormStepDialog({
                     <MyButton
                         buttonType="primary"
                         scale="medium"
-                        disable={submitting || fieldsQuery.isLoading || missingCourseChoice}
+                        disable={submitting || fieldsQuery.isLoading || missingCourseChoice || missingStudentDetails}
                         onClick={() =>
                             onSubmit(
                                 createsStudent
-                                    ? { ...values, package_session_id: packageSessionId }
+                                    ? {
+                                          ...values,
+                                          package_session_id: packageSessionId,
+                                          is_parent: isParent,
+                                          ...(isParent
+                                              ? {
+                                                    student_full_name: studentFullName,
+                                                    student_email: studentEmail,
+                                                    student_mobile_number: studentMobileNumber,
+                                                }
+                                              : {}),
+                                      }
                                     : values
                             )
                         }
@@ -493,6 +513,44 @@ function CompleteFormStepDialog({
             }
         >
             <div className="flex flex-col gap-3 px-6 py-6">
+                {createsStudent && (
+                    <div className="flex items-center justify-between rounded-lg border border-neutral-200 px-3 py-2.5">
+                        <Label htmlFor="complete-step-is-parent" className="cursor-pointer text-body">
+                            This form was filled by a parent, on behalf of a student
+                        </Label>
+                        <Switch id="complete-step-is-parent" checked={isParent} onCheckedChange={setIsParent} />
+                    </div>
+                )}
+                {createsStudent && isParent && (
+                    <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3">
+                        <p className="text-caption text-neutral-500">
+                            Enter the student&apos;s own details — they&apos;ll be the one enrolled and
+                            granted access, not the parent.
+                        </p>
+                        <MyInput
+                            inputType="text"
+                            label="Student's full name"
+                            required
+                            inputPlaceholder="e.g. Aarav Sharma"
+                            input={studentFullName}
+                            onChangeFunction={(e) => setStudentFullName(e.target.value)}
+                        />
+                        <MyInput
+                            inputType="text"
+                            label="Student's email"
+                            inputPlaceholder="student@example.com"
+                            input={studentEmail}
+                            onChangeFunction={(e) => setStudentEmail(e.target.value)}
+                        />
+                        <MyInput
+                            inputType="text"
+                            label="Student's mobile number"
+                            inputPlaceholder="Optional if email is provided"
+                            input={studentMobileNumber}
+                            onChangeFunction={(e) => setStudentMobileNumber(e.target.value)}
+                        />
+                    </div>
+                )}
                 {createsStudent && (
                     <div className="flex flex-col gap-1.5">
                         <Label>
@@ -563,21 +621,19 @@ function CompleteFormStepDialog({
     );
 }
 
-// ── Submitted-form viewer (field names only — see file header note) ────────
+// ── Submitted-form viewer ────────────────────────────────────────────────
 
 function SubmittedFormDialog({
-    instituteId,
     stepInstance,
     onClose,
 }: {
-    instituteId: string;
     stepInstance: OnboardingStepInstanceDTO;
     onClose: () => void;
 }) {
-    const fieldsQuery = useQuery({
-        queryKey: ['onboarding-step-fields', instituteId, stepInstance.step_id],
-        queryFn: () => fetchStepFields(instituteId, stepInstance.step_id),
-        staleTime: 60 * 1000,
+    const valuesQuery = useQuery({
+        queryKey: ['onboarding-submitted-values', stepInstance.id],
+        queryFn: () => fetchSubmittedFieldValues(stepInstance.id),
+        staleTime: 30 * 1000,
     });
 
     return (
@@ -595,25 +651,25 @@ function SubmittedFormDialog({
             }
         >
             <div className="flex flex-col gap-2 px-6 py-6">
-                {fieldsQuery.isLoading ? (
+                {valuesQuery.isLoading ? (
                     <ProfileSkeleton blocks={1} />
-                ) : (fieldsQuery.data ?? []).length === 0 ? (
+                ) : (valuesQuery.data ?? []).length === 0 ? (
                     <p className="text-body text-neutral-500">This step has no attached fields.</p>
                 ) : (
-                    <>
-                        <p className="text-caption text-neutral-500">
-                            Fields collected on this step. Per-submission answer values aren&apos;t
-                            exposed by the onboarding API yet — this lists what was asked for.
-                        </p>
-                        <ul className="flex flex-col divide-y divide-border">
-                            {(fieldsQuery.data ?? []).map((f) => (
-                                <li key={f.id} className="py-1.5 text-caption text-neutral-700">
-                                    {f.custom_field?.fieldName ?? 'Untitled field'}
-                                    {f.is_mandatory && <span className="text-danger-600"> *</span>}
-                                </li>
-                            ))}
-                        </ul>
-                    </>
+                    <ul className="flex flex-col divide-y divide-border">
+                        {(valuesQuery.data ?? []).map((f) => (
+                            <li key={f.institute_custom_field_id} className="py-1.5">
+                                <div className="text-caption text-neutral-500">
+                                    {f.field_name ?? 'Untitled field'}
+                                </div>
+                                <div className="text-body text-neutral-800">
+                                    {f.value?.trim() ? f.value : (
+                                        <span className="text-neutral-400">Not answered</span>
+                                    )}
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
                 )}
             </div>
         </MyDialog>

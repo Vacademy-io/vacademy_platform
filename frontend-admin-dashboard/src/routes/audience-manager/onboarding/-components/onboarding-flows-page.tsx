@@ -58,7 +58,7 @@ export function OnboardingFlowsPage() {
             {
                 accessorKey: 'name',
                 header: 'Name',
-                size: 240,
+                size: 280,
                 cell: ({ row }) => (
                     <button
                         type="button"
@@ -77,7 +77,7 @@ export function OnboardingFlowsPage() {
             {
                 accessorKey: 'description',
                 header: 'Description',
-                size: 320,
+                size: 560,
                 cell: ({ row }) => (
                     <div className="truncate text-body text-neutral-600" title={row.original.description ?? ''}>
                         {row.original.description || '—'}
@@ -87,13 +87,13 @@ export function OnboardingFlowsPage() {
             {
                 accessorKey: 'status',
                 header: 'Status',
-                size: 110,
+                size: 140,
                 cell: ({ row }) => <StatusBadge status={row.original.status} />,
             },
             {
                 id: 'stepCount',
                 header: 'Steps',
-                size: 80,
+                size: 100,
                 cell: ({ row }) => (
                     <div className="text-body text-neutral-700">{row.original.steps?.length ?? 0}</div>
                 ),
@@ -101,7 +101,7 @@ export function OnboardingFlowsPage() {
             {
                 id: 'actions',
                 header: 'Actions',
-                size: 100,
+                size: 160,
                 cell: ({ row }) => (
                     <MyButton
                         buttonType="secondary"

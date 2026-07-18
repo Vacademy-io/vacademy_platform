@@ -70,7 +70,7 @@ export function OnboardingDashboardPage({ instituteId }: { instituteId: string }
             {
                 id: 'subject',
                 header: 'Person',
-                size: 220,
+                size: 320,
                 cell: ({ row }) => (
                     <div className="flex flex-col">
                         <span className="text-body font-medium text-neutral-800">
@@ -85,7 +85,7 @@ export function OnboardingDashboardPage({ instituteId }: { instituteId: string }
             {
                 accessorKey: 'flow_name',
                 header: 'Flow',
-                size: 180,
+                size: 260,
                 cell: ({ row }) => (
                     <span className="text-body text-neutral-700">{row.original.flow_name ?? '—'}</span>
                 ),
@@ -93,7 +93,7 @@ export function OnboardingDashboardPage({ instituteId }: { instituteId: string }
             {
                 accessorKey: 'current_step_name',
                 header: 'Current step',
-                size: 180,
+                size: 260,
                 cell: ({ row }) => (
                     <span className="text-body text-neutral-700">
                         {row.original.current_step_name ?? (row.original.status === 'COMPLETED' ? '—' : 'Unknown')}
@@ -103,13 +103,13 @@ export function OnboardingDashboardPage({ instituteId }: { instituteId: string }
             {
                 accessorKey: 'status',
                 header: 'Status',
-                size: 130,
+                size: 160,
                 cell: ({ row }) => <StatusBadge status={row.original.status} />,
             },
             {
                 accessorKey: 'started_by',
                 header: 'Started by',
-                size: 110,
+                size: 160,
                 cell: ({ row }) => (
                     <span className="text-body text-neutral-600">{row.original.started_by ?? '—'}</span>
                 ),
@@ -117,7 +117,7 @@ export function OnboardingDashboardPage({ instituteId }: { instituteId: string }
             {
                 accessorKey: 'started_at',
                 header: 'Started',
-                size: 150,
+                size: 200,
                 cell: ({ row }) =>
                     row.original.started_at ? (
                         <span className="text-body text-neutral-600">

@@ -1,0 +1,118 @@
+import { useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { useMutation } from '@tanstack/react-query';
+import { MyDialog } from '@/components/design-system/dialog';
+import { MyButton } from '@/components/design-system/button';
+import { MyInput } from '@/components/design-system/input';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { toast } from 'sonner';
+import { createOnboardingFlow, type OnboardingFlowDTO } from '../-services/onboarding-service';
+
+const createFlowSchema = z.object({
+    name: z.string().min(1, 'Flow name is required').max(150, 'Keep it under 150 characters'),
+    description: z.string().max(1000, 'Keep it under 1000 characters').optional(),
+});
+
+type CreateFlowForm = z.infer<typeof createFlowSchema>;
+
+interface CreateFlowDialogProps {
+    instituteId: string;
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    onCreated: (flow: OnboardingFlowDTO) => void;
+}
+
+export function CreateFlowDialog({ instituteId, open, onOpenChange, onCreated }: CreateFlowDialogProps) {
+    const form = useForm<CreateFlowForm>({
+        resolver: zodResolver(createFlowSchema),
+        defaultValues: { name: '', description: '' },
+    });
+
+    useEffect(() => {
+        if (open) form.reset({ name: '', description: '' });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open]);
+
+    const { mutate: create, isPending } = useMutation({
+        mutationFn: (values: CreateFlowForm) =>
+            createOnboardingFlow(instituteId, {
+                name: values.name,
+                description: values.description || undefined,
+                start_mode: 'MANUAL',
+            }),
+        onSuccess: (flow) => {
+            toast.success('Onboarding flow created');
+            onOpenChange(false);
+            onCreated(flow);
+        },
+        onError: () => {
+            toast.error('Could not create the flow. Please try again.');
+        },
+    });
+
+    const onSubmit = (values: CreateFlowForm) => create(values);
+
+    const footer = (
+        <div className="flex w-full items-center justify-end gap-2">
+            <MyButton buttonType="secondary" scale="medium" onClick={() => onOpenChange(false)} disable={isPending}>
+                Cancel
+            </MyButton>
+            <MyButton
+                buttonType="primary"
+                scale="medium"
+                onClick={form.handleSubmit(onSubmit)}
+                disable={isPending}
+            >
+                {isPending ? 'Creating…' : 'Create Flow'}
+            </MyButton>
+        </div>
+    );
+
+    return (
+        <MyDialog open={open} onOpenChange={onOpenChange} heading="Create Onboarding Flow" footer={footer} dialogWidth="max-w-lg">
+            <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4 px-6 py-6">
+                    <FormField
+                        control={form.control}
+                        name="name"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Flow name</FormLabel>
+                                <FormControl>
+                                    <MyInput
+                                        inputType="text"
+                                        inputPlaceholder="e.g. New Student Onboarding"
+                                        input={field.value}
+                                        onChangeFunction={field.onChange}
+                                        required
+                                    />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    <FormField
+                        control={form.control}
+                        name="description"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>Description</FormLabel>
+                                <FormControl>
+                                    <MyInput
+                                        inputType="text"
+                                        inputPlaceholder="What this flow is for (optional)"
+                                        input={field.value ?? ''}
+                                        onChangeFunction={field.onChange}
+                                    />
+                                </FormControl>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                </form>
+            </Form>
+        </MyDialog>
+    );
+}

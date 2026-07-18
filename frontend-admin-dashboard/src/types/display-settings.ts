@@ -143,7 +143,8 @@ export type StudentSideViewTabId =
     | 'application'
     | 'lead'
     | 'fullHistory'
-    | 'parent';
+    | 'parent'
+    | 'onboarding';
 
 export interface StudentSideViewSettings {
     overviewTab: boolean;
@@ -166,6 +167,10 @@ export interface StudentSideViewSettings {
     // Guardian tab — surfaces the linked guardian/children (parent-link feature).
     // Optional for backward-compat with settings saved before this tab existed.
     parentTab?: boolean;
+    // Onboarding tab — surfaces the subject's onboarding flow instance(s)
+    // (ONBOARDING_SETTING feature). Optional for backward-compat with
+    // settings saved before this tab existed.
+    onboardingTab?: boolean;
     // Custom ordering by tab id. Lower numbers render first. Tabs missing
     // from the map fall back to the default order. Optional for
     // backward-compat with settings that pre-date this feature.
@@ -234,7 +239,8 @@ export type StudentSideViewVisibilityKey =
     | 'applicationTab'
     | 'leadTab'
     | 'fullHistoryTab'
-    | 'parentTab';
+    | 'parentTab'
+    | 'onboardingTab';
 
 export interface LearnerManagementSettings {
     allowPortalAccess: boolean;

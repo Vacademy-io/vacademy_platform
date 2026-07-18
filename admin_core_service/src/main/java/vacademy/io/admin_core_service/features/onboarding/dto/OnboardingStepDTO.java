@@ -23,7 +23,11 @@ public class OnboardingStepDTO {
     private Integer stepOrder;
     private String stepName;
     private String stepType;
-    /** Type-specific config, e.g. FORM: {create_student, package_session_id}. */
+    /**
+     * Type-specific config, e.g. FORM: {create_student, package_session_ids}.
+     * package_session_ids is a course POOL, not one fixed course -- empty means the completing
+     * admin picks any course at onboarding time, non-empty restricts them to that set.
+     */
     private java.util.Map<String, Object> stepTypeConfig;
     private Boolean isOptional;
     private Boolean grantsStudentRole;

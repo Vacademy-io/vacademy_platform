@@ -87,6 +87,7 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
     leadTab: false,
     fullHistoryTab: false,
     parentTab: false,
+    onboardingTab: false,
 };
 
 const STUDENT_SIDE_VIEW_OPTIONS: Array<{
@@ -175,6 +176,11 @@ const STUDENT_SIDE_VIEW_OPTIONS: Array<{
         key: 'parentTab',
         label: 'Guardian Tab',
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.parentTab ?? false,
+    },
+    {
+        key: 'onboardingTab',
+        label: 'Onboarding Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.onboardingTab ?? false,
     },
 ];
 

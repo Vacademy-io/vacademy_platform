@@ -24,6 +24,7 @@ export const VISIBILITY_KEY_TO_TAB_ID: Record<StudentSideViewVisibilityKey, Stud
         leadTab: 'lead',
         fullHistoryTab: 'fullHistory',
         parentTab: 'parent',
+        onboardingTab: 'onboarding',
     };
 
 // Reverse lookup: tab id → visibility flag.
@@ -55,4 +56,5 @@ export const STUDENT_SIDE_VIEW_TAB_LABELS: Record<StudentSideViewTabId, string> 
     lead: 'Lead Profile',
     fullHistory: 'Full History',
     parent: 'Guardian',
+    onboarding: 'Onboarding',
 };

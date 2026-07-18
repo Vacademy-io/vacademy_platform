@@ -21,7 +21,7 @@ import {
   Clock,
   ChartBarHorizontal,
 } from "@phosphor-icons/react";
-import { cn, toTitleCase } from "@/lib/utils";
+import { cn, toTitleCase, compareByNameNatural } from "@/lib/utils";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { toast } from "sonner";
 import {
@@ -483,7 +483,11 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     () =>
       [...new Set(courses.map((c) => c.level).filter(Boolean))]
         .filter((level) => displayLevelName(level))
-        .map((level) => ({ id: level, name: displayLevelName(level) })),
+        .map((level) => ({ id: level, name: displayLevelName(level) }))
+        // Sort naturally so the filter list is stable and reads sensibly
+        // (Class 6, 7, 8 … 12, then non-numeric levels) regardless of the
+        // order courses arrive from the API.
+        .sort(compareByNameNatural),
     [courses],
   );
   const tags = useMemo(

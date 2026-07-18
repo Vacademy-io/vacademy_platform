@@ -204,6 +204,7 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         leadTab: false,
         fullHistoryTab: false,
         parentTab: false,
+        onboardingTab: false,
         // Default rendering order. Tabs render left-to-right by ascending number.
         // The keys match `StudentSideViewTabId` and the side-view's category strings.
         tabOrders: {

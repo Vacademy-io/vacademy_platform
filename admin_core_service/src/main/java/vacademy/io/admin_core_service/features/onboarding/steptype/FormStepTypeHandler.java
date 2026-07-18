@@ -112,13 +112,33 @@ public class FormStepTypeHandler implements OnboardingStepTypeHandler {
         customFieldValueService.upsertCustomFieldValues(valuesToSave);
 
         if (isCreateStudentConfigured(step)) {
-            // Keys are snake_case: the FORM step builder UI writes step_type_config as a raw
-            // JSON object with these literal keys (create_student / package_session_id).
-            String targetPackageSessionId = readConfig(step.getStepTypeConfig(), "package_session_id");
-            onboardingStudentCreationService.createStudentIfAbsent(stepInstance, targetPackageSessionId);
+            String selectedPackageSessionId = resolveSelectedPackageSessionId(step, payload);
+            onboardingStudentCreationService.createStudentIfAbsent(stepInstance, selectedPackageSessionId);
         }
 
         return OnboardingStepInstanceStatus.COMPLETED;
+    }
+
+    /**
+     * The step is built with a course POOL ({@code package_session_ids}), not one fixed course --
+     * so a single flow works across every course a lead might land in, and doesn't need rebuilding
+     * every time a new course is created. Empty/absent pool -- the completing admin picks ANY
+     * course (open choice); non-empty pool -- they must pick one FROM that pool (validated
+     * server-side, never trusted from the client). Either way the actual choice travels in the
+     * same submit payload as the field values, under the reserved key "package_session_id" (safe
+     * to co-mingle with institute_custom_field_id keys, which are UUIDs).
+     */
+    private String resolveSelectedPackageSessionId(OnboardingStep step, Map<String, Object> payload) {
+        Object raw = payload == null ? null : payload.get("package_session_id");
+        String selected = raw == null ? null : String.valueOf(raw);
+        if (!StringUtils.hasText(selected)) {
+            throw new InvalidRequestException("Pick a course to enroll the student into");
+        }
+        List<String> pool = readConfigList(step.getStepTypeConfig(), "package_session_ids");
+        if (!pool.isEmpty() && !pool.contains(selected)) {
+            throw new InvalidRequestException("Selected course is not one of the allowed courses for this step");
+        }
+        return selected;
     }
 
     private boolean isCreateStudentConfigured(OnboardingStep step) {
@@ -141,6 +161,21 @@ public class FormStepTypeHandler implements OnboardingStepTypeHandler {
             return v == null || v.isNull() ? null : v.asText();
         } catch (Exception e) {
             return null;
+        }
+    }
+
+    private List<String> readConfigList(String json, String key) {
+        if (json == null || json.isBlank()) return List.of();
+        try {
+            JsonNode v = objectMapper.readTree(json).get(key);
+            if (v == null || v.isNull() || !v.isArray()) return List.of();
+            List<String> out = new ArrayList<>();
+            v.forEach(n -> {
+                if (n != null && !n.isNull() && StringUtils.hasText(n.asText())) out.add(n.asText());
+            });
+            return out;
+        } catch (Exception e) {
+            return List.of();
         }
     }
 }

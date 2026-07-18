@@ -12,6 +12,7 @@ import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { Helmet } from "react-helmet";
 import { CaretUp } from "@phosphor-icons/react";
 import { ensureFontsLoaded, collectConfigFontFamilies } from "../-utils/catalogue-fonts";
+import { shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
 
 interface CourseCataloguePageProps {
   tagName: string;
@@ -513,8 +514,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               <span className="text-xs text-catalogue-text-secondary text-center">If already registered</span>
             </div>
 
-            {/* Get Started Button */}
-            {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && (
+            {/* Get Started Button — mirrors the header's authLinks config, so a
+                catalogue that removed "Get Started" from its header hides it here too */}
+            {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && shouldShowMobileGetStarted(catalogueData, pageSlug) && (
               <div className="flex flex-col gap-1">
                 <button
                   onClick={() => {

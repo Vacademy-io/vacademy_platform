@@ -17,6 +17,7 @@ import AssessmentSettings from '../-components/AssessmentSettings';
 import WhatsAppSettings from '../-components/WhatsAppSettings/WhatsAppSettings';
 import LeadSettings from '../-components/LeadSettings';
 import GuardianSettings from '../-components/GuardianSettings';
+import OnboardingSettings from '../-components/OnboardingSettings';
 import GtmSettings from '../-components/GtmSettings';
 import TncSettings from '../-components/Tnc/TncSettings';
 import IntegrationSettings from '../-components/IntegrationSettings';
@@ -139,6 +140,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.GuardianSettings,
             value: 'Guardian Settings',
             component: GuardianSettings,
+        },
+        {
+            tab: SettingsTabs.OnboardingSettings,
+            value: 'Onboarding Settings',
+            component: OnboardingSettings,
         },
         {
             tab: SettingsTabs.GtmSettings,

@@ -1,5 +1,6 @@
 import { Preferences } from "@capacitor/preferences";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { THEME_ROLE_SETTINGS_KEY } from "@/types/theme-role-settings";
 
 export interface TabBrandingResult {
   iconUrl: string | null;
@@ -184,6 +185,24 @@ export const applyTabBranding = async (
             iconUrl = null;
           }
         }
+      }
+    }
+
+    // Institute-authored font (Settings > Appearance -> roles.fontFamily) is a
+    // SECOND font source, distinct from the domain-level white-label font above.
+    // Because applyTabBranding is the single writer of --app-font-family and runs
+    // on every route (see __root.tsx), it must honour the Appearance-tab font too
+    // — otherwise it resets the body font to the default on the next route and
+    // the institute's chosen font (e.g. Lexend) silently never sticks. The
+    // domain-level white-label font, when set, still wins; the Appearance-tab
+    // font fills in only when there's no white-label override.
+    if (!fontFamily) {
+      try {
+        const raw = localStorage.getItem(THEME_ROLE_SETTINGS_KEY);
+        const roleSettings = raw ? JSON.parse(raw) : null;
+        fontFamily = roleSettings?.roles?.fontFamily || null;
+      } catch {
+        // ignore malformed cached theme role settings
       }
     }
 

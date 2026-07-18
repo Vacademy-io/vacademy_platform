@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.core.security.GuardianAccessGuard;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.learner.dto.StudentInstituteInfoDTO;
 import vacademy.io.admin_core_service.features.learner.manager.LearnerInstituteManager;
 import vacademy.io.admin_core_service.features.parent_portal.dto.ParentChildSummaryDTO;
@@ -13,7 +14,9 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.institute.dto.PackageSessionDTO;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The {@code /children} listing — the child-picker backend.
@@ -32,6 +35,7 @@ public class ParentPortalChildrenService {
     private final GuardianAccessGuard guard;
     private final LearnerInstituteManager learnerInstituteManager;
     private final ParentPortalSettingService settingService;
+    private final StudentSessionInstituteGroupMappingRepository ssigmRepository;
 
     public List<ParentChildSummaryDTO> listChildren(CustomUserDetails caller, String instituteId) {
         settingService.requireEnabled(instituteId);
@@ -42,13 +46,39 @@ public class ParentPortalChildrenService {
             if (child == null || !StringUtils.hasText(child.getId())) {
                 continue;
             }
+            // Inclusion gate: the CHILD's own non-terminal enrolment in THIS institute —
+            // NOT the institute's batch pool (getInstituteDetails.batchesForSessions is
+            // institute-wide and would over-list). Same source the guard uses, so the
+            // picker and the per-child endpoints agree.
+            List<String> childPackageSessionIds =
+                    ssigmRepository.findEnrolledPackageSessionIds(child.getId(), instituteId);
+            if (childPackageSessionIds.isEmpty()) {
+                continue; // not enrolled here — don't surface
+            }
             try {
                 StudentInstituteInfoDTO info =
                         learnerInstituteManager.getInstituteDetails(instituteId, child.getId(), true);
-                List<PackageSessionDTO> batches = info == null ? null : info.getBatchesForSessions();
-                if (batches == null || batches.isEmpty()) {
-                    continue; // not enrolled in this institute — don't surface
+                String instituteName = info != null ? info.getInstituteName() : null;
+
+                // Real batch labels for the child's OWN sessions: intersect the institute's
+                // batch pool with the child's package session ids.
+                Set<String> childPs = new HashSet<>(childPackageSessionIds);
+                List<PackageSessionDTO> pool = (info != null && info.getBatchesForSessions() != null)
+                        ? info.getBatchesForSessions()
+                        : List.of();
+                List<ParentChildSummaryDTO.EnrollmentSummary> enrollments = pool.stream()
+                        .filter(ps -> ps.getId() != null && childPs.contains(ps.getId()))
+                        .map(this::toEnrollment)
+                        .toList();
+                // Fallback: a child session not present in the institute's active pool still
+                // counts as an enrolment — emit id-only so the child isn't dropped.
+                if (enrollments.isEmpty()) {
+                    enrollments = childPackageSessionIds.stream()
+                            .map(id -> ParentChildSummaryDTO.EnrollmentSummary.builder()
+                                    .packageSessionId(id).batchName("").build())
+                            .toList();
                 }
+
                 result.add(ParentChildSummaryDTO.builder()
                         .childUserId(child.getId())
                         .fullName(child.getFullName())
@@ -56,8 +86,8 @@ public class ParentPortalChildrenService {
                         .mobileNumber(child.getMobileNumber())
                         .profilePicFileId(child.getProfilePicFileId())
                         .instituteId(instituteId)
-                        .instituteName(info.getInstituteName())
-                        .enrollments(batches.stream().map(this::toEnrollment).toList())
+                        .instituteName(instituteName)
+                        .enrollments(enrollments)
                         .build());
             } catch (Exception e) {
                 // one child's enrichment failure must not drop the whole list

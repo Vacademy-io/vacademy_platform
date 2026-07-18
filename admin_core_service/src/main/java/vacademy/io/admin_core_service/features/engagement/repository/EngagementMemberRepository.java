@@ -73,7 +73,7 @@ public interface EngagementMemberRepository extends JpaRepository<EngagementMemb
                               ELSE engagement_member.status END,
                 next_action_at = CASE WHEN engagement_member.status = 'EXITED' THEN EXCLUDED.next_action_at
                                       ELSE engagement_member.next_action_at END,
-                memory_json = jsonb_set(COALESCE(engagement_member.memory_json, '{}'::jsonb),
+                memory_json = jsonb_set(COALESCE(engagement_member.memory_json, cast('{}' as jsonb)),
                                         '{reconcileRun}', to_jsonb(CAST(:runId AS text))),
                 updated_at = now()
             """, nativeQuery = true)

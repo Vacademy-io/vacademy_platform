@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ModernCard } from "@/components/design-system/modern-card";
 import {
   BookOpen,
   Users,
@@ -103,16 +104,101 @@ import { AchievementBadgesWidget } from "./-components/play/AchievementBadgesWid
 import { DashboardGamificationPanel } from "./-components/DashboardGamificationPanel";
 import { TncModal } from "@/components/Dashboards/LearnerDashboard/TncModal";
 import type { BatchForSessionType } from "@/stores/study-library/institute-schema";
+import {
+  ONBOARDING_INSTANCES_QUERY_KEY,
+  OnboardingStepForm,
+} from "../onboarding/-components/onboarding-step-form";
+import { OnboardingProgressList } from "../onboarding/-components/onboarding-progress-list";
+import {
+  getMyOnboardingInstances,
+  type OnboardingInstanceDTO,
+  type OnboardingStepInstanceDTO,
+} from "../onboarding/-services/onboarding-services";
 
 export const Route = createFileRoute("/dashboard/")({
   component: () => {
     return (
       <LayoutContainer>
-        <DashboardComponent />
+        <DashboardOnboardingGate />
       </LayoutContainer>
     );
   },
 });
+
+/** The step the caller should act on next, if any -- a current step they can't
+ *  act on (e.g. a create_student step, always admin-only) is skipped so they
+ *  aren't blocked waiting on an admin action from their own dashboard. */
+const getActiveFormStep = (
+  instance: OnboardingInstanceDTO
+): OnboardingStepInstanceDTO | null => {
+  if (instance.status !== "IN_PROGRESS") return null;
+  const current =
+    instance.step_instances.find((s) => s.id === instance.current_step_id) ??
+    instance.step_instances.find((s) => s.status === "IN_PROGRESS");
+  if (!current) return null;
+  if (current.status !== "IN_PROGRESS" && current.status !== "PENDING") return null;
+  if (current.step_type !== "FORM") return null;
+  if (current.learner_can_act === false) return null;
+  return current;
+};
+
+/**
+ * Gates the dashboard on any pending onboarding step the caller can actually
+ * act on: while one exists, the learner sees that step's form here instead of
+ * the full dashboard. Once it's submitted (or there simply isn't one — no
+ * onboarding started, already completed, or the only pending step needs an
+ * admin), this frees up and mounts the real dashboard. The dashboard's own
+ * (expensive) data fetches only start once this resolves, so a blocked
+ * learner doesn't pay for dashboard queries they can't see yet.
+ */
+function DashboardOnboardingGate() {
+  const { instituteId } = useInstituteFeatureStore();
+
+  const { data: instances, isLoading } = useQuery({
+    queryKey: [ONBOARDING_INSTANCES_QUERY_KEY, instituteId],
+    queryFn: () => getMyOnboardingInstances(instituteId as string),
+    enabled: Boolean(instituteId),
+    staleTime: 30 * 1000,
+  });
+
+  const pending = (instances ?? [])
+    .map((instance) => ({ instance, step: getActiveFormStep(instance) }))
+    .find((entry) => entry.step !== null) as
+    | { instance: OnboardingInstanceDTO; step: OnboardingStepInstanceDTO }
+    | undefined;
+
+  if (Boolean(instituteId) && isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Skeleton className="h-8 w-48" />
+      </div>
+    );
+  }
+
+  if (pending) {
+    return (
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-1 py-6">
+        <div>
+          <h1 className="text-h3 font-semibold text-neutral-700">
+            Finish setting up your account
+          </h1>
+          <p className="mt-1 text-sm text-neutral-500">
+            Complete the steps below to continue to your dashboard.
+          </p>
+        </div>
+        <OnboardingStepForm stepInstance={pending.step} onSubmitted={() => {}} />
+        <ModernCard variant="outlined" padding="md" rounded="lg">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+            Progress
+          </p>
+          <OnboardingProgressList stepInstances={pending.instance.step_instances} />
+        </ModernCard>
+      </div>
+    );
+  }
+
+  return <DashboardComponent />;
+}
 
 export function DashboardComponent() {
   const [username, setUsername] = useState<string | null>(null);

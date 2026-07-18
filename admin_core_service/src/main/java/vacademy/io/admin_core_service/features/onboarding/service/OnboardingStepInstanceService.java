@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.common.enums.CustomFieldValueSour
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
+import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingResolvedFieldDTO;
 import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingStepFieldConfigDTO;
 import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingStepInstanceDTO;
 import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingSubmittedFieldDTO;
@@ -36,6 +37,7 @@ import vacademy.io.common.exceptions.InvalidRequestException;
 import vacademy.io.common.exceptions.ResourceNotFoundException;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -61,6 +63,7 @@ public class OnboardingStepInstanceService {
     private final CustomFieldRepository customFieldRepository;
     private final CustomFieldValuesRepository customFieldValuesRepository;
     private final OnboardingStudentCreationService onboardingStudentCreationService;
+    private final OnboardingRoleAccessResolutionService roleAccessResolutionService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -267,6 +270,92 @@ public class OnboardingStepInstanceService {
         return stepInstances.stream()
                 .map(si -> OnboardingStepInstanceDTO.fromEntity(si, stepsById.get(si.getStepId())))
                 .toList();
+    }
+
+    /** Learner-facing variant of {@link #toDto}: also sets learner_can_act for {@code roleKey}. */
+    public OnboardingStepInstanceDTO toDtoForRole(OnboardingStepInstance stepInstance, String roleKey) {
+        OnboardingStep step = onboardingStepRepository.findById(stepInstance.getStepId()).orElse(null);
+        OnboardingStepInstanceDTO dto = OnboardingStepInstanceDTO.fromEntity(stepInstance, step);
+        if (step != null) {
+            dto.setLearnerCanAct(isActionableForRole(step, roleKey));
+        }
+        return dto;
+    }
+
+    /** Learner-facing variant of {@link #toDtos}: also sets learner_can_act for {@code roleKey} on every step. */
+    public List<OnboardingStepInstanceDTO> toDtosForRole(List<OnboardingStepInstance> stepInstances, String roleKey) {
+        if (stepInstances.isEmpty()) return List.of();
+        Map<String, OnboardingStep> stepsById = onboardingStepRepository
+                .findAllById(stepInstances.stream().map(OnboardingStepInstance::getStepId).distinct().toList())
+                .stream()
+                .collect(Collectors.toMap(OnboardingStep::getId, s -> s));
+        return stepInstances.stream()
+                .map(si -> {
+                    OnboardingStep step = stepsById.get(si.getStepId());
+                    OnboardingStepInstanceDTO dto = OnboardingStepInstanceDTO.fromEntity(si, step);
+                    if (step != null) {
+                        dto.setLearnerCanAct(isActionableForRole(step, roleKey));
+                    }
+                    return dto;
+                })
+                .toList();
+    }
+
+    /**
+     * Whether a caller acting as {@code roleKey} (STUDENT/PARENT) can actually act on this step --
+     * false for a create_student-configured step (always admin-only, enforced in
+     * {@link #completeStep}) or one whose step-level role_access denies this role edit permission.
+     * Used to decide whether the learner app should block on this step (e.g. gate the dashboard)
+     * or treat it as "waiting on an admin" and let the learner through.
+     */
+    public boolean isActionableForRole(OnboardingStep step, String roleKey) {
+        if (isCreateStudentConfigured(step)) return false;
+        return roleAccessResolutionService.resolveStepAccess(step.getId(), roleKey).canEdit;
+    }
+
+    /**
+     * This step's fields resolved for {@code roleKey}: filtered to only fields the role can VIEW
+     * (a field the role can't see is simply absent, not sent with can_view=false), each carrying
+     * whether the role may EDIT it and its already-submitted value if any. Replaces the learner
+     * app's previous reliance on the generic (role-unaware) feature-fields lookup, which rendered
+     * every field as an editable text input regardless of the caller's actual permission.
+     */
+    public List<OnboardingResolvedFieldDTO> getResolvedFieldsForRole(String stepInstanceId, String roleKey) {
+        OnboardingStepInstance stepInstance = getStepInstance(stepInstanceId);
+        OnboardingStep step = onboardingStepRepository.findById(stepInstance.getStepId())
+                .orElseThrow(() -> new ResourceNotFoundException("Onboarding step not found: " + stepInstance.getStepId()));
+        List<OnboardingStepFieldConfigDTO> fieldConfigs = parseFieldConfigs(step.getFieldsConfig());
+        if (fieldConfigs.isEmpty()) return List.of();
+
+        Map<String, String> valueByCustomFieldId = customFieldValuesRepository
+                .findBySourceTypeAndSourceId(CustomFieldValueSourceTypeEnum.ONBOARDING_STEP_INSTANCE.name(), stepInstanceId)
+                .stream()
+                .collect(Collectors.toMap(CustomFieldValues::getCustomFieldId, CustomFieldValues::getValue, (a, b) -> a));
+
+        List<OnboardingResolvedFieldDTO> out = new ArrayList<>();
+        for (OnboardingStepFieldConfigDTO fieldConfig : fieldConfigs) {
+            Optional<InstituteCustomField> instituteCustomField =
+                    instituteCustomFieldRepository.findById(fieldConfig.getInstituteCustomFieldId());
+            if (instituteCustomField.isEmpty()) continue;
+
+            OnboardingRoleAccessResolutionService.EffectiveAccess access = roleAccessResolutionService
+                    .resolveFieldAccess(step.getId(), fieldConfig.getInstituteCustomFieldId(), roleKey);
+            if (!access.canView) continue;
+
+            String customFieldId = instituteCustomField.get().getCustomFieldId();
+            String fieldName = customFieldRepository.findById(customFieldId)
+                    .map(CustomFields::getFieldName).orElse(null);
+            out.add(OnboardingResolvedFieldDTO.builder()
+                    .instituteCustomFieldId(fieldConfig.getInstituteCustomFieldId())
+                    .fieldName(fieldName)
+                    .fieldOrder(fieldConfig.getFieldOrder())
+                    .isMandatory(fieldConfig.getIsMandatory())
+                    .canEdit(access.canEdit)
+                    .value(valueByCustomFieldId.get(customFieldId))
+                    .build());
+        }
+        out.sort(Comparator.comparing(f -> f.getFieldOrder() == null ? 0 : f.getFieldOrder()));
+        return out;
     }
 
     /**

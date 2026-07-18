@@ -5,6 +5,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.onboarding.dto.CompleteStepInstanceRequest;
 import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingInstanceDTO;
+import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingResolvedFieldDTO;
 import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingStepInstanceDTO;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingInstance;
@@ -41,9 +42,10 @@ public class LearnerOnboardingController {
     public ResponseEntity<List<OnboardingInstanceDTO>> myInstances(
             @RequestAttribute("user") CustomUserDetails userDetails,
             @RequestParam("instituteId") String instituteId) {
+        String roleKey = resolveCallerRoleKey(userDetails);
         List<OnboardingInstanceDTO> instances = onboardingInstanceService
                 .listBySubject(userDetails.getUserId(), instituteId).stream()
-                .map(this::toDto).toList();
+                .map(instance -> toDto(instance, roleKey)).toList();
         return ResponseEntity.ok(instances);
     }
 
@@ -53,7 +55,25 @@ public class LearnerOnboardingController {
             @PathVariable("stepInstanceId") String stepInstanceId) {
         OnboardingStepInstance stepInstance = onboardingStepInstanceService.getStepInstance(stepInstanceId);
         assertOwnsStepInstance(userDetails, stepInstance);
-        return ResponseEntity.ok(onboardingStepInstanceService.toDto(stepInstance));
+        String roleKey = resolveCallerRoleKey(userDetails);
+        return ResponseEntity.ok(onboardingStepInstanceService.toDtoForRole(stepInstance, roleKey));
+    }
+
+    /**
+     * This step's fields resolved for the caller's own role -- filtered to only fields they can
+     * VIEW, each carrying whether they may EDIT it and its already-submitted value if any. Lets
+     * the learner app render editable / read-only / hidden fields correctly, instead of the
+     * previous generic feature-fields lookup which showed every field as editable regardless of
+     * role.
+     */
+    @GetMapping("/step-instances/{stepInstanceId}/fields")
+    public ResponseEntity<List<OnboardingResolvedFieldDTO>> getResolvedFields(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @PathVariable("stepInstanceId") String stepInstanceId) {
+        OnboardingStepInstance stepInstance = onboardingStepInstanceService.getStepInstance(stepInstanceId);
+        assertOwnsStepInstance(userDetails, stepInstance);
+        String roleKey = resolveCallerRoleKey(userDetails);
+        return ResponseEntity.ok(onboardingStepInstanceService.getResolvedFieldsForRole(stepInstanceId, roleKey));
     }
 
     @PostMapping("/step-instances/{stepInstanceId}/submit")
@@ -64,9 +84,10 @@ public class LearnerOnboardingController {
         OnboardingStepInstance stepInstance = onboardingStepInstanceService.getStepInstance(stepInstanceId);
         assertOwnsStepInstance(userDetails, stepInstance);
         String roleKey = resolveCallerRoleKey(userDetails);
-        return ResponseEntity.ok(onboardingStepInstanceService.toDto(
+        return ResponseEntity.ok(onboardingStepInstanceService.toDtoForRole(
                 onboardingStepInstanceService.completeStep(stepInstanceId, request.getPayload(),
-                        roleKey, userDetails.getUserId())));
+                        roleKey, userDetails.getUserId()),
+                roleKey));
     }
 
     private void assertOwnsStepInstance(CustomUserDetails userDetails, OnboardingStepInstance stepInstance) {
@@ -88,10 +109,10 @@ public class LearnerOnboardingController {
         return roleAccessResolutionService.resolveRoleKey(false, caller);
     }
 
-    private OnboardingInstanceDTO toDto(OnboardingInstance instance) {
+    private OnboardingInstanceDTO toDto(OnboardingInstance instance, String roleKey) {
         OnboardingInstanceDTO dto = OnboardingInstanceDTO.fromEntity(instance);
-        dto.setStepInstances(onboardingStepInstanceService.toDtos(
-                onboardingStepInstanceService.listStepInstances(instance.getId())));
+        dto.setStepInstances(onboardingStepInstanceService.toDtosForRole(
+                onboardingStepInstanceService.listStepInstances(instance.getId()), roleKey));
         return dto;
     }
 }

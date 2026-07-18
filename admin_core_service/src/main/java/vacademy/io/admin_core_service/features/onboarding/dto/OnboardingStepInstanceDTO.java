@@ -28,6 +28,12 @@ public class OnboardingStepInstanceDTO {
     private String completedByUserId;
     private String skipReason;
 
+    /** Set only for learner-facing responses: whether the CALLER (resolved STUDENT/PARENT role)
+     *  can actually act on this step -- false for a create_student-configured step (always
+     *  admin-only) or one whose step-level role_access denies this role edit permission. Left
+     *  null for admin-facing responses, where it doesn't apply. */
+    private Boolean learnerCanAct;
+
     /** Prefer {@link #fromEntity(OnboardingStepInstance, OnboardingStep)} -- this overload leaves step_name/step_type null. */
     public static OnboardingStepInstanceDTO fromEntity(OnboardingStepInstance instance) {
         return fromEntity(instance, null);

@@ -48,16 +48,40 @@ public class OnboardingStudentCreationService {
     private final ParentLinkService parentLinkService;
 
     /**
-     * Leads can be filled out by either the student themselves or a parent on their behalf.
-     * When {@code isParent} is true, {@code instance.subjectUserId} (whoever the lead form was
-     * originally captured against) is NOT the person to enroll -- it's their parent. Resolves/
-     * creates the real student via the existing guardian-link mechanism (the same one the
-     * assign-learner dialog uses) and reassigns the instance to them, so every side effect from
-     * here on (role grant, credentials email, subsequent steps) targets the actual student.
+     * Leads can be filled out by either the student themselves or a parent on their behalf. When
+     * {@code isParent} is true, {@code instance.subjectUserId} (whoever the lead form was
+     * originally captured against) is NOT the person any onboarding side effect should target --
+     * it's their parent. Resolves/creates the real student via the existing guardian-link
+     * mechanism (the same one the assign-learner dialog uses) and reassigns the instance to them,
+     * so every side effect from here on (role grant, credentials email, course enrollment, later
+     * steps) targets the actual student. Called once per step-instance completion by
+     * {@link OnboardingStepInstanceService#completeStep}, before ANY identity-touching side
+     * effect runs -- not just the create_student one -- since "grant STUDENT role" and "send
+     * credentials" can each live on their own, earlier step.
      */
-    public void createStudentIfAbsent(OnboardingStepInstance stepInstance, String packageSessionId,
-                                       boolean isParent, String studentFullName, String studentEmail,
-                                       String studentMobileNumber) {
+    public void resolveSubjectUserId(OnboardingInstance instance, boolean isParent, String studentFullName,
+                                      String studentEmail, String studentMobileNumber) {
+        if (!isParent) return;
+        if (!StringUtils.hasText(studentFullName)
+                || (!StringUtils.hasText(studentEmail) && !StringUtils.hasText(studentMobileNumber))) {
+            throw new InvalidRequestException(
+                    "Student name and email or mobile number are required when filling on behalf of a parent.");
+        }
+        ParentLinkActionRequestDTO linkRequest = ParentLinkActionRequestDTO.builder()
+                .instituteId(instance.getInstituteId())
+                .direction("PARENT_ADDS_STUDENT")
+                .mode("CREATE_NEW")
+                .anchorUserId(instance.getSubjectUserId())
+                .newFullName(studentFullName)
+                .newEmail(studentEmail)
+                .newMobileNumber(studentMobileNumber)
+                .build();
+        ParentLinkActionResponseDTO linkResponse = parentLinkService.link(linkRequest);
+        instance.setSubjectUserId(linkResponse.getStudentUserId());
+        onboardingInstanceRepository.save(instance);
+    }
+
+    public void createStudentIfAbsent(OnboardingStepInstance stepInstance, String packageSessionId) {
         if (!StringUtils.hasText(packageSessionId)) {
             log.warn("onboarding step configured to create a student but no packageSessionId set (stepInstance {})",
                     stepInstance.getId());
@@ -73,27 +97,6 @@ public class OnboardingStudentCreationService {
         }
         OnboardingInstance instance = instanceOpt.get();
         String instituteId = instance.getInstituteId();
-
-        if (isParent) {
-            if (!StringUtils.hasText(studentFullName)
-                    || (!StringUtils.hasText(studentEmail) && !StringUtils.hasText(studentMobileNumber))) {
-                throw new InvalidRequestException(
-                        "Student name and email or mobile number are required when filling on behalf of a parent.");
-            }
-            ParentLinkActionRequestDTO linkRequest = ParentLinkActionRequestDTO.builder()
-                    .instituteId(instituteId)
-                    .direction("PARENT_ADDS_STUDENT")
-                    .mode("CREATE_NEW")
-                    .anchorUserId(instance.getSubjectUserId())
-                    .newFullName(studentFullName)
-                    .newEmail(studentEmail)
-                    .newMobileNumber(studentMobileNumber)
-                    .build();
-            ParentLinkActionResponseDTO linkResponse = parentLinkService.link(linkRequest);
-            instance.setSubjectUserId(linkResponse.getStudentUserId());
-            onboardingInstanceRepository.save(instance);
-        }
-
         String subjectUserId = instance.getSubjectUserId();
 
         authService.addRolesToUserInternal(subjectUserId, List.of("STUDENT"), instituteId);

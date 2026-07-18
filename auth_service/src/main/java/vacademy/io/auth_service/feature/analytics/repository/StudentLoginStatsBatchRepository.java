@@ -42,9 +42,20 @@ public interface StudentLoginStatsBatchRepository extends JpaRepository<UserSess
          * daily_user_activity_summary, for the whole cohort in one query.
          * Rows: [0]=userId (String), [1]=totalActivityMinutes (Long).
          */
-        @Query("SELECT d.userId, COALESCE(SUM(d.totalActivityTimeMinutes), 0) FROM DailyUserActivitySummary d " +
-                        "WHERE d.userId IN :userIds AND d.activityDate >= :sinceDate " +
-                        "GROUP BY d.userId")
+        // NATIVE + CAST, not JPQL: daily_user_activity_summary.user_id is a UUID column, but the
+        // entity field (and every caller) is String — so JPQL "d.userId IN :userIds" bound the
+        // Strings as varchar and Postgres threw "operator does not exist: uuid = character varying"
+        // at EXECUTION (a compile-clean, run-fatal type mismatch; user_session.user_id is varchar,
+        // which is why the sibling login query above does NOT hit this). CAST(user_id AS varchar)
+        // makes both sides varchar. SQL-standard cast() — never "::varchar", which Spring Data would
+        // mangle to a ":varchar" named-parameter. Returns [0]=userId(String), [1]=minutes.
+        @Query(value = """
+                        SELECT CAST(d.user_id AS varchar), COALESCE(SUM(d.total_activity_time_minutes), 0)
+                          FROM daily_user_activity_summary d
+                         WHERE CAST(d.user_id AS varchar) IN (:userIds)
+                           AND d.activity_date >= :sinceDate
+                         GROUP BY CAST(d.user_id AS varchar)
+                        """, nativeQuery = true)
         List<Object[]> findActivityMinutesByUserIdsSince(
                         @Param("userIds") Collection<String> userIds,
                         @Param("sinceDate") LocalDate sinceDate);

@@ -7,7 +7,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.dto.CustomFieldDTO;
-import vacademy.io.admin_core_service.features.common.entity.CustomFields;
 import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
@@ -23,6 +22,7 @@ import vacademy.io.common.exceptions.ResourceNotFoundException;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -121,26 +121,45 @@ public class OnboardingStepService {
         return resolved;
     }
 
-    /** Attaches an existing institute_custom_fields row, or creates a new custom field + mapping (type=ONBOARDING_STEP) inline. */
+    /**
+     * Attaches an existing institute_custom_fields row, or creates a new custom field, to this
+     * step -- either way, resolves to a mapping row SCOPED TO THIS STEP (type=ONBOARDING_STEP,
+     * typeId=stepId), never the picker's original row id. The "attach existing field" picker
+     * hands us an institute_custom_fields row from the institute's general catalog (e.g.
+     * DEFAULT_CUSTOM_FIELD) -- reusing that row's id directly would leave the field invisible
+     * to every ONBOARDING_STEP feature-fields lookup, since that row's own type/typeId still
+     * points wherever it was originally defined, not at this step. Idempotent: re-saving a step
+     * reuses the same per-step mapping instead of creating a duplicate each time.
+     */
     private String resolveInstituteCustomFieldId(String instituteId, String stepId, OnboardingStepFieldConfigDTO fieldDto) {
+        String customFieldId;
         if (StringUtils.hasText(fieldDto.getInstituteCustomFieldId())) {
-            return fieldDto.getInstituteCustomFieldId();
+            customFieldId = instituteCustomFieldRepository.findById(fieldDto.getInstituteCustomFieldId())
+                    .map(InstituteCustomField::getCustomFieldId)
+                    .orElse(null);
+            if (!StringUtils.hasText(customFieldId)) return null;
+        } else if (fieldDto.getNewField() != null && StringUtils.hasText(stepId)) {
+            CustomFieldDTO customFieldDTO = new CustomFieldDTO();
+            customFieldDTO.setFieldName(String.valueOf(fieldDto.getNewField().get("field_name")));
+            customFieldDTO.setFieldType(String.valueOf(fieldDto.getNewField().get("field_type")));
+            Object defaultValue = fieldDto.getNewField().get("default_value");
+            if (defaultValue != null) customFieldDTO.setDefaultValue(String.valueOf(defaultValue));
+            Object config = fieldDto.getNewField().get("config");
+            if (config != null) customFieldDTO.setConfig(String.valueOf(config));
+            customFieldId = instituteCustomFiledService.createOrFindCustomFieldByKey(customFieldDTO, instituteId).getId();
+        } else {
+            return null;
         }
-        if (fieldDto.getNewField() == null || !StringUtils.hasText(stepId)) return null;
 
-        CustomFieldDTO customFieldDTO = new CustomFieldDTO();
-        customFieldDTO.setFieldName(String.valueOf(fieldDto.getNewField().get("field_name")));
-        customFieldDTO.setFieldType(String.valueOf(fieldDto.getNewField().get("field_type")));
-        Object defaultValue = fieldDto.getNewField().get("default_value");
-        if (defaultValue != null) customFieldDTO.setDefaultValue(String.valueOf(defaultValue));
-        Object config = fieldDto.getNewField().get("config");
-        if (config != null) customFieldDTO.setConfig(String.valueOf(config));
-
-        CustomFields savedField = instituteCustomFiledService.createOrFindCustomFieldByKey(customFieldDTO, instituteId);
+        Optional<InstituteCustomField> existingMapping = instituteCustomFieldRepository
+                .findTopByInstituteIdAndCustomFieldIdAndTypeAndTypeIdAndStatusOrderByCreatedAtDesc(
+                        instituteId, customFieldId, CustomFieldTypeEnum.ONBOARDING_STEP.name(), stepId,
+                        StatusEnum.ACTIVE.name());
+        if (existingMapping.isPresent()) return existingMapping.get().getId();
 
         InstituteCustomField mapping = instituteCustomFieldRepository.save(InstituteCustomField.builder()
                 .instituteId(instituteId)
-                .customFieldId(savedField.getId())
+                .customFieldId(customFieldId)
                 .type(CustomFieldTypeEnum.ONBOARDING_STEP.name())
                 .typeId(stepId)
                 .status(StatusEnum.ACTIVE.name())

@@ -22,6 +22,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AsyncSearchableSelect } from '@/components/design-system/async-searchable-select';
+import PhoneNumberInput from '@/components/design-system/phone-number-input';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import {
     ProfileSectionCard,
@@ -462,8 +463,12 @@ function CompleteFormStepDialog({
 
     // Leads can be filled out by either the student or a parent on their behalf. When a
     // parent fills it, the person we have on file (the onboarding subject) isn't who should
-    // be enrolled — their child is. This resolves/creates the real student and redirects the
-    // rest of the flow to them (see OnboardingStudentCreationService).
+    // receive the role/credentials/enrollment — their child is. This resolves/creates the real
+    // student and redirects the rest of the flow to them (see OnboardingStudentCreationService).
+    // Relevant on ANY step that touches identity, not just the one that assigns a course — role
+    // grant and credentials can each live on their own, earlier step.
+    const touchesIdentity =
+        createsStudent || stepDef?.grants_student_role === true || stepDef?.sends_login_credentials === true;
     const [isParent, setIsParent] = useState(false);
     const [studentFullName, setStudentFullName] = useState('');
     const [studentEmail, setStudentEmail] = useState('');
@@ -471,7 +476,7 @@ function CompleteFormStepDialog({
 
     const missingCourseChoice = createsStudent && !packageSessionId;
     const missingStudentDetails =
-        createsStudent && isParent && (!studentFullName.trim() || (!studentEmail.trim() && !studentMobileNumber.trim()));
+        touchesIdentity && isParent && (!studentFullName.trim() || (!studentEmail.trim() && !studentMobileNumber.trim()));
 
     return (
         <MyDialog
@@ -489,22 +494,18 @@ function CompleteFormStepDialog({
                         scale="medium"
                         disable={submitting || fieldsQuery.isLoading || missingCourseChoice || missingStudentDetails}
                         onClick={() =>
-                            onSubmit(
-                                createsStudent
+                            onSubmit({
+                                ...values,
+                                ...(createsStudent ? { package_session_id: packageSessionId } : {}),
+                                ...(touchesIdentity ? { is_parent: isParent } : {}),
+                                ...(touchesIdentity && isParent
                                     ? {
-                                          ...values,
-                                          package_session_id: packageSessionId,
-                                          is_parent: isParent,
-                                          ...(isParent
-                                              ? {
-                                                    student_full_name: studentFullName,
-                                                    student_email: studentEmail,
-                                                    student_mobile_number: studentMobileNumber,
-                                                }
-                                              : {}),
+                                          student_full_name: studentFullName,
+                                          student_email: studentEmail,
+                                          student_mobile_number: studentMobileNumber,
                                       }
-                                    : values
-                            )
+                                    : {}),
+                            })
                         }
                     >
                         {submitting ? 'Completing…' : 'Complete Step'}
@@ -513,7 +514,7 @@ function CompleteFormStepDialog({
             }
         >
             <div className="flex flex-col gap-3 px-6 py-6">
-                {createsStudent && (
+                {touchesIdentity && (
                     <div className="flex items-center justify-between rounded-lg border border-neutral-200 px-3 py-2.5">
                         <Label htmlFor="complete-step-is-parent" className="cursor-pointer text-body">
                             This form was filled by a parent, on behalf of a student
@@ -521,7 +522,7 @@ function CompleteFormStepDialog({
                         <Switch id="complete-step-is-parent" checked={isParent} onCheckedChange={setIsParent} />
                     </div>
                 )}
-                {createsStudent && isParent && (
+                {touchesIdentity && isParent && (
                     <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3">
                         <p className="text-caption text-neutral-500">
                             Enter the student&apos;s own details — they&apos;ll be the one enrolled and
@@ -542,12 +543,13 @@ function CompleteFormStepDialog({
                             input={studentEmail}
                             onChangeFunction={(e) => setStudentEmail(e.target.value)}
                         />
-                        <MyInput
-                            inputType="text"
+                        <PhoneNumberInput
+                            name="student_mobile_number"
                             label="Student's mobile number"
-                            inputPlaceholder="Optional if email is provided"
-                            input={studentMobileNumber}
-                            onChangeFunction={(e) => setStudentMobileNumber(e.target.value)}
+                            placeholder="Optional if email is provided"
+                            value={studentMobileNumber}
+                            onChange={(_, value) => setStudentMobileNumber(value)}
+                            validate={false}
                         />
                     </div>
                 )}
@@ -596,7 +598,7 @@ function CompleteFormStepDialog({
                 {fieldsQuery.isLoading ? (
                     <ProfileSkeleton blocks={1} />
                 ) : fields.length === 0 ? (
-                    !createsStudent && (
+                    !touchesIdentity && (
                         <p className="text-body text-neutral-500">
                             This step has no attached fields — marking it complete needs no input.
                         </p>

@@ -35,7 +35,6 @@ import {
 import { LOGIN_OTP, REQUEST_OTP } from "@/constants/urls";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
-import { hydrateParentSession } from "@/lib/auth/detect-user-role";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { ENABLE_OTP_FOR_LOGIN_SIGNUP } from "@/constants/feature-flags";
 import { SessionLimitDialog } from "@/components/common/auth/login/components/SessionLimitDialog";
@@ -249,7 +248,6 @@ export function EmailLogin({
 
         const upperRoles = allRoles.map((r) => r.toUpperCase());
         isParent = upperRoles.includes("PARENT");
-        const isStudentToo = upperRoles.includes("STUDENT");
 
         console.log("[EmailLogin] Token decoded:", {
           user: userId,
@@ -259,22 +257,13 @@ export function EmailLogin({
           isParent: isParent,
         });
 
-        // PARENT-only guardians route to the monitoring portal after a minimal
-        // session hydration. This branch previously navigated away BEFORE writing
-        // any StudentDetails/InstituteDetails, so parents could never satisfy
-        // isAuthenticated(). Dual-role users fall through to the learner dashboard.
-        if (isParent && !isStudentToo) {
-          const parentInstituteId = authorities
-            ? Object.keys(authorities)[0]
-            : undefined;
-          if (parentInstituteId && userId) {
-            await hydrateParentSession(userId, parentInstituteId, {
-              user: userId,
-              authorities,
-            });
-          }
+        // Redirect parent users to parent portal
+        if (isParent) {
+          console.log(
+            "[EmailLogin] ✅ PARENT role detected - redirecting to /parent",
+          );
           setIsLoading(false);
-          navigate({ to: "/parent/child" });
+          navigate({ to: "/parent" });
           return;
         }
 

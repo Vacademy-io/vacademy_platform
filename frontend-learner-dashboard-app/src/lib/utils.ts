@@ -426,3 +426,20 @@ export function formatTagForDisplay(tag: string): string {
     .map((word) => word.split("-").map(cap).join("-"))
     .join(" ");
 }
+
+/**
+ * Case-insensitive natural comparator for lists of `{ name }` objects, so
+ * numbered items order the way people expect: "Class 9" before "Class 10"
+ * (not after "Class 1"), then non-numeric names alphabetically. Use it to
+ * sort filter option lists (e.g. levels) that would otherwise inherit an
+ * arbitrary API/insertion order.
+ */
+export function compareByNameNatural<T extends { name: string }>(
+  a: T,
+  b: T,
+): number {
+  return a.name.localeCompare(b.name, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}

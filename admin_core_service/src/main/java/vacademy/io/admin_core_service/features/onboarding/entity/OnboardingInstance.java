@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.onboarding.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UuidGenerator;
+import org.springframework.util.StringUtils;
 
 import java.util.Date;
 
@@ -10,7 +11,8 @@ import java.util.Date;
  * One onboarding run of a flow for a single subject. {@code subjectUserId} is an
  * auth_service users.id with NO FK -- it is the one identifier stable across
  * "still a lead" and "already a student" states, keeping this domain independent
- * of audience_response/student/ssigm.
+ * of audience_response/student/ssigm. It is set once at start and NEVER reassigned --
+ * it anchors which lead/student side-view this instance is visible under.
  */
 @Entity
 @Table(name = "onboarding_instance")
@@ -34,6 +36,15 @@ public class OnboardingInstance {
 
     @Column(name = "subject_user_id", nullable = false)
     private String subjectUserId;
+
+    /**
+     * Set once, the first time a "filled by a parent" step resolves the real student (see
+     * OnboardingStudentCreationService). Null until then. Every identity-touching side effect
+     * (role grant, credentials, course enrollment) should target {@link #getEffectiveSubjectUserId()},
+     * not {@link #getSubjectUserId()} directly.
+     */
+    @Column(name = "resolved_subject_user_id")
+    private String resolvedSubjectUserId;
 
     @Column(name = "current_step_id")
     private String currentStepId;
@@ -64,4 +75,9 @@ public class OnboardingInstance {
 
     @Column(name = "updated_at", insertable = false, updatable = false)
     private Date updatedAt;
+
+    /** The real student to target for role/credentials/enrollment -- resolvedSubjectUserId if a parent resolution has happened, else subjectUserId. */
+    public String getEffectiveSubjectUserId() {
+        return StringUtils.hasText(resolvedSubjectUserId) ? resolvedSubjectUserId : subjectUserId;
+    }
 }

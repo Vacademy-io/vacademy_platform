@@ -192,15 +192,16 @@ public class OnboardingStepInstanceService {
     }
 
     private void applyCompletionSideEffects(OnboardingInstance instance, OnboardingStep step) {
+        String targetUserId = instance.getEffectiveSubjectUserId();
         if (Boolean.TRUE.equals(step.getGrantsStudentRole())) {
-            authService.addRolesToUserInternal(instance.getSubjectUserId(), List.of("STUDENT"), instance.getInstituteId());
+            authService.addRolesToUserInternal(targetUserId, List.of("STUDENT"), instance.getInstituteId());
         }
         if (Boolean.TRUE.equals(step.getSendsLoginCredentials())) {
             try {
-                authService.sendCredToUsers(List.of(instance.getSubjectUserId()));
+                authService.sendCredToUsers(List.of(targetUserId));
             } catch (Exception e) {
                 log.warn("Failed to send login credentials to {} for onboarding step {}: {}",
-                        instance.getSubjectUserId(), step.getId(), e.getMessage());
+                        targetUserId, step.getId(), e.getMessage());
             }
         }
     }

@@ -26,6 +26,8 @@ public class OnboardingInstanceSummaryDTO {
     private String subjectUserId;
     private String subjectName;
     private String subjectEmail;
+    /** Set once a "filled by a parent" step resolved the real student -- null until then. */
+    private String resolvedSubjectName;
     private String currentStepId;
     private String currentStepName;
     private String status;

@@ -52,12 +52,14 @@ public class OnboardingStudentCreationService {
      * {@code isParent} is true, {@code instance.subjectUserId} (whoever the lead form was
      * originally captured against) is NOT the person any onboarding side effect should target --
      * it's their parent. Resolves/creates the real student via the existing guardian-link
-     * mechanism (the same one the assign-learner dialog uses) and reassigns the instance to them,
-     * so every side effect from here on (role grant, credentials email, course enrollment, later
-     * steps) targets the actual student. Called once per step-instance completion by
-     * {@link OnboardingStepInstanceService#completeStep}, before ANY identity-touching side
-     * effect runs -- not just the create_student one -- since "grant STUDENT role" and "send
-     * credentials" can each live on their own, earlier step.
+     * mechanism (the same one the assign-learner dialog uses) and records them as
+     * resolvedSubjectUserId -- subjectUserId itself is NEVER reassigned, so the instance stays
+     * visible under the same lead/student side-view it was started from. Every side effect from
+     * here on (role grant, credentials email, course enrollment, later steps) targets
+     * {@link OnboardingInstance#getEffectiveSubjectUserId()}. Called once per step-instance
+     * completion by {@link OnboardingStepInstanceService#completeStep}, before ANY
+     * identity-touching side effect runs -- not just the create_student one -- since "grant
+     * STUDENT role" and "send credentials" can each live on their own, earlier step.
      */
     public void resolveSubjectUserId(OnboardingInstance instance, boolean isParent, String studentFullName,
                                       String studentEmail, String studentMobileNumber) {
@@ -66,10 +68,9 @@ public class OnboardingStudentCreationService {
         // Guards against a step being (re)completed with is_parent=true after a PRIOR step on
         // this same instance already resolved the real student -- without this, the already-
         // resolved child would get treated as a parent adding a second, spurious new student.
-        List<UserDTO> currentSubject = authService.getUsersFromAuthServiceByUserIds(List.of(instance.getSubjectUserId()));
-        if (!currentSubject.isEmpty() && StringUtils.hasText(currentSubject.get(0).getLinkedParentId())) {
-            log.info("Subject {} is already a linked child (parent {}); skipping duplicate parent resolution",
-                    instance.getSubjectUserId(), currentSubject.get(0).getLinkedParentId());
+        if (StringUtils.hasText(instance.getResolvedSubjectUserId())) {
+            log.info("Onboarding instance {} already has a resolved student ({}); skipping duplicate parent resolution",
+                    instance.getId(), instance.getResolvedSubjectUserId());
             return;
         }
 
@@ -88,7 +89,7 @@ public class OnboardingStudentCreationService {
                 .newMobileNumber(studentMobileNumber)
                 .build();
         ParentLinkActionResponseDTO linkResponse = parentLinkService.link(linkRequest);
-        instance.setSubjectUserId(linkResponse.getStudentUserId());
+        instance.setResolvedSubjectUserId(linkResponse.getStudentUserId());
         onboardingInstanceRepository.save(instance);
     }
 
@@ -108,7 +109,7 @@ public class OnboardingStudentCreationService {
         }
         OnboardingInstance instance = instanceOpt.get();
         String instituteId = instance.getInstituteId();
-        String subjectUserId = instance.getSubjectUserId();
+        String subjectUserId = instance.getEffectiveSubjectUserId();
 
         authService.addRolesToUserInternal(subjectUserId, List.of("STUDENT"), instituteId);
 

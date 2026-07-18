@@ -719,7 +719,12 @@ export const StudentSidebar = ({
                             onboardingSettings.enabled &&
                             !isEnrollRequestStudentList &&
                             selectedStudent?.user_id && (
-                                <StudentOnboardingProfile userId={selectedStudent.user_id} />
+                                <StudentOnboardingProfile
+                                    userId={selectedStudent.user_id}
+                                    subjectFullName={selectedStudent.full_name}
+                                    subjectEmail={selectedStudent.email}
+                                    subjectMobileNumber={selectedStudent.mobile_number}
+                                />
                             )}
                     </ErrorBoundary>
                 </div>

@@ -5,16 +5,19 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Lock, Plus, Path, PencilSimple } from '@phosphor-icons/react';
+import { Lock, Plus, Path, PencilSimple, TrashSimple } from '@phosphor-icons/react';
+import { toast } from 'sonner';
 import { MyButton } from '@/components/design-system/button';
 import { MyTable } from '@/components/design-system/table';
+import { MyDialog } from '@/components/design-system/dialog';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useOnboardingSettings } from '@/hooks/use-onboarding-settings';
 import { CreateFlowDialog } from './create-flow-dialog';
 import {
+    archiveOnboardingFlow,
     fetchOnboardingFlows,
     onboardingFlowsKey,
     type OnboardingFlowDTO,
@@ -45,12 +48,26 @@ export function OnboardingFlowsPage() {
     const instituteId = instituteDetails?.id ?? '';
     const { enabled: onboardingEnabled, isLoading: settingsLoading } = useOnboardingSettings();
     const [createOpen, setCreateOpen] = useState(false);
+    const [deleteTarget, setDeleteTarget] = useState<OnboardingFlowDTO | null>(null);
+    const queryClient = useQueryClient();
 
     const flowsQuery = useQuery({
         queryKey: onboardingFlowsKey(instituteId),
         queryFn: () => fetchOnboardingFlows(instituteId),
         enabled: !!instituteId && onboardingEnabled,
         staleTime: 60 * 1000,
+    });
+
+    const { mutate: archiveFlow, isPending: isArchiving } = useMutation({
+        mutationFn: (flowId: string) => archiveOnboardingFlow(flowId),
+        onSuccess: () => {
+            toast.success('Onboarding flow deleted');
+            setDeleteTarget(null);
+            queryClient.invalidateQueries({ queryKey: onboardingFlowsKey(instituteId) });
+        },
+        onError: () => {
+            toast.error('Could not delete the flow. Please try again.');
+        },
     });
 
     const columns = useMemo<ColumnDef<OnboardingFlowDTO>[]>(
@@ -101,20 +118,30 @@ export function OnboardingFlowsPage() {
             {
                 id: 'actions',
                 header: 'Actions',
-                size: 160,
+                size: 200,
                 cell: ({ row }) => (
-                    <MyButton
-                        buttonType="secondary"
-                        scale="small"
-                        onClick={() =>
-                            navigate({
-                                to: '/audience-manager/onboarding/$flowId',
-                                params: { flowId: row.original.id },
-                            })
-                        }
-                    >
-                        <PencilSimple size={14} /> Manage
-                    </MyButton>
+                    <div className="flex items-center gap-2">
+                        <MyButton
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() =>
+                                navigate({
+                                    to: '/audience-manager/onboarding/$flowId',
+                                    params: { flowId: row.original.id },
+                                })
+                            }
+                        >
+                            <PencilSimple size={14} /> Manage
+                        </MyButton>
+                        <MyButton
+                            buttonType="secondary"
+                            scale="small"
+                            className="text-danger-600 hover:text-danger-700"
+                            onClick={() => setDeleteTarget(row.original)}
+                        >
+                            <TrashSimple size={14} />
+                        </MyButton>
+                    </div>
                 ),
             },
         ],
@@ -144,7 +171,10 @@ export function OnboardingFlowsPage() {
         );
     }
 
-    const flows = flowsQuery.data ?? [];
+    // Archived flows stay in the DB (instances still reference them) but drop out of this
+    // list once deleted, since fetchOnboardingFlows(instituteId) with no status returns every
+    // status and there's no separate "show archived" toggle in v1.
+    const flows = (flowsQuery.data ?? []).filter((f) => f.status !== 'ARCHIVED');
 
     return (
         <div className="flex flex-col gap-4 p-2">
@@ -213,6 +243,41 @@ export function OnboardingFlowsPage() {
                     navigate({ to: '/audience-manager/onboarding/$flowId', params: { flowId: flow.id } })
                 }
             />
+
+            <MyDialog
+                open={!!deleteTarget}
+                onOpenChange={(open) => !open && setDeleteTarget(null)}
+                heading="Delete Onboarding Flow"
+                dialogWidth="max-w-md"
+                footer={
+                    <div className="flex w-full items-center justify-end gap-2">
+                        <MyButton
+                            buttonType="secondary"
+                            scale="medium"
+                            onClick={() => setDeleteTarget(null)}
+                            disable={isArchiving}
+                        >
+                            Cancel
+                        </MyButton>
+                        <MyButton
+                            buttonType="primary"
+                            scale="medium"
+                            className="bg-danger-600 hover:bg-danger-700"
+                            onClick={() => deleteTarget && archiveFlow(deleteTarget.id)}
+                            disable={isArchiving}
+                        >
+                            {isArchiving ? 'Deleting…' : 'Delete Flow'}
+                        </MyButton>
+                    </div>
+                }
+            >
+                <div className="px-6 py-6 text-body text-neutral-600">
+                    Delete <span className="font-medium text-neutral-900">{deleteTarget?.name}</span>? This
+                    archives the flow — new instances can no longer be started from it, and it&apos;s
+                    removed from this list, but any onboarding instances already in progress on it are
+                    left untouched.
+                </div>
+            </MyDialog>
         </div>
     );
 }

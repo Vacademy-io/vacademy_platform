@@ -35,11 +35,15 @@ public class OnboardingStepService {
 
     @Transactional
     public OnboardingStep createStep(String instituteId, String flowId, OnboardingStepDTO request) {
-        int nextOrder = onboardingStepRepository.findByFlowIdAndStatusOrderByStepOrderAsc(flowId, "ACTIVE").size() + 1;
+        // Always server-derived, ignoring any client-supplied step_order: uq_onboarding_step_flow_order
+        // is unique per (flow_id, step_order) across EVERY status, including ARCHIVED (deleted) steps,
+        // so counting only ACTIVE steps (as both this and the frontend's own count previously did)
+        // reuses an already-taken order the moment a step has ever been deleted from this flow.
+        int nextOrder = onboardingStepRepository.findMaxStepOrder(flowId) + 1;
 
         OnboardingStep step = OnboardingStep.builder()
                 .flowId(flowId)
-                .stepOrder(request.getStepOrder() != null ? request.getStepOrder() : nextOrder)
+                .stepOrder(nextOrder)
                 .stepName(request.getStepName())
                 .stepType(StringUtils.hasText(request.getStepType()) ? request.getStepType() : OnboardingStepTypeEnum.FORM.name())
                 .stepTypeConfig(toJson(request.getStepTypeConfig()))

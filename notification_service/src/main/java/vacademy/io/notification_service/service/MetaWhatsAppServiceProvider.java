@@ -87,6 +87,59 @@ public class MetaWhatsAppServiceProvider implements WhatsAppServiceProvider {
     }
 
     /**
+     * Send a generic (non-OTP) template message via the Meta Cloud API.
+     * Builds a body-only template payload (one text parameter per entry in
+     * {@code bodyParams}, no header/button) and posts it. Reuses the same Meta
+     * send path as OTP so retries/logging stay consistent.
+     *
+     * @return true if the Meta API accepted the message.
+     */
+    public boolean sendTemplateMessage(String phoneNumberId, String accessToken, String phoneNumber,
+            String templateName, String languageCode, List<String> bodyParams) {
+        if (accessToken == null || accessToken.isEmpty() || phoneNumberId == null || phoneNumberId.isEmpty()) {
+            log.error("Meta credentials not configured for generic template send. accessToken present: {}, phoneNumberId present: {}",
+                    accessToken != null && !accessToken.isEmpty(),
+                    phoneNumberId != null && !phoneNumberId.isEmpty());
+            return false;
+        }
+
+        List<MetaWhatsAppPayload.Parameter> params = new ArrayList<>();
+        if (bodyParams != null) {
+            for (String value : bodyParams) {
+                params.add(MetaWhatsAppPayload.Parameter.builder()
+                        .type("text")
+                        .text(value)
+                        .build());
+            }
+        }
+
+        List<MetaWhatsAppPayload.Component> components = new ArrayList<>();
+        if (!params.isEmpty()) {
+            components.add(MetaWhatsAppPayload.Component.builder()
+                    .type("body")
+                    .parameters(params)
+                    .build());
+        }
+
+        MetaWhatsAppPayload.Template template = MetaWhatsAppPayload.Template.builder()
+                .name(templateName)
+                .language(MetaWhatsAppPayload.Language.builder()
+                        .code(languageCode)
+                        .build())
+                .components(components)
+                .build();
+
+        MetaWhatsAppPayload payload = MetaWhatsAppPayload.builder()
+                .messagingProduct("whatsapp")
+                .to(phoneNumber)
+                .type("template")
+                .template(template)
+                .build();
+
+        return callMetaAPI(phoneNumberId, accessToken, payload, null);
+    }
+
+    /**
      * Build Meta WhatsApp API payload from template configuration
      */
     private MetaWhatsAppPayload buildMetaPayload(String phoneNumber, String templateName, String languageCode,
@@ -263,7 +316,7 @@ public class MetaWhatsAppServiceProvider implements WhatsAppServiceProvider {
     private String getMaskedPayloadForLogging(MetaWhatsAppPayload payload, String otp) {
         try {
             String json = objectMapper.writeValueAsString(payload);
-            return json.replace(otp, "******");
+            return (otp == null || otp.isEmpty()) ? json : json.replace(otp, "******");
         } catch (Exception e) {
             return "Unable to serialize payload";
         }

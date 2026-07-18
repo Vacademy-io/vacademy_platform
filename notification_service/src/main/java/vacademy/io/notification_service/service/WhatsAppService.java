@@ -159,7 +159,7 @@ public class WhatsAppService {
             // Log to notification_log
             logWhatsAppMessages(templateName, bodyParams, headerParams, languageCode,
                     headerType, provider, results, messageIds, senderChannelId,
-                    source, correlationId);
+                    source, correlationId, instituteId);
 
             return results;
 
@@ -476,7 +476,8 @@ public class WhatsAppService {
                                     List<String> messageIds,
                                     String senderBusinessChannelId,
                                     String source,
-                                    String correlationId) {
+                                    String correlationId,
+                                    String instituteId) {
         try {
             List<NotificationLog> logs = new ArrayList<>();
 
@@ -532,10 +533,15 @@ public class WhatsAppService {
                 notifLog.setNotificationDate(Instant.now());
                 notifLog.setMessagePayload(payloadJson);
                 notifLog.setSenderBusinessChannelId(senderBusinessChannelId);
-                // Resolve institute_id from the WABA channel mapping. This is the same lookup the
-                // Hub's WA Inbox previously did at read time — doing it here once at write makes
-                // the inbox query a simple institute_id filter.
-                if (senderBusinessChannelId != null) {
+                // Stamp institute_id so the WA Inbox conversation query (which filters on
+                // institute_id) surfaces this outgoing row. The caller's instituteId is
+                // authoritative and always present; the WABA channel-mapping lookup is only a
+                // fallback for legacy paths that don't pass it. Previously we relied solely on
+                // the mapping lookup off senderBusinessChannelId (derived from meta.appId), which
+                // came back empty for template/announcement sends and left the row invisible.
+                if (instituteId != null && !instituteId.isBlank()) {
+                    notifLog.setInstituteId(instituteId);
+                } else if (senderBusinessChannelId != null) {
                     channelMappingRepository.findById(senderBusinessChannelId)
                             .ifPresent(m -> notifLog.setInstituteId(m.getInstituteId()));
                 }

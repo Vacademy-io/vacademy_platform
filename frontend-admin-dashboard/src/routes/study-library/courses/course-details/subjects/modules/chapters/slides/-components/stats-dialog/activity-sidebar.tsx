@@ -169,11 +169,11 @@ export const ActivityStatsSidebar = () => {
                 <MyButton
                     buttonType="secondary"
                     scale="medium"
-                    layoutVariant="default"
+                    layoutVariant="icon"
                     title="Activity Stats"
+                    aria-label="Activity Stats"
                 >
-                    <ChartBar className="size-4 md:hidden" />
-                    <span className="hidden md:inline">Activity Stats</span>
+                    <ChartBar size={18} />
                 </MyButton>
             </DialogTrigger>
             <DialogContent className="flex h-[680px] max-h-[92vh] w-[760px] max-w-[95vw] flex-col gap-0 overflow-hidden p-0 font-normal">

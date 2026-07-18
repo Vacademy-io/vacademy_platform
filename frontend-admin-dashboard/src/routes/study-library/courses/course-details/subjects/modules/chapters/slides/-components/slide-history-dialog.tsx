@@ -157,8 +157,9 @@ export const SlideHistoryDialog = ({
             <MyButton
                 buttonType="secondary"
                 scale="medium"
-                layoutVariant="default"
+                layoutVariant="icon"
                 title="View and restore previous versions"
+                aria-label="History"
                 onClick={() => {
                     setSelectedId(null);
                     setConfirmingRestore(false);
@@ -166,7 +167,6 @@ export const SlideHistoryDialog = ({
                 }}
             >
                 <ClockCounterClockwise size={18} />
-                <span className="hidden md:inline">History</span>
             </MyButton>
             <MyDialog
                 heading="Version history"

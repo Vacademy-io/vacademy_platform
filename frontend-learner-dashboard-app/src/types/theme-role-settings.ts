@@ -30,5 +30,9 @@ export interface ThemeRoleSettings {
     // Expected to be a light tint: the app's --foreground stays dark, so a
     // dark value here would break text contrast (the admin picker warns).
     background?: string;
+    // Institute font (a curated family key resolved via resolveFontStack,
+    // e.g. "Lexend"). Applied as --app-font-family across both apps + public
+    // pages. Absent = each app keeps its bundled default.
+    fontFamily?: string;
   };
 }

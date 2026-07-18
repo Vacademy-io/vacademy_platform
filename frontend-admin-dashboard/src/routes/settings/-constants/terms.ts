@@ -153,6 +153,7 @@ export const enum SettingsTabs {
     BadgesRewards = 'badgesRewards',
     Language = 'language',
     OnboardingSettings = 'onboardingSettings',
+    Appearance = 'appearance',
 }
 
 export const DAYS_IN_MONTH = 30;

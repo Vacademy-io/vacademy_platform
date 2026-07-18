@@ -88,19 +88,33 @@ public class MetaWhatsAppServiceProvider implements WhatsAppServiceProvider {
 
     /**
      * Send a generic (non-OTP) template message via the Meta Cloud API.
-     * Builds a body-only template payload (one text parameter per entry in
-     * {@code bodyParams}, no header/button) and posts it. Reuses the same Meta
-     * send path as OTP so retries/logging stay consistent.
+     * Builds a template payload with an optional IMAGE header (when
+     * {@code headerImageUrl} is set) plus one text body parameter per entry in
+     * {@code bodyParams}. Reuses the same Meta send path as OTP so
+     * retries/logging stay consistent.
      *
      * @return true if the Meta API accepted the message.
      */
     public boolean sendTemplateMessage(String phoneNumberId, String accessToken, String phoneNumber,
-            String templateName, String languageCode, List<String> bodyParams) {
+            String templateName, String languageCode, List<String> bodyParams, String headerImageUrl) {
         if (accessToken == null || accessToken.isEmpty() || phoneNumberId == null || phoneNumberId.isEmpty()) {
             log.error("Meta credentials not configured for generic template send. accessToken present: {}, phoneNumberId present: {}",
                     accessToken != null && !accessToken.isEmpty(),
                     phoneNumberId != null && !phoneNumberId.isEmpty());
             return false;
+        }
+
+        List<MetaWhatsAppPayload.Component> components = new ArrayList<>();
+
+        // IMAGE header (if the template declares one). Must precede the body component.
+        if (headerImageUrl != null && !headerImageUrl.isBlank()) {
+            components.add(MetaWhatsAppPayload.Component.builder()
+                    .type("header")
+                    .parameters(List.of(MetaWhatsAppPayload.Parameter.builder()
+                            .type("image")
+                            .image(MetaWhatsAppPayload.Image.builder().link(headerImageUrl).build())
+                            .build()))
+                    .build());
         }
 
         List<MetaWhatsAppPayload.Parameter> params = new ArrayList<>();
@@ -113,7 +127,6 @@ public class MetaWhatsAppServiceProvider implements WhatsAppServiceProvider {
             }
         }
 
-        List<MetaWhatsAppPayload.Component> components = new ArrayList<>();
         if (!params.isEmpty()) {
             components.add(MetaWhatsAppPayload.Component.builder()
                     .type("body")

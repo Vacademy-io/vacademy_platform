@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import {
   syncThemeRoleSettingsFromSettingJson,
   applyInstituteBackground,
+  applyInstituteFont,
 } from "@/utils/institute-theme-roles";
 import { Preferences } from "@capacitor/preferences";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
@@ -2906,6 +2907,7 @@ const EnrollByInvite = ({
         // re-applies it whenever the brand color is (re)set.
         syncThemeRoleSettingsFromSettingJson(instituteData?.setting);
         applyInstituteBackground();
+        applyInstituteFont();
 
         // Store learner branding subset used by applyTabBranding
         const learnerKey = `LEARNER_${instituteId}`;

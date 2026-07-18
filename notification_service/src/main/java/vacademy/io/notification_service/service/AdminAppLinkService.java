@@ -46,6 +46,12 @@ public class AdminAppLinkService {
     @Value("${adminapp.whatsapp.language-code:en}")
     private String languageCode;
 
+    // Public URL for the template's IMAGE header. Must be set because the
+    // approved template declares an image header; a blank value would be rejected
+    // by Meta with a header format mismatch.
+    @Value("${adminapp.whatsapp.header-image-url:https://vacademy-media-storage-public.s3.ap-south-1.amazonaws.com/ADMIN_PUBLIC_UPLOAD/a65685cc-3af2-45e3-9e80-60a88e0b69cb-wa_app.png}")
+    private String headerImageUrl;
+
     @Value("${adminapp.link.android:https://play.google.com/store/apps/details?id=io.vacademy.admin.app&hl=en_IN}")
     private String androidLink;
 
@@ -90,7 +96,7 @@ public class AdminAppLinkService {
                 objectMapper, restTemplate, metaApiBaseUrl);
         boolean sent = provider.sendTemplateMessage(
                 platformPhoneNumberId, platformAccessToken, request.getPhoneNumber(),
-                templateName, languageCode, List.of(name, link));
+                templateName, languageCode, List.of(name, link), headerImageUrl);
 
         if (!sent) {
             throw new VacademyException("Failed to send the app link over WhatsApp. Please try again.");

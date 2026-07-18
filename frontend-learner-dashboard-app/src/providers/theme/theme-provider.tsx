@@ -12,7 +12,7 @@ import {
   type ThemeRoleSettings,
 } from "@/types/theme-role-settings";
 import { rampFromHsl, hslVar, SHADES } from "@/lib/theme-ramp";
-import { applyInstituteBackground } from "@/utils/institute-theme-roles";
+import { applyInstituteBackground, applyInstituteFont } from "@/utils/institute-theme-roles";
 
 // Generates a full 50-500 shade ramp around an arbitrary HSL base — same
 // tint curve for every caller (primary, secondary, tertiary) and identical
@@ -235,6 +235,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       applySecondaryTertiaryOverrides();
       // Institute-authored page canvas, if any.
       applyInstituteBackground();
+      applyInstituteFont();
 
       // Store the theme selection
       localStorage.setItem("theme-code", primaryColor);
@@ -263,6 +264,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       applySecondaryTertiaryOverrides();
       // Institute-authored page canvas, if any.
       applyInstituteBackground();
+      applyInstituteFont();
 
       // Store the custom color
       localStorage.setItem("theme-custom-color", primaryColor);

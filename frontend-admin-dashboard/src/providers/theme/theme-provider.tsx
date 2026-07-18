@@ -12,6 +12,7 @@ import {
     type ThemeRoleSettings,
 } from '@/types/theme-role-settings';
 import { rampFromHsl, hslVar, SHADES } from '@/lib/theme-ramp';
+import { resolveFontStack } from '@/utils/font';
 
 // Institute-authored page background (THEME_SETTING `background` role).
 // Repaints the canvas only — --card stays white, so cards keep reading as
@@ -41,6 +42,25 @@ const applyBackgroundRole = () => {
     } catch {
         // ignore malformed institute-authored hex
     }
+};
+
+// Institute-authored font (THEME_SETTING `fontFamily` role) -> --app-font-family.
+// Curated key resolved via the shared resolveFontStack. No-op when unset, so
+// the app keeps its bundled default for non-configured institutes.
+const applyInstituteFont = () => {
+    let fontFamily: string | undefined;
+    try {
+        const raw = localStorage.getItem(THEME_ROLE_SETTINGS_KEY);
+        const parsed: ThemeRoleSettings | null = raw ? JSON.parse(raw) : null;
+        fontFamily = parsed?.roles?.fontFamily;
+    } catch {
+        fontFamily = undefined;
+    }
+    if (!fontFamily) return;
+    const stack = resolveFontStack(fontFamily);
+    if (!stack) return;
+    document.documentElement.style.setProperty('--app-font-family', stack);
+    document.body.style.fontFamily = stack;
 };
 
 // Applies the `nav` role (rail surface, hover, active, active-text, text)
@@ -157,6 +177,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
             applyNavRoles(ph, ps, pl);
             // Institute-authored page canvas, if any.
             applyBackgroundRole();
+            applyInstituteFont();
 
             // Store the theme selection
             localStorage.setItem('theme-code', primaryColor);
@@ -185,6 +206,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
             // Nav role (sidebar/rail) — explicit institute override or derived default.
             applyNavRoles(h, s, l);
             applyBackgroundRole();
+            applyInstituteFont();
 
             // Store the custom color
             localStorage.setItem('theme-custom-color', primaryColor);

@@ -1,5 +1,6 @@
 import convert from "color-convert";
 import { hslVar } from "@/lib/theme-ramp";
+import { resolveFontStack } from "@/utils/branding";
 import {
   THEME_ROLE_SETTINGS_KEY,
   type ThemeRoleSettings,
@@ -82,5 +83,24 @@ export function applyInstituteBackground(): void {
     root.style.setProperty("--cp-bg", value);
   } catch {
     // ignore malformed institute-authored hex
+  }
+}
+
+/**
+ * Apply the institute-authored font (THEME_SETTING `fontFamily` role) as
+ * --app-font-family + body font. Runs the same resolveFontStack the rest of
+ * the app uses (curated key -> full stack, Arabic fallback preserved). When no
+ * font role is set this is a no-op — whatever applyTabBranding / the app
+ * default already set stays, so this never regresses non-configured institutes.
+ */
+export function applyInstituteFont(): void {
+  const fontFamily = readThemeRoleSettings()?.roles?.fontFamily;
+  if (!fontFamily) return;
+  try {
+    const stack = resolveFontStack(fontFamily);
+    document.documentElement.style.setProperty("--app-font-family", stack);
+    document.body.style.fontFamily = stack;
+  } catch {
+    // ignore malformed institute-authored font
   }
 }

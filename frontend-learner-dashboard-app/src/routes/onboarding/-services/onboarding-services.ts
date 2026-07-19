@@ -10,7 +10,6 @@ import { BASE_URL } from "@/constants/urls";
  * See admin_core_service `LearnerOnboardingController`.
  */
 const ONBOARDING_BASE = `${BASE_URL}/admin-core-service/learner/onboarding`;
-const CUSTOM_FIELDS_BASE = `${BASE_URL}/admin-core-service/common/custom-fields`;
 
 export type OnboardingInstanceStatus =
   | "IN_PROGRESS"
@@ -38,6 +37,11 @@ export interface OnboardingStepInstanceDTO {
   completed_at: string | null;
   completed_by_user_id: string | null;
   skip_reason: string | null;
+  /** Whether the caller (resolved STUDENT/PARENT role) can actually act on this step --
+   *  false for a create_student-configured step (always admin-only) or one whose step-level
+   *  role_access denies this role edit permission. Used to avoid blocking the learner on a
+   *  step only an admin can complete. */
+  learner_can_act: boolean | null;
 }
 
 export interface OnboardingInstanceDTO {
@@ -45,6 +49,9 @@ export interface OnboardingInstanceDTO {
   flow_id: string;
   institute_id: string;
   subject_user_id: string;
+  /** Set only when the caller isn't the subject themself (a parent viewing a linked
+   *  child's instance) — lets a parent with multiple children tell their cards apart. */
+  subject_full_name: string | null;
   current_step_id: string | null;
   status: OnboardingInstanceStatus;
   started_by: string | null;
@@ -92,64 +99,27 @@ export const submitStepInstance = async (
 };
 
 /**
- * One `institute_custom_fields` mapping row. The OUTER row is
- * `InstituteCustomFieldDTO`, which is `@JsonNaming(SnakeCaseStrategy)` —
- * snake_case. Its nested `custom_field` (`CustomFieldDTO`) has NO such
- * annotation, so Jackson serializes it with its declared (camelCase) field
- * names — same quirk already documented for the sub-org-registration
- * template fetch and the admin app's `InstituteDefaultField.custom_field`.
+ * One field of a FORM step, already resolved for the caller's own role: a field the caller
+ * can't VIEW is simply absent from the response (not sent with some canView=false flag), and
+ * `can_edit` says whether they may change `value` — a view-only field should render read-only,
+ * pre-filled with `value`. Replaces the previous generic (role-unaware) feature-fields lookup,
+ * which returned every field mapped to the step as if it were always editable.
  */
-export interface OnboardingCustomFieldInner {
-  id: string;
-  fieldKey: string;
-  fieldName: string;
-  fieldType: string;
-  defaultValue: string | null;
-  config: string | null;
-  formOrder: number | null;
-  isMandatory: boolean | null;
-  isFilter: boolean | null;
-  isSortable: boolean | null;
-  isHidden: boolean | null;
-  groupName: string | null;
-  groupInternalOrder: number | null;
-  individualOrder: number | null;
-}
-
-export interface OnboardingCustomFieldDTO {
-  id: string;
-  field_id: string | null;
-  institute_id: string;
-  type: string;
-  type_id: string;
-  group_name: string | null;
-  custom_field: OnboardingCustomFieldInner | null;
-  individual_order: number | null;
-  group_internal_order: number | null;
-  /** Mapping-level mandatory override — takes precedence over custom_field.isMandatory. */
+export interface OnboardingResolvedFieldDTO {
+  institute_custom_field_id: string;
+  field_name: string | null;
+  field_order: number | null;
   is_mandatory: boolean | null;
-  status: string | null;
+  can_edit: boolean | null;
+  value: string | null;
 }
 
-/**
- * Fields configured for one FORM step, via the generic feature-fields lookup
- * (type=ONBOARDING_STEP, typeId=stepId).
- *
- * KNOWN v1 GAP: this endpoint does not filter by the learner's role-based
- * view/edit permission for the field — it returns every field mapped to the
- * step regardless of who's asking. The backend still enforces edit
- * permission server-side on submit, but the frontend can't yet pre-filter
- * which fields to hide or disable for view-only fields. For v1 we render
- * every field as an editable text input and let the server reject/accept on
- * submit. A future "resolved step fields" endpoint should replace this call.
- */
-export const getOnboardingStepFields = async (
-  instituteId: string,
-  stepId: string
-): Promise<OnboardingCustomFieldDTO[]> => {
-  const response = await authenticatedAxiosInstance.get<OnboardingCustomFieldDTO[]>(
-    `${CUSTOM_FIELDS_BASE}/feature-fields`,
-    { params: { instituteId, type: "ONBOARDING_STEP", typeId: stepId } }
+/** Fields configured for one FORM step, resolved for the caller's own role — see `OnboardingResolvedFieldDTO`. */
+export const getResolvedStepFields = async (
+  stepInstanceId: string
+): Promise<OnboardingResolvedFieldDTO[]> => {
+  const response = await authenticatedAxiosInstance.get<OnboardingResolvedFieldDTO[]>(
+    `${ONBOARDING_BASE}/step-instances/${stepInstanceId}/fields`
   );
   return Array.isArray(response?.data) ? response.data : [];
 };

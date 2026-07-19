@@ -51,9 +51,20 @@ import {
 
 interface StudentOnboardingProfileProps {
     userId: string;
+    /** This subject's own existing details — shown when a create-student step's
+     *  "filled by a parent" toggle is OFF, since that's what the student will be
+     *  created from. */
+    subjectFullName?: string | null;
+    subjectEmail?: string | null;
+    subjectMobileNumber?: string | null;
 }
 
-export function StudentOnboardingProfile({ userId }: StudentOnboardingProfileProps) {
+export function StudentOnboardingProfile({
+    userId,
+    subjectFullName,
+    subjectEmail,
+    subjectMobileNumber,
+}: StudentOnboardingProfileProps) {
     const instituteId = getCurrentInstituteId() ?? '';
     const queryClient = useQueryClient();
     const [startDialogOpen, setStartDialogOpen] = useState(false);
@@ -114,7 +125,14 @@ export function StudentOnboardingProfile({ userId }: StudentOnboardingProfilePro
         <div className="flex flex-col gap-3">
             <div className="flex justify-end">{startButton}</div>
             {instances.map((instance) => (
-                <OnboardingInstanceCard key={instance.id} instance={instance} instituteId={instituteId} />
+                <OnboardingInstanceCard
+                    key={instance.id}
+                    instance={instance}
+                    instituteId={instituteId}
+                    subjectFullName={subjectFullName}
+                    subjectEmail={subjectEmail}
+                    subjectMobileNumber={subjectMobileNumber}
+                />
             ))}
             {startDialog}
         </div>
@@ -214,9 +232,15 @@ function StartOnboardingDialog({
 function OnboardingInstanceCard({
     instance,
     instituteId,
+    subjectFullName,
+    subjectEmail,
+    subjectMobileNumber,
 }: {
     instance: OnboardingInstanceDTO;
     instituteId: string;
+    subjectFullName?: string | null;
+    subjectEmail?: string | null;
+    subjectMobileNumber?: string | null;
 }) {
     const queryClient = useQueryClient();
 
@@ -363,6 +387,9 @@ function OnboardingInstanceCard({
                     stepInstance={completeTarget}
                     stepDef={stepById.get(completeTarget.step_id)}
                     submitting={completing}
+                    subjectFullName={subjectFullName}
+                    subjectEmail={subjectEmail}
+                    subjectMobileNumber={subjectMobileNumber}
                     onClose={() => setCompleteTarget(null)}
                     onSubmit={(payload) => complete({ id: completeTarget.id, payload })}
                 />
@@ -436,6 +463,9 @@ function CompleteFormStepDialog({
     stepInstance,
     stepDef,
     submitting,
+    subjectFullName,
+    subjectEmail,
+    subjectMobileNumber,
     onClose,
     onSubmit,
 }: {
@@ -443,6 +473,9 @@ function CompleteFormStepDialog({
     stepInstance: OnboardingStepInstanceDTO;
     stepDef: OnboardingStepDTO | undefined;
     submitting: boolean;
+    subjectFullName?: string | null;
+    subjectEmail?: string | null;
+    subjectMobileNumber?: string | null;
     onClose: () => void;
     onSubmit: (payload: Record<string, unknown>) => void;
 }) {
@@ -535,6 +568,20 @@ function CompleteFormStepDialog({
                             This form was filled by a parent, on behalf of a student
                         </Label>
                         <Switch id="complete-step-is-parent" checked={isParent} onCheckedChange={setIsParent} />
+                    </div>
+                )}
+                {touchesIdentity && !isParent && (
+                    <div className="flex flex-col gap-1 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
+                        <p className="text-caption text-neutral-500">
+                            The student will be created using this person&apos;s existing details:
+                        </p>
+                        <p className="text-body font-medium text-neutral-800">
+                            {subjectFullName || 'No name on file'}
+                        </p>
+                        <p className="text-caption text-neutral-600">
+                            {[subjectEmail, subjectMobileNumber].filter(Boolean).join(' · ') ||
+                                'No email or mobile number on file'}
+                        </p>
                     </div>
                 )}
                 {touchesIdentity && isParent && (

@@ -35,11 +35,15 @@ public class OnboardingStepService {
 
     @Transactional
     public OnboardingStep createStep(String instituteId, String flowId, OnboardingStepDTO request) {
-        int nextOrder = onboardingStepRepository.findByFlowIdAndStatusOrderByStepOrderAsc(flowId, "ACTIVE").size() + 1;
+        // Always server-derived, ignoring any client-supplied step_order: uq_onboarding_step_flow_order
+        // is unique per (flow_id, step_order) across EVERY status, including ARCHIVED (deleted) steps,
+        // so counting only ACTIVE steps (as both this and the frontend's own count previously did)
+        // reuses an already-taken order the moment a step has ever been deleted from this flow.
+        int nextOrder = onboardingStepRepository.findMaxStepOrder(flowId) + 1;
 
         OnboardingStep step = OnboardingStep.builder()
                 .flowId(flowId)
-                .stepOrder(request.getStepOrder() != null ? request.getStepOrder() : nextOrder)
+                .stepOrder(nextOrder)
                 .stepName(request.getStepName())
                 .stepType(StringUtils.hasText(request.getStepType()) ? request.getStepType() : OnboardingStepTypeEnum.FORM.name())
                 .stepTypeConfig(toJson(request.getStepTypeConfig()))
@@ -78,12 +82,29 @@ public class OnboardingStepService {
         onboardingStepRepository.save(step);
     }
 
+    /**
+     * uq_onboarding_step_flow_order is UNIQUE(flow_id, step_order), checked immediately (not
+     * deferred) -- reassigning each step's order one row at a time, in the request's own order,
+     * can collide with whatever a NOT-YET-processed step in the same request still holds (e.g.
+     * moving step A from position 1 to last while B/C shift down: B's new order 0 is fine, but
+     * C's new order 1 collides with A's still-unprocessed old order 1). Phase 1 moves every
+     * step to a guaranteed-unique negative order (impossible to collide with any real row, since
+     * real orders are always positive) before phase 2 applies the real target orders -- avoids
+     * ANY intermediate collision regardless of reorder pattern.
+     */
     @Transactional
     public void reorderSteps(ReorderStepsRequest request) {
         if (request == null || CollectionUtils.isEmpty(request.getSteps())) return;
+        List<OnboardingStep> steps = new ArrayList<>();
+        int tempOrder = -1;
         for (ReorderStepsRequest.StepOrderEntry entry : request.getSteps()) {
             OnboardingStep step = getStep(entry.getStepId());
-            step.setStepOrder(entry.getOrder());
+            step.setStepOrder(tempOrder--);
+            steps.add(onboardingStepRepository.saveAndFlush(step));
+        }
+        for (int i = 0; i < steps.size(); i++) {
+            OnboardingStep step = steps.get(i);
+            step.setStepOrder(request.getSteps().get(i).getOrder());
             onboardingStepRepository.save(step);
         }
     }

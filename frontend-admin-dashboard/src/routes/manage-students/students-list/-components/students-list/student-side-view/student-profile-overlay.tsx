@@ -281,6 +281,9 @@ export const StudentProfileOverlay = () => {
                 return (
                     <StudentOnboardingProfile
                         userId={selectedStudent.user_id || selectedStudent.id}
+                        subjectFullName={selectedStudent.full_name}
+                        subjectEmail={selectedStudent.email}
+                        subjectMobileNumber={selectedStudent.mobile_number}
                     />
                 );
             case 'subOrg':

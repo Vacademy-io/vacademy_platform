@@ -30,7 +30,10 @@ export const Route = createFileRoute("/onboarding/")({
   ),
 });
 
-/** The step the learner should act on next, if any (FORM steps only in v1). */
+/** The step the learner should act on next, if any (FORM steps only in v1).
+ *  A current step the caller can't act on (e.g. a create_student step, always
+ *  admin-only) is skipped here rather than rendered as a dead-end form the
+ *  learner can't actually submit. */
 const getActiveFormStep = (
   instance: OnboardingInstanceDTO
 ): OnboardingStepInstanceDTO | null => {
@@ -41,6 +44,7 @@ const getActiveFormStep = (
   if (!current) return null;
   if (current.status !== "IN_PROGRESS" && current.status !== "PENDING") return null;
   if (current.step_type !== "FORM") return null;
+  if (current.learner_can_act === false) return null;
   return current;
 };
 
@@ -128,7 +132,7 @@ function OnboardingPage() {
         </ModernCard>
       ) : (
         instances.map((instance) => (
-          <OnboardingInstanceCard key={instance.id} instance={instance} instituteId={instituteId as string} />
+          <OnboardingInstanceCard key={instance.id} instance={instance} />
         ))
       )}
     </div>
@@ -137,17 +141,22 @@ function OnboardingPage() {
 
 interface OnboardingInstanceCardProps {
   instance: OnboardingInstanceDTO;
-  instituteId: string;
 }
 
-function OnboardingInstanceCard({ instance, instituteId }: OnboardingInstanceCardProps) {
+function OnboardingInstanceCard({ instance }: OnboardingInstanceCardProps) {
   const activeStep = getActiveFormStep(instance);
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Only set when this is a linked child's instance, not the caller's own —
+          lets a parent with multiple children tell their cards apart. */}
+      {instance.subject_full_name && (
+        <p className="text-sm font-medium text-neutral-600">
+          Onboarding for {instance.subject_full_name}
+        </p>
+      )}
       {activeStep ? (
         <OnboardingStepForm
-          instituteId={instituteId}
           stepInstance={activeStep}
           onSubmitted={() => {
             /* Query invalidation inside OnboardingStepForm refetches

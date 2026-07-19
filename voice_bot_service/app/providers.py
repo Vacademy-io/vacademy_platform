@@ -38,10 +38,15 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
                 kwargs["language"] = Language(tag)
             if allow_bias:
                 kwargs["prompt"] = bias[:200]
+            if s.sarvam_stt_high_vad:
+                # Sarvam-side fast endpointing: measured (48h of live turns) as the
+                # binding latency constraint — the server takes ~0.65-0.76s after end
+                # of speech to finalize. High sensitivity finalizes sooner.
+                kwargs["high_vad_sensitivity"] = True
             params = SarvamSTTService.InputParams(**kwargs)
         except Exception:
             params = None
-    return SarvamSTTService(
+    return ResilientSarvamSTTService(
         api_key=s.sarvam_api_key,
         model=s.sarvam_stt_model,
         sample_rate=sample_rate,
@@ -68,7 +73,7 @@ def build_llm():
             project_id=s.vertex_project_id or None,
             location=s.vertex_location,
             model=s.vertex_model,
-            params=GoogleLLMService.InputParams(temperature=0.35, max_tokens=150),
+            params=GoogleLLMService.InputParams(temperature=0.35, max_tokens=300),
         )
     if s.llm_provider == "google":
         # Gemini via its OpenAI-compat endpoint, hit directly (no proxy hop;
@@ -82,7 +87,7 @@ def build_llm():
             base_url=s.google_llm_base_url,
             model=s.google_llm_model,
             params=OpenAILLMService.InputParams(
-                temperature=0.35, max_tokens=150,
+                temperature=0.35, max_tokens=300,
                 extra={"extra_body": {"reasoning_effort": "none"}},
             ),
         )
@@ -93,7 +98,7 @@ def build_llm():
         return OpenRouterLLMService(
             api_key=s.openrouter_api_key,
             model=s.openrouter_model,
-            params=OpenRouterLLMService.InputParams(temperature=0.35, max_tokens=150),
+            params=OpenRouterLLMService.InputParams(temperature=0.35, max_tokens=300),
         )
     # Sarvam's OpenAI-compatible chat-completions API, India-hosted.
     # reasoning_effort MUST be the literal JSON null (Python None via extra_body;
@@ -107,7 +112,7 @@ def build_llm():
         base_url=s.sarvam_llm_base_url,
         model=s.sarvam_llm_model,
         params=OpenAILLMService.InputParams(
-            temperature=0.35, max_tokens=150,
+            temperature=0.35, max_tokens=300,
             extra={"extra_body": {"reasoning_effort": None}},
         ),
     )
@@ -130,7 +135,11 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session,
         kwargs["temperature"] = _clamp(temperature, 0.01, 2.0)
     # enable_preprocessing: bulbul normalizes numbers/dates/mixed-script text
     # before synthesis — noticeably cleaner Hinglish (POC voice recipe).
-    return SarvamTTSService(
+    if s.sarvam_tts_min_buffer > 0:
+        # Server-side chars Sarvam buffers before the FIRST audio byte (default 50).
+        # Lower = faster first audio; raise via env if Hindi audio turns choppy.
+        kwargs["min_buffer_size"] = s.sarvam_tts_min_buffer
+    return ResilientSarvamTTSService(
         api_key=s.sarvam_api_key,
         model=s.sarvam_tts_model,
         voice_id=voice or s.sarvam_tts_voice,
@@ -145,3 +154,74 @@ def _clamp(v: float, lo: float, hi: float) -> float:
         return max(lo, min(hi, float(v)))
     except (TypeError, ValueError):
         return lo
+
+
+class ResilientSarvamSTTService(SarvamSTTService):
+    """Deaf-call guard. The stock run_stt SWALLOWS websocket send errors (it just
+    logs 'Error sending audio to Sarvam') and never reconnects — one dropped Sarvam
+    socket leaves the call deaf for its remainder (observed live: 617 consecutive
+    send errors over 12s while the caller kept talking). Re-send through a fresh
+    connection, at most once per cooldown so a hard Sarvam outage can't turn every
+    20ms audio chunk into a reconnect storm. Faithful to the pinned pipecat==0.0.95
+    internals (_socket_client / _disconnect / _connect) — re-verify on upgrade."""
+
+    _RECONNECT_COOLDOWN_SECS = 5.0
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._last_reconnect_at = 0.0
+
+    async def _reconnect_once(self):
+        import time as _time
+        now = _time.monotonic()
+        if now - self._last_reconnect_at < self._RECONNECT_COOLDOWN_SECS:
+            return False
+        self._last_reconnect_at = now
+        try:
+            await self._disconnect()
+        except Exception:
+            pass
+        try:
+            await self._connect()
+            return self._socket_client is not None
+        except Exception as e:
+            logger = __import__("logging").getLogger("voice_bot")
+            logger.warning("sarvam stt reconnect failed: %s", e)
+            return False
+
+    async def run_stt(self, audio: bytes):
+        # Torn-down client (base disconnected but the pipeline is still feeding
+        # audio): try to restore instead of yielding None forever.
+        if not self._socket_client:
+            await self._reconnect_once()
+        try:
+            async for f in super().run_stt(audio):
+                yield f
+            return
+        except Exception:
+            # Base normally swallows send errors; anything escaping is a dead socket.
+            pass
+        if await self._reconnect_once():
+            try:
+                async for f in super().run_stt(audio):
+                    yield f
+                return
+            except Exception:
+                pass
+        yield None
+
+
+class ResilientSarvamTTSService(SarvamTTSService):
+    """Silent-bot guard. In pipecat 0.0.95, when Sarvam closes the TTS socket
+    cleanly the receive loop exits WITHOUT reconnecting and leaves _receive_task as
+    a finished-but-non-None task; the next run_tts calls _connect(), but task
+    creation is guarded by `not self._receive_task`, so the NEW socket gets no
+    receive loop → synthesized audio is never read → the bot goes silent. Clearing
+    finished task handles before delegating closes the trap."""
+
+    async def _connect(self):
+        for attr in ("_receive_task", "_keepalive_task"):
+            t = getattr(self, attr, None)
+            if t is not None and t.done():
+                setattr(self, attr, None)
+        await super()._connect()

@@ -2,8 +2,11 @@ package vacademy.io.admin_core_service.features.live_session.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
+import vacademy.io.admin_core_service.features.audience.service.AudienceService;
 import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
@@ -27,6 +30,15 @@ import java.util.Map;
 public class LiveSessionWorkflowAsyncHelper {
 
     private final WorkflowTriggerService workflowTriggerService;
+
+    /**
+     * Field-injected and {@code @Lazy}: the CRM {@link AudienceService} is a large bean
+     * with a wide dependency graph, so a lazy proxy here keeps a stray back-reference
+     * from ever forming a startup bean cycle through this helper.
+     */
+    @Autowired
+    @Lazy
+    private AudienceService audienceService;
 
     /**
      * Fire-and-forget workflow trigger. Errors are logged and swallowed —
@@ -77,6 +89,30 @@ public class LiveSessionWorkflowAsyncHelper {
         } catch (Exception e) {
             log.warn("Async LIVE_SESSION_FORM_SUBMISSION workflow failed for sessionId={}: {}",
                     sessionId, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Turns a public live-class registration into a CRM lead off the request thread.
+     *
+     * <p>Every public live-class registrant should surface in Audience Manager → Recent
+     * Leads. {@link AudienceService#submitLiveClassLead} creates the auth-service user and
+     * the {@code audience_response} without firing any workflow, so the registrant is not
+     * double-messaged on top of their seat-confirmation. Pinned to the same bounded
+     * {@code workflowTaskExecutor} as form-submission so a webinar burst cannot spawn
+     * unbounded threads; fire-and-forget, errors logged and swallowed.
+     */
+    @Async("workflowTaskExecutor")
+    public void createLiveClassLeadAsync(String instituteId, String fullName, String email,
+                                         String mobileNumber, Map<String, String> extraFieldsById,
+                                         String sessionId) {
+        if (instituteId == null || email == null || email.isBlank()) return;
+        try {
+            audienceService.submitLiveClassLead(instituteId, fullName, email, mobileNumber,
+                    extraFieldsById, sessionId);
+        } catch (Exception e) {
+            log.warn("Async live-class lead capture failed for institute={} session={}: {}",
+                    instituteId, sessionId, e.getMessage(), e);
         }
     }
 }

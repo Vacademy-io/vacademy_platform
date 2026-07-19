@@ -16,6 +16,11 @@ import vacademy.io.admin_core_service.features.user_subscription.service.UserPla
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -57,6 +62,11 @@ public class BulkDeassignmentService {
                 ? options.getMode()
                 : MODE_SOFT;
 
+        // SOFT-only "last access date" override. HARD ignores it (access is revoked now).
+        Date accessTillDate = MODE_HARD.equals(mode)
+                ? null
+                : parseAccessTillDate(options.getAccessTillDate());
+
         // 1. Resolve all user IDs
         Set<String> allUserIds = resolveUserIds(request);
         if (allUserIds.isEmpty()) {
@@ -72,16 +82,21 @@ public class BulkDeassignmentService {
         // Track real (non-dry-run) successful de-assignments so we can fire the
         // LEARNER_TERMINATION workflow once the writes are durable. Grouped by user
         // so the helper resolves each user from auth-service only once.
+        //
+        // Only HARD terminations are collected here: SOFT is a cancel (access
+        // continues to expiry), so it must NOT fire the access-revoked
+        // LEARNER_TERMINATION workflow. The soft-cancel's own SUBSCRIPTION_CANCELLED
+        // workflow is fired inside UserPlanService.cancelUserPlan.
         Map<String, List<String>> terminatedPackageSessionsByUser = new LinkedHashMap<>();
 
         for (String packageSessionId : request.getPackageSessionIds()) {
             for (String userId : allUserIds) {
                 BulkDeassignResponseDTO.DeassignResultItemDTO result = processDeassignment(userId, userMap,
                         packageSessionId,
-                        request.getInstituteId(), mode, dryRun);
+                        request.getInstituteId(), mode, accessTillDate, dryRun);
                 results.add(result);
 
-                if (!dryRun && "SUCCESS".equals(result.getStatus())) {
+                if (!dryRun && MODE_HARD.equals(mode) && "SUCCESS".equals(result.getStatus())) {
                     terminatedPackageSessionsByUser
                             .computeIfAbsent(userId, k -> new ArrayList<>())
                             .add(packageSessionId);
@@ -89,7 +104,7 @@ public class BulkDeassignmentService {
             }
         }
 
-        // 4. Fire LEARNER_TERMINATION workflows for the real de-assignments,
+        // 4. Fire LEARNER_TERMINATION workflows for the real HARD de-assignments,
         //    scoped by eventId=packageSessionId + instituteId.
         fireTerminationWorkflows(terminatedPackageSessionsByUser, request.getInstituteId(), adminUserId);
 
@@ -116,6 +131,31 @@ public class BulkDeassignmentService {
     }
 
     // ========================= PRIVATE METHODS =========================
+
+    /**
+     * Parse the SOFT-mode "last access date" the frontend sends. Accepts either a
+     * bare {@code yyyy-MM-dd} (calendar day → end-of-day access) or a full ISO-8601
+     * instant. Returns null on blank/unparseable input so callers fall back to the
+     * plan's own expiry (a bad date must never silently revoke access).
+     */
+    private Date parseAccessTillDate(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String value = raw.trim();
+        try {
+            // Bare calendar date → keep access through the end of that day.
+            if (value.length() == 10 && value.charAt(4) == '-') {
+                LocalDate day = LocalDate.parse(value);
+                return Date.from(day.atTime(LocalTime.MAX).atZone(ZoneOffset.UTC).toInstant());
+            }
+            // Full ISO-8601 instant (e.g. from Date.toISOString()).
+            return Date.from(Instant.parse(value));
+        } catch (DateTimeParseException e) {
+            log.warn("Ignoring unparseable access_till_date '{}': {}", raw, e.getMessage());
+            return null;
+        }
+    }
 
     private void validateRequest(BulkDeassignRequestDTO request) {
         if (!StringUtils.hasText(request.getInstituteId())) {
@@ -169,6 +209,7 @@ public class BulkDeassignmentService {
             String packageSessionId,
             String instituteId,
             String mode,
+            Date accessTillDate,
             boolean dryRun) {
 
         String userEmail = userMap.containsKey(userId) ? userMap.get(userId).getEmail() : null;
@@ -216,6 +257,9 @@ public class BulkDeassignmentService {
                 String actionDesc = MODE_HARD.equals(mode)
                         ? "HARD_TERMINATED"
                         : "SOFT_CANCELED";
+                String softMessage = accessTillDate != null
+                        ? "soft-cancel (access until " + accessTillDate + ")"
+                        : "soft-cancel (access until plan expiry)";
                 return BulkDeassignResponseDTO.DeassignResultItemDTO.builder()
                         .userId(userId).userEmail(userEmail)
                         .packageSessionId(packageSessionId)
@@ -223,30 +267,44 @@ public class BulkDeassignmentService {
                         .userPlanId(userPlanId)
                         .message("Would " + (MODE_HARD.equals(mode)
                                 ? "terminate immediately"
-                                : "soft-cancel (access until expiry)"))
+                                : softMessage))
                         .warning(warning)
                         .build();
             }
 
             // Actually perform the cancellation
+            boolean hard = MODE_HARD.equals(mode);
             boolean slotFreed = false;
             if (StringUtils.hasText(userPlanId)) {
-                boolean force = MODE_HARD.equals(mode);
-                userPlanService.cancelUserPlan(userPlanId, force);
-                slotFreed = force; // Only hard terminate actually frees the slot
-                log.info("De-assigned: userId={}, packageSession={}, userPlan={}, mode={}",
-                        userId, packageSessionId, userPlanId, mode);
+                userPlanService.cancelUserPlan(userPlanId, hard);
+                slotFreed = hard; // Only hard terminate actually frees the slot
+                // SOFT keeps the ACTIVE mapping (cancelUserPlan leaves it untouched).
+                // When the admin picked a "last access date", override the mapping's
+                // expiry so access ends on that date instead of the plan's own expiry.
+                if (!hard && accessTillDate != null) {
+                    mapping.setExpiryDate(accessTillDate);
+                    studentSessionRepository.save(mapping);
+                }
+                log.info("De-assigned: userId={}, packageSession={}, userPlan={}, mode={}, accessTill={}",
+                        userId, packageSessionId, userPlanId, mode, accessTillDate);
             } else {
-                // No UserPlan linked — just update status directly
-                if (MODE_HARD.equals(mode)) {
+                // No UserPlan linked — update the mapping directly.
+                if (hard) {
+                    // HARD: revoke access now.
                     mapping.setStatus(LearnerSessionStatusEnum.TERMINATED.name());
+                    slotFreed = true; // seat freed immediately
                 } else {
-                    mapping.setStatus(LearnerSessionStatusEnum.INACTIVE.name());
+                    // SOFT: keep the learner ACTIVE so access continues. Only the
+                    // "last access date" (if given) moves the expiry forward/back;
+                    // otherwise the existing expiry is preserved. The seat is NOT
+                    // freed — the learner still occupies it until they actually expire.
+                    if (accessTillDate != null) {
+                        mapping.setExpiryDate(accessTillDate);
+                    }
                 }
                 studentSessionRepository.save(mapping);
-                slotFreed = true; // Both modes free the slot when there's no UserPlan
-                log.info("De-assigned (no userPlan): userId={}, packageSession={}, mode={}",
-                        userId, packageSessionId, mode);
+                log.info("De-assigned (no userPlan): userId={}, packageSession={}, mode={}, accessTill={}",
+                        userId, packageSessionId, mode, accessTillDate);
             }
 
             // Only increment inventory when the slot is actually freed

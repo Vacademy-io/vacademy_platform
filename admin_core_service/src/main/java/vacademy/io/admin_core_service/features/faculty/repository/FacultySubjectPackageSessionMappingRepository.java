@@ -389,4 +389,19 @@ public interface FacultySubjectPackageSessionMappingRepository
   List<UserSubOrgLinkRow> findUserSubOrgLinks(
       @Param("subOrgIds") List<String> subOrgIds,
       @Param("statuses") List<String> statuses);
+
+  /**
+   * Deactivate SOFT-removed sub-org members whose "last access date" has passed.
+   * Only touches ACTIVE rows carrying an access_till_date in the past; returns the
+   * number of rows flipped. Driven by {@code SubOrgTeamAccessExpiryJob}.
+   */
+  @org.springframework.data.jpa.repository.Modifying
+  @Query("""
+          UPDATE FacultySubjectPackageSessionMapping f
+             SET f.status = 'INACTIVE'
+           WHERE f.status = 'ACTIVE'
+             AND f.accessTillDate IS NOT NULL
+             AND f.accessTillDate < :now
+      """)
+  int deactivateExpiredSoftRemovals(@Param("now") java.sql.Timestamp now);
 }

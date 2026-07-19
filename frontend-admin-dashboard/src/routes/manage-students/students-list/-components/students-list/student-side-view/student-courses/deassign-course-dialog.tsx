@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyButton } from '@/components/design-system/button';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { CalendarBlank } from '@phosphor-icons/react';
+import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
 import { useBulkDeassign } from '@/routes/manage-students/students-list/-services/bulkAssignService';
@@ -36,6 +41,9 @@ export const DeassignCourseDialog = ({
     const [selectedPSIds, setSelectedPSIds] = useState<Set<string>>(new Set());
     const [mode, setMode] = useState<'SOFT' | 'HARD'>('SOFT');
     const [notifyLearners, setNotifyLearners] = useState(false);
+    // SOFT-only "last access date" override. null → respect the plan's own expiry.
+    // A yyyy-MM-dd string once the admin picks a date from the calendar.
+    const [accessTillDate, setAccessTillDate] = useState<string | null>(null);
     const [previewData, setPreviewData] = useState<BulkDeassignResponse | null>(null);
     const [finalResults, setFinalResults] = useState<BulkDeassignResponse | null>(null);
 
@@ -48,6 +56,7 @@ export const DeassignCourseDialog = ({
             setSelectedPSIds(new Set());
             setMode('SOFT');
             setNotifyLearners(false);
+            setAccessTillDate(null);
             setPreviewData(null);
             setFinalResults(null);
         }
@@ -63,6 +72,18 @@ export const DeassignCourseDialog = ({
         });
     };
 
+    // Latest plan-expiry among the selected courses — the SOFT "last access date"
+    // defaults to this (learner keeps access until their plan would have expired).
+    const defaultExpiry: Date | null = (() => {
+        const dates = Array.from(selectedPSIds)
+            .map((psId) => courses.find((c) => c.package_session_id === psId)?.expiry_date)
+            .filter((d): d is string => !!d)
+            .map((d) => new Date(d))
+            .filter((d) => !isNaN(d.getTime()));
+        if (dates.length === 0) return null;
+        return dates.reduce((a, b) => (a > b ? a : b));
+    })();
+
     const buildRequest = (dryRun: boolean): BulkDeassignRequest => ({
         institute_id: instituteId,
         user_ids: [userId],
@@ -71,6 +92,9 @@ export const DeassignCourseDialog = ({
             mode,
             notify_learners: notifyLearners,
             dry_run: dryRun,
+            // Only meaningful for SOFT; sent only when the admin overrode the
+            // default plan-expiry with an explicit last-access date.
+            access_till_date: mode === 'SOFT' ? accessTillDate : null,
         },
     });
 
@@ -168,6 +192,67 @@ export const DeassignCourseDialog = ({
                         Status → CANCELED
                     </span>
                 </label>
+
+                {/* SOFT-only: last access date. Defaults to the plan's expiry;
+                    the calendar lets the admin bring the access cut-off forward. */}
+                {mode === 'SOFT' && (
+                    <div className="ml-6 mt-1 flex flex-col gap-1.5">
+                        <p className="text-[11px] font-medium text-neutral-600">
+                            Last access date
+                        </p>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <button
+                                    type="button"
+                                    className={cn(
+                                        'flex items-center gap-2 rounded-md border border-neutral-200 bg-white px-2.5 py-1.5 text-xs transition-colors hover:border-neutral-300',
+                                        accessTillDate ? 'text-neutral-800' : 'text-neutral-500'
+                                    )}
+                                >
+                                    <CalendarBlank className="size-3.5 text-neutral-400" />
+                                    {accessTillDate
+                                        ? format(new Date(accessTillDate), 'dd MMM yyyy')
+                                        : defaultExpiry
+                                          ? `Plan expiry — ${format(defaultExpiry, 'dd MMM yyyy')}`
+                                          : 'Respect plan expiry'}
+                                </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar
+                                    mode="single"
+                                    selected={
+                                        accessTillDate
+                                            ? new Date(accessTillDate)
+                                            : defaultExpiry ?? undefined
+                                    }
+                                    defaultMonth={
+                                        accessTillDate
+                                            ? new Date(accessTillDate)
+                                            : defaultExpiry ?? undefined
+                                    }
+                                    onSelect={(date) => {
+                                        if (date) setAccessTillDate(format(date, 'yyyy-MM-dd'));
+                                    }}
+                                    initialFocus
+                                />
+                            </PopoverContent>
+                        </Popover>
+                        <p className="text-[10px] text-neutral-400">
+                            {accessTillDate
+                                ? 'Access ends on the selected date.'
+                                : 'Leave as-is to keep access until the plan’s own expiry.'}
+                            {accessTillDate && (
+                                <button
+                                    type="button"
+                                    onClick={() => setAccessTillDate(null)}
+                                    className="ml-1.5 text-primary-500 hover:underline"
+                                >
+                                    Reset to plan expiry
+                                </button>
+                            )}
+                        </p>
+                    </div>
+                )}
                 <label className="flex items-start gap-2">
                     <input
                         type="radio"

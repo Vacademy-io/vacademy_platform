@@ -6,7 +6,8 @@ import { X, ArrowsOutSimple, CaretLeft, CaretRight, Trash } from '@phosphor-icon
 import { DeleteLeadsDialog } from '@/components/shared/leads/delete-leads-dialog';
 import { isAdminForInstitute } from '@/lib/auth/roleUtils';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { getUserPlans } from '@/services/user-plan';
 import DummyProfile from '@/assets/svgs/dummy_profile_photo.svg';
 import { StatusChips } from '@/components/design-system/chips';
 import { StudentOverview } from './student-overview/student-overview';
@@ -155,6 +156,20 @@ export const StudentSidebar = ({
         null;
     const currentInstituteId = getCurrentInstituteId();
     const canDeleteLead = isAdminForInstitute(currentInstituteId);
+
+    // A soft-cancel (Remove from product) marks the learner's membership/plan
+    // CANCELED while their enrollment stays ACTIVE (access continues to expiry).
+    // Surface that as a "Cancelled Member" badge next to the status indicator so
+    // the admin can tell an active learner apart from an active-but-cancelled one.
+    const learnerUserId = selectedStudent?.user_id;
+    const { data: canceledPlans } = useQuery({
+        queryKey: ['learner-canceled-plans', learnerUserId, currentInstituteId],
+        queryFn: () =>
+            getUserPlans(1, 20, ['CANCELED'], learnerUserId!, currentInstituteId || undefined),
+        enabled: !!learnerUserId && !!currentInstituteId,
+        staleTime: 60000,
+    });
+    const isCancelledMember = (canceledPlans?.content?.length ?? 0) > 0;
     const [tabSettings, setTabSettings] = useState<StudentSideViewSettings | null>(null);
     /**
      * navStyle — selects between the horizontal tab bar (default) and the
@@ -353,6 +368,14 @@ export const StudentSidebar = ({
                                 {selectedStudent?.status && (
                                     <StatusChips status={selectedStudent.status} />
                                 )}
+                                {isCancelledMember && (
+                                    <span
+                                        className="shrink-0 whitespace-nowrap rounded-full bg-danger-50 px-2 py-0.5 text-xs font-medium text-danger-600 ring-1 ring-danger-200"
+                                        title="Membership cancelled — access continues until the plan expires"
+                                    >
+                                        Cancelled Member
+                                    </span>
+                                )}
                             </div>
 
                             {/* The full-screen profile overlay is mounted only by the
@@ -422,10 +445,18 @@ export const StudentSidebar = ({
                                                     : r === 'LEARNER'
                                                       ? 'Practice Staff'
                                                       : role.trim().toLowerCase().replace(/_/g, ' ');
+                                            // Sub-org members have their role shown in red so
+                                            // they read distinctly from a normal institute role.
+                                            const isSubOrgMember = !!selectedStudent?.sub_org_id;
                                             return (
                                                 <span
                                                     key={index}
-                                                    className="rounded-full bg-warning-50 px-2 py-0.5 text-xs font-medium capitalize text-warning-600"
+                                                    className={cn(
+                                                        'rounded-full px-2 py-0.5 text-xs font-medium capitalize',
+                                                        isSubOrgMember
+                                                            ? 'bg-danger-50 text-danger-600 ring-1 ring-danger-200'
+                                                            : 'bg-warning-50 text-warning-600'
+                                                    )}
                                                 >
                                                     {label}
                                                 </span>

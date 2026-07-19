@@ -40,6 +40,12 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import jakarta.servlet.http.HttpServletRequest;
 
 import java.math.BigDecimal;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -372,11 +378,31 @@ public class SubOrgTeamService {
             throw new VacademyException("User has no active membership in this sub-org");
         }
 
+        // Default to HARD when unspecified so pre-existing callers keep the old
+        // "deactivate immediately" behaviour.
+        boolean soft = "SOFT".equalsIgnoreCase(request.getMode());
+        Timestamp accessTill = parseAccessTillDate(request.getAccessTillDate());
+        if (soft && accessTill == null) {
+            throw new VacademyException("A last access date is required for a soft removal");
+        }
+
         int updated = 0;
         for (FacultySubjectPackageSessionMapping m : mappings) {
-            if (!"INACTIVE".equalsIgnoreCase(m.getStatus())) {
-                m.setStatus("INACTIVE");
+            if (soft) {
+                // SOFT: keep them ACTIVE, just stamp the cut-off. The nightly
+                // SubOrgTeamAccessExpiryJob flips them to INACTIVE once it passes.
+                m.setAccessTillDate(accessTill);
+                if (!"ACTIVE".equalsIgnoreCase(m.getStatus())) {
+                    m.setStatus("ACTIVE");
+                }
                 updated++;
+            } else {
+                // HARD: revoke access now. Stamp the cut-off for audit.
+                if (!"INACTIVE".equalsIgnoreCase(m.getStatus())) {
+                    m.setStatus("INACTIVE");
+                    updated++;
+                }
+                m.setAccessTillDate(accessTill != null ? accessTill : Timestamp.from(Instant.now()));
             }
         }
         facultyMappingRepository.saveAll(mappings);
@@ -384,7 +410,13 @@ public class SubOrgTeamService {
         Map<String, Object> result = new java.util.HashMap<>();
         result.put("user_id", request.getUserId());
         result.put("sub_org_id", request.getSubOrgId());
-        result.put("deactivated_mappings", updated);
+        result.put("mode", soft ? "SOFT" : "HARD");
+        if (soft) {
+            result.put("access_till_date", accessTill.toString());
+            result.put("scheduled_mappings", updated);
+        } else {
+            result.put("deactivated_mappings", updated);
+        }
         return result;
     }
 
@@ -457,6 +489,28 @@ public class SubOrgTeamService {
     }
 
     // ─────────── helpers ───────────
+
+    /**
+     * Parse a SOFT "last access date". Accepts a bare {@code yyyy-MM-dd} (kept
+     * through end-of-day, UTC) or a full ISO-8601 instant. Returns null on blank
+     * or unparseable input.
+     */
+    private Timestamp parseAccessTillDate(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String value = raw.trim();
+        try {
+            if (value.length() == 10 && value.charAt(4) == '-') {
+                LocalDate day = LocalDate.parse(value);
+                return Timestamp.from(day.atTime(LocalTime.MAX).atZone(ZoneOffset.UTC).toInstant());
+            }
+            return Timestamp.from(Instant.parse(value));
+        } catch (DateTimeParseException e) {
+            log.warn("Ignoring unparseable access_till_date '{}': {}", raw, e.getMessage());
+            return null;
+        }
+    }
 
     private void ensureCallerCanAccessSubOrg(CustomUserDetails caller, String instituteId, String subOrgId) {
         if (caller == null) {

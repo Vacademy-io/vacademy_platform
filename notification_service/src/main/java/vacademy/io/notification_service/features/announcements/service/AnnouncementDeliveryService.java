@@ -29,11 +29,16 @@ import vacademy.io.notification_service.features.send.dto.UnifiedSendResponse;
 import vacademy.io.notification_service.features.send.service.UnifiedSendService;
 import vacademy.io.notification_service.service.EmailService;
 import vacademy.io.notification_service.features.firebase_notifications.service.PushNotificationService;
+import vacademy.io.notification_service.institute.InstituteInternalService;
+import vacademy.io.notification_service.institute.InstituteInfoDTO;
 import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.entity.User;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,7 +60,8 @@ public class AnnouncementDeliveryService {
     private final PushNotificationService pushNotificationService;
     private final UnifiedSendService unifiedSendService;
     private final UserAnnouncementPreferenceService userAnnouncementPreferenceService;
-    
+    private final InstituteInternalService instituteInternalService;
+
     // Service clients for user resolution
     private final AuthServiceClient authServiceClient;
     
@@ -195,6 +201,19 @@ public class AnnouncementDeliveryService {
 
         // Credentials are fetched per batch only when the template actually uses {{password}}
         boolean needsPasswords = content.getContent() != null && content.getContent().contains("{{password}}");
+
+        // Institute details are fetched once for the whole delivery (not per recipient) and only
+        // when the template actually uses {{institute_email}}
+        String instituteEmail = null;
+        if (content.getContent() != null && content.getContent().contains("{{institute_email}}")) {
+            try {
+                InstituteInfoDTO instituteInfo = instituteInternalService.getInstituteByInstituteId(announcement.getInstituteId());
+                instituteEmail = instituteInfo != null ? instituteInfo.getEmail() : null;
+            } catch (Exception ex) {
+                log.warn("Failed to resolve institute email for announcement {}: {}", announcement.getId(), ex.getMessage());
+            }
+        }
+        final String resolvedInstituteEmail = instituteEmail;
         
         // Track overall progress
         int totalSuccess = 0;
@@ -270,7 +289,7 @@ public class AnnouncementDeliveryService {
                     }
 
                     // Process HTML content with variables (use cached users - no additional API calls)
-                    String processedContent = processHtmlVariables(content.getContent(), message, announcement, userEmailMap, passwordByUserId);
+                    String processedContent = processHtmlVariables(content.getContent(), message, announcement, userEmailMap, passwordByUserId, resolvedInstituteEmail);
 
                         // RATE LIMITING: Acquire permit before sending (blocks if limit exceeded)
                         rateLimiter.acquire();
@@ -853,34 +872,44 @@ public class AnnouncementDeliveryService {
      * @param announcement The announcement
      * @param userCache Cache of pre-resolved User objects (from batch resolution)
      * @param passwordCache Pre-resolved login passwords by userId (empty unless the content uses {{password}})
+     * @param instituteEmail Pre-resolved institute contact email (resolved once per announcement, not per recipient)
      * @return Processed HTML with variables replaced
      */
     private String processHtmlVariables(String htmlContent, RecipientMessage message,
                                        Announcement announcement, Map<String, User> userCache,
-                                       Map<String, String> passwordCache) {
+                                       Map<String, String> passwordCache, String instituteEmail) {
         if (htmlContent == null || htmlContent.isEmpty()) {
             return htmlContent;
         }
-        
+
         String processedContent = htmlContent;
-        
+
         // Replace common announcement variables
-        processedContent = processedContent.replace("{{title}}", 
+        processedContent = processedContent.replace("{{title}}",
             announcement.getTitle() != null ? announcement.getTitle() : "");
-        
-        processedContent = processedContent.replace("{{content}}", 
+
+        processedContent = processedContent.replace("{{content}}",
             getContentPreview(announcement.getTitle())); // Or use actual content preview
-        
-        processedContent = processedContent.replace("{{created_by}}", 
-            announcement.getCreatedByName() != null ? announcement.getCreatedByName() : 
+
+        processedContent = processedContent.replace("{{created_by}}",
+            announcement.getCreatedByName() != null ? announcement.getCreatedByName() :
             (announcement.getCreatedBy() != null ? announcement.getCreatedBy() : ""));
-        
-        processedContent = processedContent.replace("{{institute_id}}", 
+
+        processedContent = processedContent.replace("{{institute_id}}",
             announcement.getInstituteId() != null ? announcement.getInstituteId() : "");
-        
-        processedContent = processedContent.replace("{{announcement_id}}", 
+
+        processedContent = processedContent.replace("{{announcement_id}}",
             announcement.getId() != null ? announcement.getId() : "");
-        
+
+        // {{institute_email}} → resolved once per announcement via admin-core-service
+        processedContent = processedContent.replace("{{institute_email}}", instituteEmail != null ? instituteEmail : "");
+
+        // {{current_date}} / {{current_time}} → server time, no per-recipient dependency
+        processedContent = processedContent.replace("{{current_date}}",
+            LocalDate.now().format(DateTimeFormatter.ofPattern("dd MMM yyyy")));
+        processedContent = processedContent.replace("{{current_time}}",
+            LocalTime.now().format(DateTimeFormatter.ofPattern("hh:mm a")));
+
         // Get user from cache (no API call)
         User user = userCache != null ? userCache.get(message.getUserId()) : null;
         
@@ -915,6 +944,12 @@ public class AnnouncementDeliveryService {
             String email = user.getEmail() != null ? user.getEmail() : "";
             processedContent = processedContent.replace("{{user_email}}", email);
             processedContent = processedContent.replace("{{email}}", email);
+            // {{student_email}} → alias of {{email}}, for the canonical variable set
+            processedContent = processedContent.replace("{{student_email}}", email);
+
+            // {{student_id}} → user's unique ID
+            processedContent = processedContent.replace("{{student_id}}",
+                user.getId() != null ? user.getId() : "");
 
             // {{password}} → login password (resolved only when the template uses it)
             String password = passwordCache != null ? passwordCache.get(message.getUserId()) : null;
@@ -950,6 +985,8 @@ public class AnnouncementDeliveryService {
             processedContent = processedContent.replace("{{full_name}}", "");
             processedContent = processedContent.replace("{{user_email}}", "");
             processedContent = processedContent.replace("{{email}}", "");
+            processedContent = processedContent.replace("{{student_email}}", "");
+            processedContent = processedContent.replace("{{student_id}}", "");
             processedContent = processedContent.replace("{{password}}", "");
             processedContent = processedContent.replace("{{user_phone}}", "");
             processedContent = processedContent.replace("{{mobile_number}}", "");

@@ -7,14 +7,14 @@ import type {
 } from "@/services/course-leaderboard";
 
 /** The learner's earned badge icons (up to 3) + an overflow count. */
-function BadgeIcons({ entry }: { entry: LeaderboardEntry }) {
+function BadgeIcons({ entry, size = 20 }: { entry: LeaderboardEntry; size?: number }) {
   const shown = entry.badges?.slice(0, 3) ?? [];
   if (entry.badgeCount <= 0) return null;
   return (
-    <span className="inline-flex items-center gap-0.5">
+    <span className="inline-flex items-center gap-1">
       {shown.map((b, i) => (
         <span key={i} title={b.name} className="inline-flex">
-          <BadgeVisual icon={b.icon} size={14} className="text-warning-600" noAuth />
+          <BadgeVisual icon={b.icon} size={size} className="text-warning-600" noAuth />
         </span>
       ))}
       {entry.badgeCount > shown.length && (
@@ -84,8 +84,8 @@ function PodiumSpot({ entry, place }: { entry?: LeaderboardEntry; place: 1 | 2 |
         <p className="w-full truncate text-caption font-bold text-foreground">{entry.name}</p>
         <p className="text-caption font-semibold tabular-nums text-primary-500">{entry.points} pts</p>
         {entry.badgeCount > 0 && (
-          <span className="mt-0.5">
-            <BadgeIcons entry={entry} />
+          <span className="mt-1 flex items-center justify-center rounded-full bg-warning-50 px-2 py-1 ring-1 ring-warning-100">
+            <BadgeIcons entry={entry} size={first ? 30 : 26} />
           </span>
         )}
       </div>
@@ -109,7 +109,7 @@ function ListRow({ entry }: { entry: LeaderboardEntry }) {
       </span>
       <InitialAvatar name={entry.name} className="size-9 text-caption" />
       <span className="flex-1 truncate text-body font-medium text-neutral-700">{entry.name}</span>
-      <BadgeIcons entry={entry} />
+      <BadgeIcons entry={entry} size={24} />
       <span className="w-16 text-end text-body font-bold tabular-nums text-foreground">
         {entry.points}
         <span className="ms-0.5 text-caption font-normal text-muted-foreground">pts</span>

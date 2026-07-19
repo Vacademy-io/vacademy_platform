@@ -53,6 +53,21 @@ export const BADGE_LIBRARY: LibraryBadge[] = [
     { token: "lib:completionist-gold", url: "/badge-library/lib_completionist_gold.png", theme: "completionist", themeLabel: "Completionist", tier: "gold", trigger: "course_completion", description: "Finish courses to 100%" },
     { token: "lib:completionist-platinum", url: "/badge-library/lib_completionist_platinum.png", theme: "completionist", themeLabel: "Completionist", tier: "platinum", trigger: "course_completion", description: "Finish courses to 100%" },
     { token: "lib:completionist-diamond", url: "/badge-library/lib_completionist_diamond.png", theme: "completionist", themeLabel: "Completionist", tier: "diamond", trigger: "course_completion", description: "Finish courses to 100%" },
+    { token: "lib:perfect_score-bronze", url: "/badge-library/lib_perfect_score_bronze.png", theme: "perfect_score", themeLabel: "Perfect Score", tier: "bronze", trigger: "assessment_score", description: "Ace an assessment" },
+    { token: "lib:perfect_score-silver", url: "/badge-library/lib_perfect_score_silver.png", theme: "perfect_score", themeLabel: "Perfect Score", tier: "silver", trigger: "assessment_score", description: "Ace an assessment" },
+    { token: "lib:perfect_score-gold", url: "/badge-library/lib_perfect_score_gold.png", theme: "perfect_score", themeLabel: "Perfect Score", tier: "gold", trigger: "assessment_score", description: "Ace an assessment" },
+    { token: "lib:perfect_score-platinum", url: "/badge-library/lib_perfect_score_platinum.png", theme: "perfect_score", themeLabel: "Perfect Score", tier: "platinum", trigger: "assessment_score", description: "Ace an assessment" },
+    { token: "lib:perfect_score-diamond", url: "/badge-library/lib_perfect_score_diamond.png", theme: "perfect_score", themeLabel: "Perfect Score", tier: "diamond", trigger: "assessment_score", description: "Ace an assessment" },
+    { token: "lib:live_learner-bronze", url: "/badge-library/lib_live_learner_bronze.png", theme: "live_learner", themeLabel: "Live Learner", tier: "bronze", trigger: "live_session_count", description: "Attend live classes" },
+    { token: "lib:live_learner-silver", url: "/badge-library/lib_live_learner_silver.png", theme: "live_learner", themeLabel: "Live Learner", tier: "silver", trigger: "live_session_count", description: "Attend live classes" },
+    { token: "lib:live_learner-gold", url: "/badge-library/lib_live_learner_gold.png", theme: "live_learner", themeLabel: "Live Learner", tier: "gold", trigger: "live_session_count", description: "Attend live classes" },
+    { token: "lib:live_learner-platinum", url: "/badge-library/lib_live_learner_platinum.png", theme: "live_learner", themeLabel: "Live Learner", tier: "platinum", trigger: "live_session_count", description: "Attend live classes" },
+    { token: "lib:live_learner-diamond", url: "/badge-library/lib_live_learner_diamond.png", theme: "live_learner", themeLabel: "Live Learner", tier: "diamond", trigger: "live_session_count", description: "Attend live classes" },
+    { token: "lib:scholar-bronze", url: "/badge-library/lib_scholar_bronze.png", theme: "scholar", themeLabel: "Scholar", tier: "bronze", trigger: "slide_count", description: "Work through your lessons" },
+    { token: "lib:scholar-silver", url: "/badge-library/lib_scholar_silver.png", theme: "scholar", themeLabel: "Scholar", tier: "silver", trigger: "slide_count", description: "Work through your lessons" },
+    { token: "lib:scholar-gold", url: "/badge-library/lib_scholar_gold.png", theme: "scholar", themeLabel: "Scholar", tier: "gold", trigger: "slide_count", description: "Work through your lessons" },
+    { token: "lib:scholar-platinum", url: "/badge-library/lib_scholar_platinum.png", theme: "scholar", themeLabel: "Scholar", tier: "platinum", trigger: "slide_count", description: "Work through your lessons" },
+    { token: "lib:scholar-diamond", url: "/badge-library/lib_scholar_diamond.png", theme: "scholar", themeLabel: "Scholar", tier: "diamond", trigger: "slide_count", description: "Work through your lessons" },
 ];
 
 const LIBRARY_BY_TOKEN: Record<string, LibraryBadge> = BADGE_LIBRARY.reduce(
@@ -83,13 +98,13 @@ export function getLibraryUrl(token?: string | null): string | undefined {
  */
 export const TRIGGER_TO_LIBRARY_THEME: Record<string, string> = {
     course_count: "first_steps",
-    slide_count: "first_steps",
+    slide_count: "scholar",
     streak: "streak",
-    live_session_streak: "streak",
+    live_session_streak: "live_learner",
     xp_total: "xp_master",
-    assessment_score: "xp_master",
+    assessment_score: "perfect_score",
     course_completion: "completionist",
-    live_session_count: "completionist",
+    live_session_count: "live_learner",
 };
 
 export function libraryThemeForTrigger(trigger: string): string | undefined {

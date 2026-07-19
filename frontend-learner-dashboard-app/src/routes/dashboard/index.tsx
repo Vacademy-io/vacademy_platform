@@ -88,6 +88,7 @@ import { usePlayTheme } from "@/hooks/use-play-theme";
 import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import { computeGamificationData } from "@/services/play-gamification";
+import { syncBadgeUnlocks } from "@/services/badge-sync";
 import {
   getBadgeConfig,
   configNeedsAssessmentScore,
@@ -549,6 +550,20 @@ export function DashboardComponent() {
         });
 
         setGamificationData(gamificationData);
+
+        // Persist auto-unlocked badges server-side so they show on the leaderboards
+        // (best-effort, throttled per institute inside the service).
+        if (instituteId) {
+          const toSync = gamificationData.badges
+            .filter((b) => b.unlocked && !b.isAdminAwarded)
+            .map((b) => ({
+              badgeId: b.id,
+              badgeName: b.name,
+              badgeIcon: b.icon,
+              badgeDescription: b.description,
+            }));
+          void syncBadgeUnlocks(instituteId, toSync);
+        }
       } catch (error) {
         console.error("Failed to compute gamification data:", error);
       }

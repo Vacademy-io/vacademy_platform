@@ -46,6 +46,9 @@ const SYSTEM_COLUMNS: { accessor: string; label: string }[] = [
     { accessor: 'status', label: 'Status' },
     { accessor: 'referral_count', label: 'Referrals Count' },
     { accessor: 'counsellor', label: 'Counsellor' },
+    { accessor: 'billing_contact_name', label: 'Billing Contact Name' },
+    { accessor: 'billing_contact_email', label: 'Billing Contact Email' },
+    { accessor: 'billing_contact_role', label: 'Billing Contact Role' },
 ];
 
 interface LearnerListColumnsCardProps {

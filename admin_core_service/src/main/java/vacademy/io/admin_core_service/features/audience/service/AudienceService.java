@@ -56,6 +56,7 @@ import vacademy.io.admin_core_service.features.notification.dto.NotificationTemp
 import vacademy.io.admin_core_service.features.notification_service.service.SendUniqueLinkService;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
+import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.audience.enums.CustomFieldValueSourceType;
@@ -594,6 +595,197 @@ public class AudienceService {
                             saved.getId(), instituteId);
                     return saved;
                 });
+    }
+
+    /** Campaign name for the auto-provisioned per-institute live-class / webinar lead audience. */
+    private static final String LIVE_CLASS_AUDIENCE_NAME = "Public Webinar - Live Session";
+
+    /**
+     * Capture a lead from a public live-class (webinar) guest registration.
+     *
+     * <p>Live-session guest registration ({@code RegistrationService.saveGuestUserDetails})
+     * writes only {@code session_guest_registrations} + EXTERNAL_PARTICIPANT custom field
+     * values and never created an {@code audience_response}, so webinar registrants were
+     * invisible in the CRM lead list. This routes them into a single per-institute
+     * "Public Webinar - Live Session" audience so they show up in Audience Manager →
+     * Recent Leads, exactly like {@link #submitCatalogueLead} does for catalogue leads.
+     *
+     * <p>Mirrors submitCatalogueLead deliberately: NOT {@code @Transactional} (its
+     * best-effort sub-calls must not mark a surrounding tx rollback-only), and it does
+     * NOT fire the {@code AUDIENCE_LEAD_SUBMISSION} workflow — the registrant already
+     * receives the {@code LIVE_SESSION_FORM_SUBMISSION} seat-confirmation, and firing the
+     * audience workflow too would double-message them.
+     *
+     * <p>Best-effort: returns null rather than throwing when it cannot create a lead, so
+     * the caller — an already-committed public registration — is never disturbed.
+     */
+    public String submitLiveClassLead(String instituteId, String fullName, String email,
+                                      String mobileNumber, Map<String, String> extraCustomFieldValues,
+                                      String sourceId) {
+        if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(email)) {
+            return null;
+        }
+
+        Audience audience = getOrCreateLiveClassAudience(instituteId);
+
+        UserDTO userDTO = UserDTO.builder()
+                .fullName(fullName)
+                .email(email)
+                .mobileNumber(mobileNumber)
+                .build();
+
+        // The webinar form's extra fields (anything beyond name/email/phone — e.g. "CUET
+        // Marks") arrive keyed by their custom_field_id. Attach each to this audience's
+        // AUDIENCE_FORM schema (idempotent) so it renders as a lead column; the value is
+        // saved below. This keeps the lead's fields in sync with the registration form for
+        // ANY institute — even one whose live-class audience was just auto-created — without
+        // any manual campaign setup.
+        if (extraCustomFieldValues != null && !extraCustomFieldValues.isEmpty()) {
+            int order = 3; // base identity fields occupy 0..2
+            for (String customFieldId : extraCustomFieldValues.keySet()) {
+                try {
+                    ensureAudienceFormField(instituteId, audience.getId(), customFieldId, order++);
+                } catch (Exception e) {
+                    logger.error("Live-class lead: attaching field {} to audience {} failed: {}",
+                            customFieldId, audience.getId(), e.getMessage());
+                }
+            }
+        }
+
+        final String src = StringUtils.hasText(sourceId) ? sourceId : "live-class";
+
+        // Institute-configured hard dedup — before creating the auth user.
+        java.util.Optional<String> dedupRejection = leadDeduplicationService.checkForRejection(
+                instituteId, audience.getId(), email, mobileNumber);
+        if (dedupRejection.isPresent()) {
+            return dedupRejection.get();
+        }
+
+        // 1. Create/fetch the lead's user in auth_service (no credentials email).
+        UserDTO createdUser = authService.createUserFromAuthService(userDTO, audience.getInstituteId(), false);
+        String userId = createdUser != null ? createdUser.getId() : null;
+
+        // 2. Per-person-per-campaign dedup — revive a soft-deleted lead rather than duplicate.
+        if (StringUtils.hasText(userId)
+                && audienceResponseRepository.existsByAudienceIdAndUserId(audience.getId(), userId)) {
+            reactivateSoftDeletedLeads(audience.getId(), userId);
+            return "You are already captured as a lead for this campaign";
+        }
+
+        // 3. Persist the lead — this is what Audience Manager → Recent Leads reads.
+        AudienceResponse savedResponse = audienceResponseRepository.save(AudienceResponse.builder()
+                .audienceId(audience.getId())
+                .sourceType("LIVE_SESSION")
+                .sourceId(src)
+                .userId(userId)
+                .parentName(fullName)
+                .parentEmail(email)
+                .parentMobile(truncateForParentMobileColumn(mobileNumber))
+                .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
+                .initialScore(audience.getDefaultInitialScore())
+                .build());
+
+        // 4. Enrichment — best-effort; never block the saved lead.
+        try {
+            logLeadSubmitted(savedResponse);
+        } catch (Exception e) {
+            logger.error("Live-class lead {}: logLeadSubmitted failed: {}", savedResponse.getId(), e.getMessage());
+        }
+        try {
+            // Build the values to persist so every key resolves to a field that actually
+            // exists on this audience — otherwise saveCustomFieldValues' single saveAll would
+            // FK-fail on an unknown key and drop the whole batch (incl. the extras). Extras
+            // were attached above, so they resolve. Base identity keys are included only when
+            // the audience already has them (a freshly auto-created audience does not — the
+            // name/email/phone still surface on the lead via parent_name/parent_email/parent_mobile).
+            Map<String, String> valuesToSave = extraCustomFieldValues != null
+                    ? new HashMap<>(extraCustomFieldValues)
+                    : new HashMap<>();
+            Set<String> audienceFieldKeys = new HashSet<>();
+            for (Object[] row : instituteCustomFieldRepository.findInstituteCustomFieldsWithDetails(
+                    audience.getInstituteId(), CustomFieldTypeEnum.AUDIENCE_FORM.name(), audience.getId())) {
+                CustomFields cf = (CustomFields) row[1];
+                if (cf.getFieldKey() != null) audienceFieldKeys.add(cf.getFieldKey().toLowerCase().trim());
+            }
+            if (StringUtils.hasText(fullName) && audienceFieldKeys.contains("full_name")) {
+                valuesToSave.put("full_name", fullName);
+            }
+            if (StringUtils.hasText(email) && audienceFieldKeys.contains("email")) {
+                valuesToSave.put("email", email);
+            }
+            if (StringUtils.hasText(mobileNumber) && audienceFieldKeys.contains("phone_number")) {
+                valuesToSave.put("phone_number", mobileNumber);
+            }
+            if (!CollectionUtils.isEmpty(valuesToSave)) {
+                saveCustomFieldValues(savedResponse.getId(), valuesToSave, audience.getInstituteId(),
+                        audience.getId());
+            }
+        } catch (Exception e) {
+            logger.error("Live-class lead {}: saveCustomFieldValues failed: {}", savedResponse.getId(), e.getMessage());
+        }
+        try {
+            leadScoringService.calculateAndSaveScore(savedResponse.getId(), savedResponse.getAudienceId(),
+                    audience.getInstituteId(), savedResponse.getSourceType(), savedResponse.getEnquiryId());
+        } catch (Exception e) {
+            logger.error("Live-class lead {}: lead score failed: {}", savedResponse.getId(), e.getMessage());
+        }
+
+        // Pool auto-assignment — live-class leads carry no counsellor, so this is pure pool routing.
+        autoAssignCounsellorOnIntake(savedResponse, userId, audience.getInstituteId(),
+                null, null, createdUser != null ? createdUser.getFullName() : null,
+                audience.getCampaignName());
+
+        return savedResponse.getId();
+    }
+
+    /**
+     * Resolve the per-institute live-class / webinar lead audience, creating a minimal
+     * ACTIVE one on first use so no manual campaign setup is required. Resolved by name,
+     * so an institute that already has a "Public Webinar - Live Session" campaign reuses it.
+     */
+    private Audience getOrCreateLiveClassAudience(String instituteId) {
+        return audienceRepository.findFirstByInstituteIdAndCampaignName(instituteId, LIVE_CLASS_AUDIENCE_NAME)
+                .orElseGet(() -> {
+                    Audience audience = Audience.builder()
+                            .id(UUID.randomUUID().toString())
+                            .instituteId(instituteId)
+                            .campaignName(LIVE_CLASS_AUDIENCE_NAME)
+                            .campaignType("WEBSITE")
+                            .campaignObjective("LEAD_GENERATION")
+                            .description("Leads captured from public live-class / webinar registrations")
+                            .status("ACTIVE")
+                            .defaultInitialScore(20)
+                            .build();
+                    Audience saved = audienceRepository.save(audience);
+                    logger.info("Auto-provisioned live-class lead audience {} for institute {}",
+                            saved.getId(), instituteId);
+                    return saved;
+                });
+    }
+
+    /**
+     * Attach a custom field to an audience's AUDIENCE_FORM schema if it isn't already,
+     * so a value saved against it renders as a column in the lead list. Idempotent — a
+     * no-op when the link already exists. Used to mirror a live-class registration form's
+     * extra fields onto its lead audience.
+     */
+    private void ensureAudienceFormField(String instituteId, String audienceId, String customFieldId, int order) {
+        if (!StringUtils.hasText(customFieldId)) return;
+        boolean alreadyLinked = instituteCustomFieldRepository
+                .findTopByInstituteIdAndCustomFieldIdAndTypeAndTypeIdAndStatusOrderByCreatedAtDesc(
+                        instituteId, customFieldId, "AUDIENCE_FORM", audienceId, "ACTIVE")
+                .isPresent();
+        if (alreadyLinked) return;
+        instituteCustomFieldRepository.save(InstituteCustomField.builder()
+                .instituteId(instituteId)
+                .customFieldId(customFieldId)
+                .type("AUDIENCE_FORM")
+                .typeId(audienceId)
+                .status("ACTIVE")
+                .isMandatory(false)
+                .individualOrder(order)
+                .groupInternalOrder(0)
+                .build());
     }
 
     private static final String PHONE_ENQUIRIES_AUDIENCE_NAME = "Phone Enquiries";

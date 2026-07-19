@@ -85,7 +85,60 @@ public class RegistrationService {
         }
 
         scheduleFormSubmissionWorkflow(requestDto, guestUserId);
+        scheduleLiveClassLeadCapture(requestDto);
         return guestUserId;
+    }
+
+    /**
+     * Schedules CRM lead capture to run strictly AFTER the registration commits, for the
+     * same reasons as {@link #scheduleFormSubmissionWorkflow}: nothing here runs inside the
+     * registration transaction (no early flush, no swallowed constraint failure), and
+     * {@code afterCommit} fires only on a committed registration so a rolled-back one never
+     * creates a lead.
+     */
+    private void scheduleLiveClassLeadCapture(GuestRegistrationRequestDTO requestDto) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    dispatchLiveClassLeadCapture(requestDto);
+                }
+            });
+        } else {
+            dispatchLiveClassLeadCapture(requestDto);
+        }
+    }
+
+    /**
+     * Turns a public live-class registration into a CRM lead so the registrant appears in
+     * Audience Manager → Recent Leads (previously they only landed in
+     * {@code session_guest_registrations}, which no lead screen reads).
+     *
+     * <p>Best-effort and never throwing — the registration has already committed by the
+     * time this runs and must not be disturbed. Resolves the session's institute and the
+     * guest's name/email/phone (same admin-defined-field resolution as the workflow
+     * context), then hands off to the bounded async executor. Deliberately unconditional
+     * (no trigger gate): guest registration only happens for public sessions, so this is
+     * already scoped to public webinars, and every such registrant is a lead.
+     */
+    private void dispatchLiveClassLeadCapture(GuestRegistrationRequestDTO requestDto) {
+        try {
+            Optional<LiveSession> sessionOpt = liveSessionRepository.findById(requestDto.getSessionId());
+            if (sessionOpt.isEmpty()) return;
+            LiveSession session = sessionOpt.get();
+            String instituteId = session.getInstituteId();
+            if (instituteId == null || instituteId.isBlank()) return;
+
+            GuestIdentity identity = resolveIdentity(requestDto);
+            if (identity.email == null || identity.email.isBlank()) return; // no email → no lead
+
+            liveSessionWorkflowAsyncHelper.createLiveClassLeadAsync(
+                    instituteId, identity.fullName, identity.email, identity.mobileNumber,
+                    identity.extraById, session.getId());
+        } catch (Exception e) {
+            log.warn("Failed to capture live-class lead for sessionId={}: {}",
+                    requestDto.getSessionId(), e.getMessage(), e);
+        }
     }
 
     /**
@@ -189,6 +242,45 @@ public class RegistrationService {
                                              String guestUserId,
                                              LiveSession session,
                                              String instituteId) {
+        GuestIdentity id = resolveIdentity(requestDto);
+
+        Map<String, Object> guest = new LinkedHashMap<>();
+        guest.put("guestRegistrationId", guestUserId);
+        guest.put("fullName", id.fullName);
+        guest.put("mobileNumber", id.mobileNumber);
+        guest.put("email", id.email);
+        guest.put("sessionId", session.getId());
+        guest.put("sessionTitle", session.getTitle());
+        guest.putAll(id.byName);
+
+        List<Map<String, Object>> guests = new ArrayList<>();
+        guests.add(guest);
+
+        Map<String, Object> contextData = new HashMap<>();
+        contextData.put("instituteId", instituteId);
+        contextData.put("instituteIdForWhatsapp", instituteId);
+        contextData.put("sessionId", session.getId());
+        contextData.put("sessionTitle", session.getTitle());
+        contextData.put("guestRegistrationId", guestUserId);
+        contextData.put("fullName", id.fullName);
+        contextData.put("mobileNumber", id.mobileNumber);
+        contextData.put("email", id.email);
+        contextData.put("customFields", id.byKey);
+        contextData.put("customFieldsByName", id.byName);
+        contextData.put("liveSession", session);
+        contextData.put("guests", guests);
+        return contextData;
+    }
+
+    /**
+     * Resolves the "who is this person" fields from a guest submission. The form is
+     * entirely admin-defined custom fields, so name/phone/email are classified via
+     * {@link GuestFormFieldResolver} rather than read from fixed columns. Answers are also
+     * collected by field key and by (lowercased) label. Shared by the workflow context
+     * ({@link #buildContext}) and CRM lead capture ({@link #dispatchLiveClassLeadCapture})
+     * so both read identity the exact same way.
+     */
+    private GuestIdentity resolveIdentity(GuestRegistrationRequestDTO requestDto) {
         List<GuestRegistrationRequestDTO.CustomFieldValueDTO> submitted =
                 requestDto.getCustomFields() == null ? List.of() : requestDto.getCustomFields();
 
@@ -206,6 +298,9 @@ public class RegistrationService {
 
         Map<String, Object> byKey = new LinkedHashMap<>();
         Map<String, Object> byName = new LinkedHashMap<>();
+        // Non-identity answers (everything that isn't name/email/phone), keyed by
+        // custom_field_id → value, so lead capture can mirror them onto the lead audience.
+        Map<String, String> extraById = new LinkedHashMap<>();
         String fullName = null;
         String mobileNumber = null;
         String email = requestDto.getEmail();
@@ -230,35 +325,35 @@ public class RegistrationService {
                     if (email == null || email.isBlank()) email = value.trim();
                 }
                 default -> {
+                    if (answer.getCustomFieldId() != null) {
+                        extraById.put(answer.getCustomFieldId(), value.trim());
+                    }
                 }
             }
         }
 
-        Map<String, Object> guest = new LinkedHashMap<>();
-        guest.put("guestRegistrationId", guestUserId);
-        guest.put("fullName", fullName);
-        guest.put("mobileNumber", mobileNumber);
-        guest.put("email", email);
-        guest.put("sessionId", session.getId());
-        guest.put("sessionTitle", session.getTitle());
-        guest.putAll(byName);
+        return new GuestIdentity(fullName, mobileNumber, email, byKey, byName, extraById);
+    }
 
-        List<Map<String, Object>> guests = new ArrayList<>();
-        guests.add(guest);
+    /** Immutable holder for the identity + answer maps resolved from a guest submission. */
+    private static final class GuestIdentity {
+        final String fullName;
+        final String mobileNumber;
+        final String email;
+        final Map<String, Object> byKey;
+        final Map<String, Object> byName;
+        /** Non-identity answers keyed by custom_field_id → value (e.g. "CUET Marks"). */
+        final Map<String, String> extraById;
 
-        Map<String, Object> contextData = new HashMap<>();
-        contextData.put("instituteId", instituteId);
-        contextData.put("instituteIdForWhatsapp", instituteId);
-        contextData.put("sessionId", session.getId());
-        contextData.put("sessionTitle", session.getTitle());
-        contextData.put("guestRegistrationId", guestUserId);
-        contextData.put("fullName", fullName);
-        contextData.put("mobileNumber", mobileNumber);
-        contextData.put("email", email);
-        contextData.put("customFields", byKey);
-        contextData.put("customFieldsByName", byName);
-        contextData.put("liveSession", session);
-        contextData.put("guests", guests);
-        return contextData;
+        GuestIdentity(String fullName, String mobileNumber, String email,
+                      Map<String, Object> byKey, Map<String, Object> byName,
+                      Map<String, String> extraById) {
+            this.fullName = fullName;
+            this.mobileNumber = mobileNumber;
+            this.email = email;
+            this.byKey = byKey;
+            this.byName = byName;
+            this.extraById = extraById;
+        }
     }
 }

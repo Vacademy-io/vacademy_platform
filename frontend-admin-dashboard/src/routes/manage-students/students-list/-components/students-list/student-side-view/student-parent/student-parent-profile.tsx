@@ -30,9 +30,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_PARENT_LINK_PARENT, GET_PARENT_LINK_CHILDREN } from '@/constants/urls';
-import { Users, Plus, ArrowLeft } from '@phosphor-icons/react';
+import { Users, Plus, ArrowLeft, Key } from '@phosphor-icons/react';
 import { useStudentCredentails } from '@/services/student-list-section/getStudentCredentails';
-import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { getCurrentInstituteId, getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getDisplaySettingsWithFallback, getDisplaySettingsFromCache } from '@/services/display-settings';
 import { useParentSettings } from '@/hooks/use-parent-settings';
 import { useParentLink } from '../../../../-hooks/useParentLink';
 import { GuardianLinkPanel } from '../../../../-components/enroll-bulk/components/GuardianLinkPanel';
@@ -167,6 +168,21 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
     const instituteId = getCurrentInstituteId() ?? '';
     const { enabled: guardianLinkingEnabled } = useParentSettings();
     const { mutateAsync: linkGuardian, isPending: isLinking } = useParentLink();
+    const [allowViewPassword, setAllowViewPassword] = useState<boolean | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const roleKey = getActiveRoleDisplaySettingsKey();
+            const cached = getDisplaySettingsFromCache(roleKey);
+            const settings =
+                cached?.learnerManagement ?? (await getDisplaySettingsWithFallback(roleKey)).learnerManagement;
+            if (!cancelled) setAllowViewPassword(settings?.allowViewPassword ?? false);
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     // noUncheckedIndexedAccess means history[n] is `ViewedPerson | undefined`
     // even right after a length check — resolve it once, explicitly.
@@ -228,6 +244,15 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
     // this profile is a student with a resolved guardian id.
     const guardianId = parentQuery.data?.id ?? '';
     const credentialsQuery = useStudentCredentails({ userId: guardianId });
+
+    // This student's OWN login (currentId itself, not the guardian's) -- a
+    // guardian-linked child created via onboarding/parent-add-student flows
+    // often has no course/enrollment yet, so there's no manage-students row
+    // for them and thus no Portal Access tab to see their own credentials in.
+    // This is the one place a child-without-enrollment is reachable from at
+    // all (pivoted into from the guardian's Linked Children list), so it's
+    // shown here too, gated by the same allowViewPassword display setting.
+    const ownCredentialsQuery = useStudentCredentails({ userId: currentId });
     const guardianPassword = guardianId
         ? credentialsQuery.data?.password || (credentialsQuery.isLoading ? 'Loading...' : 'Password not found')
         : null;
@@ -267,6 +292,45 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
     };
 
     const backTrail = lastView && <BackTrail current={lastView} onBack={goBack} />;
+
+    // This student's (currentId's) own login -- shown on the "student" branch only (not the
+    // guardian's own view of their children list). See the ownCredentialsQuery comment above
+    // for why this needs to exist here specifically.
+    const ownCredentialsBlock =
+        allowViewPassword === false ? (
+            <p className="text-2xs text-muted-foreground">
+                Password visibility is off for this institute — enable it under Settings → Role
+                Display to view this student&apos;s login here.
+            </p>
+        ) : (
+            <ProfileSectionCard icon={Key} heading="This Student's Login">
+                <dl>
+                    <ProfileFieldRow
+                        label="Username"
+                        value={ownCredentialsQuery.data?.username ?? null}
+                        copied={copiedField === 'Student Username'}
+                        onCopy={
+                            ownCredentialsQuery.data?.username
+                                ? () => handleCopy(ownCredentialsQuery.data!.username, 'Student Username')
+                                : undefined
+                        }
+                    />
+                    <ProfileFieldRow
+                        label="Password"
+                        value={
+                            ownCredentialsQuery.data?.password ??
+                            (ownCredentialsQuery.isLoading ? 'Loading…' : 'Not found')
+                        }
+                        copied={copiedField === 'Student Password'}
+                        onCopy={
+                            ownCredentialsQuery.data?.password
+                                ? () => handleCopy(ownCredentialsQuery.data!.password, 'Student Password')
+                                : undefined
+                        }
+                    />
+                </dl>
+            </ProfileSectionCard>
+        );
 
     if (childrenQuery.isLoading || parentQuery.isLoading) {
         return (
@@ -376,6 +440,7 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
         return (
             <div className="flex flex-col gap-3">
                 {backTrail}
+                {ownCredentialsBlock}
                 <ProfileEmpty
                     icon={Users}
                     title="No guardian linked yet"
@@ -410,6 +475,7 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
     return (
         <div className="flex flex-col gap-3">
             {backTrail}
+            {ownCredentialsBlock}
             <ProfileSectionCard
                 icon={Users}
                 heading="Guardian"

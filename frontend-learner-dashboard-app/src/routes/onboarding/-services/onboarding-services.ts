@@ -49,6 +49,9 @@ export interface OnboardingInstanceDTO {
   flow_id: string;
   institute_id: string;
   subject_user_id: string;
+  /** Set only when the caller isn't the subject themself (a parent viewing a linked
+   *  child's instance) — lets a parent with multiple children tell their cards apart. */
+  subject_full_name: string | null;
   current_step_id: string | null;
   status: OnboardingInstanceStatus;
   started_by: string | null;

@@ -148,6 +148,13 @@ function OnboardingInstanceCard({ instance }: OnboardingInstanceCardProps) {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Only set when this is a linked child's instance, not the caller's own —
+          lets a parent with multiple children tell their cards apart. */}
+      {instance.subject_full_name && (
+        <p className="text-sm font-medium text-neutral-600">
+          Onboarding for {instance.subject_full_name}
+        </p>
+      )}
       {activeStep ? (
         <OnboardingStepForm
           stepInstance={activeStep}

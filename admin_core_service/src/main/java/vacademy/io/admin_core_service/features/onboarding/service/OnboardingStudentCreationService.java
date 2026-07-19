@@ -65,6 +65,14 @@ public class OnboardingStudentCreationService {
                                       String studentEmail, String studentMobileNumber) {
         if (!isParent) return;
 
+        // Row-locks the instance before the check-then-act below: two near-simultaneous
+        // completions of the same step-instance (double-click, client retry) could otherwise
+        // both read resolvedSubjectUserId as null before either commits, each call
+        // parentLinkService.link, and create two separate child accounts. A concurrent second
+        // transaction blocks on this call until the first commits. Same managed entity as
+        // `instance` within this transaction (JPA identity map) -- just forces the DB-level lock.
+        instance = onboardingInstanceRepository.findByIdForUpdate(instance.getId()).orElse(instance);
+
         // Guards against a step being (re)completed with is_parent=true after a PRIOR step on
         // this same instance already resolved the real student -- without this, the already-
         // resolved child would get treated as a parent adding a second, spurious new student.

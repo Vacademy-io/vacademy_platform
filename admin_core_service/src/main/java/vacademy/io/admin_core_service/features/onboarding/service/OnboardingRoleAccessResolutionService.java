@@ -4,11 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingRoleAccessDTO;
 import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingStepFieldConfigDTO;
 import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingStep;
 import vacademy.io.admin_core_service.features.onboarding.enums.OnboardingRoleKey;
 import vacademy.io.admin_core_service.features.onboarding.repository.OnboardingStepRepository;
+import vacademy.io.admin_core_service.features.parent_link.service.ParentLinkService;
 import vacademy.io.common.auth.dto.UserDTO;
 
 import java.util.List;
@@ -29,6 +31,7 @@ import java.util.Optional;
 public class OnboardingRoleAccessResolutionService {
 
     private final OnboardingStepRepository onboardingStepRepository;
+    private final ParentLinkService parentLinkService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @AllArgsConstructor
@@ -50,6 +53,20 @@ public class OnboardingRoleAccessResolutionService {
             return OnboardingRoleKey.PARENT.name();
         }
         return OnboardingRoleKey.STUDENT.name();
+    }
+
+    /**
+     * True if {@code callerId} is the linked guardian (parent) of {@code subjectUserId}, per
+     * auth_service's {@code users.linked_parent_id} -- lets a parent with their OWN separate
+     * login act on a child's onboarding instance, not just the exact subject/resolved-subject
+     * account itself. Pure DB-relationship check (no JWT authority / institute / enrolment
+     * assumptions), consistent with how {@link #resolveRoleKey} already trusts the DB
+     * {@code is_parent} flag rather than any JWT claim.
+     */
+    public boolean isLinkedGuardianOf(String callerId, String subjectUserId) {
+        if (!StringUtils.hasText(callerId) || !StringUtils.hasText(subjectUserId)) return false;
+        UserDTO parent = parentLinkService.getParentOfStudent(subjectUserId);
+        return parent != null && callerId.equals(parent.getId());
     }
 
     public EffectiveAccess resolveStepAccess(String stepId, String roleKey) {

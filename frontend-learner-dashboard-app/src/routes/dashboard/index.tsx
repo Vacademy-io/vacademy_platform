@@ -114,6 +114,7 @@ import {
   type OnboardingInstanceDTO,
   type OnboardingStepInstanceDTO,
 } from "../onboarding/-services/onboarding-services";
+import { getInstituteId } from "@/constants/helper";
 
 export const Route = createFileRoute("/dashboard/")({
   component: () => {
@@ -152,7 +153,29 @@ const getActiveFormStep = (
  * learner doesn't pay for dashboard queries they can't see yet.
  */
 function DashboardOnboardingGate() {
-  const { instituteId } = useInstituteFeatureStore();
+  // Resolved the same way as the standalone /onboarding page (getInstituteId(), not the
+  // domain-routing store): that store only gets populated once useDomainRouting's async
+  // resolution completes, which can still be in flight on a fresh page load, and starts
+  // `null` either way -- there is no way to tell "not yet known" from "genuinely absent"
+  // from the store alone. Without an explicit resolving flag, the gate below would fall
+  // through to <DashboardComponent /> during that window (its query stays disabled while
+  // instituteId is null) and flash the real dashboard before the onboarding check can run.
+  const [instituteId, setInstituteId] = useState<string | null>(null);
+  const [isResolvingInstitute, setIsResolvingInstitute] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const id = await getInstituteId();
+      if (!cancelled) {
+        setInstituteId(id ?? null);
+        setIsResolvingInstitute(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const { data: instances, isLoading } = useQuery({
     queryKey: [ONBOARDING_INSTANCES_QUERY_KEY, instituteId],
@@ -167,7 +190,7 @@ function DashboardOnboardingGate() {
     | { instance: OnboardingInstanceDTO; step: OnboardingStepInstanceDTO }
     | undefined;
 
-  if (Boolean(instituteId) && isLoading) {
+  if (isResolvingInstitute || (Boolean(instituteId) && isLoading)) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Skeleton className="h-8 w-48" />
@@ -180,7 +203,9 @@ function DashboardOnboardingGate() {
       <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-1 py-6">
         <div>
           <h1 className="text-h3 font-semibold text-neutral-700">
-            Finish setting up your account
+            {pending.instance.subject_full_name
+              ? `Finish setting up ${pending.instance.subject_full_name}'s account`
+              : "Finish setting up your account"}
           </h1>
           <p className="mt-1 text-sm text-neutral-500">
             Complete the steps below to continue to your dashboard.

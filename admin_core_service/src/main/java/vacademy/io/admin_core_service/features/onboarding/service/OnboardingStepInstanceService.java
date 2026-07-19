@@ -112,20 +112,33 @@ public class OnboardingStepInstanceService {
         OnboardingStepInstance stepInstance = getStepInstance(stepInstanceId);
         OnboardingStep step = onboardingStepRepository.findById(stepInstance.getStepId())
                 .orElseThrow(() -> new ResourceNotFoundException("Onboarding step not found: " + stepInstance.getStepId()));
+
+        // Idempotent no-op on a step already finalized -- a double-click, client retry, or
+        // replayed request must not re-run side effects (credentials email isn't itself
+        // idempotent, and re-advancing would regress an already-COMPLETED next step back to
+        // IN_PROGRESS and re-fire its ONBOARDING_STEP_ENTERED trigger).
+        if (OnboardingStepInstanceStatus.COMPLETED.name().equals(stepInstance.getStatus())
+                || OnboardingStepInstanceStatus.SKIPPED.name().equals(stepInstance.getStatus())) {
+            return stepInstance;
+        }
+
         OnboardingInstance instance = onboardingInstanceRepository.findById(stepInstance.getOnboardingInstanceId())
                 .orElseThrow(() -> new ResourceNotFoundException("Onboarding instance not found: " + stepInstance.getOnboardingInstanceId()));
 
         boolean requestsParentResolution = payload != null
                 && "true".equalsIgnoreCase(String.valueOf(payload.get("is_parent")));
 
-        // A step that assigns a course, or that resolves "filled by a parent" into a brand-new
-        // user account, is an administrative action, not something a learner self-serves --
-        // otherwise a caller could either enroll themselves in any course (empty pool) or create
-        // arbitrary new accounts under themselves-as-parent with zero oversight. Enforced here
-        // (not just in the learner-app UI) since the learner endpoint always resolves the
-        // caller's real role before calling this.
-        if ((isCreateStudentConfigured(step) || requestsParentResolution)
-                && !OnboardingRoleKey.ADMIN.name().equals(actorRoleKey)) {
+        // A step that assigns a course, that resolves "filled by a parent" into a brand-new user
+        // account, or whose step-level role_access denies this role edit permission, is not
+        // something a non-admin caller may complete -- otherwise a caller could either enroll
+        // themselves in any course (empty pool), create arbitrary new accounts under themselves-
+        // as-parent with zero oversight, or complete a step an admin explicitly locked to
+        // themselves via role_access despite it having no create_student config. Enforced here
+        // (not just in the learner-app UI, which only renders the form when learner_can_act
+        // permits it) since the learner endpoint always resolves the caller's real role before
+        // calling this.
+        if (!OnboardingRoleKey.ADMIN.name().equals(actorRoleKey)
+                && (requestsParentResolution || !isActionableForRole(step, actorRoleKey))) {
             throw new ForbiddenException("This action must be completed by an admin.");
         }
 
@@ -172,6 +185,14 @@ public class OnboardingStepInstanceService {
     @Transactional
     public OnboardingStepInstance skipStep(String stepInstanceId, String reason, String actorUserId) {
         OnboardingStepInstance stepInstance = getStepInstance(stepInstanceId);
+
+        // Idempotent no-op on a step already finalized -- see completeStep for why (double-click /
+        // retry must not re-fire triggers or re-advance an already-COMPLETED next step).
+        if (OnboardingStepInstanceStatus.COMPLETED.name().equals(stepInstance.getStatus())
+                || OnboardingStepInstanceStatus.SKIPPED.name().equals(stepInstance.getStatus())) {
+            return stepInstance;
+        }
+
         OnboardingStep step = onboardingStepRepository.findById(stepInstance.getStepId())
                 .orElseThrow(() -> new ResourceNotFoundException("Onboarding step not found: " + stepInstance.getStepId()));
         if (!Boolean.TRUE.equals(step.getIsOptional())) {
@@ -304,13 +325,27 @@ public class OnboardingStepInstanceService {
     /**
      * Whether a caller acting as {@code roleKey} (STUDENT/PARENT) can actually act on this step --
      * false for a create_student-configured step (always admin-only, enforced in
-     * {@link #completeStep}) or one whose step-level role_access denies this role edit permission.
-     * Used to decide whether the learner app should block on this step (e.g. gate the dashboard)
-     * or treat it as "waiting on an admin" and let the learner through.
+     * {@link #completeStep}); otherwise true only if there's actually something this role may
+     * DO on the step: either it has no attached fields and the step-level default itself grants
+     * edit (a plain "read this, click complete" step), or at least one attached field resolves
+     * editable for this role. Deliberately checks per-FIELD access (not just the step-level
+     * default) so an admin who left the step-level default at STUDENT/PARENT can_edit=false but
+     * explicitly granted edit on specific fields isn't wrongly locked out -- per
+     * {@link OnboardingRoleAccessResolutionService}'s own contract, "a field-level entry (if
+     * present) overrides the step-level default", so actionability has to honor that same
+     * override, not just the fallback. Used both to decide whether the
+     * learner app should block on this step (e.g. gate the dashboard) or let the learner through
+     * as "waiting on an admin", AND to enforce server-side in {@link #completeStep} that a
+     * non-admin can't complete a step with nothing they're actually permitted to submit.
      */
     public boolean isActionableForRole(OnboardingStep step, String roleKey) {
         if (isCreateStudentConfigured(step)) return false;
-        return roleAccessResolutionService.resolveStepAccess(step.getId(), roleKey).canEdit;
+        List<OnboardingStepFieldConfigDTO> fieldConfigs = parseFieldConfigs(step.getFieldsConfig());
+        if (fieldConfigs.isEmpty()) {
+            return roleAccessResolutionService.resolveStepAccess(step.getId(), roleKey).canEdit;
+        }
+        return fieldConfigs.stream().anyMatch(fc -> roleAccessResolutionService
+                .resolveFieldAccess(step.getId(), fc.getInstituteCustomFieldId(), roleKey).canEdit);
     }
 
     /**

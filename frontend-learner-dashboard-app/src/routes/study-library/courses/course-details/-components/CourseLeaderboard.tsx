@@ -15,6 +15,10 @@ import {
   type LeaderboardEntry,
 } from "@/services/course-leaderboard";
 import { getBadgesEnabled } from "@/services/badge-config";
+import { usePlayGamificationStore } from "@/stores/play-gamification-store";
+import { getCachedGamification } from "@/services/play-gamification";
+import { isLibraryToken } from "@/services/badge-library";
+import { getInstituteId } from "@/constants/helper";
 
 /**
  * Course leaderboard as a trigger + dialog. Ranked by learning activity, names
@@ -59,12 +63,28 @@ function BadgeIcons({ entry }: { entry: LeaderboardEntry }) {
   );
 }
 
-function Row({ entry }: { entry: LeaderboardEntry }) {
+function Row({ entry, onClick }: { entry: LeaderboardEntry; onClick?: () => void }) {
+  const clickable = Boolean(onClick) && entry.badgeCount > 0;
   return (
     <div
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={clickable ? onClick : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick?.();
+              }
+            }
+          : undefined
+      }
+      title={clickable ? "View badges" : undefined}
       className={cn(
         "flex items-center gap-3 rounded-lg px-3 py-2",
-        entry.currentUser && "bg-primary-50 ring-1 ring-primary-200"
+        entry.currentUser && "bg-primary-50 ring-1 ring-primary-200",
+        clickable && "cursor-pointer hover:bg-neutral-50"
       )}
     >
       <div className="flex w-6 shrink-0 justify-center">
@@ -84,13 +104,92 @@ function Row({ entry }: { entry: LeaderboardEntry }) {
       <span className="w-16 text-end text-caption font-semibold tabular-nums text-neutral-600">
         {entry.points} pts
       </span>
+      {clickable && <CaretRight className="h-3.5 w-3.5 shrink-0 text-neutral-300" />}
     </div>
   );
 }
 
-function YourStanding({ me }: { me: LeaderboardEntry }) {
+/** A single badge shown at a readable size — art (library) or icon, with its name. */
+function BadgeCell({ badge }: { badge: { name: string; icon: string } }) {
+  const isLib = isLibraryToken(badge.icon);
   return (
-    <div className="mb-3 rounded-xl bg-primary-50 p-3 ring-1 ring-primary-200">
+    <div className="flex w-16 flex-col items-center gap-1" title={badge.name}>
+      <span
+        className={cn(
+          "flex items-center justify-center",
+          isLib ? "h-14 w-14" : "h-12 w-12 rounded-full bg-primary-50"
+        )}
+      >
+        <BadgeVisual
+          icon={badge.icon}
+          fill
+          size={isLib ? 52 : 26}
+          className={isLib ? undefined : "text-primary-500"}
+        />
+      </span>
+      <span className="w-full truncate text-center text-3xs font-medium leading-tight text-neutral-600">
+        {badge.name}
+      </span>
+    </div>
+  );
+}
+
+/** Popup: a learner's earned badges shown at full size (opened by clicking a row). */
+function EntryBadgesDialog({
+  entry,
+  onClose,
+}: {
+  entry: LeaderboardEntry | null;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={Boolean(entry)} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Trophy weight="fill" className="h-5 w-5 text-warning-500" />
+            {entry?.currentUser ? "Your badges" : `${entry?.name ?? "Learner"}'s badges`}
+          </DialogTitle>
+        </DialogHeader>
+        {entry && entry.badges?.length > 0 ? (
+          <div className="flex flex-wrap justify-center gap-3 py-2">
+            {entry.badges.map((b, i) => (
+              <BadgeCell key={i} badge={b} />
+            ))}
+          </div>
+        ) : (
+          <p className="py-6 text-center text-caption text-muted-foreground">
+            No badges earned yet.
+          </p>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function YourStanding({ me, onOpenBadges }: { me: LeaderboardEntry; onOpenBadges?: () => void }) {
+  const clickable = Boolean(onOpenBadges) && me.badgeCount > 0;
+  return (
+    <div
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={clickable ? onOpenBadges : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onOpenBadges?.();
+              }
+            }
+          : undefined
+      }
+      title={clickable ? "View your badges" : undefined}
+      className={cn(
+        "mb-3 rounded-xl bg-primary-50 p-3 ring-1 ring-primary-200",
+        clickable && "cursor-pointer transition-shadow hover:ring-primary-300"
+      )}
+    >
       <div className="flex items-center justify-between">
         <div>
           <p className="text-caption font-semibold uppercase tracking-wide text-primary-600">
@@ -141,6 +240,34 @@ export const CourseLeaderboard: React.FC<{
   // null = unknown yet; gates the whole leaderboard on the badges master toggle.
   const [enabled, setEnabled] = useState<boolean | null>(null);
 
+  // The learner's OWN badges are auto-unlocked client-side and never persisted, so the
+  // server leaderboard counts only manually-awarded badges. Merge the client's unlocked
+  // set into the caller's own row so "You" reflects the badges they actually see.
+  const storeData = usePlayGamificationStore((s) => s.data);
+  const [myBadges, setMyBadges] = useState<{ name: string; icon: string }[]>([]);
+  // Row clicked to inspect that learner's badges at full size.
+  const [selectedEntry, setSelectedEntry] = useState<LeaderboardEntry | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const apply = (gd: { badges?: { unlocked: boolean; name: string; icon: string }[] } | null) => {
+      const unlocked = (gd?.badges ?? []).filter((b) => b.unlocked);
+      if (active) setMyBadges(unlocked.map((b) => ({ name: b.name, icon: b.icon })));
+    };
+    if (storeData) {
+      apply(storeData);
+      return () => {
+        active = false;
+      };
+    }
+    getInstituteId().then((id) => {
+      if (id && active) apply(getCachedGamification(id));
+    });
+    return () => {
+      active = false;
+    };
+  }, [storeData]);
+
   useEffect(() => {
     let active = true;
     getBadgesEnabled().then((e) => {
@@ -176,7 +303,15 @@ export const CourseLeaderboard: React.FC<{
   // Institute disabled the badges + leaderboard feature → render nothing.
   if (enabled === false) return null;
 
-  const me = data?.currentUser;
+  // Overlay the caller's real (client-computed) badges onto their own row only.
+  const mergeMine = (entry: LeaderboardEntry): LeaderboardEntry =>
+    entry.currentUser && myBadges.length > entry.badgeCount
+      ? { ...entry, badgeCount: myBadges.length, badges: myBadges }
+      : entry;
+  const me = data?.currentUser ? mergeMine(data.currentUser) : null;
+  const entries = (data?.entries ?? []).map(mergeMine);
+  const openBadgesOf = (entry: LeaderboardEntry) =>
+    entry.badgeCount > 0 ? setSelectedEntry(entry) : undefined;
 
   // Public, white-labelled shareable URL (origin IS the institute's white-label host).
   const shareUrl = `${window.location.origin}/leaderboard/${packageSessionId}`;
@@ -271,7 +406,9 @@ export const CourseLeaderboard: React.FC<{
             </div>
           ) : (
             <div>
-              {me && <YourStanding me={me} />}
+              {me && (
+                <YourStanding me={me} onOpenBadges={() => setSelectedEntry(me)} />
+              )}
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-caption font-semibold text-neutral-500">
                   Ranking
@@ -281,8 +418,8 @@ export const CourseLeaderboard: React.FC<{
                 </span>
               </div>
               <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
-                {data.entries.map((entry, i) => (
-                  <Row key={i} entry={entry} />
+                {entries.map((entry, i) => (
+                  <Row key={i} entry={entry} onClick={() => openBadgesOf(entry)} />
                 ))}
               </div>
               <p className="mt-3 text-center text-caption text-muted-foreground">
@@ -292,6 +429,7 @@ export const CourseLeaderboard: React.FC<{
           )}
         </DialogContent>
       </Dialog>
+      <EntryBadgesDialog entry={selectedEntry} onClose={() => setSelectedEntry(null)} />
     </>
   );
 };

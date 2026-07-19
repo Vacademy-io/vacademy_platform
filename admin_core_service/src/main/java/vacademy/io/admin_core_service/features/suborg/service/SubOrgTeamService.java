@@ -389,21 +389,25 @@ public class SubOrgTeamService {
         int updated = 0;
         for (FacultySubjectPackageSessionMapping m : mappings) {
             if (soft) {
-                // SOFT: keep them ACTIVE, just stamp the cut-off. The nightly
-                // SubOrgTeamAccessExpiryJob flips them to INACTIVE once it passes.
-                m.setAccessTillDate(accessTill);
-                if (!"ACTIVE".equalsIgnoreCase(m.getStatus())) {
-                    m.setStatus("ACTIVE");
-                }
-                updated++;
-            } else {
-                // HARD: revoke access now. Stamp the cut-off for audit.
-                if (!"INACTIVE".equalsIgnoreCase(m.getStatus())) {
-                    m.setStatus("INACTIVE");
+                // SOFT: keep the CURRENTLY-ACTIVE memberships alive, just stamp the
+                // cut-off — the nightly SubOrgTeamAccessExpiryJob flips them to
+                // INACTIVE once it passes. Never revive already-removed (INACTIVE)
+                // mappings.
+                if ("ACTIVE".equalsIgnoreCase(m.getStatus())) {
+                    m.setAccessTillDate(accessTill);
                     updated++;
                 }
-                m.setAccessTillDate(accessTill != null ? accessTill : Timestamp.from(Instant.now()));
+            } else {
+                // HARD: revoke access now. Stamp the cut-off on the rows we flip.
+                if (!"INACTIVE".equalsIgnoreCase(m.getStatus())) {
+                    m.setStatus("INACTIVE");
+                    m.setAccessTillDate(accessTill != null ? accessTill : Timestamp.from(Instant.now()));
+                    updated++;
+                }
             }
+        }
+        if (soft && updated == 0) {
+            throw new VacademyException("User has no active membership in this sub-org to remove");
         }
         facultyMappingRepository.saveAll(mappings);
 

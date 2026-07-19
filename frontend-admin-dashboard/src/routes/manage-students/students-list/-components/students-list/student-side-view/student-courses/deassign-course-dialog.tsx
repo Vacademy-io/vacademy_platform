@@ -217,7 +217,7 @@ export const DeassignCourseDialog = ({
                                           : 'Respect plan expiry'}
                                 </button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
+                            <PopoverContent className="w-auto p-0" align="start" portal={false}>
                                 <Calendar
                                     mode="single"
                                     selected={

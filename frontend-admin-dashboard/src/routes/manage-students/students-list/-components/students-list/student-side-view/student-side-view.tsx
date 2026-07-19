@@ -162,14 +162,19 @@ export const StudentSidebar = ({
     // Surface that as a "Cancelled Member" badge next to the status indicator so
     // the admin can tell an active learner apart from an active-but-cancelled one.
     const learnerUserId = selectedStudent?.user_id;
-    const { data: canceledPlans } = useQuery({
-        queryKey: ['learner-canceled-plans', learnerUserId, currentInstituteId],
+    const { data: learnerPlans } = useQuery({
+        queryKey: ['learner-plans-for-cancel-badge', learnerUserId, currentInstituteId],
         queryFn: () =>
-            getUserPlans(1, 20, ['CANCELED'], learnerUserId!, currentInstituteId || undefined),
+            getUserPlans(1, 50, ['CANCELED'], learnerUserId!, currentInstituteId || undefined),
         enabled: !!learnerUserId && !!currentInstituteId,
         staleTime: 60000,
     });
-    const isCancelledMember = (canceledPlans?.content?.length ?? 0) > 0;
+    // NOTE: the /user-plan/all endpoint ignores the requested status filter and
+    // returns plans of every status, so we must match CANCELED client-side rather
+    // than trust the response to be pre-filtered.
+    const isCancelledMember = (learnerPlans?.content ?? []).some(
+        (p) => (p.status || '').toUpperCase() === 'CANCELED'
+    );
     const [tabSettings, setTabSettings] = useState<StudentSideViewSettings | null>(null);
     /**
      * navStyle — selects between the horizontal tab bar (default) and the

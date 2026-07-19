@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
+import { hydrateParentSession } from "@/lib/auth/detect-user-role";
 import ClipLoader from "react-spinners/ClipLoader";
 import { motion, AnimatePresence } from "framer-motion";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
@@ -738,10 +739,22 @@ export function LoginForm({
 
       const upperRoles = allRoles.map((r) => r.toUpperCase());
       isParent = upperRoles.includes("PARENT");
+      const isStudentToo = upperRoles.includes("STUDENT");
 
-      if (isParent) {
+      // PARENT-only guardians route to the monitoring portal. They have no student
+      // row, so we must hydrate a minimal session (StudentDetails + InstituteDetails)
+      // or isAuthenticated() rejects them. Dual-role users (STUDENT+PARENT) are NOT
+      // force-routed — they fall through to their own learner dashboard.
+      if (isParent && !isStudentToo) {
+        const parentInstituteId = authorities ? Object.keys(authorities)[0] : undefined;
+        if (parentInstituteId && userId) {
+          await hydrateParentSession(userId, parentInstituteId, {
+            user: userId,
+            authorities,
+          });
+        }
         setIsSSOLoading(false);
-        navigate({ to: "/parent" });
+        navigate({ to: "/parent/child" });
         return;
       }
 

@@ -29,6 +29,20 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
 export type CredentialRecipient = 'STUDENT' | 'GUARDIAN';
 
+/**
+ * "My Child" parent-portal config. Stored under PARENT_SETTING.data.parentPortal
+ * and read server-side by ParentPortalSettingService. This is SEPARATE from the
+ * guardian-linking `enabled` flag below — a school can link guardians without
+ * exposing the monitoring portal, and vice versa.
+ */
+export interface ParentPortalConfig {
+    enabled: boolean;
+    modules: Record<string, { visible: boolean }>;
+    reportAccess?: string;
+    allowViewAsChild?: boolean;
+    allowSwitchToParentView?: boolean;
+}
+
 export interface GuardianSettingsData {
     /** If false, all guardian-linking UI (bulk-assign, side-view, backfill) is hidden institute-wide. */
     enabled: boolean;
@@ -46,12 +60,42 @@ export interface GuardianSettingsData {
      * "GUARDIAN" is meaningful there.
      */
     credentialRecipient: CredentialRecipient;
+    /** "My Child" parent-portal config (nested; independent of `enabled` above). */
+    parentPortal?: ParentPortalConfig;
 }
+
+const PARENT_PORTAL_MODULES: { key: string; label: string }[] = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'attendance', label: 'Attendance' },
+    { key: 'liveSessions', label: 'Live Classes' },
+    { key: 'assessments', label: 'Tests' },
+    { key: 'progress', label: 'Progress' },
+    { key: 'payments', label: 'Fees' },
+    { key: 'badges', label: 'Rewards & Badges' },
+    { key: 'certificates', label: 'Certificates' },
+    { key: 'reports', label: 'Report Cards' },
+];
+
+const DEFAULT_PARENT_PORTAL: ParentPortalConfig = {
+    enabled: false,
+    modules: {
+        overview: { visible: true },
+        attendance: { visible: true },
+        liveSessions: { visible: true },
+        assessments: { visible: true },
+        progress: { visible: true },
+        payments: { visible: false }, // most sensitive — opt-in
+        badges: { visible: true },
+        certificates: { visible: true },
+        reports: { visible: true },
+    },
+};
 
 const DEFAULT_GUARDIAN_SETTINGS: GuardianSettingsData = {
     enabled: false,
     sendCredentialEmail: true,
     credentialRecipient: 'STUDENT',
+    parentPortal: DEFAULT_PARENT_PORTAL,
 };
 
 const SETTING_KEY = 'PARENT_SETTING';
@@ -251,6 +295,90 @@ export default function GuardianSettings() {
                                 <Label htmlFor="guardian-enabled" className="cursor-pointer">
                                     {settings.enabled ? 'Enable Guardian Linking' : 'Guardian Linking Disabled'}
                                 </Label>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* ── Parent Portal ("My Child" monitoring) ── */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Parent Portal</CardTitle>
+                        <CardDescription>
+                            Let linked guardians monitor their child&apos;s progress, attendance,
+                            tests, live classes, fees, and rewards from the learner app. This is
+                            separate from guardian linking above — turn it on and choose which
+                            sections parents can see.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {isLoading ? (
+                            <div className="text-body text-neutral-500">Loading…</div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-3">
+                                    <Switch
+                                        id="parent-portal-enabled"
+                                        checked={settings.parentPortal?.enabled ?? false}
+                                        onCheckedChange={(v) =>
+                                            update({
+                                                parentPortal: {
+                                                    ...(settings.parentPortal ?? DEFAULT_PARENT_PORTAL),
+                                                    enabled: v,
+                                                },
+                                            })
+                                        }
+                                    />
+                                    <Label htmlFor="parent-portal-enabled" className="cursor-pointer">
+                                        {settings.parentPortal?.enabled
+                                            ? 'Parent Portal Enabled'
+                                            : 'Parent Portal Disabled'}
+                                    </Label>
+                                </div>
+
+                                {settings.parentPortal?.enabled && (
+                                    <div className="space-y-3">
+                                        <p className="text-body font-medium text-neutral-700">
+                                            Sections visible to parents
+                                        </p>
+                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                            {PARENT_PORTAL_MODULES.map((m) => {
+                                                const pp =
+                                                    settings.parentPortal ?? DEFAULT_PARENT_PORTAL;
+                                                const visible =
+                                                    pp.modules?.[m.key]?.visible ?? false;
+                                                return (
+                                                    <div
+                                                        key={m.key}
+                                                        className="flex items-center gap-3"
+                                                    >
+                                                        <Switch
+                                                            id={`ppm-${m.key}`}
+                                                            checked={visible}
+                                                            onCheckedChange={(v) =>
+                                                                update({
+                                                                    parentPortal: {
+                                                                        ...pp,
+                                                                        modules: {
+                                                                            ...pp.modules,
+                                                                            [m.key]: { visible: v },
+                                                                        },
+                                                                    },
+                                                                })
+                                                            }
+                                                        />
+                                                        <Label
+                                                            htmlFor={`ppm-${m.key}`}
+                                                            className="cursor-pointer"
+                                                        >
+                                                            {m.label}
+                                                        </Label>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </CardContent>

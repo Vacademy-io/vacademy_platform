@@ -329,3 +329,20 @@ export const GET_INVOICE_PUBLIC = (invoiceId: string) =>
 export const INITIATE_INVOICE_PAYMENT = (invoiceId: string) =>
   `${BASE_URL}/admin-core-service/open/v1/invoices/${invoiceId}/initiate-payment`;
 export const GET_PAYMENT_COMPLETION_STATUS = `${BASE_URL}/admin-core-service/open/v1/payment-log/status`;
+
+// ── Parent Portal ("My Child" monitoring) ────────────────────────────────────
+// Authenticated BFF. The guardian id comes from the JWT and the institute from
+// the clientId header (set by the axios interceptor) — never a URL param. The
+// only client-supplied id is childUserId, which the backend guard verifies is
+// genuinely linked to the caller before returning anything.
+const PARENT_PORTAL_V1 = `${BASE_URL}/admin-core-service/parent-portal/v1`;
+export const PARENT_PORTAL_SETTINGS = `${PARENT_PORTAL_V1}/settings`;
+export const PARENT_PORTAL_CHILDREN = `${PARENT_PORTAL_V1}/children`;
+export const PARENT_PORTAL_CHILD_ATTENDANCE = (childUserId: string) =>
+  `${PARENT_PORTAL_V1}/children/${childUserId}/attendance`;
+export const PARENT_PORTAL_CHILD_INVOICES = (childUserId: string) =>
+  `${PARENT_PORTAL_V1}/children/${childUserId}/payments/invoices`;
+export const PARENT_PORTAL_CHILD_BADGES = (childUserId: string) =>
+  `${PARENT_PORTAL_V1}/children/${childUserId}/badges`;
+export const PARENT_PORTAL_CHILD_CERTIFICATES = (childUserId: string) =>
+  `${PARENT_PORTAL_V1}/children/${childUserId}/certificates`;

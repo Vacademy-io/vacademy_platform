@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
@@ -32,6 +33,7 @@ import vacademy.io.admin_core_service.features.onboarding.steptype.OnboardingSte
 import vacademy.io.admin_core_service.features.onboarding.steptype.OnboardingStepTypeHandlerRegistry;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
+import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.ForbiddenException;
 import vacademy.io.common.exceptions.InvalidRequestException;
 import vacademy.io.common.exceptions.ResourceNotFoundException;
@@ -221,6 +223,18 @@ public class OnboardingStepInstanceService {
             authService.addRolesToUserInternal(targetUserId, List.of("STUDENT"), instance.getInstituteId());
         }
         if (Boolean.TRUE.equals(step.getSendsLoginCredentials())) {
+            // auth_service's send-passwords path is email-only and silently skips (no exception,
+            // no log) any user missing an email -- which a parent-resolved child can easily be,
+            // since resolveSubjectUserId only requires email OR mobile. Without this pre-check
+            // that skip is completely invisible; log it here so it's at least diagnosable.
+            List<UserDTO> targetUsers = authService.getUsersFromAuthServiceByUserIds(List.of(targetUserId));
+            UserDTO targetUser = targetUsers.isEmpty() ? null : targetUsers.get(0);
+            if (targetUser == null || !StringUtils.hasText(targetUser.getEmail())) {
+                log.warn("Onboarding step {} completed with sends_login_credentials=true for user {}, " +
+                                "but that user has no email on file -- credentials email will NOT be delivered " +
+                                "(the platform has no SMS credential-delivery path).",
+                        step.getId(), targetUserId);
+            }
             try {
                 authService.sendCredToUsers(List.of(targetUserId));
             } catch (Exception e) {

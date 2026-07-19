@@ -2,12 +2,13 @@ import { getActiveRoleDisplaySettingsKey, getCurrentInstituteId } from '@/lib/au
 import { Sidebar, SidebarContent, SidebarHeader } from '@/components/ui/sidebar';
 import { useSidebar } from '@/components/ui/sidebar';
 import { useCompactMode } from '@/hooks/use-compact-mode';
-import { X, ArrowsOutSimple, CaretLeft, CaretRight, Trash } from '@phosphor-icons/react';
+import { X, ArrowsOutSimple, CaretLeft, CaretRight, Trash, GraduationCap } from '@phosphor-icons/react';
 import { DeleteLeadsDialog } from '@/components/shared/leads/delete-leads-dialog';
 import { isAdminForInstitute } from '@/lib/auth/roleUtils';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { getUserPlans } from '@/services/user-plan';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import DummyProfile from '@/assets/svgs/dummy_profile_photo.svg';
 import { StatusChips } from '@/components/design-system/chips';
 import { StudentOverview } from './student-overview/student-overview';
@@ -175,6 +176,26 @@ export const StudentSidebar = ({
     const isCancelledMember = (learnerPlans?.content ?? []).some(
         (p) => (p.status || '').toUpperCase() === 'CANCELED'
     );
+
+    // Membership courses this learner is enrolled in — resolved from the institute
+    // details store (no extra network call) by matching each of their package
+    // sessions to a package whose type is MEMBERSHIP. Shown as a line under the
+    // status row so an admin sees the membership name at a glance.
+    const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
+    const membershipCourseNames = useMemo(() => {
+        const psIds = selectedStudent?.all_package_session_ids?.length
+            ? selectedStudent.all_package_session_ids
+            : selectedStudent?.package_session_id
+              ? [selectedStudent.package_session_id]
+              : [];
+        const batches = instituteDetails?.batches_for_sessions ?? [];
+        const names = psIds
+            .map((id) => batches.find((b) => b.id === id))
+            .filter((b) => b?.package_dto?.package_type === 'MEMBERSHIP')
+            .map((b) => b?.package_dto?.package_name)
+            .filter((n): n is string => !!n);
+        return Array.from(new Set(names));
+    }, [selectedStudent, instituteDetails]);
     const [tabSettings, setTabSettings] = useState<StudentSideViewSettings | null>(null);
     /**
      * navStyle — selects between the horizontal tab bar (default) and the
@@ -423,6 +444,23 @@ export const StudentSidebar = ({
                                 <X className="size-5" />
                             </button>
                         </div>
+
+                        {/* Membership course name(s) — shown right under the status row
+                            when the learner is enrolled in a MEMBERSHIP-type package. */}
+                        {membershipCourseNames.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                {membershipCourseNames.map((name) => (
+                                    <span
+                                        key={name}
+                                        title={name}
+                                        className="inline-flex max-w-full items-center gap-1 rounded-md bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700"
+                                    >
+                                        <GraduationCap className="size-3 shrink-0" />
+                                        <span className="truncate">{name}</span>
+                                    </span>
+                                ))}
+                            </div>
+                        )}
 
                         {/* Quick contact — mailto / tel / wa.me. Renders nothing when no
                             usable contact data exists, so it stays out of the way for

@@ -11,10 +11,10 @@
  * For a COMPLETED FORM step, "View form" shows the actual submitted values via
  * GET .../step-instances/{id}/submitted-values.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CheckCircle, Circle, PauseCircle, Path, PlayCircle, SkipForward, UserCircle } from '@phosphor-icons/react';
+import { CheckCircle, Circle, Copy, Key, PauseCircle, Path, PlayCircle, SkipForward, UserCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyInput } from '@/components/design-system/input';
@@ -23,7 +23,9 @@ import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AsyncSearchableSelect } from '@/components/design-system/async-searchable-select';
 import PhoneNumberInput from '@/components/design-system/phone-number-input';
-import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { getCurrentInstituteId, getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getDisplaySettingsWithFallback, getDisplaySettingsFromCache } from '@/services/display-settings';
+import { useStudentCredentails } from '@/services/student-list-section/getStudentCredentails';
 import {
     ProfileSectionCard,
     ProfileSkeleton,
@@ -227,6 +229,88 @@ function StartOnboardingDialog({
     );
 }
 
+/**
+ * Shows the resolved student's username/password right in the onboarding banner. Needed because
+ * a resolved child created purely via grants_student_role/sends_login_credentials (no
+ * create_student on any step) never gets a `student` row/enrollment, so there's no
+ * manage-students entry -- and thus no side-view/Portal Access tab -- to find credentials in
+ * otherwise. Reuses the same userId-only credentials lookup Portal Access uses, and respects the
+ * same institute-level allowViewPassword display setting.
+ */
+function ResolvedSubjectCredentials({ userId }: { userId: string }) {
+    const [allowViewPassword, setAllowViewPassword] = useState<boolean | null>(null);
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const roleKey = getActiveRoleDisplaySettingsKey();
+            const cached = getDisplaySettingsFromCache(roleKey);
+            const settings =
+                cached?.learnerManagement ?? (await getDisplaySettingsWithFallback(roleKey)).learnerManagement;
+            if (!cancelled) setAllowViewPassword(settings?.allowViewPassword ?? false);
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    const { data: credentials, isLoading } = useStudentCredentails({ userId });
+
+    const handleCopy = async (text: string, label: string) => {
+        try {
+            await navigator.clipboard.writeText(text);
+            toast.success(`${label} copied to clipboard`);
+        } catch {
+            toast.error(`Could not copy ${label}`);
+        }
+    };
+
+    if (allowViewPassword === false) {
+        return (
+            <p className="mt-1.5 text-2xs text-success-600">
+                Password visibility is off for this institute — enable it under Settings → Role
+                Display to view this student&apos;s login here.
+            </p>
+        );
+    }
+    if (allowViewPassword === null || isLoading) {
+        return <p className="mt-1.5 text-2xs text-success-600">Loading credentials…</p>;
+    }
+
+    return (
+        <div className="mt-2 flex flex-col gap-1 rounded-md border border-success-200 bg-white/60 px-2.5 py-2">
+            <div className="flex items-center gap-1.5 text-2xs text-neutral-700">
+                <Key size={12} className="text-success-600" />
+                <span className="font-medium">Username:</span>
+                <span>{credentials?.username || 'N/A'}</span>
+                {credentials?.username && (
+                    <button
+                        type="button"
+                        onClick={() => handleCopy(credentials.username, 'Username')}
+                        className="rounded p-0.5 hover:bg-neutral-100"
+                    >
+                        <Copy size={11} />
+                    </button>
+                )}
+            </div>
+            <div className="flex items-center gap-1.5 text-2xs text-neutral-700">
+                <Key size={12} className="text-success-600" />
+                <span className="font-medium">Password:</span>
+                <span>{credentials?.password || 'Not found'}</span>
+                {credentials?.password && (
+                    <button
+                        type="button"
+                        onClick={() => handleCopy(credentials.password, 'Password')}
+                        className="rounded p-0.5 hover:bg-neutral-100"
+                    >
+                        <Copy size={11} />
+                    </button>
+                )}
+            </div>
+        </div>
+    );
+}
+
 // ── One flow instance ────────────────────────────────────────────────────────
 
 function OnboardingInstanceCard({
@@ -310,6 +394,7 @@ function OnboardingInstanceCard({
                             ? ` (${instance.resolved_subject_email})`
                             : ''}{' '}
                         — this onboarding stays visible here, on the original lead/contact.
+                        <ResolvedSubjectCredentials userId={instance.resolved_subject_user_id} />
                     </div>
                 </div>
             )}

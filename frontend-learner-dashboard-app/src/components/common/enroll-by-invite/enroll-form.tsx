@@ -2980,6 +2980,12 @@ const EnrollByInvite = ({
     return match && match[2].length === 11 ? match[2] : null;
   };
 
+  // Keep the header, course-info bar, and main body on one centered column so
+  // the institute logo + plan title line up with the form below. Only widen to
+  // the full grid when the step-0 course-info rail is actually shown.
+  const isWideLayout = hasRightSectionContent && currentStep === 0;
+  const pageContainerWidth = isWideLayout ? "max-w-6xl" : "max-w-2xl";
+
   return (
     // Canvas follows --background (white by default, institute-tinted when a
     // background role is set) instead of a hardcoded gray, so an admin-set
@@ -2987,7 +2993,7 @@ const EnrollByInvite = ({
     <div className="min-h-screen w-full bg-background">
       {/* Compact Header */}
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6">
+        <div className={`${pageContainerWidth} mx-auto px-4 sm:px-6`}>
           <div className="flex items-center justify-between h-14">
             {/* Left: Institute Branding */}
             {courseData.includeInstituteLogo ? (
@@ -3035,7 +3041,7 @@ const EnrollByInvite = ({
       {/* Compact Course Info Bar */}
       {currentStep === 0 && (
         <div className="bg-white border-b border-gray-100">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-4">
+          <div className={`${pageContainerWidth} mx-auto px-4 sm:px-6 py-4`}>
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               {/* Course Thumbnail */}
               {courseData.courseBanner && (
@@ -3108,7 +3114,7 @@ const EnrollByInvite = ({
       )}
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+      <main className={`${pageContainerWidth} mx-auto px-4 sm:px-6 py-6`}>
         {/* Progress Steps - Centered above content */}
         {currentStep < 5 && (
           <div className="mb-6">
@@ -3202,11 +3208,11 @@ const EnrollByInvite = ({
         )}
 
         <div
-          className={`grid grid-cols-1 ${hasRightSectionContent && currentStep === 0 ? "lg:grid-cols-3" : ""} gap-6`}
+          className={`grid grid-cols-1 ${isWideLayout ? "lg:grid-cols-3" : ""} gap-6`}
         >
           {/* Main Form Area */}
           <div
-            className={`${hasRightSectionContent && currentStep === 0 ? "lg:col-span-2" : "w-full max-w-2xl mx-auto"} space-y-4`}
+            className={`${isWideLayout ? "lg:col-span-2" : "w-full"} space-y-4`}
           >
             {/* Step Content */}
             {renderCurrentStep()}

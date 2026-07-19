@@ -555,11 +555,22 @@ export interface SubOrgTeamRemoveRequest {
     sub_org_id: string;
     institute_id: string;
     user_id: string;
+    /** SOFT = keep access until access_till_date, HARD = deactivate now. Defaults HARD. */
+    mode?: 'SOFT' | 'HARD';
+    /** SOFT-only last access date (ISO yyyy-MM-dd). Required for SOFT. */
+    access_till_date?: string | null;
 }
 
 export const removeSubOrgTeamMember = async (
     data: SubOrgTeamRemoveRequest
-): Promise<{ user_id: string; sub_org_id: string; deactivated_mappings: number }> => {
+): Promise<{
+    user_id: string;
+    sub_org_id: string;
+    mode?: string;
+    access_till_date?: string;
+    deactivated_mappings?: number;
+    scheduled_mappings?: number;
+}> => {
     const response = await authenticatedAxiosInstance({
         method: 'POST',
         url: SUB_ORG_TEAM_REMOVE,

@@ -10,14 +10,21 @@ import vacademy.io.admin_core_service.features.certificate.service.CertificateRe
 import vacademy.io.admin_core_service.features.invoice.dto.InvoiceDTO;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.admin_core_service.features.learner_badge.service.LearnerBadgeService;
+import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsByDateDTO;
+import vacademy.io.admin_core_service.features.live_session.dto.StudentAttendanceReportDTO;
+import vacademy.io.admin_core_service.features.live_session.service.AttendanceReportService;
+import vacademy.io.admin_core_service.features.live_session.service.GetLiveSessionService;
 import vacademy.io.admin_core_service.features.parent_portal.dto.ChildOverviewDTO;
 import vacademy.io.admin_core_service.features.parent_portal.dto.ChildReportListItemDTO;
 import vacademy.io.admin_core_service.features.parent_portal.dto.ParentChildSummaryDTO;
 import vacademy.io.admin_core_service.features.parent_portal.dto.ParentPortalSettingsDTO;
+import vacademy.io.admin_core_service.features.student_analysis.client.AssessmentServiceClient;
 import vacademy.io.admin_core_service.features.student_analysis.entity.StudentAnalysisProcess;
 import vacademy.io.admin_core_service.features.student_analysis.repository.StudentAnalysisProcessRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -34,12 +41,17 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ParentPortalOverviewService {
 
+    private static final DateTimeFormatter ISO = DateTimeFormatter.ISO_LOCAL_DATE;
+
     private final GuardianAccessGuard guard;
     private final ParentPortalSettingService settingService;
     private final LearnerBadgeService learnerBadgeService;
     private final CertificateReadService certificateReadService;
     private final InvoiceService invoiceService;
     private final StudentAnalysisProcessRepository processRepository;
+    private final AttendanceReportService attendanceReportService;
+    private final GetLiveSessionService getLiveSessionService;
+    private final AssessmentServiceClient assessmentServiceClient;
 
     public ChildOverviewDTO overview(CustomUserDetails caller, String childUserId) {
         GuardedChild child = guard.requireLinkedChild(caller, childUserId);
@@ -93,6 +105,46 @@ public class ParentPortalOverviewService {
                 }
             } catch (Exception e) {
                 markUnavailable("reports", unavailable, e);
+            }
+        }
+
+        // Headline tile numbers. Each fault-isolated: a failure leaves the value null
+        // (UI shows a neutral hint), never a wrong zero. Uses the child's primary batch.
+        String primaryBatch = child.packageSessionIds().isEmpty() ? null : child.packageSessionIds().get(0);
+        if (available.contains("attendance") && primaryBatch != null) {
+            try {
+                StudentAttendanceReportDTO report = attendanceReportService.getStudentReport(
+                        child.childUserId(), primaryBatch, LocalDate.now().minusDays(30), LocalDate.now());
+                if (report != null) {
+                    b.attendancePercent(report.getAttendancePercentage());
+                }
+            } catch (Exception e) {
+                markUnavailable("attendance", unavailable, e);
+            }
+        }
+        if (available.contains("liveSessions") && primaryBatch != null) {
+            try {
+                List<GroupedSessionsByDateDTO> groups = getLiveSessionService
+                        .getLiveAndUpcomingSessionsForUserAndBatch(
+                                primaryBatch, child.childUserId(), 0, null, null, null, caller);
+                int count = groups == null ? 0 : groups.stream()
+                        .mapToInt(g -> g.getSessions() == null ? 0 : g.getSessions().size())
+                        .sum();
+                b.upcomingSessionCount(count);
+            } catch (Exception e) {
+                markUnavailable("liveSessions", unavailable, e);
+            }
+        }
+        if (available.contains("assessments")) {
+            try {
+                AssessmentServiceClient.AssessmentHistoryResponse hist = assessmentServiceClient
+                        .fetchStudentAssessmentHistory(child.childUserId(), child.instituteId(),
+                                LocalDate.now().minusMonths(6).format(ISO), LocalDate.now().format(ISO));
+                if (hist != null && hist.getAssessments() != null) {
+                    b.assessmentCount(hist.getAssessments().size());
+                }
+            } catch (Exception e) {
+                markUnavailable("assessments", unavailable, e);
             }
         }
 

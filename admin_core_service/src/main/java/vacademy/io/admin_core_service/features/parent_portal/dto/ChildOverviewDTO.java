@@ -28,6 +28,12 @@ public class ChildOverviewDTO {
     private Integer reportCount;
     private ChildReportListItemDTO latestReport;
 
+    // Headline numbers for the home tiles. Null when the module is off or its
+    // collector failed — the UI shows a neutral hint, never a wrong zero.
+    private Double attendancePercent;
+    private Integer upcomingSessionCount;
+    private Integer assessmentCount;
+
     /** Module keys visible for this institute (echoes settings so the UI needn't re-read). */
     private List<String> availableModules;
     /** Module keys that were visible but whose collector failed this call. */

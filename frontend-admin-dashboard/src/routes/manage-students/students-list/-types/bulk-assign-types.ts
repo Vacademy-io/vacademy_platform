@@ -118,6 +118,12 @@ export interface DeassignOptions {
     mode?: 'SOFT' | 'HARD';
     notify_learners?: boolean;
     dry_run?: boolean;
+    /**
+     * SOFT-mode only. The "last access date" the learner keeps access until
+     * (ISO `yyyy-MM-dd`). When omitted, SOFT preserves the plan's own expiry.
+     * Ignored for HARD.
+     */
+    access_till_date?: string | null;
 }
 
 export interface BulkDeassignRequest {

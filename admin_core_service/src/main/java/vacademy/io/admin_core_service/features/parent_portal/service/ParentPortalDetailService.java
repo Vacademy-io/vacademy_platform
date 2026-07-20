@@ -20,17 +20,27 @@ import vacademy.io.admin_core_service.features.live_session.service.GetLiveSessi
 import vacademy.io.admin_core_service.features.live_session.service.LearnerPastSessionService;
 import vacademy.io.admin_core_service.features.learner_reports.dto.LearnerSubjectWiseProgressReportDTO;
 import vacademy.io.admin_core_service.features.learner_reports.service.LearnerReportService;
+import vacademy.io.admin_core_service.features.learner.dto.StudentInstituteInfoDTO;
+import vacademy.io.admin_core_service.features.learner.manager.LearnerInstituteManager;
+import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionListDTO;
+import vacademy.io.admin_core_service.features.live_session.dto.LearnerPastSessionDTO;
 import vacademy.io.admin_core_service.features.parent_portal.dto.ChildReportListItemDTO;
+import vacademy.io.admin_core_service.features.parent_portal.dto.CourseProgressDTO;
 import vacademy.io.admin_core_service.features.student_analysis.client.AssessmentServiceClient;
 import vacademy.io.admin_core_service.features.student_analysis.entity.StudentAnalysisProcess;
 import vacademy.io.admin_core_service.features.student_analysis.repository.StudentAnalysisProcessRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.ForbiddenException;
+import vacademy.io.common.institute.dto.PackageSessionDTO;
 import org.springframework.data.domain.PageRequest;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Per-domain reads for one guarded child. Every method: (1) runs the guardian
@@ -60,13 +70,16 @@ public class ParentPortalDetailService {
     private final LearnerReportService learnerReportService;
     private final AssessmentServiceClient assessmentServiceClient;
     private final StudentAnalysisProcessRepository processRepository;
+    private final LearnerInstituteManager learnerInstituteManager;
 
     public StudentAttendanceReportDTO attendance(CustomUserDetails caller, String childUserId,
                                                  String packageSessionId, LocalDate start, LocalDate end) {
         GuardedChild child = guard.requireLinkedChild(caller, childUserId);
         settingService.requireModule(child.instituteId(), "attendance");
         String batchId = resolvePackageSession(child, packageSessionId);
-        LocalDate from = start != null ? start : LocalDate.now().minusDays(30);
+        // Default to a full year (not 30 days) so a parent opening attendance sees
+        // the term, not an often-empty last month. Callers may still pass a window.
+        LocalDate from = start != null ? start : LocalDate.now().minusDays(365);
         LocalDate to = end != null ? end : LocalDate.now();
         return attendanceReportService.getStudentReport(child.childUserId(), batchId, from, to);
     }
@@ -89,30 +102,108 @@ public class ParentPortalDetailService {
         return certificateReadService.listForUser(child.childUserId(), child.instituteId());
     }
 
+    /**
+     * Upcoming/live sessions across ALL of the child's enrolled courses (unless a
+     * specific packageSessionId is asked for). Per-course results are merged into
+     * one date-grouped list — a session on the same day from a different course
+     * lands under the same date, and the list stays sorted by date.
+     */
     public List<GroupedSessionsByDateDTO> upcomingLiveSessions(CustomUserDetails caller, String childUserId,
                                                               String packageSessionId) {
         GuardedChild child = guard.requireLinkedChild(caller, childUserId);
         settingService.requireModule(child.instituteId(), "liveSessions");
-        String batchId = resolvePackageSession(child, packageSessionId);
-        return getLiveSessionService.getLiveAndUpcomingSessionsForUserAndBatch(
-                batchId, child.childUserId(), 0, null, null, null, caller);
+        List<String> targets = targetPackageSessions(child, packageSessionId);
+
+        if (targets.size() == 1) {
+            return getLiveSessionService.getLiveAndUpcomingSessionsForUserAndBatch(
+                    targets.get(0), child.childUserId(), 0, null, null, null, caller);
+        }
+
+        // millis(midnight) -> merged group, TreeMap keeps ascending date order
+        Map<Long, GroupedSessionsByDateDTO> byDate = new TreeMap<>();
+        for (String psId : targets) {
+            List<GroupedSessionsByDateDTO> groups = getLiveSessionService
+                    .getLiveAndUpcomingSessionsForUserAndBatch(psId, child.childUserId(), 0, null, null, null, caller);
+            if (groups == null) continue;
+            for (GroupedSessionsByDateDTO g : groups) {
+                if (g == null || g.getSessions() == null || g.getSessions().isEmpty()) continue;
+                long key = g.getDate() != null ? g.getDate().getTime() : 0L;
+                GroupedSessionsByDateDTO merged = byDate.get(key);
+                if (merged == null) {
+                    byDate.put(key, new GroupedSessionsByDateDTO(g.getDate(),
+                            new ArrayList<LiveSessionListDTO>(g.getSessions())));
+                } else {
+                    merged.getSessions().addAll(g.getSessions());
+                }
+            }
+        }
+        return new ArrayList<>(byDate.values());
     }
 
+    /**
+     * Past sessions across ALL of the child's courses (unless a specific
+     * packageSessionId is asked for). Each course is queried for the requested
+     * page and the results concatenated — the child's whole history, not just the
+     * primary course.
+     */
     public LearnerPastSessionsResponseDTO pastLiveSessions(CustomUserDetails caller, String childUserId,
                                                            String packageSessionId, int page, Integer size) {
         GuardedChild child = guard.requireLinkedChild(caller, childUserId);
         settingService.requireModule(child.instituteId(), "liveSessions");
-        String batchId = resolvePackageSession(child, packageSessionId);
-        return learnerPastSessionService.getPastSessions(
-                batchId, child.childUserId(), child.instituteId(), page, size, null, null);
+        List<String> targets = targetPackageSessions(child, packageSessionId);
+
+        if (targets.size() == 1) {
+            return learnerPastSessionService.getPastSessions(
+                    targets.get(0), child.childUserId(), child.instituteId(), page, size, null, null);
+        }
+
+        List<LearnerPastSessionDTO> content = new ArrayList<>();
+        LearnerPastSessionsResponseDTO.DisplayFlagsDTO flags = null;
+        long totalElements = 0;
+        boolean allLast = true;
+        for (String psId : targets) {
+            LearnerPastSessionsResponseDTO r = learnerPastSessionService.getPastSessions(
+                    psId, child.childUserId(), child.instituteId(), page, size, null, null);
+            if (r == null) continue;
+            if (flags == null) flags = r.getDisplayFlags();
+            if (r.getContent() != null) content.addAll(r.getContent());
+            totalElements += r.getTotalElements();
+            allLast = allLast && r.isLast();
+        }
+        return LearnerPastSessionsResponseDTO.builder()
+                .displayFlags(flags)
+                .content(content)
+                .page(page)
+                .size(size != null ? size : content.size())
+                .totalPages(1)
+                .totalElements(totalElements)
+                .last(allLast)
+                .build();
     }
 
-    public List<LearnerSubjectWiseProgressReportDTO> subjectProgress(CustomUserDetails caller, String childUserId,
-                                                                     String packageSessionId) {
+    /**
+     * Subject-wise progress for EVERY course the child is enrolled in (unless a
+     * specific packageSessionId is asked for), grouped and labelled per course —
+     * so a child in multiple courses sees them all, not just the primary.
+     */
+    public List<CourseProgressDTO> subjectProgress(CustomUserDetails caller, String childUserId,
+                                                    String packageSessionId) {
         GuardedChild child = guard.requireLinkedChild(caller, childUserId);
         settingService.requireModule(child.instituteId(), "progress");
-        String batchId = resolvePackageSession(child, packageSessionId);
-        return learnerReportService.getSubjectProgressReport(batchId, child.childUserId(), caller);
+        List<String> targets = targetPackageSessions(child, packageSessionId);
+        Map<String, String> labels = resolveCourseLabels(child);
+
+        List<CourseProgressDTO> out = new ArrayList<>();
+        for (String psId : targets) {
+            List<LearnerSubjectWiseProgressReportDTO> subjects =
+                    learnerReportService.getSubjectProgressReport(psId, child.childUserId(), caller);
+            out.add(CourseProgressDTO.builder()
+                    .packageSessionId(psId)
+                    .courseName(labels.getOrDefault(psId, ""))
+                    .subjects(subjects)
+                    .build());
+        }
+        return out;
     }
 
     /**
@@ -166,5 +257,59 @@ public class ParentPortalDetailService {
             throw new ForbiddenException("Batch does not belong to this child");
         }
         return packageSessionId;
+    }
+
+    /**
+     * Which of the child's courses to fan out over. A supplied packageSessionId
+     * (drill-down) must be one of the child's own enrolments (else 403); absent
+     * means every enrolled course — the "all courses" behaviour.
+     */
+    private List<String> targetPackageSessions(GuardedChild child, String packageSessionId) {
+        if (StringUtils.hasText(packageSessionId)) {
+            if (!child.packageSessionIds().contains(packageSessionId)) {
+                throw new ForbiddenException("Batch does not belong to this child");
+            }
+            return List.of(packageSessionId);
+        }
+        return child.packageSessionIds();
+    }
+
+    /** packageSessionId -> human batch label, for grouping progress by course. */
+    private Map<String, String> resolveCourseLabels(GuardedChild child) {
+        Map<String, String> labels = new HashMap<>();
+        try {
+            StudentInstituteInfoDTO info =
+                    learnerInstituteManager.getInstituteDetails(child.instituteId(), child.childUserId(), true);
+            List<PackageSessionDTO> pool = (info != null && info.getBatchesForSessions() != null)
+                    ? info.getBatchesForSessions()
+                    : List.of();
+            for (PackageSessionDTO ps : pool) {
+                if (ps != null && ps.getId() != null) {
+                    labels.put(ps.getId(), batchLabel(ps));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not resolve course labels for child {}: {}", child.childUserId(), e.getMessage());
+        }
+        return labels;
+    }
+
+    /** "Level Package (Session)" — same human label idiom the children listing uses; never the raw UUID. */
+    private String batchLabel(PackageSessionDTO ps) {
+        if (ps == null) {
+            return "";
+        }
+        String level = ps.getLevel() != null ? ps.getLevel().getLevelName() : null;
+        String pkg = ps.getPackageDTO() != null ? ps.getPackageDTO().getPackageName() : null;
+        String session = ps.getSession() != null ? ps.getSession().getSessionName() : null;
+
+        StringBuilder sb = new StringBuilder();
+        if (StringUtils.hasText(level)) sb.append(level);
+        if (StringUtils.hasText(pkg)) sb.append(sb.length() > 0 ? " " : "").append(pkg);
+        if (StringUtils.hasText(session)) sb.append(" (").append(session).append(")");
+        if (sb.length() == 0) {
+            return StringUtils.hasText(ps.getName()) ? ps.getName() : "";
+        }
+        return sb.toString();
     }
 }

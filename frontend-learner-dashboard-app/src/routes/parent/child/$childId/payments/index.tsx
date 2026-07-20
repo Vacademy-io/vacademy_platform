@@ -51,8 +51,13 @@ function PaymentsScreen() {
             >
               <div className="flex flex-col gap-1">
                 <span className="text-body font-medium text-foreground">
-                  {String(inv.title ?? inv.invoiceNumber ?? t("payments.invoice"))}
+                  {String(inv.invoice_number ?? inv.invoiceNumber ?? t("payments.invoice"))}
                 </span>
+                {inv.total_amount != null ? (
+                  <span className="text-caption font-semibold text-foreground">
+                    {`${String(inv.currency ?? "")} ${String(inv.total_amount)}`.trim()}
+                  </span>
+                ) : null}
                 <ParentStatusChip
                   tone={paid ? "good" : "action"}
                   label={paid ? t("payments.paid") : t("payments.due")}

@@ -45,14 +45,14 @@ function LiveClassesScreen() {
               </h3>
               {sessions.map((s, si) => (
                 <div
-                  key={String(s.sessionId ?? si)}
+                  key={String(s.session_id ?? s.sessionId ?? si)}
                   className="flex items-center justify-between rounded-xl bg-card shadow-sm px-4 py-3"
                 >
                   <span className="text-body font-medium text-foreground">
                     {String(s.title ?? s.subject ?? t("liveClasses.session"))}
                   </span>
                   <span className="text-caption text-muted-foreground">
-                    {String(s.startTime ?? s.scheduleStartTime ?? "")}
+                    {String(s.start_time ?? s.startTime ?? "")}
                   </span>
                 </div>
               ))}

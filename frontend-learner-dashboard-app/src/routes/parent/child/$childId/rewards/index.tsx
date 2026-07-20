@@ -39,7 +39,7 @@ function RewardsScreen() {
           >
             <Medal weight="duotone" className="size-10 text-primary-400" aria-hidden />
             <span className="text-caption font-medium text-foreground">
-              {String(b.name ?? t("rewards.badge"))}
+              {String(b.badgeName ?? b.name ?? t("rewards.badge"))}
             </span>
           </li>
         ))}

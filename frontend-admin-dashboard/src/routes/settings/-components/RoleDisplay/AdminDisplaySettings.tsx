@@ -2307,6 +2307,43 @@ export default function AdminDisplaySettings() {
                 </CardContent>
             </Card>
 
+            <Card>
+                <CardHeader>
+                    <CardTitle>Team member passwords</CardTitle>
+                    <CardDescription>
+                        Show a Password column (and a &quot;View Password&quot; row action) for team
+                        members in Manage Institute → Teams. On by default — turn this off to hide
+                        sign-in credentials from everyone with Teams access.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex items-center justify-between rounded-md border border-neutral-200 p-3">
+                        <div>
+                            <div className="text-body font-medium text-neutral-900">
+                                Show passwords
+                            </div>
+                            <div className="text-caption text-neutral-500">
+                                Adds a masked Password column (with reveal + copy) and a &quot;View
+                                Password&quot; option per member. Passwords are sensitive — anyone
+                                with Teams access will be able to see them.
+                            </div>
+                        </div>
+                        <Switch
+                            checked={settings.teamManagement?.allowViewPassword !== false}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    teamManagement: {
+                                        ...(prev.teamManagement ?? { visibleRoles: {} }),
+                                        allowViewPassword: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                </CardContent>
+            </Card>
+
             {/* The workbench routes (/counsellors and /sales-dashboard) now live
                 as sub-tabs under the Leads tab in the sidebar tree above —
                 toggled from there alongside Lead List / Recent Leads /

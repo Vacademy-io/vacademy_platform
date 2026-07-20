@@ -28,6 +28,10 @@
     "certificates": "Certificates",
     "feesDue": "Fees due"
   },
+  "info": {
+    "attendance": "Attendance overview",
+    "fees": "Fees"
+  },
   "tiles": {
     "progress": "Progress",
     "attendance": "Attendance",

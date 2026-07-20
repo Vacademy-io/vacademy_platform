@@ -19,6 +19,7 @@
     "title": "My Child",
     "greeting": "Here's how {{name}} is doing",
     "greetingLabel": "Here's how",
+    "hiParent": "Hi {{name}} 👋",
     "allClear": "Nothing needs your attention right now.",
     "attentionTitle": "Needs your attention"
   },

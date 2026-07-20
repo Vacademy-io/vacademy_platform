@@ -3,9 +3,11 @@ import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next";
 import { LoadingState, ErrorState } from "@/components/design-system/states";
 import { ParentModuleIcon } from "@/components/parent/ParentModuleIcon";
+import { ChildAvatar } from "../-components/ChildAvatar";
 import { ParentChildShell } from "../-components/ParentChildShell";
 import { ParentQuickSearch } from "../-components/ParentQuickSearch";
 import { AttentionCard } from "../-components/AttentionCard";
+import { getParentFirstName } from "../-lib/parent-identity";
 import { buildParentTourSteps } from "../-components/ParentHelpButton";
 import { runParentTour } from "../-lib/parent-tour";
 import { MODULE_TILES } from "../-components/module-tiles";
@@ -99,6 +101,7 @@ function ChildHome() {
 
   const childName = overview.child?.fullName || t("common.yourChild");
   const batchName = overview.child?.enrollments?.[0]?.batchName;
+  const parentFirstName = getParentFirstName();
   const available = new Set(overview.availableModules ?? []);
   const tiles = MODULE_TILES.filter((tile) => available.has(tile.key));
   const attention = buildAttentionItems(overview, t);
@@ -106,14 +109,36 @@ function ChildHome() {
   return (
     <ParentChildShell childId={childId} backTo="picker">
       <div className="flex flex-col gap-6">
-        {/* ── Compact greeting ── */}
-        <div>
-          <h1 className="text-h1 font-semibold text-foreground">
-            {t("home.greeting", { name: childName })}
-          </h1>
-          {batchName ? (
-            <p className="mt-0.5 text-caption text-muted-foreground">{batchName}</p>
-          ) : null}
+        {/* ── Warm gradient hero: parent greeting + child avatar + stats ── */}
+        <div className="rounded-3xl bg-gradient-to-br from-primary-100 via-secondary-100 to-primary-50 p-6 shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="size-20 shrink-0 overflow-hidden rounded-3xl shadow-md ring-4 ring-background/60">
+              <ChildAvatar
+                name={childName}
+                fileId={overview.child?.profilePicFileId}
+                textClassName="text-h1"
+              />
+            </div>
+            <div className="min-w-0">
+              {parentFirstName ? (
+                <p className="text-caption font-medium text-primary-500">
+                  {t("home.hiParent", { name: parentFirstName })}
+                </p>
+              ) : null}
+              <h1 className="truncate text-h1 font-semibold text-foreground">
+                {t("home.greeting", { name: childName })}
+              </h1>
+              {batchName ? (
+                <p className="mt-0.5 truncate text-caption text-muted-foreground">{batchName}</p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-3 gap-3">
+            <StatPill label={t("stats.badges")} value={String(overview.badgeCount ?? 0)} />
+            <StatPill label={t("stats.certificates")} value={String(overview.certificateCount ?? 0)} />
+            <StatPill label={t("stats.feesDue")} value={String(overview.pendingInvoiceCount ?? 0)} />
+          </div>
         </div>
 
         <ParentQuickSearch childId={childId} availableKeys={available} />
@@ -152,13 +177,6 @@ function ChildHome() {
         </div>
 
         <AttentionCard childId={childId} items={attention} />
-
-        {/* ── At-a-glance stats (secondary, at the bottom) ── */}
-        <div className="grid grid-cols-3 gap-3">
-          <StatPill label={t("stats.badges")} value={String(overview.badgeCount ?? 0)} />
-          <StatPill label={t("stats.certificates")} value={String(overview.certificateCount ?? 0)} />
-          <StatPill label={t("stats.feesDue")} value={String(overview.pendingInvoiceCount ?? 0)} />
-        </div>
       </div>
     </ParentChildShell>
   );

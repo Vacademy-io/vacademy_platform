@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   CheckCircle,
   ClipboardText,
+  Hourglass,
   SpinnerGap,
   Warning,
 } from "@phosphor-icons/react";
@@ -17,36 +18,10 @@ import {
 } from "./-components/onboarding-step-form";
 import { OnboardingProgressList } from "./-components/onboarding-progress-list";
 import {
+  getCurrentStepInfo,
   getMyOnboardingInstances,
   type OnboardingInstanceDTO,
-  type OnboardingStepInstanceDTO,
 } from "./-services/onboarding-services";
-
-export const Route = createFileRoute("/onboarding/")({
-  component: () => (
-    <LayoutContainer>
-      <OnboardingPage />
-    </LayoutContainer>
-  ),
-});
-
-/** The step the learner should act on next, if any (FORM steps only in v1).
- *  A current step the caller can't act on (e.g. a create_student step, always
- *  admin-only) is skipped here rather than rendered as a dead-end form the
- *  learner can't actually submit. */
-const getActiveFormStep = (
-  instance: OnboardingInstanceDTO
-): OnboardingStepInstanceDTO | null => {
-  if (instance.status !== "IN_PROGRESS") return null;
-  const current =
-    instance.step_instances.find((s) => s.id === instance.current_step_id) ??
-    instance.step_instances.find((s) => s.status === "IN_PROGRESS");
-  if (!current) return null;
-  if (current.status !== "IN_PROGRESS" && current.status !== "PENDING") return null;
-  if (current.step_type !== "FORM") return null;
-  if (current.learner_can_act === false) return null;
-  return current;
-};
 
 function OnboardingPage() {
   const { setNavHeading } = useNavHeadingStore();
@@ -144,7 +119,7 @@ interface OnboardingInstanceCardProps {
 }
 
 function OnboardingInstanceCard({ instance }: OnboardingInstanceCardProps) {
-  const activeStep = getActiveFormStep(instance);
+  const current = getCurrentStepInfo(instance);
 
   return (
     <div className="flex flex-col gap-4">
@@ -155,9 +130,9 @@ function OnboardingInstanceCard({ instance }: OnboardingInstanceCardProps) {
           Onboarding for {instance.subject_full_name}
         </p>
       )}
-      {activeStep ? (
+      {current?.isActionable ? (
         <OnboardingStepForm
-          stepInstance={activeStep}
+          stepInstance={current.step}
           onSubmitted={() => {
             /* Query invalidation inside OnboardingStepForm refetches
                instances; the next active step (if any) renders from the
@@ -175,6 +150,23 @@ function OnboardingInstanceCard({ instance }: OnboardingInstanceCardProps) {
           <p className="text-sm text-neutral-600">
             This onboarding flow is complete. Nothing else to do here.
           </p>
+        </ModernCard>
+      ) : current ? (
+        <ModernCard
+          variant="glass"
+          padding="lg"
+          rounded="lg"
+          className="flex items-center gap-3 border border-warning-200 bg-warning-50"
+        >
+          <Hourglass className="size-6 shrink-0 text-warning-600" weight="fill" />
+          <div>
+            <p className="text-sm font-medium text-neutral-700">
+              &ldquo;{current.step.step_name}&rdquo; is being handled by your school admin
+            </p>
+            <p className="mt-0.5 text-xs text-neutral-500">
+              You don&apos;t need to do anything here — you&apos;ll be notified once it&apos;s done.
+            </p>
+          </div>
         </ModernCard>
       ) : (
         <ModernCard

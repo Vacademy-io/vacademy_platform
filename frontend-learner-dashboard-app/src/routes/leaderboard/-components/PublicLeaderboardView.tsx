@@ -1,6 +1,14 @@
-import { Crown, Trophy, Medal, ShieldCheck } from "@phosphor-icons/react";
+import { useState } from "react";
+import { Crown, Trophy, Medal, ShieldCheck, CaretRight } from "@phosphor-icons/react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { BadgeVisual } from "@/routes/dashboard/-components/badge-icons";
+import { isLibraryToken } from "@/services/badge-library";
 import type {
   CourseLeaderboardData,
   LeaderboardEntry,
@@ -23,6 +31,64 @@ function BadgeIcons({ entry, size = 20 }: { entry: LeaderboardEntry; size?: numb
         </span>
       )}
     </span>
+  );
+}
+
+/** A single badge at a readable size — library art or icon, with its name. */
+function BadgeCell({ badge }: { badge: { name: string; icon: string } }) {
+  const isLib = isLibraryToken(badge.icon);
+  return (
+    <div className="flex w-24 flex-col items-center gap-1.5" title={badge.name}>
+      <span
+        className={cn(
+          "flex items-center justify-center",
+          isLib ? "h-24 w-24" : "h-20 w-20 rounded-full bg-primary-50"
+        )}
+      >
+        <BadgeVisual
+          icon={badge.icon}
+          size={isLib ? 88 : 44}
+          className={isLib ? undefined : "text-primary-500"}
+          noAuth
+        />
+      </span>
+      <span className="w-full text-center text-caption font-medium leading-tight text-neutral-700">
+        {badge.name}
+      </span>
+    </div>
+  );
+}
+
+/** Popup: a learner's earned badges at full size (opened by tapping a row). */
+function EntryBadgesDialog({
+  entry,
+  onClose,
+}: {
+  entry: LeaderboardEntry | null;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={Boolean(entry)} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Trophy weight="fill" className="size-5 text-warning-500" />
+            {entry?.name ? `${entry.name}'s badges` : "Badges"}
+          </DialogTitle>
+        </DialogHeader>
+        {entry && entry.badges?.length > 0 ? (
+          <div className="flex flex-wrap justify-center gap-3 py-2">
+            {entry.badges.map((b, i) => (
+              <BadgeCell key={i} badge={b} />
+            ))}
+          </div>
+        ) : (
+          <p className="py-6 text-center text-caption text-muted-foreground">
+            No badges earned yet.
+          </p>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -52,12 +118,40 @@ function InitialAvatar({ name, className }: { name: string; className?: string }
   );
 }
 
-function PodiumSpot({ entry, place }: { entry?: LeaderboardEntry; place: 1 | 2 | 3 }) {
+function PodiumSpot({
+  entry,
+  place,
+  onClick,
+}: {
+  entry?: LeaderboardEntry;
+  place: 1 | 2 | 3;
+  onClick?: () => void;
+}) {
   if (!entry) return <div className="flex-1" />;
   const first = place === 1;
   const tone = PLACE[place];
+  const clickable = Boolean(onClick) && entry.badgeCount > 0;
   return (
-    <div className="flex flex-1 flex-col items-center justify-end gap-2">
+    <div
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={clickable ? onClick : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick?.();
+              }
+            }
+          : undefined
+      }
+      title={clickable ? "View badges" : undefined}
+      className={cn(
+        "flex flex-1 flex-col items-center justify-end gap-2",
+        clickable && "cursor-pointer"
+      )}
+    >
       {first ? (
         <Crown weight="fill" className="size-6 text-warning-500" />
       ) : (
@@ -101,9 +195,29 @@ function PodiumSpot({ entry, place }: { entry?: LeaderboardEntry; place: 1 | 2 |
   );
 }
 
-function ListRow({ entry }: { entry: LeaderboardEntry }) {
+function ListRow({ entry, onClick }: { entry: LeaderboardEntry; onClick?: () => void }) {
+  const clickable = Boolean(onClick) && entry.badgeCount > 0;
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-neutral-100 bg-card px-3 py-2.5 transition-colors hover:border-primary-100">
+    <div
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={clickable ? onClick : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick?.();
+              }
+            }
+          : undefined
+      }
+      title={clickable ? "View badges" : undefined}
+      className={cn(
+        "flex items-center gap-3 rounded-xl border border-neutral-100 bg-card px-3 py-2.5 transition-colors hover:border-primary-100",
+        clickable && "cursor-pointer"
+      )}
+    >
       <span className="w-6 text-center text-body font-bold tabular-nums text-muted-foreground">
         {entry.rank ?? "–"}
       </span>
@@ -114,6 +228,7 @@ function ListRow({ entry }: { entry: LeaderboardEntry }) {
         {entry.points}
         <span className="ms-0.5 text-caption font-normal text-muted-foreground">pts</span>
       </span>
+      {clickable && <CaretRight className="size-3.5 shrink-0 text-neutral-300" />}
     </div>
   );
 }
@@ -155,8 +270,13 @@ export function PublicLeaderboardView({
   const entries = data?.entries ?? [];
   const top3 = entries.slice(0, 3);
   const rest = entries.slice(3);
+  const [selectedEntry, setSelectedEntry] = useState<LeaderboardEntry | null>(null);
+  const openBadges = (entry?: LeaderboardEntry) => {
+    if (entry && entry.badgeCount > 0) setSelectedEntry(entry);
+  };
 
   return (
+    <>
     <div className="flex min-h-screen w-full justify-center bg-gradient-to-b from-primary-50 via-background to-background px-4 py-8 sm:py-12">
       <div className="w-full max-w-xl">
         <div className="overflow-hidden rounded-2xl border border-primary-100 bg-card shadow-lg">
@@ -212,15 +332,15 @@ export function PublicLeaderboardView({
               <>
                 {/* Podium: 2 · 1 · 3 */}
                 <div className="mb-5 flex items-end gap-2">
-                  <PodiumSpot entry={top3[1]} place={2} />
-                  <PodiumSpot entry={top3[0]} place={1} />
-                  <PodiumSpot entry={top3[2]} place={3} />
+                  <PodiumSpot entry={top3[1]} place={2} onClick={() => openBadges(top3[1])} />
+                  <PodiumSpot entry={top3[0]} place={1} onClick={() => openBadges(top3[0])} />
+                  <PodiumSpot entry={top3[2]} place={3} onClick={() => openBadges(top3[2])} />
                 </div>
 
                 {rest.length > 0 && (
                   <div className="flex flex-col gap-1.5">
                     {rest.map((entry, i) => (
-                      <ListRow key={i} entry={entry} />
+                      <ListRow key={i} entry={entry} onClick={() => openBadges(entry)} />
                     ))}
                   </div>
                 )}
@@ -250,5 +370,7 @@ export function PublicLeaderboardView({
         </div>
       </div>
     </div>
+    <EntryBadgesDialog entry={selectedEntry} onClose={() => setSelectedEntry(null)} />
+    </>
   );
 }

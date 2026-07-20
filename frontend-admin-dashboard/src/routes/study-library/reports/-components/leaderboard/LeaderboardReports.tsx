@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Trophy, Medal, Crown, Users, Buildings, Copy, ShareNetwork } from '@phosphor-icons/react';
+import { Trophy, Medal, Crown, Users, Buildings, Copy, ShareNetwork, CaretRight } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import {
     Select,
@@ -9,6 +9,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { SearchableSelect } from '@/components/design-system/searchable-select';
 import { MyButton } from '@/components/design-system/button';
 import { cn } from '@/lib/utils';
@@ -16,6 +17,7 @@ import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getBadgeIcon, BadgeVisual } from '@/routes/settings/-constants/badge-icon-map';
+import { isLibraryToken } from '@/routes/settings/-constants/badge-library';
 import {
     getBadgeStats,
     getCourseLeaderboardAdmin,
@@ -97,14 +99,14 @@ function BadgesStatsPanel() {
 }
 
 /** The learner's earned badge icons (up to 3) + an overflow count. */
-function BadgeIcons({ entry }: { entry: LeaderboardEntry }) {
+function BadgeIcons({ entry, size = 22 }: { entry: LeaderboardEntry; size?: number }) {
     const shown = entry.badges?.slice(0, 3) ?? [];
     if (entry.badgeCount <= 0) return null;
     return (
-        <span className="inline-flex items-center gap-0.5">
+        <span className="inline-flex items-center gap-1">
             {shown.map((b, i) => (
                 <span key={i} title={b.name} className="inline-flex">
-                    <BadgeVisual icon={b.icon} size={14} className="text-warning-600" />
+                    <BadgeVisual icon={b.icon} size={size} className="text-warning-600" />
                 </span>
             ))}
             {entry.badgeCount > shown.length && (
@@ -116,9 +118,86 @@ function BadgeIcons({ entry }: { entry: LeaderboardEntry }) {
     );
 }
 
-function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
+/** A single badge at a readable size — library art or icon, with its name. */
+function BadgeCell({ badge }: { badge: { name: string; icon: string } }) {
+    const isLib = isLibraryToken(badge.icon);
     return (
-        <div className="flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-neutral-50">
+        <div className="flex w-24 flex-col items-center gap-1.5" title={badge.name}>
+            <span
+                className={cn(
+                    'flex items-center justify-center',
+                    isLib ? 'size-24' : 'size-20 rounded-full bg-primary-50'
+                )}
+            >
+                <BadgeVisual
+                    icon={badge.icon}
+                    size={isLib ? 88 : 44}
+                    className={isLib ? undefined : 'text-primary-500'}
+                />
+            </span>
+            <span className="w-full text-center text-caption font-medium leading-tight text-neutral-700">
+                {badge.name}
+            </span>
+        </div>
+    );
+}
+
+/** Popup: a learner's earned badges at full size (opened by clicking a leaderboard row). */
+function EntryBadgesDialog({
+    entry,
+    onClose,
+}: {
+    entry: LeaderboardEntry | null;
+    onClose: () => void;
+}) {
+    return (
+        <Dialog open={Boolean(entry)} onOpenChange={(v) => !v && onClose()}>
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Trophy weight="fill" className="size-5 text-warning-500" />
+                        {entry?.name ? `${entry.name}'s badges` : 'Badges'}
+                    </DialogTitle>
+                </DialogHeader>
+                {entry && entry.badges?.length > 0 ? (
+                    <div className="flex flex-wrap justify-center gap-3 py-2">
+                        {entry.badges.map((b, i) => (
+                            <BadgeCell key={i} badge={b} />
+                        ))}
+                    </div>
+                ) : (
+                    <p className="py-6 text-center text-caption text-muted-foreground">
+                        No badges earned yet.
+                    </p>
+                )}
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function LeaderboardRow({ entry, onClick }: { entry: LeaderboardEntry; onClick?: () => void }) {
+    const clickable = Boolean(onClick) && entry.badgeCount > 0;
+    return (
+        <div
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            onClick={clickable ? onClick : undefined}
+            onKeyDown={
+                clickable
+                    ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              onClick?.();
+                          }
+                      }
+                    : undefined
+            }
+            title={clickable ? 'View badges' : undefined}
+            className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-neutral-50',
+                clickable && 'cursor-pointer'
+            )}
+        >
             <div className="flex w-6 shrink-0 justify-center">
                 <RankCell rank={entry.rank} />
             </div>
@@ -129,6 +208,7 @@ function LeaderboardRow({ entry }: { entry: LeaderboardEntry }) {
             <span className="w-20 text-right text-caption font-semibold tabular-nums text-neutral-600">
                 {entry.points} pts
             </span>
+            {clickable && <CaretRight className="size-3.5 shrink-0 text-neutral-300" />}
         </div>
     );
 }
@@ -152,6 +232,7 @@ export default function LeaderboardReports() {
     const [levelId, setLevelId] = useState('');
     const [sessionList, setSessionList] = useState<{ id: string; name: string }[]>([]);
     const [levelList, setLevelList] = useState<{ id: string; level_name: string }[]>([]);
+    const [selectedEntry, setSelectedEntry] = useState<LeaderboardEntry | null>(null);
 
     useEffect(() => {
         if (courseId) {
@@ -234,6 +315,7 @@ export default function LeaderboardReports() {
     };
 
     return (
+        <>
         <div className="flex flex-col gap-4 p-6">
             <BadgesStatsPanel />
 
@@ -384,11 +466,19 @@ export default function LeaderboardReports() {
                 ) : (
                     <div className="flex flex-col gap-1">
                         {activeData.entries.map((entry, i) => (
-                            <LeaderboardRow key={i} entry={entry} />
+                            <LeaderboardRow
+                                key={i}
+                                entry={entry}
+                                onClick={() =>
+                                    entry.badgeCount > 0 && setSelectedEntry(entry)
+                                }
+                            />
                         ))}
                     </div>
                 )}
             </div>
         </div>
+        <EntryBadgesDialog entry={selectedEntry} onClose={() => setSelectedEntry(null)} />
+        </>
     );
 }

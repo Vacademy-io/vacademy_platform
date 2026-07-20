@@ -113,21 +113,21 @@ function Row({ entry, onClick }: { entry: LeaderboardEntry; onClick?: () => void
 function BadgeCell({ badge }: { badge: { name: string; icon: string } }) {
   const isLib = isLibraryToken(badge.icon);
   return (
-    <div className="flex w-16 flex-col items-center gap-1" title={badge.name}>
+    <div className="flex w-24 flex-col items-center gap-1.5" title={badge.name}>
       <span
         className={cn(
           "flex items-center justify-center",
-          isLib ? "h-14 w-14" : "h-12 w-12 rounded-full bg-primary-50"
+          isLib ? "h-24 w-24" : "h-20 w-20 rounded-full bg-primary-50"
         )}
       >
         <BadgeVisual
           icon={badge.icon}
           fill
-          size={isLib ? 52 : 26}
+          size={isLib ? 88 : 44}
           className={isLib ? undefined : "text-primary-500"}
         />
       </span>
-      <span className="w-full truncate text-center text-3xs font-medium leading-tight text-neutral-600">
+      <span className="w-full text-center text-caption font-medium leading-tight text-neutral-600">
         {badge.name}
       </span>
     </div>
@@ -144,7 +144,7 @@ function EntryBadgesDialog({
 }) {
   return (
     <Dialog open={Boolean(entry)} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Trophy weight="fill" className="h-5 w-5 text-warning-500" />

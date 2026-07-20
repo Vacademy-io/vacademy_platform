@@ -301,6 +301,10 @@ export interface TeamManagementSettings {
     // confident it works for that institute's users. Admins flip this on
     // from Settings → Admin Display Settings when they're ready to roll it out.
     orgChartTabVisible?: boolean;
+    // Controls the Teams "Password" column + per-member "View Password" action.
+    // Defaults to ON (shown) — treated as enabled unless explicitly set to false,
+    // so an admin can hide staff credentials per institute by turning it off.
+    allowViewPassword?: boolean;
 }
 
 // Opt-in flags for the counsellor workbench + sales dashboard routes. Both

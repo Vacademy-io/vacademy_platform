@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { motion } from "framer-motion";
 import { LoadingState, ErrorState } from "@/components/design-system/states";
 import { ParentModuleIcon } from "@/components/parent/ParentModuleIcon";
 import { ChildAvatar } from "../-components/ChildAvatar";
@@ -110,15 +111,26 @@ function ChildHome() {
     <ParentChildShell childId={childId} backTo="picker">
       <div className="flex flex-col gap-6">
         {/* ── Warm gradient hero: parent greeting + child avatar + stats ── */}
-        <div className="rounded-3xl bg-gradient-to-br from-primary-100 via-secondary-100 to-primary-50 p-6 shadow-sm">
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="rounded-3xl bg-gradient-to-br from-primary-100 via-secondary-100 to-primary-50 p-6 shadow-sm"
+        >
           <div className="flex items-center gap-4">
-            <div className="size-20 shrink-0 overflow-hidden rounded-3xl shadow-md ring-4 ring-background/60">
+            <motion.div
+              initial={{ scale: 0.7, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 15 }}
+              whileHover={{ scale: 1.06, rotate: -3 }}
+              className="size-20 shrink-0 overflow-hidden rounded-3xl shadow-md ring-4 ring-background/60"
+            >
               <ChildAvatar
                 name={childName}
                 fileId={overview.child?.profilePicFileId}
-                textClassName="text-h1"
+                size={80}
               />
-            </div>
+            </motion.div>
             <div className="min-w-0">
               {parentFirstName ? (
                 <p className="text-caption font-medium text-primary-500">
@@ -139,20 +151,25 @@ function ChildHome() {
             <StatPill label={t("stats.certificates")} value={String(overview.certificateCount ?? 0)} />
             <StatPill label={t("stats.feesDue")} value={String(overview.pendingInvoiceCount ?? 0)} />
           </div>
-        </div>
+        </motion.div>
 
         <ParentQuickSearch childId={childId} availableKeys={available} />
 
         {/* ── Module cards FIRST (the main event, CuePilot-style) ── */}
         <div data-tour="parent-tiles" className="grid grid-cols-2 gap-4 md-tablets:grid-cols-3">
-          {tiles.map((tile) => (
-            <button
+          {tiles.map((tile, idx) => (
+            <motion.button
               key={tile.key}
               data-tour={tile.tour}
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.06, duration: 0.3, ease: "easeOut" }}
+              whileHover={{ y: -5 }}
+              whileTap={{ scale: 0.97 }}
               onClick={() => navigate({ to: `/parent/child/${childId}/${tile.segment}` as never })}
               className={cn(
                 "group flex flex-col items-start gap-3 rounded-3xl bg-card p-5 text-start shadow-sm",
-                "transition-all hover:-translate-y-1 hover:shadow-md",
+                "transition-shadow hover:shadow-md",
                 "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
               )}
             >
@@ -172,7 +189,7 @@ function ChildHome() {
                   {tileSubtitle(tile.key, overview, t)}
                 </span>
               </div>
-            </button>
+            </motion.button>
           ))}
         </div>
 

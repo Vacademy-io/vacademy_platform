@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { CaretDown, Check, SignOut } from "@phosphor-icons/react";
+import { CaretDown, Check } from "@phosphor-icons/react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,8 +41,8 @@ export function ParentProfileMenu({ childId, childName, childFileId }: ParentPro
             "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
           )}
         >
-          <div className="size-8 shrink-0 overflow-hidden rounded-full border border-border">
-            <ChildAvatar name={childName} fileId={childFileId} textClassName="text-caption" />
+          <div className="size-8 shrink-0 overflow-hidden rounded-full ring-1 ring-border">
+            <ChildAvatar name={childName} fileId={childFileId} size={32} />
           </div>
           <span className="truncate text-body font-semibold text-foreground">{childName}</span>
           <CaretDown className="size-3 shrink-0 text-muted-foreground" aria-hidden />
@@ -71,7 +71,7 @@ export function ParentProfileMenu({ childId, childName, childFileId }: ParentPro
                 className="gap-2"
               >
                 <div className="size-6 shrink-0 overflow-hidden rounded-full">
-                  <ChildAvatar name={c.fullName} textClassName="text-caption" />
+                  <ChildAvatar name={c.fullName} size={24} />
                 </div>
                 <span className="truncate">{c.fullName}</span>
                 {c.childUserId === childId ? (
@@ -79,14 +79,8 @@ export function ParentProfileMenu({ childId, childName, childFileId }: ParentPro
                 ) : null}
               </DropdownMenuItem>
             ))}
-            <DropdownMenuSeparator />
           </>
         ) : null}
-
-        <DropdownMenuItem onClick={() => navigate({ to: "/logout" })} className="gap-2">
-          <SignOut className="size-4" aria-hidden />
-          {t("account.logout")}
-        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

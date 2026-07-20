@@ -41,7 +41,7 @@ export function ChildPickerGrid({ children, parentName, onSelect }: ChildPickerG
               <ChildAvatar
                 name={child.fullName || ""}
                 fileId={child.profilePicFileId}
-                textClassName="text-h1"
+                size={112}
               />
             </div>
             <div className="text-center">

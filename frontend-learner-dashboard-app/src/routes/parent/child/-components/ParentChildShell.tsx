@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { CaretLeft, House } from "@phosphor-icons/react";
+import { CaretLeft, House, SignOut } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { cn } from "@/lib/utils";
 import { ParentChatbot } from "./ParentChatbot";
@@ -59,8 +59,16 @@ export function ParentChildShell({ childId, backTo = "home", children }: ParentC
           childFileId={overview?.child?.profilePicFileId}
         />
 
-        <div className="ms-auto">
+        <div className="ms-auto flex items-center gap-1">
           <ParentHelpButton />
+          <MyButton
+            layoutVariant="icon"
+            buttonType="text"
+            onClick={() => navigate({ to: "/logout" })}
+            aria-label={t("account.logout")}
+          >
+            <SignOut className="size-5" aria-hidden />
+          </MyButton>
         </div>
       </header>
 

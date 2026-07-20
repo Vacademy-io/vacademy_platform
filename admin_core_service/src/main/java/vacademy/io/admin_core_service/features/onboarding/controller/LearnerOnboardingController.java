@@ -164,6 +164,26 @@ public class LearnerOnboardingController {
     }
 
     /**
+     * Saves whatever fields the caller has edit access to WITHOUT requiring every mandatory
+     * field on the step and WITHOUT completing/advancing -- e.g. the student fills in "did you
+     * receive it?" today, but the admin's own tracking-id/vendor fields (or any OTHER field the
+     * caller can't edit) don't need to be present yet for this to save.
+     */
+    @PostMapping("/step-instances/{stepInstanceId}/save")
+    public ResponseEntity<OnboardingStepInstanceDTO> saveStep(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @PathVariable("stepInstanceId") String stepInstanceId,
+            @RequestBody CompleteStepInstanceRequest request) {
+        OnboardingStepInstance stepInstance = onboardingStepInstanceService.getStepInstance(stepInstanceId);
+        assertOwnsStepInstance(userDetails, stepInstance);
+        String roleKey = resolveCallerRoleKey(userDetails);
+        return ResponseEntity.ok(onboardingStepInstanceService.toDtoForRole(
+                onboardingStepInstanceService.saveStepProgress(stepInstanceId, request.getPayload(),
+                        roleKey, userDetails.getUserId()),
+                roleKey));
+    }
+
+    /**
      * Allows: the instance's own subject, its resolved subject (once a parent resolution has
      * happened and the real student has their own login), or a parent linked to either of
      * those via {@code users.linked_parent_id}. The guardian check only runs when the direct

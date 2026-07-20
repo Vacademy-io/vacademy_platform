@@ -7,9 +7,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.common.dto.request.CustomFieldValueDto;
+import vacademy.io.admin_core_service.features.common.entity.CustomFieldValues;
 import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldValueSourceTypeEnum;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
+import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.common.repository.InstituteCustomFieldRepository;
 import vacademy.io.admin_core_service.features.common.service.CustomFieldValueService;
 import vacademy.io.admin_core_service.features.onboarding.dto.OnboardingStepFieldConfigDTO;
@@ -25,6 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * FORM step type -- v1's only step type. Renders/validates the step's configured
@@ -40,6 +43,7 @@ public class FormStepTypeHandler implements OnboardingStepTypeHandler {
 
     private final InstituteCustomFieldRepository instituteCustomFieldRepository;
     private final CustomFieldValueService customFieldValueService;
+    private final CustomFieldValuesRepository customFieldValuesRepository;
     private final OnboardingStudentCreationService onboardingStudentCreationService;
     private final OnboardingRoleAccessResolutionService roleAccessResolutionService;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -55,8 +59,18 @@ public class FormStepTypeHandler implements OnboardingStepTypeHandler {
                                                   OnboardingStep step,
                                                   Map<String, Object> payload,
                                                   String actorRoleKey,
-                                                  String actorUserId) {
+                                                  String actorUserId,
+                                                  boolean requireComplete) {
         List<OnboardingStepFieldConfigDTO> fieldConfigs = parseFieldConfigs(step.getFieldsConfig());
+
+        // Values already saved in an EARLIER call (by this actor or a different role) -- a step
+        // whose fields span multiple roles (admin fills tracking id/vendor, student later fills
+        // "received?") must not treat an already-saved field as "missing" just because THIS
+        // caller can't edit it / didn't resend it in this payload.
+        Map<String, String> existingValues = customFieldValuesRepository
+                .findBySourceTypeAndSourceId(CustomFieldValueSourceTypeEnum.ONBOARDING_STEP_INSTANCE.name(), stepInstance.getId())
+                .stream()
+                .collect(Collectors.toMap(CustomFieldValues::getCustomFieldId, CustomFieldValues::getValue, (a, b) -> a));
 
         List<CustomFieldValueDto> valuesToSave = new ArrayList<>();
         List<String> missingMandatory = new ArrayList<>();
@@ -71,34 +85,45 @@ public class FormStepTypeHandler implements OnboardingStepTypeHandler {
             }
 
             // Never trust the client's edit intent: re-check per-field permission for the
-            // actual caller role server-side, exactly like every other field below relies on
-            // fieldConfig.isMandatory rather than trusting what the client claims. A field the
-            // caller can't edit is treated as not submitted, so a tampered/naive payload can't
-            // write to it -- it just falls through to the mandatory-field check like any other
-            // absent value.
+            // actual caller role server-side. A field the caller can't edit is treated as not
+            // submitted THIS call, so a tampered/naive payload can't write to it -- it just
+            // falls through to the already-saved value (if any) for the mandatory check below.
             boolean canEdit = roleAccessResolutionService
                     .resolveFieldAccess(step.getId(), fieldConfig.getInstituteCustomFieldId(), actorRoleKey)
                     .canEdit;
 
             String customFieldId = instituteCustomField.get().getCustomFieldId();
             Object rawValue = (!canEdit || payload == null) ? null : payload.get(fieldConfig.getInstituteCustomFieldId());
-            String value = rawValue == null ? null : String.valueOf(rawValue);
+            String newValue = rawValue == null ? null : String.valueOf(rawValue);
+            String effectiveValue = StringUtils.hasText(newValue) ? newValue : existingValues.get(customFieldId);
 
-            if (Boolean.TRUE.equals(fieldConfig.getIsMandatory()) && !StringUtils.hasText(value)) {
+            if (requireComplete && Boolean.TRUE.equals(fieldConfig.getIsMandatory()) && !StringUtils.hasText(effectiveValue)) {
                 missingMandatory.add(fieldConfig.getInstituteCustomFieldId());
-                continue;
             }
 
-            if (StringUtils.hasText(value)) {
+            // Only ever write a value this specific call actually provided -- re-saving the
+            // already-stored value on every later call (e.g. every time someone else submits
+            // their own part of the same step) would be a wasted write with no effect.
+            if (StringUtils.hasText(newValue)) {
                 CustomFieldValueDto dto = new CustomFieldValueDto();
                 dto.setCustomFieldId(customFieldId);
                 dto.setSourceType(CustomFieldValueSourceTypeEnum.ONBOARDING_STEP_INSTANCE.name());
                 dto.setSourceId(stepInstance.getId());
                 dto.setType(CustomFieldTypeEnum.ONBOARDING_STEP.name());
                 dto.setTypeId(step.getId());
-                dto.setValue(value);
+                dto.setValue(newValue);
                 valuesToSave.add(dto);
             }
+        }
+
+        // Persist whatever new values THIS call actually provided regardless of whether the
+        // step can fully complete yet -- a partial save (requireComplete=false) always saves;
+        // a failed complete attempt (some other role's mandatory field still missing) must not
+        // discard THIS caller's otherwise-valid input either.
+        customFieldValueService.upsertCustomFieldValues(valuesToSave);
+
+        if (!requireComplete) {
+            return OnboardingStepInstanceStatus.IN_PROGRESS;
         }
 
         if (!missingMandatory.isEmpty()) {
@@ -108,8 +133,6 @@ public class FormStepTypeHandler implements OnboardingStepTypeHandler {
             throw new InvalidRequestException(
                     "Missing mandatory field(s): " + String.join(", ", missingMandatory));
         }
-
-        customFieldValueService.upsertCustomFieldValues(valuesToSave);
 
         if (isCreateStudentConfigured(step)) {
             // Parent-vs-student resolution (is_parent + student_* fields) already ran centrally

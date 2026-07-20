@@ -52,6 +52,7 @@ import {
     fetchStepFields,
     fetchSubmittedFieldValues,
     completeStepInstance,
+    saveStepInstanceProgress,
     skipStepInstance,
     startOnboardingInstance,
     searchPackageSessions,
@@ -376,6 +377,20 @@ function OnboardingInstanceCard({
     });
     const [completeTarget, setCompleteTarget] = useState<OnboardingStepInstanceDTO | null>(null);
 
+    // Saves whatever fields the admin filled in without requiring every mandatory field on the
+    // step -- e.g. recording a delivery's tracking id/vendor while the step's own "did the
+    // student receive it?" field is the student's to fill in later.
+    const { mutate: saveProgress, isPending: savingProgress } = useMutation({
+        mutationFn: ({ id, payload }: { id: string; payload: Record<string, unknown> }) =>
+            saveStepInstanceProgress(id, payload),
+        onSuccess: () => {
+            toast.success('Progress saved');
+            setCompleteTarget(null);
+            invalidate();
+        },
+        onError: () => toast.error('Could not save this step.'),
+    });
+
     const { mutate: skip, isPending: skipping } = useMutation({
         mutationFn: ({ id, reason }: { id: string; reason: string }) => skipStepInstance(id, reason),
         onSuccess: () => {
@@ -485,11 +500,13 @@ function OnboardingInstanceCard({
                     stepInstance={completeTarget}
                     stepDef={stepById.get(completeTarget.step_id)}
                     submitting={completing}
+                    saving={savingProgress}
                     subjectFullName={subjectFullName}
                     subjectEmail={subjectEmail}
                     subjectMobileNumber={subjectMobileNumber}
                     onClose={() => setCompleteTarget(null)}
                     onSubmit={(payload) => complete({ id: completeTarget.id, payload })}
+                    onSave={(payload) => saveProgress({ id: completeTarget.id, payload })}
                 />
             )}
 
@@ -561,29 +578,55 @@ function CompleteFormStepDialog({
     stepInstance,
     stepDef,
     submitting,
+    saving,
     subjectFullName,
     subjectEmail,
     subjectMobileNumber,
     onClose,
     onSubmit,
+    onSave,
 }: {
     instituteId: string;
     stepInstance: OnboardingStepInstanceDTO;
     stepDef: OnboardingStepDTO | undefined;
     submitting: boolean;
+    saving: boolean;
     subjectFullName?: string | null;
     subjectEmail?: string | null;
     subjectMobileNumber?: string | null;
     onClose: () => void;
     onSubmit: (payload: Record<string, unknown>) => void;
+    /** Persists whatever fields have been filled in so far WITHOUT requiring every mandatory
+     *  field and WITHOUT completing/advancing -- e.g. an admin recording a delivery's tracking
+     *  id/vendor while the step's own "did the student receive it?" field is the student's to
+     *  fill in later. */
+    onSave: (payload: Record<string, unknown>) => void;
 }) {
     const fieldsQuery = useQuery({
         queryKey: ['onboarding-step-fields', instituteId, stepInstance.step_id],
         queryFn: () => fetchStepFields(instituteId, stepInstance.step_id),
         staleTime: 60 * 1000,
     });
+    // Whatever's already been saved for this step instance -- e.g. a PRIOR "Save" call by this
+    // same admin, or a field the student already filled in -- so reopening this dialog shows
+    // it instead of risking an overwrite with a blank input.
+    const submittedQuery = useQuery({
+        queryKey: ['onboarding-step-submitted-values', stepInstance.id],
+        queryFn: () => fetchSubmittedFieldValues(stepInstance.id),
+        staleTime: 10 * 1000,
+    });
     const [values, setValues] = useState<Record<string, string>>({});
     const fields = fieldsQuery.data ?? [];
+
+    useEffect(() => {
+        if (!submittedQuery.data) return;
+        const seeded: Record<string, string> = {};
+        submittedQuery.data.forEach((f) => {
+            if (f.value) seeded[f.institute_custom_field_id] = f.value;
+        });
+        setValues((prev) => ({ ...seeded, ...prev }));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [submittedQuery.data]);
 
     // "Create a student from this step" config: empty pool → search ANY course;
     // non-empty pool → pick only from the courses the flow builder allowed.
@@ -632,13 +675,21 @@ function CompleteFormStepDialog({
             dialogWidth="max-w-lg"
             footer={
                 <div className="flex w-full items-center justify-end gap-2">
-                    <MyButton buttonType="secondary" scale="medium" onClick={onClose} disable={submitting}>
+                    <MyButton buttonType="secondary" scale="medium" onClick={onClose} disable={submitting || saving}>
                         Cancel
+                    </MyButton>
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        disable={submitting || saving || fieldsQuery.isLoading}
+                        onClick={() => onSave(values)}
+                    >
+                        {saving ? 'Saving…' : 'Save'}
                     </MyButton>
                     <MyButton
                         buttonType="primary"
                         scale="medium"
-                        disable={submitting || fieldsQuery.isLoading || missingCourseChoice || missingStudentDetails}
+                        disable={submitting || saving || fieldsQuery.isLoading || missingCourseChoice || missingStudentDetails}
                         onClick={() =>
                             onSubmit({
                                 ...values,

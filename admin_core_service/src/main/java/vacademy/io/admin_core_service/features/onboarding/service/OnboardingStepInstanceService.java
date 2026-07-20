@@ -111,6 +111,26 @@ public class OnboardingStepInstanceService {
     @Transactional
     public OnboardingStepInstance completeStep(String stepInstanceId, Map<String, Object> payload,
                                                 String actorRoleKey, String actorUserId) {
+        return submitStep(stepInstanceId, payload, actorRoleKey, actorUserId, true);
+    }
+
+    /**
+     * Persists whatever fields the caller has edit access to WITHOUT requiring every mandatory
+     * field on the step to be present, and WITHOUT completing/advancing -- the step-instance
+     * status is left exactly as it was. For a step whose fields span multiple roles (e.g. an
+     * admin records a delivery's tracking id/vendor while the step's own "did you receive it?"
+     * field is the student's to fill in later), each side can save their own part independently.
+     * Whoever eventually calls {@link #completeStep} triggers the real mandatory check, which
+     * sees every value saved so far (this call's and everyone else's), not just its own payload.
+     */
+    @Transactional
+    public OnboardingStepInstance saveStepProgress(String stepInstanceId, Map<String, Object> payload,
+                                                    String actorRoleKey, String actorUserId) {
+        return submitStep(stepInstanceId, payload, actorRoleKey, actorUserId, false);
+    }
+
+    private OnboardingStepInstance submitStep(String stepInstanceId, Map<String, Object> payload,
+                                               String actorRoleKey, String actorUserId, boolean requireComplete) {
         OnboardingStepInstance stepInstance = getStepInstance(stepInstanceId);
         OnboardingStep step = onboardingStepRepository.findById(stepInstance.getStepId())
                 .orElseThrow(() -> new ResourceNotFoundException("Onboarding step not found: " + stepInstance.getStepId()));
@@ -132,13 +152,12 @@ public class OnboardingStepInstanceService {
 
         // A step that assigns a course, that resolves "filled by a parent" into a brand-new user
         // account, or whose step-level role_access denies this role edit permission, is not
-        // something a non-admin caller may complete -- otherwise a caller could either enroll
-        // themselves in any course (empty pool), create arbitrary new accounts under themselves-
-        // as-parent with zero oversight, or complete a step an admin explicitly locked to
-        // themselves via role_access despite it having no create_student config. Enforced here
-        // (not just in the learner-app UI, which only renders the form when learner_can_act
-        // permits it) since the learner endpoint always resolves the caller's real role before
-        // calling this.
+        // something a non-admin caller may act on at all -- otherwise a caller could either
+        // enroll themselves in any course (empty pool), create arbitrary new accounts under
+        // themselves-as-parent with zero oversight, or save/complete a step an admin explicitly
+        // locked to themselves via role_access despite it having no create_student config.
+        // Applies to a partial save too, not just complete -- there's no legitimate reason for a
+        // non-admin to write into a step they have no editable field on anyway.
         if (!OnboardingRoleKey.ADMIN.name().equals(actorRoleKey)
                 && (requestsParentResolution || !isActionableForRole(step, actorRoleKey))) {
             throw new ForbiddenException("This action must be completed by an admin.");
@@ -163,8 +182,8 @@ public class OnboardingStepInstanceService {
 
         OnboardingStepTypeHandler handler = stepTypeHandlerRegistry.getHandler(step.getStepType());
         OnboardingStepInstanceStatus resultStatus = handler != null
-                ? handler.onSubmit(stepInstance, step, payload, actorRoleKey, actorUserId)
-                : OnboardingStepInstanceStatus.COMPLETED;
+                ? handler.onSubmit(stepInstance, step, payload, actorRoleKey, actorUserId, requireComplete)
+                : (requireComplete ? OnboardingStepInstanceStatus.COMPLETED : OnboardingStepInstanceStatus.IN_PROGRESS);
 
         stepInstance.setStatus(resultStatus.name());
         if (resultStatus == OnboardingStepInstanceStatus.COMPLETED) {
@@ -175,6 +194,8 @@ public class OnboardingStepInstanceService {
         OnboardingStepInstance savedStepInstance = stepInstanceRepository.save(stepInstance);
 
         if (resultStatus != OnboardingStepInstanceStatus.COMPLETED) {
+            // Covers BOTH a genuine partial save AND a failed complete attempt (some other
+            // role's mandatory field is still missing) -- either way, nothing to advance yet.
             return savedStepInstance;
         }
 

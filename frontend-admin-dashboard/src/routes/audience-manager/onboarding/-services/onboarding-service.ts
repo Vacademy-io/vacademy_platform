@@ -459,6 +459,23 @@ export async function completeStepInstance(
     return data;
 }
 
+/**
+ * Saves whatever fields the admin filled in WITHOUT requiring every mandatory field on the
+ * step and WITHOUT completing/advancing -- e.g. recording a delivery's tracking id/vendor while
+ * the step's own "did the student receive it?" field is the student's to fill in later.
+ * completeStepInstance sees this saved data too, once someone actually completes.
+ */
+export async function saveStepInstanceProgress(
+    stepInstanceId: string,
+    payload: Record<string, unknown>
+): Promise<OnboardingStepInstanceDTO> {
+    const { data } = await authenticatedAxiosInstance.post(
+        `${ONBOARDING_STEP_INSTANCES_BASE}/${stepInstanceId}/save`,
+        { payload }
+    );
+    return data;
+}
+
 export async function skipStepInstance(
     stepInstanceId: string,
     reason: string

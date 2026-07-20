@@ -13,11 +13,11 @@ import org.springframework.web.bind.annotation.RestController;
 import vacademy.io.admin_core_service.features.certificate.dto.IssuedCertificateDTO;
 import vacademy.io.admin_core_service.features.invoice.dto.InvoiceDTO;
 import vacademy.io.admin_core_service.features.learner_badge.dto.LearnerBadgeDTO;
-import vacademy.io.admin_core_service.features.learner_reports.dto.LearnerSubjectWiseProgressReportDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsByDateDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LearnerPastSessionsResponseDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.StudentAttendanceReportDTO;
 import vacademy.io.admin_core_service.features.parent_portal.dto.ChildReportListItemDTO;
+import vacademy.io.admin_core_service.features.parent_portal.dto.CourseProgressDTO;
 import vacademy.io.admin_core_service.features.parent_portal.service.ParentPortalDetailService;
 import vacademy.io.admin_core_service.features.student_analysis.client.AssessmentServiceClient;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -89,7 +89,7 @@ public class ParentPortalDetailController {
     }
 
     @GetMapping("/progress/subjects")
-    public ResponseEntity<List<LearnerSubjectWiseProgressReportDTO>> subjectProgress(
+    public ResponseEntity<List<CourseProgressDTO>> subjectProgress(
             @PathVariable String childUserId,
             @RequestParam(required = false) String packageSessionId,
             @RequestAttribute("user") CustomUserDetails user) {

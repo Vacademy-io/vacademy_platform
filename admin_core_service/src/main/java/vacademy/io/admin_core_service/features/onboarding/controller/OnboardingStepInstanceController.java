@@ -45,6 +45,23 @@ public class OnboardingStepInstanceController {
                         OnboardingRoleKey.ADMIN.name(), userDetails.getUserId())));
     }
 
+    /**
+     * Saves whatever fields the admin has filled in WITHOUT requiring every mandatory field on
+     * the step and WITHOUT completing/advancing -- e.g. recording a delivery's tracking id and
+     * vendor while the step's own "did the student receive it?" field is the student's to fill
+     * in later. {@link #completeStep} sees this saved data too, once someone actually completes.
+     */
+    @PostMapping("/{stepInstanceId}/save")
+    public ResponseEntity<OnboardingStepInstanceDTO> saveStep(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @PathVariable("stepInstanceId") String stepInstanceId,
+            @RequestBody CompleteStepInstanceRequest request) {
+        requireAdminForStepInstance(userDetails, stepInstanceId);
+        return ResponseEntity.ok(onboardingStepInstanceService.toDto(
+                onboardingStepInstanceService.saveStepProgress(stepInstanceId, request.getPayload(),
+                        OnboardingRoleKey.ADMIN.name(), userDetails.getUserId())));
+    }
+
     @PostMapping("/{stepInstanceId}/skip")
     public ResponseEntity<OnboardingStepInstanceDTO> skipStep(
             @RequestAttribute("user") CustomUserDetails userDetails,

@@ -47,13 +47,28 @@ export async function fetchChildOverview(childUserId: string): Promise<ChildOver
   return data;
 }
 
+// ISO (yyyy-MM-dd) date N days before today — for a sensible attendance window.
+function isoDaysAgo(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().slice(0, 10);
+}
+
 export async function fetchChildAttendance(
   childUserId: string,
   params?: { packageSessionId?: string; startDate?: string; endDate?: string },
 ): Promise<AttendanceReport> {
+  // The backend defaults to only the last 30 days, which often shows little or
+  // nothing for a parent. Default to a full year so attendance actually appears;
+  // the backend computes present/total over whatever window we pass.
+  const withWindow = {
+    ...params,
+    startDate: params?.startDate ?? isoDaysAgo(365),
+    endDate: params?.endDate ?? new Date().toISOString().slice(0, 10),
+  };
   const { data } = await authenticatedAxiosInstance.get(
     PARENT_PORTAL_CHILD_ATTENDANCE(childUserId),
-    { params },
+    { params: withWindow },
   );
   return data;
 }

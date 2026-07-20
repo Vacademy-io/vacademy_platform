@@ -31,6 +31,7 @@ public class ChildOverviewDTO {
     // Headline numbers for the home tiles. Null when the module is off or its
     // collector failed — the UI shows a neutral hint, never a wrong zero.
     private Double attendancePercent;
+    private Double courseCompletionPercent;
     private Integer upcomingSessionCount;
     private Integer assessmentCount;
 

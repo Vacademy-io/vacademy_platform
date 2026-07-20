@@ -14,6 +14,8 @@ import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsB
 import vacademy.io.admin_core_service.features.live_session.dto.StudentAttendanceReportDTO;
 import vacademy.io.admin_core_service.features.live_session.service.AttendanceReportService;
 import vacademy.io.admin_core_service.features.live_session.service.GetLiveSessionService;
+import vacademy.io.admin_core_service.features.learner_reports.dto.LearnerSubjectWiseProgressReportDTO;
+import vacademy.io.admin_core_service.features.learner_reports.service.LearnerReportService;
 import vacademy.io.admin_core_service.features.parent_portal.dto.ChildOverviewDTO;
 import vacademy.io.admin_core_service.features.parent_portal.dto.ChildReportListItemDTO;
 import vacademy.io.admin_core_service.features.parent_portal.dto.ParentChildSummaryDTO;
@@ -52,6 +54,7 @@ public class ParentPortalOverviewService {
     private final AttendanceReportService attendanceReportService;
     private final GetLiveSessionService getLiveSessionService;
     private final AssessmentServiceClient assessmentServiceClient;
+    private final LearnerReportService learnerReportService;
 
     public ChildOverviewDTO overview(CustomUserDetails caller, String childUserId) {
         GuardedChild child = guard.requireLinkedChild(caller, childUserId);
@@ -113,13 +116,34 @@ public class ParentPortalOverviewService {
         String primaryBatch = child.packageSessionIds().isEmpty() ? null : child.packageSessionIds().get(0);
         if (available.contains("attendance") && primaryBatch != null) {
             try {
+                // A full year, not 30 days — a parent's headline attendance should reflect
+                // the whole term, and a 30-day window is often empty (no recent sessions).
                 StudentAttendanceReportDTO report = attendanceReportService.getStudentReport(
-                        child.childUserId(), primaryBatch, LocalDate.now().minusDays(30), LocalDate.now());
+                        child.childUserId(), primaryBatch, LocalDate.now().minusDays(365), LocalDate.now());
                 if (report != null) {
                     b.attendancePercent(report.getAttendancePercentage());
                 }
             } catch (Exception e) {
                 markUnavailable("attendance", unavailable, e);
+            }
+        }
+        if (available.contains("progress") && !child.packageSessionIds().isEmpty()) {
+            try {
+                // Average across ALL the child's courses, matching the progress screen.
+                List<LearnerSubjectWiseProgressReportDTO> allSubjects = new ArrayList<>();
+                for (String psId : child.packageSessionIds()) {
+                    List<LearnerSubjectWiseProgressReportDTO> subjects =
+                            learnerReportService.getSubjectProgressReport(psId, child.childUserId(), caller);
+                    if (subjects != null) {
+                        allSubjects.addAll(subjects);
+                    }
+                }
+                Double pct = averageCompletion(allSubjects);
+                if (pct != null) {
+                    b.courseCompletionPercent(pct);
+                }
+            } catch (Exception e) {
+                markUnavailable("progress", unavailable, e);
             }
         }
         if (available.contains("liveSessions") && primaryBatch != null) {
@@ -172,5 +196,32 @@ public class ParentPortalOverviewService {
     private void markUnavailable(String module, List<String> unavailable, Exception e) {
         log.warn("Parent overview module '{}' unavailable: {}", module, e.getMessage());
         unavailable.add(module);
+    }
+
+    /**
+     * Overall course completion = mean of each subject's mean module completion,
+     * matching the per-subject averaging the progress screen shows. Null when there
+     * is no progress data at all (so the tile stays a neutral hint, never a 0%).
+     */
+    private Double averageCompletion(List<LearnerSubjectWiseProgressReportDTO> subjects) {
+        if (subjects == null || subjects.isEmpty()) return null;
+        double sum = 0;
+        int counted = 0;
+        for (LearnerSubjectWiseProgressReportDTO subject : subjects) {
+            if (subject.getModules() == null || subject.getModules().isEmpty()) continue;
+            double moduleSum = 0;
+            int moduleCount = 0;
+            for (LearnerSubjectWiseProgressReportDTO.ModuleProgressDTO m : subject.getModules()) {
+                if (m.getCompletionPercentage() != null) {
+                    moduleSum += m.getCompletionPercentage();
+                    moduleCount++;
+                }
+            }
+            if (moduleCount > 0) {
+                sum += moduleSum / moduleCount;
+                counted++;
+            }
+        }
+        return counted == 0 ? null : sum / counted;
     }
 }

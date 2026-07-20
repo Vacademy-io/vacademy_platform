@@ -336,10 +336,11 @@ public class AdminManualEvaluationManager {
             // Convert JSON string to Map
             Map<String, Object> jsonMap = objectMapper.readValue(jsonString, Map.class);
 
-            // Update the specified key
-            if (jsonMap.containsKey(node)) {
-                jsonMap.put(node, newValue);
-            }
+            // Update (or insert) the specified key. Must always put — a re-attempt's
+            // attempt_data has no "fileId" key at all, and the old containsKey guard
+            // silently dropped the write, leaving the answer file on evaluated_file_id
+            // but invisible to the evaluator loader ("Couldn't load the answer sheet").
+            jsonMap.put(node, newValue);
 
             // Convert Map back to JSON string
             return objectMapper.writeValueAsString(jsonMap);
@@ -389,6 +390,14 @@ public class AdminManualEvaluationManager {
             // Convert JSON string to Map
             Map<String, Object> jsonMap = objectMapper.readValue(attemptOptional.get().getAttemptData(), Map.class);
             String fileId = (String) jsonMap.get("fileId");
+
+            // Fall back to the persisted evaluated_file_id column when the answer file
+            // was attached (Upload Answer Sheet / re-attempt) but never made it into the
+            // attempt_data JSON — otherwise the evaluator screen shows "Couldn't load the
+            // answer sheet" even though the uploaded file exists on the attempt.
+            if (fileId == null || fileId.isBlank()) {
+                fileId = attemptOptional.get().getEvaluatedFileId();
+            }
 
             // This endpoint is also used by view-only screens (submissions tab,
             // activity log) just to fetch the answer file id, so the EVALUATING

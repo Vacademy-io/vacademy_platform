@@ -58,7 +58,16 @@ export function InstituteSelection() {
     const { type, courseId } = (location.state as { type?: string; courseId?: string }) || {};
     const navigate = useNavigate();
     const search = useSearch({ from: "/institute-selection/" });
-    const redirect = (search as { redirect?: string })?.redirect;
+    const rawRedirect = (search as { redirect?: string })?.redirect;
+    // The page login forms forward their `redirect` search param here, which
+    // defaults to "/login/" when there's no real deep-link. Treat that sentinel
+    // (and any value pointing back at the login route) as "no redirect" so a
+    // normal multi-institute login lands on the dashboard instead of bouncing
+    // back to the login screen.
+    const redirect =
+        rawRedirect && !/^\/login\/?(?:[?#]|$)/.test(rawRedirect)
+            ? rawRedirect
+            : undefined;
 
     const form = useForm<FormValues>({
         resolver: zodResolver(instituteSelectionSchema),

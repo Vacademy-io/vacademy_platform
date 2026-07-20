@@ -8,6 +8,7 @@ import { CheckCircle, ListChecks, Lock, SpinnerGap } from "@phosphor-icons/react
 import { MyInput } from "@/components/design-system/input";
 import { MyButton } from "@/components/design-system/button";
 import { ModernCard } from "@/components/design-system/modern-card";
+import { Form } from "@/components/ui/form";
 import {
   getResolvedStepFields,
   submitStepInstance,
@@ -166,64 +167,66 @@ export const OnboardingStepForm = ({
           </MyButton>
         </div>
       ) : (
-        <form
-          onSubmit={form.handleSubmit(handleSubmit)}
-          className="flex w-full flex-col gap-5"
-        >
-          {readOnlyFields.map((field) => (
-            <div
-              key={field.institute_custom_field_id}
-              className="flex flex-col gap-1"
-            >
-              <span className="flex items-center gap-1.5 text-sm font-medium text-neutral-600">
-                <Lock className="size-3.5 text-neutral-400" />
-                {field.field_name ?? "Field"}
-              </span>
-              <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-500">
-                {field.value || "Not filled in"}
+        <Form {...form}>
+          <form
+            onSubmit={form.handleSubmit(handleSubmit)}
+            className="flex w-full flex-col gap-5"
+          >
+            {readOnlyFields.map((field) => (
+              <div
+                key={field.institute_custom_field_id}
+                className="flex flex-col gap-1"
+              >
+                <span className="flex items-center gap-1.5 text-sm font-medium text-neutral-600">
+                  <Lock className="size-3.5 text-neutral-400" />
+                  {field.field_name ?? "Field"}
+                </span>
+                <div className="rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-500">
+                  {field.value || "Not filled in"}
+                </div>
               </div>
+            ))}
+
+            {editableFields.map((field) => (
+              <MyInput
+                key={field.institute_custom_field_id}
+                label={field.field_name ?? "Field"}
+                required={Boolean(field.is_mandatory)}
+                inputType="text"
+                input={form.watch(field.institute_custom_field_id) ?? ""}
+                onChangeFunction={(e) =>
+                  form.setValue(field.institute_custom_field_id, e.target.value, {
+                    shouldValidate: form.formState.isSubmitted,
+                  })
+                }
+                error={
+                  form.formState.errors[field.institute_custom_field_id]
+                    ?.message as string | undefined
+                }
+              />
+            ))}
+
+            <div className="mt-2 flex justify-end">
+              <MyButton
+                type="submit"
+                buttonType="primary"
+                scale="large"
+                layoutVariant="default"
+                disable={submitMutation.isPending}
+                className="w-full sm:w-auto"
+              >
+                {submitMutation.isPending ? (
+                  <>
+                    <SpinnerGap className="mr-2 size-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  "Submit"
+                )}
+              </MyButton>
             </div>
-          ))}
-
-          {editableFields.map((field) => (
-            <MyInput
-              key={field.institute_custom_field_id}
-              label={field.field_name ?? "Field"}
-              required={Boolean(field.is_mandatory)}
-              inputType="text"
-              input={form.watch(field.institute_custom_field_id) ?? ""}
-              onChangeFunction={(e) =>
-                form.setValue(field.institute_custom_field_id, e.target.value, {
-                  shouldValidate: form.formState.isSubmitted,
-                })
-              }
-              error={
-                form.formState.errors[field.institute_custom_field_id]
-                  ?.message as string | undefined
-              }
-            />
-          ))}
-
-          <div className="mt-2 flex justify-end">
-            <MyButton
-              type="submit"
-              buttonType="primary"
-              scale="large"
-              layoutVariant="default"
-              disable={submitMutation.isPending}
-              className="w-full sm:w-auto"
-            >
-              {submitMutation.isPending ? (
-                <>
-                  <SpinnerGap className="mr-2 size-4 animate-spin" />
-                  Submitting...
-                </>
-              ) : (
-                "Submit"
-              )}
-            </MyButton>
-          </div>
-        </form>
+          </form>
+        </Form>
       )}
     </ModernCard>
   );

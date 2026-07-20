@@ -137,8 +137,10 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session,
     # before synthesis — noticeably cleaner Hinglish (POC voice recipe).
     if s.sarvam_tts_min_buffer > 0:
         # Server-side chars Sarvam buffers before the FIRST audio byte (default 50).
-        # Lower = faster first audio; raise via env if Hindi audio turns choppy.
-        kwargs["min_buffer_size"] = s.sarvam_tts_min_buffer
+        # Clamped to Sarvam's validated floor: 20 was REJECTED by the WS config
+        # ('Input parameters has to be a valid dictionary') → NO AUDIO on every call
+        # (2026-07-20 outage). Probe-verified: 30 and 50 accepted.
+        kwargs["min_buffer_size"] = max(30, s.sarvam_tts_min_buffer)
     return ResilientSarvamTTSService(
         api_key=s.sarvam_api_key,
         model=s.sarvam_tts_model,
@@ -146,6 +148,11 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session,
         sample_rate=sample_rate,
         aiohttp_session=aiohttp_session,
         params=SarvamTTSService.InputParams(**kwargs),
+        # pipecat 0.0.95's WS class NEVER puts pace into the config message (verified
+        # from the live config dump + source), so pace historically applied only to
+        # REST previews — never to live calls. Inject it ourselves (probe-verified:
+        # Sarvam's WS config ACCEPTS 'pace' and returns audio).
+        pace_override=eff_pace,
     )
 
 
@@ -212,12 +219,24 @@ class ResilientSarvamSTTService(SarvamSTTService):
 
 
 class ResilientSarvamTTSService(SarvamTTSService):
-    """Silent-bot guard. In pipecat 0.0.95, when Sarvam closes the TTS socket
-    cleanly the receive loop exits WITHOUT reconnecting and leaves _receive_task as
-    a finished-but-non-None task; the next run_tts calls _connect(), but task
-    creation is guarded by `not self._receive_task`, so the NEW socket gets no
-    receive loop → synthesized audio is never read → the bot goes silent. Clearing
-    finished task handles before delegating closes the trap."""
+    """Silent-bot guard + pace injection. (1) In pipecat 0.0.95, when Sarvam closes
+    the TTS socket cleanly the receive loop exits WITHOUT reconnecting and leaves
+    _receive_task as a finished-but-non-None task; the next run_tts calls _connect(),
+    but task creation is guarded by `not self._receive_task`, so the NEW socket gets
+    no receive loop → synthesized audio is never read → the bot goes silent. Clearing
+    finished task handles before delegating closes the trap. (2) The stock class never
+    sends 'pace' in the WS config (only the REST path uses it), so agent pace did
+    nothing on live calls — inject it into the config dict (Sarvam-accepted,
+    probe-verified 2026-07-20)."""
+
+    def __init__(self, *args, pace_override: float | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._pace_override = pace_override
+
+    async def _send_config(self):
+        if self._pace_override is not None:
+            self._settings["pace"] = float(self._pace_override)
+        await super()._send_config()
 
     async def _connect(self):
         for attr in ("_receive_task", "_keepalive_task"):

@@ -6,7 +6,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { DotsThree, WarningCircle } from '@phosphor-icons/react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MyButton } from '@/components/design-system/button';
 import { z } from 'zod';
 import { FormProvider, useForm } from 'react-hook-form';
@@ -22,7 +22,6 @@ import {
 } from '../-services/dashboard-services';
 import { toast } from 'sonner';
 import { mapRoleToCustomName } from '@/utils/roleUtils';
-import { ViewPasswordComponent, isViewPasswordAllowed } from './ViewPasswordDialog';
 export const inviteUsersSchema = z.object({
     roleType: z.array(z.string()).min(1, 'At least one role type is required'),
 });
@@ -351,10 +350,6 @@ const InstituteUsersOptions = ({
     const [openDialog, setOpenDialog] = useState(false);
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
 
-    // "View Password" is opt-in per institute (Settings → Admin Display Settings).
-    // Off by default so team members' plaintext credentials stay hidden.
-    const allowViewPassword = useMemo(() => isViewPasswordAllowed(), []);
-
     const handleDropdownMenuClick = (value: string) => {
         setOpenDialog(true);
         setSelectedOption(value);
@@ -372,11 +367,6 @@ const InstituteUsersOptions = ({
                     <DropdownMenuItem onClick={() => handleDropdownMenuClick('Change Role Type')}>
                         Change Role Type
                     </DropdownMenuItem>
-                    {allowViewPassword && (
-                        <DropdownMenuItem onClick={() => handleDropdownMenuClick('View Password')}>
-                            View Password
-                        </DropdownMenuItem>
-                    )}
                     {user.roles.some((role) => role.status === 'ACTIVE') && (
                         <DropdownMenuItem onClick={() => handleDropdownMenuClick('Disable user')}>
                             Disable user
@@ -401,7 +391,6 @@ const InstituteUsersOptions = ({
                         availableRoles={availableRoles}
                     />
                 )}
-                {selectedOption === 'View Password' && <ViewPasswordComponent student={user} />}
                 {selectedOption === 'Disable user' && (
                     <DisableUserComponent
                         student={user}

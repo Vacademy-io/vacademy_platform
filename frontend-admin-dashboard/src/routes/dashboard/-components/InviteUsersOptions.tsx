@@ -5,7 +5,7 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { DotsThree, WarningCircle } from '@phosphor-icons/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { z } from 'zod';
@@ -24,7 +24,6 @@ import {
 import { useMutation } from '@tanstack/react-query';
 import { getInstituteId } from '@/constants/helper';
 import { toast } from 'sonner';
-import { ViewPasswordComponent, isViewPasswordAllowed } from './ViewPasswordDialog';
 
 export const inviteUsersSchema = z.object({
     name: z.string().min(1, 'Full name is required'),
@@ -321,10 +320,6 @@ const InviteUsersOptions = ({
     const [openDialog, setOpenDialog] = useState(false);
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
 
-    // "View Password" is opt-in per institute (Settings → Admin Display Settings).
-    // Off by default so invited members' plaintext credentials stay hidden.
-    const allowViewPassword = useMemo(() => isViewPasswordAllowed(), []);
-
     const handleDropdownMenuClick = (value: string) => {
         setOpenDialog(true);
         setSelectedOption(value);
@@ -341,11 +336,6 @@ const InviteUsersOptions = ({
                     <DropdownMenuItem onClick={() => handleDropdownMenuClick('Edit')}>
                         Edit
                     </DropdownMenuItem>
-                    {allowViewPassword && (
-                        <DropdownMenuItem onClick={() => handleDropdownMenuClick('View Password')}>
-                            View Password
-                        </DropdownMenuItem>
-                    )}
                     <DropdownMenuItem onClick={() => handleDropdownMenuClick('Resend Invite')}>
                         Resend Invite
                     </DropdownMenuItem>
@@ -363,7 +353,6 @@ const InviteUsersOptions = ({
                         availableRoles={availableRoles}
                     />
                 )}
-                {selectedOption === 'View Password' && <ViewPasswordComponent student={user} />}
                 {selectedOption === 'Resend Invite' && (
                     <ResendInviteComponent
                         student={user}

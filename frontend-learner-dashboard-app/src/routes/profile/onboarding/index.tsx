@@ -23,6 +23,14 @@ import {
   type OnboardingInstanceDTO,
 } from "./-services/onboarding-services";
 
+export const Route = createFileRoute("/profile/onboarding/")({
+  component: () => (
+    <LayoutContainer>
+      <OnboardingPage />
+    </LayoutContainer>
+  ),
+});
+
 function OnboardingPage() {
   const { setNavHeading } = useNavHeadingStore();
   const [instituteId, setInstituteId] = useState<string | null>(null);

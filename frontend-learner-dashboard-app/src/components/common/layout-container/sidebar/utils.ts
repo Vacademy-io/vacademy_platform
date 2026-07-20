@@ -319,7 +319,7 @@ export const HamBurgerSidebarItemsData: SidebarItemsType[] = [
     to: "/my-files",
   },
   { icon: AddressBook, id: "my-reports", title: "My Reports", to: "/my-reports" },
-  { icon: ClipboardText, id: "onboarding", title: "Onboarding", to: "/onboarding" },
+  { icon: ClipboardText, id: "onboarding", title: "Onboarding", to: "/profile/onboarding" },
   // {
   //   icon: CreditCard,
   //   title: "Membership Details",

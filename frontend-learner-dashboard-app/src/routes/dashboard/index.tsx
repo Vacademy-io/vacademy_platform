@@ -108,13 +108,13 @@ import type { BatchForSessionType } from "@/stores/study-library/institute-schem
 import {
   ONBOARDING_INSTANCES_QUERY_KEY,
   OnboardingStepForm,
-} from "../onboarding/-components/onboarding-step-form";
-import { OnboardingProgressList } from "../onboarding/-components/onboarding-progress-list";
+} from "../profile/onboarding/-components/onboarding-step-form";
+import { OnboardingProgressList } from "../profile/onboarding/-components/onboarding-progress-list";
 import {
   getCurrentStepInfo,
   getMyOnboardingInstances,
   type OnboardingInstanceDTO,
-} from "../onboarding/-services/onboarding-services";
+} from "../profile/onboarding/-services/onboarding-services";
 import { getInstituteId } from "@/constants/helper";
 
 export const Route = createFileRoute("/dashboard/")({

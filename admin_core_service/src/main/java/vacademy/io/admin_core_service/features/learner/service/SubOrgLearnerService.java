@@ -904,6 +904,31 @@ public class SubOrgLearnerService {
                 .orElseThrow(() -> new VacademyException(
                         "Package session not found with id: " + request.getPackageSessionId()));
 
+        // SOFT keeps the learner ACTIVE and just moves their access cut-off to the
+        // chosen date; HARD (default) terminates immediately. Blank mode => HARD so
+        // pre-existing callers are unaffected.
+        boolean soft = "SOFT".equalsIgnoreCase(request.getMode());
+        if (soft) {
+            java.sql.Timestamp accessTill = parseAccessTillDate(request.getAccessTillDate());
+            if (accessTill == null) {
+                throw new VacademyException("A last access date is required for a soft termination");
+            }
+            int softCount = mappingRepository.softCancelLearnersBySubOrgAndUserIds(
+                    request.getSubOrgId(),
+                    request.getInstituteId(),
+                    request.getPackageSessionId(),
+                    request.getUserIds(),
+                    accessTill);
+
+            // No termination workflow for SOFT — access continues until the cut-off.
+            log.info("Soft-cancelled {} learners (access until {})", softCount, accessTill);
+
+            return SubOrgTerminateResponseDTO.builder()
+                    .terminatedCount(softCount)
+                    .message("Access for " + softCount + " learner(s) will continue until " + accessTill)
+                    .build();
+        }
+
         // Perform bulk termination
         int terminatedCount = mappingRepository.terminateLearnersBySubOrgAndUserIds(
                 request.getSubOrgId(),
@@ -921,6 +946,29 @@ public class SubOrgLearnerService {
                 .terminatedCount(terminatedCount)
                 .message("Successfully terminated " + terminatedCount + " learner(s)")
                 .build();
+    }
+
+    /**
+     * Parse a SOFT "last access date". Accepts a bare {@code yyyy-MM-dd} (kept
+     * through end-of-day, UTC) or a full ISO-8601 instant. Returns null on blank
+     * or unparseable input.
+     */
+    private java.sql.Timestamp parseAccessTillDate(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String value = raw.trim();
+        try {
+            if (value.length() == 10 && value.charAt(4) == '-') {
+                java.time.LocalDate day = java.time.LocalDate.parse(value);
+                return java.sql.Timestamp.from(
+                        day.atTime(java.time.LocalTime.MAX).atZone(java.time.ZoneOffset.UTC).toInstant());
+            }
+            return java.sql.Timestamp.from(java.time.Instant.parse(value));
+        } catch (java.time.format.DateTimeParseException e) {
+            log.warn("Ignoring unparseable access_till_date '{}': {}", raw, e.getMessage());
+            return null;
+        }
     }
 
     @Transactional(readOnly = true)

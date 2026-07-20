@@ -60,6 +60,31 @@ export interface OnboardingInstanceDTO {
   step_instances: OnboardingStepInstanceDTO[];
 }
 
+export interface CurrentStepInfo {
+  step: OnboardingStepInstanceDTO;
+  /** False when there IS a current step but this caller can't act on it themself (e.g. an
+   *  admin-only create_student step, or one whose role_access denies this role edit) --
+   *  distinct from there being no current step at all. Lets callers show "this step is being
+   *  handled by your admin" instead of just silently having nothing to show. */
+  isActionable: boolean;
+}
+
+/**
+ * The instance's current in-progress/pending step, if any — regardless of whether the caller
+ * can act on it themself. Centralizes "which step is current" so /dashboard's gate and the
+ * /onboarding page agree on the same notion of "current" and "actionable".
+ */
+export function getCurrentStepInfo(instance: OnboardingInstanceDTO): CurrentStepInfo | null {
+  if (instance.status !== "IN_PROGRESS") return null;
+  const step =
+    instance.step_instances.find((s) => s.id === instance.current_step_id) ??
+    instance.step_instances.find((s) => s.status === "IN_PROGRESS");
+  if (!step) return null;
+  if (step.status !== "IN_PROGRESS" && step.status !== "PENDING") return null;
+  const isActionable = step.step_type === "FORM" && step.learner_can_act !== false;
+  return { step, isActionable };
+}
+
 /** Fetches every onboarding instance in progress (or completed) for the caller. */
 export const getMyOnboardingInstances = async (
   instituteId: string

@@ -111,9 +111,9 @@ import {
 } from "../onboarding/-components/onboarding-step-form";
 import { OnboardingProgressList } from "../onboarding/-components/onboarding-progress-list";
 import {
+  getCurrentStepInfo,
   getMyOnboardingInstances,
   type OnboardingInstanceDTO,
-  type OnboardingStepInstanceDTO,
 } from "../onboarding/-services/onboarding-services";
 import { getInstituteId } from "@/constants/helper";
 
@@ -126,23 +126,6 @@ export const Route = createFileRoute("/dashboard/")({
     );
   },
 });
-
-/** The step the caller should act on next, if any -- a current step they can't
- *  act on (e.g. a create_student step, always admin-only) is skipped so they
- *  aren't blocked waiting on an admin action from their own dashboard. */
-const getActiveFormStep = (
-  instance: OnboardingInstanceDTO
-): OnboardingStepInstanceDTO | null => {
-  if (instance.status !== "IN_PROGRESS") return null;
-  const current =
-    instance.step_instances.find((s) => s.id === instance.current_step_id) ??
-    instance.step_instances.find((s) => s.status === "IN_PROGRESS");
-  if (!current) return null;
-  if (current.status !== "IN_PROGRESS" && current.status !== "PENDING") return null;
-  if (current.step_type !== "FORM") return null;
-  if (current.learner_can_act === false) return null;
-  return current;
-};
 
 /**
  * Gates the dashboard on any pending onboarding step the caller can actually
@@ -185,11 +168,19 @@ function DashboardOnboardingGate() {
     staleTime: 30 * 1000,
   });
 
-  const pending = (instances ?? [])
-    .map((instance) => ({ instance, step: getActiveFormStep(instance) }))
-    .find((entry) => entry.step !== null) as
-    | { instance: OnboardingInstanceDTO; step: OnboardingStepInstanceDTO }
-    | undefined;
+  const withCurrentStep = (instances ?? [])
+    .map((instance) => ({ instance, current: getCurrentStepInfo(instance) }))
+    .filter(
+      (entry): entry is { instance: OnboardingInstanceDTO; current: NonNullable<ReturnType<typeof getCurrentStepInfo>> } =>
+        entry.current !== null
+    );
+  const pending = withCurrentStep.find((entry) => entry.current.isActionable);
+  // Nothing the learner can act on right now, but there IS a step in progress that needs
+  // their admin -- surface that instead of just silently freeing straight into the full
+  // dashboard, so it's clear WHY onboarding "disappeared" rather than looking abandoned.
+  const waitingOnAdmin = !pending
+    ? withCurrentStep.find((entry) => !entry.current.isActionable)
+    : undefined;
 
   if (isResolvingInstitute || (Boolean(instituteId) && isLoading)) {
     return (
@@ -212,7 +203,7 @@ function DashboardOnboardingGate() {
             Complete the steps below to continue to your dashboard.
           </p>
         </div>
-        <OnboardingStepForm stepInstance={pending.step} onSubmitted={() => {}} />
+        <OnboardingStepForm stepInstance={pending.current.step} onSubmitted={() => {}} />
         <ModernCard variant="outlined" padding="md" rounded="lg">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
             Progress
@@ -223,7 +214,20 @@ function DashboardOnboardingGate() {
     );
   }
 
-  return <DashboardComponent />;
+  return (
+    <>
+      {waitingOnAdmin && (
+        <div className="flex items-center justify-center gap-2 border-b border-warning-200 bg-warning-50 px-4 py-2.5 text-center text-sm text-warning-700">
+          <Hourglass size={16} weight="fill" />
+          <span>
+            <strong>&ldquo;{waitingOnAdmin.current.step.step_name}&rdquo;</strong> is being
+            handled by your school admin — you don&apos;t need to do anything here.
+          </span>
+        </div>
+      )}
+      <DashboardComponent />
+    </>
+  );
 }
 
 export function DashboardComponent() {

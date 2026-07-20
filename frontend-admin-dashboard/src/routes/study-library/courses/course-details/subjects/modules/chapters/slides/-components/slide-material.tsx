@@ -233,6 +233,7 @@ import ScormSlidePreview from './scorm-slide-preview';
 import AssessmentSlidePreview from './assessment-slide-preview';
 import AssessmentCreateForm from './assessment-create-form';
 import { SlideHistoryDialog } from './slide-history-dialog';
+import { SlideContentErrorBoundary } from './slide-content-error-boundary';
 
 export const SlideMaterial = ({
     setGetCurrentEditorHTMLContent,
@@ -2105,7 +2106,11 @@ export const SlideMaterial = ({
                     ? activeItem.document_slide?.published_data
                     : activeItem.status === 'PUBLISHED'
                       ? activeItem.document_slide?.published_data
-                      : activeItem.document_slide?.data;
+                      : // Draft (UNSYNC) with a null draft `data` but valid
+                        // published_data → show the published deck instead of a
+                        // blank canvas (see PDF branch for the full rationale).
+                        activeItem.document_slide?.data ||
+                        activeItem.document_slide?.published_data;
                 // Only set a new key if the id changes
                 if (!stableKeyRef.current || !stableKeyRef.current.includes(activeItem.id)) {
                     stableKeyRef.current = `slide-editor-${activeItem.id}-${Date.now()}`;
@@ -2166,7 +2171,12 @@ export const SlideMaterial = ({
                     ? activeItem.document_slide?.published_data || ''
                     : activeItem.status === 'PUBLISHED'
                       ? activeItem.document_slide?.published_data || ''
-                      : activeItem.document_slide?.data || '';
+                      : // Draft (UNSYNC) with a null draft `data` but valid
+                        // published_data → play the published deck instead of an
+                        // empty base (see PDF branch for the full rationale).
+                        activeItem.document_slide?.data ||
+                        activeItem.document_slide?.published_data ||
+                        '';
                 setContent(
                     <div className="size-full">
                         <DeckPlayer baseUrl={deckBase} />
@@ -2176,11 +2186,21 @@ export const SlideMaterial = ({
             }
 
             if (documentType === 'PDF') {
+                // A draft (UNSYNC) slide can have a null draft `data` while still
+                // holding a valid `published_data` (e.g. it was published, then a
+                // metadata-only edit flipped status to UNSYNC without uploading a
+                // new draft file). Fall back to the published file so the admin
+                // sees the live PDF instead of an empty viewer that crashes
+                // pdf.js ("Invalid parameter object: need either .data, .range or
+                // .url"). Learners already use published_data, which is why only
+                // the admin view broke.
                 const data = isLearnerView
                     ? activeItem.document_slide?.published_data || null
                     : activeItem.status === 'PUBLISHED'
                       ? activeItem.document_slide?.published_data || null
-                      : activeItem.document_slide?.data || '';
+                      : activeItem.document_slide?.data ||
+                        activeItem.document_slide?.published_data ||
+                        '';
 
                 const url = await getPublicUrl(data || '');
                 setContent(
@@ -2202,7 +2222,10 @@ export const SlideMaterial = ({
                         : activeItem.status === 'PUBLISHED'
                           ? activeItem.document_slide?.data ||
                             activeItem.document_slide?.published_data
-                          : activeItem.document_slide?.data;
+                          : // Draft (UNSYNC) with null draft `data` falls back to
+                            // published_data so the published notebook shows.
+                            activeItem.document_slide?.data ||
+                            activeItem.document_slide?.published_data;
 
                     const notebookData = rawData
                         ? JSON.parse(rawData)
@@ -2298,7 +2321,10 @@ export const SlideMaterial = ({
                         activeItem.status === 'PUBLISHED'
                             ? activeItem.document_slide?.data ||
                               activeItem.document_slide?.published_data
-                            : activeItem.document_slide?.data;
+                            : // Draft (UNSYNC) with null draft `data` falls back
+                              // to published_data so the published project shows.
+                              activeItem.document_slide?.data ||
+                              activeItem.document_slide?.published_data;
 
                     const scratchData = rawData
                         ? JSON.parse(rawData)
@@ -2391,7 +2417,10 @@ export const SlideMaterial = ({
                         activeItem.status === 'PUBLISHED'
                             ? activeItem.document_slide?.data ||
                               activeItem.document_slide?.published_data
-                            : activeItem.document_slide?.data;
+                            : // Draft (UNSYNC) with null draft `data` falls back
+                              // to published_data so the published code shows.
+                              activeItem.document_slide?.data ||
+                              activeItem.document_slide?.published_data;
 
                     const codeData = rawData
                         ? JSON.parse(rawData)
@@ -2463,7 +2492,10 @@ export const SlideMaterial = ({
                         activeItem.status === 'PUBLISHED'
                             ? activeItem.document_slide?.data ||
                               activeItem.document_slide?.published_data
-                            : activeItem.document_slide?.data;
+                            : // Draft (UNSYNC) with null draft `data` falls back
+                              // to published_data so the published split shows.
+                              activeItem.document_slide?.data ||
+                              activeItem.document_slide?.published_data;
 
                     const splitScreenData = rawData
                         ? JSON.parse(rawData)
@@ -3414,7 +3446,7 @@ export const SlideMaterial = ({
     };
 
     // Custom publish function for Excalidraw presentations
-    const publishExcalidrawPresentation = async () => {
+    const publishExcalidrawPresentation = async (notify: boolean) => {
         if (!activeItem || activeItem.document_slide?.type !== 'PRESENTATION') return;
 
         try {
@@ -3488,7 +3520,7 @@ export const SlideMaterial = ({
                 },
                 status: 'PUBLISHED',
                 new_slide: false,
-                notify: false,
+                notify: notify,
             });
 
             // Update local activeItem state with the new published data
@@ -3995,11 +4027,11 @@ export const SlideMaterial = ({
                                                 <span className="text-xs sm:hidden">Pub</span>
                                             </MyButton>
                                         }
-                                        handlePublishUnpublishSlide={async () => {
+                                        handlePublishUnpublishSlide={async (_setIsOpen, notify) => {
                                             if (
                                                 activeItem?.document_slide?.type === 'PRESENTATION'
                                             ) {
-                                                publishExcalidrawPresentation();
+                                                publishExcalidrawPresentation(notify);
                                                 clearLocalDraft(activeItem?.id);
                                                 setIsPublishDialogOpen(false);
                                             } else {
@@ -4104,7 +4136,7 @@ export const SlideMaterial = ({
                                                 }
                                                 handlePublishSlide(
                                                     setIsPublishDialogOpen,
-                                                    false,
+                                                    notify,
                                                     itemToPublish,
                                                     addUpdateDocumentSlide,
                                                     addUpdateVideoSlide,
@@ -4235,7 +4267,11 @@ export const SlideMaterial = ({
                           }`
                 }`}
             >
-                {assessmentCreateMode ? <AssessmentCreateForm /> : content}
+                <SlideContentErrorBoundary
+                    resetKey={assessmentCreateMode ? 'assessment-create' : (activeItem?.id ?? null)}
+                >
+                    {assessmentCreateMode ? <AssessmentCreateForm /> : content}
+                </SlideContentErrorBoundary>
             </div>
 
             {/* ✅ Doubt Sidebar (mounted only if allowed) */}

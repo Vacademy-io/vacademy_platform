@@ -16,6 +16,7 @@ import {
   fetchSubscriptions,
   cancelSubscription,
 } from "@/components/common/user-profile/payment-billing/subscription-services";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 interface CourseSubscriptionCancelProps {
   instituteId: string;
@@ -42,6 +43,10 @@ export const CourseSubscriptionCancel = ({
   instituteId,
   packageSessionId,
 }: CourseSubscriptionCancelProps) => {
+  // Reader-mode (native iOS): "Cancel subscription" is a paid-subscription
+  // surface Apple flags under Guideline 3.1.1. Constant per session.
+  if (shouldHidePaidPurchaseUI()) return null;
+
   const queryClient = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
 

@@ -490,15 +490,16 @@ export const StudentSidebar = ({
                                                     : r === 'LEARNER'
                                                       ? 'Practice Staff'
                                                       : role.trim().toLowerCase().replace(/_/g, ' ');
-                                            // Sub-org members have their role shown in red so
-                                            // they read distinctly from a normal institute role.
-                                            const isSubOrgMember = !!selectedStudent?.sub_org_id;
+                                            // Role badges keep their normal amber look, and only
+                                            // turn red once the member has gone inactive.
+                                            const isInactive =
+                                                selectedStudent?.status === 'INACTIVE';
                                             return (
                                                 <span
                                                     key={index}
                                                     className={cn(
                                                         'rounded-full px-2 py-0.5 text-xs font-medium capitalize',
-                                                        isSubOrgMember
+                                                        isInactive
                                                             ? 'bg-danger-50 text-danger-600 ring-1 ring-danger-200'
                                                             : 'bg-warning-50 text-warning-600'
                                                     )}

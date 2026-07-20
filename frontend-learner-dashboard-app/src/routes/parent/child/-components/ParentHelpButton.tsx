@@ -7,7 +7,6 @@ import { runParentTour, type ParentTourStep } from "../-lib/parent-tour";
 export function buildParentTourSteps(t: (k: string) => string): ParentTourStep[] {
   return [
     { element: '[data-tour="parent-search"]', title: t("tour.search.title"), description: t("tour.search.body") },
-    { element: '[data-tour="attention-card"]', title: t("tour.attention.title"), description: t("tour.attention.body") },
     { element: '[data-tour="parent-tiles"]', title: t("tour.tiles.title"), description: t("tour.tiles.body") },
     { element: '[data-tour="parent-chat"]', title: t("tour.chat.title"), description: t("tour.chat.body") },
   ];

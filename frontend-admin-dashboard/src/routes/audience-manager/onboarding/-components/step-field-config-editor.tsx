@@ -40,7 +40,7 @@ export function newFieldRowFromCatalog(field: InstituteCustomFieldDTO): FieldRow
         institute_custom_field_id: field.id,
         is_mandatory: false,
         is_hidden: false,
-        role_access: defaultRoleAccess(),
+        // No role_access here (deliberately) -- see addNewField's comment.
     };
 }
 
@@ -143,7 +143,16 @@ export function StepFieldConfigEditor({
             },
             is_mandatory: false,
             is_hidden: false,
-            role_access: defaultRoleAccess(),
+            // Deliberately no role_access: the backend treats a field with NO role_access
+            // entry for a role as "inherit the step-level default" (OnboardingRoleAccessResolutionService
+            // .resolveFieldAccess falls back to resolveStepAccess). Stamping defaultRoleAccess()
+            // here unconditionally -- which this used to do -- silently attached an explicit
+            // STUDENT/PARENT can_edit=false override to EVERY field the moment it's attached,
+            // even if the admin never opened this field's own "Access" panel. That override then
+            // took precedence over whatever the admin set in the step's own Step Access grid,
+            // so a step explicitly marked "Student: View + Edit" still blocked the student on
+            // every field within it. role_access should only be set here once the admin actually
+            // opens "Access" and touches a checkbox (RoleAccessGrid's onChange below).
         };
         onChange([...value, row]);
     };

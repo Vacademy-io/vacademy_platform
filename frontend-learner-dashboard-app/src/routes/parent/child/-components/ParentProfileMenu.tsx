@@ -9,26 +9,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { getTokenDecodedData } from "@/lib/auth/sessionUtility";
 import { cn } from "@/lib/utils";
 import { ChildAvatar } from "./ChildAvatar";
 import { useChildren } from "../-hooks/use-parent-child";
+import { getParentName } from "../-lib/parent-identity";
 
 interface ParentProfileMenuProps {
   childId: string;
   childName: string;
   childFileId?: string | null;
-}
-
-function parentDisplayName(): string {
-  try {
-    const token = localStorage.getItem("accessToken");
-    if (!token) return "";
-    const decoded = getTokenDecodedData(token) as { fullname?: string; email?: string } | null;
-    return decoded?.fullname || decoded?.email || "";
-  } catch {
-    return "";
-  }
 }
 
 /**
@@ -40,7 +29,7 @@ export function ParentProfileMenu({ childId, childName, childFileId }: ParentPro
   const { t } = useTranslation("parent");
   const navigate = useNavigate();
   const { data: children } = useChildren();
-  const parentName = parentDisplayName();
+  const parentName = getParentName();
   const hasMultiple = (children?.length ?? 0) > 1;
 
   return (

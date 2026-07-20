@@ -64,12 +64,14 @@ class Settings:
     sarvam_tts_model: str = field(default_factory=lambda: _env("SARVAM_TTS_MODEL", "bulbul:v3"))
     sarvam_tts_voice: str = field(default_factory=lambda: _env("SARVAM_TTS_VOICE", "priya"))
     # Server-side chars Sarvam buffers before synthesizing the first audio (default 50).
-    # HARD FLOOR 30: Sarvam's WS config VALIDATES this — 20 was rejected with
-    # 'Input parameters has to be a valid dictionary', which killed TTS on every call
-    # (silent-call outage, 2026-07-20; probe-verified: 20 rejected, 30/50 accepted).
-    # providers.build_tts additionally clamps to >= 30. 0 disables the override.
+    # DEFAULT 0 = DON'T SEND (server default 50): at 30 the smaller chunks produced
+    # audible SEAMS — callers reported 'network-like' breaking on some sentences
+    # (2026-07-20). And 20 is outright REJECTED by Sarvam's config validation, which
+    # killed TTS on every call (silent-call outage same day; probe: 20 rejected,
+    # 30/50 accepted). providers.build_tts clamps any override to >= 30. Smoothness
+    # beats the ~0.1s first-audio win — leave at 0 unless re-testing deliberately.
     sarvam_tts_min_buffer: int = field(
-        default_factory=lambda: int(_env("SARVAM_TTS_MIN_BUFFER", "30")))
+        default_factory=lambda: int(_env("SARVAM_TTS_MIN_BUFFER", "0")))
 
     # LLM provider switch: "sarvam" (default) | "vertex" | "google" | "openrouter". Governs
     # BOTH the live conversation (providers.build_llm) and the end-of-call

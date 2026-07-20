@@ -127,6 +127,35 @@ class TranscriptCollector(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+class TtfbObserver:
+    """Corr-tagged per-turn latency telemetry. pipecat already computes per-service
+    TTFB (enable_metrics=True) but only logs it uncorrelated at DEBUG inside the
+    metrics module — useless for 'which call was slow'. This observer logs one INFO
+    line per service per turn tagged with the call corr, so 'replies were slow on
+    that call' is answerable from docker logs:  grep 'ttfb corr=<id>'."""
+
+    def __init__(self, corr: str):
+        from pipecat.observers.base_observer import BaseObserver
+
+        outer = self
+
+        class _Obs(BaseObserver):
+            async def on_push_frame(self, data):
+                try:
+                    from pipecat.frames.frames import MetricsFrame
+                    from pipecat.metrics.metrics import TTFBMetricsData
+                    if isinstance(data.frame, MetricsFrame):
+                        for d in data.frame.data:
+                            if isinstance(d, TTFBMetricsData) and d.value:
+                                logger.info("ttfb corr=%s service=%s value=%.3f",
+                                            outer._corr, d.processor, d.value)
+                except Exception:
+                    pass
+
+        self._corr = corr
+        self.observer = _Obs()
+
+
 class SentinelGate(FrameProcessor):
     """Between LLM and TTS: strips the steering markers from the token stream so
     they are never spoken, accumulates the assistant transcript one utterance at
@@ -546,6 +575,24 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         "- Begin every reply with a short natural clause (a few words) before any longer "
         "sentence — it reaches the caller faster and sounds more human."
     )
+    # Live calls showed the model compressing several script steps into one turn
+    # ("How are you? That's wonderful to hear." — answering its OWN question), and
+    # closing on a vague "okay, thanks" with no day, no time, no contact captured.
+    one_step_rule = (
+        "- ONE STEP AT A TIME: if your instructions contain questions or steps, deliver "
+        "exactly ONE question and then STOP — never answer your own question, never "
+        "continue past a question mark in the same turn, never act out both sides. "
+        "Break any long scripted passage into short turns (2-3 sentences), pausing for "
+        "the caller between them."
+    )
+    goal_drive_rule = (
+        "- CLOSE CONCRETELY: pursue your objective actively. A vague acknowledgment "
+        "('okay', 'thanks', 'theek hai') is NOT a confirmation — when booking anything, "
+        "propose two specific slots, get ONE explicitly confirmed (exact day + time), "
+        "and confirm the contact channel (read a number back digit by digit). Never "
+        "announce a meeting/demo as scheduled unless the caller has named or accepted "
+        "a specific day and time."
+    )
     language_stability_rule = (
         "LANGUAGE STABILITY: every reply must be in the SAME language and script as YOUR OWN "
         "previous turns. One word from the caller in another language ('yes', 'achha', 'haan'), "
@@ -585,6 +632,8 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             script_rule,
             plain_speech_rule,
             fast_open_rule,
+            one_step_rule,
+            goal_drive_rule,
             lead_name_line,
             fields_line,
             end_line,
@@ -609,6 +658,8 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         script_rule,
         plain_speech_rule,
         fast_open_rule,
+        one_step_rule,
+        goal_drive_rule,
         ("- Never repeat the same acknowledgment twice in a row. Rotate naturally — right / "
          "got it / sure / absolutely — don't open every turn the same way."
          if is_english else
@@ -737,6 +788,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # derail it. A real correction (more words) still barges in immediately.
             interruption_strategies=[MinWordsInterruptionStrategy(min_words=2)],
         ),
+        observers=[TtfbObserver(corr).observer],
     )
     sentinel.set_task(task)
 
@@ -782,8 +834,16 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # proven caller-spoke-first path, so the model reliably emits its persona
             # opening instead of us hoping it generates from a system-only context.
             logger.info("greet: LLM-generated opening (corr=%s)", corr)
+            # Bracketed CUE, not a synthetic "Hello?": seeding a fake caller hello
+            # taught the model that hello earns hello back — live calls opened with a
+            # "Hello"/"Ji"/"Hello" ping-pong for two wasted rounds before the real
+            # opening. A stage cue makes it deliver the scripted opening directly.
             await task.queue_frames([LLMMessagesAppendFrame(
-                messages=[{"role": "user", "content": "Hello?"}], run_llm=True)])
+                messages=[{"role": "user", "content":
+                           "[The call has just connected and the person is on the line. "
+                           "Deliver your opening now, exactly as your instructions "
+                           "specify — do not just say 'hello'.]"}],
+                run_llm=True)])
 
     @transport.event_handler("on_client_connected")
     async def _on_connected(_transport, _client):

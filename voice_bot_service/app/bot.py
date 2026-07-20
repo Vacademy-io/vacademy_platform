@@ -145,6 +145,15 @@ class TtfbObserver:
                     from pipecat.frames.frames import MetricsFrame
                     from pipecat.metrics.metrics import TTFBMetricsData
                     if isinstance(data.frame, MetricsFrame):
+                        # The SAME frame object is observed once per pipeline hop
+                        # (~9x) — dedupe by object id or we log 9 duplicate lines
+                        # per metric (measured 3.3k lines/day; real CPU on 1 vCPU).
+                        fid = id(data.frame)
+                        if fid in outer._seen:
+                            return
+                        outer._seen.append(fid)
+                        if len(outer._seen) > 64:
+                            outer._seen.pop(0)
                         for d in data.frame.data:
                             if isinstance(d, TTFBMetricsData) and d.value:
                                 logger.info("ttfb corr=%s service=%s value=%.3f",
@@ -153,6 +162,7 @@ class TtfbObserver:
                     pass
 
         self._corr = corr
+        self._seen: list = []
         self.observer = _Obs()
 
 

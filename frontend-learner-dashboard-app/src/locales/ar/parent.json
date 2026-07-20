@@ -118,6 +118,12 @@
   "attendance": {
     "summary": "{{name}} has attended {{percent}}% of classes.",
     "noData": "We don't have attendance for {{name}} yet.",
+    "attended": "{{present}} of {{total}} classes attended",
+    "recentTitle": "Recent classes",
+    "present": "Present",
+    "absent": "Absent",
+    "late": "Late",
+    "notMarked": "Not marked",
     "emptyTitle": "No attendance yet",
     "emptyBody": "Attendance will show here once classes begin."
   },

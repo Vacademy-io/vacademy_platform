@@ -62,9 +62,9 @@ Base path `/admin-core-service/parent-portal/v1` (authenticated; **not** in
 | GET | `/children` | `ParentChildSummaryDTO[]` — enrolled children in the clientId institute (child-picker) |
 | GET | `/settings` | `ParentPortalSettingsDTO` |
 | GET | `/children/{id}/overview` | `ChildOverviewDTO` — counts + headline numbers (fault-isolated) |
-| GET | `/children/{id}/attendance` | `StudentAttendanceReportDTO` |
-| GET | `/children/{id}/live-sessions/{upcoming,past}` | grouped sessions |
-| GET | `/children/{id}/progress/subjects` | subject-wise progress |
+| GET | `/children/{id}/attendance` | `StudentAttendanceReportDTO` — `attendancePercentage` + `schedules[]` (per-session present/absent). Client passes a 1-year window (§2.6). |
+| GET | `/children/{id}/live-sessions/{upcoming,past}` | grouped sessions — **merged across all the child's courses** (§2.6) |
+| GET | `/children/{id}/progress/subjects` | `CourseProgressDTO[]` — **one per enrolled course** (`packageSessionId`, `courseName`, `subjects[]`); see §2.6 |
 | GET | `/children/{id}/assessments` | assessment history |
 | GET | `/children/{id}/payments/invoices` | `InvoiceDTO[]` |
 | GET | `/children/{id}/badges` | `LearnerBadgeDTO[]` |
@@ -95,6 +95,43 @@ Previously certificates were only reachable via the v2 report collector. Added:
 repo finders (incl. the ownership check), an IP-safe `IssuedCertificateDTO` (omits
 `templateHtmlSnapshot`), `CertificateReadService`, and `LearnerCertificateController`
 (`/admin-core-service/certificate/learner/v1/my-certificates`).
+
+### 2.5 ⚠️ Response field casing — camelCase vs snake_case (read before touching a screen)
+
+The BFF reuses domain DTOs **as-is**, and their JSON casing is **inconsistent** —
+several serialize snake_case (`@JsonNaming`/`@JsonProperty`), others camelCase.
+Reading the wrong field renders a **blank or `0` silently** (no error, no warning).
+This has bitten every reused screen at least once. Always check the DTO's
+annotations before reading a field.
+
+| Screen | Source DTO | Casing | Fields the FE must read |
+|---|---|---|---|
+| progress | `LearnerSubjectWiseProgressReportDTO` | **snake_case** | `subject_name`, `modules[].module_completion_percentage` |
+| attendance | `StudentAttendanceReportDTO` / `ScheduleDetailDTO` | camelCase | `attendancePercentage`, `schedules[].{attendanceStatus, sessionTitle, subject, meetingDate}` |
+| assessments | `AssessmentHistoryResponse` | camelCase | `assessments[].{name, percentage, assessmentId}` |
+| payments | `InvoiceDTO` | **snake_case** | `invoice_number`, `total_amount`, `currency`, `status`, `id` |
+| rewards | `LearnerBadgeDTO` | camelCase | `badgeName`, `id` |
+| live-classes | `GroupedSessionsByDateDTO` (group) / `LiveSessionListDTO` (session) | group camelCase, **session snake_case** | group `{date, sessions}`, session `{title, subject, start_time, session_id}` |
+
+### 2.6 All-courses aggregation
+
+`GuardedChild.packageSessionIds` can hold **more than one** course. Endpoints that
+used to serve only the primary batch now **fan out over every course** — unless an
+explicit `packageSessionId` is passed, which scopes to that one course (validated
+against the child's own enrolments → 403 otherwise). See
+`ParentPortalDetailService.targetPackageSessions(...)`.
+
+- **`/progress/subjects`** → `CourseProgressDTO[]`, one per course
+  (`packageSessionId`, `courseName`, `subjects[]`). `courseName` reuses the
+  "Level Package (Session)" label from `LearnerInstituteManager.getInstituteDetails`
+  (same idiom as `ParentPortalChildrenService`).
+- **`/live-sessions/upcoming`** → per-course results **merged by date** (a class on
+  the same day from another course lands under the same date group).
+- **`/live-sessions/past`** → concatenated across courses (per-course pagination
+  merged; the current UI doesn't render a Past tab).
+- **`overview.courseCompletionPercent`** → averaged across all courses.
+- **Attendance** still uses the primary batch; per-course attendance is a possible
+  future add.
 
 ---
 
@@ -175,5 +212,8 @@ fills the one missing icon (payments). Five of six already exist in
 - `V15` seed for the `PARENT` role; repair for legacy role-less guardians.
 - hi/ar real translations (currently English placeholders).
 - Read-aloud / voice; a date-grouped activity feed.
-- The `/overview` headline numbers (attendance %, tests, upcoming) require the
-  enrichment in `ParentPortalOverviewService` to be deployed.
+- **Deploy dependency:** the `/overview` headline numbers (attendance %,
+  `courseCompletionPercent`, tests, upcoming) and the all-courses aggregation +
+  wider attendance windows live in the backend — they need an **admin-core
+  redeploy**. The frontend field-mapping fixes (§2.5) and the client-side 1-year
+  attendance window work against the live backend immediately.

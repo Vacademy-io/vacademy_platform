@@ -541,6 +541,24 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
         ],
     },
     {
+        icon: CalendarCheck,
+        title: 'Meetings',
+        id: 'meetings',
+        category: 'CRM',
+        subItems: [
+            {
+                subItem: 'My Schedule',
+                subItemLink: '/meetings/my-schedule',
+                subItemId: 'meetings-my-schedule',
+            },
+            {
+                subItem: 'Team Meetings',
+                subItemLink: '/meetings/team',
+                subItemId: 'meetings-team',
+            },
+        ],
+    },
+    {
         icon: Lightning,
         title: 'Engagement Engines',
         id: 'engagement-engines',

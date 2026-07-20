@@ -1141,6 +1141,16 @@ export const BOOKING_TYPES_BY_INSTITUTE = `${BOOKING_BASE}/types/by-institute`;
 // Autosuggest Users API
 export const AUTOSUGGEST_USERS = `${BASE_URL}/auth-service/v1/user/autosuggest-users`;
 
+// CRM Meetings (booking pages + host calendars)
+export const MEETINGS_BASE = `${BASE_URL}/admin-core-service/v1/meetings`;
+export const MEETINGS_BOOKING_PAGE_CREATE = `${MEETINGS_BASE}/booking-page`;
+export const MEETINGS_BOOKING_PAGE_BY_ID = (id: string) => `${MEETINGS_BASE}/booking-page/${id}`;
+export const MEETINGS_BOOKING_PAGES_LIST = `${MEETINGS_BASE}/booking-pages`;
+export const MEETINGS_BOOK = `${MEETINGS_BASE}/book`;
+export const MEETINGS_MY_CALENDAR = `${MEETINGS_BASE}/my-calendar`;
+export const MEETINGS_TEAM_CALENDAR = `${MEETINGS_BASE}/team-calendar`;
+export const MEETINGS_SCOPE = `${MEETINGS_BASE}/scope`;
+
 // Manage Custom Teams / Faculty Access v2
 export const GRANT_USER_ACCESS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access`;
 export const GET_ALL_FACULTY_V2 = `${BASE_URL}/admin-core-service/institute/v1/faculty/faculty/get-all`;

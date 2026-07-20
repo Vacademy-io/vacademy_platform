@@ -1,0 +1,401 @@
+package vacademy.io.admin_core_service.features.booking.service;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.booking.dto.BookingInstanceDTO;
+import vacademy.io.admin_core_service.features.booking.dto.BookingReminderConfigDTO;
+import vacademy.io.admin_core_service.features.booking.dto.MeetingBookingRequestDTO;
+import vacademy.io.admin_core_service.features.booking.entity.BookingInstance;
+import vacademy.io.admin_core_service.features.booking.entity.BookingPage;
+import vacademy.io.admin_core_service.features.booking.repository.BookingInstanceRepository;
+import vacademy.io.admin_core_service.features.live_session.dto.CreateBookingRequestDTO;
+import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionStep2RequestDTO;
+import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
+import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
+import vacademy.io.admin_core_service.features.live_session.enums.NotificationTypeEnum;
+import vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderMeetingCreateRequestDTO;
+import vacademy.io.admin_core_service.features.live_session.provider.service.ProviderMeetingBatchService;
+import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
+import vacademy.io.admin_core_service.features.live_session.service.Step1Service;
+import vacademy.io.admin_core_service.features.live_session.service.Step2Service;
+import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
+import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
+import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
+import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.VacademyException;
+
+import java.sql.Timestamp;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+/**
+ * Creates and lists meeting bookings. A booking = one live_session row (the
+ * calendar/reminder substrate, created through the existing Step1/Step2 flow)
+ * plus one booking_instance row (CRM metadata: page, invitee, manage token).
+ *
+ * <p>Transaction shape: the persistence phase (session + schedule + participants
+ * + reminder rows + booking_instance) commits FIRST via {@link TransactionTemplate};
+ * Google Meet allocation and the confirmation email run AFTER commit, so a
+ * provider outage or misconfigured Google account can never roll the booking
+ * back (the Meet retry processor re-provisions pending schedules on its own).
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class MeetingBookingService {
+
+    private static final String SOURCE_MEETING_BOOKING = "MEETING_BOOKING";
+    private static final int MIN_DURATION_MINUTES = 5;
+    private static final int MAX_DURATION_MINUTES = 8 * 60;
+
+    private final BookingPageService bookingPageService;
+    private final BookingInstanceRepository bookingInstanceRepository;
+    private final Step1Service step1Service;
+    private final Step2Service step2Service;
+    private final SessionScheduleRepository sessionScheduleRepository;
+    private final ProviderMeetingBatchService providerMeetingBatchService;
+    private final AuthService authService;
+    private final NotificationService notificationService;
+    private final PlatformTransactionManager transactionManager;
+
+    public BookingInstanceDTO createBooking(MeetingBookingRequestDTO request, CustomUserDetails user) {
+        if (request.getInstituteId() == null || request.getInstituteId().isBlank()) {
+            throw new VacademyException("institute_id is required");
+        }
+        if (request.getStartTime() == null || request.getStartTime().isBlank()) {
+            throw new VacademyException("start_time is required");
+        }
+
+        BookingPage page = request.getBookingPageId() != null && !request.getBookingPageId().isBlank()
+                ? bookingPageService.getOrThrow(request.getBookingPageId())
+                : null;
+        if (page != null && !request.getInstituteId().equals(page.getInstituteId())) {
+            throw new VacademyException("Booking page does not belong to this institute");
+        }
+
+        String hostUserId = firstNonBlank(request.getHostUserId(),
+                page != null ? page.getHostUserId() : null, user.getUserId());
+        String title = firstNonBlank(request.getTitle(), page != null ? page.getTitle() : null, "Meeting");
+        int duration = request.getDurationMinutes() != null ? request.getDurationMinutes()
+                : (page != null && page.getDurationMinutes() != null ? page.getDurationMinutes() : 30);
+        if (duration < MIN_DURATION_MINUTES || duration > MAX_DURATION_MINUTES) {
+            throw new VacademyException("duration_minutes must be between "
+                    + MIN_DURATION_MINUTES + " and " + MAX_DURATION_MINUTES);
+        }
+        String timezone = firstNonBlank(request.getTimezone(),
+                page != null ? page.getTimezone() : null, "Asia/Kolkata");
+        String locationType = firstNonBlank(request.getLocationType(),
+                page != null ? page.getLocationType() : null, "GOOGLE_MEET");
+        String customLink = firstNonBlank(request.getCustomMeetingLink(),
+                page != null ? page.getCustomMeetingLink() : null, null);
+        boolean allocateMeet = request.getAllocateGoogleMeet() != null
+                ? request.getAllocateGoogleMeet()
+                : (page != null && Boolean.TRUE.equals(page.getAllocateGoogleMeet()));
+
+        OffsetDateTime start;
+        try {
+            start = OffsetDateTime.parse(request.getStartTime());
+        } catch (Exception e) {
+            throw new VacademyException("start_time must be an ISO-8601 offset datetime");
+        }
+        ZoneId zone;
+        try {
+            zone = ZoneId.of(timezone);
+        } catch (Exception e) {
+            throw new VacademyException("timezone must be a valid IANA zone id");
+        }
+        OffsetDateTime end = start.plusMinutes(duration);
+
+        BookingReminderConfigDTO reminderConfig = request.getReminderConfig() != null
+                ? request.getReminderConfig()
+                : (page != null ? bookingPageService.readReminderConfig(page) : null);
+
+        // ---- Phase 1 (transactional): session + schedule + participants + instance ----
+        final BookingPage pageRef = page;
+        final String customLinkRef = customLink;
+        final boolean allocateMeetRef = allocateMeet;
+        TransactionTemplate tx = new TransactionTemplate(transactionManager);
+        BookingInstance instance = tx.execute(status -> persistBooking(
+                request, user, pageRef, hostUserId, title, duration, timezone, zone,
+                locationType, customLinkRef, allocateMeetRef, start, end, reminderConfig));
+
+        // ---- Phase 2 (post-commit, best effort): Meet link + confirmation email ----
+        if (allocateMeet) {
+            instance = allocateMeetLink(instance, title, duration, timezone);
+        }
+        sendConfirmationEmail(instance, title, zone, reminderConfig);
+
+        return toDTO(instance, Map.of(), page != null ? page.getTitle() : null);
+    }
+
+    private BookingInstance persistBooking(MeetingBookingRequestDTO request, CustomUserDetails user,
+                                           BookingPage page, String hostUserId, String title, int duration,
+                                           String timezone, ZoneId zone, String locationType, String customLink,
+                                           boolean allocateMeet, OffsetDateTime start, OffsetDateTime end,
+                                           BookingReminderConfigDTO reminderConfig) {
+        // Live-session convention (see Step1Service): session.startTime holds the
+        // WALL-CLOCK value in session.timezone — extracted via .atZone(UTC). So we
+        // convert the incoming instant to wall-clock in the page timezone before
+        // handing it to Step1; reminder triggers and email rendering both depend
+        // on this. BookingInstance keeps the true UTC instants separately.
+        Timestamp startWallClock = Timestamp.valueOf(start.atZoneSameInstant(zone).toLocalDateTime());
+        Timestamp endWallClock = Timestamp.valueOf(end.atZoneSameInstant(zone).toLocalDateTime());
+
+        // ---- Step 1: session + schedule ----
+        CreateBookingRequestDTO step1 = new CreateBookingRequestDTO();
+        step1.setInstituteId(request.getInstituteId());
+        step1.setTitle(title);
+        step1.setSubject(title);
+        step1.setDescriptionHtml(request.getDescription());
+        step1.setStartTime(startWallClock);
+        step1.setLastEntryTime(endWallClock);
+        step1.setSessionEndDate(start.atZoneSameInstant(zone).toLocalDate().toString());
+        step1.setTimeZone(timezone);
+        step1.setBookingTypeId(page != null ? page.getBookingTypeId() : null);
+        step1.setSource(SOURCE_MEETING_BOOKING);
+        step1.setSourceId(page != null ? page.getId() : request.getAudienceResponseId());
+        if ("CUSTOM_LINK".equalsIgnoreCase(locationType) && customLink != null && !allocateMeet) {
+            step1.setDefaultMeetLink(customLink);
+        }
+        LiveSession session = step1Service.step1AddService(step1, user);
+
+        // ---- Step 2: participants + BEFORE_LIVE reminder rows ----
+        // The host joins as a participant; the on-booking confirmation is sent
+        // directly by this service post-commit (the live-class ON_CREATE path
+        // resolves recipients from student tables, which CRM invitees and staff
+        // hosts are usually not in).
+        Set<String> participantIds = new LinkedHashSet<>();
+        if (request.getParticipantUserIds() != null) participantIds.addAll(request.getParticipantUserIds());
+        if (request.getInviteeUserId() != null && !request.getInviteeUserId().isBlank()) {
+            participantIds.add(request.getInviteeUserId());
+        }
+        participantIds.add(hostUserId);
+        LiveSessionStep2RequestDTO step2 = new LiveSessionStep2RequestDTO();
+        step2.setSessionId(session.getId());
+        step2.setAccessType("PRIVATE");
+        step2.setIndividualUserIds(new ArrayList<>(participantIds));
+        step2.setAddedNotificationActions(buildNotificationActions(reminderConfig));
+        step2Service.step2AddService(step2, user);
+
+        String scheduleId = sessionScheduleRepository.findBySessionId(session.getId()).stream()
+                .findFirst().map(SessionSchedule::getId).orElse(null);
+
+        BookingInstance instance = BookingInstance.builder()
+                .instituteId(request.getInstituteId())
+                .bookingPageId(page != null ? page.getId() : null)
+                .liveSessionId(session.getId())
+                .scheduleId(scheduleId)
+                .hostUserId(hostUserId)
+                .inviteeUserId(request.getInviteeUserId())
+                .audienceResponseId(request.getAudienceResponseId())
+                .inviteeName(request.getInviteeName())
+                .inviteeEmail(request.getInviteeEmail())
+                .inviteePhone(request.getInviteePhone())
+                .inviteeTimezone(firstNonBlank(request.getInviteeTimezone(), timezone, null))
+                .scheduledStartUtc(Timestamp.from(start.toInstant()))
+                .scheduledEndUtc(Timestamp.from(end.toInstant()))
+                .status(page != null && Boolean.TRUE.equals(page.getRequireApproval()) ? "PENDING" : "CONFIRMED")
+                .meetLink("CUSTOM_LINK".equalsIgnoreCase(locationType) || !allocateMeet ? customLink : null)
+                .manageToken(UUID.randomUUID().toString())
+                .build();
+        return bookingInstanceRepository.save(instance);
+    }
+
+    /** Post-commit Meet allocation; failures leave the booking intact (retry processor re-provisions). */
+    private BookingInstance allocateMeetLink(BookingInstance instance, String title, int duration, String timezone) {
+        try {
+            providerMeetingBatchService.createMeetingsForSession(ProviderMeetingCreateRequestDTO.builder()
+                    .instituteId(instance.getInstituteId())
+                    .sessionId(instance.getLiveSessionId())
+                    .provider("GOOGLE_MEET")
+                    .topic(title)
+                    .durationMinutes(duration)
+                    .timezone(timezone)
+                    .build());
+            String meetLink = sessionScheduleRepository.findBySessionId(instance.getLiveSessionId()).stream()
+                    .map(SessionSchedule::getCustomMeetingLink)
+                    .filter(l -> l != null && !l.isBlank())
+                    .findFirst()
+                    .orElse(null);
+            if (meetLink != null) {
+                instance.setMeetLink(meetLink);
+                instance = bookingInstanceRepository.save(instance);
+            }
+        } catch (Exception e) {
+            log.error("Google Meet allocation failed for session {}: {}",
+                    instance.getLiveSessionId(), e.getMessage());
+        }
+        return instance;
+    }
+
+    /** Direct on-booking confirmation to the invitee's email + the host, best effort. */
+    private void sendConfirmationEmail(BookingInstance instance, String title, ZoneId zone,
+                                       BookingReminderConfigDTO config) {
+        boolean enabled = config == null || !Boolean.FALSE.equals(config.getOnBookingConfirmation());
+        List<String> channels = config != null && config.getChannels() != null && !config.getChannels().isEmpty()
+                ? config.getChannels() : List.of("EMAIL");
+        if (!enabled || !channels.contains("EMAIL")) return;
+        try {
+            List<NotificationToUserDTO> recipients = new ArrayList<>();
+            if (instance.getInviteeEmail() != null && !instance.getInviteeEmail().isBlank()) {
+                recipients.add(recipient(instance.getInviteeEmail(), instance.getInviteeUserId(),
+                        firstNonBlank(instance.getInviteeName(), "there", null)));
+            }
+            try {
+                authService.getUsersFromAuthServiceByUserIds(List.of(instance.getHostUserId())).stream()
+                        .filter(u -> u.getEmail() != null && !u.getEmail().isBlank())
+                        .findFirst()
+                        .ifPresent(host -> recipients.add(
+                                recipient(host.getEmail(), host.getId(),
+                                        firstNonBlank(host.getFullName(), "there", null))));
+            } catch (Exception e) {
+                log.warn("Host lookup for confirmation email failed: {}", e.getMessage());
+            }
+            if (recipients.isEmpty()) return;
+
+            String when = instance.getScheduledStartUtc().toInstant().atZone(zone)
+                    .format(DateTimeFormatter.ofPattern("EEE, dd MMM yyyy 'at' HH:mm"))
+                    + " (" + zone.getId() + ")";
+            StringBuilder body = new StringBuilder()
+                    .append("<p>Hi {{name}},</p>")
+                    .append("<p>Your meeting <b>").append(title).append("</b> is ")
+                    .append("PENDING".equals(instance.getStatus()) ? "awaiting confirmation" : "confirmed")
+                    .append(" for <b>").append(when).append("</b>.</p>");
+            if (instance.getMeetLink() != null && !instance.getMeetLink().isBlank()) {
+                body.append("<p>Join link: <a href=\"").append(instance.getMeetLink()).append("\">")
+                        .append(instance.getMeetLink()).append("</a></p>");
+            }
+
+            NotificationDTO dto = new NotificationDTO();
+            dto.setSubject(("PENDING".equals(instance.getStatus()) ? "Meeting requested: " : "Meeting confirmed: ") + title);
+            dto.setBody(body.toString());
+            dto.setNotificationType("BOOKING_CONFIRMATION");
+            dto.setSource(SOURCE_MEETING_BOOKING);
+            dto.setSourceId(instance.getId());
+            dto.setUsers(recipients);
+            notificationService.sendEmailViaUnified(dto, instance.getInstituteId());
+        } catch (Exception e) {
+            log.error("Booking confirmation email failed for instance {}: {}", instance.getId(), e.getMessage());
+        }
+    }
+
+    private static NotificationToUserDTO recipient(String email, String userId, String name) {
+        NotificationToUserDTO user = new NotificationToUserDTO();
+        user.setChannelId(email);
+        user.setUserId(userId);
+        Map<String, String> placeholders = new HashMap<>();
+        placeholders.put("name", name);
+        user.setPlaceholders(placeholders);
+        return user;
+    }
+
+    /** Bookings hosted by any of {@code hostUserIds} inside [start, end]. */
+    public List<BookingInstanceDTO> listForHosts(String instituteId, Collection<String> hostUserIds,
+                                                 Timestamp windowStart, Timestamp windowEnd) {
+        if (hostUserIds == null || hostUserIds.isEmpty()) return List.of();
+        return enrich(bookingInstanceRepository.findForHostsInWindow(
+                instituteId, hostUserIds, windowStart, windowEnd));
+    }
+
+    /** All bookings of the institute inside [start, end] — admin Team Meetings view. */
+    public List<BookingInstanceDTO> listForInstitute(String instituteId,
+                                                     Timestamp windowStart, Timestamp windowEnd) {
+        return enrich(bookingInstanceRepository.findForInstituteInWindow(instituteId, windowStart, windowEnd));
+    }
+
+    private List<BookingInstanceDTO> enrich(List<BookingInstance> rows) {
+        Map<String, String> hostNames = userNames(rows.stream()
+                .map(BookingInstance::getHostUserId).distinct().collect(Collectors.toList()));
+        return rows.stream().map(r -> toDTO(r, hostNames, null)).collect(Collectors.toList());
+    }
+
+    // ---------- helpers ----------
+
+    private List<LiveSessionStep2RequestDTO.NotificationActionDTO> buildNotificationActions(
+            BookingReminderConfigDTO config) {
+        // Only BEFORE_LIVE reminder rows here (works for enrolled participants);
+        // the on-booking confirmation is sent directly post-commit instead of via
+        // the live-class ON_CREATE path — see persistBooking.
+        List<String> channels = config != null && config.getChannels() != null && !config.getChannels().isEmpty()
+                ? config.getChannels() : List.of("EMAIL");
+        List<Integer> offsets = config != null && config.getBeforeMeetingOffsetsMinutes() != null
+                ? config.getBeforeMeetingOffsetsMinutes() : List.of(60);
+
+        LiveSessionStep2RequestDTO.NotifyBy notifyBy = new LiveSessionStep2RequestDTO.NotifyBy();
+        notifyBy.setMail(channels.contains("EMAIL"));
+        notifyBy.setWhatsapp(channels.contains("WHATSAPP"));
+
+        List<LiveSessionStep2RequestDTO.NotificationActionDTO> actions = new ArrayList<>();
+        for (Integer offset : offsets) {
+            if (offset == null || offset <= 0) continue;
+            LiveSessionStep2RequestDTO.NotificationActionDTO beforeLive =
+                    new LiveSessionStep2RequestDTO.NotificationActionDTO();
+            beforeLive.setType(NotificationTypeEnum.BEFORE_LIVE);
+            beforeLive.setNotify(true);
+            beforeLive.setNotifyBy(notifyBy);
+            beforeLive.setTime(String.valueOf(offset));
+            actions.add(beforeLive);
+        }
+        return actions;
+    }
+
+    private Map<String, String> userNames(List<String> userIds) {
+        Map<String, String> out = new HashMap<>();
+        if (userIds == null || userIds.isEmpty()) return out;
+        try {
+            for (UserDTO u : authService.getUsersFromAuthServiceByUserIds(userIds)) {
+                if (u.getId() != null) out.put(u.getId(), u.getFullName());
+            }
+        } catch (Exception e) {
+            log.warn("userNames failed: {}", e.getMessage());
+        }
+        return out;
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String v : values) {
+            if (v != null && !v.isBlank()) return v;
+        }
+        return null;
+    }
+
+    private BookingInstanceDTO toDTO(BookingInstance b, Map<String, String> hostNames, String pageTitle) {
+        return BookingInstanceDTO.builder()
+                .id(b.getId())
+                .instituteId(b.getInstituteId())
+                .bookingPageId(b.getBookingPageId())
+                .bookingPageTitle(pageTitle)
+                .liveSessionId(b.getLiveSessionId())
+                .scheduleId(b.getScheduleId())
+                .hostUserId(b.getHostUserId())
+                .hostName(hostNames.get(b.getHostUserId()))
+                .inviteeUserId(b.getInviteeUserId())
+                .audienceResponseId(b.getAudienceResponseId())
+                .inviteeName(b.getInviteeName())
+                .inviteeEmail(b.getInviteeEmail())
+                .inviteePhone(b.getInviteePhone())
+                .inviteeTimezone(b.getInviteeTimezone())
+                .scheduledStartUtc(b.getScheduledStartUtc())
+                .scheduledEndUtc(b.getScheduledEndUtc())
+                .status(b.getStatus())
+                .meetLink(b.getMeetLink())
+                .cancelReason(b.getCancelReason())
+                .createdAt(b.getCreatedAt())
+                .build();
+    }
+}

@@ -79,6 +79,8 @@ import { Route as SettingsTelephonyIndexRouteImport } from "./routes/settings/te
 import { Route as SettingsFeeManagementIndexRouteImport } from "./routes/settings/fee-management/index"
 import { Route as PlanningPlanningIndexRouteImport } from "./routes/planning/planning/index"
 import { Route as PlanningActivityLogsIndexRouteImport } from "./routes/planning/activity-logs/index"
+import { Route as MeetingsTeamIndexRouteImport } from "./routes/meetings/team/index"
+import { Route as MeetingsMyScheduleIndexRouteImport } from "./routes/meetings/my-schedule/index"
 import { Route as ManageStudentsStudentsListIndexRouteImport } from "./routes/manage-students/students-list/index"
 import { Route as ManageStudentsInviteIndexRouteImport } from "./routes/manage-students/invite/index"
 import { Route as ManageStudentsEnrollRequestsIndexRouteImport } from "./routes/manage-students/enroll-requests/index"
@@ -693,6 +695,20 @@ const PlanningActivityLogsIndexRoute =
   } as any).lazy(() =>
     import("./routes/planning/activity-logs/index.lazy").then((d) => d.Route),
   )
+const MeetingsTeamIndexRoute = MeetingsTeamIndexRouteImport.update({
+  id: "/meetings/team/",
+  path: "/meetings/team/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/meetings/team/index.lazy").then((d) => d.Route),
+)
+const MeetingsMyScheduleIndexRoute = MeetingsMyScheduleIndexRouteImport.update({
+  id: "/meetings/my-schedule/",
+  path: "/meetings/my-schedule/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/meetings/my-schedule/index.lazy").then((d) => d.Route),
+)
 const ManageStudentsStudentsListIndexRoute =
   ManageStudentsStudentsListIndexRouteImport.update({
     id: "/manage-students/students-list/",
@@ -1803,6 +1819,8 @@ export interface FileRoutesByFullPath {
   "/manage-students/enroll-requests/": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite/": typeof ManageStudentsInviteIndexRoute
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
+  "/meetings/my-schedule/": typeof MeetingsMyScheduleIndexRoute
+  "/meetings/team/": typeof MeetingsTeamIndexRoute
   "/planning/activity-logs/": typeof PlanningActivityLogsIndexRoute
   "/planning/planning/": typeof PlanningPlanningIndexRoute
   "/settings/fee-management/": typeof SettingsFeeManagementIndexRoute
@@ -1994,6 +2012,8 @@ export interface FileRoutesByTo {
   "/manage-students/enroll-requests": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite": typeof ManageStudentsInviteIndexRoute
   "/manage-students/students-list": typeof ManageStudentsStudentsListIndexRoute
+  "/meetings/my-schedule": typeof MeetingsMyScheduleIndexRoute
+  "/meetings/team": typeof MeetingsTeamIndexRoute
   "/planning/activity-logs": typeof PlanningActivityLogsIndexRoute
   "/planning/planning": typeof PlanningPlanningIndexRoute
   "/settings/fee-management": typeof SettingsFeeManagementIndexRoute
@@ -2187,6 +2207,8 @@ export interface FileRoutesById {
   "/manage-students/enroll-requests/": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite/": typeof ManageStudentsInviteIndexRoute
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
+  "/meetings/my-schedule/": typeof MeetingsMyScheduleIndexRoute
+  "/meetings/team/": typeof MeetingsTeamIndexRoute
   "/planning/activity-logs/": typeof PlanningActivityLogsIndexRoute
   "/planning/planning/": typeof PlanningPlanningIndexRoute
   "/settings/fee-management/": typeof SettingsFeeManagementIndexRoute
@@ -2381,6 +2403,8 @@ export interface FileRouteTypes {
     | "/manage-students/enroll-requests/"
     | "/manage-students/invite/"
     | "/manage-students/students-list/"
+    | "/meetings/my-schedule/"
+    | "/meetings/team/"
     | "/planning/activity-logs/"
     | "/planning/planning/"
     | "/settings/fee-management/"
@@ -2572,6 +2596,8 @@ export interface FileRouteTypes {
     | "/manage-students/enroll-requests"
     | "/manage-students/invite"
     | "/manage-students/students-list"
+    | "/meetings/my-schedule"
+    | "/meetings/team"
     | "/planning/activity-logs"
     | "/planning/planning"
     | "/settings/fee-management"
@@ -2764,6 +2790,8 @@ export interface FileRouteTypes {
     | "/manage-students/enroll-requests/"
     | "/manage-students/invite/"
     | "/manage-students/students-list/"
+    | "/meetings/my-schedule/"
+    | "/meetings/team/"
     | "/planning/activity-logs/"
     | "/planning/planning/"
     | "/settings/fee-management/"
@@ -2956,6 +2984,8 @@ export interface RootRouteChildren {
   ManageStudentsEnrollRequestsIndexRoute: typeof ManageStudentsEnrollRequestsIndexRoute
   ManageStudentsInviteIndexRoute: typeof ManageStudentsInviteIndexRoute
   ManageStudentsStudentsListIndexRoute: typeof ManageStudentsStudentsListIndexRoute
+  MeetingsMyScheduleIndexRoute: typeof MeetingsMyScheduleIndexRoute
+  MeetingsTeamIndexRoute: typeof MeetingsTeamIndexRoute
   PlanningActivityLogsIndexRoute: typeof PlanningActivityLogsIndexRoute
   PlanningPlanningIndexRoute: typeof PlanningPlanningIndexRoute
   SettingsFeeManagementIndexRoute: typeof SettingsFeeManagementIndexRoute
@@ -3538,6 +3568,20 @@ declare module "@tanstack/react-router" {
       path: "/planning/activity-logs"
       fullPath: "/planning/activity-logs/"
       preLoaderRoute: typeof PlanningActivityLogsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/meetings/team/": {
+      id: "/meetings/team/"
+      path: "/meetings/team"
+      fullPath: "/meetings/team/"
+      preLoaderRoute: typeof MeetingsTeamIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/meetings/my-schedule/": {
+      id: "/meetings/my-schedule/"
+      path: "/meetings/my-schedule"
+      fullPath: "/meetings/my-schedule/"
+      preLoaderRoute: typeof MeetingsMyScheduleIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/manage-students/students-list/": {
@@ -4508,6 +4552,8 @@ const rootRouteChildren: RootRouteChildren = {
     ManageStudentsEnrollRequestsIndexRoute,
   ManageStudentsInviteIndexRoute: ManageStudentsInviteIndexRoute,
   ManageStudentsStudentsListIndexRoute: ManageStudentsStudentsListIndexRoute,
+  MeetingsMyScheduleIndexRoute: MeetingsMyScheduleIndexRoute,
+  MeetingsTeamIndexRoute: MeetingsTeamIndexRoute,
   PlanningActivityLogsIndexRoute: PlanningActivityLogsIndexRoute,
   PlanningPlanningIndexRoute: PlanningPlanningIndexRoute,
   SettingsFeeManagementIndexRoute: SettingsFeeManagementIndexRoute,

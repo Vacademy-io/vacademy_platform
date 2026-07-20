@@ -253,6 +253,14 @@ export const GET_AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/open/v1/aud
 export const SUBMIT_AUDIENCE_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 
+// Public booking pages (open — no auth). Calendly-style scheduling:
+// GET  {OPEN_BOOKING_BASE}/page/{instituteId}/{slug}            → page details
+// GET  {OPEN_BOOKING_BASE}/page/{instituteId}/{slug}/slots      → available slots
+// POST {OPEN_BOOKING_BASE}/page/{instituteId}/{slug}/book       → create booking
+// GET  {OPEN_BOOKING_BASE}/manage/{token}                       → booking by manage token
+// POST {OPEN_BOOKING_BASE}/manage/{token}/cancel|reschedule
+export const OPEN_BOOKING_BASE = `${BASE_URL}/admin-core-service/open/v1/booking`;
+
 // Sub-Organization Learner Management API endpoints
 export const SUB_ORG_MEMBER_ADMIN_DETAILS = `${BASE_URL}/admin-core-service/sub-org/v1/member-admin-details`;
 export const SUB_ORG_BASE = `${BASE_URL}/admin-core-service/sub-org/v1`;

@@ -1,8 +1,17 @@
 import { Button } from '@/components/ui/button';
 import {
-    MoreVertical, Edit2, Trash2, Code, Code2, UserPlus, Upload, MessageSquare,
-    Zap, Workflow as WorkflowIcon,
-} from 'lucide-react';
+    DotsThreeVertical as MoreVertical,
+    PencilSimple as Edit2,
+    Trash as Trash2,
+    Code,
+    CodeBlock as Code2,
+    UserPlus,
+    UploadSimple as Upload,
+    ChatText as MessageSquare,
+    Lightning as Zap,
+    FlowArrow as WorkflowIcon,
+    CalendarCheck,
+} from '@phosphor-icons/react';
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -34,6 +43,7 @@ import { LeadBulkImportDialog } from '../campaign-users/LeadBulkImportDialog';
 import { SendMessageDialog } from '../campaign-users/SendMessageDialog';
 import { LinkedWorkflowsDialog } from './linked-workflows-dialog';
 import { ConfigureAudienceWorkflowDialog } from './configure-audience-workflow-dialog';
+import { BookingSettingsDialog } from '../booking-settings/BookingSettingsDialog';
 import { getActiveWorkflowsQuery } from '@/services/workflow-service';
 import { parseCustomFieldsFromJson } from '../../-utils/lead-bulk-import-utils';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
@@ -58,6 +68,7 @@ export const AudienceCampaignCardMenuOptions = ({
     const [openSendMessageDialog, setOpenSendMessageDialog] = useState(false);
     const [openLinkedWorkflowsDialog, setOpenLinkedWorkflowsDialog] = useState(false);
     const [openConfigureWorkflowDialog, setOpenConfigureWorkflowDialog] = useState(false);
+    const [openBookingSettingsDialog, setOpenBookingSettingsDialog] = useState(false);
     const { instituteDetails } = useInstituteDetailsStore();
     const bulkImportCustomFields = useMemo(
         () =>
@@ -213,10 +224,22 @@ export const AudienceCampaignCardMenuOptions = ({
                         <WorkflowIcon className="mr-2 size-4" />
                         View Linked Workflows
                         {linkedCount > 0 && (
-                            <span className="ml-auto rounded-full bg-primary-100 text-primary-700 px-2 py-0.5 text-[10px] font-semibold">
+                            <span className="ml-auto rounded-full bg-primary-100 text-primary-700 px-2 py-0.5 text-caption font-semibold">
                                 {linkedCount}
                             </span>
                         )}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                        onClick={() => {
+                            if (!campaignId) {
+                                toast.error('Campaign ID is missing');
+                                return;
+                            }
+                            setOpenBookingSettingsDialog(true);
+                        }}
+                    >
+                        <CalendarCheck className="mr-2 size-4" />
+                        Booking Settings
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => setOpenApiDialog(true)}>
@@ -304,6 +327,16 @@ export const AudienceCampaignCardMenuOptions = ({
                 <LinkedWorkflowsDialog
                     open={openLinkedWorkflowsDialog}
                     onOpenChange={setOpenLinkedWorkflowsDialog}
+                    audienceId={campaignId}
+                    audienceName={campaign.campaign_name || 'this campaign'}
+                    instituteId={instituteId}
+                />
+            )}
+
+            {campaignId && instituteId && (
+                <BookingSettingsDialog
+                    open={openBookingSettingsDialog}
+                    onOpenChange={setOpenBookingSettingsDialog}
                     audienceId={campaignId}
                     audienceName={campaign.campaign_name || 'this campaign'}
                     instituteId={instituteId}

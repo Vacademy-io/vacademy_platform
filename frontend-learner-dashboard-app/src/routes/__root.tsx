@@ -66,6 +66,8 @@ const PUBLIC_ROUTES = [
   "/learner-invitation-response",
   "/payment-result",
   "/audience-response",
+  "/booking-response", // Public Calendly-style booking page
+  "/booking-manage", // Public manage-booking page (token link)
   "/sub-org-registration", // Public sub-org self-registration wizard
   "/kyc-complete", // DigiLocker redirect landing (sub-org registration KYC)
   "/institute-selection",

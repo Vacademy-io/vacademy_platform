@@ -47,8 +47,16 @@ function AttendanceScreen() {
     (s) => String(s.attendanceStatus ?? "").toUpperCase() === "PRESENT",
   ).length;
 
+  // Descriptive attendance labels — NOT the generic "needs your attention"
+  // wording, which contradicted the home's "nothing needs your attention".
   const summaryTone: ParentStatusTone =
     percent === null ? "neutral" : percent >= 75 ? "good" : percent >= 60 ? "watch" : "action";
+  const summaryLabelKey =
+    percent !== null && percent >= 75
+      ? "attendance.statusGood"
+      : percent !== null && percent < 60
+        ? "attendance.statusLow"
+        : "attendance.statusOkay";
 
   return (
     <ModuleScaffold
@@ -80,7 +88,7 @@ function AttendanceScreen() {
                 </span>
               ) : null}
             </div>
-            <ParentStatusChip tone={summaryTone} label={t(`tone.${summaryTone}`)} />
+            <ParentStatusChip tone={summaryTone} label={t(summaryLabelKey)} />
           </div>
         ) : null}
 

@@ -124,12 +124,17 @@
     "absent": "Absent",
     "late": "Late",
     "notMarked": "Not marked",
+    "statusGood": "Good",
+    "statusOkay": "Okay",
+    "statusLow": "Low",
     "emptyTitle": "No attendance yet",
     "emptyBody": "Attendance will show here once classes begin."
   },
   "progress": {
     "summary": "{{name}} has completed {{percent}}% of their lessons.",
+    "summaryGeneric": "How {{name}} is doing across their courses.",
     "subject": "Subject",
+    "noCourseData": "No lessons here yet.",
     "emptyTitle": "No lessons yet",
     "emptyBody": "Course progress will appear here as {{name}} starts learning."
   },

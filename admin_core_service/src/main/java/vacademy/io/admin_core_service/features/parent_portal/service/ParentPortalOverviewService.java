@@ -14,8 +14,6 @@ import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsB
 import vacademy.io.admin_core_service.features.live_session.dto.StudentAttendanceReportDTO;
 import vacademy.io.admin_core_service.features.live_session.service.AttendanceReportService;
 import vacademy.io.admin_core_service.features.live_session.service.GetLiveSessionService;
-import vacademy.io.admin_core_service.features.learner_reports.dto.LearnerSubjectWiseProgressReportDTO;
-import vacademy.io.admin_core_service.features.learner_reports.service.LearnerReportService;
 import vacademy.io.admin_core_service.features.parent_portal.dto.ChildOverviewDTO;
 import vacademy.io.admin_core_service.features.parent_portal.dto.ChildReportListItemDTO;
 import vacademy.io.admin_core_service.features.parent_portal.dto.ParentChildSummaryDTO;
@@ -54,7 +52,6 @@ public class ParentPortalOverviewService {
     private final AttendanceReportService attendanceReportService;
     private final GetLiveSessionService getLiveSessionService;
     private final AssessmentServiceClient assessmentServiceClient;
-    private final LearnerReportService learnerReportService;
 
     public ChildOverviewDTO overview(CustomUserDetails caller, String childUserId) {
         GuardedChild child = guard.requireLinkedChild(caller, childUserId);
@@ -127,25 +124,10 @@ public class ParentPortalOverviewService {
                 markUnavailable("attendance", unavailable, e);
             }
         }
-        if (available.contains("progress") && !child.packageSessionIds().isEmpty()) {
-            try {
-                // Average across ALL the child's courses, matching the progress screen.
-                List<LearnerSubjectWiseProgressReportDTO> allSubjects = new ArrayList<>();
-                for (String psId : child.packageSessionIds()) {
-                    List<LearnerSubjectWiseProgressReportDTO> subjects =
-                            learnerReportService.getSubjectProgressReport(psId, child.childUserId(), caller);
-                    if (subjects != null) {
-                        allSubjects.addAll(subjects);
-                    }
-                }
-                Double pct = averageCompletion(allSubjects);
-                if (pct != null) {
-                    b.courseCompletionPercent(pct);
-                }
-            } catch (Exception e) {
-                markUnavailable("progress", unavailable, e);
-            }
-        }
+        // NOTE: courseCompletionPercent is intentionally NOT computed here. Each
+        // subject-progress query is a heavy activity-log aggregation, and looping
+        // it over every course made the home overview slow. The progress screen
+        // fetches per-course progress on its own (lazily), so the home stays fast.
         if (available.contains("liveSessions") && primaryBatch != null) {
             try {
                 List<GroupedSessionsByDateDTO> groups = getLiveSessionService
@@ -196,32 +178,5 @@ public class ParentPortalOverviewService {
     private void markUnavailable(String module, List<String> unavailable, Exception e) {
         log.warn("Parent overview module '{}' unavailable: {}", module, e.getMessage());
         unavailable.add(module);
-    }
-
-    /**
-     * Overall course completion = mean of each subject's mean module completion,
-     * matching the per-subject averaging the progress screen shows. Null when there
-     * is no progress data at all (so the tile stays a neutral hint, never a 0%).
-     */
-    private Double averageCompletion(List<LearnerSubjectWiseProgressReportDTO> subjects) {
-        if (subjects == null || subjects.isEmpty()) return null;
-        double sum = 0;
-        int counted = 0;
-        for (LearnerSubjectWiseProgressReportDTO subject : subjects) {
-            if (subject.getModules() == null || subject.getModules().isEmpty()) continue;
-            double moduleSum = 0;
-            int moduleCount = 0;
-            for (LearnerSubjectWiseProgressReportDTO.ModuleProgressDTO m : subject.getModules()) {
-                if (m.getCompletionPercentage() != null) {
-                    moduleSum += m.getCompletionPercentage();
-                    moduleCount++;
-                }
-            }
-            if (moduleCount > 0) {
-                sum += moduleSum / moduleCount;
-                counted++;
-            }
-        }
-        return counted == 0 ? null : sum / counted;
     }
 }

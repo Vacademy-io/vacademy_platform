@@ -154,3 +154,47 @@ export async function markSystemAlertsAsRead(
     if (!recipientMessageIds.length || !userId) return;
     await Promise.all(recipientMessageIds.map((id) => markSystemAlertAsRead(id, userId)));
 }
+
+// Dismiss a single alert. A DISMISSED interaction permanently hides the message
+// from the user's system-alerts list (idempotent server-side).
+export async function dismissSystemAlert(
+    recipientMessageId: string,
+    userId: string
+): Promise<void> {
+    await axios.post(`${BASE_URL}/notification-service/v1/user-messages/interactions/dismiss`, {
+        recipientMessageId,
+        userId,
+        interactionType: 'DISMISSED',
+    });
+}
+
+// Clear ALL of a user's system alerts. The backend has no bulk endpoint, so we
+// page through every alert to collect ids, then dismiss each one. Best-effort:
+// individual failures are tolerated. Returns the number successfully dismissed.
+export async function dismissAllSystemAlerts(userId: string): Promise<number> {
+    if (!userId) return 0;
+
+    const ids: string[] = [];
+    const pageSize = 100;
+    const MAX_PAGES = 50; // safety cap (≤5000 alerts) to avoid a runaway loop
+    for (let page = 0; page < MAX_PAGES; page += 1) {
+        const res = await fetchSystemAlerts({ userId, page, size: pageSize });
+        for (const item of res.content) {
+            if (item.messageId) ids.push(item.messageId);
+        }
+        if (res.last || res.content.length === 0) break;
+    }
+    if (!ids.length) return 0;
+
+    // Dismiss in small concurrent batches so we don't flood the service.
+    let dismissed = 0;
+    const concurrency = 10;
+    for (let i = 0; i < ids.length; i += concurrency) {
+        const chunk = ids.slice(i, i + concurrency);
+        const results = await Promise.allSettled(
+            chunk.map((id) => dismissSystemAlert(id, userId))
+        );
+        dismissed += results.filter((r) => r.status === 'fulfilled').length;
+    }
+    return dismissed;
+}

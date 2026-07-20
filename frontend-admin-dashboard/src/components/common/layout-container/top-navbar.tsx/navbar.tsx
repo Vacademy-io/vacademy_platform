@@ -67,6 +67,8 @@ import type { PagedResponse, SystemAlertItem } from '@/services/notifications/sy
 import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/admin-defaults';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import { MyButton } from '@/components/design-system/button';
+import { ClearAllAlertsButton } from '@/components/common/notifications/ClearAllAlertsButton';
+import { DismissAlertButton } from '@/components/common/notifications/DismissAlertButton';
 import AccountDetailsEdit from '@/routes/dashboard/-components/AccountDetailsEdit';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
@@ -608,19 +610,12 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                     >
                         <div className="flex items-center justify-between px-3 py-2">
                             <span className="text-sm font-medium">System Alerts</span>
-                            <div className="flex items-center gap-3">
-                                {!!unreadCount && (
-                                    <button
-                                        className="text-xs text-neutral-500 hover:underline"
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            void markVisibleAlertsAsRead();
-                                        }}
-                                    >
-                                        Clear
-                                    </button>
-                                )}
+                            <div className="flex items-center gap-2">
+                                <ClearAllAlertsButton
+                                    userId={userId}
+                                    hasAlerts={!!alertsList?.content?.length}
+                                    className="!min-w-0 !px-1"
+                                />
                                 <button
                                     className="text-xs text-primary-500 hover:underline"
                                     onClick={() => setShowAllDialog(true)}
@@ -655,19 +650,25 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                 <div className="text-[13px] font-medium text-neutral-800">
                                                     {item.title}
                                                 </div>
-                                                {!!status && (
-                                                    <span
-                                                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                                                            isDelivered
-                                                                ? 'bg-green-100 text-green-700'
-                                                                : isFailed
-                                                                  ? 'bg-red-100 text-red-700'
-                                                                  : 'bg-neutral-100 text-neutral-700'
-                                                        }`}
-                                                    >
-                                                        {status}
-                                                    </span>
-                                                )}
+                                                <div className="flex shrink-0 items-center gap-1">
+                                                    {!!status && (
+                                                        <span
+                                                            className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                                                isDelivered
+                                                                    ? 'bg-green-100 text-green-700'
+                                                                    : isFailed
+                                                                      ? 'bg-red-100 text-red-700'
+                                                                      : 'bg-neutral-100 text-neutral-700'
+                                                            }`}
+                                                        >
+                                                            {status}
+                                                        </span>
+                                                    )}
+                                                    <DismissAlertButton
+                                                        userId={userId}
+                                                        messageId={item.messageId}
+                                                    />
+                                                </div>
                                             </div>
                                             <div className="line-clamp-2 text-[12px] text-neutral-600">
                                                 {item.content?.type === 'html'
@@ -710,7 +711,17 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                             isMobile ? 'w-[calc(100vw-2rem)] max-w-lg' : 'max-w-2xl'
                         )}
                     >
-                        <DialogTitle className="px-5 py-4 text-base">System Alerts</DialogTitle>
+                        <div className="flex items-center justify-between gap-2 px-5 py-4">
+                            <DialogTitle className="text-base">System Alerts</DialogTitle>
+                            <ClearAllAlertsButton
+                                userId={userId}
+                                hasAlerts={
+                                    !!infiniteAlerts.data?.pages?.flatMap((p) => p.content).length
+                                }
+                                className="!min-w-0 !px-1"
+                                onCleared={() => setShowAllDialog(false)}
+                            />
+                        </div>
                         <Separator />
                         <ScrollArea className="max-h-[70vh]">
                             <div className="p-4">
@@ -746,19 +757,25 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                                     </span>
                                                                 </div>
                                                             </div>
-                                                            {!!status && (
-                                                                <span
-                                                                    className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-medium ${
-                                                                        isDelivered
-                                                                            ? 'bg-green-100 text-green-700'
-                                                                            : isFailed
-                                                                              ? 'bg-red-100 text-red-700'
-                                                                              : 'bg-neutral-100 text-neutral-700'
-                                                                    }`}
-                                                                >
-                                                                    {status}
-                                                                </span>
-                                                            )}
+                                                            <div className="flex shrink-0 items-center gap-1.5">
+                                                                {!!status && (
+                                                                    <span
+                                                                        className={`rounded px-2 py-0.5 text-[11px] font-medium ${
+                                                                            isDelivered
+                                                                                ? 'bg-green-100 text-green-700'
+                                                                                : isFailed
+                                                                                  ? 'bg-red-100 text-red-700'
+                                                                                  : 'bg-neutral-100 text-neutral-700'
+                                                                        }`}
+                                                                    >
+                                                                        {status}
+                                                                    </span>
+                                                                )}
+                                                                <DismissAlertButton
+                                                                    userId={userId}
+                                                                    messageId={item.messageId}
+                                                                />
+                                                            </div>
                                                         </div>
                                                         <div className="mt-3 text-[13px] leading-relaxed text-neutral-800">
                                                             {item.content?.type === 'html' ? (

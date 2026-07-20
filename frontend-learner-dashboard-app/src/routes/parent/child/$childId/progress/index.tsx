@@ -38,11 +38,14 @@ function CourseProgressSection({
 }) {
   const { t } = useTranslation("parent");
   const { data, isLoading } = useChildSubjectProgress(childId, packageSessionId);
-  // With an explicit packageSessionId the BFF returns a single-course group.
-  const course = Array.isArray(data) ? (data[0] as Record<string, unknown> | undefined) : undefined;
-  const subjects =
-    course && Array.isArray(course.subjects) ? (course.subjects as Record<string, unknown>[]) : [];
-  const label = courseName || String(course?.courseName ?? "");
+  // Tolerate BOTH response shapes so progress works before and after the backend
+  // redeploy: the new per-course wrapper `[{ courseName, subjects[] }]`, and the
+  // older flat `subject[]` the currently-deployed BFF still returns.
+  const arr = Array.isArray(data) ? (data as Record<string, unknown>[]) : [];
+  const first = arr[0] as Record<string, unknown> | undefined;
+  const wrapped = !!first && Array.isArray(first.subjects);
+  const subjects = wrapped ? (first!.subjects as Record<string, unknown>[]) : arr;
+  const label = courseName || String((wrapped ? first!.courseName : undefined) ?? "");
 
   return (
     <div className="flex flex-col gap-3">

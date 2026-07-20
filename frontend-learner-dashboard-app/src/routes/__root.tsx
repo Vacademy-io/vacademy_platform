@@ -95,6 +95,12 @@ const READER_BLOCKED_PATH_PREFIXES = [
   "/admission/payment",
   "/pay",
   "/payment-result",
+  // Sub-org self-registration ends in a Razorpay/Cashfree checkout wizard
+  // (and /sub-org-registration/payment-result) — an external-gateway purchase.
+  "/sub-org-registration",
+  // Parent portal "Payment" tab embeds Razorpay for admission/fee payment.
+  // Only the payment sub-route is blocked; the rest of /parent stays reachable.
+  "/parent/payment",
 ];
 
 const isReaderBlockedPath = (pathname: string): boolean =>

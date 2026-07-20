@@ -158,7 +158,8 @@ function RouteComponent() {
   const orgChartTabVisible = viewerTeamManagement?.orgChartTabVisible === true;
 
   // Password column shows by default; an admin can hide it per institute from
-  // Settings → Admin Display Settings by explicitly turning the flag off.
+  // Settings → Admin Display Settings by explicitly turning the flag off. The
+  // value comes straight from the users-of-status response (row.original.password).
   const allowViewPassword = viewerTeamManagement?.allowViewPassword !== false;
 
   // All roles from the API for filters and dropdowns. Exclude STUDENT and any

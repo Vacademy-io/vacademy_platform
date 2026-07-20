@@ -1,13 +1,11 @@
 import { useState } from 'react';
-import { Copy, Check, Eye, EyeSlash } from '@phosphor-icons/react';
+import { Copy, Check } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 
-// Table cell for the gated Teams "Password" column. Masked by default with a
-// per-row reveal toggle + copy, so credentials aren't shoulder-surfable at a
-// glance. The password value comes from the authenticated users-of-status
-// response (see UserService.toUserWithRolesDtoWithPassword on the backend).
+// Table cell for the Teams "Password" column. Shows the password in plaintext
+// directly (no reveal click) with a copy button. Value comes from the
+// users-of-status response once deployed, or a live credentials fetch until then.
 export const PasswordCell = ({ password }: { password: string | null | undefined }) => {
-    const [showPassword, setShowPassword] = useState(false);
     const [copied, setCopied] = useState(false);
 
     if (!password) {
@@ -27,17 +25,7 @@ export const PasswordCell = ({ password }: { password: string | null | undefined
 
     return (
         <div className="flex items-center gap-2">
-            <span className="text-sm text-neutral-600">
-                {showPassword ? password : '••••••••'}
-            </span>
-            <button
-                type="button"
-                onClick={() => setShowPassword((prev) => !prev)}
-                className="text-neutral-400 hover:text-primary-500"
-                aria-label={showPassword ? 'Hide password' : 'Show password'}
-            >
-                {showPassword ? <EyeSlash size={16} /> : <Eye size={16} />}
-            </button>
+            <span className="text-sm text-neutral-600">{password}</span>
             <button
                 type="button"
                 onClick={handleCopy}

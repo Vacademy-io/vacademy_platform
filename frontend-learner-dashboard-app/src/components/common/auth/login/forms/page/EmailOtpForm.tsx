@@ -279,9 +279,16 @@ export function EmailLogin({
         }
 
         if (authorityKeys.length > 1) {
+          // `redirect` defaults to the "/login/" sentinel with no real deep-link;
+          // forwarding it would bounce the user back to /login after they pick an
+          // institute, so collapse it to /dashboard/.
+          const forwardRedirect =
+            typeof redirect === "string" && redirect && redirect !== "/login/"
+              ? redirect
+              : "/dashboard/";
           navigate({
             to: "/institute-selection",
-            search: { redirect: redirect || "/dashboard/", type, courseId },
+            search: { redirect: forwardRedirect, type, courseId },
           });
         } else {
           const instituteId = authorityKeys[0];

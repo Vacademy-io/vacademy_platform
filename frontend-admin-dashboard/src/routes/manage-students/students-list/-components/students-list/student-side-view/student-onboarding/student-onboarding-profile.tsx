@@ -14,7 +14,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CheckCircle, Circle, Copy, Key, PauseCircle, Path, PlayCircle, SkipForward, UserCircle } from '@phosphor-icons/react';
+import {
+    CheckCircle,
+    Circle,
+    Copy,
+    GraduationCap,
+    Key,
+    ListChecks,
+    PauseCircle,
+    Path,
+    PlayCircle,
+    SkipForward,
+    UserCircle,
+    Users,
+} from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyInput } from '@/components/design-system/input';
@@ -616,7 +629,7 @@ function CompleteFormStepDialog({
             open
             onOpenChange={(o) => !o && onClose()}
             heading={`Complete — ${stepInstance.step_name}`}
-            dialogWidth="max-w-md"
+            dialogWidth="max-w-lg"
             footer={
                 <div className="flex w-full items-center justify-end gap-2">
                     <MyButton buttonType="secondary" scale="medium" onClick={onClose} disable={submitting}>
@@ -646,65 +659,87 @@ function CompleteFormStepDialog({
                 </div>
             }
         >
-            <div className="flex flex-col gap-3 px-6 py-6">
+            <div className="flex flex-col gap-4 px-6 py-6">
                 {touchesIdentity && (
-                    <div className="flex items-center justify-between rounded-lg border border-neutral-200 px-3 py-2.5">
-                        <Label htmlFor="complete-step-is-parent" className="cursor-pointer text-body">
-                            This form was filled by a parent, on behalf of a student
-                        </Label>
+                    <div className="flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-neutral-50/60 px-3.5 py-3">
+                        <div className="flex items-center gap-2.5">
+                            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
+                                <Users size={16} weight="fill" />
+                            </span>
+                            <Label htmlFor="complete-step-is-parent" className="cursor-pointer text-body text-neutral-700">
+                                This form was filled by a parent, on behalf of a student
+                            </Label>
+                        </div>
                         <Switch id="complete-step-is-parent" checked={isParent} onCheckedChange={setIsParent} />
                     </div>
                 )}
                 {touchesIdentity && !isParent && (
-                    <div className="flex flex-col gap-1 rounded-lg border border-neutral-200 bg-neutral-50 p-3">
-                        <p className="text-caption text-neutral-500">
-                            The student will be created using this person&apos;s existing details:
-                        </p>
-                        <p className="text-body font-medium text-neutral-800">
-                            {subjectFullName || 'No name on file'}
-                        </p>
-                        <p className="text-caption text-neutral-600">
-                            {[subjectEmail, subjectMobileNumber].filter(Boolean).join(' · ') ||
-                                'No email or mobile number on file'}
-                        </p>
+                    <div className="flex items-start gap-2.5 rounded-xl border border-neutral-200 bg-neutral-50/60 p-3.5">
+                        <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-neutral-100 text-neutral-500">
+                            <UserCircle size={16} weight="fill" />
+                        </span>
+                        <div className="flex flex-col gap-0.5">
+                            <p className="text-caption text-neutral-500">
+                                The student will be created using this person&apos;s existing details:
+                            </p>
+                            <p className="text-body font-medium text-neutral-800">
+                                {subjectFullName || 'No name on file'}
+                            </p>
+                            <p className="text-caption text-neutral-600">
+                                {[subjectEmail, subjectMobileNumber].filter(Boolean).join(' · ') ||
+                                    'No email or mobile number on file'}
+                            </p>
+                        </div>
                     </div>
                 )}
                 {touchesIdentity && isParent && (
-                    <div className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3">
-                        <p className="text-caption text-neutral-500">
-                            Enter the student&apos;s own details — they&apos;ll be the one enrolled and
-                            granted access, not the parent.
-                        </p>
-                        <MyInput
-                            inputType="text"
-                            label="Student's full name"
-                            required
-                            inputPlaceholder="e.g. Aarav Sharma"
-                            input={studentFullName}
-                            onChangeFunction={(e) => setStudentFullName(e.target.value)}
-                        />
-                        <MyInput
-                            inputType="text"
-                            label="Student's email"
-                            inputPlaceholder="student@example.com"
-                            input={studentEmail}
-                            onChangeFunction={(e) => setStudentEmail(e.target.value)}
-                        />
-                        <PhoneNumberInput
-                            name="student_mobile_number"
-                            label="Student's mobile number"
-                            placeholder="Optional if email is provided"
-                            value={studentMobileNumber}
-                            onChange={(_, value) => setStudentMobileNumber(value)}
-                            validate={false}
-                        />
+                    <div className="flex flex-col gap-3 rounded-xl border border-neutral-200 bg-neutral-50/60 p-3.5">
+                        <div className="flex items-start gap-2.5">
+                            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
+                                <UserCircle size={16} weight="fill" />
+                            </span>
+                            <p className="text-caption text-neutral-500">
+                                Enter the student&apos;s own details — they&apos;ll be the one enrolled
+                                and granted access, not the parent.
+                            </p>
+                        </div>
+                        <div className="flex flex-col gap-2.5 ps-10">
+                            <MyInput
+                                inputType="text"
+                                label="Student's full name"
+                                required
+                                inputPlaceholder="e.g. Aarav Sharma"
+                                input={studentFullName}
+                                onChangeFunction={(e) => setStudentFullName(e.target.value)}
+                            />
+                            <MyInput
+                                inputType="text"
+                                label="Student's email"
+                                inputPlaceholder="student@example.com"
+                                input={studentEmail}
+                                onChangeFunction={(e) => setStudentEmail(e.target.value)}
+                            />
+                            <PhoneNumberInput
+                                name="student_mobile_number"
+                                label="Student's mobile number"
+                                placeholder="Optional if email is provided"
+                                value={studentMobileNumber}
+                                onChange={(_, value) => setStudentMobileNumber(value)}
+                                validate={false}
+                            />
+                        </div>
                     </div>
                 )}
                 {createsStudent && (
-                    <div className="flex flex-col gap-1.5">
-                        <Label>
-                            Enroll into (course / batch) <span className="text-danger-600">*</span>
-                        </Label>
+                    <div className="flex flex-col gap-2 rounded-xl border border-neutral-200 bg-neutral-50/60 p-3.5">
+                        <div className="flex items-center gap-2.5">
+                            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-success-50 text-success-600">
+                                <GraduationCap size={16} weight="fill" />
+                            </span>
+                            <Label className="text-neutral-700">
+                                Enroll into (course / batch) <span className="text-danger-600">*</span>
+                            </Label>
+                        </div>
                         {hasPool ? (
                             <Select value={packageSessionId} onValueChange={setPackageSessionId}>
                                 <SelectTrigger>
@@ -751,19 +786,29 @@ function CompleteFormStepDialog({
                         </p>
                     )
                 ) : (
-                    fields.map((f) => (
-                        <MyInput
-                            key={f.id}
-                            label={f.custom_field?.fieldName ?? 'Field'}
-                            required={f.is_mandatory ?? false}
-                            inputType="text"
-                            inputPlaceholder={f.custom_field?.fieldName ?? ''}
-                            input={values[f.id] ?? ''}
-                            onChangeFunction={(e) =>
-                                setValues((prev) => ({ ...prev, [f.id]: e.target.value }))
-                            }
-                        />
-                    ))
+                    <div className="flex flex-col gap-2.5 rounded-xl border border-neutral-200 p-3.5">
+                        <div className="flex items-center gap-2.5">
+                            <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-info-50 text-info-600">
+                                <ListChecks size={16} weight="fill" />
+                            </span>
+                            <Label className="text-neutral-700">Form fields</Label>
+                        </div>
+                        <div className="flex flex-col gap-2.5 ps-10">
+                            {fields.map((f) => (
+                                <MyInput
+                                    key={f.id}
+                                    label={f.custom_field?.fieldName ?? 'Field'}
+                                    required={f.is_mandatory ?? false}
+                                    inputType="text"
+                                    inputPlaceholder={f.custom_field?.fieldName ?? ''}
+                                    input={values[f.id] ?? ''}
+                                    onChangeFunction={(e) =>
+                                        setValues((prev) => ({ ...prev, [f.id]: e.target.value }))
+                                    }
+                                />
+                            ))}
+                        </div>
+                    </div>
                 )}
             </div>
         </MyDialog>

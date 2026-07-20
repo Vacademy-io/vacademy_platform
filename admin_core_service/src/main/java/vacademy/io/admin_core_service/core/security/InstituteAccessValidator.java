@@ -6,6 +6,7 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import vacademy.io.common.auth.entity.UserRole;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.exceptions.ForbiddenException;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.Set;
@@ -78,6 +79,25 @@ public class InstituteAccessValidator {
         String clientInstituteId = currentClientIdHeader();
         if (!instituteId.equals(clientInstituteId)) {
             throw new VacademyException("Access denied: user does not belong to institute " + instituteId);
+        }
+    }
+
+    /**
+     * Validates institute membership (see {@link #validateUserAccess}) AND that the caller's
+     * role in that institute is specifically ADMIN -- for endpoints that must be restricted to
+     * institute admins (e.g. building/managing onboarding flows, completing a step as-admin),
+     * not just any institute member (a student or teacher also "belongs" to the institute per
+     * {@code validateUserAccess} alone). Root users bypass both checks, same as {@link #validateUserAccess}.
+     */
+    public void requireAdminAccess(CustomUserDetails user, String instituteId) {
+        validateUserAccess(user, instituteId);
+        if (user.isRootUser()) {
+            return;
+        }
+        boolean isAdmin = user.getAuthorities() != null && user.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority() != null && a.getAuthority().equalsIgnoreCase("ADMIN"));
+        if (!isAdmin) {
+            throw new ForbiddenException("Access denied: institute admin role required");
         }
     }
 

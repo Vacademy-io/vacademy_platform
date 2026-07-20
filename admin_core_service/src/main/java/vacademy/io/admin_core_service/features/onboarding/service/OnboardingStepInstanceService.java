@@ -356,10 +356,21 @@ public class OnboardingStepInstanceService {
         if (isCreateStudentConfigured(step)) return false;
         List<OnboardingStepFieldConfigDTO> fieldConfigs = parseFieldConfigs(step.getFieldsConfig());
         if (fieldConfigs.isEmpty()) {
-            return roleAccessResolutionService.resolveStepAccess(step.getId(), roleKey).canEdit;
+            OnboardingRoleAccessResolutionService.EffectiveAccess stepAccess =
+                    roleAccessResolutionService.resolveStepAccess(step.getId(), roleKey);
+            return stepAccess.canView && stepAccess.canEdit;
         }
-        return fieldConfigs.stream().anyMatch(fc -> roleAccessResolutionService
-                .resolveFieldAccess(step.getId(), fc.getInstituteCustomFieldId(), roleKey).canEdit);
+        // Must require BOTH canView and canEdit, matching getResolvedFieldsForRole's own filter
+        // (canView=false) -- a field with can_edit=true/can_view=false (an unusual but possible
+        // admin misconfiguration, since the role-access grid doesn't couple the two checkboxes)
+        // would otherwise report this step as actionable while getResolvedFieldsForRole returns
+        // it as an empty field list, permanently stranding the caller on a step they can never
+        // successfully submit (rejected server-side as "missing mandatory field").
+        return fieldConfigs.stream().anyMatch(fc -> {
+            OnboardingRoleAccessResolutionService.EffectiveAccess access = roleAccessResolutionService
+                    .resolveFieldAccess(step.getId(), fc.getInstituteCustomFieldId(), roleKey);
+            return access.canView && access.canEdit;
+        });
     }
 
     /**

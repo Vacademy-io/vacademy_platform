@@ -237,6 +237,26 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("userIds") List<String> userIds,
       @Param("status") String status);
 
+  // SOFT sub-org termination: keep the learner ACTIVE and move their access
+  // cut-off to :expiryDate — access continues until then (the plan/expiry
+  // machinery ends it afterwards). Only touches currently-ACTIVE mappings.
+  @Query(value = """
+      UPDATE student_session_institute_group_mapping
+      SET expiry_date = :expiryDate
+      WHERE sub_org_id = :subOrgId
+        AND institute_id = :instituteId
+        AND package_session_id = :packageSessionId
+        AND user_id IN (:userIds)
+        AND status = 'ACTIVE'
+      """, nativeQuery = true)
+  @org.springframework.data.jpa.repository.Modifying
+  int softCancelLearnersBySubOrgAndUserIds(
+      @Param("subOrgId") String subOrgId,
+      @Param("instituteId") String instituteId,
+      @Param("packageSessionId") String packageSessionId,
+      @Param("userIds") List<String> userIds,
+      @Param("expiryDate") java.sql.Timestamp expiryDate);
+
   // only active package sessions
   @Query("SELECT DISTINCT m.packageSession.id " +
       "FROM StudentSessionInstituteGroupMapping m " +

@@ -1455,6 +1455,7 @@ const RecentLeadsContent = () => {
                             showScore={showScore}
                             isLoading={isLoading}
                             actions={actions}
+                            alwaysShowActions
                             onStatusUpdated={handleStatusUpdated}
                             hiddenColumns={hiddenColumns}
                             selectable

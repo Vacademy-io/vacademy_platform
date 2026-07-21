@@ -543,11 +543,40 @@ def build_shot_planner_user_prompt(
             if ai_video_audio_enabled
             else "Audio mode is OFF — do NOT set `ai_video_audio: true`."
         )
+        # Derive the REAL shot budget from the cap instead of hardcoding
+        # "1-3": at $0.03/s (720p silent) an 8s clip costs $0.24, so even the
+        # default $1.50 cap funds ~6 clips — most of a 60s video. The old
+        # wording made the planner ship 0-1 AI shots even when the user had
+        # opted in specifically to get AI footage.
+        _ai_shot_budget = max(1, int(ai_video_cost_cap_usd / 0.24))
         lines.append("")
-        lines.append(
-            f"AI_VIDEO_HERO IS ENABLED for this run. Cap: ${ai_video_cost_cap_usd:.2f} per "
-            f"video (typically 1-3 AI video shots). {audio_note}"
-        )
+        # AI_VIDEO_HERO has NO entry in this file's shot-type vocabulary —
+        # the only place its required fields (`ai_video_prompt`,
+        # `ai_video_duration_s` ∈ {4,6,8}, `video_query` fallback, ≥4s
+        # duration) are actually taught is the v2 Director block. Without
+        # it the planner emits AI_VIDEO_HERO shots missing those fields and
+        # the orchestrator demotes every one to IMAGE_HERO — i.e. the user
+        # opts in to AI footage and silently gets none. Reuse the block so
+        # both planners teach the identical contract.
+        try:
+            from director_prompts import build_ai_video_director_block
+            lines.append(build_ai_video_director_block(
+                enabled=True,
+                audio_enabled=bool(ai_video_audio_enabled),
+                cost_cap_usd=ai_video_cost_cap_usd,
+                shot_budget=_ai_shot_budget,
+            ))
+        except Exception:
+            # Fallback: state the hard contract inline rather than leaving
+            # the planner with no field spec at all.
+            lines.append(
+                f"AI_VIDEO_HERO IS ENABLED — budget ~{_ai_shot_budget} shot(s) "
+                f"(cap ${ai_video_cost_cap_usd:.2f}). REQUIRED per shot: "
+                "`ai_video_prompt` (vivid visual description, no in-frame text), "
+                "`ai_video_duration_s` ∈ {4,6,8}, `video_query` (stock fallback "
+                "terms), and duration_estimate_s ≥ 4.0."
+            )
+        lines.append(audio_note)
     else:
         lines.append("")
         lines.append(

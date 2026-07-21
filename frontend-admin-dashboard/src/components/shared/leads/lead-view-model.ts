@@ -74,7 +74,12 @@ export const formatSubmitted = (iso: string | undefined | null): string => {
 export const recentLeadName = (lead: RecentLeadDetail) =>
     lead.user?.full_name || lead.user?.email || lead.user?.mobile_number || 'Unknown lead';
 export const recentLeadEmail = (lead: RecentLeadDetail) => lead.user?.email || '-';
-export const recentLeadPhone = (lead: RecentLeadDetail) => lead.user?.mobile_number || '-';
+// Prefer the linked user's number, else the phone the lead submitted (parent_mobile).
+// Many imported/ad leads have only parent_mobile populated — without this fallback the
+// phone shows '-', which hides the whole phone cell AND the row's Call / AI-call buttons
+// (both live behind `showPhone` in lead-table).
+export const recentLeadPhone = (lead: RecentLeadDetail) =>
+    lead.user?.mobile_number || lead.parent_mobile || '-';
 export const recentLeadAudience = (lead: RecentLeadDetail) =>
     lead.campaign_name || lead.source_audience_name || '-';
 

@@ -1157,6 +1157,7 @@ export const GRANT_USER_ACCESS = `${BASE_URL}/admin-core-service/institute/v1/fa
 export const GET_ALL_FACULTY_V2 = `${BASE_URL}/admin-core-service/institute/v1/faculty/faculty/get-all`;
 export const CREATE_SUB_ORG = `${BASE_URL}/admin-core-service/institute/v1/sub-org/create`;
 export const GET_SUB_ORGS = `${BASE_URL}/admin-core-service/institute/v1/sub-org/get-all`;
+export const GET_SUB_ORGS_WITH_DETAILS = `${BASE_URL}/admin-core-service/institute/v1/sub-org/get-all-with-details`;
 export const CREATE_SUB_ORG_WITH_SUBSCRIPTION = `${BASE_URL}/admin-core-service/institute/v1/sub-org/create-with-subscription`;
 export const GET_SUB_ORG_SCOPED_INVITES = `${BASE_URL}/admin-core-service/institute/v1/sub-org/scoped-invites`;
 export const GET_SUB_ORG_SEAT_USAGE = `${BASE_URL}/admin-core-service/institute/v1/sub-org/seat-usage`;

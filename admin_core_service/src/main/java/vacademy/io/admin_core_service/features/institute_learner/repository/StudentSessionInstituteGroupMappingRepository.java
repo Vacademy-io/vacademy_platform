@@ -477,6 +477,22 @@ public interface StudentSessionInstituteGroupMappingRepository
   List<Object[]> countActiveLearnersBySubOrgIds(@Param("subOrgIds") List<String> subOrgIds);
 
   /**
+   * The ROOT_ADMIN (userId + userPlanId) of each sub-org for a set of sub-org ids, in ONE
+   * query. DISTINCT ON keeps a single earliest-enrolled admin per sub-org (sub-orgs can have
+   * more than one ROOT_ADMIN). Returns rows of [sub_org_id, user_id, user_plan_id].
+   */
+  @Query(value = """
+      SELECT DISTINCT ON (ssigm.sub_org_id)
+             ssigm.sub_org_id, ssigm.user_id, ssigm.user_plan_id
+      FROM student_session_institute_group_mapping ssigm
+      WHERE ssigm.sub_org_id IN (:subOrgIds)
+        AND ssigm.status = 'ACTIVE'
+        AND ssigm.comma_separated_org_roles LIKE '%ROOT_ADMIN%'
+      ORDER BY ssigm.sub_org_id, ssigm.created_at
+      """, nativeQuery = true)
+  List<Object[]> findRootAdminBySubOrgIds(@Param("subOrgIds") List<String> subOrgIds);
+
+  /**
    * Find the ROOT_ADMIN user_id for a specific sub-org and package session
    * ROOT_ADMIN is the user who purchased the plan and owns the member count limit
    */

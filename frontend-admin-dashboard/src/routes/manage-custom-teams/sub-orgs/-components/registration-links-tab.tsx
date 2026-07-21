@@ -43,6 +43,7 @@ import {
     type TemplateDetail,
 } from '../../-services/sub-org-registration-services';
 import { RegistrationLinkCreateModal } from './registration-link-create-modal';
+import { humanizeStatus, statusToneClass } from '../../-utils/status-display';
 
 // The list response only carries `steps`; paid templates include a "PAYMENT" step and
 // templates with DigiLocker identity verification include a "KYC" step.
@@ -52,49 +53,19 @@ const isPaidTemplate = (template: RegistrationTemplateListItem) =>
 const hasKycStep = (template: RegistrationTemplateListItem) =>
     Array.isArray(template.steps) && template.steps.includes('KYC');
 
-// PENDING | VERIFIED | CONSENT_DENIED | EXPIRED | FAILED → tinted outline chip classes.
-const KYC_STATUS_CLASSES: Record<string, string> = {
-    VERIFIED: 'border-success-400 bg-success-50 text-success-600',
-    PENDING: 'border-warning-400 bg-warning-50 text-warning-600',
-    CONSENT_DENIED: 'border-danger-400 bg-danger-50 text-danger-600',
-    EXPIRED: 'border-danger-400 bg-danger-50 text-danger-600',
-    FAILED: 'border-danger-400 bg-danger-50 text-danger-600',
-};
+// The registration statuses the dialog can filter by — mirrors the backend
+// SubOrgRegistrationStatus enum. Labels + colours are DERIVED (humanizeStatus /
+// statusToneClass), so nothing is duplicated per value.
+const REGISTRATION_STATUS_VALUES = ['DRAFT', 'OTP_VERIFIED', 'PENDING_PAYMENT', 'COMPLETED', 'FAILED'];
+const LINK_STATUS_VALUES = ['ACTIVE', 'INACTIVE'];
+const LINK_TYPE_VALUES = ['PAID', 'FREE'];
 
-// Registration status → readable label + tinted outline chip classes.
-const REGISTRATION_STATUS_LABELS: Record<string, string> = {
-    DRAFT: 'Draft',
-    OTP_VERIFIED: 'OTP Verified',
-    PENDING_PAYMENT: 'Pending Payment',
-    COMPLETED: 'Completed',
-    FAILED: 'Failed',
-};
-
-const REGISTRATION_STATUS_CLASSES: Record<string, string> = {
-    COMPLETED: 'border-success-400 bg-success-50 text-success-600',
-    OTP_VERIFIED: 'border-info-400 bg-info-50 text-info-600',
-    PENDING_PAYMENT: 'border-warning-400 bg-warning-50 text-warning-600',
-    DRAFT: 'border-neutral-300 bg-neutral-50 text-neutral-600',
-    FAILED: 'border-danger-400 bg-danger-50 text-danger-600',
-};
-
-const REGISTRATION_STATUS_OPTIONS = [
-    { value: 'DRAFT', label: 'Draft' },
-    { value: 'OTP_VERIFIED', label: 'OTP Verified' },
-    { value: 'PENDING_PAYMENT', label: 'Pending Payment' },
-    { value: 'COMPLETED', label: 'Completed' },
-    { value: 'FAILED', label: 'Failed' },
-];
-
-const statusLabel = (status?: string | null) =>
-    (status && REGISTRATION_STATUS_LABELS[status]) || status || '-';
-
-// MyDropdown works on display strings — map the friendly labels back to filter values.
+// MyDropdown works on display strings — first option clears the filter.
 const ALL_STATUSES = 'All statuses';
 const ALL_TYPES = 'All types';
-const LINK_STATUS_LABELS = [ALL_STATUSES, 'Active', 'Inactive'];
-const LINK_TYPE_LABELS = [ALL_TYPES, 'Paid', 'Free'];
-const DIALOG_STATUS_LABELS = [ALL_STATUSES, ...REGISTRATION_STATUS_OPTIONS.map((o) => o.label)];
+const LINK_STATUS_LABELS = [ALL_STATUSES, ...LINK_STATUS_VALUES.map(humanizeStatus)];
+const LINK_TYPE_LABELS = [ALL_TYPES, ...LINK_TYPE_VALUES.map(humanizeStatus)];
+const DIALOG_STATUS_LABELS = [ALL_STATUSES, ...REGISTRATION_STATUS_VALUES.map(humanizeStatus)];
 
 const formatDate = (value?: string | number | null) => {
     if (value === null || value === undefined || value === '') return '-';
@@ -143,8 +114,8 @@ const buildRegistrationsCsv = (rows: SubOrgRegistrationRow[]): string => {
                 r.pincode,
                 r.used_seats ?? '',
                 r.total_seats ?? '',
-                statusLabel(r.status),
-                r.kyc_status ? r.kyc_status.replace(/_/g, ' ') : '',
+                humanizeStatus(r.status),
+                humanizeStatus(r.kyc_status),
                 formatDate(r.created_at),
             ]
                 .map(csvCell)
@@ -294,7 +265,10 @@ export function RegistrationLinksTab() {
                         dropdownList={LINK_STATUS_LABELS}
                         handleChange={(l) =>
                             setLinkStatusFilter(
-                                l === 'Active' ? 'ACTIVE' : l === 'Inactive' ? 'INACTIVE' : 'ALL'
+                                (LINK_STATUS_VALUES.find((v) => humanizeStatus(v) === l) as
+                                    | 'ACTIVE'
+                                    | 'INACTIVE'
+                                    | undefined) ?? 'ALL'
                             )
                         }
                         className="w-36"
@@ -309,7 +283,12 @@ export function RegistrationLinksTab() {
                         }
                         dropdownList={LINK_TYPE_LABELS}
                         handleChange={(l) =>
-                            setLinkTypeFilter(l === 'Paid' ? 'PAID' : l === 'Free' ? 'FREE' : 'ALL')
+                            setLinkTypeFilter(
+                                (LINK_TYPE_VALUES.find((v) => humanizeStatus(v) === l) as
+                                    | 'PAID'
+                                    | 'FREE'
+                                    | undefined) ?? 'ALL'
+                            )
                         }
                         className="w-32"
                     />
@@ -646,11 +625,13 @@ function RegistrationsDialog({
                             />
                         </div>
                         <MyDropdown
-                            currentValue={statusFilter ? statusLabel(statusFilter) : ALL_STATUSES}
+                            currentValue={statusFilter ? humanizeStatus(statusFilter) : ALL_STATUSES}
                             dropdownList={DIALOG_STATUS_LABELS}
                             handleChange={(l) => {
-                                const opt = REGISTRATION_STATUS_OPTIONS.find((o) => o.label === l);
-                                setStatusFilter(opt ? opt.value : '');
+                                const val = REGISTRATION_STATUS_VALUES.find(
+                                    (v) => humanizeStatus(v) === l
+                                );
+                                setStatusFilter(val ?? '');
                             }}
                             className="w-44"
                         />
@@ -758,24 +739,18 @@ function RegistrationsDialog({
                                             <TableCell>
                                                 <Badge
                                                     variant="outline"
-                                                    className={
-                                                        REGISTRATION_STATUS_CLASSES[row.status] ||
-                                                        'text-muted-foreground'
-                                                    }
+                                                    className={statusToneClass(row.status)}
                                                 >
-                                                    {statusLabel(row.status)}
+                                                    {humanizeStatus(row.status)}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell>
                                                 {row.kyc_status ? (
                                                     <Badge
                                                         variant="outline"
-                                                        className={
-                                                            KYC_STATUS_CLASSES[row.kyc_status] ||
-                                                            'text-muted-foreground'
-                                                        }
+                                                        className={statusToneClass(row.kyc_status)}
                                                     >
-                                                        {row.kyc_status.replace(/_/g, ' ')}
+                                                        {humanizeStatus(row.kyc_status)}
                                                     </Badge>
                                                 ) : (
                                                     <span className="text-sm text-muted-foreground">

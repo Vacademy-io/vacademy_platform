@@ -8,6 +8,7 @@ import {
     ROLES_BASE,
     INVITE_USERS_URL,
     GET_SUB_ORGS,
+    GET_SUB_ORGS_WITH_DETAILS,
     CREATE_SUB_ORG_WITH_SUBSCRIPTION,
     GET_SUB_ORG_SCOPED_INVITES,
     GET_SUB_ORG_SEAT_USAGE,
@@ -163,6 +164,36 @@ export const getSubOrgs = async (parentInstituteId?: string) => {
         params: { parentInstituteId: id },
     });
     return response.data;
+};
+
+/** Enriched VLE/sub-org list row: record + admin contact + plan status + seats + invite. */
+export interface SubOrgListItem {
+    suborg_id?: string | null;
+    name?: string | null;
+    status?: string | null;
+    admin_name?: string | null;
+    admin_email?: string | null;
+    admin_phone?: string | null;
+    /** Admin's UserPlan status (ACTIVE, PENDING_FOR_PAYMENT, …); null when no plan. */
+    plan_status?: string | null;
+    used_seats?: number | null;
+    total_seats?: number | null;
+    invite_code?: string | null;
+    short_url?: string | null;
+    created_at?: string | number | null;
+}
+
+/** Manage VLEs list — one call returns admin email/phone, plan status, seats and invite per sub-org. */
+export const getSubOrgsWithDetails = async (
+    parentInstituteId?: string
+): Promise<SubOrgListItem[]> => {
+    const id = parentInstituteId || getCurrentInstituteId();
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: GET_SUB_ORGS_WITH_DETAILS,
+        params: { parentInstituteId: id },
+    });
+    return Array.isArray(response.data) ? response.data : [];
 };
 
 export const getAllRoles = async () => {

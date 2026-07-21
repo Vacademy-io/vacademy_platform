@@ -550,19 +550,33 @@ def build_shot_planner_user_prompt(
         # opted in specifically to get AI footage.
         _ai_shot_budget = max(1, int(ai_video_cost_cap_usd / 0.24))
         lines.append("")
-        lines.append(
-            f"AI_VIDEO_HERO IS ENABLED for this run — the user opted IN to AI-generated "
-            f"footage, so USE IT. Budget: about {_ai_shot_budget} AI video shot(s) "
-            f"(cap ${ai_video_cost_cap_usd:.2f}/video; 8s clip ≈ $0.24 at 720p silent). "
-            "Spend that budget on the beats where real-world motion, texture or "
-            "organic/cinematic imagery genuinely beats a designed graphic — physical "
-            "processes, environments, materials, anatomy, people, product in use. Keep "
-            "motion-graphics types (TEXT_DIAGRAM, INFOGRAPHIC_SVG, DATA_STORY, "
-            "PROCESS_STEPS, KINETIC_TEXT) for beats that are genuinely about numbers, "
-            "lists, comparisons or definitions — a designed graphic teaches those better. "
-            f"An AI-footage-led video where most shots are AI_VIDEO_HERO is a VALID and "
-            f"expected plan when the subject is visual rather than data-driven. {audio_note}"
-        )
+        # AI_VIDEO_HERO has NO entry in this file's shot-type vocabulary —
+        # the only place its required fields (`ai_video_prompt`,
+        # `ai_video_duration_s` ∈ {4,6,8}, `video_query` fallback, ≥4s
+        # duration) are actually taught is the v2 Director block. Without
+        # it the planner emits AI_VIDEO_HERO shots missing those fields and
+        # the orchestrator demotes every one to IMAGE_HERO — i.e. the user
+        # opts in to AI footage and silently gets none. Reuse the block so
+        # both planners teach the identical contract.
+        try:
+            from director_prompts import build_ai_video_director_block
+            lines.append(build_ai_video_director_block(
+                enabled=True,
+                audio_enabled=bool(ai_video_audio_enabled),
+                cost_cap_usd=ai_video_cost_cap_usd,
+                shot_budget=_ai_shot_budget,
+            ))
+        except Exception:
+            # Fallback: state the hard contract inline rather than leaving
+            # the planner with no field spec at all.
+            lines.append(
+                f"AI_VIDEO_HERO IS ENABLED — budget ~{_ai_shot_budget} shot(s) "
+                f"(cap ${ai_video_cost_cap_usd:.2f}). REQUIRED per shot: "
+                "`ai_video_prompt` (vivid visual description, no in-frame text), "
+                "`ai_video_duration_s` ∈ {4,6,8}, `video_query` (stock fallback "
+                "terms), and duration_estimate_s ≥ 4.0."
+            )
+        lines.append(audio_note)
     else:
         lines.append("")
         lines.append(

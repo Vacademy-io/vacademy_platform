@@ -33,3 +33,12 @@ sys.path).
 # billed per call by AiVideoLedger — this is a per-video blast radius,
 # not a spend allowance.
 AI_VIDEO_PER_VIDEO_COST_CAP_USD: float = 4.00
+
+# Fraction of the cap the credit pre-flight holds before a run may start.
+# The cap is a blast radius sized for an ALL-AI film; most runs spend a
+# fraction of it. Requiring the full cap up front turned a cap raise into
+# an access regression (institutes that could run yesterday hit 402s).
+# Exhausting the budget mid-run is handled gracefully — the shot demotes
+# to stock footage — so a partial hold trades a rare, soft degradation
+# for not gating users out entirely. Raise toward 1.0 to be stricter.
+AI_VIDEO_PREFLIGHT_HOLD_FRACTION: float = 0.4

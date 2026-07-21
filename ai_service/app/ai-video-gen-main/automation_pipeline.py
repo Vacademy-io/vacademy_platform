@@ -821,7 +821,7 @@ try:
 except ImportError:
     # Fallback when `app/` isn't on path (legacy / standalone). Keep the
     # numeric default in lockstep with `ai_video_constants.py`.
-    AI_VIDEO_PER_VIDEO_COST_CAP_USD = 1.50
+    AI_VIDEO_PER_VIDEO_COST_CAP_USD = 4.00
 
 QUALITY_TIERS: dict[str, dict[str, Any]] = {
     "free": {
@@ -13970,7 +13970,13 @@ class VideoGenerationPipeline:
             or tier_config.get("director_model")
             or getattr(self.script_client, "model", None)
         )
-        ai_video_cost_cap = float(tier_config.get("ai_video_per_video_cost_cap_usd") or 1.50)
+        # Fall back to the module constant, not a hardcoded literal — a stale
+        # literal here silently shrinks the planner's AI-shot budget (derived
+        # from this number) if the tier key ever goes missing.
+        ai_video_cost_cap = float(
+            tier_config.get("ai_video_per_video_cost_cap_usd")
+            or AI_VIDEO_PER_VIDEO_COST_CAP_USD
+        )
         brand_brief = self._extract_brand_brief() or {}
 
         # Pillar 3 — eager reference-asset prefetch (mirrors the v2 path in
@@ -18719,6 +18725,25 @@ class VideoGenerationPipeline:
                             f"   ⚠️  {_log_label} AI_VIDEO_HERO {_av_result.error_class}: "
                             f"{_av_result.error} — falling back to {_fallback_st}"
                         )
+                        # Tell the USER, not just the run log. A demotion means
+                        # they opted in (and pre-paid the credit hold) for AI
+                        # footage and are getting stock/still instead — today
+                        # that was invisible outside the pod logs.
+                        try:
+                            self._emit_progress({
+                                "type": "sub_stage",
+                                "sub_stage": "ai_video_demoted",
+                                "shot_index": shot_idx,
+                                "reason": str(_av_result.error_class or "error"),
+                                "fallback_shot_type": _fallback_st,
+                                "message": (
+                                    f"Shot {shot_idx}: AI video unavailable "
+                                    f"({_av_result.error_class}) — using "
+                                    f"{'stock footage' if _fallback_st == 'VIDEO_HERO' else 'a still image'}"
+                                ),
+                            })
+                        except Exception:
+                            pass
                         shot_type = _fallback_st
                         # Keep `shot` dict in sync with the local — downstream
                         # helpers (template composer, sound planner, vision

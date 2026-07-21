@@ -1187,6 +1187,7 @@ def build_ai_video_director_block(
     enabled: bool,
     audio_enabled: bool = False,
     cost_cap_usd: float = 1.50,
+    shot_budget: int = 4,
 ) -> str:
     """Build the AI_VIDEO_HERO teaching block appended to the Director system
     prompt when the run has AI video enabled (Phase 3b).
@@ -1215,23 +1216,51 @@ def build_ai_video_director_block(
         "",
         "You MAY emit shots with `shot_type: \"AI_VIDEO_HERO\"` when content fits.",
         f"Each AI video shot costs $0.24-$0.40 — there is a hard "
-        f"${cost_cap_usd:.2f} ceiling per video. **Plus a HARD CAP of 4 "
-        f"AI_VIDEO_HERO shots per video** (the post-Director validator "
-        f"demotes any excess to VIDEO_HERO automatically — pick your 4 "
-        f"shots intentionally rather than padding the plan).",
+        f"${cost_cap_usd:.2f} ceiling per video, which funds about "
+        f"{shot_budget} AI video shot(s). Beyond the budget the pipeline "
+        f"demotes shots to VIDEO_HERO/IMAGE_HERO automatically, so plan "
+        f"within it rather than padding.",
         "",
-        "**WHERE TO USE AI_VIDEO_HERO** (in order of priority):",
-        "  1. **The hook** (shot 0 or 1) — if the opening visual needs "
-        "something stock can't deliver. A cinematic establishing shot of "
-        "a specific scene/subject is worth the $0.30. A generic opener "
-        "is NOT — use VIDEO_HERO + KINETIC_TEXT for those.",
-        "  2. **The CTA / closer** (last shot) — same logic; the lasting "
-        "impression deserves the spend if it's visually load-bearing.",
-        "  3. **One mid-act emotional beat** — the single most cinematic "
-        "moment that's not the hook or CTA. Pick ONE, not three.",
-        "  Beyond these 3, demand a real reason. Everything else is "
-        "VIDEO_HERO / IMAGE_HERO / TEXT_DIAGRAM / KINETIC_TEXT.",
-        "",
+    ]
+    if shot_budget <= 4:
+        lines += [
+            "**WHERE TO USE AI_VIDEO_HERO** (in order of priority):",
+            "  1. **The hook** (shot 0 or 1) — if the opening visual needs "
+            "something stock can't deliver. A cinematic establishing shot of "
+            "a specific scene/subject is worth the $0.30. A generic opener "
+            "is NOT — use VIDEO_HERO + KINETIC_TEXT for those.",
+            "  2. **The CTA / closer** (last shot) — same logic; the lasting "
+            "impression deserves the spend if it's visually load-bearing.",
+            "  3. **One mid-act emotional beat** — the single most cinematic "
+            "moment that's not the hook or CTA. Pick ONE, not three.",
+            "  Beyond these 3, demand a real reason. Everything else is "
+            "VIDEO_HERO / IMAGE_HERO / TEXT_DIAGRAM / KINETIC_TEXT.",
+            "",
+        ]
+    else:
+        # AI-footage-led run: the user opted in for generated footage as the
+        # primary visual language, so the scarcity framing above would fight
+        # their intent. Route by CONTENT instead of by budget.
+        lines += [
+            "**HOW TO SPEND THE BUDGET** — this run is AI-footage-led: the "
+            "user opted in specifically to get generated footage, so using "
+            f"most of the {shot_budget}-shot budget is EXPECTED, not "
+            "extravagant. Route by what the beat needs:",
+            "  • **AI_VIDEO_HERO** for beats carried by real-world motion, "
+            "texture, environment, materials, anatomy, people, or product "
+            "in use — anything where moving imagery teaches or sells better "
+            "than a designed graphic.",
+            "  • **Motion graphics** (TEXT_DIAGRAM, INFOGRAPHIC_SVG, "
+            "DATA_STORY, PROCESS_STEPS, KINETIC_TEXT) for beats that are "
+            "genuinely about numbers, lists, comparisons, or definitions — "
+            "a designed layout teaches those better than footage, and Veo "
+            "renders in-frame text badly.",
+            "  Consecutive AI_VIDEO_HERO shots are fine here when the beats "
+            "genuinely call for footage; vary framing and subject so the run "
+            "doesn't feel repetitive.",
+            "",
+        ]
+    lines += [
         "**Best fit for AI_VIDEO_HERO:**",
         "- Cinematic moments where stock footage can't capture the intent "
         "(branded characters, abstract concepts, hard-to-source actions)",

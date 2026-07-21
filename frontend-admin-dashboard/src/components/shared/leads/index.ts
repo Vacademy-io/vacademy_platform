@@ -25,6 +25,7 @@ export {
     type LeadInlineOption,
 } from './lead-inline-select';
 export { LeadRowActions } from './lead-row-actions';
+export { AiCallDialog, type AiCallDialogTarget } from './ai-call-dialog';
 export { useLeadKpiCounts, LEAD_KPI_METRICS, type LeadKpiMetric } from './use-lead-kpi-counts';
 export { LeadStatTabs, type LeadStatTab } from './lead-stat-tabs';
 export { LeadCard } from './lead-card';

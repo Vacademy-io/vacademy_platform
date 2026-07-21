@@ -321,6 +321,33 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                  AND lf.schedule_time < NOW()))))
                               AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
+                              AND (COALESCE(:callHistoryFilter, '') = ''
+                                   OR (:callHistoryFilter = 'NOT_CALLED' AND NOT EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'CALLED_ONCE' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) = 1)
+                                   OR (:callHistoryFilter = 'CALLED_TWICE_PLUS' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) >= 2)
+                                   OR (:callHistoryFilter = 'AI_CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE (tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                            AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR')))
+                                   OR (:callHistoryFilter = 'MANUAL_CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE (tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                            AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK'))))
                             ORDER BY
                               CASE WHEN :sortBy = 'SUBMITTED_AT' AND :sortDirection = 'ASC'
                                    THEN ar.submitted_at END ASC,
@@ -500,6 +527,33 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                  AND lf.schedule_time < NOW()))))
                               AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
+                              AND (COALESCE(:callHistoryFilter, '') = ''
+                                   OR (:callHistoryFilter = 'NOT_CALLED' AND NOT EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'CALLED_ONCE' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) = 1)
+                                   OR (:callHistoryFilter = 'CALLED_TWICE_PLUS' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) >= 2)
+                                   OR (:callHistoryFilter = 'AI_CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE (tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                            AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR')))
+                                   OR (:callHistoryFilter = 'MANUAL_CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE (tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                            AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK'))))
                         """, nativeQuery = true)
         Page<AudienceResponse> findLeadsWithFilters(
                         @Param("audienceId") String audienceId,
@@ -520,6 +574,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("isUnassigned") Boolean isUnassigned,
                         @Param("overallStatusStr") String overallStatusStr,
                         @Param("customFieldMatchedIdsCsv") String customFieldMatchedIdsCsv,
+                        @Param("callHistoryFilter") String callHistoryFilter,
                         @Param("conversionStatusFilter") String conversionStatusFilter,
                         @Param("audienceStatusFilter") String audienceStatusFilter,
                         @Param("slaFilter") String slaFilter,
@@ -693,6 +748,33 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                  AND lf.schedule_time < NOW()))))
                               AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
+                              AND (COALESCE(:callHistoryFilter, '') = ''
+                                   OR (:callHistoryFilter = 'NOT_CALLED' AND NOT EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'CALLED_ONCE' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) = 1)
+                                   OR (:callHistoryFilter = 'CALLED_TWICE_PLUS' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) >= 2)
+                                   OR (:callHistoryFilter = 'AI_CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE (tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                            AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR')))
+                                   OR (:callHistoryFilter = 'MANUAL_CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE (tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                            AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK'))))
                             ORDER BY
                               CASE WHEN :sortBy = 'SUBMITTED_AT' AND :sortDirection = 'ASC'
                                    THEN ar.submitted_at END ASC,
@@ -868,6 +950,33 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                  AND lf.schedule_time < NOW()))))
                               AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
+                              AND (COALESCE(:callHistoryFilter, '') = ''
+                                   OR (:callHistoryFilter = 'NOT_CALLED' AND NOT EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'CALLED_ONCE' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) = 1)
+                                   OR (:callHistoryFilter = 'CALLED_TWICE_PLUS' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) >= 2)
+                                   OR (:callHistoryFilter = 'AI_CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE (tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                            AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR')))
+                                   OR (:callHistoryFilter = 'MANUAL_CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE (tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                            AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK'))))
                         """, nativeQuery = true)
         Page<AudienceResponse> findInstituteLeadsWithFilters(
                         @Param("instituteId") String instituteId,
@@ -887,6 +996,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("slaFilter") String slaFilter,
                         @Param("tatHours") Integer tatHours,
                         @Param("customFieldMatchedIdsCsv") String customFieldMatchedIdsCsv,
+                        @Param("callHistoryFilter") String callHistoryFilter,
                         @Param("sortBy") String sortBy,
                         @Param("sortDirection") String sortDirection,
                         Pageable pageable);

@@ -186,6 +186,9 @@ const CampaignUsersContent = ({
         assignable: true,
     });
     const [fromDate, setFromDate] = useState('');
+    // Call-history filter — '' = no filter (NOT_CALLED / CALLED / CALLED_ONCE /
+    // CALLED_TWICE_PLUS / AI_CALLED / MANUAL_CALLED).
+    const [callHistoryFilter, setCallHistoryFilter] = useState<string>('');
     const [toDate, setToDate] = useState('');
     const [appliedRange, setAppliedRange] = useState<{ from: string; to: string }>({
         from: '',
@@ -394,6 +397,7 @@ const CampaignUsersContent = ({
             custom_field_filters: customFieldFiltersPayload.length
                 ? customFieldFiltersPayload
                 : undefined,
+            call_history_filter: callHistoryFilter || undefined,
         };
     }, [
         campaignId,
@@ -407,6 +411,7 @@ const CampaignUsersContent = ({
         slaFilters,
         counsellorFilters,
         customFieldFiltersPayload,
+        callHistoryFilter,
         ALL_VALUE,
         ALL_ACTIVE_VALUE,
         ALL_CONVERTED_VALUE,
@@ -1012,7 +1017,7 @@ const CampaignUsersContent = ({
                             <Button variant="outline" size="sm" className="h-10">
                                 <Funnel className="mr-1.5 size-4" />
                                 More filters
-                                {isDateFilterActive && (
+                                {(isDateFilterActive || !!callHistoryFilter) && (
                                     <span className="ml-1.5 size-1.5 rounded-full bg-primary-500" />
                                 )}
                             </Button>
@@ -1041,6 +1046,33 @@ const CampaignUsersContent = ({
                             <Button size="sm" className="w-full" onClick={handleApplyDate}>
                                 Apply dates
                             </Button>
+                            <div className="space-y-1.5">
+                                <Label className="text-xs text-neutral-600">Call history</Label>
+                                <Select
+                                    value={callHistoryFilter || 'ANY'}
+                                    onValueChange={(v) => {
+                                        setCallHistoryFilter(v === 'ANY' ? '' : v);
+                                        setPage(0);
+                                    }}
+                                >
+                                    <SelectTrigger className="h-9 w-full">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="ANY">Any</SelectItem>
+                                        <SelectItem value="NOT_CALLED">Not called</SelectItem>
+                                        <SelectItem value="CALLED">Called (any)</SelectItem>
+                                        <SelectItem value="CALLED_ONCE">Called once</SelectItem>
+                                        <SelectItem value="CALLED_TWICE_PLUS">
+                                            Called 2+ times
+                                        </SelectItem>
+                                        <SelectItem value="AI_CALLED">AI called</SelectItem>
+                                        <SelectItem value="MANUAL_CALLED">
+                                            Manually called
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </PopoverContent>
                     </Popover>
                 </div>

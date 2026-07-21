@@ -2619,6 +2619,7 @@ public class AudienceService {
                     filterDTO.getSlaFilter(),
                     filterTatHours,
                     customFieldMatchedIdsCsv,
+                    filterDTO.getCallHistoryFilter(),
                     filterDTO.getSortBy(),
                     filterDTO.getSortDirection(),
                     pageable);
@@ -2644,6 +2645,7 @@ public class AudienceService {
                 filterDTO.getIsUnassigned(),
                 overallStatusStr,
                 customFieldMatchedIdsCsv,
+                filterDTO.getCallHistoryFilter(),
                 conversionStatusFilter,
                 audienceStatusFilter,
                 filterDTO.getSlaFilter(),

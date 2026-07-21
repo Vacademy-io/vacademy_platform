@@ -69,6 +69,7 @@ import { restoreAudienceLeads } from '@/routes/audience-manager/list/-services/d
 import {
     ArrowCounterClockwise,
     CaretDown,
+    Phone,
     Trash,
     UserMinus,
     UserPlus,
@@ -81,6 +82,8 @@ import {
     usePlaceCall,
     usePlaceAiCall,
     useAiCallButtonEnabled,
+    AiCallDialog,
+    type AiCallDialogTarget,
     recentLeadToVM,
     type LeadActionHandlers,
     type LeadSortKey,
@@ -277,6 +280,10 @@ const RecentLeadsContent = () => {
     // from the Reports source breakdown set it. Empty string = all sources.
     const [sourceFilter, setSourceFilter] = useState<string>(urlSearch.source ?? '');
 
+    // Call-history filter — has this lead been call-attempted (AI or manual), and
+    // how many times. Single-select; '' = no filter.
+    const [callHistoryFilter, setCallHistoryFilter] = useState<string>(urlSearch.called ?? '');
+
     // Custom-field filters — keyed by custom_field_id, each holding the selected
     // values (multi-select). Only fields the admin enabled in Lead Settings
     // render a control; an empty map means none are active.
@@ -325,6 +332,7 @@ const RecentLeadsContent = () => {
                 from: rangeDays === CUSTOM_DATE_VALUE && customFrom ? customFrom : undefined,
                 to: rangeDays === CUSTOM_DATE_VALUE && customTo ? customTo : undefined,
                 source: sourceFilter || undefined,
+                called: callHistoryFilter || undefined,
             },
             replace: true,
         });
@@ -340,6 +348,7 @@ const RecentLeadsContent = () => {
         customFrom,
         customTo,
         sourceFilter,
+        callHistoryFilter,
     ]);
     // Filter options — hierarchy scoped: a manager sees themselves + their
     // counsellor reports; pure admins get the institute-wide roster.
@@ -470,6 +479,7 @@ const RecentLeadsContent = () => {
             slaFilters.join(','),
             counsellorFilters.join(','),
             sourceFilter,
+            callHistoryFilter,
             customFieldFiltersKey,
             page,
             pageSize,
@@ -496,6 +506,7 @@ const RecentLeadsContent = () => {
                         : undefined,
                 is_unassigned: onlyUnassigned ? true : undefined,
                 source_type: sourceFilter || undefined,
+                call_history_filter: callHistoryFilter || undefined,
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
                     : undefined,
@@ -529,6 +540,9 @@ const RecentLeadsContent = () => {
     // The robot "AI call" button only shows when an admin has turned it on in
     // Settings → AI Calling. Automated AI workflows are unaffected by this.
     const showAiButton = useAiCallButtonEnabled();
+    // Per-row AI call opens a chooser (which agent speaks) instead of silently
+    // dialing with the institute default.
+    const [aiCallTarget, setAiCallTarget] = useState<AiCallDialogTarget | null>(null);
 
     const actions: LeadActionHandlers = useMemo(
         () => ({
@@ -560,7 +574,7 @@ const RecentLeadsContent = () => {
             onAiCallLead: showAiButton
                 ? (vm) => {
                       if (!vm.responseId) return;
-                      placeAiCall.mutate({
+                      setAiCallTarget({
                           responseId: vm.responseId,
                           userId: vm.userId ?? undefined,
                           leadName: vm.name,
@@ -568,7 +582,7 @@ const RecentLeadsContent = () => {
                   }
                 : undefined,
         }),
-        [setSelectedStudent, updateTier, placeCall, placeAiCall, showAiButton]
+        [setSelectedStudent, updateTier, placeCall, showAiButton]
     );
 
     // The backend mirrors a per-response status change onto the user's profile
@@ -656,6 +670,7 @@ const RecentLeadsContent = () => {
                         : undefined,
                 is_unassigned: onlyUnassigned ? true : undefined,
                 source_type: sourceFilter || undefined,
+                call_history_filter: callHistoryFilter || undefined,
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
                     : undefined,
@@ -700,6 +715,7 @@ const RecentLeadsContent = () => {
         setSlaFilters([]);
         setCounsellorFilters([]);
         setSourceFilter('');
+        setCallHistoryFilter('');
         setCustomFieldFilters({});
         setRangeDays(DEFAULT_RANGE_DAYS);
         setCustomFrom('');
@@ -763,6 +779,7 @@ const RecentLeadsContent = () => {
         slaFilters.length > 0 ||
         counsellorFilters.length > 0 ||
         !!sourceFilter ||
+        !!callHistoryFilter ||
         customFieldFiltersPayload.length > 0;
 
     // CSV export (shared by "Export" + "Export selected")
@@ -937,6 +954,7 @@ const RecentLeadsContent = () => {
                             : undefined,
                     is_unassigned: onlyUnassigned ? true : undefined,
                     source_type: sourceFilter || undefined,
+                    call_history_filter: callHistoryFilter || undefined,
                     custom_field_filters: customFieldFiltersPayload.length
                         ? customFieldFiltersPayload
                         : undefined,
@@ -1112,6 +1130,27 @@ const RecentLeadsContent = () => {
                         onChange={handleAudienceChange}
                         widthClass="w-44"
                     />
+                    <Select
+                        value={callHistoryFilter || 'ANY'}
+                        onValueChange={(v) => {
+                            setCallHistoryFilter(v === 'ANY' ? '' : v);
+                            setPage(0);
+                        }}
+                    >
+                        <SelectTrigger className="h-10 w-44">
+                            <Phone className="mr-1.5 size-4 shrink-0 text-neutral-400" />
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="ANY">Call history</SelectItem>
+                            <SelectItem value="NOT_CALLED">Not called</SelectItem>
+                            <SelectItem value="CALLED">Called (any)</SelectItem>
+                            <SelectItem value="CALLED_ONCE">Called once</SelectItem>
+                            <SelectItem value="CALLED_TWICE_PLUS">Called 2+ times</SelectItem>
+                            <SelectItem value="AI_CALLED">AI called</SelectItem>
+                            <SelectItem value="MANUAL_CALLED">Manually called</SelectItem>
+                        </SelectContent>
+                    </Select>
                     {filterCustomFields.map((f) => (
                         <CustomFieldMultiSelectFilter
                             key={f.customFieldId}
@@ -1479,6 +1518,23 @@ const RecentLeadsContent = () => {
                         invalidateKeys={[['lead-profiles-batch']]}
                     />
                 )}
+                <AiCallDialog
+                    target={aiCallTarget}
+                    onClose={() => setAiCallTarget(null)}
+                    isPending={placeAiCall.isPending}
+                    onConfirm={(target, agentId, numberId) => {
+                        placeAiCall.mutate(
+                            {
+                                responseId: target.responseId,
+                                userId: target.userId,
+                                leadName: target.leadName,
+                                campaignId: agentId || undefined,
+                                preferredNumberId: numberId || undefined,
+                            },
+                            { onSuccess: () => setAiCallTarget(null) }
+                        );
+                    }}
+                />
             </SidebarProvider>
 
             {/* Pagination */}

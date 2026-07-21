@@ -34,6 +34,8 @@ import { isItemLocked } from "@/components/drip-conditions/helpers";
 import { LockedBadge } from "@/components/drip-conditions";
 import { playIllustrations } from "@/assets/play-illustrations";
 import { SLIDE_COMPLETION_THRESHOLD } from "@/constants/study-library";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 
 // Helper function to get responsive truncation length - kept for tooltip usage
 // const getResponsiveTruncationLength = () => {
@@ -141,8 +143,8 @@ export const getStatusDetails = (percentage: number | null | undefined) => {
   switch (status) {
     case "not-started":
       return {
-        label: "Not Started",
-        description: "Start learning",
+        label: i18n.t("studyContent:slideStatus.notStartedLabel"),
+        description: i18n.t("studyContent:slideStatus.notStartedDescription"),
         icon: Circle,
         color: "text-gray-400",
         bgColor: "bg-gray-100",
@@ -150,8 +152,10 @@ export const getStatusDetails = (percentage: number | null | undefined) => {
       };
     case "in-progress":
       return {
-        label: "In Progress",
-        description: `${percentage?.toFixed(0)}% done`,
+        label: i18n.t("studyContent:slideStatus.inProgressLabel"),
+        description: i18n.t("studyContent:slideStatus.inProgressDescription", {
+          percent: percentage?.toFixed(0),
+        }),
         icon: Lightning,
         color: "text-primary-500",
         bgColor: "bg-primary-100",
@@ -159,8 +163,8 @@ export const getStatusDetails = (percentage: number | null | undefined) => {
       };
     case "completed":
       return {
-        label: "Done",
-        description: "Completed",
+        label: i18n.t("studyContent:slideStatus.doneLabel"),
+        description: i18n.t("studyContent:slideStatus.doneDescription"),
         icon: CheckCircle,
         color: "text-success-500",
         bgColor: "bg-success-100",
@@ -168,8 +172,8 @@ export const getStatusDetails = (percentage: number | null | undefined) => {
       };
     default:
       return {
-        label: "Unknown",
-        description: "Status unknown",
+        label: i18n.t("studyContent:slideStatus.unknownLabel"),
+        description: i18n.t("studyContent:slideStatus.unknownDescription"),
         icon: Circle,
         color: "text-gray-400",
         bgColor: "bg-gray-100",
@@ -253,30 +257,33 @@ export const getIcon = (slide: Slide, size?: string): React.ReactNode => {
 // Helper function to get slide type display text
 export const getSlideTypeDisplay = (slide: Slide): string => {
   let baseType = "";
-  let embeddedInfo = "";
+  // The embedded label is carried as a bare noun and composed via
+  // slideType.withEmbedded, so translators get a whole sentence pattern
+  // instead of a leading-space " with X" fragment to concatenate.
+  let embeddedLabel = "";
 
   // Handle different source types with better English
   switch (slide.source_type) {
     case "VIDEO":
-      baseType = "Video";
+      baseType = i18n.t("studyContent:slideType.video");
       if (slide.video_slide?.embedded_type) {
         switch (slide.video_slide.embedded_type) {
           case "CODE":
-            embeddedInfo = " with Coding Exercise";
+            embeddedLabel = i18n.t("studyContent:slideType.codingExercise");
             break;
           case "SCRATCH":
-            embeddedInfo = " with Scratch Problem";
+            embeddedLabel = i18n.t("studyContent:slideType.scratchProblem");
             break;
           case "JUPYTER":
-            embeddedInfo = " with Jupyter Notebook";
+            embeddedLabel = i18n.t("studyContent:slideType.jupyterNotebook");
             break;
           default:
             if (slide.video_slide.embedded_type) {
+              // Unknown embedded type — server-supplied, so it stays untranslated.
               const embeddedType = String(slide.video_slide.embedded_type);
-              embeddedInfo = ` with ${
+              embeddedLabel =
                 embeddedType.charAt(0).toUpperCase() +
-                embeddedType.slice(1).toLowerCase()
-              }`;
+                embeddedType.slice(1).toLowerCase();
             }
         }
       }
@@ -285,47 +292,53 @@ export const getSlideTypeDisplay = (slide: Slide): string => {
       if (slide.document_slide?.type) {
         switch (slide.document_slide.type.toUpperCase()) {
           case "PDF":
-            baseType = "PDF Document";
+            baseType = i18n.t("studyContent:slideType.pdfDocument");
             break;
           case "DOC":
           case "DOCX":
           case "HTML":
-            baseType = "Reading Note";
+            baseType = i18n.t("studyContent:slideType.readingNote");
             break;
           case "PPT":
           case "PPTX":
-            baseType = "Presentation";
+            baseType = i18n.t("studyContent:slideType.presentation");
             break;
           default:
-            baseType = "Document";
+            baseType = i18n.t("studyContent:slideType.document");
         }
       } else {
-        baseType = "Document";
+        baseType = i18n.t("studyContent:slideType.document");
       }
       break;
     case "QUESTION":
-      baseType = "Question";
+      baseType = i18n.t("studyContent:slideType.question");
       break;
     case "QUIZ":
-      baseType = "Quiz";
+      baseType = i18n.t("studyContent:slideType.quiz");
       break;
     case "ASSIGNMENT":
-      baseType = "Assignment";
+      baseType = i18n.t("studyContent:slideType.assignment");
       break;
     case "SCORM":
-      baseType = "SCORM Module";
+      baseType = i18n.t("studyContent:slideType.scormModule");
       break;
     default:
       if (slide.source_type && typeof slide.source_type === "string") {
+        // Server-supplied source type — no catalog entry exists for it.
         baseType =
           slide.source_type.charAt(0).toUpperCase() +
           slide.source_type.slice(1).toLowerCase().replace("_", " ");
       } else {
-        baseType = "Content";
+        baseType = i18n.t("studyContent:slideType.content");
       }
   }
 
-  return baseType + embeddedInfo;
+  return embeddedLabel
+    ? i18n.t("studyContent:slideType.withEmbedded", {
+        type: baseType,
+        embedded: embeddedLabel,
+      })
+    : baseType;
 };
 
 // Enhanced Slide Item Component matching admin theme
@@ -344,6 +357,7 @@ const SlideItem = ({
   isLocked?: boolean;
   unlockMessage?: string;
 }) => {
+  const { t } = useTranslation("studyContent");
   const [mediaKind, setMediaKind] = useState<"audio" | "video" | null>(null);
 
   useEffect(() => {
@@ -436,12 +450,12 @@ const SlideItem = ({
       const hours = Math.floor(minutes / 60);
       const remainingMinutes = minutes % 60;
       return remainingMinutes > 0
-        ? `${hours}h ${remainingMinutes}m`
-        : `${hours}h`;
+        ? t("duration.hoursMinutes", { hours, minutes: remainingMinutes })
+        : t("duration.hours", { hours });
     }
     return seconds > 0 && minutes < 5
-      ? `${minutes}m ${seconds}s`
-      : `${minutes}m`;
+      ? t("duration.minutesSeconds", { minutes, seconds })
+      : t("duration.minutes", { minutes });
   };
 
   // Helper function to get content details (duration for videos, pages for documents, questions for quizzes)
@@ -463,29 +477,29 @@ const SlideItem = ({
     // Document pages
     if (slide.source_type === "DOCUMENT" && slide.document_slide?.total_pages) {
       const pages = slide.document_slide.total_pages;
-      return `${pages} page${pages !== 1 ? "s" : ""}`;
+      return t("slideDetails.pageCount", { count: pages });
     }
     if (
       slide.source_type === "DOCUMENT" &&
       slide.document_slide?.published_document_total_pages
     ) {
       const pages = slide.document_slide.published_document_total_pages;
-      return `${pages} page${pages !== 1 ? "s" : ""}`;
+      return t("slideDetails.pageCount", { count: pages });
     }
 
     // Question count for question slides
     if (slide.source_type === "QUESTION" && slide.question_slide?.options) {
       const optionCount = slide.question_slide.options.length;
       if (optionCount > 0) {
-        return `${optionCount} option${optionCount !== 1 ? "s" : ""}`;
+        return t("slideDetails.optionCount", { count: optionCount });
       } else {
-        return "1 question";
+        return t("slideDetails.questionCount", { count: 1 });
       }
     }
 
     // For single question slides without options (like text input)
     if (slide.source_type === "QUESTION") {
-      return "1 question";
+      return t("slideDetails.questionCount", { count: 1 });
     }
 
     // Assignment questions - check if there are questions in assignment data
@@ -501,10 +515,10 @@ const SlideItem = ({
       ) {
         const questionCount = assignmentSlide.assignment_slide.questions.length;
         if (questionCount > 0) {
-          return `${questionCount} question${questionCount !== 1 ? "s" : ""}`;
+          return t("slideDetails.questionCount", { count: questionCount });
         }
       }
-      return "Assignment";
+      return t("slideType.assignment");
     }
 
     // Quiz slides - check for quiz questions
@@ -518,10 +532,10 @@ const SlideItem = ({
       ) {
         const questionCount = quizSlide.quiz_slide.questions.length;
         if (questionCount > 0) {
-          return `${questionCount} question${questionCount !== 1 ? "s" : ""}`;
+          return t("slideDetails.questionCount", { count: questionCount });
         }
       }
-      return "Quiz";
+      return t("slideType.quiz");
     }
 
     return "";
@@ -660,6 +674,7 @@ const SlideItem = ({
 };
 
 export const ChapterSidebarSlides = () => {
+  const { t } = useTranslation("studyContent");
   const { activeItem, setActiveItem, items, slideEvaluations } =
     useContentStore();
   const router = useRouter();
@@ -698,10 +713,10 @@ export const ChapterSidebarSlides = () => {
             className="hidden [.ui-play_&]:!block w-24 h-24 mb-3 text-primary-300"
           />
           <h3 className="mb-1 text-sm font-bold text-gray-900">
-            No slides available
+            {t("slideSidebar.noSlidesTitle")}
           </h3>
           <p className="max-w-xs text-xs leading-relaxed text-gray-500">
-            Slides will appear here when content is added
+            {t("slideSidebar.noSlidesSubtitle")}
           </p>
         </div>
       </div>
@@ -712,7 +727,7 @@ export const ChapterSidebarSlides = () => {
     <div
       className="relative w-full max-w-full overflow-hidden animate-fade-in-up"
       role="list"
-      aria-label="Chapter slides list"
+      aria-label={t("slideSidebar.slidesListLabel")}
     >
       {/* Background gradient */}
       <div className="absolute inset-0 bg-gradient-to-b from-transparent to-gray-50/30 pointer-events-none rounded-xl"></div>

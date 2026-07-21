@@ -91,6 +91,41 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("userId") String userId,
       @Param("instituteId") String instituteId);
 
+  /**
+   * All package_session_ids a learner is enrolled in within one institute, filtered
+   * by status. Used by the parent-portal guard's enrolment leg (empty = the child is
+   * not enrolled in this institute, so the guardian may not read institute-scoped data)
+   * and to scope per-child fan-out queries. Distinct so a re-enrolled learner isn't doubled.
+   */
+  @Query(value = """
+      SELECT DISTINCT package_session_id FROM student_session_institute_group_mapping
+      WHERE user_id = :userId
+        AND institute_id = :instituteId
+        AND status IN (:statuses)
+      """, nativeQuery = true)
+  List<String> findPackageSessionIdsByUserIdAndInstituteAndStatusIn(
+      @Param("userId") String userId,
+      @Param("instituteId") String instituteId,
+      @Param("statuses") List<String> statuses);
+
+  /**
+   * Package sessions a learner is enrolled in within one institute, excluding only
+   * TERMINAL states. Used by the parent-portal guard's enrolment leg. Deliberately an
+   * EXCLUDE-list, case-insensitive: the status column is dirty in prod ('ACTIVE' vs
+   * 'Active', plus INVITED/PENDING/INACTIVE/null), so an ACTIVE-only allow-list wrongly
+   * 403s genuinely-enrolled children. Empty result = the child is not in this institute.
+   */
+  @Query(value = """
+      SELECT DISTINCT package_session_id FROM student_session_institute_group_mapping
+      WHERE user_id = :userId
+        AND institute_id = :instituteId
+        AND package_session_id IS NOT NULL
+        AND (status IS NULL OR UPPER(status) NOT IN ('DELETED', 'DELETED1', 'TERMINATED', 'EXPIRED'))
+      """, nativeQuery = true)
+  List<String> findEnrolledPackageSessionIds(
+      @Param("userId") String userId,
+      @Param("instituteId") String instituteId);
+
   @Query(value = """
       SELECT * FROM student_session_institute_group_mapping
       WHERE user_id = :userId
@@ -201,6 +236,26 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("packageSessionId") String packageSessionId,
       @Param("userIds") List<String> userIds,
       @Param("status") String status);
+
+  // SOFT sub-org termination: keep the learner ACTIVE and move their access
+  // cut-off to :expiryDate — access continues until then (the plan/expiry
+  // machinery ends it afterwards). Only touches currently-ACTIVE mappings.
+  @Query(value = """
+      UPDATE student_session_institute_group_mapping
+      SET expiry_date = :expiryDate
+      WHERE sub_org_id = :subOrgId
+        AND institute_id = :instituteId
+        AND package_session_id = :packageSessionId
+        AND user_id IN (:userIds)
+        AND status = 'ACTIVE'
+      """, nativeQuery = true)
+  @org.springframework.data.jpa.repository.Modifying
+  int softCancelLearnersBySubOrgAndUserIds(
+      @Param("subOrgId") String subOrgId,
+      @Param("instituteId") String instituteId,
+      @Param("packageSessionId") String packageSessionId,
+      @Param("userIds") List<String> userIds,
+      @Param("expiryDate") java.sql.Timestamp expiryDate);
 
   // only active package sessions
   @Query("SELECT DISTINCT m.packageSession.id " +
@@ -401,6 +456,27 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("status") String status);
 
   /**
+   * Bulk version of {@link #countBySubOrgIdAndPackageSessionIdAndStatus} across ALL package
+   * sessions: active learner-seat count per sub-org for a set of sub-org ids, in ONE query
+   * (avoids N+1 when listing many spawned sub-orgs). Membership + ROOT_ADMIN exclusion mirror
+   * {@link #findActiveSubOrgRoster(String)}; each mapping is attributed to
+   * COALESCE(ssigm.sub_org_id, enroll_invite.sub_org_id) — the stamp wins, else the invite the
+   * user_plan came from. Returns rows of [sub_org_id, used_count]; sub-orgs with zero are absent.
+   */
+  @Query(value = """
+      SELECT COALESCE(ssigm.sub_org_id, ei.sub_org_id) AS sub_org_id, COUNT(*) AS used_count
+      FROM student_session_institute_group_mapping ssigm
+      LEFT JOIN user_plan up ON up.id = ssigm.user_plan_id
+      LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+      WHERE ssigm.status = 'ACTIVE'
+        AND (ssigm.comma_separated_org_roles IS NULL
+             OR ssigm.comma_separated_org_roles NOT LIKE '%ROOT_ADMIN%')
+        AND (ssigm.sub_org_id IN (:subOrgIds) OR ei.sub_org_id IN (:subOrgIds))
+      GROUP BY COALESCE(ssigm.sub_org_id, ei.sub_org_id)
+      """, nativeQuery = true)
+  List<Object[]> countActiveLearnersBySubOrgIds(@Param("subOrgIds") List<String> subOrgIds);
+
+  /**
    * Find the ROOT_ADMIN user_id for a specific sub-org and package session
    * ROOT_ADMIN is the user who purchased the plan and owns the member count limit
    */
@@ -469,5 +545,29 @@ public interface StudentSessionInstituteGroupMappingRepository
             )
       """, nativeQuery = true)
   List<Object[]> findActiveSubOrgRoster(@Param("subOrgId") String subOrgId);
+
+  /**
+   * Sub-org ids a user belongs to within an institute, newest enrollment first.
+   *
+   * Membership mirrors {@link #findActiveSubOrgRoster(String)}: the mapping's own stamp
+   * (add-member / auto-link path) OR the sub-org invite the user_plan was created from.
+   * The second arm is essential because SUBORG_LEARNER self-enrollment does NOT stamp
+   * ssigm.sub_org_id.
+   */
+  @Query(value = """
+      SELECT COALESCE(ssigm.sub_org_id, ei.sub_org_id) AS sub_org_id
+      FROM student_session_institute_group_mapping ssigm
+      LEFT JOIN user_plan up ON up.id = ssigm.user_plan_id
+      LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+      WHERE ssigm.user_id = :userId
+        AND ssigm.institute_id = :instituteId
+        AND ssigm.status = 'ACTIVE'
+        AND COALESCE(ssigm.sub_org_id, ei.sub_org_id) IS NOT NULL
+      GROUP BY COALESCE(ssigm.sub_org_id, ei.sub_org_id)
+      ORDER BY MAX(ssigm.enrolled_date) DESC NULLS LAST
+      """, nativeQuery = true)
+  List<String> findActiveSubOrgIdsForUserInInstitute(
+      @Param("userId") String userId,
+      @Param("instituteId") String instituteId);
 
 }

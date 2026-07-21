@@ -16,6 +16,7 @@ import { handleFetchUserRoleDetails } from "@/routes/study-library/courses/-serv
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { TokenKey } from "@/constants/auth/tokens";
 import { NotificationsBell } from "./NotificationsBell";
+import { AchievementsPill } from "@/routes/dashboard/-components/AchievementsPill";
 import { TutorialsHelpButton } from "@/components/tutorials/TutorialsHelpButton";
 import { UserMenu } from "./UserMenu";
 import { handleGetPublicInstituteDetails } from "../services/navbar-services";
@@ -485,6 +486,8 @@ export function Navbar() {
             </TooltipContent>
           </Tooltip>
         )}
+        {/* Achievements — badge count + points, opens the achievements popup */}
+        <AchievementsPill className="hidden xs:flex" />
         {/* Help & tutorials */}
         <TutorialsHelpButton className="h-9 w-9" />
         {/* Notifications */}

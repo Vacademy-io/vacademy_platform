@@ -48,6 +48,8 @@ import {
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getUserId } from '@/utils/userDetails';
 import { fetchSystemAlerts } from '@/services/notifications/system-alerts';
+import { ClearAllAlertsButton } from '@/components/common/notifications/ClearAllAlertsButton';
+import { DismissAlertButton } from '@/components/common/notifications/DismissAlertButton';
 import SuperAdminWidgetsRegion from './-components/SuperAdminWidgetsRegion';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -158,7 +160,17 @@ function DashboardPage() {
             <DashboardComponent onOpenAllAlerts={() => setShowAllAlerts(true)} />
             <BaseDialog open={showAllAlerts} onOpenChange={setShowAllAlerts}>
                 <BaseDialogContent className="max-w-lg p-0">
-                    <BaseDialogTitle className="px-4 py-3 text-base">System Alerts</BaseDialogTitle>
+                    <div className="flex items-center justify-between gap-2 px-4 py-3">
+                        <BaseDialogTitle className="text-base">System Alerts</BaseDialogTitle>
+                        <ClearAllAlertsButton
+                            userId={userId}
+                            hasAlerts={
+                                !!infiniteAlerts.data?.pages?.flatMap((p) => p.content).length
+                            }
+                            className="!min-w-0 !px-1"
+                            onCleared={() => setShowAllAlerts(false)}
+                        />
+                    </div>
                     <Separator />
                     <ScrollArea className="max-h-[70vh]">
                         <div className="p-3">
@@ -170,8 +182,14 @@ function DashboardPage() {
                                                 key={item.messageId}
                                                 className="rounded-md border border-neutral-200 bg-white p-3"
                                             >
-                                                <div className="text-sm font-semibold text-neutral-800">
-                                                    {item.title}
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="text-sm font-semibold text-neutral-800">
+                                                        {item.title}
+                                                    </div>
+                                                    <DismissAlertButton
+                                                        userId={userId}
+                                                        messageId={item.messageId}
+                                                    />
                                                 </div>
                                                 <div className="mt-1 text-[13px] text-neutral-700">
                                                     {item.content?.type === 'html' ? (

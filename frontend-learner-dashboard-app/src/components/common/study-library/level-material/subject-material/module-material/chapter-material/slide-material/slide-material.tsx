@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import PDFViewer from "./pdf-viewer";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { EmptySlideMaterial } from "@/assets/svgs";
@@ -44,6 +45,7 @@ export const SlideMaterial = ({
   // refresh stay in sync with Prev/Next. Falls back to store-only when absent.
   onNavigateToSlide?: (slideId: string) => void;
 }) => {
+  const { t, i18n } = useTranslation("studyContent");
   const { activeItem, items, setActiveItem, slideEvaluations } =
     useContentStore();
   const selectionRef = useRef(null);
@@ -230,13 +232,13 @@ export const SlideMaterial = ({
               <div className="h-full w-full flex items-center justify-center">
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-                  <p className="text-gray-600 font-medium">Generating video...</p>
+                  <p className="text-gray-600 font-medium">{t("videoState.generating")}</p>
                   {transformedData.progress !== undefined && (
                     <p className="text-gray-500 text-sm mt-2">
-                      {transformedData.progress}% complete
+                      {t("videoState.percentComplete", { percent: transformedData.progress })}
                     </p>
                   )}
-                  <p className="text-sm mt-2 text-gray-500">Video will be available in a few minutes.</p>
+                  <p className="text-sm mt-2 text-gray-500">{t("videoState.availableInFewMinutes")}</p>
                 </div>
               </div>
             );
@@ -244,8 +246,8 @@ export const SlideMaterial = ({
             setContent(
               <div className="h-full w-full flex items-center justify-center">
                 <div className="text-center text-gray-500">
-                  <p>Video pending generation</p>
-                  <p className="text-sm mt-2 text-gray-500">Video will be available in a few minutes.</p>
+                  <p>{t("videoState.pendingGeneration")}</p>
+                  <p className="text-sm mt-2 text-gray-500">{t("videoState.availableInFewMinutes")}</p>
                 </div>
               </div>
             );
@@ -425,7 +427,8 @@ export const SlideMaterial = ({
             setContent(
               <div className="h-full w-full flex items-center justify-center">
                 <div className="text-center text-red-500">
-                  <p>Video data not found</p>
+                  <p>{t("videoState.dataNotFound")}</p>
+                  {/* Engineer-facing diagnostic — intentionally untranslated. */}
                   <p className="text-xs mt-2">HTML_VIDEO slide is missing video ID and URLs</p>
                   <p className="text-xs mt-1">Source ID: {activeItem.source_id || "N/A"}</p>
                 </div>
@@ -454,9 +457,10 @@ export const SlideMaterial = ({
                 <div className="h-full w-full flex items-center justify-center">
                   <div className="text-center text-gray-500">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-                    <p className="text-gray-600 font-medium">Processing video...</p>
+                    <p className="text-gray-600 font-medium">{t("videoState.processing")}</p>
+                    {/* Engineer-facing diagnostic — intentionally untranslated. */}
                     <p className="text-xs mt-2">Video URLs not available yet</p>
-                    <p className="text-sm mt-2 text-gray-500">Video will be available in a few minutes.</p>
+                    <p className="text-sm mt-2 text-gray-500">{t("videoState.availableInFewMinutes")}</p>
                   </div>
                 </div>
               );
@@ -475,10 +479,11 @@ export const SlideMaterial = ({
             // Check if it's a CORS error
             const isCorsError = err.code === 'ERR_NETWORK' || err.message === 'Network Error';
             const errorMessage = isCorsError
+              // Engineer-facing diagnostic — intentionally untranslated.
               ? 'CORS Error: Backend proxy route may not be configured. Please check backend configuration for /ai-service/video/urls/ endpoint.'
               : err.response?.status === 404
-                ? `Video ${videoId} not found`
-                : 'Failed to load video URLs';
+                ? t("videoState.videoNotFound", { videoId })
+                : t("videoState.failedToLoadUrls");
 
             setContent(
               <div className="h-full w-full flex items-center justify-center">
@@ -486,8 +491,9 @@ export const SlideMaterial = ({
                   <p className="font-medium">{errorMessage}</p>
                   <p className="text-xs mt-2">
                     {isCorsError
+                      // Engineer-facing diagnostic — intentionally untranslated.
                       ? 'The backend needs to configure a proxy route for /ai-service/video/urls/'
-                      : 'Please try again later'}
+                      : t("videoState.tryAgainLater")}
                   </p>
                   <p className="text-xs mt-1 text-gray-400">Video ID: {videoId}</p>
                 </div>
@@ -760,7 +766,7 @@ export const SlideMaterial = ({
                   </svg>
                 </div>
                 <p className="text-red-500 mt-4 animate-in fade-in duration-700 delay-200 text-center">
-                  Quiz data not available
+                  {t("slideState.quizDataNotAvailable")}
                 </p>
               </div>
             );
@@ -873,7 +879,7 @@ export const SlideMaterial = ({
             } else {
               setContent(
                 <div className="flex items-center justify-center h-full">
-                  <div className="text-neutral-500">No code data available</div>
+                  <div className="text-neutral-500">{t("slideState.noCodeData")}</div>
                 </div>
               );
             }
@@ -938,7 +944,7 @@ export const SlideMaterial = ({
           } else {
             setContent(
               <div className="flex h-reg-300 flex-col items-center justify-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <p className="text-red-500 font-medium">Audio slide data missing</p>
+                <p className="text-red-500 font-medium">{t("slideState.audioDataMissing")}</p>
               </div>
             );
           }
@@ -1007,10 +1013,17 @@ export const SlideMaterial = ({
   };
 
   const prevSlideIdRef = useRef<string | null>(null);
+  const prevLangRef = useRef<string>(i18n.language);
 
   useEffect(() => {
-    // Only reload content if the slide ID actually changed
-    if (activeItem?.id !== prevSlideIdRef.current) {
+    // loadContent() bakes translated copy into the JSX it stores in state, so a
+    // language switch has to rebuild it — the slide-id guard alone would keep
+    // showing the previous language until the learner navigated away.
+    const languageChanged = prevLangRef.current !== i18n.language;
+    if (languageChanged) prevLangRef.current = i18n.language;
+
+    // Only reload content if the slide ID actually changed (or the language did)
+    if (activeItem?.id !== prevSlideIdRef.current || languageChanged) {
       loadGenerationRef.current += 1;
       const currentGeneration = loadGenerationRef.current;
 
@@ -1019,7 +1032,7 @@ export const SlideMaterial = ({
         loadContent(currentGeneration);
         prevSlideIdRef.current = activeItem.id;
       } else {
-        setHeading("No content");
+        setHeading(t("slideState.noContent"));
         prevSlideIdRef.current = null;
         if (currentGeneration === loadGenerationRef.current) {
           setContent(
@@ -1028,7 +1041,7 @@ export const SlideMaterial = ({
                 <EmptySlideMaterial />
               </div>
               <p className="mt-6 text-neutral-500 animate-in fade-in duration-700 delay-200 text-center">
-                No study material has been added yet
+                {t("slideState.noStudyMaterial")}
               </p>
             </div>
           );
@@ -1038,7 +1051,7 @@ export const SlideMaterial = ({
       // Slide ID is the same, just update heading (no content reload)
       setHeading(activeItem.title || "");
     }
-  }, [activeItem]);
+  }, [activeItem, t, i18n.language]);
 
   return (
     <div className="flex h-full w-full flex-col bg-white" ref={selectionRef}>
@@ -1053,11 +1066,11 @@ export const SlideMaterial = ({
           <button
             onClick={goToPrev}
             disabled={!canGoPrev}
-            aria-label="Previous slide"
+            aria-label={t("slideNav.previousSlide")}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-neutral-200 disabled:hover:text-neutral-700 transition-colors"
           >
             <CaretLeft size={14} />
-            <span>Previous</span>
+            <span>{t("slideNav.previous")}</span>
           </button>
           {realSlides.length > 0 && realIndex > -1 && (
             <span className="text-xs font-medium text-neutral-500 tabular-nums">
@@ -1067,10 +1080,10 @@ export const SlideMaterial = ({
           <button
             onClick={goToNext}
             disabled={!canGoNext}
-            aria-label="Next slide"
+            aria-label={t("slideNav.nextSlide")}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-neutral-700 bg-white border border-neutral-200 rounded-lg hover:bg-primary-50 hover:border-primary-300 hover:text-primary-700 disabled:opacity-40 disabled:hover:bg-white disabled:hover:border-neutral-200 disabled:hover:text-neutral-700 transition-colors"
           >
-            <span>Next</span>
+            <span>{t("slideNav.next")}</span>
             <CaretRight size={14} />
           </button>
           <div className="h-4 w-px bg-neutral-200"></div>
@@ -1087,7 +1100,7 @@ export const SlideMaterial = ({
           buttonType="secondary"
           onClick={goToPrev}
           disabled={!canGoPrev}
-          aria-label="Previous slide"
+          aria-label={t("slideNav.previousSlide")}
           className="flex items-center justify-center font-medium transition-all duration-200 bg-white border border-neutral-200 hover:border-primary-300 rounded-lg hover:bg-primary-50/50 disabled:opacity-50"
         >
           <CaretLeft size={18} />
@@ -1108,7 +1121,7 @@ export const SlideMaterial = ({
           buttonType="secondary"
           onClick={goToNext}
           disabled={!canGoNext}
-          aria-label="Next slide"
+          aria-label={t("slideNav.nextSlide")}
           className="flex items-center justify-center font-medium transition-all duration-200 bg-white border border-neutral-200 hover:border-primary-300 rounded-lg hover:bg-primary-50/50 disabled:opacity-50"
         >
           <CaretRight size={18} />
@@ -1153,10 +1166,10 @@ export const SlideMaterial = ({
                 ></div>
               </div>
               <h3 className="text-base font-semibold text-neutral-900 mb-2">
-                Uploading Content
+                {t("slideState.uploadingContent")}
               </h3>
               <p className="text-sm text-neutral-500">
-                Please wait while we process your file...
+                {t("slideState.uploadingWait")}
               </p>
             </div>
           </div>
@@ -1186,7 +1199,7 @@ export const SlideMaterial = ({
               buttonType="secondary"
               onClick={goToPrev}
               disabled={!canGoPrev}
-              aria-label="Previous slide"
+              aria-label={t("slideNav.previousSlide")}
               className="flex items-center justify-center font-medium transition-all duration-200 bg-white border border-neutral-200 hover:border-primary-300 rounded-lg hover:bg-primary-50/50 disabled:opacity-50"
             >
               <CaretLeft size={18} />
@@ -1202,7 +1215,7 @@ export const SlideMaterial = ({
               buttonType="secondary"
               onClick={goToNext}
               disabled={!canGoNext}
-              aria-label="Next slide"
+              aria-label={t("slideNav.nextSlide")}
               className="flex items-center justify-center font-medium transition-all duration-200 bg-white border border-neutral-200 hover:border-primary-300 rounded-lg hover:bg-primary-50/50 disabled:opacity-50"
             >
               <CaretRight size={18} />
@@ -1217,6 +1230,7 @@ export const SlideMaterial = ({
 };
 
 const AskDoubtButton = () => {
+  const { t } = useTranslation("studyContent");
   const [enabled, setEnabled] = useState(true);
   useEffect(() => {
     getStudentDisplaySettings(false)
@@ -1235,7 +1249,7 @@ const AskDoubtButton = () => {
       className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-neutral-600 bg-white border border-neutral-200 rounded-md hover:bg-neutral-50 hover:border-neutral-300 transition-colors"
     >
       <ChatText size={12} className="text-neutral-500" />
-      <span>Doubts</span>
+      <span>{t("slideNav.doubts")}</span>
     </button>
   );
 };

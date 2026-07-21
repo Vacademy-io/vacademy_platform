@@ -34,10 +34,20 @@ import { getPreferredPhoneCountries } from "@/services/domain-routing";
 import { SessionLimitDialog } from "@/components/common/auth/login/components/SessionLimitDialog";
 import { phoneSchema as phoneValidationSchema } from "@/lib/phone-validation";
 import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 
-const phoneSchema = z.object({
-    phone: phoneValidationSchema({ required: true, label: "Phone number" }),
-});
+/**
+ * Built per-render (not a module constant) so the field label baked into the
+ * validation messages follows the active language.
+ */
+const makePhoneSchema = () =>
+    z.object({
+        phone: phoneValidationSchema({
+            required: true,
+            label: i18n.t("auth:validation.phoneNumberLabel"),
+        }),
+    });
 
 const otpSchema = z.object({
     otp: z
@@ -46,7 +56,7 @@ const otpSchema = z.object({
         .transform((val) => val.join("")),
 });
 
-type PhoneFormValues = z.infer<typeof phoneSchema>;
+type PhoneFormValues = z.infer<ReturnType<typeof makePhoneSchema>>;
 type OtpFormValues = { otp: string[] };
 
 export function PhoneLoginForm({
@@ -66,6 +76,12 @@ export function PhoneLoginForm({
     allowUsernamePasswordAuth?: boolean;
     allowEmailOtpAuth?: boolean;
 }) {
+    const { t, i18n: i18nInstance } = useTranslation("auth");
+    const phoneSchema = useMemo(
+        () => makePhoneSchema(),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [i18nInstance.language]
+    );
     const [isOtpSent, setIsOtpSent] = useState(false);
     const { defaultCountry, preferredCountries } = useMemo(
         () => getPreferredPhoneCountries(),
@@ -134,7 +150,7 @@ export function PhoneLoginForm({
             setIsLoading(false);
             setIsOtpSent(true);
             startTimer();
-            toast.success("OTP sent to WhatsApp successfully");
+            toast.success(i18n.t("auth:toasts.otpSentWhatsapp"));
         },
         onError: (error: AxiosError<ErrorResponse>) => {
             setIsLoading(false);
@@ -143,9 +159,9 @@ export function PhoneLoginForm({
                 errorData?.ex === "User not found!" ||
                 errorData?.responseCode === "User not found!"
             ) {
-                toast.error("Account not found. Please sign up to continue.", {
+                toast.error(i18n.t("auth:toasts.accountNotFoundSignup"), {
                     duration: 5000,
-                    description: "This phone number is not registered in our system.",
+                    description: i18n.t("auth:toasts.phoneNotRegistered"),
                 });
                 setTimeout(() => {
                     if (onSwitchToSignup) {
@@ -154,10 +170,12 @@ export function PhoneLoginForm({
                 }, 2000);
             } else if (errorData?.ex || errorData?.responseCode) {
                 toast.error(
-                    errorData.ex || errorData.responseCode || "Failed to send OTP via WhatsApp",
+                    errorData.ex ||
+                        errorData.responseCode ||
+                        i18n.t("auth:phoneLogin.failedToSendOtpWhatsapp"),
                 );
             } else {
-                toast.error("Failed to send OTP. Please try again.");
+                toast.error(i18n.t("auth:toasts.failedToSendOtpRetry"));
             }
         },
     });
@@ -175,7 +193,7 @@ export function PhoneLoginForm({
                 }
 
                 if (!response.data || !response.data.accessToken) {
-                    toast.error("Logged in successfully, but missing session credentials.");
+                    toast.error(i18n.t("auth:toasts.missingSessionCredentials"));
                     return;
                 }
 
@@ -196,9 +214,16 @@ export function PhoneLoginForm({
                 const authorityKeys = authorities ? Object.keys(authorities) : [];
 
                 if (authorityKeys.length > 1) {
+                    // `redirect` defaults to the "/login/" sentinel with no real
+                    // deep-link; forwarding it would bounce the user back to /login
+                    // after they pick an institute, so collapse it to /dashboard/.
+                    const forwardRedirect =
+                        typeof redirect === "string" && redirect && redirect !== "/login/"
+                            ? redirect
+                            : "/dashboard/";
                     navigate({
                         to: "/institute-selection",
-                        search: { redirect: redirect || "/dashboard/", type, courseId },
+                        search: { redirect: forwardRedirect, type, courseId },
                     });
                 } else {
                     const instituteId = authorityKeys[0];
@@ -239,24 +264,29 @@ export function PhoneLoginForm({
                                 await navigateAfterLogin(navigate);
                             }
                         } catch {
-                            toast.error("Failed to fetch details");
+                            toast.error(i18n.t("auth:toasts.failedToFetchDetails"));
                         }
                     }
                 }
             } catch {
-                toast.error("Error processing login data");
+                toast.error(i18n.t("auth:toasts.errorProcessingLogin"));
             }
         },
         onError: (error: AxiosError<ErrorResponse>) => {
             const errorData = error.response?.data;
             if (errorData?.ex || errorData?.responseCode) {
-                toast.error(errorData.ex || errorData.responseCode || "Invalid OTP", {
-                    duration: 5000,
-                    description: "Please check your OTP and try again.",
-                });
+                toast.error(
+                    errorData.ex ||
+                        errorData.responseCode ||
+                        i18n.t("auth:toasts.invalidOtp"),
+                    {
+                        duration: 5000,
+                        description: i18n.t("auth:toasts.checkOtpAndRetry"),
+                    },
+                );
             } else {
-                toast.error("Invalid OTP", {
-                    description: "Please try again",
+                toast.error(i18n.t("auth:toasts.invalidOtp"), {
+                    description: i18n.t("auth:toasts.tryAgain"),
                     duration: 5000,
                 });
             }
@@ -297,7 +327,7 @@ export function PhoneLoginForm({
             });
         } else {
             setIsLoading(false);
-            toast.error("Please fill all OTP fields");
+            toast.error(i18n.t("auth:toasts.fillAllOtpFields"));
         }
     };
 
@@ -390,7 +420,9 @@ export function PhoneLoginForm({
                                             <FormItem>
                                                 <FormControl>
                                                     <div className="relative">
-                                                        <label className="text-body font-bold text-gray-700 block mb-1">WhatsApp Number</label>
+                                                        <label className="text-body font-bold text-gray-700 block mb-1">
+                                                            {t("phoneLogin.whatsappNumber")}
+                                                        </label>
                                                         <div className="relative flex-1">
                                                             <PhoneInput
                                                                 country={defaultCountry}
@@ -436,12 +468,12 @@ export function PhoneLoginForm({
                                                 >
                                                     <ArrowsClockwise className="w-4 h-4" />
                                                 </motion.div>
-                                                <span className="text-sm">Sending OTP...</span>
+                                                <span className="text-sm">{t("phoneLogin.sendingOtp")}</span>
                                             </div>
                                         ) : (
                                             <div className="flex items-center justify-center space-x-2">
                                                 <Phone className="w-4 h-4" />
-                                                <span className="text-sm">Send OTP (WhatsApp)</span>
+                                                <span className="text-sm">{t("phoneLogin.sendOtpWhatsapp")}</span>
                                             </div>
                                         )}
                                     </motion.button>
@@ -477,10 +509,10 @@ export function PhoneLoginForm({
                             </motion.div>
                             <div className="space-y-1">
                                 <h3 className="text-lg font-semibold text-gray-900">
-                                    Check your WhatsApp
+                                    {t("phoneLogin.checkWhatsapp")}
                                 </h3>
                                 <p className="text-sm text-gray-600">
-                                    We've sent a 6-digit code to
+                                    {t("common.sentSixDigitCode")}
                                 </p>
                                 <motion.div
                                     initial={{ scale: 0.9, opacity: 0 }}
@@ -581,12 +613,12 @@ export function PhoneLoginForm({
                                                 >
                                                     <ArrowsClockwise className="w-4 h-4" />
                                                 </motion.div>
-                                                <span className="text-sm">Verifying...</span>
+                                                <span className="text-sm">{t("common.verifying")}</span>
                                             </div>
                                         ) : (
                                             <div className="flex items-center justify-center space-x-2">
                                                 <Shield className="w-4 h-4" />
-                                                <span className="text-sm">Verify & Sign In</span>
+                                                <span className="text-sm">{t("common.verifyAndSignIn")}</span>
                                             </div>
                                         )}
                                     </motion.button>
@@ -600,7 +632,7 @@ export function PhoneLoginForm({
                                             className="flex items-center space-x-1 text-gray-500 hover:text-gray-700 transition-colors duration-200 font-medium"
                                         >
                                             <ArrowLeft className="w-3 h-3" />
-                                            <span className="text-xs">Back to phone entry</span>
+                                            <span className="text-xs">{t("phoneLogin.backToPhone")}</span>
                                         </motion.button>
 
                                         <div className="w-px h-3 bg-gray-300"></div>
@@ -625,12 +657,12 @@ export function PhoneLoginForm({
                                             {timer > 0 ? (
                                                 <div className="flex items-center space-x-1">
                                                     <ArrowsClockwise className="w-3 h-3" />
-                                                    <span className="text-xs">Resend in {timer}s</span>
+                                                    <span className="text-xs">{t("common.resendIn", { count: timer })}</span>
                                                 </div>
                                             ) : (
                                                 <div className="flex items-center space-x-1">
                                                     <ArrowsClockwise className="w-3 h-3" />
-                                                    <span className="text-xs">Resend code</span>
+                                                    <span className="text-xs">{t("common.resendCode")}</span>
                                                 </div>
                                             )}
                                         </motion.button>
@@ -656,7 +688,7 @@ export function PhoneLoginForm({
                             className="text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group"
                             onClick={onSwitchToEmail}
                         >
-                            Use Email OTP
+                            {t("login.useEmailOtpShort")}
                             <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
                         </motion.button>
                     )}
@@ -668,14 +700,14 @@ export function PhoneLoginForm({
                             className="text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group"
                             onClick={onSwitchToUsername}
                         >
-                            Use Username & Password
+                            {t("login.useUsernamePasswordShort")}
                             <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
                         </motion.button>
                     )}
                 </div>
 
                 <div className="text-sm text-gray-600 pt-2">
-                    Don't have an account?{" "}
+                    {t("common.dontHaveAccount")}{" "}
                     <motion.button
                         type="button"
                         whileHover={{ scale: 1.02 }}
@@ -684,7 +716,7 @@ export function PhoneLoginForm({
                         }
                         className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
                     >
-                        Sign up here
+                        {t("common.signUpHere")}
                     </motion.button>
                 </div>
             </motion.div>

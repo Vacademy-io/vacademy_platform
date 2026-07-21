@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.slide.service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.chapter.entity.Chapter;
+import vacademy.io.admin_core_service.features.domain_routing.service.LearnerPortalUrlResolver;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 import vacademy.io.admin_core_service.features.institute_learner.repository.InstituteStudentRepository;
@@ -23,19 +24,22 @@ import java.util.Map;
 @Service
 public class SlideNotificationService {
 
-    private static final String SLIDE_ACCESS_URL = "http://localhost:3000";
+    private static final String STUDY_LIBRARY_PATH = "/study-library";
     @Autowired
     private InstituteRepository instituteRepository;
     @Autowired
     private InstituteStudentRepository instituteStudentRepository;
     @Autowired
     private NotificationService notificationService;
+    @Autowired
+    private LearnerPortalUrlResolver learnerPortalUrlResolver;
 
     public void sendNotificationForAddingSlide(String instituteId, Chapter chapter, Slide slide) {
         Institute institute = instituteRepository.findById(instituteId).orElseThrow(() -> new VacademyException("Institute not found"));
         List<Student> students = getStudentsByChapter(chapter);
 
-        List<NotificationToUserDTO> notificationUsers = prepareNotificationUsers(students, chapter, institute);
+        String materialLink = learnerPortalUrlResolver.resolveBaseUrl(instituteId, institute) + STUDY_LIBRARY_PATH;
+        List<NotificationToUserDTO> notificationUsers = prepareNotificationUsers(students, chapter, institute, materialLink);
         NotificationDTO notificationDTO = prepareNotificationDTO(slide, notificationUsers);
 
         notificationService.sendEmailViaUnified(notificationDTO,instituteId);
@@ -47,7 +51,7 @@ public class SlideNotificationService {
         return students;
     }
 
-    private List<NotificationToUserDTO> prepareNotificationUsers(List<Student> students, Chapter chapter, Institute institute) {
+    private List<NotificationToUserDTO> prepareNotificationUsers(List<Student> students, Chapter chapter, Institute institute, String materialLink) {
         List<NotificationToUserDTO> notificationUsers = new ArrayList<>();
 
         for (Student student : students) {
@@ -55,7 +59,7 @@ public class SlideNotificationService {
             placeholders.put("STUDENT_NAME", student.getFullName());
             placeholders.put("CHAPTER_NAME", chapter.getChapterName());
             placeholders.put("INSTITUTE_NAME", institute.getInstituteName());
-            placeholders.put("MATERIAL_LINK", SLIDE_ACCESS_URL);
+            placeholders.put("MATERIAL_LINK", materialLink);
 
             NotificationToUserDTO notificationUser = new NotificationToUserDTO();
             notificationUser.setUserId(student.getUserId());

@@ -2,6 +2,7 @@
 
 import type React from "react";
 import { useEffect, useRef, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import type {
   DocumentLoadEvent,
   PageChangeEvent,
@@ -26,6 +27,7 @@ interface PDFViewerProps {
 }
 
 const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
+  const { t } = useTranslation("studyContent");
   const { addActivity } = useTrackingStore();
   const [currentPage, setCurrentPage] = useState<number>(0);
   const [totalPages, setTotalPages] = useState(0);
@@ -616,39 +618,38 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
       {isPaused && (
         <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-4 rounded-lg shadow-lg text-center max-w-md">
-            <h3 className="text-lg font-semibold mb-2">Reading Paused</h3>
+            <h3 className="text-lg font-semibold mb-2">{t("pdfViewer.readingPaused")}</h3>
             {document.hidden ? (
               <p className="mb-4">
-                Please return to this tab to continue reading.
+                {t("pdfViewer.returnToTab")}
               </p>
             ) : missedAnswerCount > 0 || wrongAnswerCount > 0 ? (
               <div className="mb-4">
-                <p>Your session was paused due to:</p>
+                <p>{t("pdfViewer.pausedDueTo")}</p>
                 {missedAnswerCount > 0 && (
                   <p className="text-amber-600">
-                    • Missed verification ({missedAnswerCount} times)
+                    {t("pdfViewer.missedVerification", { count: missedAnswerCount })}
                   </p>
                 )}
                 {wrongAnswerCount > 0 && (
                   <p className="text-red-600">
-                    • Incorrect verification ({wrongAnswerCount} times)
+                    {t("pdfViewer.incorrectVerification", { count: wrongAnswerCount })}
                   </p>
                 )}
                 <p className="mt-2">
-                  Click the button below to resume reading.
+                  {t("pdfViewer.clickToResume")}
                 </p>
               </div>
             ) : (
               <p className="mb-4">
-                Click the button below or interact with the page to continue
-                reading.
+                {t("pdfViewer.clickOrInteract")}
               </p>
             )}
             <button
               onClick={handleUserActivity}
               className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
             >
-              Resume Reading
+              {t("pdfViewer.resumeReading")}
             </button>
           </div>
         </div>
@@ -671,13 +672,13 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
           onClick={() => setPdfActive(true)}
           role="button"
           tabIndex={0}
-          aria-label="Tap to enable PDF scroll"
+          aria-label={t("pdfViewer.tapToEnableScroll")}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") setPdfActive(true);
           }}
         >
           <div className="pointer-events-none rounded-full bg-black/75 px-4 py-2 text-xs font-medium text-white shadow-lg">
-            Tap to enable PDF scroll
+            {t("pdfViewer.tapToEnableScroll")}
           </div>
         </div>
       )}
@@ -703,7 +704,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
           >
             <path d="M6 6l12 12M6 18L18 6" />
           </svg>
-          Exit PDF Scroll
+          {t("pdfViewer.exitScroll")}
         </button>
       )}
     </div>

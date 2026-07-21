@@ -46,6 +46,7 @@ public class StudentAnalysisController {
         private final ObjectMapper objectMapper;
         private final UserLinkedDataRepository userLinkedDataRepository;
         private final StudentReportPdfService reportPdfService;
+        private final vacademy.io.admin_core_service.core.security.GuardianAccessGuard guardianAccessGuard;
 
         @PostMapping("/initiate")
         @Operation(summary = "Initiate student analysis report generation", description = "Starts async processing of student analysis. Returns a process ID to check status later.")
@@ -398,7 +399,13 @@ public class StudentAnalysisController {
                 if (u.getUserId() != null && u.getUserId().equals(p.getUserId())) {
                         return true; // owner (learner viewing their own)
                 }
-                return hasAnyRole(u, "ADMIN", "TEACHER", "EVALUATOR", "COURSE_CREATOR", "ADMIN_NON_ROOT");
+                if (hasAnyRole(u, "ADMIN", "TEACHER", "EVALUATOR", "COURSE_CREATOR", "ADMIN_NON_ROOT")) {
+                        return true; // staff
+                }
+                // Guardian link leg: a parent may read a report whose subject is their
+                // OWN linked child — resolved authoritatively (auth_service), fail-closed.
+                // NOT a blanket PARENT role check (that would expose any child to any parent).
+                return guardianAccessGuard.isLinkedChild(u, p.getUserId());
         }
 
         /** True if the user holds any of the given role/authority names (case-insensitive). */

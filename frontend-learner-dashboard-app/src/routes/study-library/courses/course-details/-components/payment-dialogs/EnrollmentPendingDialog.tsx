@@ -6,7 +6,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Clock, CheckCircle } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { MyButton } from "@/components/design-system/button";
+import {
+  getTerminology,
+  getTerminologyPlural,
+} from "@/components/common/layout-container/sidebar/utils";
+import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 
 interface EnrollmentPendingDialogProps {
   open: boolean;
@@ -19,12 +25,14 @@ export const EnrollmentPendingDialog: React.FC<EnrollmentPendingDialogProps> = (
   onOpenChange,
   courseTitle,
 }) => {
+  const { t } = useTranslation("study");
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="text-center text-xl font-bold text-blue-700">
-            Enrollment Request Submitted
+            {t("enrollment.pending.title")}
           </DialogTitle>
         </DialogHeader>
         
@@ -36,7 +44,7 @@ export const EnrollmentPendingDialog: React.FC<EnrollmentPendingDialogProps> = (
           </div>
           
           <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            Request Submitted Successfully
+            {t("enrollment.pending.heading")}
           </h3>
           
           {/* <p className="text-gray-600 mb-6">
@@ -46,12 +54,29 @@ export const EnrollmentPendingDialog: React.FC<EnrollmentPendingDialogProps> = (
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
             <div className="flex items-center space-x-2 text-blue-800">
               <CheckCircle className="w-4 h-4" />
-              <span className="text-sm font-medium">What happens next?</span>
+              <span className="text-sm font-medium">{t("enrollment.pending.nextTitle")}</span>
             </div>
             <ul className="text-sm text-blue-700 mt-2 space-y-1">
-              <li>• Admin will review your enrollment request</li>
-              <li>• You'll receive notification once approved</li>
-              <li>• Access to course slides will be granted</li>
+              <li>
+                •{" "}
+                {t("enrollment.pending.step1", {
+                  admin: getTerminology(RoleTerms.Admin, SystemTerms.Admin),
+                })}
+              </li>
+              <li>• {t("enrollment.pending.step2")}</li>
+              <li>
+                •{" "}
+                {t("enrollment.pending.step3", {
+                  course: getTerminology(
+                    ContentTerms.Course,
+                    SystemTerms.Course
+                  ).toLocaleLowerCase(),
+                  slides: getTerminologyPlural(
+                    ContentTerms.Slides,
+                    SystemTerms.Slides
+                  ).toLocaleLowerCase(),
+                })}
+              </li>
             </ul>
           </div>
           
@@ -63,7 +88,7 @@ export const EnrollmentPendingDialog: React.FC<EnrollmentPendingDialogProps> = (
             onClick={() => onOpenChange(false)}
             className="w-full"
           >
-            Close
+            {t("dialog.close")}
           </MyButton>
         </div>
       </DialogContent>

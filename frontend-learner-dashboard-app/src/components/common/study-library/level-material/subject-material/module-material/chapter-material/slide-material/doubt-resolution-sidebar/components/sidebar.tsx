@@ -10,12 +10,14 @@ import { DoubtFilter, Doubt as DoubtType } from "../types/get-doubts-type";
 import { useGetDoubts } from "../services/GetDoubts";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { AddDoubt } from "./AddDoubt";
+import { useTranslation } from "react-i18next";
 import { DoubtList } from "./doubt-list";
 import { TimestampDialog } from "./TimestampDialog";
 import { TimestampChip } from "./TimestampChip";
 import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 
 export const DoubtResolutionSidebar = () => {
+  const { t } = useTranslation("studyContent");
   const { isOpen: open, closeSidebar } = useDoubtSidebarStore();
   const [showInput, setShowInput] = useState<boolean>(false);
   const [doubt, setDoubt] = useState<string>("");
@@ -213,7 +215,7 @@ export const DoubtResolutionSidebar = () => {
   };
 
   if (isPending) return <DashboardLoader />;
-  if (isError) return <p>Error fetching doubts</p>;
+  if (isError) return <p>{t("doubts.errorFetching")}</p>;
 
   return (
     <>
@@ -238,12 +240,12 @@ export const DoubtResolutionSidebar = () => {
               </div>
               <div className="flex flex-col">
                 <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-tight">
-                  Doubt Resolution
+                  {t("doubts.title")}
                 </h1>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
                   {activeItem?.source_type === "VIDEO"
-                    ? "Video Timestamp Support"
-                    : "General Support"}
+                    ? t("doubts.videoTimestampSupport")
+                    : t("doubts.generalSupport")}
                 </p>
               </div>
             </div>
@@ -276,24 +278,24 @@ export const DoubtResolutionSidebar = () => {
                   className="flex-1 flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-primary-600 text-gray-600 font-medium rounded-lg transition-all duration-200 py-2.5"
                 >
                   <ChatText size={16} />
-                  <span className="hidden sm:inline">All Doubts</span>
-                  <span className="sm:hidden">All</span>
+                  <span className="hidden sm:inline">{t("doubts.tabAll")}</span>
+                  <span className="sm:hidden">{t("doubts.tabAllShort")}</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="RESOLVED"
                   className="flex-1 flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-green-600 text-gray-600 font-medium rounded-lg transition-all duration-200 py-2.5"
                 >
                   <CheckCircle size={16} />
-                  <span className="hidden sm:inline">Resolved</span>
-                  <span className="sm:hidden">Done</span>
+                  <span className="hidden sm:inline">{t("doubts.tabResolved")}</span>
+                  <span className="sm:hidden">{t("doubts.tabResolvedShort")}</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="UNRESOLVED"
                   className="flex-1 flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-amber-600 text-gray-600 font-medium rounded-lg transition-all duration-200 py-2.5"
                 >
                   <Clock size={16} />
-                  <span className="hidden sm:inline">Pending</span>
-                  <span className="sm:hidden">Wait</span>
+                  <span className="hidden sm:inline">{t("doubts.tabPending")}</span>
+                  <span className="sm:hidden">{t("doubts.tabPendingShort")}</span>
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -396,7 +398,7 @@ export const DoubtResolutionSidebar = () => {
               className="w-full bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] flex items-center gap-3 justify-center py-4 font-semibold"
             >
               <Plus size={20} />
-              Ask a Doubt
+              {t("doubts.askADoubt")}
             </MyButton>
           )}
         </div>

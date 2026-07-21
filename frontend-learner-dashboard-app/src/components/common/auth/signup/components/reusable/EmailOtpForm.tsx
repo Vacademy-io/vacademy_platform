@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -58,13 +60,13 @@ const createEmailOtpSchema = (
   hideFullName: boolean = false
 ) => {
   const baseSchema: any = {
-    email: z.string().email("Please enter a valid email address"),
+    email: z.string().email(i18n.t("auth:validation.validEmail")),
   };
 
   if (!hideFullName) {
     baseSchema.fullName = z
       .string()
-      .min(2, "Full name must be at least 2 characters");
+      .min(2, i18n.t("auth:validation.fullNameMin"));
   }
 
   return z.object(baseSchema);
@@ -81,6 +83,7 @@ export function EmailOtpForm({
   hideFullName = false,
   privateEmailMessage = "",
 }: EmailOtpFormProps) {
+  const { t } = useTranslation("auth");
   const [currentStep, setCurrentStep] = useState<"form" | "otp" | "verifying">(
     "form"
   );
@@ -176,9 +179,9 @@ export function EmailOtpForm({
       setOtpValues(Array(6).fill(""));
       otpForm.setValue("otp", Array(6).fill(""));
       startTimer();
-      toast.success("OTP sent successfully to your email");
+      toast.success(i18n.t("auth:toasts.otpSentEmail"));
     } catch (error) {
-      toast.error("Failed to send OTP. Please try again.");
+      toast.error(i18n.t("auth:toasts.failedToSendOtpRetry"));
     } finally {
       setIsSubmitting(false);
     }
@@ -197,7 +200,7 @@ export function EmailOtpForm({
 
       // Check if OTP is complete
       if (otpString.length !== 6) {
-        toast.error("Please enter the complete 6-digit OTP");
+        toast.error(i18n.t("auth:validation.completeOtp"));
         setCurrentStep("otp");
         return;
       }
@@ -214,7 +217,7 @@ export function EmailOtpForm({
       const fullNameToPass = formData.fullName || initialFullName || "User";
       await onOtpVerified(formData.email, fullNameToPass);
     } catch (error) {
-      toast.error("Invalid OTP. Please try again.");
+      toast.error(i18n.t("auth:toasts.invalidOtpRetry"));
       setCurrentStep("otp");
     }
   };
@@ -240,9 +243,9 @@ export function EmailOtpForm({
       );
 
       startTimer();
-      toast.success("OTP resent successfully");
+      toast.success(i18n.t("auth:toasts.otpResent"));
     } catch (error) {
-      toast.error("Failed to resend OTP. Please try again.");
+      toast.error(i18n.t("auth:toasts.failedToResendOtp"));
     }
   };
 
@@ -324,12 +327,12 @@ export function EmailOtpForm({
         {/* Header */}
         <div className="text-center space-y-2">
           <h3 className="text-xl font-semibold text-gray-900">
-            {isOAuth ? "Verify Your Email" : "Create Your Account"}
+            {isOAuth ? t("emailInput.verifyEmail") : t("signup.createAccount")}
           </h3>
           <p className="text-sm text-gray-600">
             {isOAuth
-              ? "Please verify your email to complete the signup process"
-              : "Enter your details to get started"}
+              ? t("emailInput.verifyEmailSubtitle")
+              : t("emailInput.enterDetails")}
           </p>
         </div>
 
@@ -375,12 +378,12 @@ export function EmailOtpForm({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm font-medium text-gray-700">
-                      Full Name *
+                      {t("emailInput.fullNameLabel")}
                     </FormLabel>
                     <FormControl>
                       <Input
                         {...field}
-                        placeholder="Enter your full name"
+                        placeholder={t("emailInput.enterFullName")}
                         className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                       />
                     </FormControl>
@@ -396,13 +399,13 @@ export function EmailOtpForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-sm font-medium text-gray-700">
-                    Email Address *
+                    {t("emailInput.emailLabel")}
                   </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
                       type="email"
-                      placeholder="Enter your email address"
+                      placeholder={t("common.enterEmailAddress")}
                       className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     />
                   </FormControl>
@@ -419,11 +422,11 @@ export function EmailOtpForm({
               {isSubmitting ? (
                 <>
                   <SpinnerGap className="w-4 h-4 me-2 animate-spin" />
-                  Sending OTP...
+                  {t("emailInput.sendingOtp")}
                 </>
               ) : (
                 <>
-                  Send OTP
+                  {t("emailInput.sendOtp")}
                   <ArrowRight className="w-4 h-4 ms-2" />
                 </>
               )}
@@ -438,7 +441,7 @@ export function EmailOtpForm({
             className="w-full flex items-center justify-center gap-2 text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200"
           >
             <ArrowLeft className="w-4 h-4" />
-            Back to signup options
+            {t("emailInput.backToOptions")}
           </button>
         )}
       </motion.div>
@@ -458,10 +461,10 @@ export function EmailOtpForm({
             <Envelope className="w-8 h-8 text-blue-600" />
           </div>
           <h3 className="text-xl font-semibold text-gray-900">
-            Verify Your Email
+            {t("emailInput.verifyEmail")}
           </h3>
           <p className="text-sm text-gray-600">
-            We've sent a 6-digit code to{" "}
+            {t("common.sentSixDigitCode")}{" "}
             <span className="font-medium">{formData?.email}</span>
           </p>
         </div>
@@ -495,10 +498,10 @@ export function EmailOtpForm({
             {currentStep === "verifying" ? (
               <>
                 <SpinnerGap className="w-4 h-4 me-2 animate-spin" />
-                Verifying...
+                {t("common.verifying")}
               </>
             ) : (
-              "Verify OTP"
+              t("otpVerification.verifyOtp")
             )}
           </Button>
         </div>
@@ -513,12 +516,12 @@ export function EmailOtpForm({
             {timer > 0 ? (
               <span className="flex items-center justify-center gap-2">
                 <ArrowsClockwise className="w-4 h-4 animate-spin" />
-                Resend in {timer}s
+                {t("common.resendIn", { count: timer })}
               </span>
             ) : (
               <span className="flex items-center justify-center gap-2">
                 <ArrowsClockwise className="w-4 h-4" />
-                Resend OTP
+                {t("otpVerification.resendOtp")}
               </span>
             )}
           </button>
@@ -535,7 +538,7 @@ export function EmailOtpForm({
           className="w-full flex items-center justify-center gap-2 text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to email form
+          {t("otpVerification.backToEmailForm")}
         </button>
       </motion.div>
     );
@@ -546,7 +549,7 @@ export function EmailOtpForm({
       <div className={`flex items-center justify-center p-8 ${className}`}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
-          <p className="text-gray-600">Verifying OTP...</p>
+          <p className="text-gray-600">{t("otpVerification.verifyingOtp")}</p>
         </div>
       </div>
     );

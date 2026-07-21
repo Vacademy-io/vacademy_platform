@@ -723,8 +723,11 @@ export default function ProfilePage() {
 
               {/* Subscriptions & Autopay — a learner looking to stop a recurring charge
                   looks at their profile, not at an edit form. Only rendered when the
-                  learner actually has one, so free learners don't get an empty card. */}
-              {studentData?.institute_id && hasAutopaySubscription && (
+                  learner actually has one, so free learners don't get an empty card.
+                  Hidden on native iOS (reader-mode): a recurring-subscription /
+                  autopay surface is exactly the paid-subscription content Apple
+                  flags under Guideline 3.1.1 (App Review 2026-07-19, io.shikshanation.learner). */}
+              {studentData?.institute_id && hasAutopaySubscription && !shouldHidePaidPurchaseUI() && (
                 <div className="bg-card rounded-xl border shadow p-6 md:p-8">
                   <h3 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
                     <span className="w-1 h-6 bg-primary-500 rounded-full"></span>

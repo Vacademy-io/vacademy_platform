@@ -55,8 +55,8 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
     }
 
     @Override
-    public void sendTemplate(String phone, Map<String, Object> templatePayload,
-                              String instituteId, String businessChannelId) {
+    public String sendTemplate(String phone, Map<String, Object> templatePayload,
+                               String instituteId, String businessChannelId) {
         ProviderConfig config = resolveConfig(instituteId);
         if (config == null) throw new RuntimeException("COMBOT/META config not found for institute: " + instituteId);
 
@@ -141,7 +141,7 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
                 "components", components
         ));
 
-        sendPayload(config, payload);
+        return sendPayload(config, payload);
     }
 
     @Override
@@ -203,7 +203,7 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
     }
 
     @Override
-    public void sendText(String phone, String text, String instituteId, String businessChannelId) {
+    public String sendText(String phone, String text, String instituteId, String businessChannelId) {
         ProviderConfig config = resolveConfig(instituteId);
         if (config == null) throw new RuntimeException("COMBOT/META config not found for institute: " + instituteId);
 
@@ -214,7 +214,7 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
                 "text", Map.of("body", text)
         );
 
-        sendPayload(config, payload);
+        return sendPayload(config, payload);
     }
 
     @Override
@@ -243,7 +243,7 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
         sendPayload(config, payload);
     }
 
-    private void sendPayload(ProviderConfig config, Map<String, Object> payload) {
+    private String sendPayload(ProviderConfig config, Map<String, Object> payload) {
         String url = config.apiUrl + "/" + config.phoneNumberId + "/messages";
 
         HttpHeaders headers = new HttpHeaders();
@@ -266,9 +266,31 @@ public class CombotMessageProvider implements ChatbotMessageProvider {
                 throw new RuntimeException("WhatsApp API returned " + response.getStatusCode());
             }
             log.debug("COMBOT/META message sent successfully to {}", payload.get("to"));
+            return extractMessageId(response.getBody());
         } catch (Exception e) {
             log.error("Failed to send message via COMBOT/META: {}", e.getMessage());
             throw e;
+        }
+    }
+
+    /**
+     * Pulls the provider-assigned message id out of a send response so status webhooks
+     * (sent/delivered/read/failed) can be joined back to the exact outbound row.
+     * Meta Cloud API: {"messages":[{"id":"wamid..."}]}. Com.bot proxy: {"message":{"queue_id":"..."}}.
+     * Never throws — a missing id degrades status attribution, it must not fail the send.
+     */
+    private String extractMessageId(String responseBody) {
+        if (responseBody == null || responseBody.isBlank()) return null;
+        try {
+            JsonNode root = objectMapper.readTree(responseBody);
+            String metaId = root.path("messages").path(0).path("id").asText(null);
+            if (metaId != null && !metaId.isBlank()) return metaId;
+            String queueId = root.path("message").path("queue_id").asText(null);
+            if (queueId != null && !queueId.isBlank()) return queueId;
+            return null;
+        } catch (Exception e) {
+            log.warn("Could not parse message id from provider response: {}", e.getMessage());
+            return null;
         }
     }
 

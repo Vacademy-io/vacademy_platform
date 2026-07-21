@@ -253,6 +253,14 @@ export const GET_AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/open/v1/aud
 export const SUBMIT_AUDIENCE_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 
+// Public booking pages (open — no auth). Calendly-style scheduling:
+// GET  {OPEN_BOOKING_BASE}/page/{instituteId}/{slug}            → page details
+// GET  {OPEN_BOOKING_BASE}/page/{instituteId}/{slug}/slots      → available slots
+// POST {OPEN_BOOKING_BASE}/page/{instituteId}/{slug}/book       → create booking
+// GET  {OPEN_BOOKING_BASE}/manage/{token}                       → booking by manage token
+// POST {OPEN_BOOKING_BASE}/manage/{token}/cancel|reschedule
+export const OPEN_BOOKING_BASE = `${BASE_URL}/admin-core-service/open/v1/booking`;
+
 // Sub-Organization Learner Management API endpoints
 export const SUB_ORG_MEMBER_ADMIN_DETAILS = `${BASE_URL}/admin-core-service/sub-org/v1/member-admin-details`;
 export const SUB_ORG_BASE = `${BASE_URL}/admin-core-service/sub-org/v1`;
@@ -329,3 +337,20 @@ export const GET_INVOICE_PUBLIC = (invoiceId: string) =>
 export const INITIATE_INVOICE_PAYMENT = (invoiceId: string) =>
   `${BASE_URL}/admin-core-service/open/v1/invoices/${invoiceId}/initiate-payment`;
 export const GET_PAYMENT_COMPLETION_STATUS = `${BASE_URL}/admin-core-service/open/v1/payment-log/status`;
+
+// ── Parent Portal ("My Child" monitoring) ────────────────────────────────────
+// Authenticated BFF. The guardian id comes from the JWT and the institute from
+// the clientId header (set by the axios interceptor) — never a URL param. The
+// only client-supplied id is childUserId, which the backend guard verifies is
+// genuinely linked to the caller before returning anything.
+const PARENT_PORTAL_V1 = `${BASE_URL}/admin-core-service/parent-portal/v1`;
+export const PARENT_PORTAL_SETTINGS = `${PARENT_PORTAL_V1}/settings`;
+export const PARENT_PORTAL_CHILDREN = `${PARENT_PORTAL_V1}/children`;
+export const PARENT_PORTAL_CHILD_ATTENDANCE = (childUserId: string) =>
+  `${PARENT_PORTAL_V1}/children/${childUserId}/attendance`;
+export const PARENT_PORTAL_CHILD_INVOICES = (childUserId: string) =>
+  `${PARENT_PORTAL_V1}/children/${childUserId}/payments/invoices`;
+export const PARENT_PORTAL_CHILD_BADGES = (childUserId: string) =>
+  `${PARENT_PORTAL_V1}/children/${childUserId}/badges`;
+export const PARENT_PORTAL_CHILD_CERTIFICATES = (childUserId: string) =>
+  `${PARENT_PORTAL_V1}/children/${childUserId}/certificates`;

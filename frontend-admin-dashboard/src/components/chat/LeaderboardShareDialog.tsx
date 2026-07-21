@@ -1,10 +1,12 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Crown, Medal, Trophy, Copy, ShareNetwork, Users } from '@phosphor-icons/react';
+import { Crown, Medal, Trophy, Copy, ShareNetwork, Users, CaretRight } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { MyButton } from '@/components/design-system/button';
 import { cn } from '@/lib/utils';
 import { BadgeVisual } from '@/routes/settings/-constants/badge-icon-map';
+import { isLibraryToken } from '@/routes/settings/-constants/badge-library';
 import { getCourseLeaderboardAdmin, type LeaderboardEntry } from '@/services/leaderboard';
 
 /** Per-place accent tones (gold / silver / bronze) — design tokens only. */
@@ -33,14 +35,22 @@ function Avatar({ name, className }: { name: string; className?: string }) {
 }
 
 /** Up to 3 earned badge icons + an overflow count. */
-function BadgeIcons({ entry, className }: { entry: LeaderboardEntry; className?: string }) {
+function BadgeIcons({
+    entry,
+    size = 20,
+    className,
+}: {
+    entry: LeaderboardEntry;
+    size?: number;
+    className?: string;
+}) {
     const shown = entry.badges?.slice(0, 3) ?? [];
     if (entry.badgeCount <= 0) return null;
     return (
-        <span className={cn('inline-flex items-center gap-0.5', className)}>
+        <span className={cn('inline-flex items-center gap-1', className)}>
             {shown.map((b, i) => (
                 <span key={i} title={b.name} className="inline-flex">
-                    <BadgeVisual icon={b.icon} size={14} className="text-warning-600" />
+                    <BadgeVisual icon={b.icon} size={size} className="text-warning-600" />
                 </span>
             ))}
             {entry.badgeCount > shown.length && (
@@ -52,12 +62,97 @@ function BadgeIcons({ entry, className }: { entry: LeaderboardEntry; className?:
     );
 }
 
-function PodiumSpot({ entry, place }: { entry?: LeaderboardEntry; place: 1 | 2 | 3 }) {
+/** A single badge at a readable size — library art or icon, with its name. */
+function BadgeCell({ badge }: { badge: { name: string; icon: string } }) {
+    const isLib = isLibraryToken(badge.icon);
+    return (
+        <div className="flex w-24 flex-col items-center gap-1.5" title={badge.name}>
+            <span
+                className={cn(
+                    'flex items-center justify-center',
+                    isLib ? 'size-24' : 'size-20 rounded-full bg-primary-50'
+                )}
+            >
+                <BadgeVisual
+                    icon={badge.icon}
+                    size={isLib ? 88 : 44}
+                    className={isLib ? undefined : 'text-primary-500'}
+                />
+            </span>
+            <span className="w-full text-center text-caption font-medium leading-tight text-neutral-700">
+                {badge.name}
+            </span>
+        </div>
+    );
+}
+
+/** Popup: a learner's earned badges at full size (opened by clicking a leaderboard row). */
+function EntryBadgesDialog({
+    entry,
+    onClose,
+}: {
+    entry: LeaderboardEntry | null;
+    onClose: () => void;
+}) {
+    return (
+        <Dialog open={Boolean(entry)} onOpenChange={(v) => !v && onClose()}>
+            <DialogContent className="max-w-md">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Trophy weight="fill" className="size-5 text-warning-500" />
+                        {entry?.name ? `${entry.name}'s badges` : 'Badges'}
+                    </DialogTitle>
+                </DialogHeader>
+                {entry && entry.badges?.length > 0 ? (
+                    <div className="flex flex-wrap justify-center gap-3 py-2">
+                        {entry.badges.map((b, i) => (
+                            <BadgeCell key={i} badge={b} />
+                        ))}
+                    </div>
+                ) : (
+                    <p className="py-6 text-center text-caption text-muted-foreground">
+                        No badges earned yet.
+                    </p>
+                )}
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+function PodiumSpot({
+    entry,
+    place,
+    onClick,
+}: {
+    entry?: LeaderboardEntry;
+    place: 1 | 2 | 3;
+    onClick?: () => void;
+}) {
     if (!entry) return <div className="flex-1" />;
     const first = place === 1;
     const tone = PLACE[place];
+    const clickable = Boolean(onClick) && entry.badgeCount > 0;
     return (
-        <div className="flex flex-1 flex-col items-center justify-end gap-1">
+        <div
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            onClick={clickable ? onClick : undefined}
+            onKeyDown={
+                clickable
+                    ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              onClick?.();
+                          }
+                      }
+                    : undefined
+            }
+            title={clickable ? 'View badges' : undefined}
+            className={cn(
+                'flex flex-1 flex-col items-center justify-end gap-1',
+                clickable && 'cursor-pointer'
+            )}
+        >
             {first ? (
                 <Crown weight="fill" className="size-5 text-warning-500" />
             ) : (
@@ -84,15 +179,39 @@ function PodiumSpot({ entry, place }: { entry?: LeaderboardEntry; place: 1 | 2 |
                 {entry.name}
             </p>
             <p className="text-caption font-bold tabular-nums text-primary-600">{entry.points} pts</p>
-            <BadgeIcons entry={entry} />
+            {entry.badgeCount > 0 && (
+                <span className="flex items-center justify-center rounded-full bg-warning-50 px-2 py-1 ring-1 ring-warning-100">
+                    <BadgeIcons entry={entry} size={first ? 28 : 24} />
+                </span>
+            )}
             <div className={cn('mt-1 w-full rounded-t-lg bg-primary-50', tone.bar)} />
         </div>
     );
 }
 
-function Row({ entry }: { entry: LeaderboardEntry }) {
+function Row({ entry, onClick }: { entry: LeaderboardEntry; onClick?: () => void }) {
+    const clickable = Boolean(onClick) && entry.badgeCount > 0;
     return (
-        <div className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-neutral-50">
+        <div
+            role={clickable ? 'button' : undefined}
+            tabIndex={clickable ? 0 : undefined}
+            onClick={clickable ? onClick : undefined}
+            onKeyDown={
+                clickable
+                    ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              onClick?.();
+                          }
+                      }
+                    : undefined
+            }
+            title={clickable ? 'View badges' : undefined}
+            className={cn(
+                'flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-neutral-50',
+                clickable && 'cursor-pointer'
+            )}
+        >
             <span className="w-6 text-center text-caption font-bold tabular-nums text-neutral-400">
                 {entry.rank ?? '–'}
             </span>
@@ -100,11 +219,12 @@ function Row({ entry }: { entry: LeaderboardEntry }) {
             <span className="flex-1 truncate text-body font-medium text-neutral-700">
                 {entry.name}
             </span>
-            <BadgeIcons entry={entry} />
+            <BadgeIcons entry={entry} size={22} />
             <span className="w-16 text-right text-body font-bold tabular-nums text-neutral-700">
                 {entry.points}
                 <span className="ml-0.5 text-caption font-normal text-neutral-400">pts</span>
             </span>
+            {clickable && <CaretRight className="size-3.5 shrink-0 text-neutral-300" />}
         </div>
     );
 }
@@ -136,6 +256,9 @@ export function LeaderboardShareDialog({
     const entries = data?.entries ?? [];
     const top3 = entries.slice(0, 3);
     const rest = entries.slice(3);
+    const [selectedEntry, setSelectedEntry] = useState<LeaderboardEntry | null>(null);
+    const openBadges = (entry: LeaderboardEntry) =>
+        entry.badgeCount > 0 ? setSelectedEntry(entry) : undefined;
 
     const handleCopy = () => {
         if (!shareUrl) return;
@@ -152,6 +275,7 @@ export function LeaderboardShareDialog({
     };
 
     return (
+        <>
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-lg gap-0 overflow-hidden p-0">
                 {/* Branded header */}
@@ -193,15 +317,15 @@ export function LeaderboardShareDialog({
                         <>
                             {/* Podium: 2 · 1 · 3 */}
                             <div className="mb-3 flex items-end gap-2 rounded-lg bg-gradient-to-b from-primary-50 to-white p-3">
-                                <PodiumSpot entry={top3[1]} place={2} />
-                                <PodiumSpot entry={top3[0]} place={1} />
-                                <PodiumSpot entry={top3[2]} place={3} />
+                                <PodiumSpot entry={top3[1]} place={2} onClick={() => top3[1] && openBadges(top3[1])} />
+                                <PodiumSpot entry={top3[0]} place={1} onClick={() => top3[0] && openBadges(top3[0])} />
+                                <PodiumSpot entry={top3[2]} place={3} onClick={() => top3[2] && openBadges(top3[2])} />
                             </div>
 
                             {rest.length > 0 && (
                                 <div className="flex flex-col gap-0.5">
                                     {rest.map((entry, i) => (
-                                        <Row key={i} entry={entry} />
+                                        <Row key={i} entry={entry} onClick={() => openBadges(entry)} />
                                     ))}
                                 </div>
                             )}
@@ -225,5 +349,7 @@ export function LeaderboardShareDialog({
                 </div>
             </DialogContent>
         </Dialog>
+        <EntryBadgesDialog entry={selectedEntry} onClose={() => setSelectedEntry(null)} />
+        </>
     );
 }

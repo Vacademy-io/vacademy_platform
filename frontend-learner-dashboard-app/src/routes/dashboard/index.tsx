@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ModernCard } from "@/components/design-system/modern-card";
 import {
   BookOpen,
   Users,
@@ -87,6 +88,7 @@ import { usePlayTheme } from "@/hooks/use-play-theme";
 import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import { computeGamificationData } from "@/services/play-gamification";
+import { syncBadgeUnlocks } from "@/services/badge-sync";
 import {
   getBadgeConfig,
   configNeedsAssessmentScore,
@@ -103,16 +105,130 @@ import { AchievementBadgesWidget } from "./-components/play/AchievementBadgesWid
 import { DashboardGamificationPanel } from "./-components/DashboardGamificationPanel";
 import { TncModal } from "@/components/Dashboards/LearnerDashboard/TncModal";
 import type { BatchForSessionType } from "@/stores/study-library/institute-schema";
+import {
+  ONBOARDING_INSTANCES_QUERY_KEY,
+  OnboardingStepForm,
+} from "../profile/onboarding/-components/onboarding-step-form";
+import { OnboardingProgressList } from "../profile/onboarding/-components/onboarding-progress-list";
+import {
+  getCurrentStepInfo,
+  getMyOnboardingInstances,
+  type OnboardingInstanceDTO,
+} from "../profile/onboarding/-services/onboarding-services";
+import { getInstituteId } from "@/constants/helper";
 
 export const Route = createFileRoute("/dashboard/")({
   component: () => {
     return (
       <LayoutContainer>
-        <DashboardComponent />
+        <DashboardOnboardingGate />
       </LayoutContainer>
     );
   },
 });
+
+/**
+ * Gates the dashboard on any pending onboarding step the caller can actually
+ * act on: while one exists, the learner sees that step's form here instead of
+ * the full dashboard. Once it's submitted (or there simply isn't one — no
+ * onboarding started, already completed, or the only pending step needs an
+ * admin), this frees up and mounts the real dashboard. The dashboard's own
+ * (expensive) data fetches only start once this resolves, so a blocked
+ * learner doesn't pay for dashboard queries they can't see yet.
+ */
+function DashboardOnboardingGate() {
+  // Resolved the same way as the standalone /onboarding page (getInstituteId(), not the
+  // domain-routing store): that store only gets populated once useDomainRouting's async
+  // resolution completes, which can still be in flight on a fresh page load, and starts
+  // `null` either way -- there is no way to tell "not yet known" from "genuinely absent"
+  // from the store alone. Without an explicit resolving flag, the gate below would fall
+  // through to <DashboardComponent /> during that window (its query stays disabled while
+  // instituteId is null) and flash the real dashboard before the onboarding check can run.
+  const [instituteId, setInstituteId] = useState<string | null>(null);
+  const [isResolvingInstitute, setIsResolvingInstitute] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const id = await getInstituteId();
+      if (!cancelled) {
+        setInstituteId(id ?? null);
+        setIsResolvingInstitute(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const { data: instances, isLoading } = useQuery({
+    queryKey: [ONBOARDING_INSTANCES_QUERY_KEY, instituteId],
+    queryFn: () => getMyOnboardingInstances(instituteId as string),
+    enabled: Boolean(instituteId),
+    staleTime: 30 * 1000,
+  });
+
+  const withCurrentStep = (instances ?? [])
+    .map((instance) => ({ instance, current: getCurrentStepInfo(instance) }))
+    .filter(
+      (entry): entry is { instance: OnboardingInstanceDTO; current: NonNullable<ReturnType<typeof getCurrentStepInfo>> } =>
+        entry.current !== null
+    );
+  const pending = withCurrentStep.find((entry) => entry.current.isActionable);
+  // Nothing the learner can act on right now, but there IS a step in progress that needs
+  // their admin -- surface that instead of just silently freeing straight into the full
+  // dashboard, so it's clear WHY onboarding "disappeared" rather than looking abandoned.
+  const waitingOnAdmin = !pending
+    ? withCurrentStep.find((entry) => !entry.current.isActionable)
+    : undefined;
+
+  if (isResolvingInstitute || (Boolean(instituteId) && isLoading)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Skeleton className="h-8 w-48" />
+      </div>
+    );
+  }
+
+  if (pending) {
+    return (
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-1 py-6">
+        <div>
+          <h1 className="text-h3 font-semibold text-neutral-700">
+            {pending.instance.subject_full_name
+              ? `Finish setting up ${pending.instance.subject_full_name}'s account`
+              : "Finish setting up your account"}
+          </h1>
+          <p className="mt-1 text-sm text-neutral-500">
+            Complete the steps below to continue to your dashboard.
+          </p>
+        </div>
+        <OnboardingStepForm stepInstance={pending.current.step} onSubmitted={() => {}} />
+        <ModernCard variant="outlined" padding="md" rounded="lg">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+            Progress
+          </p>
+          <OnboardingProgressList stepInstances={pending.instance.step_instances} />
+        </ModernCard>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {waitingOnAdmin && (
+        <div className="flex items-center justify-center gap-2 border-b border-warning-200 bg-warning-50 px-4 py-2.5 text-center text-sm text-warning-700">
+          <Hourglass size={16} weight="fill" />
+          <span>
+            <strong>&ldquo;{waitingOnAdmin.current.step.step_name}&rdquo;</strong> is being
+            handled by your school admin — you don&apos;t need to do anything here.
+          </span>
+        </div>
+      )}
+      <DashboardComponent />
+    </>
+  );
+}
 
 export function DashboardComponent() {
   const [username, setUsername] = useState<string | null>(null);
@@ -438,6 +554,20 @@ export function DashboardComponent() {
         });
 
         setGamificationData(gamificationData);
+
+        // Persist auto-unlocked badges server-side so they show on the leaderboards
+        // (best-effort, throttled per institute inside the service).
+        if (instituteId) {
+          const toSync = gamificationData.badges
+            .filter((b) => b.unlocked && !b.isAdminAwarded)
+            .map((b) => ({
+              badgeId: b.id,
+              badgeName: b.name,
+              badgeIcon: b.icon,
+              badgeDescription: b.description,
+            }));
+          void syncBadgeUnlocks(instituteId, toSync);
+        }
       } catch (error) {
         console.error("Failed to compute gamification data:", error);
       }

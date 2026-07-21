@@ -288,17 +288,21 @@
   }
 
   /* ── Background Surfaces ────────────────────────────────────────── */
+  /* Neutral page-ish blocks: follow the canvas so they don't sit as a cool
+     grey patch on an institute-tinted background. */
   .ui-play .bg-gray-50 {
-    background-color: #f8f9fb !important;
+    background-color: hsl(var(--background)) !important;
   }
 
   .ui-play .bg-white\/80 {
     background-color: white !important;
   }
 
-  /* Dashboard surface: plain white so the green/blue/pink hero cards pop. */
+  /* Dashboard surface: follows --background (white by default) so an
+     institute-authored page tint (THEME_SETTING `background` role) reaches
+     the Play dashboard too, instead of being painted over with hard white. */
   .ui-play .dashboard-container {
-    background-color: white !important;
+    background-color: hsl(var(--background)) !important;
     background-image: none !important;
   }
 

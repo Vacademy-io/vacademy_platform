@@ -53,8 +53,14 @@ public class OnboardingStepWorkflowTriggerService {
 
     /**
      * Make this step's attached workflow triggers exactly match {@code desired} (authoritative):
-     * create workflow_trigger rows for each (event, workflow) pair not already present, and delete
-     * existing rows on this step whose (event, workflow) pair isn't in the desired set.
+     * create/reactivate workflow_trigger rows for each (event, workflow) pair not already active,
+     * and deactivate existing rows on this step whose (event, workflow) pair isn't in the desired
+     * set.
+     *
+     * <p>Deactivation is a status flip, not a hard delete: once a trigger has fired at least once,
+     * workflow_execution rows FK-reference it (fk_workflow_execution_trigger), so a DELETE on a
+     * fired trigger throws a DataIntegrityViolationException -- discovered live while editing a
+     * step's triggers after its ONBOARDING_STEP_ENTERED trigger had already executed.</p>
      */
     @Transactional
     public Map<String, Object> saveStepWorkflowTriggers(String instituteId, String stepId,
@@ -87,16 +93,27 @@ public class OnboardingStepWorkflowTriggerService {
                 toRemove.add(t);
             }
         }
-        workflowTriggerRepository.deleteAll(toRemove);
+        for (WorkflowTrigger t : toRemove) {
+            t.setStatus(StatusEnum.INACTIVE.name());
+        }
+        workflowTriggerRepository.saveAll(toRemove);
         removed = toRemove.size();
 
         for (OnboardingStepTriggerDTO d : valid) {
             String ev = d.getTriggerEventName().trim();
-            if (workflowTriggerRepository.existsByWorkflow_IdAndEventIdAndTriggerEventName(
-                    d.getWorkflowId().trim(), stepId, ev)) {
+            String wfId = d.getWorkflowId().trim();
+            Optional<WorkflowTrigger> existingTrigger = workflowTriggerRepository
+                    .findFirstByWorkflow_IdAndEventIdAndTriggerEventName(wfId, stepId, ev);
+            if (existingTrigger.isPresent()) {
+                WorkflowTrigger t = existingTrigger.get();
+                if (!StatusEnum.ACTIVE.name().equals(t.getStatus())) {
+                    t.setStatus(StatusEnum.ACTIVE.name());
+                    workflowTriggerRepository.save(t);
+                    created++;
+                }
                 continue;
             }
-            Workflow wf = workflowRepository.findById(d.getWorkflowId().trim()).orElse(null);
+            Workflow wf = workflowRepository.findById(wfId).orElse(null);
             if (wf == null) continue;
             workflowTriggerRepository.save(WorkflowTrigger.builder()
                     .triggerEventName(ev)

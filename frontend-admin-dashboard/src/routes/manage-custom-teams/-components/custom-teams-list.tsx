@@ -2,18 +2,8 @@ import { MyButton } from '@/components/design-system/button';
 import { Plus, User, Building2, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
 import { AddMemberForm } from './add-member-form';
+import { SubOrgRemoveMemberDialog } from './sub-org-remove-member-dialog';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     getAllRoles,
@@ -159,19 +149,33 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
         ? (selectedTab === 'active' ? activeMembers : invitedMembers)
         : allMembers;
 
+    // Which member the remove dialog is targeting (null = closed).
+    const [removeTarget, setRemoveTarget] = useState<{ userId: string; name: string } | null>(null);
+
     const removeMutation = useMutation({
-        mutationFn: async (userId: string) => {
+        mutationFn: async (vars: {
+            userId: string;
+            removeMode: 'SOFT' | 'HARD';
+            accessTillDate: string | null;
+        }) => {
             if (mode !== 'subOrg' || !subOrgId) {
                 throw new Error('Remove is only supported in sub-org mode');
             }
             return removeSubOrgTeamMember({
                 sub_org_id: subOrgId,
                 institute_id: instituteId!,
-                user_id: userId,
+                user_id: vars.userId,
+                mode: vars.removeMode,
+                access_till_date: vars.accessTillDate,
             });
         },
-        onSuccess: () => {
-            toast.success('Member removed from sub-org');
+        onSuccess: (_data, vars) => {
+            toast.success(
+                vars.removeMode === 'SOFT'
+                    ? 'Member scheduled for removal — access continues until the chosen date'
+                    : 'Member removed from sub-org'
+            );
+            setRemoveTarget(null);
             queryClient.invalidateQueries({ queryKey: ['custom-teams'] });
         },
         onError: (err: any) => {
@@ -352,49 +356,28 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                                     })()}
                                     {mode === 'subOrg' && (
                                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                            <AlertDialog>
-                                                <AlertDialogTrigger asChild>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        disabled={removeMutation.isPending}
-                                                        className="h-8 w-8 text-neutral-500 hover:bg-danger-50 hover:text-danger-600"
-                                                        aria-label="Remove from sub-org"
-                                                        title="Remove from sub-org"
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                </AlertDialogTrigger>
-                                                <AlertDialogContent>
-                                                    <AlertDialogHeader>
-                                                        <AlertDialogTitle>
-                                                            Remove team member?
-                                                        </AlertDialogTitle>
-                                                        <AlertDialogDescription>
-                                                            This will revoke{' '}
-                                                            <span className="font-medium">
-                                                                {member.full_name || member.fullName || 'this user'}
-                                                            </span>
-                                                            's access to this sub-org. Their account stays intact;
-                                                            access to other sub-orgs (if any) is unaffected.
-                                                        </AlertDialogDescription>
-                                                    </AlertDialogHeader>
-                                                    <AlertDialogFooter>
-                                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                        <AlertDialogAction
-                                                            className="bg-danger-600 text-white hover:bg-danger-700"
-                                                            onClick={() => {
-                                                                const userId = member.id || member.userId;
-                                                                if (!userId) return;
-                                                                removeMutation.mutate(userId);
-                                                            }}
-                                                        >
-                                                            Remove
-                                                        </AlertDialogAction>
-                                                    </AlertDialogFooter>
-                                                </AlertDialogContent>
-                                            </AlertDialog>
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="icon"
+                                                disabled={removeMutation.isPending}
+                                                className="h-8 w-8 text-neutral-500 hover:bg-danger-50 hover:text-danger-600"
+                                                aria-label="Remove from sub-org"
+                                                title="Remove from sub-org"
+                                                onClick={() => {
+                                                    const userId = member.id || member.userId;
+                                                    if (!userId) return;
+                                                    setRemoveTarget({
+                                                        userId,
+                                                        name:
+                                                            member.full_name ||
+                                                            member.fullName ||
+                                                            'this user',
+                                                    });
+                                                }}
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
                                         </TableCell>
                                     )}
                                 </TableRow>
@@ -425,6 +408,21 @@ export function CustomTeamsList({ mode = 'institute', subOrgId }: CustomTeamsLis
                 userName={historyDrawer?.name}
                 subtitle="Team member"
                 readOnly={isCallerSubOrgAdmin()}
+            />
+
+            <SubOrgRemoveMemberDialog
+                open={!!removeTarget}
+                onOpenChange={(o) => !o && setRemoveTarget(null)}
+                memberName={removeTarget?.name || 'this user'}
+                isPending={removeMutation.isPending}
+                onConfirm={(removeMode, accessTillDate) => {
+                    if (!removeTarget) return;
+                    removeMutation.mutate({
+                        userId: removeTarget.userId,
+                        removeMode,
+                        accessTillDate,
+                    });
+                }}
             />
         </div>
     );

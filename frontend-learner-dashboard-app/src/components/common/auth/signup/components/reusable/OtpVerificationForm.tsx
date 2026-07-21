@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -55,6 +57,7 @@ export function OtpVerificationForm({
   checkEnrollmentOnce,
   settings,
 }: OtpVerificationFormProps) {
+  const { t } = useTranslation("auth");
   const [isVerifying, setIsVerifying] = useState(false);
   const [timer, setTimer] = useState(60);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -101,7 +104,7 @@ export function OtpVerificationForm({
 
       // Check if OTP is complete
       if (otpString.length !== 6) {
-        toast.error("Please enter the complete 6-digit OTP");
+        toast.error(i18n.t("auth:validation.completeOtp"));
         return;
       }
 
@@ -133,7 +136,7 @@ export function OtpVerificationForm({
             (error) => {
               // Auto-login failed - show error but don't block signup flow
               toast.warning(
-                "You appear to be already enrolled. You can still proceed with signup if needed."
+                i18n.t("auth:otpVerification.alreadyEnrolledWarning")
               );
               console.error("Auto-login after OTP verification failed:", error);
             },
@@ -152,7 +155,7 @@ export function OtpVerificationForm({
         settings?.usernameStrategy === "email" ? email : fullName;
       await onOtpVerified(email, fullNameToUse);
     } catch (error) {
-      toast.error("Invalid OTP. Please try again.");
+      toast.error(i18n.t("auth:toasts.invalidOtpRetry"));
       console.error("OTP verification error:", error);
     } finally {
       setIsVerifying(false);
@@ -182,9 +185,9 @@ export function OtpVerificationForm({
       );
 
       startTimer();
-      toast.success("OTP resent successfully");
+      toast.success(i18n.t("auth:toasts.otpResent"));
     } catch (error) {
-      toast.error("Failed to resend OTP. Please try again.");
+      toast.error(i18n.t("auth:toasts.failedToResendOtp"));
       console.error("Resend OTP error:", error);
     }
   };
@@ -279,9 +282,11 @@ export function OtpVerificationForm({
         </motion.div>
         <div className="space-y-1">
           <h3 className="text-lg font-semibold text-gray-900">
-            Check your email
+            {t("common.checkYourEmail")}
           </h3>
-          <p className="text-sm text-gray-600">We've sent a 6-digit code to</p>
+          <p className="text-sm text-gray-600">
+            {t("common.sentSixDigitCode")}
+          </p>
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -318,7 +323,7 @@ export function OtpVerificationForm({
         {/* Resend OTP */}
         <div className="text-center">
           <span className="text-sm text-gray-600">
-            Didn't receive the code?{" "}
+            {t("otpVerification.didntReceiveCode")}{" "}
           </span>
           <button
             onClick={handleResendOtp}
@@ -326,11 +331,11 @@ export function OtpVerificationForm({
             className="text-sm text-gray-600 hover:text-gray-800 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors duration-200"
           >
             {timer > 0 ? (
-              <span>Resend in {timer}s</span>
+              <span>{t("common.resendIn", { count: timer })}</span>
             ) : (
               <span className="flex items-center justify-center gap-2">
                 <ArrowsClockwise className="w-4 h-4" />
-                Resend OTP
+                {t("otpVerification.resendOtp")}
               </span>
             )}
           </button>
@@ -344,10 +349,10 @@ export function OtpVerificationForm({
           {isVerifying ? (
             <>
               <SpinnerGap className="w-4 h-4 me-2 animate-spin" />
-              Verifying...
+              {t("common.verifying")}
             </>
           ) : (
-            "Verify OTP"
+            t("otpVerification.verifyOtp")
           )}
         </Button>
       </div>
@@ -359,7 +364,7 @@ export function OtpVerificationForm({
           className="w-full flex items-center justify-center gap-2 text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to signup options
+          {t("emailInput.backToOptions")}
         </button>
       )}
     </motion.div>

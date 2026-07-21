@@ -1,6 +1,12 @@
 FROM python:3.11-slim-bookworm
 
-# System deps for Playwright (Chromium) and FFmpeg
+# System deps for Playwright (Chromium), FFmpeg and LibreOffice.
+#
+# Fonts matter for pptx->slide rendering: PowerPoint decks are overwhelmingly
+# Calibri/Cambria, and without metric-compatible faces LibreOffice substitutes a
+# font with different metrics, so text reflows and drifts out of alignment in the
+# rendered slides. Carlito == Calibri, Caladea == Cambria, Liberation ==
+# Arial/Times/Courier.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 \
@@ -9,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 libgtk-3-0 fonts-liberation fonts-noto fonts-noto-color-emoji \
     libsndfile1 \
     libreoffice-impress libreoffice-core \
+    fonts-crosextra-carlito fonts-crosextra-caladea fonts-dejavu \
     wget curl \
     && rm -rf /var/lib/apt/lists/*
 

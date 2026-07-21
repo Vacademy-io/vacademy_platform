@@ -49,9 +49,12 @@ export const saveThemeRoleSettings = async (settings: ThemeRoleSettings): Promis
         }
     );
     // Keep the locally-cached copy theme-provider.tsx reads in sync so the
-    // new nav role applies immediately without waiting for the next
-    // institute-details fetch.
-    if (settings.roles?.nav) {
+    // new roles apply immediately without waiting for the next
+    // institute-details fetch. Gate on "any role at all", not nav
+    // specifically — a background-only or secondary-only save used to fall
+    // into the else and wipe the cache, silently discarding the save until
+    // the next full institute fetch.
+    if (settings.roles && Object.keys(settings.roles).length > 0) {
         localStorage.setItem(THEME_ROLE_SETTINGS_KEY, JSON.stringify(settings));
     } else {
         localStorage.removeItem(THEME_ROLE_SETTINGS_KEY);

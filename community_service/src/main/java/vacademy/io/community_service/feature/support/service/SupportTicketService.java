@@ -333,10 +333,13 @@ public class SupportTicketService {
 
     /**
      * @param instituteIds filter to these institutes; null/empty means "all institutes".
+     * @param unassigned   when true, only tickets with no assigned engineer (overrides engineerId).
+     * @param searchTerm   case-insensitive substring match on the subject; null/blank skips it.
      */
     @Transactional(readOnly = true)
     public PageResponseDto<SupportTicketDto> search(Collection<String> instituteIds, String statusFilter,
-                                                    String engineerId, boolean onlyOverdue, Pageable pageable) {
+                                                    String engineerId, boolean unassigned, String searchTerm,
+                                                    boolean onlyOverdue, Pageable pageable) {
         TicketStatus status = TicketStatus.fromName(statusFilter, null);
         List<String> institutes = instituteIds == null ? List.of() : instituteIds.stream()
                 .filter(StringUtils::hasText)
@@ -347,12 +350,30 @@ public class SupportTicketService {
                 // Never bind an empty IN list; the sentinel is unreachable when hasInstitutes=false.
                 institutes.isEmpty() ? List.of("__none__") : institutes,
                 status,
-                StringUtils.hasText(engineerId) ? engineerId : null,
+                // "Unassigned" and "assigned to X" are mutually exclusive; unassigned wins.
+                (unassigned || !StringUtils.hasText(engineerId)) ? null : engineerId,
+                unassigned,
+                likeParam(searchTerm),
                 onlyOverdue,
                 new Date(),
                 pageable);
         Map<String, String> names = engineerNames(page);
         return PageResponseDto.of(page, t -> toSummaryDto(t, names));
+    }
+
+    /**
+     * Build the bind value for a case-insensitive "contains" LIKE. Escapes the LIKE wildcards so a
+     * literal % or _ typed into the search box matches itself instead of acting as a wildcard.
+     */
+    private String likeParam(String term) {
+        if (!StringUtils.hasText(term)) {
+            return null;
+        }
+        String escaped = term.trim().toLowerCase()
+                .replace("!", "!!")
+                .replace("%", "!%")
+                .replace("_", "!_");
+        return "%" + escaped + "%";
     }
 
     @Transactional(readOnly = true)

@@ -7,7 +7,7 @@ Translation endpoints (i18n Phase 1 Wave 1 — Arabic-first content translation)
   POST /translation/v1/job/{job_id}/approve        resume WRITE_BACK from REVIEW
   GET  /translation/v1/job/{job_id}                job status/progress
 
-Auth: same dual-auth shape as the transcription/assessment routers — an
+Auth: triple — a signed-in dashboard user (Bearer JWT + clientId), an
 institute API key (X-Institute-Key) OR the internal service token
 (X-Internal-Service-Token, admin_core server-to-server; institute_id then comes
 from the body). Delivery of translated content to learners is unchanged Java
@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from ..db import db_dependency
-from ..dependencies import get_institute_id_or_internal
+from ..dependencies import get_institute_id_or_internal_or_user
 from ..models.ai_translation_job import (
     AiTranslationJob,
     TranslationJobMode,
@@ -43,7 +43,7 @@ SUPPORTED_LOCALES = set(translation_service.LOCALE_NAMES)
 
 
 def _resolve_institute(auth: tuple, body_institute_id: Optional[str], required: bool = True) -> Optional[str]:
-    """INSTITUTE mode → resolved from the API key; INTERNAL mode → body field."""
+    """INSTITUTE mode → from the API key or the caller's pinned clientId; INTERNAL mode → body field."""
     resolved_institute_id, auth_mode = auth
     if auth_mode == "INTERNAL":
         if required and not body_institute_id:
@@ -120,7 +120,7 @@ class ApproveRequest(BaseModel):
 @router.post("/estimate")
 async def estimate(
     request: EstimateRequest,
-    auth: tuple = Depends(get_institute_id_or_internal),
+    auth: tuple = Depends(get_institute_id_or_internal_or_user),
     db: Session = Depends(db_dependency),
 ) -> Dict[str, Any]:
     """Parametric credit estimate + affordability for a translation run."""
@@ -142,7 +142,7 @@ async def estimate(
 async def translate_course(
     package_session_id: str,
     request: CourseTranslationRequest,
-    auth: tuple = Depends(get_institute_id_or_internal),
+    auth: tuple = Depends(get_institute_id_or_internal_or_user),
     db: Session = Depends(db_dependency),
 ) -> Dict[str, Any]:
     """Kick off an async course-translation job (stage machine). Returns the
@@ -206,7 +206,7 @@ async def translate_course(
 @router.post("/strings")
 async def translate_strings(
     request: StringsRequest,
-    auth: tuple = Depends(get_institute_id_or_internal),
+    auth: tuple = Depends(get_institute_id_or_internal_or_user),
     db: Session = Depends(db_dependency),
 ) -> Dict[str, Any]:
     """Synchronous UI/notification string batch: exact-hash TM per item, one
@@ -258,7 +258,7 @@ async def translate_strings(
 async def approve_job(
     job_id: str,
     request: ApproveRequest,
-    auth: tuple = Depends(get_institute_id_or_internal),
+    auth: tuple = Depends(get_institute_id_or_internal_or_user),
     db: Session = Depends(db_dependency),
 ) -> Dict[str, Any]:
     """Resume a DRAFT job parked at REVIEW: record decisions, run WRITE_BACK."""
@@ -295,7 +295,7 @@ async def get_job(
     include_items: bool = Query(
         False, description="Include the per-item translations (review UI payload)."
     ),
-    auth: tuple = Depends(get_institute_id_or_internal),
+    auth: tuple = Depends(get_institute_id_or_internal_or_user),
     db: Session = Depends(db_dependency),
 ) -> Dict[str, Any]:
     """Job status/progress (items_done / items_total tick during TRANSLATE)."""

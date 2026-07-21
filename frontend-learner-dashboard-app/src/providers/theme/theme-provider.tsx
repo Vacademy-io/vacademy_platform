@@ -11,33 +11,20 @@ import {
   type NavRoleColors,
   type ThemeRoleSettings,
 } from "@/types/theme-role-settings";
+import { rampFromHsl, hslVar, SHADES } from "@/lib/theme-ramp";
+import { applyInstituteBackground, applyInstituteFont } from "@/utils/institute-theme-roles";
 
-// Generates a full 50-500 shade ramp (same clamp curve for every caller —
-// primary, secondary, tertiary) around an arbitrary HSL base.
+// Generates a full 50-500 shade ramp around an arbitrary HSL base — same
+// tint curve for every caller (primary, secondary, tertiary) and identical
+// to the curve baked into the preset palettes. See lib/theme-ramp.ts for
+// why this is a mix-toward-white rather than the older saturation-raising
+// formula (it turned dark/saturated brands neon and greys pink).
 const setShadeRamp = (prefix: string, hue: number, sat: number, light: number) => {
-  const wrap = (deg: number) => ((deg % 360) + 360) % 360;
-  document.documentElement.style.setProperty(`--${prefix}`, `${wrap(hue)} ${sat}% ${light}%`);
-  document.documentElement.style.setProperty(`--${prefix}-500`, `${wrap(hue)} ${sat}% ${light}%`);
-  document.documentElement.style.setProperty(
-    `--${prefix}-50`,
-    `${wrap(hue)} ${Math.min(sat + 40, 100)}% ${Math.min(light + 45, 96)}%`
-  );
-  document.documentElement.style.setProperty(
-    `--${prefix}-100`,
-    `${wrap(hue)} ${Math.min(sat + 30, 90)}% ${Math.min(light + 38, 92)}%`
-  );
-  document.documentElement.style.setProperty(
-    `--${prefix}-200`,
-    `${wrap(hue)} ${Math.min(sat + 20, 88)}% ${Math.min(light + 29, 83)}%`
-  );
-  document.documentElement.style.setProperty(
-    `--${prefix}-300`,
-    `${wrap(hue)} ${Math.min(sat + 10, 87)}% ${Math.min(light + 18, 72)}%`
-  );
-  document.documentElement.style.setProperty(
-    `--${prefix}-400`,
-    `${wrap(hue)} ${Math.min(sat + 5, 86)}% ${Math.min(light + 7, 61)}%`
-  );
+  const ramp = rampFromHsl(hue, sat, light);
+  document.documentElement.style.setProperty(`--${prefix}`, hslVar(ramp["500"]));
+  SHADES.forEach((shade) => {
+    document.documentElement.style.setProperty(`--${prefix}-${shade}`, hslVar(ramp[shade]));
+  });
 };
 
 // Institute-authored secondary/tertiary override (THEME_SETTING). Runs after
@@ -113,7 +100,8 @@ const applyNavRoles = (h: number, s: number, l: number) => {
   // primary-500 active text — pixel-equivalent to today's hardcoded classes.
   setHSL("--nav-surface", 0, 0, 100);
   setHSL("--nav-surface-hover", 210, 40, 96); // matches shadcn --muted, not hue-tinted (today's hover:bg-muted/60)
-  setHSL("--nav-active", h, Math.min(s + 40, 100), Math.min(l + 45, 96)); // == primary-50
+  const [a50h, a50s, a50l] = rampFromHsl(h, s, l)["50"];
+  setHSL("--nav-active", a50h, a50s, a50l); // == primary-50
   setHSL("--nav-active-text", h, s, l); // == primary-500
   setHSL("--nav-text", 222.2, 84, 4.9); // == --foreground exactly (today's inherited default)
 };
@@ -245,6 +233,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       // Institute-authored secondary/tertiary override, if any — replaces
       // the preset's bundled shades set above.
       applySecondaryTertiaryOverrides();
+      // Institute-authored page canvas, if any.
+      applyInstituteBackground();
+      applyInstituteFont();
 
       // Store the theme selection
       localStorage.setItem("theme-code", primaryColor);
@@ -271,6 +262,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       // Institute-authored secondary/tertiary override, if any — replaces
       // the hue-shifted defaults set above.
       applySecondaryTertiaryOverrides();
+      // Institute-authored page canvas, if any.
+      applyInstituteBackground();
+      applyInstituteFont();
 
       // Store the custom color
       localStorage.setItem("theme-custom-color", primaryColor);

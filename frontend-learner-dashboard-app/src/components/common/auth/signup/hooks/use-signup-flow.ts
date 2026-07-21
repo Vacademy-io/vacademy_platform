@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
+import i18n from "@/i18n";
 import { useNavigate } from "@tanstack/react-router";
 import { 
   searchInstitute, 
@@ -81,7 +82,7 @@ export const useSignupFlow = (isModalSignup?: boolean, type?: string, courseId?:
         isSearching: false 
       }));
     } catch (error) {
-      toast.error("Failed to search institutes. Please try again.");
+      toast.error(i18n.t("auth:enrollment.searchInstitutesFailed"));
       setState(prev => ({ 
         ...prev, 
         searchResults: [], 
@@ -172,7 +173,7 @@ export const useSignupFlow = (isModalSignup?: boolean, type?: string, courseId?:
       // The hook will handle login and redirection automatically
     } catch (error) {
       console.error("Registration failed:", error);
-      toast.error("Registration failed. Please try again.");
+      toast.error(i18n.t("auth:enrollment.registrationFailed"));
     }
   }, [state.selectedInstitute, state.selectedRole, state.userData, registerUserUnified]);
 

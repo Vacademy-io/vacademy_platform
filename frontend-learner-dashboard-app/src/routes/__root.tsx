@@ -66,6 +66,8 @@ const PUBLIC_ROUTES = [
   "/learner-invitation-response",
   "/payment-result",
   "/audience-response",
+  "/booking-response", // Public Calendly-style booking page
+  "/booking-manage", // Public manage-booking page (token link)
   "/sub-org-registration", // Public sub-org self-registration wizard
   "/kyc-complete", // DigiLocker redirect landing (sub-org registration KYC)
   "/institute-selection",
@@ -95,6 +97,12 @@ const READER_BLOCKED_PATH_PREFIXES = [
   "/admission/payment",
   "/pay",
   "/payment-result",
+  // Sub-org self-registration ends in a Razorpay/Cashfree checkout wizard
+  // (and /sub-org-registration/payment-result) — an external-gateway purchase.
+  "/sub-org-registration",
+  // Parent portal "Payment" tab embeds Razorpay for admission/fee payment.
+  // Only the payment sub-route is blocked; the rest of /parent stays reachable.
+  "/parent/payment",
 ];
 
 const isReaderBlockedPath = (pathname: string): boolean =>

@@ -1,4 +1,5 @@
 import { Fire, Play, VideoCamera } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { ProgressRing } from "./ProgressRing";
 import heroGreeting from "@/assets/cleaner-play/hero-greeting.webp";
@@ -36,6 +37,7 @@ function HeroSkeleton(): JSX.Element {
 }
 
 export function PlayDashboardHero(props: PlayDashboardHeroProps): JSX.Element {
+  const { t } = useTranslation("dashboard");
   const {
     userName,
     liveSessions,
@@ -57,7 +59,7 @@ export function PlayDashboardHero(props: PlayDashboardHeroProps): JSX.Element {
     goToCta,
   } = useDashboardHeroData({ userName, liveSessions, hasAnyProgress });
 
-  const ctaLabel = isContinue ? "CONTINUE" : "START";
+  const ctaLabel = isContinue ? t("hero.ctaContinueUpper") : t("hero.ctaStartUpper");
 
   if (!studyLibraryLoaded) {
     return <HeroSkeleton />;
@@ -78,8 +80,11 @@ export function PlayDashboardHero(props: PlayDashboardHeroProps): JSX.Element {
             <div className="min-w-0 flex-1">
               <p className="truncate text-caption font-black uppercase tracking-wide text-play-danger-soft-ink">
                 {imminent.isLive
-                  ? `${liveClassTerm} live now`
-                  : `${liveClassTerm} in ${imminent.minutesToStart} min`}
+                  ? t("hero.liveNow", { liveClass: liveClassTerm })
+                  : t("hero.startsInMinutes", {
+                      liveClass: liveClassTerm,
+                      count: imminent.minutesToStart,
+                    })}
               </p>
               <p className="truncate text-body font-bold leading-tight text-play-danger-soft-ink">
                 {imminent.session.title}
@@ -96,7 +101,7 @@ export function PlayDashboardHero(props: PlayDashboardHeroProps): JSX.Element {
             >
               <span className="inline-flex items-center gap-1.5">
                 <VideoCamera weight="fill" size={18} className="text-play-danger" />
-                Join
+                {t("hero.join")}
               </span>
             </button>
           </div>
@@ -128,7 +133,7 @@ export function PlayDashboardHero(props: PlayDashboardHeroProps): JSX.Element {
                     {streak}
                   </span>
                   <span className="text-caption font-bold text-play-ink">
-                    day streak
+                    {t("hero.dayStreakChip")}
                   </span>
                 </span>
                 {/* Daily goal ring chip */}
@@ -140,7 +145,7 @@ export function PlayDashboardHero(props: PlayDashboardHeroProps): JSX.Element {
                     showLabel={false}
                   />
                   <span className="text-caption font-bold text-play-ink">
-                    Daily goal
+                    {t("hero.dailyGoal")}
                   </span>
                 </span>
               </div>
@@ -153,7 +158,13 @@ export function PlayDashboardHero(props: PlayDashboardHeroProps): JSX.Element {
               type="button"
               onClick={goToCta}
               aria-label={
-                resume ? `Continue ${resume.slideTitle}` : `${ctaLabel} learning`
+                // Whole-sentence aria keys — never ctaLabel + " learning", so
+                // translators aren't handed a fragment to glue.
+                resume
+                  ? t("hero.continueAria", { title: resume.slideTitle })
+                  : isContinue
+                    ? t("hero.ctaContinueLearningAria")
+                    : t("hero.ctaStartLearningAria")
               }
               className={cn(
                 "w-full max-w-md rounded-play-card bg-play-success px-8 py-4",

@@ -54,6 +54,16 @@ public class FileServiceImpl implements FileService {
     @Value("${aws.s3.public-bucket}")
     private String publicBucket;
 
+    /**
+     * Cache-Control stamped on objects copied into the public bucket.
+     * <p>
+     * Every key from {@link #generateFileKey} embeds a fresh UUID, so a public
+     * object's bytes never change once written — a re-upload is always a new key.
+     * That makes these assets safely immutable, so browsers can reuse them without
+     * revalidating rather than re-fetching on every page load.
+     */
+    private static final String PUBLIC_ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable";
+
     @Autowired
     private FileMetadataRepository fileMetadataRepository;
 
@@ -526,8 +536,18 @@ public class FileServiceImpl implements FileService {
     }
 
     public void copyFileToPublicBucket(String objectKey) {
-        CopyObjectRequest copyRequest = new CopyObjectRequest(bucketName, objectKey.trim(), publicBucket,
-                objectKey.trim());
+        String key = objectKey.trim();
+
+        // Supplying newObjectMetadata switches S3 to the REPLACE metadata directive,
+        // which drops every header we do not re-set (Content-Type, SSE, …). So start
+        // from the source object's own metadata and add Cache-Control on top of it —
+        // never build a fresh ObjectMetadata here, or the copy would silently lose
+        // the object's content type and encryption settings.
+        ObjectMetadata metadata = s3Client.getObjectMetadata(bucketName, key);
+        metadata.setCacheControl(PUBLIC_ASSET_CACHE_CONTROL);
+
+        CopyObjectRequest copyRequest = new CopyObjectRequest(bucketName, key, publicBucket, key)
+                .withNewObjectMetadata(metadata);
         s3Client.copyObject(copyRequest);
     }
 

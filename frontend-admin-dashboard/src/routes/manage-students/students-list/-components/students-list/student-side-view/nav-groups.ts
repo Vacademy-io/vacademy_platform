@@ -16,6 +16,7 @@ import {
     IdentificationCard,
     Buildings,
     Users,
+    Path,
     type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
 import type { StudentSideViewTabId } from '@/types/display-settings';
@@ -111,6 +112,11 @@ export const SECTION_REGISTRY: readonly SectionMeta[] = [
     { id: 'badges', label: 'Badges', icon: Trophy, group: 'Account' },
     { id: 'files', label: 'Files', icon: Folder, group: 'Account' },
     { id: 'parent', label: 'Guardian', icon: Users, group: 'Account' },
+    // Onboarding sits here too, for the same reason as Guardian — its feature
+    // toggle (useOnboardingSettings) is independent of the lead system, and
+    // the overlay's CRM module flag is wired to leadSettings.enabled, which
+    // would incorrectly couple onboarding visibility to leads being enabled.
+    { id: 'onboarding', label: 'Onboarding', icon: Path, group: 'Account' },
     { id: 'subOrg', label: 'Sub-Org', icon: Buildings, group: 'Account' },
 
     // Records — "What's the audit trail?"

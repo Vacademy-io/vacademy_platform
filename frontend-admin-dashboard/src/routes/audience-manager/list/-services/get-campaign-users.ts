@@ -88,6 +88,8 @@ export interface CampaignLeadsRequest {
     //   'ONLY_CONVERTED'                → only show those leads
     //   'ALL'                           → show every lead regardless of state
     conversion_status_filter?: 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
+    /** Call-attempt history filter ('' | NOT_CALLED | CALLED | CALLED_ONCE | CALLED_TWICE_PLUS | AI_CALLED | MANUAL_CALLED). */
+    call_history_filter?: string;
     /** Filter by SLA stage (the badge shown in the table). 'ANY_OVERDUE' = TAT_OVERDUE OR FOLLOW_UP_OVERDUE. */
     sla_filter?:
         | 'TAT_BEFORE'
@@ -131,6 +133,7 @@ export const fetchCampaignLeads = async (
                 lead_status_id: payload.lead_status_id,
                 custom_field_filters: payload.custom_field_filters,
                 conversion_status_filter: payload.conversion_status_filter,
+                call_history_filter: payload.call_history_filter,
                 sla_filter: payload.sla_filter,
                 assigned_counselor_id: payload.assigned_counselor_id,
                 is_unassigned: payload.is_unassigned,
@@ -173,6 +176,7 @@ export const handleFetchCampaignUsers = (payload: CampaignLeadsRequest) => {
             // the cached list — the status filter would fire no request.
             payload.lead_status_id ?? '',
             payload.conversion_status_filter ?? 'EXCLUDE_CONVERTED',
+            payload.call_history_filter ?? '',
             payload.sla_filter ?? '',
             payload.assigned_counselor_id ?? '',
             payload.is_unassigned ?? false,

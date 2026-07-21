@@ -51,5 +51,78 @@
             "saved": "تم حفظ إعدادات اللغة",
             "saveFailed": "تعذّر حفظ إعدادات اللغة"
         }
+    },
+    "translation": {
+        "translateAction": "ترجمة",
+        "credits": "{{value}} رصيد",
+        "noContent": "لا يوجد محتوى",
+        "state": {
+            "DRAFT": "مسودة",
+            "IN_REVIEW": "قيد المراجعة",
+            "PUBLISHED": "منشور",
+            "STALE": "قديم"
+        },
+        "jobStatus": {
+            "PENDING": "قيد الانتظار",
+            "IN_PROGRESS": "قيد التنفيذ",
+            "AWAITING_INPUT": "بانتظار المراجعة",
+            "COMPLETED": "مكتمل",
+            "FAILED": "فشل"
+        },
+        "jobStage": {
+            "PENDING": "قيد الانتظار",
+            "EXTRACT": "استخراج المحتوى",
+            "TRANSLATE": "جارٍ الترجمة",
+            "REVIEW": "المراجعة",
+            "WRITE_BACK": "جارٍ النشر",
+            "COMPLETED": "مكتمل"
+        },
+        "dialog": {
+            "heading": "ترجمة الدورة",
+            "targetLanguage": "اللغة المستهدفة",
+            "mode": "وضع النشر",
+            "modeDraft": "المراجعة قبل النشر",
+            "modeAutoPublish": "النشر فورًا",
+            "modeDraftHint": "تُحفظ الترجمات كمسودات، ولا يراها المتعلمون إلا بعد اعتمادك لها.",
+            "modeAutoPublishHint": "تصبح الترجمات متاحة للمتعلمين فور إنشائها.",
+            "continue": "متابعة",
+            "confirm": "بدء الترجمة",
+            "topUp": "شحن الرصيد",
+            "estimatedCost": "التكلفة التقديرية",
+            "currentBalance": "الرصيد الحالي",
+            "balanceAfter": "الرصيد بعد العملية",
+            "itemsFound": "سيتم ترجمة {{value}} عنصر.",
+            "insufficientCredits": "رصيدك لا يغطي تكلفة هذه الترجمة. اشحن رصيدك للمتابعة.",
+            "noLanguages": "لا توجد لغات أخرى مفعّلة لهذه المؤسسة. فعّل لغة من الإعدادات > اللغة.",
+            "started": "بدأت الترجمة",
+            "viewProgress": "عرض التقدم",
+            "estimateFailed": "تعذّر تقدير تكلفة الترجمة. يرجى المحاولة مرة أخرى.",
+            "startFailed": "تعذّر بدء الترجمة. يرجى المحاولة مرة أخرى."
+        },
+        "review": {
+            "heading": "مراجعة الترجمة",
+            "subheading": "مراجعة ترجمات {{language}}",
+            "back": "العودة إلى الدورة",
+            "baseContent": "النص الأصلي",
+            "translatedContent": "{{language}}",
+            "state": "الحالة",
+            "actions": "الإجراءات",
+            "approve": "اعتماد",
+            "reject": "رفض",
+            "approved": "تم اعتماد الترجمة",
+            "rejected": "تم رفض الترجمة",
+            "updateFailed": "تعذّر تحديث الترجمة. يرجى المحاولة مرة أخرى.",
+            "approvePage": "اعتماد هذه الصفحة",
+            "bulkApproved": "تم اعتماد {{value}} ترجمة",
+            "approveAndPublishJob": "اعتماد المهمة ونشرها",
+            "jobApproved": "تم اعتماد المهمة، وجارٍ نشر الترجمات.",
+            "jobApproveFailed": "تعذّر اعتماد المهمة. يرجى المحاولة مرة أخرى.",
+            "jobStatus": "حالة المهمة",
+            "jobStage": "المرحلة",
+            "jobProgress": "التقدم",
+            "filterAll": "كل الحالات",
+            "empty": "لا توجد ترجمات للمراجعة بعد.",
+            "missingScope": "اختر دورة ولغة لمراجعة الترجمات."
+        }
     }
 }

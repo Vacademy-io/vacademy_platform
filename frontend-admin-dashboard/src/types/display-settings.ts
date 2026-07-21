@@ -143,7 +143,8 @@ export type StudentSideViewTabId =
     | 'application'
     | 'lead'
     | 'fullHistory'
-    | 'parent';
+    | 'parent'
+    | 'onboarding';
 
 export interface StudentSideViewSettings {
     overviewTab: boolean;
@@ -166,6 +167,10 @@ export interface StudentSideViewSettings {
     // Guardian tab — surfaces the linked guardian/children (parent-link feature).
     // Optional for backward-compat with settings saved before this tab existed.
     parentTab?: boolean;
+    // Onboarding tab — surfaces the subject's onboarding flow instance(s)
+    // (ONBOARDING_SETTING feature). Optional for backward-compat with
+    // settings saved before this tab existed.
+    onboardingTab?: boolean;
     // Custom ordering by tab id. Lower numbers render first. Tabs missing
     // from the map fall back to the default order. Optional for
     // backward-compat with settings that pre-date this feature.
@@ -234,7 +239,8 @@ export type StudentSideViewVisibilityKey =
     | 'applicationTab'
     | 'leadTab'
     | 'fullHistoryTab'
-    | 'parentTab';
+    | 'parentTab'
+    | 'onboardingTab';
 
 export interface LearnerManagementSettings {
     allowPortalAccess: boolean;
@@ -295,6 +301,10 @@ export interface TeamManagementSettings {
     // confident it works for that institute's users. Admins flip this on
     // from Settings → Admin Display Settings when they're ready to roll it out.
     orgChartTabVisible?: boolean;
+    // Controls the Teams "Password" column + per-member "View Password" action.
+    // Defaults to ON (shown) — treated as enabled unless explicitly set to false,
+    // so an admin can hide staff credentials per institute by turning it off.
+    allowViewPassword?: boolean;
 }
 
 // Opt-in flags for the counsellor workbench + sales dashboard routes. Both

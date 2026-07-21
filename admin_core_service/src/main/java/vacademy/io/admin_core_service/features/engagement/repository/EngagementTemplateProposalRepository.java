@@ -1,0 +1,123 @@
+package vacademy.io.admin_core_service.features.engagement.repository;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.admin_core_service.features.engagement.entity.EngagementTemplateProposal;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+
+public interface EngagementTemplateProposalRepository extends JpaRepository<EngagementTemplateProposal, String> {
+
+    /** The review list for an engine — newest round first, then newest within a round. */
+    List<EngagementTemplateProposal> findByEngineIdAndInstituteIdOrderByRoundDescCreatedAtDesc(
+            String engineId, String instituteId);
+
+    /** Ownership-scoped fetch — never load a proposal by id without pinning the institute. */
+    Optional<EngagementTemplateProposal> findByIdAndInstituteId(String id, String instituteId);
+
+    /** The activation gate: does this engine have at least one usable (Meta-approved) template? */
+    long countByEngineIdAndStatusIn(String engineId, List<String> statuses);
+
+    /** The Meta poll's per-institute work list: proposals awaiting a verdict. */
+    List<EngagementTemplateProposal> findByInstituteIdAndStatusIn(String instituteId, List<String> statuses);
+
+    /** The Meta poll's institute scan — only institutes with something actually pending. */
+    @Query(value = """
+            SELECT DISTINCT institute_id FROM engagement_template_proposal
+             WHERE status IN ('SUBMITTED', 'META_PENDING')
+            """, nativeQuery = true)
+    List<String> institutesWithPendingProposals();
+
+    /** Approved-and-usable templates for an engine (for the sender/brain to reference by name). */
+    @Query(value = """
+            SELECT * FROM engagement_template_proposal
+             WHERE engine_id = :engineId AND institute_id = :instituteId
+               AND status IN ('META_APPROVED', 'META_RECATEGORISED')
+             ORDER BY updated_at DESC
+            """, nativeQuery = true)
+    List<EngagementTemplateProposal> findApproved(@Param("engineId") String engineId,
+                                                  @Param("instituteId") String instituteId);
+
+    /** Human approves a draft: AI_PROPOSED/USER_REVIEW → USER_APPROVED. CAS so a stale UI can't skip states. */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE engagement_template_proposal
+               SET status = 'USER_APPROVED', updated_at = :now
+             WHERE id = :id AND institute_id = :instituteId AND status IN ('AI_PROPOSED', 'USER_REVIEW')
+            """, nativeQuery = true)
+    int approve(@Param("id") String id, @Param("instituteId") String instituteId, @Param("now") Instant now);
+
+    /**
+     * Claim for submission: USER_APPROVED → SUBMITTED. Returns 1 for the single winner so a
+     * double-click (or two admins) can't submit the same template to Meta twice. The caller then
+     * re-reads the row (now SUBMITTED) and stamps the notification_template FK via save — kept as a
+     * separate commit because the FK isn't known until notification_service creates the draft, and
+     * that draft (an HTTP side effect) must survive even if admin_core's later steps fail.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE engagement_template_proposal
+               SET status = 'SUBMITTED', updated_at = :now
+             WHERE id = :id AND institute_id = :instituteId AND status = 'USER_APPROVED'
+            """, nativeQuery = true)
+    int claimForSubmit(@Param("id") String id, @Param("instituteId") String instituteId, @Param("now") Instant now);
+
+    /**
+     * Reconcile from a Meta poll: only a SUBMITTED/META_PENDING row moves (an already-adjudicated or
+     * human-touched row is never silently overwritten by a lagging poll). meta_category/rejection are
+     * set alongside so the reviewer sees why.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE engagement_template_proposal
+               SET status = :toStatus, meta_category = :metaCategory,
+                   rejection_reason = :rejectionReason, updated_at = :now
+             WHERE id = :id AND status IN ('SUBMITTED', 'META_PENDING')
+            """, nativeQuery = true)
+    int reconcileFromMeta(@Param("id") String id, @Param("toStatus") String toStatus,
+                          @Param("metaCategory") String metaCategory,
+                          @Param("rejectionReason") String rejectionReason, @Param("now") Instant now);
+
+    /**
+     * Roll a SUBMITTED proposal back to USER_APPROVED (retryable), keeping any FK we stamped and
+     * adopting {@code fkToAdopt} if we didn't have one (COALESCE). Status-guarded on SUBMITTED so a
+     * concurrent poll that already advanced the row to META_APPROVED/etc. is NEVER clobbered — the
+     * update affects 0 rows and the winning state stands. Used by submit()'s failure path and by
+     * the stranded-submission reaper.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE engagement_template_proposal
+               SET status = 'USER_APPROVED',
+                   notification_template_id = COALESCE(notification_template_id, :fkToAdopt),
+                   rejection_reason = :reason, updated_at = :now
+             WHERE id = :id AND status = 'SUBMITTED'
+            """, nativeQuery = true)
+    int rollbackSubmit(@Param("id") String id, @Param("fkToAdopt") String fkToAdopt,
+                       @Param("reason") String reason, @Param("now") Instant now);
+
+    /** Human abandons a proposal. Only non-terminal, not-yet-live rows. */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE engagement_template_proposal
+               SET status = 'WITHDRAWN', updated_at = :now
+             WHERE id = :id AND institute_id = :instituteId
+               AND status IN ('AI_PROPOSED', 'USER_REVIEW', 'USER_APPROVED', 'META_REJECTED', 'META_RECATEGORISED')
+            """, nativeQuery = true)
+    int withdraw(@Param("id") String id, @Param("instituteId") String instituteId, @Param("now") Instant now);
+
+    /** Highest round used for an engine so far (0 if none) — the next batch is round+1. */
+    @Query(value = "SELECT COALESCE(MAX(round), 0) FROM engagement_template_proposal WHERE engine_id = :engineId",
+            nativeQuery = true)
+    int maxRound(@Param("engineId") String engineId);
+}

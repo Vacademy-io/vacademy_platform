@@ -31,6 +31,7 @@ const RESOURCE_OPTIONS: { value: string; label: string }[] = [
     { value: 'COURSE', label: 'Course' },
     { value: 'LIVE_SESSION', label: 'Live session' },
     { value: 'LEARNER', label: 'Learner' },
+    { value: 'GUARDIAN_LINK', label: 'Guardian link' },
     { value: 'INSTITUTE_SETTING', label: 'Settings' },
 ];
 
@@ -40,6 +41,14 @@ const ACTIVITY_OPTIONS: { value: string; label: string }[] = [
     { value: 'DELETE', label: 'Deleted' },
     { value: 'CANCEL', label: 'Cancelled' },
     { value: 'ENROLL', label: 'Enrolled' },
+    // Emitted by the learner status endpoint, which derives its action from the
+    // operation it was asked to perform.
+    { value: 'TERMINATE', label: 'Terminated' },
+    { value: 'MAKE_INACTIVE', label: 'Deactivated' },
+    { value: 'MAKE_ACTIVE', label: 'Reactivated' },
+    { value: 'UPDATE_BATCH', label: 'Moved to another batch' },
+    { value: 'ADD_EXPIRY', label: 'Expiry changed' },
+    { value: 'UPDATE_STATUS', label: 'Status changed' },
 ];
 
 // Sentinel value used in the Select for "any" (Radix Select doesn't allow

@@ -20,6 +20,9 @@ import {
   AppleSignInCancelledError,
 } from "@/lib/auth/appleNativeAuth";
 import { AppleSignInButton } from "@/components/common/auth/AppleSignInButton";
+import { resolveFontStack } from "@/utils/branding";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import {
   LOGIN_URL_GOOGLE_GITHUB,
   LIVE_SESSION_REQUEST_OTP,
@@ -70,6 +73,7 @@ export function ModularDynamicSignupContainer({
   initialEmail = "", // Default to empty string (no pre-fill)
   autoSendOtp = false, // Default to false (no auto-send)
 }: ModularDynamicSignupContainerProps) {
+  const { t } = useTranslation("auth");
   const { setPrimaryColor } = useTheme();
   const { registerUser: registerUserUnified } = useUnifiedRegistration();
   const [currentStep, setCurrentStep] = useState<SignupStep>("providers");
@@ -215,12 +219,14 @@ export function ModularDynamicSignupContainer({
           }
         );
 
-        toast.success("OTP sent successfully");
+        toast.success(i18n.t("auth:toasts.otpSent"));
         setEmailForOtp(emailInput.trim());
         setSelectedProvider("emailOtp");
         setCurrentStep("otpVerification");
       } catch (e) {
-        toast.error("Failed to send OTP", { description: "Please try again" });
+        toast.error(i18n.t("auth:toasts.failedToSendOtp"), {
+        description: i18n.t("auth:toasts.tryAgain"),
+      });
       } finally {
         setIsSendingOtp(false);
       }
@@ -259,21 +265,7 @@ export function ModularDynamicSignupContainer({
           setPrimaryColor(parsed.theme);
         }
         if (parsed?.fontFamily) {
-          const mapFamily = (f: string) => {
-            const key = String(f).toUpperCase();
-            if (key === "INTER")
-              return 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "CAIRO")
-              return 'Cairo, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "PLAYPEN SANS")
-              return 'Playpen Sans, cursive, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "WORK SANS")
-              return 'Work Sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "LEXEND")
-              return 'Lexend, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            return f;
-          };
-          const family = mapFamily(parsed.fontFamily);
+          const family = resolveFontStack(parsed.fontFamily);
           document.documentElement.style.setProperty(
             "--app-font-family",
             family
@@ -307,9 +299,9 @@ export function ModularDynamicSignupContainer({
             </svg>
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            Configuration Error
+            {t("signup.configurationError")}
           </h3>
-          <p className="text-gray-600">Institute ID is required for signup</p>
+          <p className="text-gray-600">{t("signup.instituteIdRequired")}</p>
         </div>
       </div>
     );
@@ -347,18 +339,17 @@ export function ModularDynamicSignupContainer({
             </svg>
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            Signup Not Available
+            {t("signup.signupNotAvailable")}
           </h3>
           <p className="text-gray-600 mb-4">
-            Signup is currently disabled for this institute. Please contact your
-            administrator to enable signup options.
+            {t("signup.signupDisabled")}
           </p>
           {onBackToProviders && (
             <button
               onClick={onBackToProviders}
               className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white text-sm font-medium rounded-md transition-colors"
             >
-              Go Back
+              {t("common.goBack")}
             </button>
           )}
         </div>
@@ -418,11 +409,10 @@ export function ModularDynamicSignupContainer({
       );
 
       if (!popup) {
-        toast.error("Popup blocked! Please allow popups for this site.");
+        toast.error(i18n.t("auth:toasts.popupBlocked"));
         setUiError({
           type: "network",
-          message:
-            "We couldn't open the sign up window. Please allow popups or try again.",
+          message: i18n.t("auth:signupErrors.popupOpenFailed"),
         });
         return;
       }
@@ -466,11 +456,10 @@ export function ModularDynamicSignupContainer({
             setCurrentStep("success");
             onSignupSuccess?.();
           } catch {
-            toast.error("Failed to store authentication tokens. Please try again.");
+            toast.error(i18n.t("auth:signupErrors.failedStoreTokens"));
             setUiError({
               type: "network",
-              message:
-                "We couldn't complete authentication. Please try again, or sign in if you already have an account.",
+              message: i18n.t("auth:signupErrors.couldNotCompleteAuth"),
             });
           }
           return true;
@@ -492,11 +481,14 @@ export function ModularDynamicSignupContainer({
           cleanup();
         } else if (event.data.type === "oauth_error") {
           cleanup();
-          toast.error(event.data.data?.message || "OAuth authentication failed");
+          toast.error(
+            event.data.data?.message ||
+              i18n.t("auth:signupErrors.oauthAuthFailed")
+          );
           setUiError({
             type: "oauthError",
             message:
-              "Authentication failed. If you already have an account, please sign in instead.",
+              i18n.t("auth:signupErrors.authFailedSignIn"),
           });
         }
       };
@@ -519,11 +511,14 @@ export function ModularDynamicSignupContainer({
               cleanup();
             } else if (parsed?.type === "oauth_error") {
               cleanup();
-              toast.error(parsed?.data?.message || "OAuth authentication failed");
+              toast.error(
+              parsed?.data?.message ||
+                i18n.t("auth:signupErrors.oauthAuthFailed")
+            );
               setUiError({
                 type: "oauthError",
                 message:
-                  "Authentication failed. If you already have an account, please sign in instead.",
+                  i18n.t("auth:signupErrors.authFailedSignIn"),
               });
             }
           } catch { return; }
@@ -547,11 +542,14 @@ export function ModularDynamicSignupContainer({
               cleanup();
             } else if (msg.type === "oauth_error") {
               cleanup();
-              toast.error(msg?.data?.message || "OAuth authentication failed");
+              toast.error(
+              msg?.data?.message ||
+                i18n.t("auth:signupErrors.oauthAuthFailed")
+            );
               setUiError({
                 type: "oauthError",
                 message:
-                  "Authentication failed. If you already have an account, please sign in instead.",
+                  i18n.t("auth:signupErrors.authFailedSignIn"),
               });
             }
           };
@@ -575,11 +573,14 @@ export function ModularDynamicSignupContainer({
             cleanup();
           } else if (parsed?.type === "oauth_error") {
             cleanup();
-            toast.error(parsed?.data?.message || "OAuth authentication failed");
+            toast.error(
+              parsed?.data?.message ||
+                i18n.t("auth:signupErrors.oauthAuthFailed")
+            );
             setUiError({
               type: "oauthError",
               message:
-                "Authentication failed. If you already have an account, please sign in instead.",
+                i18n.t("auth:signupErrors.authFailedSignIn"),
             });
           }
         } catch { /* ignore */ }
@@ -590,10 +591,10 @@ export function ModularDynamicSignupContainer({
         cleanup();
       }, 5 * 60 * 1000);
     } catch (error) {
-      toast.error("Failed to initiate signup. Please try again.");
+      toast.error(i18n.t("auth:signupErrors.failedInitiateSignup"));
       setUiError({
         type: "network",
-        message: "Unable to start signup. Please check your network and try again.",
+        message: i18n.t("auth:signupErrors.unableToStart"),
       });
     }
   };
@@ -610,14 +611,12 @@ export function ModularDynamicSignupContainer({
         return; // user dismissed the sheet — no error UI
       }
       if (e instanceof AppleSessionLimitError) {
-        toast.error(
-          "You've reached the active session limit. Please log out from another device and try again.",
-        );
+        toast.error(i18n.t("auth:toasts.sessionLimitReached"));
       } else {
         toast.error(
           e instanceof Error
             ? e.message
-            : "Failed to sign in with Apple. Please try again.",
+            : i18n.t("auth:toasts.appleSignInFailed"),
         );
       }
     }
@@ -663,12 +662,14 @@ export function ModularDynamicSignupContainer({
         }
       );
 
-      toast.success("OTP sent successfully");
+      toast.success(i18n.t("auth:toasts.otpSent"));
       setEmailForOtp(emailInput.trim());
       setSelectedProvider("emailOtp");
       setCurrentStep("otpVerification");
     } catch (e) {
-      toast.error("Failed to send OTP", { description: "Please try again" });
+      toast.error(i18n.t("auth:toasts.failedToSendOtp"), {
+        description: i18n.t("auth:toasts.tryAgain"),
+      });
     } finally {
       setIsSendingOtp(false);
     }
@@ -747,8 +748,7 @@ export function ModularDynamicSignupContainer({
               setOAuthData(null);
               setUiError({
                 type: "alreadyEnrolled",
-                message:
-                  "This email is already registered. Please sign in to continue.",
+                message: i18n.t("auth:signupErrors.alreadyRegistered"),
               });
             },
             true // shouldRedirectAfterLogin - will handle navigation automatically
@@ -806,11 +806,10 @@ export function ModularDynamicSignupContainer({
       setCurrentStep("credentials");
       setSelectedProvider("oauth");
     } catch (error) {
-      toast.error("Failed to process OAuth response. Please try again.");
+      toast.error(i18n.t("auth:signupErrors.failedProcessOauth"));
       setUiError({
         type: "oauthError",
-        message:
-          "We couldn't complete authentication. Please try again, or sign in if you already have an account.",
+        message: i18n.t("auth:signupErrors.couldNotCompleteAuth"),
       });
     }
   };
@@ -832,7 +831,7 @@ export function ModularDynamicSignupContainer({
 
       // Callback will be handled by the success step component
     } catch (error) {
-      toast.error("Failed to create account. Please try again.");
+      toast.error(i18n.t("auth:signupErrors.failedCreateAccount"));
       // Fallback to credentials form
       setCurrentStep("credentials");
     }
@@ -944,10 +943,10 @@ export function ModularDynamicSignupContainer({
         <div className="text-center space-y-3">
           <div className="space-y-1">
             <h3 className="text-lg font-semibold text-gray-900">
-              Create Your Account
+              {t("signup.createAccount")}
             </h3>
             <p className="text-sm text-gray-600">
-              Choose how you'd like to sign up
+              {t("signup.chooseSignup")}
             </p>
           </div>
         </div>
@@ -968,7 +967,7 @@ export function ModularDynamicSignupContainer({
               type="button"
             >
               <FcGoogle className="w-4 h-4" />
-              <span className="text-sm">Continue with Google</span>
+              <span className="text-sm">{t("common.continueWithGoogle")}</span>
               <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
             </motion.button>
           )}
@@ -982,7 +981,7 @@ export function ModularDynamicSignupContainer({
               type="button"
             >
               <GitHubLogoIcon className="w-4 h-4" />
-              <span className="text-sm">Continue with GitHub</span>
+              <span className="text-sm">{t("common.continueWithGitHub")}</span>
               <ArrowRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
             </motion.button>
           )}
@@ -1010,7 +1009,7 @@ export function ModularDynamicSignupContainer({
             </div>
             <div className="relative flex justify-center text-xs">
               <span className="bg-white px-3 py-1 text-gray-500 font-medium rounded-full border border-gray-200">
-                or continue with
+                {t("signup.orContinueWith")}
               </span>
             </div>
           </div>
@@ -1026,13 +1025,13 @@ export function ModularDynamicSignupContainer({
                 htmlFor="email"
                 className="text-sm font-medium text-gray-700"
               >
-                Email Address
+                {t("common.emailAddressLabel")}
               </Label>
               <div className="flex gap-2">
                 <Input
                   id="email"
                   type="email"
-                  placeholder="Enter your email address"
+                  placeholder={t("common.enterEmailAddress")}
                   value={emailInput}
                   onChange={(e) => setEmailInput(e.target.value)}
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-gray-50/50 focus:bg-white hover:bg-white"
@@ -1042,7 +1041,7 @@ export function ModularDynamicSignupContainer({
                   disabled={!emailInput.trim() || isSendingOtp}
                   className="px-4 bg-gray-900 hover:bg-black text-white font-medium py-3 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
                 >
-                  {isSendingOtp ? "Sending..." : "Send OTP"}
+                  {isSendingOtp ? t("signup.sending") : t("signup.sendOtp")}
                 </Button>
               </div>
             </div>
@@ -1054,13 +1053,13 @@ export function ModularDynamicSignupContainer({
       <SignupStep delay={0.8}>
         <div className="text-center text-xs text-gray-600 p-4">
           <p>
-            Already have an account?{" "}
+            {t("common.alreadyHaveAccount")}{" "}
             <motion.button
               whileHover={{ scale: 1.02 }}
               onClick={onBackToProviders}
               className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
             >
-              Sign in here
+              {t("common.signInHere")}
             </motion.button>
           </p>
         </div>
@@ -1075,7 +1074,7 @@ export function ModularDynamicSignupContainer({
       <SignupStep delay={0.95}>
         <div className="text-center text-xs text-gray-500">
           <p>
-            I agree to{" "}
+            {t("common.iAgreeTo")}{" "}
             <motion.button
               whileHover={{ scale: 1.02 }}
               onClick={async () => {
@@ -1103,9 +1102,9 @@ export function ModularDynamicSignupContainer({
               }}
               className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
             >
-              terms and conditions
+              {t("common.termsAndConditions")}
             </motion.button>{" "}
-            and{" "}
+            {t("common.and")}{" "}
             <motion.button
               whileHover={{ scale: 1.02 }}
               onClick={async () => {
@@ -1133,7 +1132,7 @@ export function ModularDynamicSignupContainer({
               }}
               className="text-gray-700 hover:text-gray-900 font-medium underline cursor-pointer"
             >
-              Privacy Policy
+              {t("common.privacyPolicy")}
             </motion.button>
           </p>
         </div>
@@ -1156,7 +1155,7 @@ export function ModularDynamicSignupContainer({
                 onClick={onBackToProviders}
                 className="ms-2 underline font-medium"
               >
-                Sign in instead
+                {t("signup.signInInstead")}
               </motion.button>
             )}
           </div>
@@ -1188,10 +1187,10 @@ export function ModularDynamicSignupContainer({
               selectedProvider === "oauth" &&
               oauthData?.signupData?.provider === "github" &&
               !oauthData?.signupData?.email
-                ? "Your GitHub email is private. Please provide your email address to complete the signup process."
+                ? t("emailInput.githubPrivateEmail")
                 : selectedProvider === "oauth"
-                ? "Please verify your email to complete the OAuth signup process."
-                : "Please verify your email to complete the signup process."
+                ? t("emailInput.verifyEmailOauthProcess")
+                : t("emailInput.verifyEmailProcess")
             }
             instituteId={instituteId}
             onEnrolledUserDetected={() => {
@@ -1270,7 +1269,7 @@ export function ModularDynamicSignupContainer({
                   setCurrentStep("success");
                   // Callback will be handled by the success step component
                 } catch (error) {
-                  toast.error("Failed to create account. Please try again.");
+                  toast.error(i18n.t("auth:signupErrors.failedCreateAccount"));
                 }
               }}
               onBack={handleBackToProviders}
@@ -1319,10 +1318,10 @@ export function ModularDynamicSignupContainer({
               </svg>
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Account Created Successfully!
+              {t("signup.accountCreatedTitle")}
             </h3>
             <p className="text-gray-600">
-              Redirecting to your learning center...
+              {t("signup.redirecting")}
             </p>
           </div>
         )}

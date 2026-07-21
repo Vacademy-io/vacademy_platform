@@ -182,17 +182,31 @@ export const useAnnouncementStore = create<AnnouncementStore>()(
 
       dismissAllAlerts: async () => {
         try {
-          const currentAlerts = get().systemAlerts.items;
-          if (currentAlerts.length === 0) return;
+          // Collect ids across ALL pages, not just the ones currently loaded,
+          // so "Clear All" truly clears every alert (backend has no bulk endpoint).
+          const messageIds: string[] = [];
+          const pageSize = 100;
+          const MAX_PAGES = 50; // safety cap (≤5000 alerts)
+          for (let page = 0; page < MAX_PAGES; page += 1) {
+            const res = await announcementApi.getSystemAlerts({ page, size: pageSize });
+            const content = res?.content ?? [];
+            for (const item of content) {
+              if (item?.messageId) messageIds.push(item.messageId);
+            }
+            if (content.length < pageSize) break; // reached the last page
+          }
 
-          const messageIds = currentAlerts.map(alert => alert.messageId);
-          await announcementApi.batchDismissMessages(messageIds);
-          
+          if (messageIds.length > 0) {
+            await announcementApi.batchDismissMessages(messageIds);
+          }
+
           set((state) => ({
             systemAlerts: {
               ...state.systemAlerts,
               items: [],
               unreadCount: 0,
+              hasMore: false,
+              currentPage: 0,
             }
           }));
         } catch (error) {

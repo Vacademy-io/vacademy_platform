@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -33,15 +35,15 @@ const createCredentialsSchema = (settings: SignupSettings, hideFullName: boolean
   const baseSchema: any = {};
   
   if (!hideFullName) {
-    baseSchema.fullName = z.string().min(2, "Full name must be at least 2 characters");
+    baseSchema.fullName = z.string().min(2, i18n.t("auth:validation.fullNameMin"));
   }
 
   if (settings.usernameStrategy === "manual" || settings.usernameStrategy === " ") {
-    baseSchema.username = z.string().min(3, "Username must be at least 3 characters");
+    baseSchema.username = z.string().min(3, i18n.t("auth:validation.usernameMin"));
   }
 
   if (settings.passwordStrategy === "manual" || settings.passwordStrategy === " ") {
-    baseSchema.password = z.string().min(8, "Password must be at least 8 characters");
+    baseSchema.password = z.string().min(8, i18n.t("auth:validation.passwordMin"));
     baseSchema.confirmPassword = z.string();
   }
 
@@ -50,7 +52,7 @@ const createCredentialsSchema = (settings: SignupSettings, hideFullName: boolean
   // Add password confirmation validation if password is required
   if (settings.passwordStrategy === "manual" || settings.passwordStrategy === " ") {
     return schema.refine((data) => data.password === data.confirmPassword, {
-      message: "Passwords don't match",
+      message: i18n.t("auth:validation.passwordsDontMatch"),
       path: ["confirmPassword"],
     });
   }
@@ -68,6 +70,7 @@ export function CredentialsForm({
   oauthProvider = "",
   hideFullName = false
 }: CredentialsFormProps) {
+  const { t } = useTranslation("auth");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -122,13 +125,12 @@ export function CredentialsForm({
     >
       <div className="text-center space-y-2">
         <h3 className="text-xl font-semibold text-gray-900">
-          {isOAuth ? "Complete Your Profile" : "Create Your Account"}
+          {isOAuth ? t("credentials.completeProfile") : t("signup.createAccount")}
         </h3>
         <p className="text-sm text-gray-600">
-          {isOAuth 
-            ? "Please provide the required information to complete your signup" 
-            : "Enter your details to get started"
-          }
+          {isOAuth
+            ? t("credentials.provideInfo")
+            : t("emailInput.enterDetails")}
         </p>
       </div>
 
@@ -142,12 +144,12 @@ export function CredentialsForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-sm font-medium text-gray-700">
-                    Full Name *
+                    {t("emailInput.fullNameLabel")}
                   </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
-                      placeholder="Enter your full name"
+                      placeholder={t("emailInput.enterFullName")}
                       className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     />
                   </FormControl>
@@ -165,12 +167,12 @@ export function CredentialsForm({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-sm font-medium text-gray-700">
-                    Username *
+                    {t("credentials.usernameLabel")}
                   </FormLabel>
                   <FormControl>
                     <Input
                       {...field}
-                      placeholder="Enter your username"
+                      placeholder={t("credentials.enterUsername")}
                       className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                     />
                   </FormControl>
@@ -189,14 +191,14 @@ export function CredentialsForm({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm font-medium text-gray-700">
-                      Password *
+                      {t("credentials.passwordLabel")}
                     </FormLabel>
                     <FormControl>
                       <div className="relative">
                         <Input
                           {...field}
                           type={showPassword ? "text" : "password"}
-                          placeholder="Enter your password"
+                          placeholder={t("common.enterPassword")}
                           className="px-3 py-2 pe-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                         />
                         <button
@@ -228,14 +230,14 @@ export function CredentialsForm({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm font-medium text-gray-700">
-                      Confirm Password *
+                      {t("credentials.confirmPasswordLabel")}
                     </FormLabel>
                     <FormControl>
                       <div className="relative">
                         <Input
                           {...field}
                           type={showConfirmPassword ? "text" : "password"}
-                          placeholder="Confirm your password"
+                          placeholder={t("credentials.confirmPassword")}
                           className="px-3 py-2 pe-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                         />
                         <button
@@ -271,11 +273,11 @@ export function CredentialsForm({
             {isSubmitting ? (
               <>
                 <SpinnerGap className="w-4 h-4 me-2 animate-spin" />
-                Creating Account...
+                {t("credentials.creatingAccount")}
               </>
             ) : (
               <>
-                Create Account
+                {t("credentials.createAccount")}
                 <ArrowRight className="w-4 h-4 ms-2" />
               </>
             )}
@@ -289,7 +291,7 @@ export function CredentialsForm({
           className="w-full flex items-center justify-center gap-2 text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200"
         >
           <ArrowLeft className="w-4 h-4" />
-          Back to signup options
+          {t("emailInput.backToOptions")}
         </button>
       )}
     </motion.div>

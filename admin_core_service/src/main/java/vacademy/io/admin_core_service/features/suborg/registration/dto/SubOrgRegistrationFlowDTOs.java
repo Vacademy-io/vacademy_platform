@@ -334,6 +334,14 @@ public final class SubOrgRegistrationFlowDTOs {
         private String adminName;
         private String adminEmail;
         private String adminPhone;
+        /** Collected only when the template has COLLECT_ADDRESS on; null otherwise. */
+        private String city;
+        private String state;
+        private String pincode;
+        /** Seats of the spawned sub-org — null until the registration spawns one.
+         *  used = active learner members; total = the template's member_count cap. */
+        private Long usedSeats;
+        private Integer totalSeats;
         private String spawnedSubOrgId;
         private Timestamp createdAt;
         /** Null = KYC not started / not required. */

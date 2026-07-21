@@ -1,6 +1,7 @@
 /* eslint-disable */
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Card } from "@/components/ui/card";
+import { useTranslation } from "react-i18next";
 import { CodeEditorSlide } from "./code-editor-slide";
 import { JupyterNotebookSlide } from "./jupyter-notebook-slide";
 import { ScratchProjectSlide } from "./scratch-project-slide";
@@ -32,6 +33,7 @@ export const SplitScreenHtmlVideoSlide: React.FC<SplitScreenHtmlVideoSlideProps>
     onTimeUpdate,
     documentId,
 }) => {
+    const { t } = useTranslation("studyContent");
     const [leftWidth, setLeftWidth] = useState(50); // Percentage width for left panel
     const [isDragging, setIsDragging] = useState(false);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -77,7 +79,7 @@ export const SplitScreenHtmlVideoSlide: React.FC<SplitScreenHtmlVideoSlideProps>
         if (!embeddedContent?.embedded_type || !embeddedContent?.embedded_data) {
             return (
                 <div className="flex items-center justify-center h-full">
-                    <div className="text-neutral-500">No embedded content</div>
+                    <div className="text-neutral-500">{t("splitScreen.noEmbeddedContent")}</div>
                 </div>
             );
         }
@@ -107,7 +109,7 @@ export const SplitScreenHtmlVideoSlide: React.FC<SplitScreenHtmlVideoSlideProps>
             default:
                 return (
                     <div className="flex items-center justify-center h-full">
-                        <div className="text-neutral-500">Unsupported embedded type</div>
+                        <div className="text-neutral-500">{t("splitScreen.unsupportedEmbeddedType")}</div>
                     </div>
                 );
         }
@@ -174,7 +176,7 @@ export const SplitScreenHtmlVideoSlide: React.FC<SplitScreenHtmlVideoSlideProps>
                                 {/* Removed inner padding to let video fill */}
                                 {videoContent || (
                                     <div className="flex items-center justify-center h-full bg-neutral-100 rounded-lg">
-                                        <div className="text-neutral-500">Loading video...</div>
+                                        <div className="text-neutral-500">{t("splitScreen.loadingVideo")}</div>
                                     </div>
                                 )}
                             </div>
@@ -191,9 +193,9 @@ export const SplitScreenHtmlVideoSlide: React.FC<SplitScreenHtmlVideoSlideProps>
                 <div className="flex-shrink-0 border-t border-neutral-200 px-4 py-2">
                     <div className="flex items-center justify-between text-xs text-neutral-500">
                         <div className="flex items-center gap-4">
-                            <span>Layout: Split Screen</span>
-                            <span>Left: {embeddedContent?.embedded_type || "Content"}</span>
-                            <span>Right: HTML Video</span>
+                            <span>{t("splitScreen.layoutSplitScreen")}</span>
+                            <span>{t("splitScreen.left", { content: embeddedContent?.embedded_type || t("slideType.content") })}</span>
+                            <span>{t("splitScreen.rightHtmlVideo")}</span>
                         </div>
                         <div className="flex items-center gap-2">
                             <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded">

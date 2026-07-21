@@ -107,6 +107,16 @@ public class LeaderboardService {
         return data != null && Boolean.TRUE.equals(data.get("publicShowFullNames"));
     }
 
+    /**
+     * Whether this institute's leaderboards should show real names (admin opt-in via
+     * the "show full names" toggle). Applies to BOTH the public shareable page and the
+     * in-app learner view; defaults to anonymized (initials). The caller's own row is
+     * always labelled "You" regardless.
+     */
+    public boolean showFullNames(String instituteId) {
+        return isPublicFullNames(instituteId);
+    }
+
     public LeaderboardResponseDTO buildCourseLeaderboard(String packageSessionId, String instituteId,
                                                          String currentUserId, boolean anonymize, int limit,
                                                          CustomUserDetails userDetails) {
@@ -175,9 +185,12 @@ public class LeaderboardService {
                 .sorted(Comparator.comparingInt(p -> p.getRank() == null ? Integer.MAX_VALUE : p.getRank()))
                 .map(p -> {
                     boolean isMe = p.getUserId() != null && p.getUserId().equals(currentUserId);
+                    // The caller's own row is always "You"; peers are initials (anonymized) or full names.
                     String displayName;
-                    if (anonymize) {
-                        displayName = isMe ? "You" : toInitials(p.getFullName());
+                    if (isMe) {
+                        displayName = "You";
+                    } else if (anonymize) {
+                        displayName = toInitials(p.getFullName());
                     } else {
                         displayName = p.getFullName();
                     }

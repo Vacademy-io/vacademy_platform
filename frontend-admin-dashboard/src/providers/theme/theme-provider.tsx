@@ -11,6 +11,57 @@ import {
     type NavRoleColors,
     type ThemeRoleSettings,
 } from '@/types/theme-role-settings';
+import { rampFromHsl, hslVar, SHADES } from '@/lib/theme-ramp';
+import { resolveFontStack } from '@/utils/font';
+
+// Institute-authored page background (THEME_SETTING `background` role).
+// Repaints the canvas only — --card stays white, so cards keep reading as
+// raised surfaces on a tinted page. Mirrors the learner app's
+// applyBackgroundRole so one saved setting themes both.
+const applyBackgroundRole = () => {
+    let background: string | undefined;
+    try {
+        const raw = localStorage.getItem(THEME_ROLE_SETTINGS_KEY);
+        const parsed: ThemeRoleSettings | null = raw ? JSON.parse(raw) : null;
+        background = parsed?.roles?.background;
+    } catch {
+        background = undefined;
+    }
+
+    const root = document.documentElement;
+    if (!background) {
+        // No override (or it was cleared): drop any inline value so the
+        // stylesheet default (white) applies again.
+        root.style.removeProperty('--background');
+        return;
+    }
+
+    try {
+        const [h, s, l] = convert.hex.hsl(background.replace('#', ''));
+        root.style.setProperty('--background', hslVar([h, s, l]));
+    } catch {
+        // ignore malformed institute-authored hex
+    }
+};
+
+// Institute-authored font (THEME_SETTING `fontFamily` role) -> --app-font-family.
+// Curated key resolved via the shared resolveFontStack. No-op when unset, so
+// the app keeps its bundled default for non-configured institutes.
+const applyInstituteFont = () => {
+    let fontFamily: string | undefined;
+    try {
+        const raw = localStorage.getItem(THEME_ROLE_SETTINGS_KEY);
+        const parsed: ThemeRoleSettings | null = raw ? JSON.parse(raw) : null;
+        fontFamily = parsed?.roles?.fontFamily;
+    } catch {
+        fontFamily = undefined;
+    }
+    if (!fontFamily) return;
+    const stack = resolveFontStack(fontFamily);
+    if (!stack) return;
+    document.documentElement.style.setProperty('--app-font-family', stack);
+    document.body.style.fontFamily = stack;
+};
 
 // Applies the `nav` role (rail surface, hover, active, active-text, text)
 // from institute settings if one has been saved (THEME_SETTING). With no
@@ -124,16 +175,27 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
             // Nav role (sidebar/rail) — explicit institute override or derived default.
             applyNavRoles(ph, ps, pl);
+            // Institute-authored page canvas, if any.
+            applyBackgroundRole();
+            applyInstituteFont();
 
             // Store the theme selection
             localStorage.setItem('theme-code', primaryColor);
         } else if (primaryColor.startsWith('#')) {
-            // Handle custom hex colors (for color picker)
+            // Custom institute brand hex (color picker). Same tint curve as
+            // the presets — see lib/theme-ramp.ts for why this isn't the old
+            // saturation-raising formula (dark/saturated brands went neon,
+            // greys went pink).
             const [h, s, l] = convert.hex.hsl(primaryColor.replace('#', ''));
+            const ramp = rampFromHsl(h, s, l);
 
-            // Set primary color variable in HSL format
-            document.documentElement.style.setProperty('--primary', `${h} ${s}% ${l}%`);
-            document.documentElement.style.setProperty('--primary-500', `${h} ${s}% ${l}%`);
+            document.documentElement.style.setProperty('--primary', hslVar(ramp['500']));
+            SHADES.forEach((shade) => {
+                document.documentElement.style.setProperty(
+                    `--primary-${shade}`,
+                    hslVar(ramp[shade])
+                );
+            });
 
             // Set primary foreground (text on primary background)
             document.documentElement.style.setProperty(
@@ -141,30 +203,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
                 l > 60 ? '222.2 47.4% 11.2%' : '210 40% 98%'
             );
 
-            // Set different shades of the primary color
-            document.documentElement.style.setProperty(
-                '--primary-50',
-                `${h} ${Math.min(s + 40, 100)}% ${Math.min(l + 45, 96)}%`
-            );
-            document.documentElement.style.setProperty(
-                '--primary-100',
-                `${h} ${Math.min(s + 30, 90)}% ${Math.min(l + 38, 92)}%`
-            );
-            document.documentElement.style.setProperty(
-                '--primary-200',
-                `${h} ${Math.min(s + 20, 88)}% ${Math.min(l + 29, 83)}%`
-            );
-            document.documentElement.style.setProperty(
-                '--primary-300',
-                `${h} ${Math.min(s + 10, 87)}% ${Math.min(l + 18, 72)}%`
-            );
-            document.documentElement.style.setProperty(
-                '--primary-400',
-                `${h} ${Math.min(s + 5, 86)}% ${Math.min(l + 7, 61)}%`
-            );
-
             // Nav role (sidebar/rail) — explicit institute override or derived default.
             applyNavRoles(h, s, l);
+            applyBackgroundRole();
+            applyInstituteFont();
 
             // Store the custom color
             localStorage.setItem('theme-custom-color', primaryColor);

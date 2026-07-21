@@ -92,7 +92,7 @@ const ChangeRoleTypeComponent: React.FC<ChangeRoleTypeComponentProps> = ({
     }, []);
 
     return (
-        <DialogContent className="flex w-[420px] flex-col p-0">
+        <DialogContent className="flex w-96 flex-col p-0">
             <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">Change Roles</h1>
             <FormProvider {...form}>
                 <form className="flex flex-col items-start justify-center gap-4 px-4">
@@ -359,7 +359,7 @@ const InstituteUsersOptions = ({
         <>
             <DropdownMenu>
                 <DropdownMenuTrigger>
-                    <p className="cursor-pointer rounded-md border p-[2px]">
+                    <p className="cursor-pointer rounded-md border p-0.5">
                         <DotsThree size={20} />
                     </p>
                 </DropdownMenuTrigger>

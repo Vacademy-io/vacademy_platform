@@ -2,11 +2,13 @@ import { getActiveRoleDisplaySettingsKey, getCurrentInstituteId } from '@/lib/au
 import { Sidebar, SidebarContent, SidebarHeader } from '@/components/ui/sidebar';
 import { useSidebar } from '@/components/ui/sidebar';
 import { useCompactMode } from '@/hooks/use-compact-mode';
-import { X, ArrowsOutSimple, CaretLeft, CaretRight, Trash } from '@phosphor-icons/react';
+import { X, ArrowsOutSimple, CaretLeft, CaretRight, Trash, GraduationCap } from '@phosphor-icons/react';
 import { DeleteLeadsDialog } from '@/components/shared/leads/delete-leads-dialog';
 import { isAdminForInstitute } from '@/lib/auth/roleUtils';
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { getUserPlans } from '@/services/user-plan';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import DummyProfile from '@/assets/svgs/dummy_profile_photo.svg';
 import { StatusChips } from '@/components/design-system/chips';
 import { StudentOverview } from './student-overview/student-overview';
@@ -28,9 +30,12 @@ import { StudentApplication } from './student-application/student-application';
 import { StudentLeadProfile } from './student-lead-profile/student-lead-profile';
 import { StudentFullHistory } from './student-full-history/student-full-history';
 import { StudentParentProfile } from './student-parent/student-parent-profile';
+import { StudentOnboardingProfile } from './student-onboarding/student-onboarding-profile';
 import { LeadFormResponseCard } from '@/routes/audience-manager/list/-components/campaign-users/lead-form-response-card';
+import { LeadMeetingsSection } from '@/components/shared/leads/lead-meetings-section';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useParentSettings } from '@/hooks/use-parent-settings';
+import { useOnboardingSettings } from '@/hooks/use-onboarding-settings';
 import { getPublicUrl } from '@/services/upload_file';
 import { ErrorBoundary } from '@/components/core/dashboard-loader';
 import { useStudentSidebar } from '../../../-context/selected-student-sidebar-context';
@@ -38,7 +43,7 @@ import {
     getTerminology,
     getTerminologyPlural,
 } from '@/components/common/layout-container/sidebar/utils';
-import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { ContentTerms, OtherTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { cn } from '@/lib/utils';
 import {
     getDisplaySettingsWithFallback,
@@ -86,6 +91,7 @@ function orderedVisibleTabIds(settings: StudentSideViewSettings): StudentSideVie
         'lead',
         'fullHistory',
         'parent',
+        'onboarding',
     ];
     const orders = settings.tabOrders ?? {};
     return all
@@ -152,6 +158,45 @@ export const StudentSidebar = ({
         null;
     const currentInstituteId = getCurrentInstituteId();
     const canDeleteLead = isAdminForInstitute(currentInstituteId);
+
+    // A soft-cancel (Remove from product) marks the learner's membership/plan
+    // CANCELED while their enrollment stays ACTIVE (access continues to expiry).
+    // Surface that as a "Cancelled Member" badge next to the status indicator so
+    // the admin can tell an active learner apart from an active-but-cancelled one.
+    const learnerUserId = selectedStudent?.user_id;
+    const { data: learnerPlans } = useQuery({
+        queryKey: ['learner-plans-for-cancel-badge', learnerUserId, currentInstituteId],
+        queryFn: () =>
+            getUserPlans(1, 50, ['CANCELED'], learnerUserId!, currentInstituteId || undefined),
+        enabled: !!learnerUserId && !!currentInstituteId,
+        staleTime: 60000,
+    });
+    // NOTE: the /user-plan/all endpoint ignores the requested status filter and
+    // returns plans of every status, so we must match CANCELED client-side rather
+    // than trust the response to be pre-filtered.
+    const isCancelledMember = (learnerPlans?.content ?? []).some(
+        (p) => (p.status || '').toUpperCase() === 'CANCELED'
+    );
+
+    // Membership courses this learner is enrolled in — resolved from the institute
+    // details store (no extra network call) by matching each of their package
+    // sessions to a package whose type is MEMBERSHIP. Shown as a line under the
+    // status row so an admin sees the membership name at a glance.
+    const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
+    const membershipCourseNames = useMemo(() => {
+        const psIds = selectedStudent?.all_package_session_ids?.length
+            ? selectedStudent.all_package_session_ids
+            : selectedStudent?.package_session_id
+              ? [selectedStudent.package_session_id]
+              : [];
+        const batches = instituteDetails?.batches_for_sessions ?? [];
+        const names = psIds
+            .map((id) => batches.find((b) => b.id === id))
+            .filter((b) => b?.package_dto?.package_type === 'MEMBERSHIP')
+            .map((b) => b?.package_dto?.package_name)
+            .filter((n): n is string => !!n);
+        return Array.from(new Set(names));
+    }, [selectedStudent, instituteDetails]);
     const [tabSettings, setTabSettings] = useState<StudentSideViewSettings | null>(null);
     /**
      * navStyle — selects between the horizontal tab bar (default) and the
@@ -176,6 +221,7 @@ export const StudentSidebar = ({
     const activeTabRef = useRef<HTMLButtonElement>(null);
     const leadSettings = useLeadSettings();
     const parentSettings = useParentSettings();
+    const onboardingSettings = useOnboardingSettings();
 
     useEffect(() => {
         if (state == 'expanded') {
@@ -337,7 +383,7 @@ export const StudentSidebar = ({
                             <div className="flex min-w-0 flex-1 items-center gap-2">
                                 <h2
                                     className={cn(
-                                        'truncate text-base font-semibold leading-tight',
+                                        'min-w-0 truncate text-base font-semibold leading-tight',
                                         selectedStudent?.full_name
                                             ? 'text-neutral-900'
                                             : 'text-neutral-400'
@@ -347,7 +393,17 @@ export const StudentSidebar = ({
                                     {selectedStudent?.full_name || 'Unknown'}
                                 </h2>
                                 {selectedStudent?.status && (
-                                    <StatusChips status={selectedStudent.status} />
+                                    <div className="shrink-0">
+                                        <StatusChips status={selectedStudent.status} />
+                                    </div>
+                                )}
+                                {isCancelledMember && (
+                                    <span
+                                        className="shrink-0 whitespace-nowrap rounded-full bg-danger-50 px-2 py-0.5 text-xs font-medium text-danger-600 ring-1 ring-danger-200"
+                                        title="Membership cancelled — access continues until the plan expires"
+                                    >
+                                        Cancelled Member
+                                    </span>
                                 )}
                             </div>
 
@@ -390,6 +446,23 @@ export const StudentSidebar = ({
                             </button>
                         </div>
 
+                        {/* Membership course name(s) — shown right under the status row
+                            when the learner is enrolled in a MEMBERSHIP-type package. */}
+                        {membershipCourseNames.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                {membershipCourseNames.map((name) => (
+                                    <span
+                                        key={name}
+                                        title={name}
+                                        className="inline-flex max-w-full items-center gap-1 rounded-md bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700"
+                                    >
+                                        <GraduationCap className="size-3 shrink-0" />
+                                        <span className="truncate">{name}</span>
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+
                         {/* Quick contact — mailto / tel / wa.me. Renders nothing when no
                             usable contact data exists, so it stays out of the way for
                             unlinked entries (e.g. submission-only respondents). */}
@@ -418,10 +491,19 @@ export const StudentSidebar = ({
                                                     : r === 'LEARNER'
                                                       ? 'Practice Staff'
                                                       : role.trim().toLowerCase().replace(/_/g, ' ');
+                                            // Role badges keep their normal amber look, and only
+                                            // turn red once the member has gone inactive.
+                                            const isInactive =
+                                                selectedStudent?.status === 'INACTIVE';
                                             return (
                                                 <span
                                                     key={index}
-                                                    className="rounded-full bg-warning-50 px-2 py-0.5 text-xs font-medium capitalize text-warning-600"
+                                                    className={cn(
+                                                        'rounded-full px-2 py-0.5 text-xs font-medium capitalize',
+                                                        isInactive
+                                                            ? 'bg-danger-50 text-danger-600 ring-1 ring-danger-200'
+                                                            : 'bg-warning-50 text-warning-600'
+                                                    )}
                                                 >
                                                     {label}
                                                 </span>
@@ -456,6 +538,15 @@ export const StudentSidebar = ({
                                         if (
                                             tabId === 'parent' &&
                                             (parentSettings.isLoading || !parentSettings.enabled)
+                                        ) {
+                                            return null;
+                                        }
+                                        // onboarding requires the Onboarding
+                                        // Flows feature to be enabled — its
+                                        // own toggle, independent of leads.
+                                        if (
+                                            tabId === 'onboarding' &&
+                                            (onboardingSettings.isLoading || !onboardingSettings.enabled)
                                         ) {
                                             return null;
                                         }
@@ -501,7 +592,7 @@ export const StudentSidebar = ({
                                             )}
                                             onClick={() => setCategory('subOrg')}
                                         >
-                                            SubOrg
+                                            {getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}
                                         </button>
                                     )}
                                 </div>
@@ -575,6 +666,14 @@ export const StudentSidebar = ({
                                             (!parentSettings.enabled || parentSettings.isLoading)
                                         )
                                             return false;
+                                        // Onboarding section — gated on its own
+                                        // feature toggle, separate from leads.
+                                        const isOnboardingGated = s.id === 'onboarding';
+                                        if (
+                                            isOnboardingGated &&
+                                            (!onboardingSettings.enabled || onboardingSettings.isLoading)
+                                        )
+                                            return false;
                                         return flag;
                                     }).map((s) => s.id)
                                 )
@@ -596,6 +695,9 @@ export const StudentSidebar = ({
                         row (campaign-users / recent-leads); manage-students
                         rows don't carry the attached metadata. */}
                     {category === 'lead' && <LeadFormResponseCard />}
+                    {/* Meetings linked to this lead (by response id / user id / email) —
+                        renders alongside the form-response card on the Lead tab. */}
+                    {category === 'lead' && <LeadMeetingsSection className="my-3" />}
                     <ErrorBoundary>
                         {category === 'courses' && tabSettings?.coursesTab && (
                             <StudentCourses
@@ -691,6 +793,19 @@ export const StudentSidebar = ({
                             !isEnrollRequestStudentList &&
                             selectedStudent?.user_id && (
                                 <StudentParentProfile userId={selectedStudent.user_id} />
+                            )}
+                        {category === 'onboarding' &&
+                            tabSettings?.onboardingTab &&
+                            !onboardingSettings.isLoading &&
+                            onboardingSettings.enabled &&
+                            !isEnrollRequestStudentList &&
+                            selectedStudent?.user_id && (
+                                <StudentOnboardingProfile
+                                    userId={selectedStudent.user_id}
+                                    subjectFullName={selectedStudent.full_name}
+                                    subjectEmail={selectedStudent.email}
+                                    subjectMobileNumber={selectedStudent.mobile_number}
+                                />
                             )}
                     </ErrorBoundary>
                 </div>

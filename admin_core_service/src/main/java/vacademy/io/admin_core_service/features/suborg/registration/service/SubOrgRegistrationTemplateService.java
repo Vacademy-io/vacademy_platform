@@ -2,6 +2,9 @@ package vacademy.io.admin_core_service.features.suborg.registration.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -14,14 +17,17 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessi
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.CreateRegistrationTemplateDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.RegistrationListItemDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.TemplateListItemDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationSettingDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.TemplateDetailDTO;
+import vacademy.io.admin_core_service.features.suborg.registration.entity.SubOrgRegistration;
 import vacademy.io.admin_core_service.features.suborg.registration.enums.SubOrgRegistrationStatus;
 import vacademy.io.admin_core_service.features.suborg.registration.repository.SubOrgRegistrationRepository;
+import vacademy.io.admin_core_service.features.suborg.registration.repository.SubOrgRegistrationSpecification;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
@@ -31,6 +37,7 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -57,6 +64,7 @@ public class SubOrgRegistrationTemplateService {
     private final PackageSessionEnrollInviteToPaymentOptionService pslipoService;
     private final InstituteCustomFiledService instituteCustomFiledService;
     private final SubOrgRegistrationRepository registrationRepository;
+    private final StudentSessionInstituteGroupMappingRepository ssigmRepository;
 
     @Transactional
     public Map<String, Object> createTemplate(CreateRegistrationTemplateDTO request, String instituteId) {
@@ -361,22 +369,66 @@ public class SubOrgRegistrationTemplateService {
         return Map.of("template_id", template.getId(), "status", template.getStatus());
     }
 
-    public List<RegistrationListItemDTO> listRegistrations(String templateId, String instituteId) {
-        requireTemplate(templateId, instituteId);
-        List<RegistrationListItemDTO> result = new ArrayList<>();
-        registrationRepository.findByTemplateInviteIdOrderByCreatedAtDesc(templateId)
-                .forEach(r -> result.add(RegistrationListItemDTO.builder()
-                        .id(r.getId())
-                        .status(r.getStatus())
-                        .orgName(r.getOrgName())
-                        .adminName(r.getAdminName())
-                        .adminEmail(r.getAdminEmail())
-                        .adminPhone(r.getAdminPhone())
-                        .spawnedSubOrgId(r.getSpawnedSubOrgId())
-                        .createdAt(r.getCreatedAt())
-                        .kycStatus(r.getKycStatus())
-                        .build()));
-        return result;
+    public Page<RegistrationListItemDTO> listRegistrations(
+            String templateId, String instituteId,
+            String city, String state, String pincode,
+            String status, String search, Pageable pageable) {
+        EnrollInvite template = requireTemplate(templateId, instituteId);
+        // Seat capacity is the template's member_count — same for every sub-org spawned
+        // from this link, so resolve it once per page rather than per row.
+        SubOrgRegistrationSettingDTO.RegistrationSetting setting =
+                SubOrgRegistrationSettings.parse(template.getSettingJson());
+        Integer totalSeats = setting != null ? setting.getMemberCount() : null;
+
+        Specification<SubOrgRegistration> spec =
+                SubOrgRegistrationSpecification.withFilters(
+                        templateId, city, state, pincode, status, search);
+        Page<SubOrgRegistration> page = registrationRepository.findAll(spec, pageable);
+
+        // One bulk query for the used-seat counts of every spawned sub-org on this page.
+        Map<String, Long> usedBySubOrg = usedSeatsForSubOrgs(
+                page.getContent().stream()
+                        .map(SubOrgRegistration::getSpawnedSubOrgId)
+                        .filter(StringUtils::hasText)
+                        .distinct()
+                        .collect(Collectors.toList()));
+
+        return page.map(r -> {
+            String subOrgId = r.getSpawnedSubOrgId();
+            boolean spawned = StringUtils.hasText(subOrgId);
+            return RegistrationListItemDTO.builder()
+                    .id(r.getId())
+                    .status(r.getStatus())
+                    .orgName(r.getOrgName())
+                    .adminName(r.getAdminName())
+                    .adminEmail(r.getAdminEmail())
+                    .adminPhone(r.getAdminPhone())
+                    .city(r.getCity())
+                    .state(r.getState())
+                    .pincode(r.getPincode())
+                    .usedSeats(spawned ? usedBySubOrg.getOrDefault(subOrgId, 0L) : null)
+                    .totalSeats(spawned ? totalSeats : null)
+                    .spawnedSubOrgId(subOrgId)
+                    .createdAt(r.getCreatedAt())
+                    .kycStatus(r.getKycStatus())
+                    .build();
+        });
+    }
+
+    /** Active learner-seat count per sub-org, in one bulk query. Empty map for no ids. */
+    private Map<String, Long> usedSeatsForSubOrgs(List<String> subOrgIds) {
+        if (subOrgIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Long> used = new HashMap<>();
+        for (Object[] row : ssigmRepository.countActiveLearnersBySubOrgIds(subOrgIds)) {
+            if (row[0] == null) {
+                continue;
+            }
+            // sub_org_id may come back as a UUID or String depending on the column type.
+            used.put(String.valueOf(row[0]), ((Number) row[1]).longValue());
+        }
+        return used;
     }
 
     private EnrollInvite requireTemplate(String templateId, String instituteId) {

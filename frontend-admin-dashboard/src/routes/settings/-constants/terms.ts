@@ -25,7 +25,23 @@ export const OTHER_TERMS = [
     'AudienceList',
     'Invite',
     'Inventory',
+    'SubOrg',
 ] as const;
+
+/**
+ * One institute's rename of a term in a NON-source language. Every field is
+ * optional: an institute may translate the singular only, or record gender
+ * without renaming anything.
+ */
+export type NamingSettingsLocaleOverride = {
+    customValue?: string;
+    customPluralValue?: string;
+    /** Grammatical gender of customValue — consumed by future sentence frames (hi/ar). */
+    gender?: 'm' | 'f';
+};
+
+/** BCP-47 locale → override. Keys are locales from src/i18n/locales.ts. */
+export type NamingSettingsLocales = Record<string, NamingSettingsLocaleOverride>;
 
 export type NamingSettingsType = {
     key: string;
@@ -33,6 +49,16 @@ export type NamingSettingsType = {
     customValue: string;
     systemPluralValue: string;
     customPluralValue: string;
+    /**
+     * OPTIONAL per-locale overrides. `customValue`/`customPluralValue` above stay
+     * the institute's entry in its CONTENT SOURCE language (LANGUAGE_SETTING
+     * .content_source_locale, 'en' when unset).
+     *
+     * Absent from every blob cached before this field existed, so readers must
+     * treat it as possibly-undefined — see getTerminology() in
+     * components/common/layout-container/sidebar/utils.ts.
+     */
+    locales?: NamingSettingsLocales;
 };
 export const defaultNamingSettings: NamingSettingsType[] = [
     // Content & Structure
@@ -58,6 +84,7 @@ export const defaultNamingSettings: NamingSettingsType[] = [
     { key: 'AudienceList', systemValue: 'Audience List', customValue: 'Audience List', systemPluralValue: 'Audience Lists', customPluralValue: 'Audience Lists' },
     { key: 'Invite', systemValue: 'Invite', customValue: 'Invite', systemPluralValue: 'Invites', customPluralValue: 'Invites' },
     { key: 'Inventory', systemValue: 'Inventory', customValue: 'Inventory', systemPluralValue: 'Inventory', customPluralValue: 'Inventory' },
+    { key: 'SubOrg', systemValue: 'Sub-Org', customValue: 'Sub-Org', systemPluralValue: 'Sub-Orgs', customPluralValue: 'Sub-Orgs' },
 ];
 
 export const systemValueDescription = {
@@ -88,6 +115,7 @@ export const systemValueDescription = {
     AudienceList: 'An Audience List is a group of contacts targeted for campaigns or communications. Also known as Campaigns.',
     Invite: 'An Invite is a link or form sent to users to enroll them into courses or the platform. For eg: Invite, Enrollment Link',
     Inventory: 'Inventory refers to physical or digital items managed by the institute. For eg: Books, Uniforms, Equipment',
+    SubOrg: 'A Sub-Org is a child organization managed under your institute — e.g. a branch, franchise, chapter, or partner. Rename it to match how you refer to these units. For eg: Branch, Franchise, Chapter, Partner',
 };
 
 export const enum SettingsTabs {
@@ -127,6 +155,8 @@ export const enum SettingsTabs {
     AssistantTools = 'assistantTools',
     BadgesRewards = 'badgesRewards',
     Language = 'language',
+    OnboardingSettings = 'onboardingSettings',
+    Appearance = 'appearance',
 }
 
 export const DAYS_IN_MONTH = 30;

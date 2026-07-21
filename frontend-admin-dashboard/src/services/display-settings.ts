@@ -509,6 +509,7 @@ function mergeDisplayWithDefaults(
         leadTab: false,
         fullHistoryTab: false,
         parentTab: false,
+        onboardingTab: false,
     };
     merged.studentSideView = {
         overviewTab: incoming?.studentSideView?.overviewTab ?? defStudentSideView.overviewTab,
@@ -535,6 +536,8 @@ function mergeDisplayWithDefaults(
         fullHistoryTab:
             incoming?.studentSideView?.fullHistoryTab ?? defStudentSideView.fullHistoryTab ?? false,
         parentTab: incoming?.studentSideView?.parentTab ?? defStudentSideView.parentTab ?? false,
+        onboardingTab:
+            incoming?.studentSideView?.onboardingTab ?? defStudentSideView.onboardingTab ?? false,
         // Preserve user-supplied ordering and default-tab choice; fall back to
         // the role's defaults so older saved settings (which lacked these
         // fields) still render in a sensible order.

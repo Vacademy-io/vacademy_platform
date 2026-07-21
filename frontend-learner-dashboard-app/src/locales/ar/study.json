@@ -1,0 +1,146 @@
+{
+    "catalog": {
+        "tab": {
+            "all": "كل {{courses}}",
+            "inProgress": "قيد التقدم",
+            "completed": "مكتمل"
+        },
+        "toast": {
+            "loadError": "حدث خطأ أثناء تحميل {{courses}}. يرجى المحاولة مرة أخرى.",
+            "loadTabError": "تعذّر تحميل {{courses}} لهذا التبويب. يرجى المحاولة مرة أخرى.",
+            "loadFallbackError": "تعذّر تحميل {{courses}}. يرجى المحاولة مرة أخرى."
+        },
+        "search": {
+            "placeholder": "ابحث في {{courses}}..."
+        },
+        "sort": {
+            "label": "ترتيب حسب:",
+            "ariaLabel": "ترتيب {{courses}}",
+            "placeholder": "ترتيب العرض",
+            "newest": "الأحدث أولاً",
+            "oldest": "الأقدم أولاً",
+            "highestRated": "الأعلى تقييماً",
+            "shortest": "الأقصر أولاً"
+        },
+        "empty": {
+            "title": "لم يتم العثور على {{courses}}",
+            "description": "لم نتمكن من العثور على أي شيء يطابق بحثك. جرّب كلمات مفتاحية مختلفة، أو عدّل عوامل التصفية، أو امسحها لعرض كل {{courses}}."
+        },
+        "results": {
+            "summary": "{{total}} {{courses}} • صفحة {{page}}/{{totalPages}} • عرض {{showing}} من {{total}}"
+        },
+        "card": {
+            "untitledPackage": "حزمة بدون عنوان"
+        }
+    },
+    "filters": {
+        "title": "عوامل التصفية",
+        "clearAll": "مسح الكل",
+        "close": "إغلاق",
+        "show": "عرض",
+        "apply": "تطبيق عوامل التصفية",
+        "applyShort": "تطبيق",
+        "applyWithCount": "تطبيق ({{selected}})",
+        "appliedCount_zero": "{{count}} عامل تصفية مطبق",
+        "appliedCount_one": "{{count}} عامل تصفية مطبق",
+        "appliedCount_two": "{{count}} عاملا تصفية مطبقان",
+        "appliedCount_few": "{{count}} عوامل تصفية مطبقة",
+        "appliedCount_many": "{{count}} عامل تصفية مطبقاً",
+        "appliedCount_other": "{{count}} عامل تصفية مطبق",
+        "noOptions": "لا توجد خيارات متاحة",
+        "unavailable": "غير متاح",
+        "unnamedLevel": "{{level}} بدون اسم",
+        "unnamedInstructor": "{{instructor}} بدون اسم"
+    },
+    "pagination": {
+        "ariaLabel": "ترقيم الصفحات",
+        "previous": "السابق",
+        "next": "التالي"
+    },
+    "dialog": {
+        "close": "إغلاق"
+    },
+    "enrollment": {
+        "success": {
+            "title": "تم التسجيل بنجاح!",
+            "welcome": "مرحباً بك في {{courseTitle}}!",
+            "description": "لقد تم تسجيلك بنجاح في {{course}}. يمكنك الآن الوصول إلى كل {{slides}} والبدء في التعلم.",
+            "exploreCourse": "استكشف {{course}}"
+        },
+        "pending": {
+            "title": "تم إرسال طلب التسجيل",
+            "heading": "تم إرسال الطلب بنجاح",
+            "nextTitle": "ما الخطوة التالية؟",
+            "step1": "سيقوم {{admin}} بمراجعة طلب تسجيلك",
+            "step2": "ستصلك رسالة إشعار عند الموافقة",
+            "step3": "سيتم منحك الوصول إلى {{slides}} في {{course}}"
+        }
+    },
+    "approval": {
+        "success": {
+            "srTitle": "تمت الموافقة بنجاح",
+            "srDescription": "تمت الموافقة على تسجيلك ويمكنك الآن الوصول إلى {{course}}",
+            "heading": "تمت الموافقة بنجاح!",
+            "readyTitle": "أنت جاهز للتعلم!",
+            "readyMessage": "يمكنك الآن الوصول إلى محتوى {{course}} والبدء في التعلم.",
+            "startLearning": "ابدأ التعلم"
+        }
+    },
+    "payment": {
+        "success": {
+            "srTitle": "تم الدفع بنجاح",
+            "srDescription": "تمت معالجة عملية الدفع بنجاح",
+            "heading": "تم الدفع بنجاح!",
+            "approvalTitle": "مطلوب موافقة {{admin}}",
+            "approvalStep1": "سيقوم المسؤول بمراجعة طلب تسجيلك",
+            "approvalStep2": "ستصلك رسالة بريد إلكتروني عند الموافقة",
+            "approvalStep3": "سيتم منح الوصول إلى {{course}} تلقائياً",
+            "accessMessage": "يمكنك الآن الوصول إلى محتوى {{course}} والبدء في التعلم.",
+            "exploreCourse": "استكشف {{course}}"
+        },
+        "failed": {
+            "srTitle": "فشل الدفع",
+            "srDescription": "تعذّرت معالجة عملية الدفع",
+            "heading": "فشل الدفع",
+            "description": "تعذّرت معالجة عملية الدفع. يرجى المحاولة مرة أخرى.",
+            "nextTitle": "ما الذي يمكنك فعله؟",
+            "step1": "تحقق من وسيلة الدفع ثم حاول مرة أخرى",
+            "step2": "تواصل مع الدعم إذا استمرت المشكلة",
+            "step3": "يمكنك بدء عملية التسجيل من جديد",
+            "tryAgain": "حاول مرة أخرى"
+        }
+    },
+    "hero": {
+        "resume": {
+            "eyebrow": "تابع من حيث توقفت",
+            "continue": "متابعة"
+        },
+        "catalogEyebrow": "دليل {{course}}",
+        "title": "استكشف واكتشف",
+        "description": "نظّم وارفع وتابع المصادر التعليمية بسهولة في مكان واحد.",
+        "createCourse": "إنشاء {{course}}"
+    },
+    "card": {
+        "unknownInstructor": "{{instructor}} غير معروف",
+        "cta": {
+            "review": "مراجعة",
+            "continue": "متابعة",
+            "startLearning": "ابدأ التعلم",
+            "view": "عرض {{course}}"
+        },
+        "tagsMore_zero": "+{{count}} المزيد",
+        "tagsMore_one": "+{{count}} المزيد",
+        "tagsMore_two": "+{{count}} المزيد",
+        "tagsMore_few": "+{{count}} المزيد",
+        "tagsMore_many": "+{{count}} المزيد",
+        "tagsMore_other": "+{{count}} المزيد",
+        "status": {
+            "notStarted": "لم يبدأ",
+            "percentComplete": "{{percent}}٪ مكتمل",
+            "keepGoing": "واصل التقدم!"
+        },
+        "nextSlide": "التالي: {{title}}",
+        "overview": "نظرة عامة",
+        "overviewAriaLabel": "عرض نظرة عامة على {{course}}"
+    }
+}

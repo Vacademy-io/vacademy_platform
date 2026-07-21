@@ -1,11 +1,28 @@
 import React from "react";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import iconStreak from "@/assets/cleaner-play/icon-streak.webp";
 
-const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
+/**
+ * Weekday initials, Monday-first. A function (not a module const) so the
+ * labels re-resolve when the learner switches language — a module-scope array
+ * would freeze the English initials at import time.
+ */
+const getDayLabels = (t: TFunction<"dashboard">): string[] => [
+  t("streak.dayInitial.monday"),
+  t("streak.dayInitial.tuesday"),
+  t("streak.dayInitial.wednesday"),
+  t("streak.dayInitial.thursday"),
+  t("streak.dayInitial.friday"),
+  t("streak.dayInitial.saturday"),
+  t("streak.dayInitial.sunday"),
+];
 
 export const StreakCounterWidget: React.FC = () => {
+  const { t } = useTranslation("dashboard");
+  const dayLabels = getDayLabels(t);
   const data = usePlayGamificationStore((s) => s.data);
   const isLoading = usePlayGamificationStore((s) => s.isLoading);
   const streak = data?.currentStreak ?? 0;
@@ -33,17 +50,19 @@ export const StreakCounterWidget: React.FC = () => {
         {hasStreak ? (
           <div>
             <p className="text-h2 font-black leading-none text-play-warn-soft-ink">{streak}</p>
-            <p className="text-caption font-bold uppercase tracking-wide text-play-ink/60">Day streak</p>
+            <p className="text-caption font-bold uppercase tracking-wide text-play-ink/60">
+              {t("streak.dayStreakLabel")}
+            </p>
           </div>
         ) : (
           <p className="text-body font-black leading-tight text-play-ink">
-            Attend or learn today to start a streak
+            {t("streak.emptyPrompt")}
           </p>
         )}
       </div>
 
       <div className="flex items-center gap-1.5">
-        {DAY_LABELS.map((label, i) => (
+        {dayLabels.map((label, i) => (
           <div
             key={i}
             className={cn(
@@ -60,7 +79,7 @@ export const StreakCounterWidget: React.FC = () => {
 
       {best > 0 && (
         <p className="mt-auto text-caption font-bold uppercase tracking-wide text-play-ink/60">
-          Best: {best} days
+          {t("streak.best", { count: best })}
         </p>
       )}
     </div>

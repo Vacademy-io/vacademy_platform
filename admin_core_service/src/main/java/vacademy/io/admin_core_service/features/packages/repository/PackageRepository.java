@@ -97,17 +97,25 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             @Param("sessionStatusList") List<String> sessionStatusList,
             @Param("packageSessionStatusList") List<String> packageSessionStatusList);
 
+    // Distinct packages a learner can actually open. The status filters must mirror
+    // the learner "My Courses" catalogue query (LearnerPackageService: package ACTIVE,
+    // package_session ACTIVE/HIDDEN, mapping ACTIVE) so the dashboard course count
+    // equals the number of accessible course cards. A learner removed from every batch
+    // (mapping flipped to INACTIVE/TERMINATED) must count 0, not linger as != DELETED.
     @Query(value = "SELECT DISTINCT p.* FROM package p " +
             "JOIN package_session ps ON p.id = ps.package_id " +
             "JOIN student_session_institute_group_mapping ssgm ON ssgm.package_session_id = ps.id " +
             "WHERE ssgm.institute_id = :instituteId " +
             "AND ssgm.user_id = :userId " +
-            "AND p.status != 'DELETED' " +
-            "AND ps.status != 'DELETED' " +
-            "AND ssgm.status != 'DELETED'", nativeQuery = true)
+            "AND p.status IN (:packageStatuses) " +
+            "AND ps.status IN (:packageSessionStatuses) " +
+            "AND ssgm.status IN (:learnerStatuses)", nativeQuery = true)
     List<PackageEntity> findDistinctPackagesByUserIdAndInstituteId(
             @Param("userId") String userId,
-            @Param("instituteId") String instituteId);
+            @Param("instituteId") String instituteId,
+            @Param("packageStatuses") List<String> packageStatuses,
+            @Param("packageSessionStatuses") List<String> packageSessionStatuses,
+            @Param("learnerStatuses") List<String> learnerStatuses);
 
     @Query(value = "SELECT COUNT(DISTINCT p.id) FROM package p " +
             "JOIN package_session ps ON p.id = ps.package_id " +
@@ -267,7 +275,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             ) lo ON lo.source_id = ps.id
 
             LEFT JOIN faculty_subject_package_session_mapping fspm
-                ON fspm.package_session_id = ps.id
+                ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                 AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
 
             LEFT JOIN (
@@ -486,7 +494,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             ) lo ON lo.source_id = ps.id
 
             LEFT JOIN faculty_subject_package_session_mapping fspm
-                ON fspm.package_session_id = ps.id
+                ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                 AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
 
             LEFT JOIN (
@@ -573,7 +581,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                                   AND (:#{#learnerOperations == null || #learnerOperations.isEmpty()} = true OR operation IN (:learnerOperations))
                                 GROUP BY source_id
                             ) lo ON lo.source_id = ps.id
-                            LEFT JOIN faculty_subject_package_session_mapping fspm ON fspm.package_session_id = ps.id
+                            LEFT JOIN faculty_subject_package_session_mapping fspm ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                                 AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
                             WHERE
                                 (:instituteId IS NULL OR pi.institute_id = :instituteId)
@@ -668,7 +676,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 LEFT JOIN session s ON s.id = ps.session_id
                 JOIN package_institute pi ON pi.package_id = p.id
                 LEFT JOIN faculty_subject_package_session_mapping fspm
-                    ON fspm.package_session_id = ps.id
+                    ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                     AND (
                         :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
                         OR fspm.status IN (:facultySubjectSessionStatus)
@@ -748,7 +756,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 LEFT JOIN session s ON s.id = ps.session_id
                 JOIN package_institute pi ON pi.package_id = p.id
                 LEFT JOIN faculty_subject_package_session_mapping fspm
-                    ON fspm.package_session_id = ps.id
+                    ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                     AND (
                         :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
                         OR fspm.status IN (:facultySubjectSessionStatus)
@@ -864,7 +872,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             JOIN package_institute pi ON pi.package_id = p.id
 
             LEFT JOIN faculty_subject_package_session_mapping fspm
-                ON fspm.package_session_id = ps.id
+                ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                 AND (
                     :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
                     OR fspm.status IN (:facultySubjectSessionStatus)
@@ -964,7 +972,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                         JOIN level l ON l.id = ps.level_id
                         JOIN package_institute pi ON pi.package_id = p.id
                         LEFT JOIN faculty_subject_package_session_mapping fspm
-                            ON fspm.package_session_id = ps.id
+                            ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                             AND (
                                 :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
                                 OR fspm.status IN (:facultySubjectSessionStatus)
@@ -1087,7 +1095,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             FROM package p
             JOIN package_session ps ON ps.package_id = p.id
             JOIN level l ON l.id = ps.level_id
-            LEFT JOIN faculty_subject_package_session_mapping fspm ON fspm.package_session_id = ps.id
+            LEFT JOIN faculty_subject_package_session_mapping fspm ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
 
             WHERE p.id = :packageId
               AND (
@@ -1186,7 +1194,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 JOIN package_institute pi ON pi.package_id = p.id
 
                 LEFT JOIN faculty_subject_package_session_mapping fspm
-                    ON fspm.package_session_id = ps.id
+                    ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                     AND (
                         :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
                         OR fspm.status IN (:facultyPackageSessionStatus)
@@ -1286,7 +1294,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     JOIN level l ON l.id = ps.level_id
                     JOIN package_institute pi ON pi.package_id = p.id
                     LEFT JOIN faculty_subject_package_session_mapping fspm
-                        ON fspm.package_session_id = ps.id
+                        ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                         AND (
                             :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
                             OR fspm.status IN (:facultyPackageSessionStatus)
@@ -1409,7 +1417,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 LEFT JOIN session s ON s.id = ps.session_id
                 JOIN package_institute pi ON pi.package_id = p.id
                 LEFT JOIN faculty_subject_package_session_mapping fspm
-                    ON fspm.package_session_id = ps.id
+                    ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                     AND fspm.subject_id IS NULL
                     AND (
                         :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
@@ -1503,7 +1511,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 LEFT JOIN session s ON s.id = ps.session_id
                 JOIN package_institute pi ON pi.package_id = p.id
                 LEFT JOIN faculty_subject_package_session_mapping fspm
-                    ON fspm.package_session_id = ps.id
+                    ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                     AND fspm.subject_id IS NULL
                     AND (
                         :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
@@ -1573,7 +1581,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             JOIN level l ON l.id = ps.level_id
             JOIN package_institute pi ON pi.package_id = p.id
             LEFT JOIN faculty_subject_package_session_mapping fspm
-                ON fspm.package_session_id = ps.id
+                ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                 AND fspm.subject_id IS NULL
                 AND (
                     :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
@@ -1661,7 +1669,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             JOIN level l ON l.id = ps.level_id
             JOIN package_institute pi ON pi.package_id = p.id
             LEFT JOIN faculty_subject_package_session_mapping fspm
-                ON fspm.package_session_id = ps.id
+                ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                 AND fspm.subject_id IS NULL
                 AND (
                     :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true
@@ -1825,7 +1833,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             ) lo ON lo.source_id = ps.id
 
             LEFT JOIN faculty_subject_package_session_mapping fspm
-                ON fspm.package_session_id = ps.id
+                ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                 AND (
                     :#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true
                     OR fspm.status IN (:facultySubjectSessionStatus)
@@ -2136,7 +2144,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             ) lo ON lo.source_id = ps.id
 
             LEFT JOIN faculty_subject_package_session_mapping fspm
-              ON fspm.package_session_id = ps.id
+              ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
               AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
 
             LEFT JOIN (
@@ -2217,7 +2225,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                       AND ssigm.user_id = :userId
                       AND (:#{#mappingStatuses == null || #mappingStatuses.isEmpty()} = true OR ssigm.status IN (:mappingStatuses))
                     LEFT JOIN faculty_subject_package_session_mapping fspm
-                      ON fspm.package_session_id = ps.id
+                      ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                       AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
                     WHERE
                       (:instituteId IS NULL OR pi.institute_id = :instituteId)
@@ -2316,7 +2324,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             ) lo ON lo.source_id = ps.id
 
             LEFT JOIN faculty_subject_package_session_mapping fspm
-                ON fspm.package_session_id = ps.id
+                ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                 AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
 
             LEFT JOIN (
@@ -2512,7 +2520,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
             ) lo ON lo.source_id = ps.id
 
             LEFT JOIN faculty_subject_package_session_mapping fspm
-                ON fspm.package_session_id = ps.id
+                ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                 AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
 
             LEFT JOIN (
@@ -2589,7 +2597,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                             JOIN level l ON l.id = ps.level_id
                             JOIN package_institute pi ON pi.package_id = p.id
                             LEFT JOIN faculty_subject_package_session_mapping fspm
-                                ON fspm.package_session_id = ps.id
+                                ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                                 AND (:#{#facultySubjectSessionStatus == null || #facultySubjectSessionStatus.isEmpty()} = true OR fspm.status IN (:facultySubjectSessionStatus))
                             WHERE
                                 p.is_course_published_to_catalaouge = true
@@ -3033,7 +3041,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
 
                 -- Join for faculty information
                 LEFT JOIN faculty_subject_package_session_mapping fspm
-                    ON fspm.package_session_id = ps.id
+                    ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                     AND fspm.subject_id IS NULL
                     AND (:#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true OR fspm.status IN (:facultyPackageSessionStatus))
 
@@ -3281,7 +3289,7 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                 JOIN package_institute pi ON pi.package_id = p.id
 
                 LEFT JOIN faculty_subject_package_session_mapping fspm
-                    ON fspm.package_session_id = ps.id
+                    ON fspm.package_session_id = ps.id AND fspm.suborg_id IS NULL
                     AND fspm.subject_id IS NULL
                     AND (
                         :#{#facultyPackageSessionStatus == null || #facultyPackageSessionStatus.isEmpty()} = true

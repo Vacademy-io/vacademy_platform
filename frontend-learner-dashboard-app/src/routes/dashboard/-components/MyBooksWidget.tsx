@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getInstituteId } from "@/constants/helper";
@@ -23,6 +24,7 @@ interface BookPackage {
 const PAGE_SIZE = 10;
 
 export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
+    const { t } = useTranslation("dashboard");
     const [initialLoading, setInitialLoading] = useState(true);
     const [loading, setLoading] = useState(false);
     const [books, setBooks] = useState<BookPackage[]>([]);
@@ -159,7 +161,7 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
             <CardHeader className="p-4 pb-2">
                 <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary uppercase">
                     <BookOpen className="w-5 h-5" />
-                    BOOKS
+                    {t("books.title")}
                 </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0">
@@ -170,8 +172,12 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
                     fetchBooks(levelIdMap[levelKey], 0);
                 }}>
                     <TabsList className="grid w-full grid-cols-2 mb-3 bg-secondary/30 h-8 p-1">
-                        <TabsTrigger value="purchased" className="text-xs py-1 h-6">Purchased</TabsTrigger>
-                        <TabsTrigger value="rented" className="text-xs py-1 h-6">Rented</TabsTrigger>
+                        <TabsTrigger value="purchased" className="text-xs py-1 h-6">
+                            {t("books.tabPurchased")}
+                        </TabsTrigger>
+                        <TabsTrigger value="rented" className="text-xs py-1 h-6">
+                            {t("books.tabRented")}
+                        </TabsTrigger>
                     </TabsList>
 
                     <div className={cn("space-y-2 transition-all duration-300", loading && "opacity-50 pointer-events-none")}>
@@ -200,7 +206,11 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
                             </div>
                         ) : (
                             <div className="py-4 px-3 rounded-lg border border-dashed border-border flex flex-col items-center justify-center text-center bg-secondary/10">
-                                <p className="text-caption text-muted-foreground italic font-medium">No {activeTab} books available.</p>
+                                <p className="text-caption text-muted-foreground italic font-medium">
+                                    {activeTab === "purchased"
+                                        ? t("books.emptyPurchased")
+                                        : t("books.emptyRented")}
+                                </p>
                             </div>
                         )}
                     </div>
@@ -208,8 +218,9 @@ export const MyBooksWidget: React.FC<MyBooksWidgetProps> = ({ className }) => {
                     {totalBooks > 0 && (
                         <div className="flex items-center justify-between mt-3 pt-2 border-t border-border">
                             <span className="text-caption text-muted-foreground font-black uppercase tracking-tighter">
-                                {totalBooks} {totalBooks === 1 ? "book" : "books"}
-                                {totalPages > 1 && ` · ${page + 1} / ${totalPages}`}
+                                {t("books.bookCount", { count: totalBooks })}
+                                {totalPages > 1 &&
+                                    t("books.pageIndicator", { page: page + 1, total: totalPages })}
                             </span>
                             {totalPages > 1 && (
                                 <div className="flex gap-1">

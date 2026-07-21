@@ -61,6 +61,24 @@ export const GENERATE_TRANSCRIPT_NOTES_URL = `${AI_SERVICE_BASE_URL}/transcript/
 // Response: { html: string, model: string }.
 export const GENERATE_HTML_DOCUMENT_URL = `${AI_SERVICE_BASE_URL}/html-doc/v1/generate`;
 
+// Content translation — AI-service side (job orchestration + credit estimate).
+// See ai_service app/routers/translation.py. The stage machine is
+// EXTRACT -> TRANSLATE -> REVIEW (DRAFT mode parks here as AWAITING_INPUT) ->
+// WRITE_BACK; TRANSLATE_COURSE answers 402 when credits are short.
+export const TRANSLATION_ESTIMATE_URL = `${AI_SERVICE_BASE_URL}/translation/v1/estimate`;
+export const TRANSLATE_COURSE_URL = (packageSessionId: string) =>
+    `${AI_SERVICE_BASE_URL}/translation/v1/course/${packageSessionId}`;
+export const TRANSLATION_JOB_URL = (jobId: string) =>
+    `${AI_SERVICE_BASE_URL}/translation/v1/job/${jobId}`;
+export const TRANSLATION_JOB_APPROVE_URL = (jobId: string) =>
+    `${AI_SERVICE_BASE_URL}/translation/v1/job/${jobId}/approve`;
+
+// Content translation — admin-core side (review sidecar reads/writes).
+// See admin_core_service features/translation TranslationAdminController.
+export const TRANSLATION_STATUS_URL = `${BASE_URL}/admin-core-service/translations/v1/status`;
+export const TRANSLATION_ITEMS_URL = `${BASE_URL}/admin-core-service/translations/v1/items`;
+export const TRANSLATION_ITEM_STATE_URL = `${BASE_URL}/admin-core-service/translations/v1/item/state`;
+
 // Institute AI Settings APIs
 export const GET_INSTITUTE_AI_SETTINGS = (instituteId: string) =>
     `${AI_SERVICE_BASE_URL}/institute/ai-settings/v1/get?institute_id=${instituteId}`;
@@ -907,6 +925,20 @@ export const REFERRAL_DELETE = `${BASE_URL}/admin-core-service/v1/referral-optio
 export const GET_INSITITUTE_SETTINGS = `${BASE_URL}/admin-core-service/institute/setting/v1/get`;
 export const SAVE_INSTITUTE_SETTING = `${BASE_URL}/admin-core-service/institute/setting/v1/save-setting`;
 export const GET_INSTITUTE_SETTING_DATA = `${BASE_URL}/admin-core-service/institute/setting/v1/data`;
+
+// Onboarding Flows — ordered checklists (FORM steps built from institute custom
+// fields) that a lead/student goes through between "agreed to join" and "fully
+// enrolled". Gated behind institute setting ONBOARDING_SETTING (see
+// useOnboardingSettings / OnboardingSettings.tsx).
+export const ONBOARDING_FLOWS_BASE = `${BASE_URL}/admin-core-service/onboarding/flows`;
+export const ONBOARDING_INSTANCES_BASE = `${BASE_URL}/admin-core-service/onboarding/instances`;
+// NOTE: OnboardingInstanceController mounts /side-view UNDER /instances
+// (class-level @RequestMapping("/onboarding/instances") + method
+// @GetMapping("/side-view")) — actual path is .../instances/side-view, not a
+// sibling of /instances as an earlier draft of this spec assumed.
+export const ONBOARDING_SIDE_VIEW = `${ONBOARDING_INSTANCES_BASE}/side-view`;
+export const ONBOARDING_STEP_INSTANCES_BASE = `${BASE_URL}/admin-core-service/onboarding/step-instances`;
+export const ONBOARDING_STEP_FEATURE_FIELDS = `${BASE_URL}/admin-core-service/common/custom-fields/feature-fields`;
 export const UPDATE_CUSTOM_FIELD_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/custom-field/create-or-update`;
 export const GET_CUSTOM_FIELD_LIST_WITH_USAGE = `${BASE_URL}/admin-core-service/institute/v1/custom-field/list-with-usage`;
 // Message Templates
@@ -1080,6 +1112,9 @@ export const AI_PAGE_BUILDER_EDIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v
 export const AI_PAGE_BUILDER_BRAND_KIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/brand-kit`;
 export const AI_PAGE_BUILDER_IMAGE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/image`;
 export const AI_PAGE_BUILDER_SITE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site`;
+// Course field AI assist (ai_service) — inline generate on the Add Course form
+export const AI_COURSE_ASSIST_TEXT = () => `${AI_SERVICE_BASE_URL}/course/assist/v1/text`;
+export const AI_COURSE_ASSIST_IMAGE = () => `${AI_SERVICE_BASE_URL}/course/assist/v1/image`;
 
 export const LINK_COUNSELLOR = `${BASE_URL}/admin-core-service/enquiry/link-counselor`;
 export const GET_ENQUIRY_DETAILS = `${BASE_URL}/admin-core-service/enquiry/v1/admin/details`;
@@ -1105,6 +1140,17 @@ export const BOOKING_TYPES_BY_INSTITUTE = `${BOOKING_BASE}/types/by-institute`;
 
 // Autosuggest Users API
 export const AUTOSUGGEST_USERS = `${BASE_URL}/auth-service/v1/user/autosuggest-users`;
+
+// CRM Meetings (booking pages + host calendars)
+export const MEETINGS_BASE = `${BASE_URL}/admin-core-service/v1/meetings`;
+export const MEETINGS_BOOKING_PAGE_CREATE = `${MEETINGS_BASE}/booking-page`;
+export const MEETINGS_BOOKING_PAGE_BY_ID = (id: string) => `${MEETINGS_BASE}/booking-page/${id}`;
+export const MEETINGS_BOOKING_PAGES_LIST = `${MEETINGS_BASE}/booking-pages`;
+export const MEETINGS_BOOK = `${MEETINGS_BASE}/book`;
+export const MEETINGS_MY_CALENDAR = `${MEETINGS_BASE}/my-calendar`;
+export const MEETINGS_TEAM_CALENDAR = `${MEETINGS_BASE}/team-calendar`;
+export const MEETINGS_SCOPE = `${MEETINGS_BASE}/scope`;
+export const MEETINGS_BY_LEAD = `${MEETINGS_BASE}/by-lead`;
 
 // Manage Custom Teams / Faculty Access v2
 export const GRANT_USER_ACCESS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access`;
@@ -1462,3 +1508,9 @@ export const SALES_DASHBOARD_LEADERBOARD = (
     `${SALES_DASHBOARD_BASE}/counsellor-leaderboard?${buildSdQS(instituteId, { team_id: teamId, limit })}`;
 export const SALES_DASHBOARD_INSIGHTS = (instituteId: string, teamId?: string) =>
     `${SALES_DASHBOARD_BASE}/insights?${buildSdQS(instituteId, { team_id: teamId })}`;
+
+// ---- Engagement Engines (admin-core-service) ----
+export const ENGAGEMENT_ENGINES_BASE = `${BASE_URL}/admin-core-service/v1/engagement/engines`;
+export const ENGAGEMENT_DATA_POINTS = `${ENGAGEMENT_ENGINES_BASE}/data-points`;
+export const ENGAGEMENT_TASKS_BASE = `${BASE_URL}/admin-core-service/v1/engagement/tasks`;
+export const ENGAGEMENT_TEMPLATES_BASE = `${BASE_URL}/admin-core-service/v1/engagement/template-proposals`;

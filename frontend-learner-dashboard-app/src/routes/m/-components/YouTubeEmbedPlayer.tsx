@@ -1,4 +1,5 @@
 import React from "react";
+import { getYouTubeEmbedOrigin } from "@/utils/youtube-embed";
 
 interface YouTubeEmbedPlayerProps {
     url: string;
@@ -27,6 +28,7 @@ function convertToYouTubeEmbedUrl(url: string): string {
     if (!videoId) return url;
 
     // YouTube embed parameters to minimize branding and disable seeking
+    const origin = getYouTubeEmbedOrigin();
     const params = new URLSearchParams({
         modestbranding: '1',  // Reduce YouTube logo in controls
         rel: '0',             // Don't show related videos from other channels
@@ -35,6 +37,8 @@ function convertToYouTubeEmbedUrl(url: string): string {
         iv_load_policy: '3',  // Hide video annotations
         disablekb: '1',       // Disable keyboard controls (prevents seeking via arrow keys)
         cc_load_policy: '0',  // Don't force captions
+        origin,               // Valid http(s) origin — iOS capacitor:// is rejected (Error 153)
+        widget_referrer: origin,
     });
 
     // Use youtube-nocookie.com for privacy-enhanced mode (less branding)
@@ -65,6 +69,7 @@ export const YouTubeEmbedPlayer: React.FC<YouTubeEmbedPlayerProps> = ({
                     frameBorder="0"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
                     allowFullScreen
+                    referrerPolicy="strict-origin-when-cross-origin"
                     className="w-full h-full absolute inset-0"
                     loading="lazy"
                 />

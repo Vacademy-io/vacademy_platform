@@ -40,7 +40,7 @@ import java.util.List;
  *   assigned_at  = MAX(timeline_event.created_at) per lead
  *                  WHERE action_type = 'COUNSELOR_ASSIGNED'
  *                    AND type = 'USER_LEAD_PROFILE'
- *                    AND type_id = user_lead_profile.user_id
+ *                    AND type_id = user_lead_profile.id
  *
  *   assigned     = COUNT leads where assigned_counselor_id = c
  *                              AND assigned_at >= NOW() - window_days
@@ -74,14 +74,17 @@ public class CounsellorRatingComputeService {
      */
     private static final String ASSIGNED_AT_LATERAL =
             // action_type stores the enum NAME ('COUNSELOR_ASSIGNED' — assigns
-            // and reassigns share the enum), and type_id on USER_LEAD_PROFILE
-            // events is the lead's user_id, not user_lead_profile.id. See
+            // and reassigns share the enum). type_id on USER_LEAD_PROFILE events
+            // is user_lead_profile.id, NOT the raw user_id — timeline_event has
+            // no institute_id column, and a user_id alone can now resolve to a
+            // profile per institute, so correlating on user_id would pull in
+            // another institute's assignment events for the same person. See
             // timeline_event invariants in docs/crm.
             "LEFT JOIN LATERAL ( " +
             "    SELECT MAX(te.created_at) AS assigned_at " +
             "    FROM timeline_event te " +
             "    WHERE te.type = 'USER_LEAD_PROFILE' " +
-            "      AND te.type_id = ulp.user_id " +
+            "      AND te.type_id = ulp.id " +
             "      AND te.action_type = 'COUNSELOR_ASSIGNED' " +
             ") ta ON true ";
 

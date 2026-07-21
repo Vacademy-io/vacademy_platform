@@ -937,6 +937,23 @@ public class CourseApprovalService {
             copy.setSubjectId(original.getSubjectId()); // Keep same subject reference
             copy.setName(original.getName());
             copy.setStatus(original.getStatus());
+            // Carry the access/linkage fields across verbatim. Dropping suborg_id in particular
+            // would turn a sub-org access grant into a row indistinguishable from a real teacher
+            // of the temp package session, which is exactly what the faculty listings filter on.
+            copy.setUserType(original.getUserType());
+            copy.setTypeId(original.getTypeId());
+            copy.setAccessType(original.getAccessType());
+            copy.setAccessPermission(original.getAccessPermission());
+            copy.setLinkageType(original.getLinkageType());
+            copy.setSuborgId(original.getSuborgId());
+            // A package-session-scoped grant must point at the copy, not the original, or the
+            // temp row would hand back access to the original session. Other access types
+            // (Package, EnrollInvite) are unaffected by the session copy and carry over as-is.
+            if (originalPackageSession.getId().equals(original.getAccessId())) {
+                copy.setAccessId(tempPackageSession.getId());
+            } else {
+                copy.setAccessId(original.getAccessId());
+            }
             tempAssignments.add(copy);
         }
         facultySubjectPackageSessionMappingRepository.saveAll(tempAssignments);

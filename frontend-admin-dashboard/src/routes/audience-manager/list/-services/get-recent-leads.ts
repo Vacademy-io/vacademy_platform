@@ -74,6 +74,8 @@ export interface RecentLeadsRequest {
     // Conversion-state filter — defaults to EXCLUDE_CONVERTED on the backend so
     // leads that have been enrolled into a course don't pollute the active list.
     conversion_status_filter?: 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
+    /** Call-attempt history filter (see CallHistoryFilter options). */
+    call_history_filter?: string;
     /**
      * Soft-delete visibility — defaults to EXCLUDE_DELETED on the backend, so deleted leads stay
      * hidden unless explicitly asked for. ONLY_DELETED backs the "Deleted leads" view that restore

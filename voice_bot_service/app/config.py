@@ -56,8 +56,22 @@ class Settings:
     sarvam_llm_base_url: str = field(
         default_factory=lambda: _env("SARVAM_LLM_BASE_URL", "https://api.sarvam.ai/v1")
     )
+    # Sarvam-side fast endpointing: server endpointing (~0.65-0.76s from end of speech)
+    # is the measured binding constraint on reply latency — high VAD sensitivity asks
+    # Sarvam to finalize sooner. Env-off if it starts clipping slow speakers.
+    sarvam_stt_high_vad: bool = field(
+        default_factory=lambda: _env("SARVAM_STT_HIGH_VAD", "true").lower() == "true")
     sarvam_tts_model: str = field(default_factory=lambda: _env("SARVAM_TTS_MODEL", "bulbul:v3"))
     sarvam_tts_voice: str = field(default_factory=lambda: _env("SARVAM_TTS_VOICE", "priya"))
+    # Server-side chars Sarvam buffers before synthesizing the first audio (default 50).
+    # DEFAULT 0 = DON'T SEND (server default 50): at 30 the smaller chunks produced
+    # audible SEAMS — callers reported 'network-like' breaking on some sentences
+    # (2026-07-20). And 20 is outright REJECTED by Sarvam's config validation, which
+    # killed TTS on every call (silent-call outage same day; probe: 20 rejected,
+    # 30/50 accepted). providers.build_tts clamps any override to >= 30. Smoothness
+    # beats the ~0.1s first-audio win — leave at 0 unless re-testing deliberately.
+    sarvam_tts_min_buffer: int = field(
+        default_factory=lambda: int(_env("SARVAM_TTS_MIN_BUFFER", "0")))
 
     # LLM provider switch: "sarvam" (default) | "vertex" | "google" | "openrouter". Governs
     # BOTH the live conversation (providers.build_llm) and the end-of-call
@@ -118,7 +132,10 @@ class Settings:
     # decide the caller finished; too low clips slow speakers mid-sentence.
     # agg_timeout_secs = extra wait for a late-arriving final transcript.
     vad_stop_secs: float = field(default_factory=lambda: float(_env("VAD_STOP_SECS", "0.5")))
-    agg_timeout_secs: float = field(default_factory=lambda: float(_env("AGG_TIMEOUT_SECS", "0.2")))
+    # Measured on live calls (48h, 141 turns): Sarvam's STT final trails local VAD stop in
+    # 85% of turns, so this timeout is PURE additive delay on top of an already-final
+    # transcript. 0.08 keeps a small merge window for split finals; saves ~0.12s/turn.
+    agg_timeout_secs: float = field(default_factory=lambda: float(_env("AGG_TIMEOUT_SECS", "0.08")))
 
     # Bulbul speaking pace: 1.0 = native. Founder feedback on the live calls:
     # 0.95 sounded noticeably slow on the phone; 1.1 is brisk but natural.
@@ -129,12 +146,17 @@ class Settings:
     # is ~1.5s (0.5 VAD + 0.36 STT final + 0.8 Gemini TTFT) and this cuts the
     # PERCEIVED dead air to ~1s, which is what human agents do. Probability 0
     # disables; phrases are comma-separated and spoken verbatim.
+    # 0.25 (was 0.7): with Gemini's ~0.5s TTFT the filler often COLLIDES with the
+    # real reply, and on live calls a reply-shaped filler ('Okay…') played right
+    # before an interrupted response read as the bot answering then going silent.
     filler_probability: float = field(
-        default_factory=lambda: float(_env("FILLER_PROBABILITY", "0.7"))
+        default_factory=lambda: float(_env("FILLER_PROBABILITY", "0.25"))
     )
+    # 'Hmm…' only: clearly a thinking sound. 'Achha…'/'Ji…'/'Okay…' sound like
+    # complete replies, which made stalls read as answers.
     filler_phrases: tuple = field(
         default_factory=lambda: tuple(
-            p.strip() for p in _env("FILLER_PHRASES", "Hmm…,Achha…,Ji…").split(",") if p.strip()
+            p.strip() for p in _env("FILLER_PHRASES", "Hmm…").split(",") if p.strip()
         )
     )
 
@@ -147,8 +169,10 @@ class Settings:
     greet_delay_secs: float = field(default_factory=lambda: float(_env("GREET_DELAY_SECS", "0.8")))
 
     # Idle handling: nudge once after this silence, then hang up on continued
-    # silence. The clock only runs while the BOT is not speaking (see bot.py).
-    idle_timeout_secs: float = 7.0
+    # silence. The clock only runs while the BOT is not speaking AND the caller is not
+    # mid-utterance (VAD-armed — see bot.py). 10s: at 7s the nudge kept firing while a
+    # slow-thinking caller was composing an answer (observed live).
+    idle_timeout_secs: float = field(default_factory=lambda: float(_env("IDLE_TIMEOUT_SECS", "10.0")))
 
     # Hard per-call ceiling when the agent config doesn't set maxCallMinutes —
     # bounds telephony + STT/LLM/TTS spend on a runaway conversation.

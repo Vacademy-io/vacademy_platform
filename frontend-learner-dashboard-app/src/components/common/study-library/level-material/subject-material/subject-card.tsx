@@ -5,12 +5,14 @@ import { SubjectType } from "@/stores/study-library/use-study-library-store";
 import { useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toTitleCase } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface SubjectCardProps {
   subject: SubjectType;
 }
 
 export const SubjectCard = ({ subject }: SubjectCardProps) => {
+  const { t } = useTranslation("studyContent");
   const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
   const { getPublicUrl } = useFileUpload();
   const router = useRouter();
@@ -75,7 +77,9 @@ export const SubjectCard = ({ subject }: SubjectCardProps) => {
           <div className="flex items-center gap-2">
             <CompletionStatusComponent completionPercentage={subject.percentage_completed} />
             <p className="text-xs text-neutral-500 group-hover:text-neutral-600 transition-colors duration-200">
-              ({subject.percentage_completed.toFixed(1)}% completed)
+              {t("progress.percentCompletedParenthetical", {
+                percent: subject.percentage_completed.toFixed(1),
+              })}
             </p>
           </div>
         </div>

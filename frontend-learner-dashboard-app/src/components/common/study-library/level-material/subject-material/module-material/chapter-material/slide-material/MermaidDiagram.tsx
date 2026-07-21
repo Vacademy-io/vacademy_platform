@@ -5,6 +5,7 @@ import { initializeMermaid } from '@/utils/initializeMermaid';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 import { ArrowsOut, MagnifyingGlassPlus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 interface MermaidDiagramProps {
     code: string;
@@ -17,6 +18,7 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
     className = '',
     id
 }) => {
+    const { t } = useTranslation('studyContent');
     const renderedCodeRef = useRef<string>('');
     const [hasError, setHasError] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string>('');
@@ -145,7 +147,7 @@ export const MermaidDiagram: React.FC<MermaidDiagramProps> = ({
                     <div className="absolute inset-x-0 bottom-3 flex justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/90 backdrop-blur-md rounded-full shadow-sm border border-gray-200 text-xs font-medium text-gray-600">
                             <MagnifyingGlassPlus size={14} />
-                            <span>Click to expand</span>
+                            <span>{t("mermaid.clickToExpand")}</span>
                         </div>
                     </div>
                 </div>

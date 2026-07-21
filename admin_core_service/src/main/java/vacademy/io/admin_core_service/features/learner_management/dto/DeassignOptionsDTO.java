@@ -26,4 +26,13 @@ public class DeassignOptionsDTO {
 
     @Builder.Default
     private boolean dryRun = false;
+
+    /**
+     * SOFT-mode only. The "last access date" the learner keeps access until.
+     * When present, overrides the enrollment mapping's {@code expiry_date} with
+     * this date; when null, SOFT leaves the existing plan/enrollment expiry
+     * untouched (access continues to the plan's own expiry). Ignored for HARD.
+     * Accepts a bare {@code yyyy-MM-dd} date or a full ISO-8601 instant.
+     */
+    private String accessTillDate;
 }

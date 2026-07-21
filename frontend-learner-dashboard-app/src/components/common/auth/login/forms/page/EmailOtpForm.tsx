@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -35,14 +35,22 @@ import {
 import { LOGIN_OTP, REQUEST_OTP } from "@/constants/urls";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
+import { hydrateParentSession } from "@/lib/auth/detect-user-role";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { ENABLE_OTP_FOR_LOGIN_SIGNUP } from "@/constants/feature-flags";
 import { SessionLimitDialog } from "@/components/common/auth/login/components/SessionLimitDialog";
 import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 
-const emailSchema = z.object({
-  email: z.string().email({ message: "Invalid email address" }),
-});
+/**
+ * Built per-render (not a module constant) so the validation message follows
+ * the active language instead of freezing at import time.
+ */
+const makeEmailSchema = () =>
+  z.object({
+    email: z.string().email({ message: i18n.t("auth:validation.invalidEmail") }),
+  });
 
 const otpSchema = z.object({
   otp: z
@@ -51,7 +59,7 @@ const otpSchema = z.object({
     .transform((val) => val.join("")),
 });
 
-type EmailFormValues = z.infer<typeof emailSchema>;
+type EmailFormValues = z.infer<ReturnType<typeof makeEmailSchema>>;
 type OtpFormValues = { otp: string[] };
 
 export function EmailLogin({
@@ -73,6 +81,12 @@ export function EmailLogin({
   allowUsernamePasswordAuth?: boolean;
   allowPhoneAuth?: boolean;
 }) {
+  const { t, i18n: i18nInstance } = useTranslation("auth");
+  const emailSchema = useMemo(
+    () => makeEmailSchema(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [i18nInstance.language]
+  );
   const [isOtpSent, setIsOtpSent] = useState(false);
   const [email, setEmail] = useState("");
   const [timer, setTimer] = useState(0);
@@ -137,7 +151,7 @@ export function EmailLogin({
       setIsLoading(false);
       setIsOtpSent(true);
       startTimer(); // Add this line
-      toast.success("OTP sent successfully");
+      toast.success(i18n.t("auth:toasts.otpSent"));
     },
     onError: (error: AxiosError<ErrorResponse>) => {
       setIsLoading(false);
@@ -150,9 +164,9 @@ export function EmailLogin({
         errorData?.responseCode === "User not found!"
       ) {
         // User doesn't exist - show signup message
-        toast.error("Account not found. Please sign up to continue.", {
+        toast.error(i18n.t("auth:toasts.accountNotFoundSignup"), {
           duration: 5000,
-          description: "This email is not registered in our system.",
+          description: i18n.t("auth:toasts.emailNotRegistered"),
         });
 
         // Automatically switch to signup after a short delay
@@ -164,18 +178,19 @@ export function EmailLogin({
       } else if (errorData?.ex || errorData?.responseCode) {
         // Show specific backend error message
         toast.error(
-          errorData.ex || errorData.responseCode || "Failed to send OTP",
+          errorData.ex ||
+            errorData.responseCode ||
+            i18n.t("auth:toasts.failedToSendOtp"),
           {
             duration: 5000,
-            description:
-              "Please try again or contact support if the issue persists.",
+            description: i18n.t("auth:toasts.retryOrContactSupport"),
           },
         );
       } else {
         // Generic error fallback
-        toast.error("Failed to send OTP. Please try again.", {
+        toast.error(i18n.t("auth:toasts.failedToSendOtpRetry"), {
           duration: 5000,
-          description: "Please check your internet connection and try again.",
+          description: i18n.t("auth:toasts.checkConnection"),
         });
       }
     },
@@ -234,6 +249,7 @@ export function EmailLogin({
 
         const upperRoles = allRoles.map((r) => r.toUpperCase());
         isParent = upperRoles.includes("PARENT");
+        const isStudentToo = upperRoles.includes("STUDENT");
 
         console.log("[EmailLogin] Token decoded:", {
           user: userId,
@@ -243,20 +259,36 @@ export function EmailLogin({
           isParent: isParent,
         });
 
-        // Redirect parent users to parent portal
-        if (isParent) {
-          console.log(
-            "[EmailLogin] ✅ PARENT role detected - redirecting to /parent",
-          );
+        // PARENT-only guardians route to the monitoring portal after a minimal
+        // session hydration. This branch previously navigated away BEFORE writing
+        // any StudentDetails/InstituteDetails, so parents could never satisfy
+        // isAuthenticated(). Dual-role users fall through to the learner dashboard.
+        if (isParent && !isStudentToo) {
+          const parentInstituteId = authorities
+            ? Object.keys(authorities)[0]
+            : undefined;
+          if (parentInstituteId && userId) {
+            await hydrateParentSession(userId, parentInstituteId, {
+              user: userId,
+              authorities,
+            });
+          }
           setIsLoading(false);
-          navigate({ to: "/parent" });
+          navigate({ to: "/parent/child" });
           return;
         }
 
         if (authorityKeys.length > 1) {
+          // `redirect` defaults to the "/login/" sentinel with no real deep-link;
+          // forwarding it would bounce the user back to /login after they pick an
+          // institute, so collapse it to /dashboard/.
+          const forwardRedirect =
+            typeof redirect === "string" && redirect && redirect !== "/login/"
+              ? redirect
+              : "/dashboard/";
           navigate({
             to: "/institute-selection",
-            search: { redirect: redirect || "/dashboard/", type, courseId },
+            search: { redirect: forwardRedirect, type, courseId },
           });
         } else {
           const instituteId = authorityKeys[0];
@@ -303,7 +335,7 @@ export function EmailLogin({
                 // Unexpected login status
               }
             } catch {
-              toast.error("Failed to fetch details");
+              toast.error(i18n.t("auth:toasts.failedToFetchDetails"));
             }
           } else {
             // Institute ID or User ID is undefined
@@ -319,14 +351,19 @@ export function EmailLogin({
 
       if (errorData?.ex || errorData?.responseCode) {
         // Show specific backend error message
-        toast.error(errorData.ex || errorData.responseCode || "Invalid OTP", {
-          duration: 5000,
-          description: "Please check your OTP and try again.",
-        });
+        toast.error(
+          errorData.ex ||
+            errorData.responseCode ||
+            i18n.t("auth:toasts.invalidOtp"),
+          {
+            duration: 5000,
+            description: i18n.t("auth:toasts.checkOtpAndRetry"),
+          },
+        );
       } else {
         // Generic error fallback
-        toast.error("Invalid OTP", {
-          description: "Please try again",
+        toast.error(i18n.t("auth:toasts.invalidOtp"), {
+          description: i18n.t("auth:toasts.tryAgain"),
           duration: 5000,
         });
       }
@@ -367,7 +404,7 @@ export function EmailLogin({
       });
     } else {
       setIsLoading(false);
-      toast.error("Please fill all OTP fields");
+      toast.error(i18n.t("auth:toasts.fillAllOtpFields"));
     }
   };
 
@@ -453,11 +490,10 @@ export function EmailLogin({
                   <Warning className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                   <div>
                     <h4 className="font-medium text-amber-800 text-sm">
-                      Email Login Temporarily Unavailable
+                      {t("login.emailLoginUnavailableTitle")}
                     </h4>
                     <p className="text-amber-700 text-sm mt-1">
-                      Please use username and password to login. We apologize
-                      for the inconvenience.
+                      {t("login.emailLoginUnavailableBody")}
                     </p>
                   </div>
                 </div>
@@ -483,8 +519,8 @@ export function EmailLogin({
                           <div className="relative">
                             <MyInput
                               inputType="email"
-                              inputPlaceholder="Enter your email address"
-                              label="Email Address"
+                              inputPlaceholder={t("common.enterEmailAddress")}
+                              label={t("common.emailAddressLabel")}
                               required
                               size="large"
                               error={emailForm.formState.errors.email?.message}
@@ -527,12 +563,12 @@ export function EmailLogin({
                         >
                           <ArrowsClockwise className="w-4 h-4" />
                         </motion.div>
-                        <span className="text-sm">Sending code...</span>
+                        <span className="text-sm">{t("common.sendingCode")}</span>
                       </div>
                     ) : (
                       <div className="flex items-center justify-center space-x-2">
                         <Envelope className="w-4 h-4" />
-                        <span className="text-sm">Send Verification Code</span>
+                        <span className="text-sm">{t("common.sendVerificationCode")}</span>
                       </div>
                     )}
                   </motion.button>
@@ -570,10 +606,10 @@ export function EmailLogin({
               </motion.div>
               <div className="space-y-1">
                 <h3 className="text-lg font-semibold text-gray-900">
-                  Check your email
+                  {t("common.checkYourEmail")}
                 </h3>
                 <p className="text-sm text-gray-600">
-                  We've sent a 6-digit code to
+                  {t("common.sentSixDigitCode")}
                 </p>
                 <motion.div
                   initial={{ scale: 0.9, opacity: 0 }}
@@ -650,7 +686,7 @@ export function EmailLogin({
                       animate={{ opacity: 1 }}
                       className="text-sm text-red-600 text-center bg-red-50 border border-red-200 rounded-lg p-2"
                     >
-                      Please enter a valid 6-digit verification code
+                      {t("validation.invalidOtpCode")}
                     </motion.div>
                   )}
                 </motion.div>
@@ -683,12 +719,12 @@ export function EmailLogin({
                         >
                           <ArrowsClockwise className="w-4 h-4" />
                         </motion.div>
-                        <span className="text-sm">Verifying...</span>
+                        <span className="text-sm">{t("common.verifying")}</span>
                       </div>
                     ) : (
                       <div className="flex items-center justify-center space-x-2">
                         <Shield className="w-4 h-4" />
-                        <span className="text-sm">Verify & Sign In</span>
+                        <span className="text-sm">{t("common.verifyAndSignIn")}</span>
                       </div>
                     )}
                   </motion.button>
@@ -702,7 +738,7 @@ export function EmailLogin({
                       className="flex items-center space-x-1 text-gray-500 hover:text-gray-700 transition-colors duration-200 font-medium"
                     >
                       <ArrowLeft className="w-3 h-3" />
-                      <span className="text-xs">Back to email</span>
+                      <span className="text-xs">{t("common.backToEmail")}</span>
                     </motion.button>
 
                     <div className="w-px h-3 bg-gray-300"></div>
@@ -727,12 +763,12 @@ export function EmailLogin({
                       {timer > 0 ? (
                         <div className="flex items-center space-x-1">
                           <ArrowsClockwise className="w-3 h-3" />
-                          <span className="text-xs">Resend in {timer}s</span>
+                          <span className="text-xs">{t("common.resendIn", { count: timer })}</span>
                         </div>
                       ) : (
                         <div className="flex items-center space-x-1">
                           <ArrowsClockwise className="w-3 h-3" />
-                          <span className="text-xs">Resend code</span>
+                          <span className="text-xs">{t("common.resendCode")}</span>
                         </div>
                       )}
                     </motion.button>
@@ -757,7 +793,7 @@ export function EmailLogin({
             className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium"
             onClick={onSwitchToUsername}
           >
-            Use username & password instead?
+            {t("login.useUsernamePassword")}
             <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
           </motion.button>
         )}
@@ -769,7 +805,7 @@ export function EmailLogin({
             className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium pt-2"
             onClick={onSwitchToPhone}
           >
-            Use Phone OTP Instead?
+            {t("login.usePhoneOtp")}
             <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
           </motion.button>
         )}
@@ -783,7 +819,7 @@ export function EmailLogin({
               if (!stored)
                 return (
                   <>
-                    Don't have an account?{" "}
+                    {t("common.dontHaveAccount")}{" "}
                     <motion.button
                       type="button"
                       whileHover={{ scale: 1.02 }}
@@ -792,7 +828,7 @@ export function EmailLogin({
                       }
                       className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
                     >
-                      Sign up here
+                      {t("common.signUpHere")}
                     </motion.button>
                   </>
                 );
@@ -801,7 +837,7 @@ export function EmailLogin({
             } catch {
               return (
                 <>
-                  Don't have an account?{" "}
+                  {t("common.dontHaveAccount")}{" "}
                   <motion.button
                     type="button"
                     whileHover={{ scale: 1.02 }}
@@ -810,14 +846,14 @@ export function EmailLogin({
                     }
                     className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
                   >
-                    Sign up here
+                    {t("common.signUpHere")}
                   </motion.button>
                 </>
               );
             }
             return (
               <>
-                Don't have an account?{" "}
+                {t("common.dontHaveAccount")}{" "}
                 <motion.button
                   type="button"
                   whileHover={{ scale: 1.02 }}
@@ -826,7 +862,7 @@ export function EmailLogin({
                   }
                   className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
                 >
-                  Sign up here
+                  {t("common.signUpHere")}
                 </motion.button>
               </>
             );

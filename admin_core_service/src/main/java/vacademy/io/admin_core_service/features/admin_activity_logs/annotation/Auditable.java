@@ -25,8 +25,43 @@ public @interface Auditable {
     /** Logical entity type, e.g. {@code "COURSE"}, {@code "LEARNER"}. */
     String entityType();
 
-    /** Logical action, e.g. {@code "CREATE"}, {@code "UPDATE"}, {@code "DELETE"}. */
-    String action();
+    /**
+     * Logical action, e.g. {@code "CREATE"}, {@code "UPDATE"}, {@code "DELETE"}.
+     * Leave blank when {@link #actionExpr()} derives the action at runtime;
+     * it is then used as the fallback if that expression yields nothing.
+     */
+    String action() default "";
+
+    /**
+     * Optional SpEL resolving the action at runtime, for endpoints that perform
+     * more than one logical operation behind a single mapping. Evaluated after
+     * the wrapped call, so {@code #result} is available alongside the method
+     * args and {@code #user}.
+     *
+     * <p>Example — an endpoint switching on a request field:
+     * {@code actionExpr = "#requestWrapper?.operation"} emits {@code TERMINATE},
+     * {@code MAKE_ACTIVE}, … as distinct, filterable actions.
+     *
+     * <p>Takes precedence over {@link #action()}. If it evaluates to null or
+     * blank, {@code action()} is used instead; if both are empty the row is
+     * skipped, since {@code action} is NOT NULL.
+     */
+    String actionExpr() default "";
+
+    /**
+     * Optional SpEL guard. When set and it does not evaluate to {@code true},
+     * no audit row is written. Evaluated after the wrapped call, so it can
+     * inspect {@code #result}.
+     *
+     * <p>Exists for endpoints that can return 200 without mutating anything —
+     * a dry-run/preview, or a bulk call where every item was skipped. Logging
+     * those would claim an action that never happened:
+     * {@code conditionExpr = "!#result?.body?.dryRun"}.
+     *
+     * <p>A failed evaluation yields null, which is not {@code true}, so the row
+     * is skipped rather than written with a claim we cannot stand behind.
+     */
+    String conditionExpr() default "";
 
     /**
      * Optional SpEL evaluated against method args + {@code #user} + {@code #result}

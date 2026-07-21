@@ -14,6 +14,7 @@ import {
   Trophy,
 } from "@phosphor-icons/react";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -123,6 +124,7 @@ const fetchAcrossBuckets = async (assessmentId: string): Promise<Assessment | nu
 };
 
 const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
+  const { t } = useTranslation("studyContent");
   const navigate = useNavigate();
   // package_session_id of the course this slide is being viewed in — the batch
   // the learner is enrolled in for this assessment.
@@ -177,14 +179,14 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
   const canReattempt = isSubmitted && allowReattempt && canStartFresh;
 
   const buttonState = (() => {
-    if (!assessment) return { label: "Start Assessment", disabled: true, icon: PlayCircle };
-    if (isInProgress) return { label: "Resume Assessment", disabled: false, icon: ArrowClockwise };
+    if (!assessment) return { label: t("assessmentSlide.start"), disabled: true, icon: PlayCircle };
+    if (isInProgress) return { label: t("assessmentSlide.resume"), disabled: false, icon: ArrowClockwise };
     if (isSubmitted) {
-      if (canReattempt) return { label: "Re-attempt", disabled: false, icon: ArrowClockwise };
-      return { label: "Submitted", disabled: true, icon: CheckCircle };
+      if (canReattempt) return { label: t("assessmentSlide.reattempt"), disabled: false, icon: ArrowClockwise };
+      return { label: t("assessmentSlide.submitted"), disabled: true, icon: CheckCircle };
     }
-    if (canStartFresh) return { label: "Start Assessment", disabled: false, icon: PlayCircle };
-    return { label: "Not Available", disabled: true, icon: PlayCircle };
+    if (canStartFresh) return { label: t("assessmentSlide.start"), disabled: false, icon: PlayCircle };
+    return { label: t("assessmentSlide.notAvailable"), disabled: true, icon: PlayCircle };
   })();
 
   const handleStart = async () => {
@@ -212,7 +214,7 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
       });
     } catch (err) {
       console.error("Failed to start assessment from slide", err);
-      toast.error("Could not start the assessment. Please try again.");
+      toast.error(t("assessmentSlide.couldNotStart"));
     }
   };
 
@@ -311,10 +313,10 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
         setEvaluatedType(detail.fileType);
         setEvaluatedOpen(true);
       } else {
-        toast.error("Could not open the evaluated copy.");
+        toast.error(t("assessmentSlide.couldNotOpenEvaluated"));
       }
     } catch {
-      toast.error("Could not open the evaluated copy.");
+      toast.error(t("assessmentSlide.couldNotOpenEvaluated"));
     } finally {
       setOpeningEvaluated(false);
     }
@@ -324,7 +326,7 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
     return (
       <div className="flex h-reg-420 flex-col items-center justify-center rounded-lg border border-dashed border-neutral-300 bg-neutral-50">
         <ListChecks className="size-8 text-neutral-400" />
-        <p className="mt-3 text-sm text-neutral-500">No assessment is linked to this slide.</p>
+        <p className="mt-3 text-sm text-neutral-500">{t("assessmentSlide.noAssessmentLinked")}</p>
       </div>
     );
   }
@@ -338,12 +340,12 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
           </div>
           <div className="flex flex-col gap-1">
             <span className="text-2xs uppercase tracking-wide text-neutral-500">
-              Assessment
+              {t("assessmentSlide.eyebrow")}
             </span>
             <h2 className="text-xl font-semibold leading-snug text-neutral-900">
               {isLoading
-                ? "Loading assessment…"
-                : assessment?.name || activeItem.title || "Assessment"}
+                ? t("assessmentSlide.loading")
+                : assessment?.name || activeItem.title || t("assessmentSlide.eyebrow")}
             </h2>
           </div>
         </div>
@@ -356,14 +358,14 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
 
       {isError && !assessment && (
         <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600">
-          Could not load assessment details. You may not have access to this assessment yet.
+          {t("assessmentSlide.couldNotLoadDetails")}
         </div>
       )}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <InfoChip
           icon={<Clock className="size-4 text-orange-600" />}
-          label="Duration"
+          label={t("assessmentSlide.durationLabel")}
           bgClass="bg-orange-50"
           value={
             assessment?.duration && assessment.duration > 0
@@ -373,13 +375,13 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
         />
         <InfoChip
           icon={<ListNumbers className="size-4 text-blue-600" />}
-          label="Sections"
+          label={t("assessmentSlide.sectionsLabel")}
           bgClass="bg-blue-50"
           value={sectionCount && sectionCount > 0 ? sectionCount : null}
         />
         <InfoChip
           icon={<Trophy className="size-4 text-amber-600" />}
-          label="Total marks"
+          label={t("assessmentSlide.totalMarksLabel")}
           bgClass="bg-amber-50"
           value={
             typeof totalMarksData?.total_achievable_marks === "number"
@@ -394,11 +396,11 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
           <div className="flex items-center gap-2 text-emerald-700">
             <CheckCircle className="size-5" />
-            <span className="text-sm font-semibold">You have submitted this assessment.</span>
+            <span className="text-sm font-semibold">{t("assessmentSlide.youHaveSubmitted")}</span>
           </div>
           {!showResult ? (
             <p className="mt-1 text-xs text-emerald-700/80">
-              Results are not shown for this assessment.
+              {t("assessmentSlide.resultsNotShown")}
             </p>
           ) : assessment?.report_release_status === "RELEASED" ? (
             <div className="mt-2 flex flex-col gap-2">
@@ -413,18 +415,18 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
                     </span>
                   )}
                   <span className="text-2xs uppercase tracking-wide text-emerald-700/60">
-                    marks
+                    {t("assessmentSlide.marks")}
                   </span>
                 </div>
               ) : (
                 <p className="text-xs text-emerald-700/80">
-                  Your result is available — open the report for details.
+                  {t("assessmentSlide.resultAvailable")}
                 </p>
               )}
               {evaluatorRemark && (
                 <div className="rounded-md border border-emerald-200 bg-white/70 p-2.5">
                   <p className="text-2xs font-semibold uppercase tracking-wide text-emerald-700/70">
-                    Evaluator remark
+                    {t("assessmentSlide.evaluatorRemark")}
                   </p>
                   <p className="mt-1 whitespace-pre-line text-sm text-emerald-900">
                     {evaluatorRemark}
@@ -439,13 +441,13 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
                   className="h-auto w-fit gap-1.5 p-0 text-xs font-medium text-emerald-700"
                 >
                   <FileArrowDown className="size-4" />
-                  {openingEvaluated ? "Opening…" : "View evaluated copy"}
+                  {openingEvaluated ? t("assessmentSlide.opening") : t("assessmentSlide.viewEvaluatedCopy")}
                 </Button>
               )}
             </div>
           ) : (
             <p className="mt-1 text-xs text-emerald-700/80">
-              Your submission is being evaluated. Results will appear once released.
+              {t("assessmentSlide.beingEvaluated")}
             </p>
           )}
         </div>
@@ -453,7 +455,7 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
 
       {isInProgress && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
-          You have an attempt in progress. Resume to continue where you left off.
+          {t("assessmentSlide.attemptInProgress")}
         </div>
       )}
 
@@ -466,7 +468,7 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
             className="min-w-reg-180"
           >
             <Eye className="me-2 size-4" />
-            View Report
+            {t("assessmentSlide.viewReport")}
           </Button>
         )}
         <Button
@@ -487,7 +489,7 @@ const AssessmentSlideViewer = ({ activeItem }: AssessmentSlideViewerProps) => {
         fileName={evaluatedName}
         fileType={evaluatedType}
         remark={evaluatorRemark}
-        title="Evaluated copy"
+        title={t("assessmentSlide.evaluatedCopyTitle")}
       />
     </div>
   );

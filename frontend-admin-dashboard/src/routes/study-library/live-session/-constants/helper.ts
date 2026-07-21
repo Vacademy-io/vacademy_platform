@@ -107,6 +107,12 @@ export interface LiveSessionStep2RequestDTO {
 
     join_link: string;
 
+    // Wall-clock schedule held before this edit, for the {{OLD_TIME}} placeholder in
+    // the reschedule mail. Step 1 has already overwritten it server-side by the time
+    // step 2 sends, so the backend cannot look it up itself.
+    old_meeting_date?: string | null;
+    old_start_time?: string | null;
+
     added_notification_actions: NotificationActionDTO[];
     updated_notification_actions: NotificationActionDTO[];
     deleted_notification_action_ids: string[];
@@ -388,10 +394,46 @@ export function transformFormToDTOStep1(
 
 type FormData = z.infer<typeof addParticipantsSchema>;
 
+/** The two fields of a saved schedule the reschedule mail needs. */
+export interface PreviousScheduleInput {
+    start_time?: string | null;
+    meeting_date?: string | null;
+}
+
+/**
+ * Splits a saved schedule into the wall-clock date/time that fills {{OLD_TIME}}.
+ *
+ * Reads `start_time` exactly as step 1 does — slice the leading YYYY-MM-DDTHH:mm
+ * rather than parsing to a Date — so the value is never shifted by the admin's
+ * browser timezone on its way back to the backend.
+ */
+function toOldScheduleFields(previous?: PreviousScheduleInput | null): {
+    old_meeting_date: string | null;
+    old_start_time: string | null;
+} {
+    const empty = { old_meeting_date: null, old_start_time: null };
+    const startTime = previous?.start_time;
+    if (!startTime) return empty;
+
+    if (startTime.includes('T')) {
+        const [datePart, timePart] = startTime.substring(0, 16).split('T');
+        if (!datePart || !timePart) return empty;
+        return { old_meeting_date: datePart, old_start_time: normalizeStartTime(timePart) };
+    }
+    if (previous?.meeting_date) {
+        return {
+            old_meeting_date: previous.meeting_date.substring(0, 10),
+            old_start_time: normalizeStartTime(startTime),
+        };
+    }
+    return empty;
+}
+
 export function transformFormToDTOStep2(
     formData: FormData,
     sessionId: string,
-    packageSessionIds: string[]
+    packageSessionIds: string[],
+    previousSchedule?: PreviousScheduleInput | null
 ): LiveSessionStep2RequestDTO {
     const {
         accessType,
@@ -489,12 +531,16 @@ export function transformFormToDTOStep2(
         }
     );
 
+    const { old_meeting_date, old_start_time } = toOldScheduleFields(previousSchedule);
+
     const result: LiveSessionStep2RequestDTO = {
         session_id: sessionId,
         access_type: accessType,
         package_session_ids: batchSelectionType === 'batch' ? packageSessionIds : [],
         deleted_package_session_ids: [],
         join_link: joinLink,
+        old_meeting_date,
+        old_start_time,
         added_notification_actions: addedNotificationActions,
         updated_notification_actions: [],
         deleted_notification_action_ids: [],

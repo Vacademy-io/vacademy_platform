@@ -54,6 +54,10 @@ public class LeadFilterDTO {
     // don't want them cluttering the active-leads view by default.
     // 'ONLY_CONVERTED' shows only converted leads. 'ALL' shows everything.
     private String conversionStatusFilter;
+    /** Call-attempt history: '' | NOT_CALLED | CALLED | CALLED_ONCE | CALLED_TWICE_PLUS
+     *  | AI_CALLED | MANUAL_CALLED. Matched via telephony_call_log (response_id or
+     *  LEAD subject_id). AI = VACADEMY_AI/AAVTAAR; manual = everything else bar MOCK. */
+    private String callHistoryFilter;
 
     /**
      * Soft-delete visibility: EXCLUDE_DELETED (default) | ONLY_DELETED | ALL.

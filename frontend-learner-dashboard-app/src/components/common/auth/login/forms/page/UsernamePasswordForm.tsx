@@ -22,11 +22,14 @@ import {
 } from "@/lib/auth/sessionUtility";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
+import { hydrateParentSession } from "@/lib/auth/detect-user-role";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 type FormValues = z.infer<typeof loginSchema>;
 
 interface UsernameLoginProps {
@@ -56,6 +59,7 @@ export function UsernameLogin({
   onSwitchToSignup?: () => void;
   onSwitchToForgotPassword?: () => void;
 }) {
+  const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -131,6 +135,7 @@ export function UsernameLogin({
 
           const upperRoles = allRoles.map((r) => r.toUpperCase());
           isParent = upperRoles.includes("PARENT");
+          const isStudentToo = upperRoles.includes("STUDENT");
 
           console.log("[UsernameLogin] Token decoded:", {
             user: userId,
@@ -140,35 +145,37 @@ export function UsernameLogin({
             isParent: isParent,
           });
 
-          // Redirect parent users to parent portal
-          if (isParent) {
-            console.log(
-              "[UsernameLogin] ✅ PARENT role detected - redirecting to /parent",
-            );
-
-            const instituteId = authorities
+          // PARENT-only guardians route to the monitoring portal after a minimal
+          // session hydration (they have no student row, so fetchAndStoreStudentDetails
+          // alone never satisfies isAuthenticated). Dual-role users fall through to
+          // their own learner dashboard.
+          if (isParent && !isStudentToo) {
+            const parentInstituteId = authorities
               ? Object.keys(authorities)[0]
               : undefined;
-            if (instituteId && userId) {
-              try {
-                await fetchAndStoreInstituteDetails(instituteId, userId);
-              } catch (error) {
-                console.error(
-                  "Error fetching institute details for parent:",
-                  error,
-                );
-              }
+            if (parentInstituteId && userId) {
+              await hydrateParentSession(userId, parentInstituteId, {
+                user: userId,
+                authorities,
+              });
             }
             setIsLoading(false);
-            navigate({ to: "/parent" });
+            navigate({ to: "/parent/child" });
             return;
           }
 
           if (authorityKeys.length > 1) {
-            // Redirect to InstituteSelection if multiple authorities are found
+            // Redirect to InstituteSelection if multiple authorities are found.
+            // `redirect` defaults to the "/login/" sentinel when there's no real
+            // deep-link — forwarding that would bounce the user back to /login
+            // after they pick an institute, so collapse it to /dashboard/.
+            const forwardRedirect =
+              typeof redirect === "string" && redirect && redirect !== "/login/"
+                ? redirect
+                : "/dashboard/";
             navigate({
               to: "/institute-selection",
-              search: { redirect: redirect || "/dashboard/", type, courseId },
+              search: { redirect: forwardRedirect, type, courseId },
             });
           } else {
             // Get the single institute ID
@@ -199,7 +206,7 @@ export function UsernameLogin({
               try {
                 await fetchAndStoreStudentDetails(instituteId, userId);
               } catch {
-                toast.error("Failed to fetch details");
+                toast.error(i18n.t("auth:toasts.failedToFetchDetails"));
               }
             } else {
               console.error("Institute ID or User ID is undefined");
@@ -254,9 +261,7 @@ export function UsernameLogin({
         setPendingLoginValues(form.getValues());
         setSessionLimitOpen(true);
       } else {
-        toast.error(
-          "Login failed. Please check your username and password and try again.",
-        );
+        toast.error(i18n.t("auth:toasts.loginFailed"));
       }
     },
   });
@@ -318,14 +323,14 @@ export function UsernameLogin({
                   <FormControl>
                     <div className="flex flex-col gap-1">
                       <Label className="text-subtitle font-regular">
-                        Username or email
+                        {t("common.usernameOrEmailLabel")}
                         <span className="text-subtitle text-danger-600">*</span>
                       </Label>
 
                       <div className="relative">
                         <Input
                           type="text"
-                          placeholder="Enter your username or email"
+                          placeholder={t("common.enterUsernameOrEmail")}
                           value={value}
                           onChange={onChange}
                           required
@@ -369,7 +374,7 @@ export function UsernameLogin({
                         {/* Custom input wrapper to override MyInput's password behavior */}
                         <div className="flex flex-col gap-1">
                           <Label className="text-subtitle font-regular">
-                            Password
+                            {t("common.passwordLabel")}
                             <span className="text-subtitle text-danger-600">
                               *
                             </span>
@@ -377,7 +382,7 @@ export function UsernameLogin({
                           <div className="relative">
                             <Input
                               type={showPassword ? "text" : "password"}
-                              placeholder="Enter your password"
+                              placeholder={t("common.enterPassword")}
                               className="h-10 py-2 px-3 text-subtitle w-full border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pe-20 text-neutral-600 shadow-none placeholder:text-body placeholder:font-regular hover:border-primary-200 focus:border-primary-500"
                               value={value}
                               onChange={onChange}
@@ -431,7 +436,7 @@ export function UsernameLogin({
                   (() => navigate({ to: "/login/forgot-password" }))
                 }
               >
-                Forgot password?
+                {t("common.forgotPasswordQuestion")}
               </motion.button>
             </div>
           </motion.div>
@@ -462,12 +467,12 @@ export function UsernameLogin({
                   >
                     <ArrowsClockwise className="w-4 h-4" />
                   </motion.div>
-                  <span className="text-sm">Signing in...</span>
+                  <span className="text-sm">{t("common.signingIn")}</span>
                 </div>
               ) : (
                 <div className="flex items-center justify-center space-x-2">
                   <Shield className="w-4 h-4" />
-                  <span className="text-sm">Sign In</span>
+                  <span className="text-sm">{t("common.signIn")}</span>
                 </div>
               )}
             </motion.button>
@@ -489,7 +494,7 @@ export function UsernameLogin({
             className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium"
             onClick={onSwitchToEmail}
           >
-            Use email OTP instead?
+            {t("login.useEmailOtp")}
             <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
           </motion.button>
         )}
@@ -501,7 +506,7 @@ export function UsernameLogin({
             className="text-sm text-gray-600 hover:text-gray-800 transition-colors duration-200 relative group font-medium pt-2 block mx-auto"
             onClick={onSwitchToPhone}
           >
-            Use Phone OTP Instead?
+            {t("login.usePhoneOtp")}
             <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-800 transition-all duration-200 group-hover:w-full"></span>
           </motion.button>
         )}
@@ -520,7 +525,7 @@ export function UsernameLogin({
           }
           return (
             <div className="text-xs text-gray-600">
-              Don't have an account?{" "}
+              {t("common.dontHaveAccount")}{" "}
               <motion.button
                 type="button"
                 whileHover={{ scale: 1.02 }}
@@ -529,7 +534,7 @@ export function UsernameLogin({
                 }
                 className="text-gray-800 hover:text-gray-900 font-medium underline cursor-pointer"
               >
-                Sign up here
+                {t("common.signUpHere")}
               </motion.button>
             </div>
           );

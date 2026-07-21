@@ -34,6 +34,11 @@ public class InstituteCSVBulkStudentController {
         return ResponseEntity.ok(studentBulkInitUploadManager.generateCsvUploadForStudents(instituteId, bulkUploadInitRequest));
     }
 
+    // NOT @Auditable yet: this endpoint reports per-row success/failure and is
+    // designed to partially succeed, but AuditableAspect wraps the method in a
+    // REQUIRED transaction — which would make one poisoned row roll back the
+    // rows this response reports as added. Auditing it needs the aspect's async
+    // path to stop opening a transaction first. See docs/ADMIN_ACTIVITY_LOGS.md.
     @PostMapping(value = "/upload-csv", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<byte[]> uploadStudentCsv(
             @RequestParam("file") MultipartFile file,

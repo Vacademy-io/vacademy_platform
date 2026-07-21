@@ -14,7 +14,11 @@ import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingInsta
 import vacademy.io.admin_core_service.features.onboarding.entity.OnboardingStepInstance;
 import vacademy.io.admin_core_service.features.onboarding.repository.OnboardingInstanceRepository;
 import vacademy.io.admin_core_service.features.packages.repository.PackageSessionRepository;
+import vacademy.io.admin_core_service.features.parent_link.dto.ParentLinkActionRequestDTO;
+import vacademy.io.admin_core_service.features.parent_link.dto.ParentLinkActionResponseDTO;
+import vacademy.io.admin_core_service.features.parent_link.service.ParentLinkService;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.exceptions.InvalidRequestException;
 import vacademy.io.common.institute.entity.Institute;
 import vacademy.io.common.institute.entity.session.PackageSession;
 
@@ -41,6 +45,61 @@ public class OnboardingStudentCreationService {
     private final PackageSessionRepository packageSessionRepository;
     private final InstituteRepository instituteRepository;
     private final AuthService authService;
+    private final ParentLinkService parentLinkService;
+
+    /**
+     * Leads can be filled out by either the student themselves or a parent on their behalf. When
+     * {@code isParent} is true, {@code instance.subjectUserId} (whoever the lead form was
+     * originally captured against) is NOT the person any onboarding side effect should target --
+     * it's their parent. Resolves/creates the real student via the existing guardian-link
+     * mechanism (the same one the assign-learner dialog uses) and records them as
+     * resolvedSubjectUserId -- subjectUserId itself is NEVER reassigned, so the instance stays
+     * visible under the same lead/student side-view it was started from. Every side effect from
+     * here on (role grant, credentials email, course enrollment, later steps) targets
+     * {@link OnboardingInstance#getEffectiveSubjectUserId()}. Called once per step-instance
+     * completion by {@link OnboardingStepInstanceService#completeStep}, before ANY
+     * identity-touching side effect runs -- not just the create_student one -- since "grant
+     * STUDENT role" and "send credentials" can each live on their own, earlier step.
+     */
+    public void resolveSubjectUserId(OnboardingInstance instance, boolean isParent, String studentFullName,
+                                      String studentEmail, String studentMobileNumber) {
+        if (!isParent) return;
+
+        // Row-locks the instance before the check-then-act below: two near-simultaneous
+        // completions of the same step-instance (double-click, client retry) could otherwise
+        // both read resolvedSubjectUserId as null before either commits, each call
+        // parentLinkService.link, and create two separate child accounts. A concurrent second
+        // transaction blocks on this call until the first commits. Same managed entity as
+        // `instance` within this transaction (JPA identity map) -- just forces the DB-level lock.
+        instance = onboardingInstanceRepository.findByIdForUpdate(instance.getId()).orElse(instance);
+
+        // Guards against a step being (re)completed with is_parent=true after a PRIOR step on
+        // this same instance already resolved the real student -- without this, the already-
+        // resolved child would get treated as a parent adding a second, spurious new student.
+        if (StringUtils.hasText(instance.getResolvedSubjectUserId())) {
+            log.info("Onboarding instance {} already has a resolved student ({}); skipping duplicate parent resolution",
+                    instance.getId(), instance.getResolvedSubjectUserId());
+            return;
+        }
+
+        if (!StringUtils.hasText(studentFullName)
+                || (!StringUtils.hasText(studentEmail) && !StringUtils.hasText(studentMobileNumber))) {
+            throw new InvalidRequestException(
+                    "Student name and email or mobile number are required when filling on behalf of a parent.");
+        }
+        ParentLinkActionRequestDTO linkRequest = ParentLinkActionRequestDTO.builder()
+                .instituteId(instance.getInstituteId())
+                .direction("PARENT_ADDS_STUDENT")
+                .mode("CREATE_NEW")
+                .anchorUserId(instance.getSubjectUserId())
+                .newFullName(studentFullName)
+                .newEmail(studentEmail)
+                .newMobileNumber(studentMobileNumber)
+                .build();
+        ParentLinkActionResponseDTO linkResponse = parentLinkService.link(linkRequest);
+        instance.setResolvedSubjectUserId(linkResponse.getStudentUserId());
+        onboardingInstanceRepository.save(instance);
+    }
 
     public void createStudentIfAbsent(OnboardingStepInstance stepInstance, String packageSessionId) {
         if (!StringUtils.hasText(packageSessionId)) {
@@ -57,8 +116,8 @@ public class OnboardingStudentCreationService {
             return;
         }
         OnboardingInstance instance = instanceOpt.get();
-        String subjectUserId = instance.getSubjectUserId();
         String instituteId = instance.getInstituteId();
+        String subjectUserId = instance.getEffectiveSubjectUserId();
 
         authService.addRolesToUserInternal(subjectUserId, List.of("STUDENT"), instituteId);
 
@@ -74,6 +133,15 @@ public class OnboardingStudentCreationService {
                     .mobileNumber(user != null ? user.getMobileNumber() : null)
                     .build();
             instituteStudentRepository.save(student);
+        }
+
+        boolean alreadyEnrolled = !studentSessionRepository
+                .findByUserIdAndPackageSession_IdAndStatus(subjectUserId, packageSessionId, "ACTIVE")
+                .isEmpty();
+        if (alreadyEnrolled) {
+            log.info("Subject {} already has an ACTIVE enrollment in package session {}, skipping duplicate row (stepInstance {})",
+                    subjectUserId, packageSessionId, stepInstance.getId());
+            return;
         }
 
         Optional<PackageSession> packageSession = packageSessionRepository.findById(packageSessionId);

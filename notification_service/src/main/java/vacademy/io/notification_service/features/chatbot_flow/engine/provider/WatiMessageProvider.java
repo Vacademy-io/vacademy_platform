@@ -57,8 +57,8 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
     }
 
     @Override
-    public void sendTemplate(String phone, Map<String, Object> templatePayload,
-                              String instituteId, String businessChannelId) {
+    public String sendTemplate(String phone, Map<String, Object> templatePayload,
+                               String instituteId, String businessChannelId) {
         WatiConfig config = resolveConfig(instituteId);
         if (config == null) throw new RuntimeException("WATI config not found for institute: " + instituteId);
 
@@ -120,6 +120,9 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
         String url = config.apiUrl + "/api/v1/sendTemplateMessage?whatsappNumber=" + formattedPhone;
 
         sendRequest(config, url, payload);
+        // WATI's send response carries no per-message id usable for status joins;
+        // read/delivery attribution for WATI stays phone-based (the pre-existing heuristic).
+        return null;
     }
 
     @Override
@@ -225,7 +228,7 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
     }
 
     @Override
-    public void sendText(String phone, String text, String instituteId, String businessChannelId) {
+    public String sendText(String phone, String text, String instituteId, String businessChannelId) {
         WatiConfig config = resolveConfig(instituteId);
         if (config == null) throw new RuntimeException("WATI config not found for institute: " + instituteId);
 
@@ -239,6 +242,7 @@ public class WatiMessageProvider implements ChatbotMessageProvider {
                 .toUriString();
 
         sendRequestWithRawUrl(config, url, Map.of());
+        return null; // no per-message id in WATI session-message responses
     }
 
     @Override

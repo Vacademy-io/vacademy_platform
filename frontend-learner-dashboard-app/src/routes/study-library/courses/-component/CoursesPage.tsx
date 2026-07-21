@@ -5,6 +5,7 @@ import CourseCard from "./CourseCards.tsx";
 import Pagination from "./Pagination.tsx";
 import { CoursePackageResponse } from "@/types/course-catalog/course-catalog-list.ts";
 import { MagnifyingGlass } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { cn, toTitleCase } from "@/lib/utils";
 import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils.ts";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings.ts";
@@ -50,6 +51,15 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
     selectedTab,
     isLoading = false,
 }) => {
+    const { t } = useTranslation("study");
+    // Lower-cased at the call site (not in the catalog) so the composed
+    // terminology reads naturally mid-sentence in English; a no-op for
+    // scripts without case, such as Arabic and Hindi.
+    const coursesLower = getTerminologyPlural(
+        ContentTerms.Course,
+        SystemTerms.Course
+    ).toLocaleLowerCase();
+
     const fallbackDescription =
         "";
     const fallbackTags: string = "";
@@ -280,20 +290,10 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                     </div>
                                 </div>
                                 <h3 className="text-lg sm:text-xl font-bold text-foreground mb-2">
-                                    No{" "}
-                                    {getTerminologyPlural(
-                                        ContentTerms.Course,
-                                        SystemTerms.Course
-                                    ).toLocaleLowerCase()}{" "}
-                                    found
+                                    {t("catalog.empty.title", { courses: coursesLower })}
                                 </h3>
                                 <p className="text-muted-foreground text-sm max-w-md mx-auto leading-relaxed">
-                                    We couldn&apos;t find anything matching your search. Try different keywords, adjust your filters, or clear them to see all available{" "}
-                                    {getTerminologyPlural(
-                                        ContentTerms.Course,
-                                        SystemTerms.Course
-                                    ).toLocaleLowerCase()}
-                                    .
+                                    {t("catalog.empty.description", { courses: coursesLower })}
                                 </p>
                             </div>
                         </div>
@@ -301,12 +301,13 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                         <div className="space-y-3 sm:space-y-4">
                             {/* Compact Results Summary */}
                             <div className="text-caption sm:text-xs text-muted-foreground mb-1">
-                                {courseData.totalElements}{" "}
-                                {getTerminologyPlural(
-                                    ContentTerms.Course,
-                                    SystemTerms.Course
-                                ).toLocaleLowerCase()}{" "}
-                                • Page {courseData.number + 1}/{courseData.totalPages} • Showing {courseData.numberOfElements} of {courseData.totalElements}
+                                {t("catalog.results.summary", {
+                                    total: courseData.totalElements,
+                                    courses: coursesLower,
+                                    page: courseData.number + 1,
+                                    totalPages: courseData.totalPages,
+                                    showing: courseData.numberOfElements,
+                                })}
                             </div>
 
                             {/* Course Grid — extra column at xl so wide
@@ -325,7 +326,7 @@ const CoursesPage: React.FC<CoursesPageProps> = ({
                                             courseId={course.id}
                                             package_name={
                                                 course.package_name ||
-                                                "Untitled Package"
+                                                t("catalog.card.untitledPackage")
                                             }
                                             level_name={toTitleCase(
                                                 course.level_name || "Beginner"

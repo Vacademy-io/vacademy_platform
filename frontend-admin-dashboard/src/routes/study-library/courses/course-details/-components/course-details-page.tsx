@@ -18,6 +18,7 @@ import {
     PresentationChart,
     FileText,
     VideoCamera,
+    Translate,
 } from '@phosphor-icons/react';
 import {
     DropdownMenu,
@@ -42,6 +43,8 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import { TranslateCourseDialog } from './translate-course-dialog';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { CourseDetailsFormValues, courseDetailsSchema } from './course-details-schema';
@@ -274,9 +277,12 @@ const AdvancedIdsMenu = ({ items }: { items: AdvancedIdItem[] }) => {
 
 export const CourseDetailsPage = () => {
     const router = useRouter();
+    const { t } = useTranslation();
     const searchParams = router.state.location.search;
     const queryClient = useQueryClient();
     const courseId = searchParams.courseId ?? '';
+    // "Translate course" action (Phase 1 i18n) — scoped to the selected batch.
+    const [isTranslateDialogOpen, setIsTranslateDialogOpen] = useState(false);
 
     const { studyLibraryData, isInitLoading, setStudyLibraryData } = useStudyLibraryStore();
 
@@ -1345,6 +1351,25 @@ export const CourseDetailsPage = () => {
                                                     ) ?? ''
                                                 }
                                             />
+                                        )}
+                                        {canEdit && packageSessionIds && (
+                                            <>
+                                                <MyButton
+                                                    type="button"
+                                                    buttonType="secondary"
+                                                    scale="small"
+                                                    onClick={() => setIsTranslateDialogOpen(true)}
+                                                >
+                                                    <Translate size={16} />
+                                                    {t('translation.translateAction')}
+                                                </MyButton>
+                                                <TranslateCourseDialog
+                                                    open={isTranslateDialogOpen}
+                                                    onOpenChange={setIsTranslateDialogOpen}
+                                                    packageSessionId={packageSessionIds}
+                                                    courseId={effectiveCourseId}
+                                                />
+                                            </>
                                         )}
                                         {coursePage?.showAdvancedCourseIds === true && (
                                             <AdvancedIdsMenu

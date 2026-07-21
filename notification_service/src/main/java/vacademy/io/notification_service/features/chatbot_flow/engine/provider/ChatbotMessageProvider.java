@@ -18,9 +18,12 @@ public interface ChatbotMessageProvider {
      *   headerConfig ({type, url, filename}), buttonConfig ([{type, index, urlSuffix/payload}])
      * @param instituteId for credential resolution
      * @param businessChannelId phone_number_id for this institute
+     * @return the provider-assigned message id (Meta wamid / Com.bot queue_id), or null if the
+     *   provider response carries none. Callers that don't need per-message status attribution
+     *   may ignore it; the send/read ledger (notification_log.source_id) depends on it.
      */
-    void sendTemplate(String phone, Map<String, Object> templatePayload,
-                      String instituteId, String businessChannelId);
+    String sendTemplate(String phone, Map<String, Object> templatePayload,
+                        String instituteId, String businessChannelId);
 
     /**
      * Send an interactive message (buttons or list). Session window required.
@@ -36,8 +39,9 @@ public interface ChatbotMessageProvider {
     /**
      * Send a plain text message. Session window required.
      * Used by AI_RESPONSE and SEND_MESSAGE nodes.
+     * @return the provider-assigned message id, or null (see {@link #sendTemplate}).
      */
-    void sendText(String phone, String text, String instituteId, String businessChannelId);
+    String sendText(String phone, String text, String instituteId, String businessChannelId);
 
     /**
      * Send a media message (image, video, document, audio). Session window required.

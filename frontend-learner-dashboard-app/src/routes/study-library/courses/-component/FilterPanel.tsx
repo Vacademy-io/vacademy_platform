@@ -1,9 +1,10 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { useCatalogStore } from "../-store/catalogStore";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleFetchInstituteDetails } from "../-services/institute-details";
 import { Funnel, X } from '@phosphor-icons/react';
-import { cn, toTitleCase } from "@/lib/utils";
+import { cn, toTitleCase, compareByNameNatural } from "@/lib/utils";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -29,16 +30,18 @@ const FilterList: React.FC<FilterListProps> = ({
     handleChange,
     disabled,
 }) => {
+    const { t } = useTranslation("study");
+
     return (
         <div className="space-y-2">
             {items.length === 0 && !disabled && (
                 <div className="text-sm text-muted-foreground py-2 italic">
-                    No options available
+                    {t("filters.noOptions")}
                 </div>
             )}
             {disabled && (
                 <div className="text-sm text-muted-foreground py-2 italic">
-                    Unavailable
+                    {t("filters.unavailable")}
                 </div>
             )}
             {items.map((item) => (
@@ -104,6 +107,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     isDesktopOpen = true,
     onClose,
 }) => {
+    const { t } = useTranslation("study");
     const instructor = useCatalogStore((state) => state.instructor);
 
     const { data: instituteData, isLoading } = useSuspenseQuery(
@@ -118,10 +122,18 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     const activeFiltersCount = selectedLevels.length + selectedTags.length + selectedInstructors.length;
 
     type LevelItem = { id: string; level_name?: string };
-    const levels = (instituteData?.levels || []).map((level: LevelItem) => ({
-        id: level.id,
-        name: toTitleCase(level.level_name || `Unnamed ${getTerminology(ContentTerms.Level, SystemTerms.Level)}`),
-    }));
+    const levels = (instituteData?.levels || [])
+        .map((level: LevelItem) => ({
+            id: level.id,
+            name: toTitleCase(
+                level.level_name ||
+                    t("filters.unnamedLevel", {
+                        level: getTerminology(ContentTerms.Level, SystemTerms.Level),
+                    })
+            ),
+        }))
+        // Natural sort so levels read as Class 6, 7, 8 … then non-numeric names.
+        .sort(compareByNameNatural);
 
     const tags = React.useMemo(() => {
         const uniqueMap = new Map<string, string>();
@@ -140,7 +152,12 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     type InstructorItem = { id: string; full_name?: string; username?: string };
     const instructors = (instructor || []).map((inst: InstructorItem) => ({
         id: inst.id,
-        name: inst.full_name || inst.username || `Unnamed ${getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}`,
+        name:
+            inst.full_name ||
+            inst.username ||
+            t("filters.unnamedInstructor", {
+                instructor: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
+            }),
     }));
 
     if (isLoading) {
@@ -188,7 +205,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
             )}>
                 <div className="flex items-center gap-2">
                     <Funnel size={18} className={cn("text-muted-foreground", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-play-navy-soft-ink")} />
-                    <h2 className={cn("text-lg font-semibold", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:font-extrabold")}>Filters</h2>
+                    <h2 className={cn("text-lg font-semibold", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:font-extrabold")}>{t("filters.title")}</h2>
                 </div>
                 <div className="flex items-center gap-1">
                     {hasActiveFilters && (
@@ -199,7 +216,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                             className="h-8 text-xs px-2 text-muted-foreground hover:text-foreground"
                         >
                             <X size={14} className="me-1" />
-                            Clear All
+                            {t("filters.clearAll")}
                         </Button>
                     )}
                     {onClose && (
@@ -209,7 +226,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                             onClick={onClose}
                             className="h-8 text-xs px-2 text-muted-foreground hover:text-foreground"
                         >
-                            Close
+                            {t("filters.close")}
                         </Button>
                     )}
                 </div>
@@ -218,7 +235,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
             {hasActiveFilters && (
                 <div className="px-4 py-2 bg-muted/30 border-b">
                     <p className="text-xs text-primary font-medium">
-                        {activeFiltersCount} filter(s) applied
+                        {t("filters.appliedCount", { count: activeFiltersCount })}
                     </p>
                 </div>
             )}
@@ -297,7 +314,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                     className="w-full"
                     size="sm"
                 >
-                    Apply Filters
+                    {t("filters.apply")}
                     {hasActiveFilters && (
                         <Badge variant="secondary" className="ms-2 bg-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/30 border-0">
                             {activeFiltersCount}
@@ -336,14 +353,14 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                         >
                             <div className="flex items-center gap-2">
                                 <Funnel size={16} />
-                                <span>Filters</span>
+                                <span>{t("filters.title")}</span>
                                 {hasActiveFilters && (
                                     <Badge variant="secondary" className="h-5 px-1.5 text-caption">
                                         {activeFiltersCount}
                                     </Badge>
                                 )}
                             </div>
-                            <span className="text-xs text-muted-foreground me-1">Show</span>
+                            <span className="text-xs text-muted-foreground me-1">{t("filters.show")}</span>
                         </Button>
                     </SheetTrigger>
                     <SheetContent side="left" className="w-72 sm:w-96 p-0 overflow-hidden flex flex-col">
@@ -351,7 +368,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                             <SheetTitle className="text-start flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <Funnel size={18} />
-                                    <span>Filters</span>
+                                    <span>{t("filters.title")}</span>
                                 </div>
                                 {hasActiveFilters && (
                                     <Button
@@ -359,7 +376,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                         size="icon"
                                         onClick={clearAllFilters}
                                         className="h-8 w-8 text-muted-foreground"
-                                        title="Clear All"
+                                        title={t("filters.clearAll")}
                                     >
                                         <X size={16} />
                                     </Button>
@@ -426,7 +443,9 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                 disabled={!hasActiveFilters}
                                 className="w-full"
                             >
-                                Apply {activeFiltersCount > 0 ? `(${activeFiltersCount})` : ''}
+                                {activeFiltersCount > 0
+                                    ? t("filters.applyWithCount", { selected: activeFiltersCount })
+                                    : t("filters.applyShort")}
                             </Button>
                         </div>
                     </SheetContent>

@@ -1,6 +1,7 @@
 import { useRouter } from "@tanstack/react-router";
 import { CaretLeft, CaretDown, Info } from "@phosphor-icons/react";
 import { cn, toTitleCase } from "@/lib/utils";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -2224,13 +2225,17 @@ export const CourseDetailsPage = () => {
                   <>
                     {structureBlock}
                     {enrollmentBlock}
-                    {/* Cancel autopay — self-hides unless this course has an active mandate */}
-                    <CourseSubscriptionCancel
-                      instituteId={instituteId || ""}
-                      packageSessionId={
-                        packageSessionIdForCurrentLevel || undefined
-                      }
-                    />
+                    {/* Cancel autopay — self-hides unless this course has an active
+                        mandate. Hidden on native iOS (reader mode): it surfaces a
+                        subscription bought on the web; managed there (Apple 3.1.1). */}
+                    {!shouldHidePaidPurchaseUI() && (
+                      <CourseSubscriptionCancel
+                        instituteId={instituteId || ""}
+                        packageSessionId={
+                          packageSessionIdForCurrentLevel || undefined
+                        }
+                      />
+                    )}
                     {highlightsBlock}
                   </>
                 ) : (

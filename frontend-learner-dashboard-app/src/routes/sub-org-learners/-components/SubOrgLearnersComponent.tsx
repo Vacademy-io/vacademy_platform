@@ -46,6 +46,9 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
   const lastFetchedInviteRef = useRef<string | null>(null);
   const [isTerminateDialogOpen, setIsTerminateDialogOpen] = useState(false);
   const [isTerminating, setIsTerminating] = useState(false);
+  // Terminate mode: HARD = remove now, SOFT = keep access until a chosen date.
+  const [terminateMode, setTerminateMode] = useState<'SOFT' | 'HARD'>('HARD');
+  const [terminateAccessTillDate, setTerminateAccessTillDate] = useState<string>('');
   const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
 
   // Form states for add member
@@ -272,6 +275,8 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
       toast.error('Please select members to terminate');
       return;
     }
+    setTerminateMode('HARD');
+    setTerminateAccessTillDate('');
     setIsTerminateDialogOpen(true);
   };
 
@@ -287,6 +292,11 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
       return;
     }
 
+    if (terminateMode === 'SOFT' && !terminateAccessTillDate) {
+      toast.error('Please pick a last access date for a soft termination');
+      return;
+    }
+
     setIsTerminating(true);
     try {
       await terminateMembers({
@@ -294,9 +304,15 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
         institute_id: selectedMapping.institute_id,
         package_session_id: selectedPackageSession,
         user_ids: selectedMembers,
+        mode: terminateMode,
+        access_till_date: terminateMode === 'SOFT' ? terminateAccessTillDate : null,
       });
 
-      toast.success(`Successfully terminated ${selectedMembers.length} staff member(s)`);
+      toast.success(
+        terminateMode === 'SOFT'
+          ? `Access for ${selectedMembers.length} staff member(s) will continue until ${terminateAccessTillDate}`
+          : `Successfully terminated ${selectedMembers.length} staff member(s)`,
+      );
       setSelectedMembers([]);
       setIsTerminateDialogOpen(false);
       loadMembers(); // Refresh the list
@@ -629,26 +645,77 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                         Confirm Termination
                       </AlertDialogTitle>
                       <AlertDialogDescription className="text-gray-600">
-                        Are you sure you want to terminate <span className="font-semibold text-gray-900">{selectedMembers.length}</span> staff member{selectedMembers.length > 1 ? 's' : ''}?
-                        This action cannot be undone.
+                        Remove <span className="font-semibold text-gray-900">{selectedMembers.length}</span> staff member{selectedMembers.length > 1 ? 's' : ''} from this membership.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
+
+                    {/* SOFT vs HARD choice + last-access date (SOFT only). */}
+                    <div className="flex flex-col gap-2 rounded-lg border border-gray-100 bg-gray-50 p-3">
+                      <p className="text-xs font-medium text-gray-600">Termination Mode</p>
+                      <label className="flex items-start gap-2">
+                        <input
+                          type="radio"
+                          name="suborg-terminate-mode"
+                          checked={terminateMode === 'HARD'}
+                          onChange={() => setTerminateMode('HARD')}
+                          className="mt-0.5"
+                        />
+                        <span className="text-xs text-gray-700">
+                          <strong>Terminate now</strong> — Access is revoked immediately.
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-2">
+                        <input
+                          type="radio"
+                          name="suborg-terminate-mode"
+                          checked={terminateMode === 'SOFT'}
+                          onChange={() => setTerminateMode('SOFT')}
+                          className="mt-0.5"
+                        />
+                        <span className="text-xs text-gray-700">
+                          <strong>Keep until date</strong> — Access continues until the last
+                          access date below, then ends automatically.
+                        </span>
+                      </label>
+
+                      {terminateMode === 'SOFT' && (
+                        <div className="ms-6 mt-1 flex flex-col gap-1.5">
+                          <p className="text-[11px] font-medium text-gray-600">Last access date</p>
+                          <input
+                            type="date"
+                            value={terminateAccessTillDate}
+                            min={new Date().toISOString().slice(0, 10)}
+                            onChange={(e) => setTerminateAccessTillDate(e.target.value)}
+                            className="w-fit rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-800 focus:border-primary-300 focus:outline-none"
+                          />
+                          {!terminateAccessTillDate && (
+                            <p className="text-[10px] text-red-500">Pick a date to keep access until.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                     <AlertDialogFooter className="gap-2 sm:gap-0">
                       <AlertDialogCancel disabled={isTerminating} className="mt-0">
                         Cancel
                       </AlertDialogCancel>
                       <AlertDialogAction
                         onClick={handleTerminateMembers}
-                        disabled={isTerminating}
+                        disabled={
+                          isTerminating ||
+                          (terminateMode === 'SOFT' && !terminateAccessTillDate)
+                        }
                         className="bg-red-600 hover:bg-red-700 text-white"
                       >
                         {isTerminating ? (
                           <>
                             <SpinnerGap className="w-4 h-4 me-2 animate-spin" />
-                            Terminating...
+                            {terminateMode === 'SOFT' ? 'Scheduling...' : 'Terminating...'}
                           </>
+                        ) : terminateMode === 'SOFT' ? (
+                          'Keep until date'
                         ) : (
-                          'Confirm'
+                          'Terminate now'
                         )}
                       </AlertDialogAction>
                     </AlertDialogFooter>

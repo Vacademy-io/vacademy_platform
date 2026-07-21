@@ -1,6 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CaretRight, ArrowRight } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { usePlayTheme } from "@/hooks/use-play-theme";
 import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
@@ -46,6 +47,7 @@ export const StatCard = ({
      *  card into an invitation (e.g. "Browse Courses") rather than a dead zero. */
     emptyActionLabel?: string;
 }) => {
+    const { t } = useTranslation("dashboard");
     const isPlay = usePlayTheme();
     const isCleanerPlay = useCleanerPlayTheme();
 
@@ -55,17 +57,16 @@ export const StatCard = ({
     const isEmpty = (count ?? 0) === 0;
     const showAction = isEmpty && !!emptyActionLabel;
     const subtitleText = showAction ? emptyActionLabel : title;
+    const cardAriaLabel = showAction
+        ? t("statCard.ariaAction", { title, action: emptyActionLabel })
+        : t("statCard.ariaView", { title, count: count ?? 0 });
 
     if (isCleanerPlay) {
         return (
             <button
                 type="button"
                 onClick={onClick}
-                aria-label={
-                    showAction
-                        ? `${title} - ${emptyActionLabel}`
-                        : `View ${title} - ${count ?? 0} items`
-                }
+                aria-label={cardAriaLabel}
                 className={cn(
                     "cp-card group flex h-full w-full flex-col items-start gap-3 p-4 text-start transition-transform duration-base ease-out-soft hover:-translate-y-0.5"
                 )}
@@ -90,7 +91,7 @@ export const StatCard = ({
                 </div>
                 {showAction ? (
                     <span className="cp-heading inline-flex flex-wrap items-center gap-1 text-h3 sm:text-h2">
-                        Get started
+                        {t("statCard.getStarted")}
                         <ArrowRight size={16} weight="bold" />
                     </span>
                 ) : (
@@ -121,11 +122,7 @@ export const StatCard = ({
             )}
             tabIndex={0}
             role="button"
-            aria-label={
-                showAction
-                    ? `${title} - ${emptyActionLabel}`
-                    : `View ${title} - ${count ?? 0} items`
-            }
+            aria-label={cardAriaLabel}
             onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
@@ -157,7 +154,7 @@ export const StatCard = ({
                     <div className="space-y-1">
                         {showAction ? (
                             <div className="inline-flex items-center gap-1 text-xl font-black tracking-tight text-play-ink sm:text-2xl">
-                                Get started
+                                {t("statCard.getStarted")}
                                 <ArrowRight size={16} weight="bold" />
                             </div>
                         ) : (
@@ -190,7 +187,7 @@ export const StatCard = ({
                             {showAction ? (
                                 // Empty: a "Get started" invitation, never a dead "0".
                                 <div className="inline-flex items-center gap-1 text-lg sm:text-xl font-bold tracking-tight text-primary">
-                                    Get started
+                                    {t("statCard.getStarted")}
                                     <ArrowRight
                                         size={16}
                                         weight="bold"

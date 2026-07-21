@@ -6,6 +6,7 @@ import { useGetUserBasicDetails } from "@/services/getBasicUserDetails";
 import { SmallDummyProfile } from "@/assets/svgs";
 import { formatISODateTimeReadable } from "@/helpers/formatISOTime";
 import { getUserId } from "@/constants/getUserId";
+import { useTranslation } from "react-i18next";
 
 interface ReplyProps {
     reply: Doubt;
@@ -18,6 +19,7 @@ interface ReplyProps {
 }
 
 export const Reply = ({ reply, raiserUserId }: ReplyProps) => {
+    const { t } = useTranslation("studyContent");
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [showReplies, setShowReplies] = useState<boolean>(true);
     const [viewerUserId, setViewerUserId] = useState<string | null>(null);
@@ -51,16 +53,17 @@ export const Reply = ({ reply, raiserUserId }: ReplyProps) => {
 
     const roleBadge = isSelf ? (
         <span className="inline-flex items-center rounded-full bg-primary-50 px-2 py-0.5 text-3xs font-semibold uppercase tracking-wide text-primary-700">
-            You
+            {t("doubts.roleYou")}
         </span>
     ) : isStaffAnswer ? (
         <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-3xs font-semibold uppercase tracking-wide text-green-700">
             <GraduationCap size={11} weight="duotone" />
-            Teacher
+            {t("doubts.roleTeacher")}
         </span>
     ) : null;
 
-    const displayName = replierName || (isStaffAnswer ? "Teacher" : "User");
+    const displayName =
+        replierName || (isStaffAnswer ? t("doubts.roleTeacher") : t("doubts.roleUser"));
 
     return (
         <div className="flex flex-col gap-3 text-regular max-sm:text-caption">
@@ -100,7 +103,7 @@ export const Reply = ({ reply, raiserUserId }: ReplyProps) => {
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                         <p className="text-caption font-semibold sm:text-body">
-                            Replies{" "}
+                            {t("doubts.replies")}{" "}
                             <span className="text-primary-500">{reply.replies.length}</span>
                         </p>
                         {showReplies === false && (

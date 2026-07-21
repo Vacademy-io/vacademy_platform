@@ -11,13 +11,11 @@ import {
     X,
     Flame,
     CheckCircle,
-    Columns,
     Clock,
     Megaphone,
     CalendarBlank,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -48,6 +46,11 @@ import { useLeadStatuses } from '@/hooks/use-lead-statuses';
 import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
+import {
+    ManageColumnsPopover,
+    useLeadColumnPrefs,
+    buildLeadColumnToggles,
+} from '@/components/shared/leads';
 import {
     ExportColumnPickerDialog,
     type ExportColumnOption,
@@ -369,8 +372,11 @@ const RecentLeadsContent = () => {
     // editable status chip in the table.
     const { statuses: leadStatusCatalog } = useLeadStatuses();
 
-    // Table UI state
-    const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
+    // Table UI state — column show/hide is persisted per user (localStorage) so
+    // the "Manage Column" choice survives reloads and navigation.
+    const { hiddenColumns, toggleColumn, resetColumns } = useLeadColumnPrefs(
+        'crm-lead-columns:recent-leads'
+    );
 
     const [noteTarget, setNoteTarget] = useState<{
         userId: string;
@@ -385,25 +391,10 @@ const RecentLeadsContent = () => {
 
     // "Manage Column" toggle list — only the columns actually visible for the
     // current config (the Lead-name column is always shown).
-    const toggleableColumns = useMemo(() => {
-        const cols: { id: string; label: string }[] = [
-            { id: 'contact', label: 'Contact' },
-            { id: 'source', label: 'Lead source' },
-        ];
-        if (showOps) cols.push({ id: 'status', label: 'Lead status' });
-        if (showScore) cols.push({ id: 'score', label: 'Lead score' });
-        if (showOps) {
-            cols.push(
-                { id: 'tier', label: 'Tier' },
-                { id: 'reachout', label: 'Reach out in' },
-                { id: 'followup', label: 'Follow up at' },
-                { id: 'owner', label: 'Lead owner' },
-                { id: 'activity', label: 'Activity' }
-            );
-        }
-        cols.push({ id: 'submitted', label: 'Submitted' });
-        return cols;
-    }, [showOps, showScore]);
+    const toggleableColumns = useMemo(
+        () => buildLeadColumnToggles(showOps, showScore),
+        [showOps, showScore]
+    );
 
     const audiencesQuery = useQuery(
         handleFetchCampaignsList({ institute_id: instituteId ?? '', page: 0, size: 200 })
@@ -696,14 +687,6 @@ const RecentLeadsContent = () => {
             setSelectAllLoading(false);
         }
     };
-
-    const toggleColumn = (id: string) =>
-        setHiddenColumns((prev) => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
 
     // Filters
     const handleClearFilter = () => {
@@ -1237,33 +1220,12 @@ const RecentLeadsContent = () => {
                             {showDeleted ? 'Viewing deleted' : 'Deleted leads'}
                         </Button>
                     )}
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button variant="outline" size="sm" className="h-10">
-                                <Columns className="mr-1.5 size-4" />
-                                Manage Column
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="end" className="w-52">
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                                Columns
-                            </p>
-                            <div className="space-y-1">
-                                {toggleableColumns.map((c) => (
-                                    <label
-                                        key={c.id}
-                                        className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm text-neutral-700 hover:bg-neutral-50"
-                                    >
-                                        <Checkbox
-                                            checked={!hiddenColumns.has(c.id)}
-                                            onCheckedChange={() => toggleColumn(c.id)}
-                                        />
-                                        {c.label}
-                                    </label>
-                                ))}
-                            </div>
-                        </PopoverContent>
-                    </Popover>
+                    <ManageColumnsPopover
+                        columns={toggleableColumns}
+                        hiddenColumns={hiddenColumns}
+                        onToggle={toggleColumn}
+                        onReset={resetColumns}
+                    />
                     <Button
                         size="sm"
                         variant="outline"

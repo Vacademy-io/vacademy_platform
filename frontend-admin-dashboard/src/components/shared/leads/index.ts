@@ -18,6 +18,12 @@ export {
     type LeadSortDirection,
 } from './lead-table';
 export { LeadPagination } from './lead-pagination';
+export { ManageColumnsPopover } from './manage-columns-popover';
+export {
+    useLeadColumnPrefs,
+    buildLeadColumnToggles,
+    type LeadColumnToggle,
+} from './use-lead-column-prefs';
 export {
     LeadInlineSelect,
     LEAD_STATUS_OPTIONS,

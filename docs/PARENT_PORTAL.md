@@ -200,16 +200,19 @@ fills the one missing icon (payments). Five of six already exist in
 A free-form parent Q&A. `POST /parent-portal/v1/children/{id}/assistant`
 `{ "question": "did my child attend today?" }` → `{ answer, available }`.
 
-**Reuses the existing chatbot path.** The LLM call goes through the shared
-`agent/service/ChatbotAiService` (the same OpenRouter/`LLMService` the rest of the
-app uses); `ParentAssistantService` only adds the parent-specific, safety-critical
-part — run the guard, then assemble a plain-text snapshot of ONLY that child's data
-(attendance % + recent classes with present/absent, fees, rewards, recent test
-scores) and pass it as the **system prompt**. The model gets **no tools**, so there
-is no surface to reach any other student's data. Model
+**The LLM API key lives ONLY in `ai_service` — admin_core never holds it.**
+`ParentAssistantService` does the safety-critical part: run the guard, then
+assemble a plain-text snapshot of ONLY that child's data (attendance % + recent
+classes with present/absent, fees, rewards, recent test scores) and build the full
+prompt. It then POSTs that prompt to ai_service's generic completion endpoint
+`POST /chat/v1/complete` (via `client/AiServiceCompletionClient` → `${ai.service.url}`,
+default `http://ai-service:8077`), which runs the LLM (its own OpenRouter client) +
+credit/usage tracking and returns `{content}`. **No tools**, so there's no surface
+to reach any other student's data. Model
 `${parent.assistant.model:google/gemini-2.5-flash}`. `available:false` when
-`OPENROUTER_API_KEY` is unset → the frontend `ParentChatbot` falls back to on-device
-keyword answers.
+ai_service is unreachable / has no key → the frontend `ParentChatbot` falls back to
+on-device keyword answers. So the only deploy config is in **ai_service**, not
+admin_core.
 
 ## 8. "View as my child" (`ParentViewSessionService`)
 

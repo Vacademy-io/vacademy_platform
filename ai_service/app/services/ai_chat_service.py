@@ -3,7 +3,7 @@ import logging
 from typing import Optional
 from sqlalchemy.orm import Session
 from ..ports.llm_client import OutlineLLMClient
-from ..schemas.chat_bot import ChatRequest, ChatResponse
+from ..schemas.chat_bot import ChatRequest, ChatResponse, CompletionRequest, CompletionResponse
 from .chat_prompts import ChatPrompts
 from ..models.ai_token_usage import ApiProvider, RequestType
 
@@ -69,6 +69,43 @@ class AiChatService:
             return ChatResponse(
                 content="I'm sorry, I encountered an error while processing your request. Please try again later."
             )
+
+    async def generate_completion(
+        self, request: CompletionRequest, db_session: Optional[Session] = None
+    ) -> CompletionResponse:
+        """Generic single-prompt completion for internal service callers. The
+        caller owns the full prompt; on any error we return empty content so the
+        caller can fall back gracefully (rather than surfacing an error string)."""
+        session = db_session or self._db_session
+        model = request.model or self._model
+
+        try:
+            content, usage = await self._llm_client.generate_outline_with_usage(
+                prompt=request.prompt,
+                model=model,
+            )
+
+            if session and usage:
+                try:
+                    from .token_usage_service import TokenUsageService
+                    TokenUsageService(session).record_usage_and_deduct_credits(
+                        api_provider=ApiProvider.OPENAI,
+                        prompt_tokens=usage.get("prompt_tokens", 0),
+                        completion_tokens=usage.get("completion_tokens", 0),
+                        total_tokens=usage.get("total_tokens", 0),
+                        request_type=RequestType.COPILOT,
+                        institute_id=request.institute_id,
+                        user_id=request.user_id,
+                        model=model or "default",
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to record completion usage: {e}")
+
+            return CompletionResponse(content=content or "")
+
+        except Exception as e:
+            logger.error(f"Error generating completion: {e}")
+            return CompletionResponse(content="")
 
 __all__ = ["AiChatService"]
 

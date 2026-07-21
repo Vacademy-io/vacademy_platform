@@ -151,7 +151,13 @@ function RouteComponent() {
     return ds?.teamManagement;
   }, []);
 
-  const viewerVisibleRoles = viewerTeamManagement?.visibleRoles ?? {};
+  // Memoized so an institute without `visibleRoles` doesn't get a fresh `{}` each
+  // render — an unstable identity here cascades into allRoles → allRolesFilter and
+  // re-fires the users-of-status fetch effect on every render (infinite loop).
+  const viewerVisibleRoles = useMemo(
+    () => viewerTeamManagement?.visibleRoles ?? {},
+    [viewerTeamManagement]
+  );
 
   // Org Chart tab is opt-in per institute. Default false so it stays hidden
   // until an admin explicitly flips it on under Settings → Admin Display Settings.

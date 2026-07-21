@@ -51,7 +51,14 @@ const convertAudienceCustomFields = (
         id: customField.id,
         field_name: customField.fieldName,
         field_key: customField.fieldKey,
-        field_order: customField.individualOrder || customField.formOrder || 0,
+        // Order by the per-form mapping order (individual_order) so each form controls
+        // its own field sequence. Fall back to the nested/master order only when the
+        // mapping has none. Use ?? (not ||) so a valid 0 (first position) is respected.
+        field_order:
+          field.individual_order ??
+          customField.individualOrder ??
+          customField.formOrder ??
+          0,
         comma_separated_options: customField.config || "",
         config: customField.config || "{}",
         status: field.status || "ACTIVE",

@@ -78,12 +78,19 @@ import {
     LeadEmptyState,
     LeadTable,
     LeadPagination,
+    ManageColumnsPopover,
+    useLeadColumnPrefs,
+    buildLeadColumnToggles,
     useUpdateLeadTier,
     campaignRowToVM,
     type LeadActionHandlers,
     type LeadSortKey,
     type LeadSortDirection,
 } from '@/components/shared/leads';
+
+// Every row in this view is from the same audience, so "Lead source" is
+// redundant — hidden by default and not offered in the Manage Column list.
+const AUDIENCE_LEADS_DEFAULT_HIDDEN = ['source'];
 
 const ALL_VALUE = '__ALL__'; // every lead regardless of status (default — enrolled leads stay visible)
 const ALL_ACTIVE_VALUE = '__ACTIVE__'; // all leads except those enrolled/Converted
@@ -604,8 +611,18 @@ const CampaignUsersContent = ({
         }
     };
 
-    // Hide the "Lead source" column — every row in this view is from the same audience.
-    const hiddenColumns = useMemo(() => new Set(['source']), []);
+    // Column show/hide is persisted per user (localStorage), seeded with the
+    // source column hidden. Kept on its own storage key so this audience view
+    // and the Recent Leads page each remember their own layout.
+    const { hiddenColumns, toggleColumn, resetColumns } = useLeadColumnPrefs(
+        'crm-lead-columns:audience-leads',
+        AUDIENCE_LEADS_DEFAULT_HIDDEN
+    );
+    // "Manage Column" list — source stays hidden and is not offered here.
+    const toggleableColumns = useMemo(
+        () => buildLeadColumnToggles(showOps, showScore).filter((c) => c.id !== 'source'),
+        [showOps, showScore]
+    );
 
     // ── Filter handlers ──────────────────────────────────────
     const handleTierChange = (values: string[]) => {
@@ -1098,6 +1115,12 @@ const CampaignUsersContent = ({
                             Import CSV
                         </Button>
                     )}
+                    <ManageColumnsPopover
+                        columns={toggleableColumns}
+                        hiddenColumns={hiddenColumns}
+                        onToggle={toggleColumn}
+                        onReset={resetColumns}
+                    />
                     <Button
                         variant="outline"
                         size="sm"

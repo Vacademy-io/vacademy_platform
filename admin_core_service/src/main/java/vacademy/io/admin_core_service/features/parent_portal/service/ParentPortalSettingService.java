@@ -91,6 +91,15 @@ public class ParentPortalSettingService {
         return settings;
     }
 
+    /** Throws 403 unless the portal is enabled AND "view as my child" is turned on. */
+    public ParentPortalSettingsDTO requireViewAsChild(String instituteId) {
+        ParentPortalSettingsDTO settings = requireEnabled(instituteId);
+        if (!settings.isAllowViewAsChild()) {
+            throw new ForbiddenException("Viewing as the child is not enabled for this institute");
+        }
+        return settings;
+    }
+
     /** Throws 403 unless the portal is enabled AND the given module is visible. */
     public void requireModule(String instituteId, String moduleKey) {
         ParentPortalSettingsDTO settings = requireEnabled(instituteId);

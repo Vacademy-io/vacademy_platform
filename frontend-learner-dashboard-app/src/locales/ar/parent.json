@@ -57,7 +57,8 @@
     "logout": "Log out",
     "menu": "Account",
     "signedInAs": "Signed in as {{name}}",
-    "switchChild": "Switch child"
+    "switchChild": "Switch child",
+    "viewAsChild": "View {{name}}'s screen"
   },
   "search": {
     "placeholder": "Search — try 'attendance'"
@@ -103,7 +104,13 @@
       "testsNone": "No test results yet.",
       "progress": "{{name}} has completed {{percent}}% of lessons.",
       "progressNone": "See the Progress section for details."
-    }
+    },
+    "placeholder": "Ask about your child…",
+    "send": "Send",
+    "fallback": "I can help with attendance, fees, tests, progress and rewards — try asking about one of those.",
+    "thinking": "Thinking…",
+    "mic": "Ask by voice",
+    "listening": "Listening…"
   },
   "tone": {
     "good": "Going well",
@@ -147,7 +154,8 @@
     "reportPendingTitle": "Report not ready yet",
     "reportPendingBody": "This detailed report is still being prepared. Please check back soon.",
     "emptyTitle": "No tests yet",
-    "emptyBody": "Test results will show here once {{name}} takes a test."
+    "emptyBody": "Test results will show here once {{name}} takes a test.",
+    "classAvg": "Class average {{value}}%"
   },
   "liveClasses": {
     "summary": "{{name}} has {{count}} class coming up.",

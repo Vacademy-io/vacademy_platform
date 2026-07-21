@@ -101,13 +101,33 @@ public class OnboardingStudentCreationService {
         onboardingInstanceRepository.save(instance);
     }
 
-    public void createStudentIfAbsent(OnboardingStepInstance stepInstance, String packageSessionId) {
-        if (!StringUtils.hasText(packageSessionId)) {
-            log.warn("onboarding step configured to create a student but no packageSessionId set (stepInstance {})",
-                    stepInstance.getId());
-            return;
-        }
+    /**
+     * Whether the subject already has an ACTIVE enrollment in ANY course at this institute --
+     * used by the "assign course" step's optional skip-course-selection setting, so a step
+     * whose only job was "get the student enrolled" can complete without asking the admin to
+     * pick a course again for someone who's already enrolled (e.g. from an earlier onboarding
+     * instance, or enrolled outside onboarding entirely).
+     */
+    public boolean subjectAlreadyHasActiveEnrollment(OnboardingStepInstance stepInstance) {
+        Optional<OnboardingInstance> instanceOpt =
+                onboardingInstanceRepository.findById(stepInstance.getOnboardingInstanceId());
+        if (instanceOpt.isEmpty()) return false;
+        OnboardingInstance instance = instanceOpt.get();
+        String subjectUserId = instance.getEffectiveSubjectUserId();
+        if (!StringUtils.hasText(subjectUserId)) return false;
+        return !studentSessionRepository
+                .findAllByInstituteIdAndUserIdAndStatusIn(instance.getInstituteId(), subjectUserId, List.of("ACTIVE"))
+                .isEmpty();
+    }
 
+    /**
+     * {@code packageSessionId} is blank exactly when the "assign course" step's
+     * skip-course-selection setting let the admin complete without picking one -- already
+     * verified (by the caller, via {@link #subjectAlreadyHasActiveEnrollment}) that the subject
+     * has an active enrollment elsewhere. Still grants the STUDENT role and ensures a
+     * {@code student} row exists (both idempotent), just skips creating another enrollment row.
+     */
+    public void createStudentIfAbsent(OnboardingStepInstance stepInstance, String packageSessionId) {
         Optional<OnboardingInstance> instanceOpt =
                 onboardingInstanceRepository.findById(stepInstance.getOnboardingInstanceId());
         if (instanceOpt.isEmpty()) {
@@ -133,6 +153,12 @@ public class OnboardingStudentCreationService {
                     .mobileNumber(user != null ? user.getMobileNumber() : null)
                     .build();
             instituteStudentRepository.save(student);
+        }
+
+        if (!StringUtils.hasText(packageSessionId)) {
+            log.info("No packageSessionId for stepInstance {} (subject {} already enrolled elsewhere) -- role/student row ensured, skipping enrollment",
+                    stepInstance.getId(), subjectUserId);
+            return;
         }
 
         boolean alreadyEnrolled = !studentSessionRepository

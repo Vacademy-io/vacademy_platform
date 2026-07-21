@@ -127,6 +127,48 @@ export async function fetchChildCertificates(childUserId: string): Promise<Issue
   return data ?? [];
 }
 
+export interface ChildViewSessionResponse {
+  childUserId: string;
+  childName: string;
+  accessToken: string;
+  refreshToken?: string | null;
+}
+
+/**
+ * Start a "view as my child" session. The backend runs the guardian guard and the
+ * institute's allowViewAsChild gate, then mints a token that IS the child. 403 if
+ * the gate is off or the child isn't linked.
+ */
+export async function startChildViewSession(childUserId: string): Promise<ChildViewSessionResponse> {
+  const { data } = await authenticatedAxiosInstance.post(
+    `${PARENT_PORTAL_V1}/children/${childUserId}/view-session`,
+    {},
+  );
+  return data;
+}
+
+export interface AssistantAnswer {
+  answer: string | null;
+  available: boolean;
+}
+
+/**
+ * Ask the parent AI assistant a free-form question about the child. The backend
+ * runs the guardian guard and answers only from the child's own data. `available`
+ * is false when the LLM isn't configured/reachable — the caller then falls back
+ * to the on-device preset answers.
+ */
+export async function askChildAssistant(
+  childUserId: string,
+  question: string,
+): Promise<AssistantAnswer> {
+  const { data } = await authenticatedAxiosInstance.post(
+    `${PARENT_PORTAL_V1}/children/${childUserId}/assistant`,
+    { question },
+  );
+  return data;
+}
+
 export async function fetchChildReports(childUserId: string): Promise<ChildReportListItem[]> {
   const { data } = await authenticatedAxiosInstance.get(
     `${PARENT_PORTAL_V1}/children/${childUserId}/reports`,

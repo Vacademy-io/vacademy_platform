@@ -138,7 +138,7 @@ public class FormStepTypeHandler implements OnboardingStepTypeHandler {
             // Parent-vs-student resolution (is_parent + student_* fields) already ran centrally
             // in OnboardingStepInstanceService.completeStep, before this handler was invoked --
             // stepInstance's onboarding_instance already carries the correct subject by now.
-            String selectedPackageSessionId = resolveSelectedPackageSessionId(step, payload);
+            String selectedPackageSessionId = resolveSelectedPackageSessionId(stepInstance, step, payload);
             onboardingStudentCreationService.createStudentIfAbsent(stepInstance, selectedPackageSessionId);
         }
 
@@ -153,22 +153,37 @@ public class FormStepTypeHandler implements OnboardingStepTypeHandler {
      * server-side, never trusted from the client). Either way the actual choice travels in the
      * same submit payload as the field values, under the reserved key "package_session_id" (safe
      * to co-mingle with institute_custom_field_id keys, which are UUIDs).
+     *
+     * <p>No course picked is only ever allowed when the step's {@code skip_if_already_enrolled}
+     * setting is on AND the subject already has an ACTIVE enrollment elsewhere at this institute
+     * -- e.g. re-running (or a later step of) a flow on someone who was already enrolled outside
+     * it. Returns null in that case, which {@link OnboardingStudentCreationService#createStudentIfAbsent}
+     * treats as "nothing more to enroll, just ensure the role/student row."
      */
-    private String resolveSelectedPackageSessionId(OnboardingStep step, Map<String, Object> payload) {
+    private String resolveSelectedPackageSessionId(OnboardingStepInstance stepInstance, OnboardingStep step,
+                                                     Map<String, Object> payload) {
         Object raw = payload == null ? null : payload.get("package_session_id");
         String selected = raw == null ? null : String.valueOf(raw);
-        if (!StringUtils.hasText(selected)) {
-            throw new InvalidRequestException("Pick a course to enroll the student into");
+        if (StringUtils.hasText(selected)) {
+            List<String> pool = readConfigList(step.getStepTypeConfig(), "package_session_ids");
+            if (!pool.isEmpty() && !pool.contains(selected)) {
+                throw new InvalidRequestException("Selected course is not one of the allowed courses for this step");
+            }
+            return selected;
         }
-        List<String> pool = readConfigList(step.getStepTypeConfig(), "package_session_ids");
-        if (!pool.isEmpty() && !pool.contains(selected)) {
-            throw new InvalidRequestException("Selected course is not one of the allowed courses for this step");
+        if (skipCourseSelectionIfAlreadyEnrolled(step)
+                && onboardingStudentCreationService.subjectAlreadyHasActiveEnrollment(stepInstance)) {
+            return null;
         }
-        return selected;
+        throw new InvalidRequestException("Pick a course to enroll the student into");
     }
 
     private boolean isCreateStudentConfigured(OnboardingStep step) {
         return "true".equalsIgnoreCase(readConfig(step.getStepTypeConfig(), "create_student"));
+    }
+
+    private boolean skipCourseSelectionIfAlreadyEnrolled(OnboardingStep step) {
+        return "true".equalsIgnoreCase(readConfig(step.getStepTypeConfig(), "skip_if_already_enrolled"));
     }
 
     private List<OnboardingStepFieldConfigDTO> parseFieldConfigs(String json) {

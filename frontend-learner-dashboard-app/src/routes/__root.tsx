@@ -46,6 +46,7 @@ import { ChatbotProvider } from "@/components/chatbot/ChatbotContext";
 import { getChatbotSettings } from "@/services/chatbot-settings";
 import { ChatbotFloatingButton } from "@/components/chatbot/ChatbotFloatingButton";
 import { OtaUpdateBanner } from "@/components/ota-update/OtaUpdateBanner";
+import { ChildViewBanner } from "@/components/parent/ChildViewBanner";
 import { AppOverlayHost } from "@/components/announcements/AppOverlayHost";
 
 // Define public routes that don't require authentication
@@ -715,6 +716,7 @@ const RootComponent = () => {
 
   return (
     <ChatbotProvider>
+      <ChildViewBanner />
       <OtaUpdateBanner />
       <Outlet />
       {/* Full-screen APP_OVERLAY announcements — authenticated app surfaces only */}

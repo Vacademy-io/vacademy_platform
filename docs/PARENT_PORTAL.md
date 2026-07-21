@@ -70,6 +70,8 @@ Base path `/admin-core-service/parent-portal/v1` (authenticated; **not** in
 | GET | `/children/{id}/badges` | `LearnerBadgeDTO[]` |
 | GET | `/children/{id}/certificates` | `IssuedCertificateDTO[]` |
 | GET | `/children/{id}/reports` | report list (metadata) |
+| POST | `/children/{id}/assistant` | AI assistant — `{question}` → `{answer, available}` (§7) |
+| POST | `/children/{id}/view-session` | "view as my child" — mints a child token (§8) |
 
 **Two rules that prevent the worst bugs:**
 - **Sub-resource ownership** — the guard proves parent→child, not invoice→child.
@@ -190,6 +192,49 @@ containers, generous spacing — inspired by cuepilot.ai/showcase/parent's desig
 `scripts/generate-parent-icons.mjs` (OpenRouter `google/gemini-3.1-flash-image`)
 fills the one missing icon (payments). Five of six already exist in
 `src/assets/cleaner-play/`. Only committed `.webp` (raw PNGs gitignored).
+
+---
+
+## 7. AI assistant (`ParentAssistantService`)
+
+A free-form parent Q&A. `POST /parent-portal/v1/children/{id}/assistant`
+`{ "question": "did my child attend today?" }` → `{ answer, available }`.
+
+**The LLM API key lives ONLY in `ai_service` — admin_core never holds it.**
+`ParentAssistantService` does the safety-critical part: run the guard, then
+assemble a plain-text snapshot of ONLY that child's data (attendance % + recent
+classes with present/absent, fees, rewards, recent test scores) and build the full
+prompt. It then POSTs that prompt to ai_service's generic completion endpoint
+`POST /chat/v1/complete` (via `client/AiServiceCompletionClient` → `${ai.service.url}`,
+default `http://ai-service:8077`), which runs the LLM (its own OpenRouter client) +
+credit/usage tracking and returns `{content}`. **No tools**, so there's no surface
+to reach any other student's data. Model
+`${parent.assistant.model:google/gemini-2.5-flash}`. `available:false` when
+ai_service is unreachable / has no key → the frontend `ParentChatbot` falls back to
+on-device keyword answers. So the only deploy config is in **ai_service**, not
+admin_core.
+
+## 8. "View as my child" (`ParentViewSessionService`)
+
+Lets a guardian switch into their child's learner view.
+`POST /parent-portal/v1/children/{id}/view-session` → guard + the institute's
+`allowViewAsChild` gate (default **off**) → reuses the existing internal mint
+(`AuthService.generateJwtTokensWithUser` → auth_service
+`generate-token-for-learner`) to return a token that **is** the child. **No
+auth_service or JwtAuthFilter change.**
+
+Frontend (`-lib/child-view.ts`): backs up the parent session (never overwritten),
+sets the child token, hydrates the child's institute/student details, and
+hard-reloads into `/dashboard` as the child. `ChildViewBanner` (rendered from
+`__root.tsx`) shows "Viewing as X · read only" with **Exit**, which restores the
+parent session and returns to `/parent/child`. Entry point: the profile-menu
+action in `ParentProfileMenu`, shown only when `allowViewAsChild` is on.
+
+> ⚠️ **Read-only is advisory on the client for v1** — the minted token is a full
+> learner token. Server-enforced GET-only via a delegation `act` claim in
+> `common_service` `JwtAuthFilter` (RFC 8693 actor claim, short TTL, no refresh)
+> is the documented hardening follow-up. Ship that before enabling for institutes
+> that ran a guardian backfill.
 
 ---
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { ChatCircleDots, Robot, CaretRight } from "@phosphor-icons/react";
+import { ChatCircleDots, Robot, CaretRight, PaperPlaneTilt } from "@phosphor-icons/react";
 import {
   Sheet,
   SheetContent,
@@ -14,6 +14,24 @@ import { useChildOverview } from "../-hooks/use-parent-child";
 
 type QKey = "attendance" | "fees" | "rewards" | "tests" | "progress";
 const QUESTIONS: QKey[] = ["attendance", "fees", "rewards", "tests", "progress"];
+
+// Lightweight intent match so a parent can type a free-form question
+// ("did my child attend the class today?") and still get a data-backed answer.
+const KEYWORDS: Record<QKey, string[]> = {
+  attendance: ["attend", "present", "absent", "class", "school", "came", "went", "today"],
+  fees: ["fee", "pay", "due", "money", "invoice", "payment", "bill"],
+  rewards: ["badge", "reward", "point", "prize", "star", "award", "achieve"],
+  tests: ["test", "exam", "score", "mark", "result", "grade", "quiz", "assessment"],
+  progress: ["progress", "lesson", "complete", "course", "study", "learn", "syllabus", "chapter"],
+};
+
+function matchQuestion(text: string): QKey | null {
+  const low = text.toLowerCase();
+  for (const q of QUESTIONS) {
+    if (KEYWORDS[q].some((k) => low.includes(k))) return q;
+  }
+  return null;
+}
 
 interface Msg {
   id: number;
@@ -38,6 +56,7 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
   const { data: overview } = useChildOverview(childId);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [seq, setSeq] = useState(0);
+  const [input, setInput] = useState("");
 
   const answer = (q: QKey): { text: string; module?: string } => {
     const o = overview;
@@ -63,14 +82,25 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
     }
   };
 
-  const ask = (q: QKey) => {
-    const a = answer(q);
+  const push = (userText: string, a: { text: string; module?: string }) => {
     setMessages((prev) => [
       ...prev,
-      { id: seq + 1, role: "user", text: t(`chat.q.${q}`, { name: childName }) },
+      { id: seq + 1, role: "user", text: userText },
       { id: seq + 2, role: "bot", text: a.text, module: a.module },
     ]);
     setSeq((s) => s + 2);
+  };
+
+  const ask = (q: QKey) => push(t(`chat.q.${q}`, { name: childName }), answer(q));
+
+  // Free-text: match the question to an intent and answer from the child's data;
+  // otherwise a gentle nudge toward the topics we can answer.
+  const send = () => {
+    const text = input.trim();
+    if (!text) return;
+    const q = matchQuestion(text);
+    push(text, q ? answer(q) : { text: t("chat.fallback") });
+    setInput("");
   };
 
   return (
@@ -140,6 +170,37 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
             </button>
           ))}
         </div>
+
+        {/* Free-text question box */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            send();
+          }}
+          className="mt-3 flex items-center gap-2"
+        >
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder={t("chat.placeholder")}
+            aria-label={t("chat.open")}
+            className={cn(
+              "flex-1 rounded-full border border-border bg-card px-4 py-2 text-body text-foreground",
+              "placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
+            )}
+          />
+          <button
+            type="submit"
+            aria-label={t("chat.send")}
+            disabled={!input.trim()}
+            className={cn(
+              "flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-500 text-primary-50",
+              "transition-opacity disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
+            )}
+          >
+            <PaperPlaneTilt weight="fill" className="size-4" aria-hidden />
+          </button>
+        </form>
       </SheetContent>
     </Sheet>
   );

@@ -167,8 +167,12 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                     {!hideInstituteName && (
                         <span
                             className={cn(
-                                'truncate text-sm font-semibold text-neutral-800',
-                                stackNameBelowLogo && 'max-w-full'
+                                'text-sm font-semibold text-neutral-800',
+                                // Stacked: wrap to show the full name (centered).
+                                // Beside the logo: keep the single-line ellipsis.
+                                stackNameBelowLogo
+                                    ? 'w-full whitespace-normal break-words'
+                                    : 'truncate'
                             )}
                             title={instituteName}
                         >

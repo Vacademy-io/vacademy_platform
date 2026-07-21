@@ -449,8 +449,12 @@ export const MySidebar = ({
                       >
                         <span
                           className={cn(
-                            "truncate text-subtitle font-semibold",
-                            stackNameBelowLogoLayout && "block"
+                            "text-subtitle font-semibold",
+                            // Stacked: wrap to show the full name (centered).
+                            // Beside the logo: keep the single-line ellipsis.
+                            stackNameBelowLogoLayout
+                              ? "block whitespace-normal break-words"
+                              : "truncate"
                           )}
                         >
                           {instituteName}

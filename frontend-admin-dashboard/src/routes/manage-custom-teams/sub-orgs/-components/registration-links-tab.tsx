@@ -22,6 +22,13 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { MyInput } from '@/components/design-system/input';
@@ -57,6 +64,34 @@ const KYC_STATUS_CLASSES: Record<string, string> = {
     EXPIRED: 'border-danger-400 bg-danger-50 text-danger-600',
     FAILED: 'border-danger-400 bg-danger-50 text-danger-600',
 };
+
+// Registration status → readable label + tinted outline chip classes.
+const REGISTRATION_STATUS_LABELS: Record<string, string> = {
+    DRAFT: 'Draft',
+    OTP_VERIFIED: 'OTP Verified',
+    PENDING_PAYMENT: 'Pending Payment',
+    COMPLETED: 'Completed',
+    FAILED: 'Failed',
+};
+
+const REGISTRATION_STATUS_CLASSES: Record<string, string> = {
+    COMPLETED: 'border-success-400 bg-success-50 text-success-600',
+    OTP_VERIFIED: 'border-info-400 bg-info-50 text-info-600',
+    PENDING_PAYMENT: 'border-warning-400 bg-warning-50 text-warning-600',
+    DRAFT: 'border-neutral-300 bg-neutral-50 text-neutral-600',
+    FAILED: 'border-danger-400 bg-danger-50 text-danger-600',
+};
+
+const REGISTRATION_STATUS_OPTIONS = [
+    { value: 'DRAFT', label: 'Draft' },
+    { value: 'OTP_VERIFIED', label: 'OTP Verified' },
+    { value: 'PENDING_PAYMENT', label: 'Pending Payment' },
+    { value: 'COMPLETED', label: 'Completed' },
+    { value: 'FAILED', label: 'Failed' },
+];
+
+const statusLabel = (status?: string | null) =>
+    (status && REGISTRATION_STATUS_LABELS[status]) || status || '-';
 
 const formatDate = (value?: string | number | null) => {
     if (value === null || value === undefined || value === '') return '-';
@@ -105,7 +140,7 @@ const buildRegistrationsCsv = (rows: SubOrgRegistrationRow[]): string => {
                 r.pincode,
                 r.used_seats ?? '',
                 r.total_seats ?? '',
-                r.status,
+                statusLabel(r.status),
                 r.kyc_status ? r.kyc_status.replace(/_/g, ' ') : '',
                 formatDate(r.created_at),
             ]
@@ -135,6 +170,11 @@ export function RegistrationLinksTab() {
     const [editTemplate, setEditTemplate] = useState<TemplateDetail | null>(null);
     const [registrationsTemplate, setRegistrationsTemplate] =
         useState<RegistrationTemplateListItem | null>(null);
+
+    // Client-side filters for the links list (the list is fetched whole).
+    const [linkSearch, setLinkSearch] = useState('');
+    const [linkStatusFilter, setLinkStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+    const [linkTypeFilter, setLinkTypeFilter] = useState<'ALL' | 'PAID' | 'FREE'>('ALL');
 
     const instituteId = getCurrentInstituteId();
     const queryClient = useQueryClient();
@@ -198,6 +238,20 @@ export function RegistrationLinksTab() {
         toast.success('Registration link copied');
     };
 
+    const q = linkSearch.trim().toLowerCase();
+    const filteredTemplates = templates.filter((t) => {
+        if (linkStatusFilter !== 'ALL' && t.status !== linkStatusFilter) return false;
+        if (linkTypeFilter !== 'ALL') {
+            const paid = isPaidTemplate(t);
+            if (linkTypeFilter === 'PAID' && !paid) return false;
+            if (linkTypeFilter === 'FREE' && paid) return false;
+        }
+        if (q && !(t.name || '').toLowerCase().includes(q)) return false;
+        return true;
+    });
+    const hasLinkFilters =
+        !!q || linkStatusFilter !== 'ALL' || linkTypeFilter !== 'ALL';
+
     if (isLoading) {
         return (
             <div className="space-y-4">
@@ -215,7 +269,57 @@ export function RegistrationLinksTab() {
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+                <div className="flex flex-wrap items-end gap-3">
+                    <div className="w-56">
+                        <MyInput
+                            inputType="text"
+                            label="Search"
+                            inputPlaceholder="Search by link name"
+                            input={linkSearch}
+                            onChangeFunction={(e) => setLinkSearch(e.target.value)}
+                            size="small"
+                        />
+                    </div>
+                    <div className="w-40">
+                        <label className="mb-1 block text-sm font-medium text-neutral-600">
+                            Status
+                        </label>
+                        <Select
+                            value={linkStatusFilter}
+                            onValueChange={(v) =>
+                                setLinkStatusFilter(v as 'ALL' | 'ACTIVE' | 'INACTIVE')
+                            }
+                        >
+                            <SelectTrigger className="h-9">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="ALL">All statuses</SelectItem>
+                                <SelectItem value="ACTIVE">Active</SelectItem>
+                                <SelectItem value="INACTIVE">Inactive</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div className="w-36">
+                        <label className="mb-1 block text-sm font-medium text-neutral-600">
+                            Type
+                        </label>
+                        <Select
+                            value={linkTypeFilter}
+                            onValueChange={(v) => setLinkTypeFilter(v as 'ALL' | 'PAID' | 'FREE')}
+                        >
+                            <SelectTrigger className="h-9">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="ALL">All types</SelectItem>
+                                <SelectItem value="PAID">Paid</SelectItem>
+                                <SelectItem value="FREE">Free</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
                 <MyButton
                     onClick={() => {
                         setEditTemplate(null);
@@ -240,21 +344,27 @@ export function RegistrationLinksTab() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {templates.length === 0 ? (
+                        {filteredTemplates.length === 0 ? (
                             <TableRow>
                                 <TableCell colSpan={6} className="h-24 text-center">
                                     <div className="flex flex-col items-center justify-center gap-2 text-neutral-500">
                                         <LinkSimple className="size-8 opacity-50" />
-                                        <p>No registration links yet.</p>
-                                        <p className="text-xs text-neutral-400">
-                                            Create one to let organizations register themselves as
-                                            sub-orgs.
-                                        </p>
+                                        {hasLinkFilters ? (
+                                            <p>No registration links match your filters.</p>
+                                        ) : (
+                                            <>
+                                                <p>No registration links yet.</p>
+                                                <p className="text-xs text-neutral-400">
+                                                    Create one to let organizations register
+                                                    themselves as sub-orgs.
+                                                </p>
+                                            </>
+                                        )}
                                     </div>
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            templates.map((template) => {
+                            filteredTemplates.map((template) => {
                                 const isRowUpdating =
                                     statusMutation.isPending &&
                                     statusMutation.variables?.templateId === template.id;
@@ -408,19 +518,29 @@ function RegistrationsDialog({
     const instituteId = getCurrentInstituteId();
 
     // Raw filter inputs (what the user types) vs the debounced values sent to the API.
+    const [searchInput, setSearchInput] = useState('');
+    const [statusFilter, setStatusFilter] = useState('');
     const [cityInput, setCityInput] = useState('');
     const [stateInput, setStateInput] = useState('');
     const [pincodeInput, setPincodeInput] = useState('');
-    const [filters, setFilters] = useState({ city: '', state: '', pincode: '' });
+    const [filters, setFilters] = useState({
+        search: '',
+        status: '',
+        city: '',
+        state: '',
+        pincode: '',
+    });
     const [page, setPage] = useState(0);
     const [isExporting, setIsExporting] = useState(false);
 
     // Reset all filter + page state when a different template's dialog opens.
     useEffect(() => {
+        setSearchInput('');
+        setStatusFilter('');
         setCityInput('');
         setStateInput('');
         setPincodeInput('');
-        setFilters({ city: '', state: '', pincode: '' });
+        setFilters({ search: '', status: '', city: '', state: '', pincode: '' });
         setPage(0);
     }, [template?.id]);
 
@@ -428,13 +548,15 @@ function RegistrationsDialog({
     useEffect(() => {
         const timeout = setTimeout(() => {
             setFilters({
+                search: searchInput.trim(),
+                status: statusFilter,
                 city: cityInput.trim(),
                 state: stateInput.trim(),
                 pincode: pincodeInput.trim(),
             });
         }, 300);
         return () => clearTimeout(timeout);
-    }, [cityInput, stateInput, pincodeInput]);
+    }, [searchInput, statusFilter, cityInput, stateInput, pincodeInput]);
 
     // Any filter change jumps back to the first page.
     useEffect(() => {
@@ -449,6 +571,8 @@ function RegistrationsDialog({
                 instituteId: instituteId || '',
                 page,
                 size: REGISTRATIONS_PAGE_SIZE,
+                search: filters.search,
+                status: filters.status,
                 city: filters.city,
                 state: filters.state,
                 pincode: filters.pincode,
@@ -460,7 +584,21 @@ function RegistrationsDialog({
     const registrations = data?.content ?? [];
     const totalPages = data?.total_pages ?? 1;
     const totalElements = data?.total_elements ?? 0;
-    const hasActiveFilters = !!(filters.city || filters.state || filters.pincode);
+    const hasActiveFilters = !!(
+        filters.search ||
+        filters.status ||
+        filters.city ||
+        filters.state ||
+        filters.pincode
+    );
+
+    const clearFilters = () => {
+        setSearchInput('');
+        setStatusFilter('');
+        setCityInput('');
+        setStateInput('');
+        setPincodeInput('');
+    };
 
     // Export ALL rows matching the current filters (not just the visible page).
     const handleExport = async () => {
@@ -470,6 +608,8 @@ function RegistrationsDialog({
             const rows = await fetchAllTemplateRegistrations({
                 templateInviteId: template.id,
                 instituteId,
+                search: filters.search,
+                status: filters.status,
                 city: filters.city,
                 state: filters.state,
                 pincode: filters.pincode,
@@ -498,66 +638,98 @@ function RegistrationsDialog({
             dialogWidth="max-w-5xl"
         >
             <div className="space-y-3">
-                {/* City / State / Pincode filters (address is collected when the link has
-                    "Collect full address" on; rows show "-" for links that don't). */}
-                <div className="flex flex-wrap items-end gap-3">
-                    <div className="w-40">
-                        <MyInput
-                            inputType="text"
-                            label="City"
-                            inputPlaceholder="Filter by city"
-                            input={cityInput}
-                            onChangeFunction={(e) => setCityInput(e.target.value)}
-                            size="small"
-                        />
+                {/* Filters: search + status + City/State/Pincode. Address columns show "-"
+                    for links created without "Collect full address". */}
+                <div className="space-y-3 rounded-lg border bg-neutral-50 p-3">
+                    <div className="flex flex-wrap items-end gap-3">
+                        <div className="flex-1 basis-56">
+                            <MyInput
+                                inputType="text"
+                                label="Search"
+                                inputPlaceholder="Organization, admin or email"
+                                input={searchInput}
+                                onChangeFunction={(e) => setSearchInput(e.target.value)}
+                                size="small"
+                            />
+                        </div>
+                        <div className="w-44">
+                            <label className="mb-1 block text-sm font-medium text-neutral-600">
+                                Status
+                            </label>
+                            <Select
+                                value={statusFilter || 'ALL'}
+                                onValueChange={(v) => setStatusFilter(v === 'ALL' ? '' : v)}
+                            >
+                                <SelectTrigger className="h-9">
+                                    <SelectValue placeholder="All statuses" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="ALL">All statuses</SelectItem>
+                                    {REGISTRATION_STATUS_OPTIONS.map((o) => (
+                                        <SelectItem key={o.value} value={o.value}>
+                                            {o.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="w-32">
+                            <MyInput
+                                inputType="text"
+                                label="City"
+                                inputPlaceholder="City"
+                                input={cityInput}
+                                onChangeFunction={(e) => setCityInput(e.target.value)}
+                                size="small"
+                            />
+                        </div>
+                        <div className="w-32">
+                            <MyInput
+                                inputType="text"
+                                label="State"
+                                inputPlaceholder="State"
+                                input={stateInput}
+                                onChangeFunction={(e) => setStateInput(e.target.value)}
+                                size="small"
+                            />
+                        </div>
+                        <div className="w-28">
+                            <MyInput
+                                inputType="text"
+                                label="Pincode"
+                                inputPlaceholder="Pincode"
+                                input={pincodeInput}
+                                onChangeFunction={(e) => setPincodeInput(e.target.value)}
+                                size="small"
+                            />
+                        </div>
                     </div>
-                    <div className="w-40">
-                        <MyInput
-                            inputType="text"
-                            label="State"
-                            inputPlaceholder="Filter by state"
-                            input={stateInput}
-                            onChangeFunction={(e) => setStateInput(e.target.value)}
-                            size="small"
-                        />
+                    <div className="flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground">
+                            {totalElements} registration{totalElements === 1 ? '' : 's'}
+                            {hasActiveFilters ? ' · filtered' : ''}
+                        </p>
+                        <div className="flex items-center gap-2">
+                            {hasActiveFilters && (
+                                <MyButton buttonType="secondary" scale="small" onClick={clearFilters}>
+                                    Clear
+                                </MyButton>
+                            )}
+                            <MyButton
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={handleExport}
+                                disable={isExporting || totalElements === 0}
+                            >
+                                {isExporting ? (
+                                    <CircleNotch className="mr-1 size-3.5 animate-spin" />
+                                ) : (
+                                    <DownloadSimple className="mr-1 size-3.5" />
+                                )}
+                                Export CSV
+                            </MyButton>
+                        </div>
                     </div>
-                    <div className="w-40">
-                        <MyInput
-                            inputType="text"
-                            label="Pincode"
-                            inputPlaceholder="Filter by pincode"
-                            input={pincodeInput}
-                            onChangeFunction={(e) => setPincodeInput(e.target.value)}
-                            size="small"
-                        />
-                    </div>
-                    {hasActiveFilters && (
-                        <MyButton
-                            buttonType="secondary"
-                            scale="small"
-                            onClick={() => {
-                                setCityInput('');
-                                setStateInput('');
-                                setPincodeInput('');
-                            }}
-                        >
-                            Clear
-                        </MyButton>
-                    )}
-                    <MyButton
-                        buttonType="secondary"
-                        scale="small"
-                        className="ml-auto"
-                        onClick={handleExport}
-                        disable={isExporting || totalElements === 0}
-                    >
-                        {isExporting ? (
-                            <CircleNotch className="mr-1 size-3.5 animate-spin" />
-                        ) : (
-                            <DownloadSimple className="mr-1 size-3.5" />
-                        )}
-                        Export CSV
-                    </MyButton>
                 </div>
 
                 {isLoading ? (
@@ -596,7 +768,7 @@ function RegistrationsDialog({
                                 </TableHeader>
                                 <TableBody>
                                     {registrations.map((row) => (
-                                        <TableRow key={row.id}>
+                                        <TableRow key={row.id} className="hover:bg-muted/50">
                                             <TableCell className="font-medium">
                                                 {row.org_name || '-'}
                                             </TableCell>
@@ -615,13 +787,13 @@ function RegistrationsDialog({
                                             </TableCell>
                                             <TableCell>
                                                 <Badge
-                                                    variant={
-                                                        row.status === 'COMPLETED'
-                                                            ? 'default'
-                                                            : 'secondary'
+                                                    variant="outline"
+                                                    className={
+                                                        REGISTRATION_STATUS_CLASSES[row.status] ||
+                                                        'text-muted-foreground'
                                                     }
                                                 >
-                                                    {row.status}
+                                                    {statusLabel(row.status)}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell>

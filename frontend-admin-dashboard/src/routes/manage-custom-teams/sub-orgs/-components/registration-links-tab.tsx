@@ -6,9 +6,11 @@ import {
     Copy,
     DownloadSimple,
     LinkSimple,
+    MagnifyingGlass,
     PencilSimple,
     Plus,
     UsersThree,
+    X,
 } from '@phosphor-icons/react';
 
 import {
@@ -22,17 +24,11 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
+import { MyDropdown } from '@/components/design-system/dropdown';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
-import { MyInput } from '@/components/design-system/input';
 import { MyPagination } from '@/components/design-system/pagination';
+import { Input } from '@/components/ui/input';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import createSubOrgRegistrationLink from '@/routes/manage-students/invite/-utils/createSubOrgRegistrationLink';
@@ -92,6 +88,13 @@ const REGISTRATION_STATUS_OPTIONS = [
 
 const statusLabel = (status?: string | null) =>
     (status && REGISTRATION_STATUS_LABELS[status]) || status || '-';
+
+// MyDropdown works on display strings — map the friendly labels back to filter values.
+const ALL_STATUSES = 'All statuses';
+const ALL_TYPES = 'All types';
+const LINK_STATUS_LABELS = [ALL_STATUSES, 'Active', 'Inactive'];
+const LINK_TYPE_LABELS = [ALL_TYPES, 'Paid', 'Free'];
+const DIALOG_STATUS_LABELS = [ALL_STATUSES, ...REGISTRATION_STATUS_OPTIONS.map((o) => o.label)];
 
 const formatDate = (value?: string | number | null) => {
     if (value === null || value === undefined || value === '') return '-';
@@ -269,56 +272,47 @@ export function RegistrationLinksTab() {
 
     return (
         <div className="space-y-4">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-                <div className="flex flex-wrap items-end gap-3">
-                    <div className="w-56">
-                        <MyInput
-                            inputType="text"
-                            label="Search"
-                            inputPlaceholder="Search by link name"
-                            input={linkSearch}
-                            onChangeFunction={(e) => setLinkSearch(e.target.value)}
-                            size="small"
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-1 flex-wrap items-center gap-2">
+                    <div className="relative min-w-0 flex-1 sm:max-w-xs">
+                        <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                        <Input
+                            value={linkSearch}
+                            onChange={(e) => setLinkSearch(e.target.value)}
+                            placeholder="Search by link name"
+                            className="h-9 pl-8"
                         />
                     </div>
-                    <div className="w-40">
-                        <label className="mb-1 block text-sm font-medium text-neutral-600">
-                            Status
-                        </label>
-                        <Select
-                            value={linkStatusFilter}
-                            onValueChange={(v) =>
-                                setLinkStatusFilter(v as 'ALL' | 'ACTIVE' | 'INACTIVE')
-                            }
-                        >
-                            <SelectTrigger className="h-9">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="ALL">All statuses</SelectItem>
-                                <SelectItem value="ACTIVE">Active</SelectItem>
-                                <SelectItem value="INACTIVE">Inactive</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="w-36">
-                        <label className="mb-1 block text-sm font-medium text-neutral-600">
-                            Type
-                        </label>
-                        <Select
-                            value={linkTypeFilter}
-                            onValueChange={(v) => setLinkTypeFilter(v as 'ALL' | 'PAID' | 'FREE')}
-                        >
-                            <SelectTrigger className="h-9">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="ALL">All types</SelectItem>
-                                <SelectItem value="PAID">Paid</SelectItem>
-                                <SelectItem value="FREE">Free</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    <MyDropdown
+                        currentValue={
+                            linkStatusFilter === 'ACTIVE'
+                                ? 'Active'
+                                : linkStatusFilter === 'INACTIVE'
+                                  ? 'Inactive'
+                                  : ALL_STATUSES
+                        }
+                        dropdownList={LINK_STATUS_LABELS}
+                        handleChange={(l) =>
+                            setLinkStatusFilter(
+                                l === 'Active' ? 'ACTIVE' : l === 'Inactive' ? 'INACTIVE' : 'ALL'
+                            )
+                        }
+                        className="w-36"
+                    />
+                    <MyDropdown
+                        currentValue={
+                            linkTypeFilter === 'PAID'
+                                ? 'Paid'
+                                : linkTypeFilter === 'FREE'
+                                  ? 'Free'
+                                  : ALL_TYPES
+                        }
+                        dropdownList={LINK_TYPE_LABELS}
+                        handleChange={(l) =>
+                            setLinkTypeFilter(l === 'Paid' ? 'PAID' : l === 'Free' ? 'FREE' : 'ALL')
+                        }
+                        className="w-32"
+                    />
                 </div>
                 <MyButton
                     onClick={() => {
@@ -640,71 +634,46 @@ function RegistrationsDialog({
             <div className="space-y-3">
                 {/* Filters: search + status + City/State/Pincode. Address columns show "-"
                     for links created without "Collect full address". */}
-                <div className="space-y-3 rounded-lg border bg-neutral-50 p-3">
-                    <div className="flex flex-wrap items-end gap-3">
-                        <div className="flex-1 basis-56">
-                            <MyInput
-                                inputType="text"
-                                label="Search"
-                                inputPlaceholder="Organization, admin or email"
-                                input={searchInput}
-                                onChangeFunction={(e) => setSearchInput(e.target.value)}
-                                size="small"
+                <div className="rounded-lg border bg-neutral-50 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="relative min-w-0 flex-1 sm:max-w-xs">
+                            <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Input
+                                value={searchInput}
+                                onChange={(e) => setSearchInput(e.target.value)}
+                                placeholder="Search org, admin or email"
+                                className="h-9 pl-8"
                             />
                         </div>
-                        <div className="w-44">
-                            <label className="mb-1 block text-sm font-medium text-neutral-600">
-                                Status
-                            </label>
-                            <Select
-                                value={statusFilter || 'ALL'}
-                                onValueChange={(v) => setStatusFilter(v === 'ALL' ? '' : v)}
-                            >
-                                <SelectTrigger className="h-9">
-                                    <SelectValue placeholder="All statuses" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="ALL">All statuses</SelectItem>
-                                    {REGISTRATION_STATUS_OPTIONS.map((o) => (
-                                        <SelectItem key={o.value} value={o.value}>
-                                            {o.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="w-32">
-                            <MyInput
-                                inputType="text"
-                                label="City"
-                                inputPlaceholder="City"
-                                input={cityInput}
-                                onChangeFunction={(e) => setCityInput(e.target.value)}
-                                size="small"
-                            />
-                        </div>
-                        <div className="w-32">
-                            <MyInput
-                                inputType="text"
-                                label="State"
-                                inputPlaceholder="State"
-                                input={stateInput}
-                                onChangeFunction={(e) => setStateInput(e.target.value)}
-                                size="small"
-                            />
-                        </div>
-                        <div className="w-28">
-                            <MyInput
-                                inputType="text"
-                                label="Pincode"
-                                inputPlaceholder="Pincode"
-                                input={pincodeInput}
-                                onChangeFunction={(e) => setPincodeInput(e.target.value)}
-                                size="small"
-                            />
-                        </div>
+                        <MyDropdown
+                            currentValue={statusFilter ? statusLabel(statusFilter) : ALL_STATUSES}
+                            dropdownList={DIALOG_STATUS_LABELS}
+                            handleChange={(l) => {
+                                const opt = REGISTRATION_STATUS_OPTIONS.find((o) => o.label === l);
+                                setStatusFilter(opt ? opt.value : '');
+                            }}
+                            className="w-44"
+                        />
+                        <Input
+                            value={cityInput}
+                            onChange={(e) => setCityInput(e.target.value)}
+                            placeholder="City"
+                            className="h-9 w-28"
+                        />
+                        <Input
+                            value={stateInput}
+                            onChange={(e) => setStateInput(e.target.value)}
+                            placeholder="State"
+                            className="h-9 w-32"
+                        />
+                        <Input
+                            value={pincodeInput}
+                            onChange={(e) => setPincodeInput(e.target.value)}
+                            placeholder="Pincode"
+                            className="h-9 w-28"
+                        />
                     </div>
-                    <div className="flex items-center justify-between">
+                    <div className="mt-3 flex items-center justify-between">
                         <p className="text-xs text-muted-foreground">
                             {totalElements} registration{totalElements === 1 ? '' : 's'}
                             {hasActiveFilters ? ' · filtered' : ''}
@@ -712,6 +681,7 @@ function RegistrationsDialog({
                         <div className="flex items-center gap-2">
                             {hasActiveFilters && (
                                 <MyButton buttonType="secondary" scale="small" onClick={clearFilters}>
+                                    <X className="mr-1 size-3.5" />
                                     Clear
                                 </MyButton>
                             )}

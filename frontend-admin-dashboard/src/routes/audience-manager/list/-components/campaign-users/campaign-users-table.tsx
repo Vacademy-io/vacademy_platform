@@ -1085,6 +1085,7 @@ const CampaignUsersContent = ({
                         audienceId={campaignId}
                         instituteId={instituteId}
                         totalElements={totalElements}
+                        selectedLeads={selectedLeads}
                     />
                 </div>
             </div>

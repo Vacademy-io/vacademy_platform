@@ -79,7 +79,7 @@
     },
     "chat": {
       "title": "Ask a quick question",
-      "body": "Tap here any time to ask how your child is doing — attendance, fees, tests and more."
+      "body": "Tap here any time to ask how your child is doing — type your question or tap the mic to ask by voice."
     }
   },
   "chat": {
@@ -155,7 +155,10 @@
     "reportPendingBody": "This detailed report is still being prepared. Please check back soon.",
     "emptyTitle": "No tests yet",
     "emptyBody": "Test results will show here once {{name}} takes a test.",
-    "classAvg": "Class average {{value}}%"
+    "classAvg": "Class average {{value}}%",
+    "rank": "Rank {{value}}",
+    "percentile": "{{value}} percentile",
+    "accuracy": "{{value}}% accuracy"
   },
   "liveClasses": {
     "summary": "{{name}} has {{count}} class coming up.",
@@ -180,6 +183,8 @@
     "summary_other": "{{name}} has earned {{count}} badges.",
     "badge": "Badge",
     "emptyTitle": "No rewards yet",
-    "emptyBody": "Badges and points will show here as {{name}} learns."
+    "emptyBody": "Badges and points will show here as {{name}} learns.",
+    "points": "Points earned",
+    "rank": "Rank #{{value}}"
   }
 }

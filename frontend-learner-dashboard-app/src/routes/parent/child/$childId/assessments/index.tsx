@@ -75,6 +75,14 @@ function AssessmentsScreen() {
               const pct = num(a.percentage);
               const grade = typeof a.grade === "string" ? a.grade : "";
               const classAvg = num(a.class_average);
+              const rank = num(a.rank);
+              const percentile = num(a.percentile);
+              const accuracy = num(a.accuracy);
+              const statParts: string[] = [];
+              if (rank != null) statParts.push(t("assessments.rank", { value: rank }));
+              if (percentile != null) statParts.push(t("assessments.percentile", { value: Math.round(percentile) }));
+              if (accuracy != null) statParts.push(t("assessments.accuracy", { value: Math.round(accuracy) }));
+              const stats = statParts.join(" · ");
               return (
                 <li
                   key={String(a.assessment_id ?? a.assessmentId ?? i)}
@@ -90,6 +98,7 @@ function AssessmentsScreen() {
                         {t("assessments.classAvg", { value: Math.round(classAvg) })}
                       </span>
                     ) : null}
+                    {stats ? <span className="text-caption text-muted-foreground">{stats}</span> : null}
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-0.5">
                     {marks ? (

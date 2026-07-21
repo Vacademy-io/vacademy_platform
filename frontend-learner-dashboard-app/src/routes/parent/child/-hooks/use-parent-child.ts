@@ -14,6 +14,7 @@ import {
   fetchChildAssessments,
   fetchChildInvoices,
   fetchChildBadges,
+  fetchChildPoints,
   fetchChildCertificates,
   fetchChildReports,
 } from "../-services/parent-portal-api";
@@ -33,6 +34,7 @@ export const parentPortalQueryKeys = {
   assessments: (id: string) => [...parentPortalQueryKeys.child(id), "assessments"] as const,
   invoices: (id: string) => [...parentPortalQueryKeys.child(id), "invoices"] as const,
   badges: (id: string) => [...parentPortalQueryKeys.child(id), "badges"] as const,
+  points: (id: string) => [...parentPortalQueryKeys.child(id), "points"] as const,
   certificates: (id: string) => [...parentPortalQueryKeys.child(id), "certificates"] as const,
   reports: (id: string) => [...parentPortalQueryKeys.child(id), "reports"] as const,
 };
@@ -104,6 +106,14 @@ export function useChildBadges(childId: string | undefined) {
   return useQuery({
     queryKey: parentPortalQueryKeys.badges(childId ?? ""),
     queryFn: () => fetchChildBadges(childId!),
+    enabled: !!childId,
+  });
+}
+
+export function useChildPoints(childId: string | undefined) {
+  return useQuery({
+    queryKey: parentPortalQueryKeys.points(childId ?? ""),
+    queryFn: () => fetchChildPoints(childId!),
     enabled: !!childId,
   });
 }

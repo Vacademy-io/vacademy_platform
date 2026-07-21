@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ChildAvatar } from "./ChildAvatar";
-import { useChildren, useParentSettings } from "../-hooks/use-parent-child";
+import { useChildren } from "../-hooks/use-parent-child";
 import { getParentName } from "../-lib/parent-identity";
 import { startChildViewSession } from "../-services/parent-portal-api";
 import { startChildView } from "../-lib/child-view";
@@ -32,12 +32,8 @@ export function ParentProfileMenu({ childId, childName, childFileId }: ParentPro
   const { t } = useTranslation("parent");
   const navigate = useNavigate();
   const { data: children } = useChildren();
-  const { data: settings } = useParentSettings();
   const parentName = getParentName();
   const hasMultiple = (children?.length ?? 0) > 1;
-  // Default ON — a school that turned on the parent portal gets view-as-child too,
-  // unless it explicitly sets allowViewAsChild:false in PARENT_SETTING.
-  const canViewAsChild = settings?.allowViewAsChild ?? true;
   const [switching, setSwitching] = useState(false);
 
   const viewAsChild = async () => {
@@ -108,15 +104,12 @@ export function ParentProfileMenu({ childId, childName, childFileId }: ParentPro
           </>
         ) : null}
 
-        {canViewAsChild ? (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="gap-2" disabled={switching} onSelect={() => void viewAsChild()}>
-              <Eye weight="duotone" className="size-4 text-primary-500" aria-hidden />
-              <span className="truncate">{t("account.viewAsChild", { name: childName })}</span>
-            </DropdownMenuItem>
-          </>
-        ) : null}
+        {/* Always shown; the backend's allowViewAsChild gate enforces it on tap. */}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="gap-2" disabled={switching} onSelect={() => void viewAsChild()}>
+          <Eye weight="duotone" className="size-4 text-primary-500" aria-hidden />
+          <span className="truncate">{t("account.viewAsChild", { name: childName })}</span>
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

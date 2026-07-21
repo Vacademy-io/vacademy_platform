@@ -120,6 +120,19 @@ export async function fetchChildBadges(childUserId: string): Promise<LearnerBadg
   return data ?? [];
 }
 
+export interface ChildPoints {
+  points: number;
+  rank: number | null;
+}
+
+/** The child's engagement points (focused-activity minutes) + institute-wide rank. */
+export async function fetchChildPoints(childUserId: string): Promise<ChildPoints> {
+  const { data } = await authenticatedAxiosInstance.get(
+    `${PARENT_PORTAL_V1}/children/${childUserId}/points`,
+  );
+  return data;
+}
+
 export async function fetchChildCertificates(childUserId: string): Promise<IssuedCertificate[]> {
   const { data } = await authenticatedAxiosInstance.get(
     PARENT_PORTAL_CHILD_CERTIFICATES(childUserId),

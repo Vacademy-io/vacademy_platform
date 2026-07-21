@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { ChatCircleDots, Robot, CaretRight, PaperPlaneTilt } from "@phosphor-icons/react";
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useChildOverview } from "../-hooks/use-parent-child";
+import { askChildAssistant } from "../-services/parent-portal-api";
 
 type QKey = "attendance" | "fees" | "rewards" | "tests" | "progress";
 const QUESTIONS: QKey[] = ["attendance", "fees", "rewards", "tests", "progress"];
@@ -46,17 +47,21 @@ interface ParentChatbotProps {
 }
 
 /**
- * A friendly, safe parent Q&A — a "basic questionnaire" answered from the child's
- * overview data we already hold client-side. No AI backend, no data-leak surface:
- * every answer is computed from the guarded /overview response.
+ * The parent assistant. Free-text questions go to the guarded AI assistant
+ * (`/assistant`, which answers only from the child's own data); if the LLM isn't
+ * available it falls back to on-device preset answers computed from the guarded
+ * /overview response. The preset question chips always use the on-device answers.
  */
 export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
   const { t } = useTranslation("parent");
   const navigate = useNavigate();
   const { data: overview } = useChildOverview(childId);
   const [messages, setMessages] = useState<Msg[]>([]);
-  const [seq, setSeq] = useState(0);
   const [input, setInput] = useState("");
+  const [pending, setPending] = useState(false);
+  const idRef = useRef(0);
+  const nextId = () => ++idRef.current;
+  const addMsg = (m: Msg) => setMessages((prev) => [...prev, m]);
 
   const answer = (q: QKey): { text: string; module?: string } => {
     const o = overview;
@@ -83,24 +88,38 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
   };
 
   const push = (userText: string, a: { text: string; module?: string }) => {
-    setMessages((prev) => [
-      ...prev,
-      { id: seq + 1, role: "user", text: userText },
-      { id: seq + 2, role: "bot", text: a.text, module: a.module },
-    ]);
-    setSeq((s) => s + 2);
+    addMsg({ id: nextId(), role: "user", text: userText });
+    addMsg({ id: nextId(), role: "bot", text: a.text, module: a.module });
   };
 
   const ask = (q: QKey) => push(t(`chat.q.${q}`, { name: childName }), answer(q));
 
-  // Free-text: match the question to an intent and answer from the child's data;
-  // otherwise a gentle nudge toward the topics we can answer.
-  const send = () => {
-    const text = input.trim();
-    if (!text) return;
+  const keywordAnswer = (text: string): { text: string; module?: string } => {
     const q = matchQuestion(text);
-    push(text, q ? answer(q) : { text: t("chat.fallback") });
+    return q ? answer(q) : { text: t("chat.fallback") };
+  };
+
+  // Free-text: try the AI assistant (answers from the guarded child's data);
+  // fall back to on-device keyword answers if the LLM isn't available.
+  const send = async () => {
+    const text = input.trim();
+    if (!text || pending) return;
     setInput("");
+    addMsg({ id: nextId(), role: "user", text });
+    setPending(true);
+    try {
+      const res = await askChildAssistant(childId, text);
+      if (res?.available && res.answer) {
+        addMsg({ id: nextId(), role: "bot", text: res.answer });
+        return;
+      }
+    } catch {
+      // fall through to the on-device answer
+    } finally {
+      setPending(false);
+    }
+    const a = keywordAnswer(text);
+    addMsg({ id: nextId(), role: "bot", text: a.text, module: a.module });
   };
 
   return (
@@ -153,6 +172,11 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
               </div>
             ),
           )}
+          {pending ? (
+            <div className="self-start rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-body text-muted-foreground">
+              {t("chat.thinking")}
+            </div>
+          ) : null}
         </div>
 
         {/* Preset questions ("basic questionnaire") */}
@@ -184,15 +208,17 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
             onChange={(e) => setInput(e.target.value)}
             placeholder={t("chat.placeholder")}
             aria-label={t("chat.open")}
+            disabled={pending}
             className={cn(
               "flex-1 rounded-full border border-border bg-card px-4 py-2 text-body text-foreground",
               "placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
+              "disabled:opacity-60",
             )}
           />
           <button
             type="submit"
             aria-label={t("chat.send")}
-            disabled={!input.trim()}
+            disabled={!input.trim() || pending}
             className={cn(
               "flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-500 text-primary-50",
               "transition-opacity disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",

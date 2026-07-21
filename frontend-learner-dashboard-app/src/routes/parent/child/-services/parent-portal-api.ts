@@ -127,6 +127,28 @@ export async function fetchChildCertificates(childUserId: string): Promise<Issue
   return data ?? [];
 }
 
+export interface AssistantAnswer {
+  answer: string | null;
+  available: boolean;
+}
+
+/**
+ * Ask the parent AI assistant a free-form question about the child. The backend
+ * runs the guardian guard and answers only from the child's own data. `available`
+ * is false when the LLM isn't configured/reachable — the caller then falls back
+ * to the on-device preset answers.
+ */
+export async function askChildAssistant(
+  childUserId: string,
+  question: string,
+): Promise<AssistantAnswer> {
+  const { data } = await authenticatedAxiosInstance.post(
+    `${PARENT_PORTAL_V1}/children/${childUserId}/assistant`,
+    { question },
+  );
+  return data;
+}
+
 export async function fetchChildReports(childUserId: string): Promise<ChildReportListItem[]> {
   const { data } = await authenticatedAxiosInstance.get(
     `${PARENT_PORTAL_V1}/children/${childUserId}/reports`,

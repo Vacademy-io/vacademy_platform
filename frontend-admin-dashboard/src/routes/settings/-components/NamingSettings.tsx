@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Save, RotateCcw, Settings } from 'lucide-react';
+import { FloppyDisk, ArrowCounterClockwise, GearSix } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import useLocalStorage from '@/hooks/use-local-storage';
 import { notifyNamingSettingsUpdated } from '@/hooks/useNamingSettingsVersion';
@@ -64,6 +64,7 @@ export enum OtherTerms {
     AudienceList = 'AudienceList',
     Invite = 'Invite',
     Inventory = 'Inventory',
+    SubOrg = 'SubOrg',
 }
 
 export enum SystemTerms {
@@ -87,6 +88,7 @@ export enum SystemTerms {
     AudienceList = 'Audience List',
     Invite = 'Invite',
     Inventory = 'Inventory',
+    SubOrg = 'Sub-Org',
     /** @deprecated Use SystemTerms.Subject instead */
     Subjects = 'Subject',
     /** @deprecated Use SystemTerms.Module instead */
@@ -119,6 +121,26 @@ const createNameRequest = (settings: NamingSettingsType[]): NamingSettingsReques
     return request as unknown as NamingSettingsRequest;
 };
 
+/**
+ * Overlay a saved/cached term list onto the full default catalog so newly-added
+ * default terms (e.g. Sub-Org) always show up — even when the persisted or
+ * localStorage blob predates them. Keeps every default key, uses the saved
+ * custom value where present, else the default.
+ */
+const mergeWithDefaults = (
+    saved: NamingSettingsType[] | null | undefined
+): NamingSettingsType[] =>
+    defaultNamingSettings.map((defaultItem) => {
+        const match = Array.isArray(saved)
+            ? saved.find((s) => s.key === defaultItem.key)
+            : undefined;
+        return {
+            ...defaultItem,
+            customValue: match?.customValue ?? defaultItem.customValue,
+            customPluralValue: match?.customPluralValue ?? defaultItem.customPluralValue,
+        };
+    });
+
 export default function NamingSettings() {
     const [settings, setSettings] = useState<NamingSettingsType[] | null>(null);
     const { getValue: getNamingSettingsStorage, setValue: setNamingSettingsStorage } = useLocalStorage<
@@ -134,7 +156,8 @@ export default function NamingSettings() {
             // 1. First, check local storage for immediate render (better UX)
             const savedSettings = getNamingSettingsStorage();
             if (Array.isArray(savedSettings) && savedSettings.length > 0) {
-                setSettings(savedSettings);
+                // Merge so a cache saved before a new term existed still shows it.
+                setSettings(mergeWithDefaults(savedSettings));
             }
 
             try {
@@ -188,9 +211,10 @@ export default function NamingSettings() {
 
                     setSettings(settingsArray);
                     setNamingSettingsStorage(settingsArray);
-                } else if (!savedSettings || savedSettings.length === 0) {
-                    // If API returns null AND local storage is empty, use defaults
-                    setSettings(defaultNamingSettings);
+                } else {
+                    // API returned nothing: fall back to any cached customizations,
+                    // merged onto defaults so new terms (e.g. Sub-Org) still appear.
+                    setSettings(mergeWithDefaults(savedSettings));
                 }
             } catch (error) {
                 console.error('Failed to initialize naming settings:', error);
@@ -296,7 +320,7 @@ export default function NamingSettings() {
             <div className="flex items-center justify-between">
                 <div className="space-y-1">
                     <h1 className="flex items-center gap-2 text-lg font-bold">
-                        <Settings className="size-6" />
+                        <GearSix className="size-6" />
                         Naming Settings
                     </h1>
                     <p className="text-sm text-muted-foreground">
@@ -309,7 +333,7 @@ export default function NamingSettings() {
                 </div>
                 <div className="flex items-center gap-2">
                     <Button variant="outline" onClick={resetAllToDefault} disabled={isLoading}>
-                        <RotateCcw className="mr-2 size-4" />
+                        <ArrowCounterClockwise className="mr-2 size-4" />
                         Reset All
                     </Button>
                     <MyButton
@@ -317,7 +341,7 @@ export default function NamingSettings() {
                         disabled={isLoading || !hasChanges}
                         className="bg-primary-500"
                     >
-                        <Save className="mr-2 size-4" />
+                        <FloppyDisk className="mr-2 size-4" />
                         {isLoading ? 'Saving...' : 'Save Changes'}
                     </MyButton>
                 </div>
@@ -402,7 +426,7 @@ export default function NamingSettings() {
                                                 item.customPluralValue === item.systemPluralValue
                                             }
                                         >
-                                            <RotateCcw className="mr-1 size-3" />
+                                            <ArrowCounterClockwise className="mr-1 size-3" />
                                             Reset
                                         </Button>
                                     </div>

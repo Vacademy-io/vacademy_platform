@@ -15,7 +15,7 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { MyButton } from '@/components/design-system/button';
 import { Plus, Building2, Copy, Link2 } from 'lucide-react';
@@ -62,7 +62,7 @@ export function SubOrgList() {
             <div className="flex justify-end">
                 <MyButton onClick={() => setIsCreateModalOpen(true)}>
                     <Plus className="mr-2 h-4 w-4" />
-                    Create Sub-Organization
+                    Create {getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}
                 </MyButton>
             </div>
 
@@ -84,7 +84,7 @@ export function SubOrgList() {
                                 <TableCell colSpan={6} className="h-24 text-center">
                                     <div className="flex flex-col items-center justify-center gap-2 text-gray-500">
                                         <Building2 className="h-8 w-8 opacity-50" />
-                                        <p>No sub-organizations found.</p>
+                                        <p>No {getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase()} found.</p>
                                     </div>
                                 </TableCell>
                             </TableRow>

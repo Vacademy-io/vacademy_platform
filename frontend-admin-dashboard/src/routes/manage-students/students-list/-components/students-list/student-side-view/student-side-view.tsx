@@ -43,7 +43,7 @@ import {
     getTerminology,
     getTerminologyPlural,
 } from '@/components/common/layout-container/sidebar/utils';
-import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { ContentTerms, OtherTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { cn } from '@/lib/utils';
 import {
     getDisplaySettingsWithFallback,
@@ -592,7 +592,7 @@ export const StudentSidebar = ({
                                             )}
                                             onClick={() => setCategory('subOrg')}
                                         >
-                                            SubOrg
+                                            {getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}
                                         </button>
                                     )}
                                 </div>

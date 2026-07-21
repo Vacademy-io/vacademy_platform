@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
     CircleNotch,
     Copy,
+    DownloadSimple,
     LinkSimple,
     PencilSimple,
     Plus,
@@ -23,15 +24,19 @@ import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
+import { MyInput } from '@/components/design-system/input';
+import { MyPagination } from '@/components/design-system/pagination';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import createSubOrgRegistrationLink from '@/routes/manage-students/invite/-utils/createSubOrgRegistrationLink';
 import {
+    fetchAllTemplateRegistrations,
     getRegistrationTemplateDetail,
     listRegistrationTemplates,
     listTemplateRegistrations,
     updateRegistrationTemplateStatus,
     type RegistrationTemplateListItem,
+    type SubOrgRegistrationRow,
     type TemplateDetail,
 } from '../../-services/sub-org-registration-services';
 import { RegistrationLinkCreateModal } from './registration-link-create-modal';
@@ -62,6 +67,66 @@ const formatDate = (value?: string | number | null) => {
         month: 'short',
         day: 'numeric',
     });
+};
+
+const REGISTRATIONS_CSV_HEADERS = [
+    'Organization',
+    'Admin',
+    'Email',
+    'Phone',
+    'City',
+    'State',
+    'Pincode',
+    'Seats Used',
+    'Seats Total',
+    'Status',
+    'KYC',
+    'Registered On',
+] as const;
+
+/** RFC-4180 escaping: quote when the value contains a comma, quote, or newline. */
+const csvCell = (value: unknown): string => {
+    if (value === null || value === undefined) return '';
+    const s = String(value);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+const buildRegistrationsCsv = (rows: SubOrgRegistrationRow[]): string => {
+    const lines = [REGISTRATIONS_CSV_HEADERS.join(',')];
+    rows.forEach((r) => {
+        lines.push(
+            [
+                r.org_name,
+                r.admin_name,
+                r.admin_email,
+                r.admin_phone,
+                r.city,
+                r.state,
+                r.pincode,
+                r.used_seats ?? '',
+                r.total_seats ?? '',
+                r.status,
+                r.kyc_status ? r.kyc_status.replace(/_/g, ' ') : '',
+                formatDate(r.created_at),
+            ]
+                .map(csvCell)
+                .join(',')
+        );
+    });
+    return lines.join('\n');
+};
+
+const downloadCsv = (csv: string, filename: string) => {
+    // Prefix a BOM so Excel opens UTF-8 (accented city/org names) correctly.
+    const blob = new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.parentNode?.removeChild(link);
+    window.URL.revokeObjectURL(url);
 };
 
 export function RegistrationLinksTab() {
@@ -329,7 +394,10 @@ export function RegistrationLinksTab() {
     );
 }
 
-/** Read-only list of the registrations made through one template link. */
+/** Rows-per-page for the registrations listing. */
+const REGISTRATIONS_PAGE_SIZE = 10;
+
+/** Read-only, paginated + City/State/Pincode-filterable list of the registrations made through one template link. */
 function RegistrationsDialog({
     template,
     onClose,
@@ -339,11 +407,86 @@ function RegistrationsDialog({
 }) {
     const instituteId = getCurrentInstituteId();
 
-    const { data: registrations = [], isLoading } = useQuery({
-        queryKey: ['sub-org-registrations', template?.id, instituteId],
-        queryFn: () => listTemplateRegistrations(template?.id || '', instituteId || ''),
+    // Raw filter inputs (what the user types) vs the debounced values sent to the API.
+    const [cityInput, setCityInput] = useState('');
+    const [stateInput, setStateInput] = useState('');
+    const [pincodeInput, setPincodeInput] = useState('');
+    const [filters, setFilters] = useState({ city: '', state: '', pincode: '' });
+    const [page, setPage] = useState(0);
+    const [isExporting, setIsExporting] = useState(false);
+
+    // Reset all filter + page state when a different template's dialog opens.
+    useEffect(() => {
+        setCityInput('');
+        setStateInput('');
+        setPincodeInput('');
+        setFilters({ city: '', state: '', pincode: '' });
+        setPage(0);
+    }, [template?.id]);
+
+    // Debounce the raw inputs (300ms) into the committed filters that drive the query.
+    useEffect(() => {
+        const timeout = setTimeout(() => {
+            setFilters({
+                city: cityInput.trim(),
+                state: stateInput.trim(),
+                pincode: pincodeInput.trim(),
+            });
+        }, 300);
+        return () => clearTimeout(timeout);
+    }, [cityInput, stateInput, pincodeInput]);
+
+    // Any filter change jumps back to the first page.
+    useEffect(() => {
+        setPage(0);
+    }, [filters]);
+
+    const { data, isLoading, isFetching } = useQuery({
+        queryKey: ['sub-org-registrations', template?.id, instituteId, page, filters],
+        queryFn: () =>
+            listTemplateRegistrations({
+                templateInviteId: template?.id || '',
+                instituteId: instituteId || '',
+                page,
+                size: REGISTRATIONS_PAGE_SIZE,
+                city: filters.city,
+                state: filters.state,
+                pincode: filters.pincode,
+            }),
         enabled: !!template?.id && !!instituteId,
+        placeholderData: keepPreviousData,
     });
+
+    const registrations = data?.content ?? [];
+    const totalPages = data?.total_pages ?? 1;
+    const totalElements = data?.total_elements ?? 0;
+    const hasActiveFilters = !!(filters.city || filters.state || filters.pincode);
+
+    // Export ALL rows matching the current filters (not just the visible page).
+    const handleExport = async () => {
+        if (!template?.id || !instituteId) return;
+        setIsExporting(true);
+        try {
+            const rows = await fetchAllTemplateRegistrations({
+                templateInviteId: template.id,
+                instituteId,
+                city: filters.city,
+                state: filters.state,
+                pincode: filters.pincode,
+            });
+            if (rows.length === 0) {
+                toast.info('No registrations to export.');
+                return;
+            }
+            const safeName = (template.name || 'registrations').replace(/[^\w.-]+/g, '_');
+            downloadCsv(buildRegistrationsCsv(rows), `${safeName}_registrations.csv`);
+            toast.success(`Exported ${rows.length} registration${rows.length === 1 ? '' : 's'}.`);
+        } catch {
+            toast.error('Failed to export registrations.');
+        } finally {
+            setIsExporting(false);
+        }
+    };
 
     return (
         <MyDialog
@@ -352,73 +495,171 @@ function RegistrationsDialog({
             onOpenChange={(open) => {
                 if (!open) onClose();
             }}
-            dialogWidth="max-w-3xl"
+            dialogWidth="max-w-5xl"
         >
-            {isLoading ? (
-                <div className="space-y-2">
-                    <Skeleton className="h-8 w-full" />
-                    <Skeleton className="h-8 w-full" />
-                    <Skeleton className="h-8 w-full" />
+            <div className="space-y-3">
+                {/* City / State / Pincode filters (address is collected when the link has
+                    "Collect full address" on; rows show "-" for links that don't). */}
+                <div className="flex flex-wrap items-end gap-3">
+                    <div className="w-40">
+                        <MyInput
+                            inputType="text"
+                            label="City"
+                            inputPlaceholder="Filter by city"
+                            input={cityInput}
+                            onChangeFunction={(e) => setCityInput(e.target.value)}
+                            size="small"
+                        />
+                    </div>
+                    <div className="w-40">
+                        <MyInput
+                            inputType="text"
+                            label="State"
+                            inputPlaceholder="Filter by state"
+                            input={stateInput}
+                            onChangeFunction={(e) => setStateInput(e.target.value)}
+                            size="small"
+                        />
+                    </div>
+                    <div className="w-40">
+                        <MyInput
+                            inputType="text"
+                            label="Pincode"
+                            inputPlaceholder="Filter by pincode"
+                            input={pincodeInput}
+                            onChangeFunction={(e) => setPincodeInput(e.target.value)}
+                            size="small"
+                        />
+                    </div>
+                    {hasActiveFilters && (
+                        <MyButton
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() => {
+                                setCityInput('');
+                                setStateInput('');
+                                setPincodeInput('');
+                            }}
+                        >
+                            Clear
+                        </MyButton>
+                    )}
+                    <MyButton
+                        buttonType="secondary"
+                        scale="small"
+                        className="ml-auto"
+                        onClick={handleExport}
+                        disable={isExporting || totalElements === 0}
+                    >
+                        {isExporting ? (
+                            <CircleNotch className="mr-1 size-3.5 animate-spin" />
+                        ) : (
+                            <DownloadSimple className="mr-1 size-3.5" />
+                        )}
+                        Export CSV
+                    </MyButton>
                 </div>
-            ) : registrations.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-2 py-8 text-neutral-500">
-                    <UsersThree className="size-8 opacity-50" />
-                    <p className="text-sm">No registrations through this link yet.</p>
-                </div>
-            ) : (
-                <div className="rounded-md border">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Organization</TableHead>
-                                <TableHead>Admin</TableHead>
-                                <TableHead>Email</TableHead>
-                                <TableHead>Phone</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead>KYC</TableHead>
-                                <TableHead>Date</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {registrations.map((row) => (
-                                <TableRow key={row.id}>
-                                    <TableCell className="font-medium">
-                                        {row.org_name || '-'}
-                                    </TableCell>
-                                    <TableCell>{row.admin_name || '-'}</TableCell>
-                                    <TableCell>{row.admin_email || '-'}</TableCell>
-                                    <TableCell>{row.admin_phone || '-'}</TableCell>
-                                    <TableCell>
-                                        <Badge
-                                            variant={
-                                                row.status === 'COMPLETED' ? 'default' : 'secondary'
-                                            }
-                                        >
-                                            {row.status}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                        {row.kyc_status ? (
-                                            <Badge
-                                                variant="outline"
-                                                className={
-                                                    KYC_STATUS_CLASSES[row.kyc_status] ||
-                                                    'text-muted-foreground'
-                                                }
-                                            >
-                                                {row.kyc_status.replace(/_/g, ' ')}
-                                            </Badge>
-                                        ) : (
-                                            <span className="text-sm text-muted-foreground">—</span>
-                                        )}
-                                    </TableCell>
-                                    <TableCell>{formatDate(row.created_at)}</TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-            )}
+
+                {isLoading ? (
+                    <div className="space-y-2">
+                        <Skeleton className="h-8 w-full" />
+                        <Skeleton className="h-8 w-full" />
+                        <Skeleton className="h-8 w-full" />
+                    </div>
+                ) : registrations.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center gap-2 py-8 text-neutral-500">
+                        <UsersThree className="size-8 opacity-50" />
+                        <p className="text-sm">
+                            {hasActiveFilters
+                                ? 'No registrations match these filters.'
+                                : 'No registrations through this link yet.'}
+                        </p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="rounded-md border">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Organization</TableHead>
+                                        <TableHead>Admin</TableHead>
+                                        <TableHead>Email</TableHead>
+                                        <TableHead>Phone</TableHead>
+                                        <TableHead>City</TableHead>
+                                        <TableHead>State</TableHead>
+                                        <TableHead>Pincode</TableHead>
+                                        <TableHead>Seats</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead>KYC</TableHead>
+                                        <TableHead>Date</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {registrations.map((row) => (
+                                        <TableRow key={row.id}>
+                                            <TableCell className="font-medium">
+                                                {row.org_name || '-'}
+                                            </TableCell>
+                                            <TableCell>{row.admin_name || '-'}</TableCell>
+                                            <TableCell>{row.admin_email || '-'}</TableCell>
+                                            <TableCell>{row.admin_phone || '-'}</TableCell>
+                                            <TableCell>{row.city || '-'}</TableCell>
+                                            <TableCell>{row.state || '-'}</TableCell>
+                                            <TableCell>{row.pincode || '-'}</TableCell>
+                                            <TableCell>
+                                                {row.used_seats == null
+                                                    ? '-'
+                                                    : row.total_seats != null
+                                                      ? `${row.used_seats}/${row.total_seats}`
+                                                      : String(row.used_seats)}
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge
+                                                    variant={
+                                                        row.status === 'COMPLETED'
+                                                            ? 'default'
+                                                            : 'secondary'
+                                                    }
+                                                >
+                                                    {row.status}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                {row.kyc_status ? (
+                                                    <Badge
+                                                        variant="outline"
+                                                        className={
+                                                            KYC_STATUS_CLASSES[row.kyc_status] ||
+                                                            'text-muted-foreground'
+                                                        }
+                                                    >
+                                                        {row.kyc_status.replace(/_/g, ' ')}
+                                                    </Badge>
+                                                ) : (
+                                                    <span className="text-sm text-muted-foreground">
+                                                        —
+                                                    </span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>{formatDate(row.created_at)}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+
+                        {totalPages > 1 && (
+                            <div className={isFetching ? 'opacity-60' : ''}>
+                                <MyPagination
+                                    currentPage={page}
+                                    totalPages={totalPages}
+                                    onPageChange={setPage}
+                                />
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
         </MyDialog>
     );
 }

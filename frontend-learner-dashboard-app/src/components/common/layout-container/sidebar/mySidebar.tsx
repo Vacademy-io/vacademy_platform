@@ -450,10 +450,10 @@ export const MySidebar = ({
                         <span
                           className={cn(
                             "text-subtitle font-semibold",
-                            // Stacked: wrap to show the full name (centered).
-                            // Beside the logo: keep the single-line ellipsis.
+                            // Stacked: wrap up to 2 lines (centered), ellipsis
+                            // beyond. Beside the logo: single-line ellipsis.
                             stackNameBelowLogoLayout
-                              ? "block whitespace-normal break-words"
+                              ? "w-full line-clamp-2 break-words"
                               : "truncate"
                           )}
                         >

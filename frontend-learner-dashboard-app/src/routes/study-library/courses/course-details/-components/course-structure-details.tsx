@@ -518,6 +518,10 @@ export const CourseStructureDetails = ({
           : 0,
         itemIndex: index, // Add index for count-based exception logic
         prerequisiteCompletions, // Add prerequisite completions map
+        // Progress of every chapter before this one, in course order.
+        recentScores: allChapters
+          .slice(0, index)
+          .map((prev) => calculateChapterProgress(prev.id)),
       };
     });
 
@@ -622,6 +626,10 @@ export const CourseStructureDetails = ({
           previousItemCompletion: previousSlide?.percentage_completed || 0,
           itemIndex: index, // Add index for count-based exception logic
           prerequisiteCompletions, // Add prerequisite completions map
+          // Completion of every slide before this one within the chapter.
+          recentScores: slides
+            .slice(0, index)
+            .map((s) => s.percentage_completed || 0),
         };
 
         // Check if this slide has its own drip condition (check both fields)

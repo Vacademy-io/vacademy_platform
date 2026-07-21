@@ -229,18 +229,28 @@ class ResilientSarvamSTTService(SarvamSTTService):
         # (observed live: 13s mid-pitch stall, caller asked "why are you getting
         # paused again and again?"). Represent such finals as a minimal "Hmm."
         # transcript so the normal turn machinery continues the conversation.
-        # Gated: only while the bot is NOT speaking (a noise final mid-utterance
-        # must not spawn turns) and never in the first seconds of the call.
+        # RESTRAINED (live lesson): empty finals also fire on breath/noise right
+        # around REAL captured utterances — un-throttled synthesis spawned extra
+        # LLM turns mid-complaint and fed talk-over. One-shot until the next real
+        # final, and suppressed within 2.5s of one (that empty is just its tail).
         try:
             if getattr(message, "type", None) != "data":
                 return
             data = getattr(message, "data", None)
             t = getattr(data, "transcript", None)
+            import time as _time
             if t and t.strip():
+                self._synth_armed = True
+                self._last_real_final_t = _time.monotonic()
                 return
             gate = self._backchannel_gate
             if gate is None or not gate():
                 return
+            if not getattr(self, "_synth_armed", True):
+                return
+            if _time.monotonic() - getattr(self, "_last_real_final_t", 0.0) < 2.5:
+                return
+            self._synth_armed = False
             from pipecat.frames.frames import TranscriptionFrame
             from pipecat.utils.time import time_now_iso8601
             await self.push_frame(TranscriptionFrame("Hmm.", self._user_id, time_now_iso8601(), None))

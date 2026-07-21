@@ -557,12 +557,14 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         f"'haan') is NEVER a cue to switch; if a transcript looks like another language, treat "
         f"it as a mis-heard {lang_label} line. Switch only if the caller explicitly asks, or "
         f"speaks 3+ consecutive full sentences in the other language.\n"
-        "6) NEVER end a turn in silence: every turn must end with a question, a quick check-in "
-        "('right?', 'shall I continue?') or a clear closing — never trail off mid-explanation "
-        "and wait for the caller.\n"
-        "7) A neutral acknowledgment to your yes/no question ('okay', 'cool', 'hmm', 'go ahead', "
-        "'haan', 'achha') means YES — move forward. Never re-ask a question you already asked, "
-        "and never repeat any sentence verbatim; if you must clarify, rephrase it in under 8 words."
+        "6) End every turn with a question, a quick check-in ('right?') or a clear closing — "
+        "then STOP COMPLETELY and wait for the caller's answer. NEVER answer your own question, "
+        "NEVER say 'thank you' or continue as if they replied when they haven't. The caller's "
+        "silence is NOT consent — wait for them.\n"
+        "7) A neutral SPOKEN acknowledgment to your yes/no question ('okay', 'cool', 'hmm', "
+        "'go ahead', 'haan', 'achha') means YES — move forward. Never re-ask a question you "
+        "already asked, and never repeat any sentence verbatim; if you must clarify, rephrase "
+        "it in under 8 words."
     )
 
     prompt = _fill_placeholders(agent.get("systemPrompt") or "", context)
@@ -649,10 +651,10 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             "ONCE as they specify; never add a second greeting or re-introduce yourself. If the "
             "caller speaks first (a 'hello' or anything else), your FIRST reply IS your scripted "
             "opening — never reply with just a bare greeting word.",
-            "NEVER end a turn in silence: every turn must end with a question, a quick "
-            "check-in (\u2018right?\u2019, \u2018shall I continue?\u2019) or a clear closing — never trail "
-            "off mid-explanation and wait.",
-            "A neutral acknowledgment to your yes/no question (\u2018okay\u2019, \u2018cool\u2019, \u2018hmm\u2019, "
+            "End every turn with a question, a quick check-in (\u2018right?\u2019) or a clear closing — "
+            "then STOP and wait for the caller\u2019s answer. Never answer your own question or "
+            "continue as if they replied when they haven\u2019t; their silence is NOT consent.",
+            "A neutral SPOKEN acknowledgment to your yes/no question (\u2018okay\u2019, \u2018cool\u2019, \u2018hmm\u2019, "
             "\u2018go ahead\u2019) means YES — move forward. Never re-ask a question you already asked, "
             "and never repeat any sentence verbatim; to clarify, rephrase in under 8 words.",
             language_stability_rule,
@@ -743,7 +745,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
              # data message, not even an empty one), leaving the turn machinery
              # with nothing to react to. The watchdog compares these to detect
              # "spoke but no transcript ever came" and continues the conversation.
-             "user_stopped_t": 0.0, "orphan_handled_t": 0.0}
+             "user_stopped_t": 0.0, "user_started_t": 0.0, "bot_stopped_t": 0.0,
+             "orphan_used": False}
 
     def on_activity(user: bool = True):
         flags["t"] = time.time()
@@ -752,10 +755,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     def set_bot_speaking(speaking: bool):
         flags["bot_speaking"] = speaking
+        if not speaking:
+            flags["bot_stopped_t"] = time.time()
 
     def set_user_speaking(speaking: bool):
         flags["user_speaking"] = speaking
-        if not speaking:
+        if speaking:
+            flags["user_started_t"] = time.time()
+        else:
             flags["user_stopped_t"] = time.time()
 
     stt_lang, _ = _agent_language(agent)
@@ -773,7 +780,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                         else "Ek moment, main aapko connect kar rahi hoon.")
     end_closing = ("Alright, thank you. Have a great day!" if eng
                    else "Theek hai, dhanyavaad. Aapka din shubh ho!")
-    eng_fillers = ("Hmm…", "Right…", "Okay…")
+    # 'Hmm…' only — 'Right…'/'Okay…' sound like complete replies, and a filler that
+    # reads as an answer right before a stall is worse than no filler (heard live).
+    eng_fillers = ("Hmm…",)
     # Bias STT toward the agent's own name so a caller repeating it ("aapka naam Aarushi
     # tha?") isn't transcribed as "Aayushi"/"Aarush" and fed back into the LLM context as
     # a wrong name — the #1 way the agent "forgets" its name mid-call.
@@ -806,6 +815,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     def on_transcript():
         flags["transcript_t"] = time.time()
+        # Real words re-arm the one-shot orphan (see watchdog).
+        flags["orphan_used"] = False
 
     transcript = TranscriptCollector(outcome, on_activity,
                                      is_bot_speaking=lambda: flags["bot_speaking"],
@@ -945,25 +956,35 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             if flags["bot_speaking"] or flags["user_speaking"]:
                 continue
 
-            # VAD-orphan continuation: the caller audibly spoke (VAD start+stop)
-            # but NO transcript ever arrived (observed live: "Yeah, I'm Shreyash"
-            # produced no STT data message at all → 5s dead air until the caller
-            # prodded). Well before the nudge, hand the turn back to the model.
-            ust = flags["user_stopped_t"]
-            if (ust > 0 and ust > flags["transcript_t"] and ust > flags["orphan_handled_t"]
-                    and 2.5 <= time.time() - ust <= 8.0
-                    and time.time() - outcome.connected_at > 6.0):
-                flags["orphan_handled_t"] = time.time()
-                flags["t"] = time.time()
-                logger.info("vad-orphan continue corr=%s (no transcript %.1fs after speech)",
-                            corr, time.time() - ust)
-                await task.queue_frames([LLMMessagesAppendFrame(
-                    messages=[{"role": "user", "content":
-                        "[The caller said something brief that was not captured clearly. "
-                        "Continue naturally: if you just asked a question, treat their "
-                        "reply as a short acknowledgment; do not repeat your question "
-                        "verbatim.]"}],
-                    run_llm=True)])
+            # VAD-orphan: the caller audibly spoke but NO transcript arrived for
+            # that utterance ("Yeah, I'm Shreyash" produced no STT data message at
+            # all → dead air). PRECISION MATTERS — the first version armed on
+            # `stopped_t > transcript_t`, but Sarvam's finals land WHILE the caller
+            # is still speaking, so that test was true after every normal utterance
+            # and the bot steamrolled ("Thank you" to a consent question the caller
+            # never answered, 6 mis-fires in one call). Correct discriminator: no
+            # final has arrived SINCE THE UTTERANCE BEGAN. And the reaction is to
+            # ASK, not assume — a human who missed words says "sorry, say that
+            # again?", they don't act as if they heard a yes. One-shot until real
+            # words arrive; only after the bot has been quiet ≥2s (never steal the
+            # caller's turn at bot-stop).
+            now = time.time()
+            ust, usta = flags["user_stopped_t"], flags["user_started_t"]
+            if (ust > 0 and not flags["orphan_used"]
+                    and usta > flags["transcript_t"]          # nothing captured since speech began
+                    and usta > 0 and ust - usta >= 0.4        # a real utterance, not a blip
+                    and 2.5 <= now - ust <= 10.0
+                    and now - flags["bot_stopped_t"] >= 2.0
+                    and now - outcome.connected_at > 6.0):
+                flags["orphan_used"] = True
+                flags["t"] = now
+                logger.info("vad-orphan ask-repeat corr=%s (no transcript %.1fs after speech)",
+                            corr, now - ust)
+                repeat_line = ("Sorry, I missed that — could you say that again?" if eng else
+                               "Maaf kijiye, main sun nahi paayi — ek baar phir boliye?")
+                await task.queue_frames([
+                    LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": repeat_line}]),
+                    TTSSpeakFrame(repeat_line)])
                 continue
 
             idle = time.time() - flags["t"]

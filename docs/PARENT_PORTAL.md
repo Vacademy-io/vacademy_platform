@@ -200,14 +200,16 @@ fills the one missing icon (payments). Five of six already exist in
 A free-form parent Q&A. `POST /parent-portal/v1/children/{id}/assistant`
 `{ "question": "did my child attend today?" }` → `{ answer, available }`.
 
-**Safe by construction — no tools.** The service runs the guard, assembles a
-plain-text snapshot of ONLY that child's data (attendance % + recent classes with
-present/absent, fees, rewards, recent test scores), and asks the LLM
-(`LLMService`, OpenRouter, `${parent.assistant.model:google/gemini-2.5-flash}`) to
-answer *from that snapshot only*. The model has **no tool access**, so there is no
-surface to reach any other student's data. `available:false` when the LLM key is
-unset/unreachable → the frontend `ParentChatbot` falls back to on-device keyword
-answers. Requires `OPENROUTER_API_KEY` (shared with the agent feature).
+**Reuses the existing chatbot path.** The LLM call goes through the shared
+`agent/service/ChatbotAiService` (the same OpenRouter/`LLMService` the rest of the
+app uses); `ParentAssistantService` only adds the parent-specific, safety-critical
+part — run the guard, then assemble a plain-text snapshot of ONLY that child's data
+(attendance % + recent classes with present/absent, fees, rewards, recent test
+scores) and pass it as the **system prompt**. The model gets **no tools**, so there
+is no surface to reach any other student's data. Model
+`${parent.assistant.model:google/gemini-2.5-flash}`. `available:false` when
+`OPENROUTER_API_KEY` is unset → the frontend `ParentChatbot` falls back to on-device
+keyword answers.
 
 ## 8. "View as my child" (`ParentViewSessionService`)
 

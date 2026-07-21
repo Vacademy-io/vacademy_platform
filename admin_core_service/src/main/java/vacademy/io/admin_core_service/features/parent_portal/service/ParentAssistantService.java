@@ -4,10 +4,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.core.security.GuardedChild;
 import vacademy.io.admin_core_service.core.security.GuardianAccessGuard;
-import vacademy.io.admin_core_service.features.agent.dto.ConversationSession;
-import vacademy.io.admin_core_service.features.agent.service.LLMService;
+import vacademy.io.admin_core_service.features.agent.dto.ChatbotAiRequest;
+import vacademy.io.admin_core_service.features.agent.dto.ChatbotAiResponse;
+import vacademy.io.admin_core_service.features.agent.service.ChatbotAiService;
 import vacademy.io.admin_core_service.features.invoice.dto.InvoiceDTO;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
 import vacademy.io.admin_core_service.features.learner_badge.service.LearnerBadgeService;
@@ -20,16 +22,17 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.UUID;
 
 /**
  * The parent AI assistant. Answers a free-form parent question about their
- * <em>guarded</em> child using an LLM.
+ * <em>guarded</em> child.
  *
- * <p><b>Safe by construction:</b> the LLM is given NO tools — it only ever sees a
- * pre-fetched, plain-text snapshot of the one guarded child's data (assembled here
- * after {@code requireLinkedChild}), so there is no surface for it to reach any
- * other student's data. The model is instructed to answer only from that snapshot.
+ * <p><b>Reuses the existing chatbot path.</b> The LLM call itself goes through the
+ * shared {@link ChatbotAiService} (the same OpenRouter/{@code LLMService} the rest
+ * of the app uses) — this service only adds the parent-specific, safety-critical
+ * part: run the guardian guard, then assemble a plain-text snapshot of ONLY that
+ * one child's data and pass it as the system prompt. The LLM is given NO tools, so
+ * it can never reach any other student's data.
  */
 @Slf4j
 @Service
@@ -52,39 +55,49 @@ public class ParentAssistantService {
     private final InvoiceService invoiceService;
     private final LearnerBadgeService learnerBadgeService;
     private final AssessmentServiceClient assessmentServiceClient;
-    private final LLMService llmService;
+    private final ChatbotAiService chatbotAiService;
 
     @Value("${parent.assistant.model:google/gemini-2.5-flash}")
     private String model;
 
+    @Value("${openrouter.api.key:#{null}}")
+    private String openRouterApiKey;
+
     /**
      * @return the assistant's answer, or {@code null} if the LLM is unavailable
-     *         (e.g. no API key / upstream error) — the caller then falls back to
-     *         the on-device preset answers.
+     *         (no API key / upstream error) — the caller then falls back to the
+     *         on-device preset answers.
      */
     public String answer(CustomUserDetails caller, String childUserId, String question) {
         GuardedChild child = guard.requireLinkedChild(caller, childUserId);
         settingService.requireEnabled(child.instituteId());
 
-        String context = buildContext(caller, child);
+        // No key configured -> let the client use its on-device answers.
+        if (!StringUtils.hasText(openRouterApiKey)) {
+            return null;
+        }
 
-        ConversationSession session = ConversationSession.create(
-                UUID.randomUUID().toString(), caller.getUserId(), child.instituteId(), model, null);
-        session.addMessage(ConversationSession.ChatMessage.system(
-                SYSTEM_PROMPT + "\nToday's date: " + LocalDate.now().format(ISO) + "\n\nDATA:\n" + context));
-        session.addMessage(ConversationSession.ChatMessage.user(question));
+        String context = buildContext(child);
+        ChatbotAiRequest request = ChatbotAiRequest.builder()
+                .instituteId(child.instituteId())
+                .modelId(model)
+                .systemPrompt(SYSTEM_PROMPT + "\nToday's date: " + LocalDate.now().format(ISO) + "\n\nDATA:\n" + context)
+                .userMessage(question)
+                .maxTokens(500)
+                .temperature(0.4)
+                .build();
 
         try {
-            LLMService.LLMResponse resp = llmService.generateChatCompletion(session);
-            return resp != null ? resp.getContent() : null;
+            ChatbotAiResponse response = chatbotAiService.respond(request);
+            return response != null ? response.getAssistantMessage() : null;
         } catch (Exception e) {
-            log.warn("[ParentAssistant] LLM unavailable, falling back: {}", e.getMessage());
+            log.warn("[ParentAssistant] assistant unavailable, falling back: {}", e.getMessage());
             return null;
         }
     }
 
     /** Assemble a compact, plain-text snapshot of the guarded child's data for the prompt. */
-    private String buildContext(CustomUserDetails caller, GuardedChild child) {
+    private String buildContext(GuardedChild child) {
         StringBuilder sb = new StringBuilder();
         sb.append("Child first name: ").append(firstName(child.fullName())).append('\n');
 

@@ -88,13 +88,15 @@ public class SubOrgRegistrationAdminController {
             @RequestParam(value = "city", required = false) String city,
             @RequestParam(value = "state", required = false) String state,
             @RequestParam(value = "pincode", required = false) String pincode,
+            @RequestParam(value = "status", required = false) String status,
+            @RequestParam(value = "search", required = false) String search,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "10") int size,
             @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
         assertInstituteAdmin(user, instituteId);
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         return ResponseEntity.ok(templateService.listRegistrations(
-                templateInviteId, instituteId, city, state, pincode, pageable));
+                templateInviteId, instituteId, city, state, pincode, status, search, pageable));
     }
 
     // ── Authorization guard ──────────────────────────────────────────────────

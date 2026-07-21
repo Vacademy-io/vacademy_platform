@@ -371,7 +371,8 @@ public class SubOrgRegistrationTemplateService {
 
     public Page<RegistrationListItemDTO> listRegistrations(
             String templateId, String instituteId,
-            String city, String state, String pincode, Pageable pageable) {
+            String city, String state, String pincode,
+            String status, String search, Pageable pageable) {
         EnrollInvite template = requireTemplate(templateId, instituteId);
         // Seat capacity is the template's member_count — same for every sub-org spawned
         // from this link, so resolve it once per page rather than per row.
@@ -380,7 +381,8 @@ public class SubOrgRegistrationTemplateService {
         Integer totalSeats = setting != null ? setting.getMemberCount() : null;
 
         Specification<SubOrgRegistration> spec =
-                SubOrgRegistrationSpecification.withFilters(templateId, city, state, pincode);
+                SubOrgRegistrationSpecification.withFilters(
+                        templateId, city, state, pincode, status, search);
         Page<SubOrgRegistration> page = registrationRepository.findAll(spec, pageable);
 
         // One bulk query for the used-seat counts of every spawned sub-org on this page.

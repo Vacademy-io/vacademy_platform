@@ -167,7 +167,7 @@ export interface SubOrgRegistrationRow {
     kyc_status?: string | null;
 }
 
-/** Optional City/State/Pincode filters + 0-based page for the registrations listing. */
+/** Optional filters + 0-based page for the registrations listing. */
 export interface ListTemplateRegistrationsParams {
     templateInviteId: string;
     instituteId: string;
@@ -176,6 +176,10 @@ export interface ListTemplateRegistrationsParams {
     city?: string;
     state?: string;
     pincode?: string;
+    /** Exact registration status (DRAFT | OTP_VERIFIED | PENDING_PAYMENT | COMPLETED | FAILED). */
+    status?: string;
+    /** Free-text search across org name / admin name / admin email. */
+    search?: string;
 }
 
 /** Raw Spring Page<> passthrough (camelCase wrapper, snake_case rows). */
@@ -265,6 +269,8 @@ export const listTemplateRegistrations = async ({
     city,
     state,
     pincode,
+    status,
+    search,
 }: ListTemplateRegistrationsParams): Promise<SubOrgRegistrationPage> => {
     const response = await authenticatedAxiosInstance({
         method: 'GET',
@@ -277,6 +283,8 @@ export const listTemplateRegistrations = async ({
             city: city?.trim() || undefined,
             state: state?.trim() || undefined,
             pincode: pincode?.trim() || undefined,
+            status: status || undefined,
+            search: search?.trim() || undefined,
         },
     });
     // Backend returns a raw Spring Page<> (camelCase wrapper). Normalize to our

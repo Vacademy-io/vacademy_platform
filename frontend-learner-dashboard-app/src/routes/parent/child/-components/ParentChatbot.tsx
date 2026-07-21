@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { ChatCircleDots, Robot, CaretRight, PaperPlaneTilt, Microphone } from "@phosphor-icons/react";
@@ -64,6 +64,13 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
   const idRef = useRef(0);
   const nextId = () => ++idRef.current;
   const addMsg = (m: Msg) => setMessages((prev) => [...prev, m]);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Keep the newest message in view as the conversation grows.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages, pending]);
 
   const answer = (q: QKey): { text: string; module?: string } => {
     const o = overview;
@@ -160,7 +167,7 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
           </SheetTitle>
         </SheetHeader>
 
-        <div className="mt-2 flex max-h-72 flex-col gap-2 overflow-y-auto py-2">
+        <div ref={scrollRef} className="mt-2 flex max-h-72 flex-col gap-2 overflow-y-auto py-2">
           <div className="self-start rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-body text-foreground">
             {t("chat.greeting", { name: childName })}
           </div>

@@ -65,6 +65,8 @@ interface LeadTableProps {
     showScore?: boolean;
     isLoading: boolean;
     actions: LeadActionHandlers;
+    /** Always render the row's Call / AI-call buttons (default: reveal on row hover). */
+    alwaysShowActions?: boolean;
     /** Called after an inline status change so the parent can refetch. */
     onStatusUpdated?: () => void;
     hiddenColumns?: Set<string>;
@@ -243,7 +245,13 @@ export function LeadTable({
     sortBy,
     sortDirection,
     onSortChange,
+    alwaysShowActions = false,
 }: LeadTableProps) {
+    // Call / AI-call reveal: hover-only by default, or always-on when the page asks
+    // (Recent Leads — makes the AI-call action discoverable without hovering).
+    const actionReveal = alwaysShowActions
+        ? 'opacity-100'
+        : 'opacity-0 focus-within:opacity-100 group-hover/row:opacity-100';
     const profOf = (vm: LeadCardVM) => (vm.userId ? profiles[vm.userId] : undefined);
     const notesOf = (vm: LeadCardVM) => (vm.userId ? notes?.[vm.userId] : undefined);
 
@@ -362,7 +370,8 @@ export function LeadTable({
                                                 }
                                                 aria-label="Call lead"
                                                 className={cn(
-                                                    'ml-auto inline-flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 opacity-0 transition focus-within:opacity-100 group-hover/row:opacity-100',
+                                                    'ml-auto inline-flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition',
+                                                    actionReveal,
                                                     callGate.allowed
                                                         ? 'hover:bg-success-50 hover:text-success-600'
                                                         : 'cursor-not-allowed'
@@ -388,7 +397,8 @@ export function LeadTable({
                                         }
                                         aria-label="AI call lead"
                                         className={cn(
-                                            'inline-flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 opacity-0 transition focus-within:opacity-100 group-hover/row:opacity-100',
+                                            'inline-flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition',
+                                            actionReveal,
                                             aiGate.allowed
                                                 ? 'hover:bg-primary-50 hover:text-primary-600'
                                                 : 'cursor-not-allowed'

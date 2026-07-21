@@ -345,8 +345,8 @@ export function StepDialog({
                         {form.watch('create_student') && (
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="step-skip-if-enrolled" className="cursor-pointer text-body">
-                                    Allow completing without picking a course if the student is
-                                    already enrolled in one
+                                    Auto-complete this step if the student is already enrolled
+                                    in a course
                                 </Label>
                                 <Switch
                                     id="step-skip-if-enrolled"

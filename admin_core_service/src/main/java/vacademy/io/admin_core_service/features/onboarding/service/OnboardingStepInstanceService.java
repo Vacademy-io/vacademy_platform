@@ -67,6 +67,7 @@ public class OnboardingStepInstanceService {
     private final OnboardingStudentCreationService onboardingStudentCreationService;
     private final OnboardingRoleAccessResolutionService roleAccessResolutionService;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private static final String AUTO_COMPLETE_ACTOR = "SYSTEM_AUTO";
 
     /**
      * @Lazy breaks the same init-time bean cycle CallAiNodeHandler/SetLeadStatusNodeHandler guard
@@ -105,7 +106,32 @@ public class OnboardingStepInstanceService {
         }
 
         fireTrigger(instance, step, WorkflowTriggerEvent.ONBOARDING_STEP_ENTERED);
-        return savedStepInstance;
+        return tryAutoCompleteOnEntry(step, savedStepInstance);
+    }
+
+    /**
+     * The "assign course" step's skip-course-selection setting means "this step has nothing
+     * left to do for a subject who's already enrolled" -- so rather than making an admin open
+     * the step and hit Complete with an empty course picker just to get past it, complete it
+     * immediately on entry. Reuses the normal completion path (not a shortcut) so any OTHER
+     * mandatory field on the same step still blocks it exactly as a manual completion would --
+     * if that happens, this simply leaves the step IN_PROGRESS for a human to finish, same as if
+     * auto-complete had never been attempted.
+     */
+    private OnboardingStepInstance tryAutoCompleteOnEntry(OnboardingStep step, OnboardingStepInstance stepInstance) {
+        if (!isCreateStudentConfigured(step) || !skipCourseSelectionIfAlreadyEnrolled(step)) {
+            return stepInstance;
+        }
+        if (!onboardingStudentCreationService.subjectAlreadyHasActiveEnrollment(stepInstance)) {
+            return stepInstance;
+        }
+        try {
+            return submitStep(stepInstance.getId(), Map.of(), OnboardingRoleKey.ADMIN.name(), AUTO_COMPLETE_ACTOR, true);
+        } catch (Exception e) {
+            log.info("Could not auto-complete step {} (stepInstance {}) on entry despite an existing enrollment: {}",
+                    step.getId(), stepInstance.getId(), e.getMessage());
+            return stepInstance;
+        }
     }
 
     @Transactional
@@ -496,6 +522,17 @@ public class OnboardingStepInstanceService {
         if (json == null || json.isBlank()) return false;
         try {
             JsonNode v = objectMapper.readTree(json).get("create_student");
+            return v != null && ("true".equalsIgnoreCase(v.asText()) || v.asBoolean(false));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean skipCourseSelectionIfAlreadyEnrolled(OnboardingStep step) {
+        String json = step.getStepTypeConfig();
+        if (json == null || json.isBlank()) return false;
+        try {
+            JsonNode v = objectMapper.readTree(json).get("skip_if_already_enrolled");
             return v != null && ("true".equalsIgnoreCase(v.asText()) || v.asBoolean(false));
         } catch (Exception e) {
             return false;

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { ChatCircleDots, Robot, CaretRight, PaperPlaneTilt } from "@phosphor-icons/react";
+import { ChatCircleDots, Robot, CaretRight, PaperPlaneTilt, Microphone } from "@phosphor-icons/react";
 import {
   Sheet,
   SheetContent,
@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useChildOverview } from "../-hooks/use-parent-child";
 import { askChildAssistant } from "../-services/parent-portal-api";
+import { useParentVoice } from "../-lib/use-parent-voice";
 
 type QKey = "attendance" | "fees" | "rewards" | "tests" | "progress";
 const QUESTIONS: QKey[] = ["attendance", "fees", "rewards", "tests", "progress"];
@@ -53,8 +54,9 @@ interface ParentChatbotProps {
  * /overview response. The preset question chips always use the on-device answers.
  */
 export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
-  const { t } = useTranslation("parent");
+  const { t, i18n } = useTranslation("parent");
   const navigate = useNavigate();
+  const voice = useParentVoice(i18n.language);
   const { data: overview } = useChildOverview(childId);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -99,10 +101,10 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
     return q ? answer(q) : { text: t("chat.fallback") };
   };
 
-  // Free-text: try the AI assistant (answers from the guarded child's data);
-  // fall back to on-device keyword answers if the LLM isn't available.
-  const send = async () => {
-    const text = input.trim();
+  // A question (typed or spoken): try the AI assistant (answers from the guarded
+  // child's data); fall back to on-device keyword answers if the LLM isn't available.
+  const submit = async (raw: string) => {
+    const text = raw.trim();
     if (!text || pending) return;
     setInput("");
     addMsg({ id: nextId(), role: "user", text });
@@ -120,6 +122,18 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
     }
     const a = keywordAnswer(text);
     addMsg({ id: nextId(), role: "bot", text: a.text, module: a.module });
+  };
+
+  // Mic: transcribe the spoken question, drop it in the box, and ask.
+  const toggleMic = () => {
+    if (voice.listening) {
+      voice.stopListen();
+      return;
+    }
+    voice.listen((transcript) => {
+      setInput(transcript);
+      void submit(transcript);
+    });
   };
 
   return (
@@ -199,14 +213,14 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            send();
+            void submit(input);
           }}
           className="mt-3 flex items-center gap-2"
         >
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={t("chat.placeholder")}
+            placeholder={voice.listening ? t("chat.listening") : t("chat.placeholder")}
             aria-label={t("chat.open")}
             disabled={pending}
             className={cn(
@@ -215,6 +229,24 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
               "disabled:opacity-60",
             )}
           />
+          {voice.recognitionSupported ? (
+            <button
+              type="button"
+              onClick={toggleMic}
+              aria-label={t("chat.mic")}
+              aria-pressed={voice.listening}
+              disabled={pending}
+              className={cn(
+                "flex size-9 shrink-0 items-center justify-center rounded-full transition-colors",
+                "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 disabled:opacity-50",
+                voice.listening
+                  ? "animate-pulse bg-danger-500 text-white"
+                  : "bg-primary-50 text-primary-500",
+              )}
+            >
+              <Microphone weight="fill" className="size-4" aria-hidden />
+            </button>
+          ) : null}
           <button
             type="submit"
             aria-label={t("chat.send")}

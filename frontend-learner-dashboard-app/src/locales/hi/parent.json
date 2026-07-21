@@ -108,7 +108,9 @@
     "placeholder": "Ask about your child…",
     "send": "Send",
     "fallback": "I can help with attendance, fees, tests, progress and rewards — try asking about one of those.",
-    "thinking": "Thinking…"
+    "thinking": "Thinking…",
+    "mic": "Ask by voice",
+    "listening": "Listening…"
   },
   "tone": {
     "good": "Going well",

@@ -146,5 +146,8 @@ public class WhiteLabelStatusResponse {
 
         @JsonProperty("logo_height_px")
         private Integer logoHeightPx;
+
+        @JsonProperty("stack_name_below_logo")
+        private Boolean stackNameBelowLogo;
     }
 }

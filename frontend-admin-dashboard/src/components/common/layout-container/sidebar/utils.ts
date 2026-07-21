@@ -263,7 +263,7 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'teams',
             },
             {
-                subItem: 'Sub-Org Teams',
+                subItem: `${getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)} Teams`,
                 subItemLink: '/manage-suborg-teams',
                 subItemId: 'suborg-teams',
             },
@@ -271,7 +271,7 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 // Institute-admin surface — sub-orgs list + drilldown to a sub-org's
                 // analytics deep page. Sibling to "Sub-Org Teams" (which is the
                 // sub-org-admin's narrow view). Both default off; institutes opt in.
-                subItem: 'Manage Institute Sub-Orgs',
+                subItem: `Manage Institute ${getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg)}`,
                 subItemLink: '/manage-custom-teams',
                 subItemId: 'manage-institute-suborgs',
             },

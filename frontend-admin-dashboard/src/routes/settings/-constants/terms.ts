@@ -25,6 +25,7 @@ export const OTHER_TERMS = [
     'AudienceList',
     'Invite',
     'Inventory',
+    'SubOrg',
 ] as const;
 
 /**
@@ -83,6 +84,7 @@ export const defaultNamingSettings: NamingSettingsType[] = [
     { key: 'AudienceList', systemValue: 'Audience List', customValue: 'Audience List', systemPluralValue: 'Audience Lists', customPluralValue: 'Audience Lists' },
     { key: 'Invite', systemValue: 'Invite', customValue: 'Invite', systemPluralValue: 'Invites', customPluralValue: 'Invites' },
     { key: 'Inventory', systemValue: 'Inventory', customValue: 'Inventory', systemPluralValue: 'Inventory', customPluralValue: 'Inventory' },
+    { key: 'SubOrg', systemValue: 'Sub-Org', customValue: 'Sub-Org', systemPluralValue: 'Sub-Orgs', customPluralValue: 'Sub-Orgs' },
 ];
 
 export const systemValueDescription = {
@@ -113,6 +115,7 @@ export const systemValueDescription = {
     AudienceList: 'An Audience List is a group of contacts targeted for campaigns or communications. Also known as Campaigns.',
     Invite: 'An Invite is a link or form sent to users to enroll them into courses or the platform. For eg: Invite, Enrollment Link',
     Inventory: 'Inventory refers to physical or digital items managed by the institute. For eg: Books, Uniforms, Equipment',
+    SubOrg: 'A Sub-Org is a child organization managed under your institute — e.g. a branch, franchise, chapter, or partner. Rename it to match how you refer to these units. For eg: Branch, Franchise, Chapter, Partner',
 };
 
 export const enum SettingsTabs {

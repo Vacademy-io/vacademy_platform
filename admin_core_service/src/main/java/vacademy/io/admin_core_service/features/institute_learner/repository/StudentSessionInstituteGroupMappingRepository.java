@@ -456,6 +456,27 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("status") String status);
 
   /**
+   * Bulk version of {@link #countBySubOrgIdAndPackageSessionIdAndStatus} across ALL package
+   * sessions: active learner-seat count per sub-org for a set of sub-org ids, in ONE query
+   * (avoids N+1 when listing many spawned sub-orgs). Membership + ROOT_ADMIN exclusion mirror
+   * {@link #findActiveSubOrgRoster(String)}; each mapping is attributed to
+   * COALESCE(ssigm.sub_org_id, enroll_invite.sub_org_id) — the stamp wins, else the invite the
+   * user_plan came from. Returns rows of [sub_org_id, used_count]; sub-orgs with zero are absent.
+   */
+  @Query(value = """
+      SELECT COALESCE(ssigm.sub_org_id, ei.sub_org_id) AS sub_org_id, COUNT(*) AS used_count
+      FROM student_session_institute_group_mapping ssigm
+      LEFT JOIN user_plan up ON up.id = ssigm.user_plan_id
+      LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+      WHERE ssigm.status = 'ACTIVE'
+        AND (ssigm.comma_separated_org_roles IS NULL
+             OR ssigm.comma_separated_org_roles NOT LIKE '%ROOT_ADMIN%')
+        AND (ssigm.sub_org_id IN (:subOrgIds) OR ei.sub_org_id IN (:subOrgIds))
+      GROUP BY COALESCE(ssigm.sub_org_id, ei.sub_org_id)
+      """, nativeQuery = true)
+  List<Object[]> countActiveLearnersBySubOrgIds(@Param("subOrgIds") List<String> subOrgIds);
+
+  /**
    * Find the ROOT_ADMIN user_id for a specific sub-org and package session
    * ROOT_ADMIN is the user who purchased the plan and owns the member count limit
    */

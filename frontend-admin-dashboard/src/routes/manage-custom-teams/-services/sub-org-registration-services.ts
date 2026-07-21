@@ -153,10 +153,40 @@ export interface SubOrgRegistrationRow {
     admin_name?: string | null;
     admin_email?: string | null;
     admin_phone?: string | null;
+    /** Collected only when the template had "Collect full address" on; null otherwise. */
+    city?: string | null;
+    state?: string | null;
+    pincode?: string | null;
+    /** Seats of the spawned sub-org — null until the registration spawns one.
+     *  used = active learner members; total = the template's member_count cap. */
+    used_seats?: number | null;
+    total_seats?: number | null;
     spawned_sub_org_id?: string | null;
     created_at?: string | number | null;
     /** PENDING | VERIFIED | CONSENT_DENIED | EXPIRED | FAILED; null = not started / not required. */
     kyc_status?: string | null;
+}
+
+/** Optional City/State/Pincode filters + 0-based page for the registrations listing. */
+export interface ListTemplateRegistrationsParams {
+    templateInviteId: string;
+    instituteId: string;
+    page?: number;
+    size?: number;
+    city?: string;
+    state?: string;
+    pincode?: string;
+}
+
+/** Raw Spring Page<> passthrough (camelCase wrapper, snake_case rows). */
+export interface SubOrgRegistrationPage {
+    content: SubOrgRegistrationRow[];
+    total_pages: number;
+    total_elements: number;
+    /** 0-based current page. */
+    page_no: number;
+    page_size: number;
+    last: boolean;
 }
 
 export const createRegistrationTemplate = async (
@@ -227,14 +257,64 @@ export const updateRegistrationTemplateStatus = async (
     return response.data;
 };
 
-export const listTemplateRegistrations = async (
-    templateInviteId: string,
-    instituteId: string
-): Promise<SubOrgRegistrationRow[]> => {
+export const listTemplateRegistrations = async ({
+    templateInviteId,
+    instituteId,
+    page = 0,
+    size = 10,
+    city,
+    state,
+    pincode,
+}: ListTemplateRegistrationsParams): Promise<SubOrgRegistrationPage> => {
     const response = await authenticatedAxiosInstance({
         method: 'GET',
         url: SUB_ORG_REGISTRATION_REGISTRATIONS,
-        params: { templateInviteId, instituteId },
+        params: {
+            templateInviteId,
+            instituteId,
+            page,
+            size,
+            city: city?.trim() || undefined,
+            state: state?.trim() || undefined,
+            pincode: pincode?.trim() || undefined,
+        },
     });
-    return Array.isArray(response.data) ? response.data : [];
+    // Backend returns a raw Spring Page<> (camelCase wrapper). Normalize to our
+    // snake_case shape; tolerate a bare array in case an older API is hit.
+    const data = response.data;
+    if (Array.isArray(data)) {
+        return {
+            content: data,
+            total_pages: 1,
+            total_elements: data.length,
+            page_no: 0,
+            page_size: data.length,
+            last: true,
+        };
+    }
+    return {
+        content: Array.isArray(data?.content) ? data.content : [],
+        total_pages: data?.totalPages ?? 1,
+        total_elements: data?.totalElements ?? 0,
+        page_no: data?.number ?? 0,
+        page_size: data?.size ?? size,
+        last: data?.last ?? true,
+    };
+};
+
+/**
+ * Fetch EVERY registration matching the given filters (ignoring UI pagination) for CSV
+ * export. Walks all pages at a large page size so even long lists come back complete.
+ */
+export const fetchAllTemplateRegistrations = async (
+    params: Omit<ListTemplateRegistrationsParams, 'page' | 'size'>
+): Promise<SubOrgRegistrationRow[]> => {
+    const PAGE = 500;
+    const first = await listTemplateRegistrations({ ...params, page: 0, size: PAGE });
+    const rows = [...first.content];
+    for (let p = 1; p < first.total_pages; p++) {
+        const next = await listTemplateRegistrations({ ...params, page: p, size: PAGE });
+        rows.push(...next.content);
+    }
+    return rows;
 };

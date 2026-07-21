@@ -5,29 +5,33 @@ import { Helmet } from 'react-helmet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SubOrgList } from './sub-orgs/-components/sub-org-list';
 import { RegistrationLinksTab } from './sub-orgs/-components/registration-links-tab';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export const Route = createLazyFileRoute('/manage-custom-teams/')({
     component: ManageCustomTeams,
 });
 
-const TABS = [
-    { value: 'subOrgs', label: 'Sub-Orgs' },
-    { value: 'registrationLinks', label: 'Registration Links' },
-] as const;
-
 function ManageCustomTeams() {
     const [selectedTab, setSelectedTab] = useState<string>('subOrgs');
+
+    const subOrgTermPlural = getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg);
+
+    const TABS = [
+        { value: 'subOrgs', label: subOrgTermPlural },
+        { value: 'registrationLinks', label: 'Registration Links' },
+    ] as const;
 
     return (
         <LayoutContainer>
             <Helmet>
-                <title>Manage Custom Teams</title>
+                <title>Manage {subOrgTermPlural}</title>
             </Helmet>
             <div className="p-6">
                 <div className="mb-6 flex items-center justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold text-gray-900">Manage Custom Teams</h1>
-                        <p className="text-sm text-gray-500">Manage sub-organizations.</p>
+                        <h1 className="text-2xl font-bold text-gray-900">Manage {subOrgTermPlural}</h1>
+                        <p className="text-sm text-gray-500">Manage your {subOrgTermPlural.toLowerCase()}.</p>
                     </div>
                 </div>
 

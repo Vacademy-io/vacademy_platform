@@ -44,6 +44,8 @@ import type { CPOListApiResponse } from '@/routes/financial-management/fee-plans
 import { getPaymentOptions } from '@/services/payment-options';
 import type { PaymentOptionApi } from '@/types/payment';
 import { formatPlanPrice } from '@/utils/finance-utils';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 // Local sub-org helpers — kept inline so the rest of the dashboard's package-service
 // calls don't accidentally pick up the same lookup logic.
@@ -453,12 +455,13 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
             <DialogContent className="flex max-h-[90vh] w-[95vw] flex-col overflow-hidden max-w-[425px] sm:max-w-[600px] md:max-w-[700px]">
                 <DialogHeader className="shrink-0">
                     <DialogTitle>
-                        {step === 1 && 'Create Sub-Organization'}
+                        {step === 1 && `Create ${getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}`}
                         {step === 2 && 'Select Package Sessions'}
                         {step === 3 && 'Pricing & Seats'}
                     </DialogTitle>
                     <DialogDescription>
-                        {step === 1 && 'Step 1 of 3: Sub-organization details'}
+                        {step === 1 &&
+                            `Step 1 of 3: ${getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)} details`}
                         {step === 2 && 'Step 2 of 3: Choose courses to assign'}
                         {step === 3 && 'Step 3 of 3: Configure pricing and seat limits'}
                     </DialogDescription>
@@ -541,7 +544,7 @@ export function CreateSubOrgModal({ open, onOpenChange, onSuccess }: CreateSubOr
                                     <Input
                                         id="name"
                                         {...step1Form.register('instituteName')}
-                                        placeholder="Sub-Org Name"
+                                        placeholder={`${getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)} Name`}
                                     />
                                     {step1Form.formState.errors.instituteName && (
                                         <p className="text-sm text-destructive">

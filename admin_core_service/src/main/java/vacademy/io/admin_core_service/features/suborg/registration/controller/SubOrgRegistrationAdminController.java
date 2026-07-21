@@ -2,6 +2,10 @@ package vacademy.io.admin_core_service.features.suborg.registration.controller;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -78,12 +82,19 @@ public class SubOrgRegistrationAdminController {
     }
 
     @GetMapping("/registrations")
-    public ResponseEntity<List<RegistrationListItemDTO>> listRegistrations(
+    public ResponseEntity<Page<RegistrationListItemDTO>> listRegistrations(
             @RequestParam("templateInviteId") String templateInviteId,
             @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "city", required = false) String city,
+            @RequestParam(value = "state", required = false) String state,
+            @RequestParam(value = "pincode", required = false) String pincode,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size,
             @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
         assertInstituteAdmin(user, instituteId);
-        return ResponseEntity.ok(templateService.listRegistrations(templateInviteId, instituteId));
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        return ResponseEntity.ok(templateService.listRegistrations(
+                templateInviteId, instituteId, city, state, pincode, pageable));
     }
 
     // ── Authorization guard ──────────────────────────────────────────────────

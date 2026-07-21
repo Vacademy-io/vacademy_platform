@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/select';
 import { MyButton } from '@/components/design-system/button';
 import { PencilSimple, Play, Plus, Robot, SpinnerGap, Stop, Trash } from '@phosphor-icons/react';
+import { fetchBookingPages } from '@/routes/meetings/-services/meetings-services';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
@@ -39,6 +40,8 @@ export interface AiAgent {
     pace?: number;
     /** Expressiveness 0.01–2.0 (~0.6 model default); empty = model default. */
     temperature?: number;
+    /** Optional booking page this agent auto-books on when a call yields a meeting request. */
+    bookingPageId?: string;
 }
 
 interface VoiceOption {
@@ -143,6 +146,13 @@ export function AiAgentsCard({
     const [sampleText, setSampleText] = useState(DEFAULT_SAMPLE_TEXT);
     const [previewState, setPreviewState] = useState<'idle' | 'loading' | 'playing'>('idle');
     const audioRef = useRef<HTMLAudioElement | null>(null);
+
+    const bookingPagesQuery = useQuery({
+        queryKey: ['ai-agent-booking-pages', instituteId],
+        queryFn: () => fetchBookingPages({ instituteId }),
+        staleTime: 60_000,
+    });
+    const bookingPages = bookingPagesQuery.data ?? [];
 
     const voicesQuery = useQuery({
         queryKey: ['ai-agent-voices'],
@@ -524,6 +534,40 @@ export function AiAgentsCard({
                                     Blank = the voicemail/fallback number from Calling settings.
                                 </p>
                             </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <Label>Auto-book meetings on</Label>
+                            <Select
+                                value={editing.bookingPageId || 'NONE'}
+                                onValueChange={(v) =>
+                                    patch({ bookingPageId: v === 'NONE' ? undefined : v })
+                                }
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="No booking page" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="NONE">
+                                        Don&apos;t auto-book meetings
+                                    </SelectItem>
+                                    {bookingPages.map((bp) => (
+                                        <SelectItem key={bp.id} value={bp.id ?? ''}>
+                                            {bp.title}
+                                            {bp.audience_id
+                                                ? ' · adds lead to its audience list'
+                                                : ' · not linked to a list'}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                                When a call agrees on a demo/visit time, a meeting is booked on
+                                this page (Google Meet link + reminders sent). If the page is
+                                linked to an audience list, the lead is added there too.
+                                {bookingPages.length === 0 &&
+                                    ' Create a booking page first in CRM → Meetings → Share Booking Link.'}
+                            </p>
                         </div>
 
                         <div className="flex justify-end gap-2">

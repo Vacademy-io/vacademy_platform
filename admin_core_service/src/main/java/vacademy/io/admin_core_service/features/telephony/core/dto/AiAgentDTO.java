@@ -35,4 +35,5 @@ public class AiAgentDTO {
     private Double pace;
     /** Expressiveness 0.01–2.0; null = Sarvam model default (~0.6). */
     private Double temperature;
+    private String bookingPageId;
 }

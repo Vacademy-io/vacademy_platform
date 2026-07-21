@@ -96,6 +96,18 @@ public class AiCallOutcomeProcessor {
     @Lazy
     private AiAgentService aiAgentService;
 
+    // @Lazy: the booking services transitively reach live-session / audience services;
+    // lazy field injection avoids an eager bean cycle (same pattern as above). Used to
+    // auto-book a meeting when a call yields a scheduling request and the agent is linked
+    // to a booking page.
+    @Autowired
+    @Lazy
+    private vacademy.io.admin_core_service.features.booking.service.MeetingBookingService meetingBookingService;
+
+    @Autowired
+    @Lazy
+    private vacademy.io.admin_core_service.features.booking.service.BookingPageService bookingPageService;
+
     // @Lazy: AudienceService is a large service that transitively reaches back into the
     // lead/workflow graph — a final constructor dependency would risk an eager bean
     // cycle. Used only on the inbound path to auto-capture an unknown caller as a lead
@@ -380,6 +392,16 @@ public class AiCallOutcomeProcessor {
                 log.warn("ai-call: LEAD_CALLED_BACK fire failed for response {}: {}",
                         lead.responseId(), ex.getMessage());
             }
+        }
+
+        // Auto-book a meeting when the caller agreed to a demo/visit/call at a specific
+        // time AND this agent is linked to a booking page. Best-effort: a booking failure
+        // (page deleted, Google not connected, bad time) must NEVER fail outcome
+        // processing or the call log — the meeting is a bonus on top of the outcome.
+        try {
+            maybeAutoBookMeeting(r, lead, instituteId);
+        } catch (Exception ex) {
+            log.warn("ai-call: auto-book failed for result {} (non-fatal): {}", r.getId(), ex.getMessage());
         }
 
         r.setProcessingStatus("PROCESSED");
@@ -736,4 +758,70 @@ public class AiCallOutcomeProcessor {
                 c != null && "INBOUND".equalsIgnoreCase(c.getDirection())
                         && campaignId.equals(c.getCampaignId()));
     }
+
+    /**
+     * If the AI report flags a scheduled meeting/demo/visit with a resolvable time and the
+     * call's agent (VACADEMY_AI campaignId == agent id) is linked to a booking page, create
+     * a booking on that page for the lead. The page supplies host, duration, Google Meet and
+     * reminders; its linked audience list handles adding/refreshing the lead (name + phone).
+     * We only pass name/phone/email we already have — no custom fields (the caller can't fill
+     * arbitrary list fields on a call; when the lead already exists, its data is reused).
+     */
+    private void maybeAutoBookMeeting(AiCallResult r, Lead lead, String instituteId) {
+        if (!ProviderType.VACADEMY_AI.equals(r.getProvider()) || r.getCampaignId() == null) return;
+        String bookingPageId = aiAgentService.find(r.getCampaignId(), instituteId)
+                .map(a -> a.getBookingPageId()).orElse(null);
+        if (bookingPageId == null || bookingPageId.isBlank()) return;
+
+        // Meeting intent + resolved time live in the raw report payload the voice bot posted
+        // (meetingRequested / meetingDatetimeIso). Absent for non-VACADEMY_AI providers.
+        String rawIso = null; boolean requested = false;
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(
+                    r.getRawPayload() == null ? "{}" : r.getRawPayload());
+            requested = root.path("meetingRequested").asBoolean(false);
+            com.fasterxml.jackson.databind.JsonNode isoNode = root.path("meetingDatetimeIso");
+            if (isoNode != null && !isoNode.isNull() && !isoNode.asText().isBlank()) {
+                rawIso = isoNode.asText().trim();
+            }
+        } catch (Exception ex) {
+            log.warn("ai-call: could not parse report payload for booking (result {}): {}",
+                    r.getId(), ex.getMessage());
+            return;
+        }
+        if (!requested || rawIso == null) return;
+
+        // Validate the page belongs to this institute + resolve its host for the principal.
+        var page = bookingPageService.getOrThrow(bookingPageId);
+        if (page == null || !instituteId.equals(page.getInstituteId())) {
+            log.warn("ai-call: booking page {} missing or cross-institute for result {} — skip",
+                    bookingPageId, r.getId());
+            return;
+        }
+
+        var req = vacademy.io.admin_core_service.features.booking.dto.MeetingBookingRequestDTO.builder()
+                .instituteId(instituteId)
+                .bookingPageId(bookingPageId)
+                .startTime(rawIso)                         // exact time the caller agreed to
+                .audienceResponseId(lead.responseId())     // links + reuses the existing lead
+                .inviteeUserId(lead.userId())
+                .inviteeName(r.getCustomerName())
+                .inviteePhone(r.getPhoneNumber())
+                .inviteeEmail(r.getCustomerEmail())
+                .build();
+
+        var principal = new vacademy.io.common.auth.model.CustomUserDetails(
+                buildHostPrincipal(page.getHostUserId()));
+        var created = meetingBookingService.createBooking(req, principal);
+        log.info("ai-call: auto-booked meeting {} on page {} for lead {} at {}",
+                created != null ? created.getId() : "?", bookingPageId, lead.responseId(), rawIso);
+    }
+
+    private vacademy.io.common.auth.dto.UserServiceDTO buildHostPrincipal(String hostUserId) {
+        var dto = new vacademy.io.common.auth.dto.UserServiceDTO();
+        dto.setUserId(hostUserId);
+        dto.setUsername("ai-call-autobook");
+        return dto;
+    }
+
 }

@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { CaretDown, Check } from "@phosphor-icons/react";
+import { CaretDown, Check, Eye } from "@phosphor-icons/react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,8 +12,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { ChildAvatar } from "./ChildAvatar";
-import { useChildren } from "../-hooks/use-parent-child";
+import { useChildren, useParentSettings } from "../-hooks/use-parent-child";
 import { getParentName } from "../-lib/parent-identity";
+import { startChildViewSession } from "../-services/parent-portal-api";
+import { startChildView } from "../-lib/child-view";
 
 interface ParentProfileMenuProps {
   childId: string;
@@ -29,8 +32,29 @@ export function ParentProfileMenu({ childId, childName, childFileId }: ParentPro
   const { t } = useTranslation("parent");
   const navigate = useNavigate();
   const { data: children } = useChildren();
+  const { data: settings } = useParentSettings();
   const parentName = getParentName();
   const hasMultiple = (children?.length ?? 0) > 1;
+  const canViewAsChild = settings?.allowViewAsChild ?? false;
+  const [switching, setSwitching] = useState(false);
+
+  const viewAsChild = async () => {
+    if (switching) return;
+    setSwitching(true);
+    try {
+      const s = await startChildViewSession(childId);
+      await startChildView({
+        childUserId: s.childUserId,
+        childName: s.childName || childName,
+        accessToken: s.accessToken,
+        refreshToken: s.refreshToken,
+      });
+      // startChildView hard-reloads into the learner dashboard on success.
+    } catch (e) {
+      console.error("[parent] view-as-child failed", e);
+      setSwitching(false);
+    }
+  };
 
   return (
     <DropdownMenu>
@@ -79,6 +103,16 @@ export function ParentProfileMenu({ childId, childName, childFileId }: ParentPro
                 ) : null}
               </DropdownMenuItem>
             ))}
+          </>
+        ) : null}
+
+        {canViewAsChild ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem className="gap-2" disabled={switching} onSelect={() => void viewAsChild()}>
+              <Eye weight="duotone" className="size-4 text-primary-500" aria-hidden />
+              <span className="truncate">{t("account.viewAsChild", { name: childName })}</span>
+            </DropdownMenuItem>
           </>
         ) : null}
       </DropdownMenuContent>

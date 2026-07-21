@@ -127,6 +127,26 @@ export async function fetchChildCertificates(childUserId: string): Promise<Issue
   return data ?? [];
 }
 
+export interface ChildViewSessionResponse {
+  childUserId: string;
+  childName: string;
+  accessToken: string;
+  refreshToken?: string | null;
+}
+
+/**
+ * Start a "view as my child" session. The backend runs the guardian guard and the
+ * institute's allowViewAsChild gate, then mints a token that IS the child. 403 if
+ * the gate is off or the child isn't linked.
+ */
+export async function startChildViewSession(childUserId: string): Promise<ChildViewSessionResponse> {
+  const { data } = await authenticatedAxiosInstance.post(
+    `${PARENT_PORTAL_V1}/children/${childUserId}/view-session`,
+    {},
+  );
+  return data;
+}
+
 export interface AssistantAnswer {
   answer: string | null;
   available: boolean;

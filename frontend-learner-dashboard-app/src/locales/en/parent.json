@@ -57,7 +57,8 @@
     "logout": "Log out",
     "menu": "Account",
     "signedInAs": "Signed in as {{name}}",
-    "switchChild": "Switch child"
+    "switchChild": "Switch child",
+    "viewAsChild": "View {{name}}'s screen"
   },
   "search": {
     "placeholder": "Search — try 'attendance'"

@@ -27,8 +27,12 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AiServiceCompletionClient {
 
-    @Value("${ai.service.url:http://ai-service:8077}")
+    // ai_service mounts every route under api_base_path ("/ai-service"), matching
+    // the other admin_core → ai_service callers (transcription, assessment, credits).
+    @Value("${ai.service.url:http://localhost:8077}")
     private String aiServiceUrl;
+
+    private static final String COMPLETE_PATH = "/ai-service/chat/v1/complete";
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
@@ -46,7 +50,7 @@ public class AiServiceCompletionClient {
             HttpEntity<String> entity = new HttpEntity<>(objectMapper.writeValueAsString(body), headers);
 
             ResponseEntity<String> response = restTemplate.exchange(
-                    aiServiceUrl + "/chat/v1/complete", HttpMethod.POST, entity, String.class);
+                    trimTrailingSlash(aiServiceUrl) + COMPLETE_PATH, HttpMethod.POST, entity, String.class);
 
             if (response.getBody() == null) return null;
             JsonNode root = objectMapper.readTree(response.getBody());
@@ -57,4 +61,10 @@ public class AiServiceCompletionClient {
             return null;
         }
     }
+
+    private String trimTrailingSlash(String url) {
+        if (url == null) return "";
+        return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
+    }
 }
+

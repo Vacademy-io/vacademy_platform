@@ -42,7 +42,7 @@ public class ParentPortalSettingService {
                 .enabled(false)
                 .modules(new LinkedHashMap<>(DEFAULT_MODULES))
                 .reportAccess("COMPLETED_ONLY")
-                .allowViewAsChild(false)
+                .allowViewAsChild(true)
                 .allowSwitchToParentView(true)
                 .build();
         try {
@@ -73,7 +73,7 @@ public class ParentPortalSettingService {
                     .enabled(pp.path("enabled").asBoolean(false))
                     .modules(modules)
                     .reportAccess(pp.path("reportAccess").asText("COMPLETED_ONLY"))
-                    .allowViewAsChild(pp.path("allowViewAsChild").asBoolean(false))
+                    .allowViewAsChild(pp.path("allowViewAsChild").asBoolean(true))
                     .allowSwitchToParentView(pp.path("allowSwitchToParentView").asBoolean(true))
                     .build();
         } catch (Exception e) {

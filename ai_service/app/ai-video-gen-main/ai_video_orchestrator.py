@@ -403,11 +403,32 @@ def orchestrate_ai_video_shot(
     # ── Validate shot spec ────────────────────────────────────────────
     prompt = (shot.get("ai_video_prompt") or "").strip()
     if not prompt:
-        return AiVideoShotResult(
-            shot_idx=shot_idx,
-            error="AI_VIDEO_HERO shot missing required ai_video_prompt",
-            error_class="AiVideoSpecError",
-        )
+        # DERIVE rather than fail. A shot can legitimately reach here with no
+        # `ai_video_prompt`: the user flipped its shot_type to AI_VIDEO_HERO
+        # on the assist plan card (the planner authored it as IMAGE_HERO, so
+        # there was never an ai_video_prompt), or the planner emitted the
+        # type without the field. Hard-failing turned an explicit user
+        # request for AI footage into a silent demotion back to a still.
+        # visual_description / narration_excerpt describe the same beat.
+        _derived = " ".join(
+            str(shot.get(k) or "").strip()
+            for k in ("visual_description", "scene_description", "narration_excerpt")
+        ).strip()
+        if _derived:
+            prompt = (
+                f"Cinematic footage: {_derived[:400]}. Photorealistic, natural "
+                "motion, shallow depth of field, no text or captions in frame."
+            )
+            _log(
+                f"   🎬 AI_VIDEO_HERO shot {shot_idx}: no ai_video_prompt — derived "
+                "one from the shot's visual description"
+            )
+        else:
+            return AiVideoShotResult(
+                shot_idx=shot_idx,
+                error="AI_VIDEO_HERO shot missing required ai_video_prompt",
+                error_class="AiVideoSpecError",
+            )
 
     duration_s = _normalize_duration_s(shot.get("ai_video_duration_s"))
     aspect_ratio = _resolve_aspect_ratio(canvas)

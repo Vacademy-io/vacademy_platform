@@ -3617,7 +3617,32 @@ class VideoGenerationPipeline:
                     # Disabled (no-op) when institute_id is None.
                     self._ai_video_ledger = None
                     try:
-                        from app.services.ai_video_ledger import AiVideoLedger
+                        # Import chain — package first, then LOAD FROM DISK.
+                        # In prod neither `app.services.ai_video_ledger` nor a
+                        # flat `ai_video_ledger` resolves from this module's
+                        # context, so this raised ImportError on EVERY run and
+                        # all Veo spend went unbilled (observed live: "AI video
+                        # ledger import failed (No module named 'app')"). Same
+                        # from-disk fallback that already rescues
+                        # fal_veo_client a few lines above.
+                        try:
+                            from app.services.ai_video_ledger import AiVideoLedger
+                        except ImportError:
+                            _led_path = (
+                                _Path(__file__).resolve().parent.parent
+                                / "services" / "ai_video_ledger.py"
+                            )
+                            _led_spec = _ilu.spec_from_file_location(
+                                "ai_video_ledger", _led_path
+                            )
+                            if _led_spec is None or _led_spec.loader is None:
+                                raise ImportError(f"cannot load {_led_path}")
+                            _led_mod = _ilu.module_from_spec(_led_spec)
+                            _sys.modules["ai_video_ledger"] = _led_mod
+                            _sys.modules["app.services.ai_video_ledger"] = _led_mod
+                            _led_spec.loader.exec_module(_led_mod)
+                            AiVideoLedger = _led_mod.AiVideoLedger
+                            print(f"   ℹ️  ai_video_ledger loaded from disk: {_led_path}")
                         self._ai_video_ledger = AiVideoLedger(
                             institute_id=institute_id,
                             video_id=run_name,
@@ -3632,10 +3657,14 @@ class VideoGenerationPipeline:
                                 "⚠️  AI video credit ledger disabled "
                                 "(missing institute_id or video_id)"
                             )
-                    except ImportError as _led_err:
+                    except Exception as _led_err:
+                        # Catch Exception, not just ImportError — the
+                        # from-disk fallback can raise FileNotFoundError /
+                        # AttributeError, which would otherwise escape and
+                        # kill the whole run over a billing-plumbing detail.
                         print(
-                            f"⚠️  AI video ledger import failed ({_led_err}); "
-                            f"Veo charges will not land in credit_transactions."
+                            f"⚠️  AI video ledger unavailable ({type(_led_err).__name__}: "
+                            f"{_led_err}); Veo charges will NOT land in credit_transactions."
                         )
                     print(
                         f"🎬 AI video enabled (tier={self._quality_tier}, audio="

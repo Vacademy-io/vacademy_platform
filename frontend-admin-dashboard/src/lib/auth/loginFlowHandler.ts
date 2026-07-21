@@ -247,7 +247,67 @@ export const handleLoginFlow = async (options: LoginFlowOptions): Promise<LoginF
                         const accessDetails = await fetchUserAccessDetails(userId, instituteId);
                         const processed = processAccessMappings(accessDetails.accessMappings);
 
-                        if (processed.subOrgs.length > 1) {
+                        // ── Portal-scoped login enforcement (sub-org tenant isolation) ──
+                        // A white-label SUB-ORG admin portal maps its domain to ONE sub-org
+                        // via `institute_domain_routing.sub_org_id`, surfaced here as the
+                        // resolved branding's `subOrgId`. Every sub-org admin is really a
+                        // PARENT-institute user (same JWT + user_role), so the ONLY thing
+                        // that tells, e.g., the VKE portal apart from the Edvance portal is
+                        // which sub-org the user is mapped to in FSPSSM (processed.subOrgs).
+                        // Without this, any Enark sub-org admin can log in on any Enark
+                        // sub-org portal. Rule:
+                        //   • mapped to THIS portal's sub-org → allow + auto-select it
+                        //     (works even if the user belongs to several sub-orgs — the
+                        //      portal disambiguates, so no picker is shown)
+                        //   • unrestricted parent/global admin (no sub-org linkages) →
+                        //     allow to roam any sub-org portal
+                        //   • mapped only to OTHER sub-orgs → reject ("wrong portal")
+                        // When the portal has no sub-org (parent / non-sub-org portals, or
+                        // rows without sub_org_id set) this is skipped and the original
+                        // selection behaviour below runs unchanged.
+                        const portalSubOrgId = getCachedInstituteBranding()?.subOrgId ?? null;
+                        if (portalSubOrgId) {
+                            const userSubOrgIds = processed.subOrgs.map((s) => s.subOrgId);
+                            const belongsToPortalSubOrg = userSubOrgIds.includes(portalSubOrgId);
+                            const isUnrestrictedParentAdmin = processed.subOrgs.length === 0;
+
+                            if (!belongsToPortalSubOrg && !isUnrestrictedParentAdmin) {
+                                trackEvent('Login Blocked', {
+                                    login_method: loginMethod,
+                                    reason: 'suborg_portal_mismatch',
+                                    portal_sub_org_id: portalSubOrgId,
+                                    user_sub_org_ids: userSubOrgIds,
+                                    timestamp: new Date().toISOString(),
+                                });
+
+                                // Clear tokens and show error — foreign sub-org user.
+                                removeCookiesAndLogout();
+
+                                toast.error('Access Denied', {
+                                    description:
+                                        'These credentials don’t belong to this portal. Please sign in on your organization’s own login page.',
+                                    className: 'error-toast',
+                                    duration: 5000,
+                                });
+
+                                return {
+                                    success: false,
+                                    error: 'suborg_portal_mismatch',
+                                    userRoles,
+                                };
+                            }
+
+                            saveFacultyAccessData({
+                                subOrgs: processed.subOrgs,
+                                // On a sub-org portal the domain already picks the sub-org,
+                                // so select it directly and skip the picker. Unrestricted
+                                // parent/global admins keep parent context (null).
+                                selectedSubOrgId: belongsToPortalSubOrg ? portalSubOrgId : null,
+                                globalPackageIds: processed.globalPackageIds,
+                                globalPackageSessionIds: processed.globalPackageSessionIds,
+                                permissions: processed.permissions,
+                            });
+                        } else if (processed.subOrgs.length > 1) {
                             saveFacultyAccessData({
                                 subOrgs: processed.subOrgs,
                                 selectedSubOrgId: null,
@@ -484,7 +544,49 @@ export const handleInstituteSelection = async (instituteId: string): Promise<Log
                     const accessDetails = await fetchUserAccessDetails(tData.user as string, instituteId);
                     const processed = processAccessMappings(accessDetails.accessMappings);
 
-                    if (processed.subOrgs.length > 1) {
+                    // Portal-scoped sub-org enforcement — mirrors handleLoginFlow so a
+                    // multi-institute user who reaches this path via the institute picker
+                    // is held to the same rule (see the detailed comment there).
+                    const portalSubOrgId = cachedBranding?.subOrgId ?? null;
+                    if (portalSubOrgId) {
+                        const userSubOrgIds = processed.subOrgs.map((s) => s.subOrgId);
+                        const belongsToPortalSubOrg = userSubOrgIds.includes(portalSubOrgId);
+                        const isUnrestrictedParentAdmin = processed.subOrgs.length === 0;
+
+                        if (!belongsToPortalSubOrg && !isUnrestrictedParentAdmin) {
+                            trackEvent('Login Blocked', {
+                                login_method: 'institute_selection',
+                                reason: 'suborg_portal_mismatch',
+                                portal_sub_org_id: portalSubOrgId,
+                                user_sub_org_ids: userSubOrgIds,
+                                institute_id: instituteId,
+                                timestamp: new Date().toISOString(),
+                            });
+
+                            removeCookiesAndLogout();
+
+                            toast.error('Access Denied', {
+                                description:
+                                    'These credentials don’t belong to this portal. Please sign in on your organization’s own login page.',
+                                className: 'error-toast',
+                                duration: 5000,
+                            });
+
+                            return {
+                                success: false,
+                                error: 'suborg_portal_mismatch',
+                                userRoles,
+                            };
+                        }
+
+                        saveFacultyAccessData({
+                            subOrgs: processed.subOrgs,
+                            selectedSubOrgId: belongsToPortalSubOrg ? portalSubOrgId : null,
+                            globalPackageIds: processed.globalPackageIds,
+                            globalPackageSessionIds: processed.globalPackageSessionIds,
+                            permissions: processed.permissions,
+                        });
+                    } else if (processed.subOrgs.length > 1) {
                         saveFacultyAccessData({
                             subOrgs: processed.subOrgs,
                             selectedSubOrgId: null,

@@ -14,6 +14,8 @@ import vacademy.io.admin_core_service.features.booking.entity.BookingInstance;
 import vacademy.io.admin_core_service.features.booking.entity.BookingPage;
 import vacademy.io.admin_core_service.features.booking.repository.BookingInstanceRepository;
 import vacademy.io.admin_core_service.features.booking.repository.BookingPageRepository;
+import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
+import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 import vacademy.io.admin_core_service.features.live_session.dto.CancelBookingRequest;
 import vacademy.io.admin_core_service.features.live_session.repository.ScheduleNotificationRepository;
 import vacademy.io.admin_core_service.features.live_session.service.BookingManagementService;
@@ -61,6 +63,7 @@ public class PublicBookingService {
     private final ScheduleNotificationRepository scheduleNotificationRepository;
     private final AudienceService audienceService;
     private final AuthService authService;
+    private final InstituteCustomFiledService instituteCustomFiledService;
 
     public PublicBookingDTOs.PublicPageDTO getPage(String instituteId, String slug) {
         BookingPage page = activePage(instituteId, slug);
@@ -75,7 +78,21 @@ public class PublicBookingService {
                 .requireApproval(page.getRequireApproval())
                 .minNoticeMinutes(page.getMinNoticeMinutes())
                 .bookingHorizonDays(page.getBookingHorizonDays())
+                .customFields(customFieldsFor(page))
                 .build();
+    }
+
+    /** Booking-form fields = the linked audience list's campaign custom fields. */
+    private java.util.List<vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO>
+            customFieldsFor(BookingPage page) {
+        if (page.getAudienceId() == null || page.getAudienceId().isBlank()) return List.of();
+        try {
+            return instituteCustomFiledService.findCustomFieldsAsJson(
+                    page.getInstituteId(), CustomFieldTypeEnum.AUDIENCE_FORM.name(), page.getAudienceId());
+        } catch (Exception e) {
+            log.warn("customFieldsFor page {} failed: {}", page.getId(), e.getMessage());
+            return List.of();
+        }
     }
 
     public PublicBookingDTOs.SlotsResponseDTO getSlots(String instituteId, String slug,
@@ -132,6 +149,11 @@ public class PublicBookingService {
                 userDTO.setEmail(hasEmail ? request.getEmail() : null);
                 userDTO.setMobileNumber(hasPhone ? request.getPhone() : null);
                 lead.setUserDTO(userDTO);
+                // Custom-field answers persist against the audience_response via
+                // the standard lead pipeline → visible in the CRM lead views.
+                if (request.getCustomFieldValues() != null && !request.getCustomFieldValues().isEmpty()) {
+                    lead.setCustomFieldValues(request.getCustomFieldValues());
+                }
                 audienceResponseId = audienceService.submitLead(lead);
             } catch (Exception e) {
                 log.error("Lead creation for public booking failed (page {}): {}", page.getId(), e.getMessage());
@@ -148,6 +170,7 @@ public class PublicBookingService {
                 .inviteePhone(hasPhone ? request.getPhone() : null)
                 .inviteeTimezone(request.getInviteeTimezone())
                 .audienceResponseId(audienceResponseId)
+                .customFieldValues(request.getCustomFieldValues())
                 .build();
         BookingInstanceDTO created = meetingBookingService.createBooking(booking, hostPrincipal(page));
 
@@ -206,6 +229,7 @@ public class PublicBookingService {
                         ? request.getInviteeTimezone() : old.getInviteeTimezone())
                 .inviteeUserId(old.getInviteeUserId())
                 .audienceResponseId(old.getAudienceResponseId())
+                .customFieldValues(parseStoredCustomFields(old.getCustomFieldValuesJson()))
                 .build();
         BookingInstanceDTO created;
         try {
@@ -315,6 +339,16 @@ public class PublicBookingService {
                     .findFirst().map(UserDTO::getFullName).orElse(null);
         } catch (Exception e) {
             log.warn("hostName lookup failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static java.util.Map<String, String> parseStoredCustomFields(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, java.util.Map.class);
+        } catch (Exception e) {
             return null;
         }
     }

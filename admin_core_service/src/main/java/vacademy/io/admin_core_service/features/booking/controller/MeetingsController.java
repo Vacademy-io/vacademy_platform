@@ -144,6 +144,24 @@ public class MeetingsController {
         return ResponseEntity.ok(meetingBookingService.listForHosts(instituteId, hostIds, start, end));
     }
 
+    // ==================== LEAD VIEW ====================
+
+    /**
+     * A lead's meetings for the CRM lead detail view — matched by
+     * audience_response id, the lead's platform user id, and/or email.
+     */
+    @GetMapping("/by-lead")
+    public ResponseEntity<List<BookingInstanceDTO>> byLead(
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam(value = "audienceResponseId", required = false) String audienceResponseId,
+            @RequestParam(value = "inviteeUserId", required = false) String inviteeUserId,
+            @RequestParam(value = "inviteeEmail", required = false) String inviteeEmail,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        return ResponseEntity.ok(meetingBookingService.listForLead(
+                instituteId, audienceResponseId, inviteeUserId, inviteeEmail));
+    }
+
     /** FE gating: whether to render the Team Meetings tab for this caller. */
     @GetMapping("/scope")
     public ResponseEntity<Map<String, Object>> scope(

@@ -1150,6 +1150,7 @@ export const MEETINGS_BOOK = `${MEETINGS_BASE}/book`;
 export const MEETINGS_MY_CALENDAR = `${MEETINGS_BASE}/my-calendar`;
 export const MEETINGS_TEAM_CALENDAR = `${MEETINGS_BASE}/team-calendar`;
 export const MEETINGS_SCOPE = `${MEETINGS_BASE}/scope`;
+export const MEETINGS_BY_LEAD = `${MEETINGS_BASE}/by-lead`;
 
 // Manage Custom Teams / Faculty Access v2
 export const GRANT_USER_ACCESS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access`;

@@ -211,6 +211,7 @@ public class MeetingBookingService {
                 .scheduledEndUtc(Timestamp.from(end.toInstant()))
                 .status(page != null && Boolean.TRUE.equals(page.getRequireApproval()) ? "PENDING" : "CONFIRMED")
                 .meetLink("CUSTOM_LINK".equalsIgnoreCase(locationType) || !allocateMeet ? customLink : null)
+                .customFieldValuesJson(writeCustomFieldValues(request.getCustomFieldValues()))
                 .manageToken(UUID.randomUUID().toString())
                 .build();
         return bookingInstanceRepository.save(instance);
@@ -318,6 +319,34 @@ public class MeetingBookingService {
         return enrich(bookingInstanceRepository.findForInstituteInWindow(instituteId, windowStart, windowEnd));
     }
 
+    /**
+     * A lead's meetings for the CRM lead view — union of bookings linked to the
+     * audience_response, the lead's platform user, and the lead's email (public
+     * bookings on other lists carry the same contact but a different response id).
+     */
+    public List<BookingInstanceDTO> listForLead(String instituteId, String audienceResponseId,
+                                                String inviteeUserId, String inviteeEmail) {
+        Map<String, BookingInstance> byId = new java.util.LinkedHashMap<>();
+        if (audienceResponseId != null && !audienceResponseId.isBlank()) {
+            bookingInstanceRepository.findByAudienceResponseId(audienceResponseId).stream()
+                    .filter(b -> instituteId.equals(b.getInstituteId()))
+                    .forEach(b -> byId.put(b.getId(), b));
+        }
+        if (inviteeUserId != null && !inviteeUserId.isBlank()) {
+            bookingInstanceRepository
+                    .findByInstituteIdAndInviteeUserIdOrderByScheduledStartUtcDesc(instituteId, inviteeUserId)
+                    .forEach(b -> byId.put(b.getId(), b));
+        }
+        if (inviteeEmail != null && !inviteeEmail.isBlank()) {
+            bookingInstanceRepository
+                    .findByInstituteIdAndInviteeEmailIgnoreCaseOrderByScheduledStartUtcDesc(instituteId, inviteeEmail)
+                    .forEach(b -> byId.put(b.getId(), b));
+        }
+        List<BookingInstance> rows = new ArrayList<>(byId.values());
+        rows.sort(java.util.Comparator.comparing(BookingInstance::getScheduledStartUtc).reversed());
+        return enrich(rows);
+    }
+
     private List<BookingInstanceDTO> enrich(List<BookingInstance> rows) {
         Map<String, String> hostNames = userNames(rows.stream()
                 .map(BookingInstance::getHostUserId).distinct().collect(Collectors.toList()));
@@ -367,6 +396,16 @@ public class MeetingBookingService {
         return out;
     }
 
+    private String writeCustomFieldValues(Map<String, String> values) {
+        if (values == null || values.isEmpty()) return null;
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(values);
+        } catch (Exception e) {
+            log.warn("Serializing booking custom fields failed: {}", e.getMessage());
+            return null;
+        }
+    }
+
     private static String firstNonBlank(String... values) {
         for (String v : values) {
             if (v != null && !v.isBlank()) return v;
@@ -395,7 +434,19 @@ public class MeetingBookingService {
                 .status(b.getStatus())
                 .meetLink(b.getMeetLink())
                 .cancelReason(b.getCancelReason())
+                .customFieldValues(readCustomFieldValues(b.getCustomFieldValuesJson()))
                 .createdAt(b.getCreatedAt())
                 .build();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, String> readCustomFieldValues(String json) {
+        if (json == null || json.isBlank()) return null;
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, Map.class);
+        } catch (Exception e) {
+            log.warn("Parsing booking custom fields failed: {}", e.getMessage());
+            return null;
+        }
     }
 }

@@ -3,6 +3,7 @@ import {
     MEETINGS_BOOKING_PAGE_BY_ID,
     MEETINGS_BOOKING_PAGE_CREATE,
     MEETINGS_BOOKING_PAGES_LIST,
+    MEETINGS_BY_LEAD,
     MEETINGS_MY_CALENDAR,
     MEETINGS_SCOPE,
     MEETINGS_TEAM_CALENDAR,
@@ -11,6 +12,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
     BookingInstanceDTO,
     BookingPageDTO,
+    BookingsByLeadFilters,
     CreateMeetingBookingRequest,
     MeetingsScope,
 } from '../-types/meetings-types';
@@ -104,6 +106,21 @@ export const fetchTeamCalendar = async (params: {
         method: 'GET',
         url: MEETINGS_TEAM_CALENDAR,
         params,
+    });
+    return response.data as BookingInstanceDTO[];
+};
+
+/** Meetings linked to a CRM lead — at least one filter identifier should be sent. */
+export const fetchBookingsByLead = async (instituteId: string, filters: BookingsByLeadFilters) => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: MEETINGS_BY_LEAD,
+        params: {
+            instituteId,
+            audienceResponseId: filters.audienceResponseId,
+            inviteeUserId: filters.inviteeUserId,
+            inviteeEmail: filters.inviteeEmail,
+        },
     });
     return response.data as BookingInstanceDTO[];
 };

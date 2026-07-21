@@ -33,8 +33,10 @@ export const statusToChip = (status: BookingInstanceStatus): StatusType => {
         case 'CONFIRMED':
             return 'SUCCESS';
         case 'PENDING':
+        case 'RESCHEDULED':
             return 'WARNING';
         case 'CANCELLED':
+        case 'NO_SHOW':
             return 'DANGER';
         default:
             return 'INFO';

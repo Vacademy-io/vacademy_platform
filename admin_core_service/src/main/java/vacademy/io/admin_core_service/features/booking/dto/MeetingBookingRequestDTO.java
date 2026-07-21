@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Admin create-on-behalf meeting booking. When {@code bookingPageId} is set,
@@ -42,6 +43,9 @@ public class MeetingBookingRequestDTO {
     private String inviteeEmail;
     private String inviteePhone;
     private String inviteeTimezone;
+
+    /** Booking-form custom-field answers, keyed by fieldKey. */
+    private Map<String, String> customFieldValues;
 
     /** Overrides of page defaults. */
     private String locationType;

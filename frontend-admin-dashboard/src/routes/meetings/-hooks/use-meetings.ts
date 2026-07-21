@@ -4,12 +4,17 @@ import {
     createMeetingBooking,
     deleteBookingPage,
     fetchBookingPages,
+    fetchBookingsByLead,
     fetchMeetingsScope,
     fetchMyCalendar,
     fetchTeamCalendar,
     updateBookingPage,
 } from '../-services/meetings-services';
-import { BookingPageDTO, CreateMeetingBookingRequest } from '../-types/meetings-types';
+import {
+    BookingPageDTO,
+    BookingsByLeadFilters,
+    CreateMeetingBookingRequest,
+} from '../-types/meetings-types';
 
 // Query keys — kept flat so mutations can invalidate whole families.
 export const MEETINGS_KEYS = {
@@ -17,6 +22,7 @@ export const MEETINGS_KEYS = {
     teamCalendar: 'meetings-team-calendar',
     scope: 'meetings-scope',
     bookingPages: 'meetings-booking-pages',
+    byLead: 'meetings-by-lead',
 } as const;
 
 export const useMyCalendar = (
@@ -74,6 +80,26 @@ export const useBookingPages = (params: {
         enabled: !!params.instituteId && (params.enabled ?? true),
     });
 
+/** Meetings linked to a CRM lead. Disabled until we have an institute + at least one identifier. */
+export const useBookingsByLead = (
+    instituteId: string | undefined,
+    filters: BookingsByLeadFilters
+) =>
+    useQuery({
+        queryKey: [
+            MEETINGS_KEYS.byLead,
+            instituteId,
+            filters.audienceResponseId ?? null,
+            filters.inviteeUserId ?? null,
+            filters.inviteeEmail ?? null,
+        ],
+        queryFn: () => fetchBookingsByLead(instituteId ?? '', filters),
+        enabled:
+            !!instituteId &&
+            !!(filters.audienceResponseId || filters.inviteeUserId || filters.inviteeEmail),
+        staleTime: 30 * 1000,
+    });
+
 const useInvalidateBookingPages = () => {
     const queryClient = useQueryClient();
     return () => queryClient.invalidateQueries({ queryKey: [MEETINGS_KEYS.bookingPages] });
@@ -119,6 +145,7 @@ export const useCreateMeetingBooking = () => {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: [MEETINGS_KEYS.myCalendar] });
             queryClient.invalidateQueries({ queryKey: [MEETINGS_KEYS.teamCalendar] });
+            queryClient.invalidateQueries({ queryKey: [MEETINGS_KEYS.byLead] });
         },
     });
 };

@@ -32,6 +32,7 @@ import { StudentFullHistory } from './student-full-history/student-full-history'
 import { StudentParentProfile } from './student-parent/student-parent-profile';
 import { StudentOnboardingProfile } from './student-onboarding/student-onboarding-profile';
 import { LeadFormResponseCard } from '@/routes/audience-manager/list/-components/campaign-users/lead-form-response-card';
+import { LeadMeetingsSection } from '@/components/shared/leads/lead-meetings-section';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useParentSettings } from '@/hooks/use-parent-settings';
 import { useOnboardingSettings } from '@/hooks/use-onboarding-settings';
@@ -694,6 +695,9 @@ export const StudentSidebar = ({
                         row (campaign-users / recent-leads); manage-students
                         rows don't carry the attached metadata. */}
                     {category === 'lead' && <LeadFormResponseCard />}
+                    {/* Meetings linked to this lead (by response id / user id / email) —
+                        renders alongside the form-response card on the Lead tab. */}
+                    {category === 'lead' && <LeadMeetingsSection className="my-3" />}
                     <ErrorBoundary>
                         {category === 'courses' && tabSettings?.coursesTab && (
                             <StudentCourses

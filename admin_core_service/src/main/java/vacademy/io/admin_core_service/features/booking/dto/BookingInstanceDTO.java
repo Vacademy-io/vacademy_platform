@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.sql.Timestamp;
+import java.util.Map;
 
 /** Read DTO for a booked meeting (My Schedule / Team Meetings rows). */
 @Data
@@ -35,5 +36,7 @@ public class BookingInstanceDTO {
     private String status;
     private String meetLink;
     private String cancelReason;
+    /** Booking-form custom-field answers, keyed by fieldKey. */
+    private Map<String, String> customFieldValues;
     private Timestamp createdAt;
 }

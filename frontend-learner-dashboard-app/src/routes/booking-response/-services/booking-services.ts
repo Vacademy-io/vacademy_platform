@@ -1,6 +1,7 @@
 import { OPEN_BOOKING_BASE } from "@/constants/urls";
 import axios from "axios";
 import { getBackendErrorMessage } from "@/utils/error-message";
+import type { InstituteCustomField } from "@/routes/audience-response/-services/audience-campaign-services";
 
 // ── Types (snake_case — mirrors backend open booking API) ────────────────────
 
@@ -15,6 +16,12 @@ export interface BookingPageResponse {
   require_approval: boolean;
   min_notice_minutes: number;
   booking_horizon_days: number;
+  /**
+   * Campaign custom fields of the linked audience list (same
+   * InstituteCustomFieldDTO shape the audience-response form consumes).
+   * Empty for standalone pages.
+   */
+  custom_fields?: InstituteCustomField[];
 }
 
 export interface BookingSlotsResponse {
@@ -50,6 +57,8 @@ export interface BookRequest {
   phone?: string;
   start_time: string; // ISO offset datetime
   invitee_timezone: string;
+  /** Answers to the page's campaign custom fields, keyed by field_key. */
+  custom_field_values?: Record<string, string>;
 }
 
 // ── API calls (open endpoints — plain axios, no auth interceptor) ────────────

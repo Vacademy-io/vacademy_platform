@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { useForm } from "react-hook-form";
+import { useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -26,7 +26,16 @@ import {
 import { MyButton } from "@/components/design-system/button";
 import { MyInput } from "@/components/design-system/input";
 import { Form, FormControl, FormField, FormItem } from "@/components/ui/form";
+import { getDynamicSchema } from "@/routes/register/-utils/helper";
+import { AssessmentCustomFieldOpenRegistration } from "@/types/assessment-open-registration";
 import SlotPicker from "./slot-picker";
+import BookingCustomFields from "./booking-custom-fields";
+import {
+  BookingCustomFieldFormValue,
+  buildBookingCustomFieldDefaults,
+  buildCustomFieldValues,
+  convertBookingCustomFields,
+} from "../-utils/booking-custom-field-utils";
 import {
   BookingPageResponse,
   BookingView,
@@ -35,26 +44,38 @@ import {
   getBrowserTimezone,
 } from "../-services/booking-services";
 
-const detailsSchema = z
-  .object({
-    name: z.string().trim().min(1, "Please enter your name"),
-    email: z
-      .string()
-      .trim()
-      .email("Please enter a valid email")
-      .or(z.literal("")),
-    phone: z.string().trim(),
-  })
-  .refine((v) => v.email !== "" || v.phone !== "", {
-    message: "Please provide an email or a phone number",
-    path: ["email"],
-  })
-  .refine((v) => v.phone === "" || v.phone.replace(/\D/g, "").length >= 7, {
-    message: "Please enter a valid phone number",
-    path: ["phone"],
-  });
+// Fixed invitee fields + the page's campaign custom fields (validated by the
+// same getDynamicSchema the audience-response/register forms use, nested
+// under the `custom` group).
+const buildDetailsSchema = (
+  formFields: AssessmentCustomFieldOpenRegistration[]
+) =>
+  z
+    .object({
+      name: z.string().trim().min(1, "Please enter your name"),
+      email: z
+        .string()
+        .trim()
+        .email("Please enter a valid email")
+        .or(z.literal("")),
+      phone: z.string().trim(),
+      custom: getDynamicSchema(formFields),
+    })
+    .refine((v) => v.email !== "" || v.phone !== "", {
+      message: "Please provide an email or a phone number",
+      path: ["email"],
+    })
+    .refine((v) => v.phone === "" || v.phone.replace(/\D/g, "").length >= 7, {
+      message: "Please enter a valid phone number",
+      path: ["phone"],
+    });
 
-type DetailsFormValues = z.infer<typeof detailsSchema>;
+interface DetailsFormValues {
+  name: string;
+  email: string;
+  phone: string;
+  custom: Record<string, BookingCustomFieldFormValue>;
+}
 
 interface BookingPageProps {
   pageData: BookingPageResponse;
@@ -172,9 +193,26 @@ const BookingPage = ({ pageData, instituteId, slug }: BookingPageProps) => {
     handleGetPublicInstituteDetails({ instituteId })
   );
 
+  // Campaign custom fields linked to this booking page (empty for standalone
+  // pages). Rendered in the details step and validated alongside the fixed
+  // fields.
+  const formFields = useMemo(
+    () => convertBookingCustomFields(pageData.custom_fields ?? []),
+    [pageData.custom_fields]
+  );
+  const detailsSchema = useMemo(
+    () => buildDetailsSchema(formFields),
+    [formFields]
+  );
+
   const form = useForm<DetailsFormValues>({
-    resolver: zodResolver(detailsSchema),
-    defaultValues: { name: "", email: "", phone: "" },
+    resolver: zodResolver(detailsSchema) as Resolver<DetailsFormValues>,
+    defaultValues: {
+      name: "",
+      email: "",
+      phone: "",
+      custom: buildBookingCustomFieldDefaults(formFields),
+    },
     mode: "onChange",
   });
 
@@ -188,6 +226,10 @@ const BookingPage = ({ pageData, instituteId, slug }: BookingPageProps) => {
     if (!selectedSlot || !selectedTz) return;
     setSubmitting(true);
     try {
+      const customFieldValues = buildCustomFieldValues(
+        formFields,
+        values.custom ?? {}
+      );
       const result = await bookSlot({
         instituteId,
         slug,
@@ -197,6 +239,9 @@ const BookingPage = ({ pageData, instituteId, slug }: BookingPageProps) => {
           ...(values.phone ? { phone: values.phone } : {}),
           start_time: selectedSlot,
           invitee_timezone: selectedTz,
+          ...(Object.keys(customFieldValues).length
+            ? { custom_field_values: customFieldValues }
+            : {}),
         },
       });
       setBooking(result);
@@ -402,6 +447,12 @@ const BookingPage = ({ pageData, instituteId, slug }: BookingPageProps) => {
                       Provide at least an email or a phone number so we can
                       share your booking details.
                     </p>
+                    {formFields.length > 0 && (
+                      <BookingCustomFields
+                        formFields={formFields}
+                        control={form.control}
+                      />
+                    )}
                     <MyButton
                       type="submit"
                       buttonType="primary"

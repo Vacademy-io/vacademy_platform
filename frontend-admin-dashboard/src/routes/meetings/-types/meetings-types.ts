@@ -95,6 +95,8 @@ export interface BookingInstanceDTO {
     schedule_id?: string | null;
     host_user_id?: string | null;
     host_name?: string | null;
+    invitee_user_id?: string | null;
+    audience_response_id?: string | null;
     invitee_name?: string | null;
     invitee_email?: string | null;
     invitee_phone?: string | null;
@@ -102,7 +104,16 @@ export interface BookingInstanceDTO {
     scheduled_end_utc: string;
     status: BookingInstanceStatus;
     meet_link?: string | null;
+    cancel_reason?: string | null;
+    custom_field_values?: Record<string, string> | null;
     created_at?: string | null;
+}
+
+/** Optional identifiers used to look up a lead's meetings (at least one required). */
+export interface BookingsByLeadFilters {
+    audienceResponseId?: string;
+    inviteeUserId?: string;
+    inviteeEmail?: string;
 }
 
 export interface MeetingsScope {

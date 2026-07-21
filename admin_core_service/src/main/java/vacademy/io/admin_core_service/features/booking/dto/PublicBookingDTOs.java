@@ -6,8 +6,10 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 
 import java.util.List;
+import java.util.Map;
 
 /** DTOs for the unauthenticated public booking surface. */
 public final class PublicBookingDTOs {
@@ -32,6 +34,11 @@ public final class PublicBookingDTOs {
         private Boolean requireApproval;
         private Integer minNoticeMinutes;
         private Integer bookingHorizonDays;
+        /**
+         * Booking-form custom fields, inherited from the linked audience list's
+         * campaign fields (AUDIENCE_FORM scope). Empty for standalone pages.
+         */
+        private List<InstituteCustomFieldDTO> customFields;
     }
 
     @Data
@@ -57,6 +64,8 @@ public final class PublicBookingDTOs {
         /** ISO-8601 offset datetime of the chosen slot start. */
         private String startTime;
         private String inviteeTimezone;
+        /** Answers keyed by custom-field fieldKey. */
+        private Map<String, String> customFieldValues;
     }
 
     /** Confirmation + manage view (token-gated, so still minimal). */

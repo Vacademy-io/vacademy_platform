@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -33,32 +33,61 @@ const createBookingSchema = z.object({
 
 type CreateBookingFormValues = z.infer<typeof createBookingSchema>;
 
+/** Lead context used to pre-populate and link an on-behalf booking to a CRM lead. */
+export interface CreateBookingPrefill {
+    inviteeName?: string;
+    inviteeEmail?: string;
+    inviteePhone?: string;
+    audienceResponseId?: string;
+    inviteeUserId?: string;
+}
+
 interface CreateBookingDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    /** When provided (lead surfaces), invitee fields are prefilled and the
+     *  booking is linked to the lead via audience_response_id / invitee_user_id. */
+    prefill?: CreateBookingPrefill;
 }
 
-export const CreateBookingDialog = ({ open, onOpenChange }: CreateBookingDialogProps) => {
+export const CreateBookingDialog = ({ open, onOpenChange, prefill }: CreateBookingDialogProps) => {
     const instituteId = getInstituteId();
     const createBooking = useCreateMeetingBooking();
     const [participants, setParticipants] = useState<PickedUser[]>([]);
     const [allocateGoogleMeet, setAllocateGoogleMeet] = useState(true);
 
+    const defaultValues: CreateBookingFormValues = {
+        title: '',
+        date: '',
+        startTime: '',
+        durationMinutes: '30',
+        inviteeName: prefill?.inviteeName ?? '',
+        inviteeEmail: prefill?.inviteeEmail ?? '',
+        inviteePhone: prefill?.inviteePhone ?? '',
+    };
+
     const form = useForm<CreateBookingFormValues>({
         resolver: zodResolver(createBookingSchema),
-        defaultValues: {
-            title: '',
-            date: '',
-            startTime: '',
-            durationMinutes: '30',
-            inviteeName: '',
-            inviteeEmail: '',
-            inviteePhone: '',
-        },
+        defaultValues,
     });
 
+    // Re-apply the lead prefill each time the dialog opens — the hosting lead
+    // side-view keeps this dialog mounted across lead switches, so defaults
+    // captured at mount can go stale.
+    useEffect(() => {
+        if (open) {
+            form.reset({
+                ...defaultValues,
+                inviteeName: prefill?.inviteeName ?? '',
+                inviteeEmail: prefill?.inviteeEmail ?? '',
+                inviteePhone: prefill?.inviteePhone ?? '',
+            });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, prefill?.inviteeName, prefill?.inviteeEmail, prefill?.inviteePhone]);
+
     const resetAndClose = () => {
-        form.reset();
+        form.reset(defaultValues);
         setParticipants([]);
         setAllocateGoogleMeet(true);
         onOpenChange(false);
@@ -82,6 +111,8 @@ export const CreateBookingDialog = ({ open, onOpenChange }: CreateBookingDialogP
                 invitee_name: values.inviteeName || undefined,
                 invitee_email: values.inviteeEmail || undefined,
                 invitee_phone: values.inviteePhone || undefined,
+                audience_response_id: prefill?.audienceResponseId || undefined,
+                invitee_user_id: prefill?.inviteeUserId || undefined,
                 allocate_google_meet: allocateGoogleMeet,
             },
             {
@@ -199,8 +230,13 @@ export const CreateBookingDialog = ({ open, onOpenChange }: CreateBookingDialogP
 
                     <div className="flex flex-col gap-4 rounded-lg border border-neutral-200 p-3">
                         <p className="text-body font-semibold text-neutral-600">
-                            External invitee (optional)
+                            {prefill ? 'Invitee (from lead)' : 'External invitee (optional)'}
                         </p>
+                        {prefill && (
+                            <p className="-mt-3 text-caption text-neutral-500">
+                                Prefilled from the lead — edit only if the details are wrong.
+                            </p>
+                        )}
                         <FormField
                             control={form.control}
                             name="inviteeName"

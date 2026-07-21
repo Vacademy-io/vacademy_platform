@@ -26,6 +26,12 @@ public interface BookingInstanceRepository extends JpaRepository<BookingInstance
 
     List<BookingInstance> findByAudienceResponseId(String audienceResponseId);
 
+    List<BookingInstance> findByInstituteIdAndInviteeUserIdOrderByScheduledStartUtcDesc(
+            String instituteId, String inviteeUserId);
+
+    List<BookingInstance> findByInstituteIdAndInviteeEmailIgnoreCaseOrderByScheduledStartUtcDesc(
+            String instituteId, String inviteeEmail);
+
     /** Active (non-cancelled) bookings of one host overlapping a window — slot blocking. */
     @Query("""
             SELECT b FROM BookingInstance b

@@ -543,10 +543,25 @@ def build_shot_planner_user_prompt(
             if ai_video_audio_enabled
             else "Audio mode is OFF — do NOT set `ai_video_audio: true`."
         )
+        # Derive the REAL shot budget from the cap instead of hardcoding
+        # "1-3": at $0.03/s (720p silent) an 8s clip costs $0.24, so even the
+        # default $1.50 cap funds ~6 clips — most of a 60s video. The old
+        # wording made the planner ship 0-1 AI shots even when the user had
+        # opted in specifically to get AI footage.
+        _ai_shot_budget = max(1, int(ai_video_cost_cap_usd / 0.24))
         lines.append("")
         lines.append(
-            f"AI_VIDEO_HERO IS ENABLED for this run. Cap: ${ai_video_cost_cap_usd:.2f} per "
-            f"video (typically 1-3 AI video shots). {audio_note}"
+            f"AI_VIDEO_HERO IS ENABLED for this run — the user opted IN to AI-generated "
+            f"footage, so USE IT. Budget: about {_ai_shot_budget} AI video shot(s) "
+            f"(cap ${ai_video_cost_cap_usd:.2f}/video; 8s clip ≈ $0.24 at 720p silent). "
+            "Spend that budget on the beats where real-world motion, texture or "
+            "organic/cinematic imagery genuinely beats a designed graphic — physical "
+            "processes, environments, materials, anatomy, people, product in use. Keep "
+            "motion-graphics types (TEXT_DIAGRAM, INFOGRAPHIC_SVG, DATA_STORY, "
+            "PROCESS_STEPS, KINETIC_TEXT) for beats that are genuinely about numbers, "
+            "lists, comparisons or definitions — a designed graphic teaches those better. "
+            f"An AI-footage-led video where most shots are AI_VIDEO_HERO is a VALID and "
+            f"expected plan when the subject is visual rather than data-driven. {audio_note}"
         )
     else:
         lines.append("")

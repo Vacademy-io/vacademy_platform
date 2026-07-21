@@ -25,12 +25,18 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { buildSubOrgSlug } from '@/routes/manage-suborg-teams/-utils/sub-org-slug';
 import { humanizeStatus, statusToneClass } from '../../-utils/status-display';
+import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
 export function SubOrgList() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const navigate = useNavigate();
 
     const instituteId = getCurrentInstituteId();
+    // Prefer the institute's white-label learner domain so the invite opens on
+    // the institute's own portal; a backend `short_url` (already domain-correct)
+    // still wins when present.
+    const { instituteDetails } = useInstituteDetailsStore();
     const { data: subOrgs = [], isLoading } = useQuery({
         queryKey: ['sub-orgs-with-details', instituteId],
         queryFn: () => getSubOrgsWithDetails(instituteId),
@@ -47,9 +53,17 @@ export function SubOrgList() {
         });
     };
 
+    // Full invite URL for a row: backend short_url when present, otherwise built
+    // from the invite code (never the bare code — that's not a usable link).
+    const buildInviteUrl = (org: SubOrgListItem): string =>
+        org.short_url ||
+        (org.invite_code
+            ? createInviteLink(org.invite_code, instituteDetails?.learner_portal_base_url)
+            : '');
+
     const copyInviteLink = (e: React.MouseEvent, org: SubOrgListItem) => {
         e.stopPropagation();
-        const url = org.short_url || org.invite_code;
+        const url = buildInviteUrl(org);
         if (url) {
             navigator.clipboard.writeText(url);
             toast.success('Invite link copied');
@@ -158,7 +172,7 @@ export function SubOrgList() {
                                                     type="button"
                                                     onClick={(e) => copyInviteLink(e, org)}
                                                     className="flex items-center gap-1 text-sm text-primary hover:underline"
-                                                    title={org.short_url || org.invite_code}
+                                                    title={buildInviteUrl(org)}
                                                 >
                                                     <LinkSimple className="h-3.5 w-3.5" />
                                                     <span className="w-20 truncate">

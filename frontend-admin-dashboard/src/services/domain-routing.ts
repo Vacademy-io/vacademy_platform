@@ -29,6 +29,13 @@ export type DomainResolveResponse = {
     learnerPortalUrl?: string | null;
     instructorPortalUrl?: string | null;
     convertUsernamePasswordToLowercase?: boolean;
+    // When this portal's domain maps to a specific sub-org (a white-label SUB-ORG
+    // admin portal), this holds that sub-org's own institute id. The backend sets
+    // it from `institute_domain_routing.sub_org_id` and additionally overlays the
+    // sub-org's logo/name/theme. Login uses it to scope access to the sub-org:
+    // only users mapped to this sub-org (or unrestricted parent admins) may log in
+    // on this portal. Null/absent for parent or non-sub-org portals.
+    subOrgId?: string | null;
     // Comma-separated ISO 3166-1 alpha-2 country codes (e.g. "in,us,gb,au").
     // Drives the default selection and ordering of country options in phone inputs.
     commaSeparatedPreferredCountry?: string | null;

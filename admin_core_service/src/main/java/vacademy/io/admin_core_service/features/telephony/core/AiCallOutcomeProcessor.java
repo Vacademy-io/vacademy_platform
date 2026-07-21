@@ -395,13 +395,34 @@ public class AiCallOutcomeProcessor {
         }
 
         // Auto-book a meeting when the caller agreed to a demo/visit/call at a specific
-        // time AND this agent is linked to a booking page. Best-effort: a booking failure
-        // (page deleted, Google not connected, bad time) must NEVER fail outcome
-        // processing or the call log — the meeting is a bonus on top of the outcome.
-        try {
-            maybeAutoBookMeeting(r, lead, instituteId);
-        } catch (Exception ex) {
-            log.warn("ai-call: auto-book failed for result {} (non-fatal): {}", r.getId(), ex.getMessage());
+        // time AND this agent is linked to a booking page. DEFERRED to AFTER this
+        // transaction commits — NOT inline. MeetingBookingService.createBooking persists
+        // via a TransactionTemplate with default PROPAGATION_REQUIRED, so calling it inside
+        // this @Transactional method would JOIN this tx: a booking failure would mark THIS
+        // tx rollback-only and — despite the try/catch — roll back the ENTIRE outcome
+        // (counsellor assignment, status, workflows) and re-loop via reprocessing; and its
+        // confirmation email / Meet link would fire before this tx committed. Post-commit it
+        // runs exactly once (PROCESSED is already persisted, so no reprocess re-book), fully
+        // isolated, and createBooking's own 2-phase tx behaves as designed.
+        final AiCallResult rRef = r;
+        final Lead leadRef = lead;
+        final String instRef = instituteId;
+        Runnable bookTask = () -> {
+            try {
+                maybeAutoBookMeeting(rRef, leadRef, instRef);
+            } catch (Exception ex) {
+                log.warn("ai-call: auto-book failed for result {} (non-fatal): {}", rRef.getId(), ex.getMessage());
+            }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    bookTask.run();
+                }
+            });
+        } else {
+            bookTask.run();
         }
 
         r.setProcessingStatus("PROCESSED");
@@ -790,6 +811,23 @@ public class AiCallOutcomeProcessor {
             return;
         }
         if (!requested || rawIso == null) return;
+
+        // Guard against a mis-resolved past time (LLM occasionally resolves 'tomorrow'
+        // to the wrong day, or picks a time already elapsed). A past meeting is useless
+        // (no reminder fires) — skip rather than create junk. Small grace for end-of-call
+        // 'in a few minutes' cases.
+        try {
+            java.time.OffsetDateTime when = java.time.OffsetDateTime.parse(rawIso);
+            if (when.toInstant().isBefore(java.time.Instant.now().minusSeconds(120))) {
+                log.info("ai-call: skip auto-book for result {} — resolved time {} is in the past",
+                        r.getId(), rawIso);
+                return;
+            }
+        } catch (Exception ex) {
+            log.warn("ai-call: skip auto-book for result {} — unparseable meeting time '{}': {}",
+                    r.getId(), rawIso, ex.getMessage());
+            return;
+        }
 
         // Validate the page belongs to this institute + resolve its host for the principal.
         var page = bookingPageService.getOrThrow(bookingPageId);

@@ -213,6 +213,40 @@ class ResilientSarvamSTTService(SarvamSTTService):
     20ms audio chunk into a reconnect storm. Faithful to the pinned pipecat==0.0.95
     internals (_socket_client / _disconnect / _connect) — re-verify on upgrade."""
 
+    # Callable -> True when a wordless-but-voiced caller turn may be represented
+    # as a synthetic backchannel (set by bot.py; None = feature off).
+    _backchannel_gate = None
+
+    def set_backchannel_gate(self, gate):
+        self._backchannel_gate = gate
+
+    async def _handle_message(self, message):
+        await super()._handle_message(message)
+        # Sarvam DROPS empty finals ("if transcript.strip()"), so a short "hmm"/
+        # "okay" the STT can't words-ify produces NO frame at all: the model never
+        # gets a turn-trigger and — because the VAD activity also re-arms the idle
+        # nudge — the call sits in dead air until the caller says real words
+        # (observed live: 13s mid-pitch stall, caller asked "why are you getting
+        # paused again and again?"). Represent such finals as a minimal "Hmm."
+        # transcript so the normal turn machinery continues the conversation.
+        # Gated: only while the bot is NOT speaking (a noise final mid-utterance
+        # must not spawn turns) and never in the first seconds of the call.
+        try:
+            if getattr(message, "type", None) != "data":
+                return
+            data = getattr(message, "data", None)
+            t = getattr(data, "transcript", None)
+            if t and t.strip():
+                return
+            gate = self._backchannel_gate
+            if gate is None or not gate():
+                return
+            from pipecat.frames.frames import TranscriptionFrame
+            from pipecat.utils.time import time_now_iso8601
+            await self.push_frame(TranscriptionFrame("Hmm.", self._user_id, time_now_iso8601(), None))
+        except Exception:
+            pass
+
     _RECONNECT_COOLDOWN_SECS = 5.0
 
     def __init__(self, *args, **kwargs):

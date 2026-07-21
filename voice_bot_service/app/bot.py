@@ -556,7 +556,10 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         f"transcript. A single word from the caller in any other language ('yes', 'achha', "
         f"'haan') is NEVER a cue to switch; if a transcript looks like another language, treat "
         f"it as a mis-heard {lang_label} line. Switch only if the caller explicitly asks, or "
-        f"speaks 3+ consecutive full sentences in the other language."
+        f"speaks 3+ consecutive full sentences in the other language.\n"
+        "6) NEVER end a turn in silence: every turn must end with a question, a quick check-in "
+        "('right?', 'shall I continue?') or a clear closing — never trail off mid-explanation "
+        "and wait for the caller."
     )
 
     prompt = _fill_placeholders(agent.get("systemPrompt") or "", context)
@@ -643,6 +646,9 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             "ONCE as they specify; never add a second greeting or re-introduce yourself. If the "
             "caller speaks first (a 'hello' or anything else), your FIRST reply IS your scripted "
             "opening — never reply with just a bare greeting word.",
+            "NEVER end a turn in silence: every turn must end with a question, a quick "
+            "check-in (\u2018right?\u2019, \u2018shall I continue?\u2019) or a clear closing — never trail "
+            "off mid-explanation and wait.",
             language_stability_rule,
             f"{gender_line} {addressee_line}",
             script_rule,
@@ -759,6 +765,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # a wrong name — the #1 way the agent "forgets" its name mid-call.
     stt_bias = (agent.get("name") or "").strip() or None
     stt = build_stt(settings.sample_rate, language=stt_lang, bias=stt_bias)
+    # Voiced-but-wordless caller turns ("hmm"/"okay" that STT finalizes EMPTY)
+    # become a minimal synthetic backchannel so the conversation continues instead
+    # of dead-airing (see ResilientSarvamSTTService._handle_message). Only while
+    # the bot is quiet, and never in the opening seconds (greet owns those).
+    _call_t0 = time.time()
+    if hasattr(stt, "set_backchannel_gate"):
+        stt.set_backchannel_gate(
+            lambda: not flags["bot_speaking"] and time.time() - _call_t0 > 6.0)
     llm = build_llm()
     tts = build_tts(settings.sample_rate, voice=agent.get("voice"),
                     aiohttp_session=aiohttp_session,

@@ -25,6 +25,8 @@ import logging
 import random
 import re
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -434,6 +436,30 @@ def _clean_opening(text: str) -> str:
     return out[:600]
 
 
+def _now_line(context: Dict[str, Any]) -> str:
+    """A prominent 'right now it is ...' line so the model can resolve relative dates
+    ('tomorrow', 'day after', 'next Monday') the caller mentions. Without it the LLM
+    has NO idea what today is and mis-schedules. Timezone: the agent's configured
+    tz if set, else Asia/Kolkata (all current calls are India). Computed fresh per
+    call so it never goes stale."""
+    agent = context.get("agent") or {}
+    tzname = (agent.get("timezone") or context.get("timezone") or "Asia/Kolkata").strip()
+    try:
+        now = datetime.now(ZoneInfo(tzname))
+    except Exception:
+        tzname = "Asia/Kolkata"
+        now = datetime.now(ZoneInfo(tzname))
+    # e.g. "Wednesday, 22 July 2026, 3:45 PM"
+    stamp = now.strftime("%A, %-d %B %Y, %-I:%M %p")
+    return (
+        f"RIGHT NOW it is {stamp} ({tzname}). Use this as the current date and time. "
+        "When the caller mentions a relative day — 'today', 'tomorrow', 'day after tomorrow', "
+        "'this weekend', 'next Monday' — work out the ACTUAL calendar date from this, and when "
+        "you confirm a time say the concrete day and date (e.g. 'tomorrow, Thursday the 23rd, at 3 PM'). "
+        "Never guess the day of week or the date."
+    )
+
+
 def build_system_prompt(context: Dict[str, Any]) -> str:
     agent = context.get("agent") or {}
     lead_name = context.get("leadName")
@@ -444,6 +470,7 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
     is_english = stt_tag == "en-IN"
     gender = _voice_gender(agent.get("voice"))
     direction = str(context.get("direction") or agent.get("direction") or "OUTBOUND").upper()
+    now_line = _now_line(context)
 
     if gender == "female":
         gender_line = (
@@ -651,6 +678,7 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             "ONCE as they specify; never add a second greeting or re-introduce yourself. If the "
             "caller speaks first (a 'hello' or anything else), your FIRST reply IS your scripted "
             "opening — never reply with just a bare greeting word.",
+            now_line,
             "End every turn with a question, a quick check-in (\u2018right?\u2019) or a clear closing — "
             "then STOP and wait for the caller\u2019s answer. Never answer your own question or "
             "continue as if they replied when they haven\u2019t; their silence is NOT consent.",
@@ -676,6 +704,7 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
     lines = [
         prompt or "You are a friendly, concise phone assistant.",
         non_negotiable,
+        now_line,
         f"You are {name}. {gender_line}",
         addressee_line,
         intent_line,

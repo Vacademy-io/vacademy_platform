@@ -18,6 +18,7 @@ import vacademy.io.admin_core_service.features.live_session.dto.LearnerPastSessi
 import vacademy.io.admin_core_service.features.live_session.dto.StudentAttendanceReportDTO;
 import vacademy.io.admin_core_service.features.parent_portal.dto.ChildReportListItemDTO;
 import vacademy.io.admin_core_service.features.parent_portal.dto.CourseProgressDTO;
+import vacademy.io.admin_core_service.features.parent_portal.dto.ParentPointsDTO;
 import vacademy.io.admin_core_service.features.parent_portal.service.ParentPortalDetailService;
 import vacademy.io.admin_core_service.features.student_analysis.client.AssessmentServiceClient;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -61,6 +62,13 @@ public class ParentPortalDetailController {
             @PathVariable String childUserId,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(detailService.badges(user, childUserId));
+    }
+
+    @GetMapping("/points")
+    public ResponseEntity<ParentPointsDTO> points(
+            @PathVariable String childUserId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(detailService.points(user, childUserId));
     }
 
     @GetMapping("/certificates")

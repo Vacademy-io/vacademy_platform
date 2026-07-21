@@ -24,8 +24,12 @@ import vacademy.io.admin_core_service.features.learner.dto.StudentInstituteInfoD
 import vacademy.io.admin_core_service.features.learner.manager.LearnerInstituteManager;
 import vacademy.io.admin_core_service.features.live_session.dto.LiveSessionListDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.LearnerPastSessionDTO;
+import vacademy.io.admin_core_service.features.leaderboard.dto.LeaderboardEntryDTO;
+import vacademy.io.admin_core_service.features.leaderboard.dto.LeaderboardResponseDTO;
+import vacademy.io.admin_core_service.features.leaderboard.service.LeaderboardService;
 import vacademy.io.admin_core_service.features.parent_portal.dto.ChildReportListItemDTO;
 import vacademy.io.admin_core_service.features.parent_portal.dto.CourseProgressDTO;
+import vacademy.io.admin_core_service.features.parent_portal.dto.ParentPointsDTO;
 import vacademy.io.admin_core_service.features.student_analysis.client.AssessmentServiceClient;
 import vacademy.io.admin_core_service.features.student_analysis.entity.StudentAnalysisProcess;
 import vacademy.io.admin_core_service.features.student_analysis.repository.StudentAnalysisProcessRepository;
@@ -71,6 +75,7 @@ public class ParentPortalDetailService {
     private final AssessmentServiceClient assessmentServiceClient;
     private final StudentAnalysisProcessRepository processRepository;
     private final LearnerInstituteManager learnerInstituteManager;
+    private final LeaderboardService leaderboardService;
 
     public StudentAttendanceReportDTO attendance(CustomUserDetails caller, String childUserId,
                                                  String packageSessionId, LocalDate start, LocalDate end) {
@@ -94,6 +99,25 @@ public class ParentPortalDetailService {
         GuardedChild child = guard.requireLinkedChild(caller, childUserId);
         settingService.requireModule(child.instituteId(), "badges");
         return learnerBadgeService.getActiveAwardsForUser(child.childUserId(), child.instituteId());
+    }
+
+    /**
+     * The child's engagement points (focused-activity minutes across all courses)
+     * and institute-wide rank, from the leaderboard. Fault-isolated — returns
+     * zero/null if the leaderboard can't be built (never fails the screen).
+     */
+    public ParentPointsDTO points(CustomUserDetails caller, String childUserId) {
+        GuardedChild child = guard.requireLinkedChild(caller, childUserId);
+        settingService.requireModule(child.instituteId(), "badges");
+        try {
+            LeaderboardResponseDTO board = leaderboardService.buildInstituteLeaderboard(
+                    child.instituteId(), child.childUserId(), false, 1);
+            LeaderboardEntryDTO me = board != null ? board.getCurrentUser() : null;
+            return new ParentPointsDTO(me != null ? me.getPoints() : 0, me != null ? me.getRank() : null);
+        } catch (Exception e) {
+            log.warn("Parent points unavailable for child {}: {}", child.childUserId(), e.getMessage());
+            return new ParentPointsDTO(0, null);
+        }
     }
 
     public List<IssuedCertificateDTO> certificates(CustomUserDetails caller, String childUserId) {

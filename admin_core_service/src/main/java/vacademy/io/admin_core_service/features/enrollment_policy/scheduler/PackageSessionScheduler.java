@@ -2,10 +2,12 @@ package vacademy.io.admin_core_service.features.enrollment_policy.scheduler;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import vacademy.io.admin_core_service.features.enrollment_policy.service.PackageSessionEnrolmentService;
 import vacademy.io.admin_core_service.features.enrollment_policy.service.RenewalChargeService;
+import vacademy.io.admin_core_service.features.institute.service.setting.PaymentSettingService;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
@@ -31,12 +33,15 @@ public class PackageSessionScheduler {
     private final WorkflowTriggerService workflowTriggerService;
     private final WorkflowExecutionRepository workflowExecutionRepository;
     private final RenewalChargeService renewalChargeService;
+    private final PaymentSettingService paymentSettingService;
 
     /**
      * Pre-existing manual-trigger entry point for enrolment-policy actions
      * (expire / graduate active UserPlans). Currently invoked only from
-     * {@code TestEnrollMentController} — intentionally not auto-scheduled.
-     * Leaving unchanged to avoid activating dormant destructive behaviour.
+     * {@code TestEnrollMentController} — intentionally not auto-scheduled
+     * because it sweeps the WHOLE user_plan table. The scheduled path is
+     * {@link #processPackageSessionRenewals()}, which scopes the sweep to
+     * institutes that opted in via PAYMENT_SETTING.
      */
     public void processPackageSessionExpiries() {
         log.info("Starting PackageSessionScheduler job...");
@@ -46,6 +51,35 @@ public class PackageSessionScheduler {
             log.error("Error during scheduled package session processing", e);
         }
         log.info("PackageSessionScheduler job finished.");
+    }
+
+    // ─── Institute-gated renewal/expiry scan ───────────────────────────────
+    //
+    // The enrolment-policy sweep (pre-expiry notifications → waiting period →
+    // final expiry, per PackageSession policy JSON) is now scheduled — but ONLY
+    // for institutes that opted in by saving
+    // PAYMENT_SETTING.packageSessionRenewalSchedulerEnabled = true (default:
+    // absent = off, so no institute is swept until an admin turns it on).
+    // ShedLock guards the run because prod has 4 replicas and the processors
+    // send notifications / flip plan statuses — running it 4x would duplicate
+    // learner emails.
+
+    /** Runs daily at 04:00, well before the 09:00 reminder and 11:00 charge scans. */
+    @Scheduled(cron = "0 0 4 * * ?")
+    @SchedulerLock(name = "PackageSessionRenewScheduler", lockAtMostFor = "PT55M", lockAtLeastFor = "PT1M")
+    public void processPackageSessionRenewals() {
+        List<String> instituteIds = paymentSettingService.getInstituteIdsWithRenewalSchedulerEnabled();
+        if (instituteIds.isEmpty()) {
+            log.info("[PackageSessionRenew] No institutes have enabled the renewal scheduler — nothing to do");
+            return;
+        }
+        log.info("[PackageSessionRenew] Running enrolment-policy scan for {} opted-in institute(s)", instituteIds.size());
+        try {
+            enrolmentService.processActiveEnrollmentsForInstitutes(instituteIds);
+        } catch (Exception e) {
+            log.error("[PackageSessionRenew] Institute-gated enrolment-policy scan failed", e);
+        }
+        log.info("[PackageSessionRenew] Scan finished.");
     }
 
     // ─── Membership-expiry workflow trigger ────────────────────────────────

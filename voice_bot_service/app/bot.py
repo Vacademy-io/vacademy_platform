@@ -92,12 +92,13 @@ class TranscriptCollector(FrameProcessor):
     LLM TTFT), and a human-style acknowledgment makes it read as attentiveness."""
 
     def __init__(self, outcome: CallOutcome, on_activity, is_bot_speaking,
-                 set_user_speaking=None, filler_phrases=None):
+                 set_user_speaking=None, filler_phrases=None, on_transcript=None):
         super().__init__()
         self._outcome = outcome
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
+        self._on_transcript = on_transcript or (lambda: None)
         s = get_settings()
         self._filler_phrases = list(filler_phrases if filler_phrases is not None
                                     else s.filler_phrases)
@@ -118,6 +119,7 @@ class TranscriptCollector(FrameProcessor):
         if isinstance(frame, TranscriptionFrame) and frame.text and frame.text.strip():
             self._outcome.transcript.append({"role": "user", "text": frame.text.strip()})
             self._on_activity(user=True)
+            self._on_transcript()
             # Filler only when the bot is quiet — a barge-in already has audio
             # to cancel, and stacking a filler on it would talk over the caller.
             if (self._filler_phrases and not self._is_bot_speaking()
@@ -519,7 +521,9 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
     else:
         intent_line = (
             "You are PROACTIVELY CALLING this person — YOU placed this call, they did not call you. "
-            "Never sound like you are answering their call. Open with a clear reason for calling, "
+            "Never sound like you are answering their call. If they speak first (a 'hello'), your "
+            "FIRST reply is your full opening — never a bare greeting word back. Open with a clear "
+            "reason for calling, "
             "introduce yourself and your company EXACTLY as your instructions specify (never invent "
             "or alter the company name), lead the conversation confidently, and keep a warm, "
             "positive, forward-moving tone that gives them a reason to engage right now."
@@ -636,7 +640,9 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             prompt,
             "Your instructions above are AUTHORITATIVE for the opening, identity, language, "
             "pacing and conversation rules — follow them exactly. Greet and introduce yourself "
-            "ONCE as they specify; never add a second greeting or re-introduce yourself.",
+            "ONCE as they specify; never add a second greeting or re-introduce yourself. If the "
+            "caller speaks first (a 'hello' or anything else), your FIRST reply IS your scripted "
+            "opening — never reply with just a bare greeting word.",
             language_stability_rule,
             f"{gender_line} {addressee_line}",
             script_rule,
@@ -713,7 +719,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # and much slower than token generation), and only USER activity re-arms the
     # nudge — otherwise the nudge's own audio resets it and hangup never escalates.
     flags = {"t": time.time(), "nudged": False, "bot_speaking": False,
-             "user_speaking": False, "stopping_since": None}
+             "user_speaking": False, "stopping_since": None,
+             # REAL WORDS only (final transcripts) — the greet's callee-spoke-first
+             # check keys on this, NOT on flags["t"]: since the idle clock re-arms on
+             # bare VAD activity, pickup noise/breath was making the greet think the
+             # callee had spoken → scripted opening skipped → the model improvised
+             # bare "Hello."s (observed live).
+             "transcript_t": 0.0}
 
     def on_activity(user: bool = True):
         flags["t"] = time.time()
@@ -764,10 +776,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         user_params=LLMUserAggregatorParams(aggregation_timeout=settings.agg_timeout_secs),
     )
 
+    def on_transcript():
+        flags["transcript_t"] = time.time()
+
     transcript = TranscriptCollector(outcome, on_activity,
                                      is_bot_speaking=lambda: flags["bot_speaking"],
                                      set_user_speaking=set_user_speaking,
-                                     filler_phrases=eng_fillers if eng else None)
+                                     filler_phrases=eng_fillers if eng else None,
+                                     on_transcript=on_transcript)
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
                             transfer_closing=transfer_closing, end_closing=end_closing)
 
@@ -823,7 +839,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             (agent.get("openingLine") or "").strip(), context))
         connect_t = time.time()
         while time.time() - connect_t < settings.greet_delay_secs:
-            if flags["t"] > connect_t + 0.05:
+            # Skip our open ONLY on real transcribed words — not on VAD noise
+            # (pickup clatter/breath was falsely skipping the scripted opening).
+            if flags["transcript_t"] > connect_t + 0.05:
                 logger.info("greet: callee spoke first — LLM replies, skipping our open (corr=%s)", corr)
                 return
             await asyncio.sleep(0.1)

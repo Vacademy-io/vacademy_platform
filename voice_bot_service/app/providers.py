@@ -11,7 +11,46 @@ from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.sarvam.stt import SarvamSTTService
 from pipecat.services.sarvam.tts import SarvamTTSService
 
+from pipecat.utils.text.simple_text_aggregator import SimpleTextAggregator
+
 from .config import get_settings
+
+
+class ClauseFlushAggregator(SimpleTextAggregator):
+    """Sentence aggregation with Devanagari-danda + length fallbacks.
+
+    The stock SimpleTextAggregator flushes ONLY at Latin end-of-sentence marks.
+    Live evidence: English agents sometimes stream multi-sentence replies with no
+    mid-response periods, and Hindi replies end sentences with the danda '।' the
+    matcher doesn't recognize — either way the WHOLE response reaches the TTS as
+    one giant unit. That unit is also the all-or-nothing context-commit unit, so a
+    single barge-in wiped the entire block (INCLUDING the part the caller already
+    heard) from the assistant context — the model then re-asked questions it had
+    already asked ('memory reset' on live calls). Small units = small losses, plus
+    earlier first audio.
+    """
+
+    _MAX_CHARS = 140
+
+    async def aggregate(self, text):
+        result = await super().aggregate(text)
+        if result is not None:
+            return result
+        buf = self._text
+        # Devanagari sentence end.
+        danda = buf.find("।")
+        if danda >= 0:
+            out, self._text = buf[: danda + 1], buf[danda + 1:]
+            return out.strip() or None
+        # Length fallback for punctuation-less streams: cut at the last soft break.
+        if len(buf) >= self._MAX_CHARS:
+            cut = max(buf.rfind(", ", 0, self._MAX_CHARS + 20),
+                      buf.rfind(" ", 0, self._MAX_CHARS + 20))
+            if cut <= 0:
+                cut = len(buf) - 1
+            out, self._text = buf[: cut + 1], buf[cut + 1:]
+            return out.strip() or None
+        return None
 
 
 def build_stt(sample_rate: int, language: str | None = None, bias: str | None = None):
@@ -148,6 +187,8 @@ def build_tts(sample_rate: int, voice: str | None = None, *, aiohttp_session,
         sample_rate=sample_rate,
         aiohttp_session=aiohttp_session,
         params=SarvamTTSService.InputParams(**kwargs),
+        # Clause-level TTS/context units — see ClauseFlushAggregator docstring.
+        text_aggregator=ClauseFlushAggregator(),
         # pipecat 0.0.95's WS class NEVER puts pace into the config message (verified
         # from the live config dump + source), so pace historically applied only to
         # REST previews — never to live calls. Inject it ourselves (probe-verified:

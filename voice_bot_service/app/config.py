@@ -146,12 +146,17 @@ class Settings:
     # is ~1.5s (0.5 VAD + 0.36 STT final + 0.8 Gemini TTFT) and this cuts the
     # PERCEIVED dead air to ~1s, which is what human agents do. Probability 0
     # disables; phrases are comma-separated and spoken verbatim.
+    # 0.25 (was 0.7): with Gemini's ~0.5s TTFT the filler often COLLIDES with the
+    # real reply, and on live calls a reply-shaped filler ('Okay…') played right
+    # before an interrupted response read as the bot answering then going silent.
     filler_probability: float = field(
-        default_factory=lambda: float(_env("FILLER_PROBABILITY", "0.7"))
+        default_factory=lambda: float(_env("FILLER_PROBABILITY", "0.25"))
     )
+    # 'Hmm…' only: clearly a thinking sound. 'Achha…'/'Ji…'/'Okay…' sound like
+    # complete replies, which made stalls read as answers.
     filler_phrases: tuple = field(
         default_factory=lambda: tuple(
-            p.strip() for p in _env("FILLER_PHRASES", "Hmm…,Achha…,Ji…").split(",") if p.strip()
+            p.strip() for p in _env("FILLER_PHRASES", "Hmm…").split(",") if p.strip()
         )
     )
 

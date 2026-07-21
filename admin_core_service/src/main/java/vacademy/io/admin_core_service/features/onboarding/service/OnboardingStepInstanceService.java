@@ -135,12 +135,23 @@ public class OnboardingStepInstanceService {
         OnboardingStep step = onboardingStepRepository.findById(stepInstance.getStepId())
                 .orElseThrow(() -> new ResourceNotFoundException("Onboarding step not found: " + stepInstance.getStepId()));
 
-        // Idempotent no-op on a step already finalized -- a double-click, client retry, or
-        // replayed request must not re-run side effects (credentials email isn't itself
-        // idempotent, and re-advancing would regress an already-COMPLETED next step back to
-        // IN_PROGRESS and re-fire its ONBOARDING_STEP_ENTERED trigger).
-        if (OnboardingStepInstanceStatus.COMPLETED.name().equals(stepInstance.getStatus())
-                || OnboardingStepInstanceStatus.SKIPPED.name().equals(stepInstance.getStatus())) {
+        boolean alreadyFinalized = OnboardingStepInstanceStatus.COMPLETED.name().equals(stepInstance.getStatus())
+                || OnboardingStepInstanceStatus.SKIPPED.name().equals(stepInstance.getStatus());
+        if (alreadyFinalized) {
+            if (!requireComplete) {
+                // A "save" (unlike "complete") is never itself a repeat of a prior call the
+                // client already saw succeed -- so silently discarding it here (as the
+                // idempotent-no-op path below does for completeStep) would report fake success
+                // for input that was actually never persisted. Surface it as a real error instead
+                // of a silent no-op, so the caller doesn't think their edit was saved when it
+                // wasn't (e.g. another actor completed/skipped this step in between).
+                throw new InvalidRequestException(
+                        "This step is already " + stepInstance.getStatus().toLowerCase() + " -- nothing more can be saved on it.");
+            }
+            // Idempotent no-op on a step already finalized -- a double-click, client retry, or
+            // replayed request must not re-run side effects (credentials email isn't itself
+            // idempotent, and re-advancing would regress an already-COMPLETED next step back to
+            // IN_PROGRESS and re-fire its ONBOARDING_STEP_ENTERED trigger).
             return stepInstance;
         }
 

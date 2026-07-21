@@ -636,6 +636,12 @@ function CompleteFormStepDialog({
         ? (config.package_session_ids as unknown[]).filter((v): v is string => typeof v === 'string')
         : [];
     const hasPool = coursePool.length > 0;
+    // When on, the backend allows completing without a course pick if the student already has
+    // an active enrollment elsewhere -- so the client shouldn't hard-block Complete Step just
+    // because no course was chosen; let the server make the real call (and surface its error if
+    // the student in fact isn't already enrolled anywhere).
+    const skipCourseIfEnrolled =
+        config.skip_if_already_enrolled === 'true' || config.skip_if_already_enrolled === true;
 
     const [packageSessionId, setPackageSessionId] = useState('');
     const [packageSessionLabel, setPackageSessionLabel] = useState<string | undefined>(undefined);
@@ -663,7 +669,7 @@ function CompleteFormStepDialog({
     const [studentEmail, setStudentEmail] = useState('');
     const [studentMobileNumber, setStudentMobileNumber] = useState('');
 
-    const missingCourseChoice = createsStudent && !packageSessionId;
+    const missingCourseChoice = createsStudent && !packageSessionId && !skipCourseIfEnrolled;
     const missingStudentDetails =
         touchesIdentity && isParent && (!studentFullName.trim() || (!studentEmail.trim() && !studentMobileNumber.trim()));
 
@@ -788,9 +794,22 @@ function CompleteFormStepDialog({
                                 <GraduationCap size={16} weight="fill" />
                             </span>
                             <Label className="text-neutral-700">
-                                Enroll into (course / batch) <span className="text-danger-600">*</span>
+                                Enroll into (course / batch){' '}
+                                {skipCourseIfEnrolled ? (
+                                    <span className="text-caption font-normal text-neutral-500">
+                                        (optional if already enrolled)
+                                    </span>
+                                ) : (
+                                    <span className="text-danger-600">*</span>
+                                )}
                             </Label>
                         </div>
+                        {skipCourseIfEnrolled && (
+                            <p className="text-caption text-neutral-500">
+                                This step allows completing without picking a course if the
+                                student already has an active enrollment.
+                            </p>
+                        )}
                         {hasPool ? (
                             <Select value={packageSessionId} onValueChange={setPackageSessionId}>
                                 <SelectTrigger>

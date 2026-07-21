@@ -44,6 +44,7 @@ const stepSchema = z.object({
     grants_student_role: z.boolean(),
     sends_login_credentials: z.boolean(),
     create_student: z.boolean(),
+    skip_if_already_enrolled: z.boolean(),
 });
 
 type StepForm = z.infer<typeof stepSchema>;
@@ -80,6 +81,7 @@ export function StepDialog({
             grants_student_role: false,
             sends_login_credentials: false,
             create_student: false,
+            skip_if_already_enrolled: false,
         },
     });
 
@@ -132,6 +134,8 @@ export function StepDialog({
                 grants_student_role: editingStep.grants_student_role,
                 sends_login_credentials: editingStep.sends_login_credentials,
                 create_student: config.create_student === 'true' || config.create_student === true,
+                skip_if_already_enrolled:
+                    config.skip_if_already_enrolled === 'true' || config.skip_if_already_enrolled === true,
             });
             setPackageSessionIds(configuredPool);
             setRoleAccess(editingStep.role_access ?? defaultRoleAccess());
@@ -142,6 +146,7 @@ export function StepDialog({
                 grants_student_role: false,
                 sends_login_credentials: false,
                 create_student: false,
+                skip_if_already_enrolled: false,
             });
             setFieldRows([]);
             setPackageSessionIds([]);
@@ -180,7 +185,11 @@ export function StepDialog({
                 step_name: values.step_name,
                 step_type: 'FORM' as const,
                 step_type_config: values.create_student
-                    ? { create_student: 'true', package_session_ids: packageSessionIds }
+                    ? {
+                          create_student: 'true',
+                          package_session_ids: packageSessionIds,
+                          skip_if_already_enrolled: values.skip_if_already_enrolled ? 'true' : 'false',
+                      }
                     : { create_student: 'false' },
                 is_optional: values.is_optional,
                 grants_student_role: values.grants_student_role,
@@ -332,6 +341,21 @@ export function StepDialog({
                                     Select specific course(s) to restrict the choice to only those.
                                 </p>
                             </FormItem>
+                        )}
+                        {form.watch('create_student') && (
+                            <div className="flex items-center justify-between">
+                                <Label htmlFor="step-skip-if-enrolled" className="cursor-pointer text-body">
+                                    Allow completing without picking a course if the student is
+                                    already enrolled in one
+                                </Label>
+                                <Switch
+                                    id="step-skip-if-enrolled"
+                                    checked={form.watch('skip_if_already_enrolled')}
+                                    onCheckedChange={(v) =>
+                                        form.setValue('skip_if_already_enrolled', v, { shouldDirty: true })
+                                    }
+                                />
+                            </div>
                         )}
                     </div>
 

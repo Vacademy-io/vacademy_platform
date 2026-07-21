@@ -60,9 +60,25 @@ import {
     type PreviewSessionRow,
     type PreviewRecurrenceBanner,
 } from './LiveSessionPreviewDialog';
-import { LockKey, UsersThree, Article, LinkSimple, BellRinging } from '@phosphor-icons/react';
+import {
+    LockKey,
+    UsersThree,
+    Article,
+    LinkSimple,
+    BellRinging,
+    VideoCamera,
+    CaretDown,
+} from '@phosphor-icons/react';
 
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import {
+    SessionContentDestinationPicker,
+    type DestinationBatch,
+    type DestinationPickerSubmitPayload,
+} from '../../-components/content-linking/SessionContentDestinationPicker';
+import type { ContentLinkDestination, SlideStatus } from '../../-services/content-link-service';
+import { cn } from '@/lib/utils';
 
 const TimeOptions = [
     { label: '5 minutes before', value: '5m' },
@@ -204,6 +220,21 @@ export default function ScheduleStep2() {
                         setCurrentSession(matchingSession);
                     }
                 }
+            }
+
+            // ------------------------------------------------------------------
+            // NEW: Pre-populate "auto-add recordings to course" config, if any
+            // was previously saved (docs/LIVE_SESSION_RECORDING_AUTO_LINK_PLAN.md).
+            // ------------------------------------------------------------------
+            const savedAutoLink = sessionDetails.schedule.recording_auto_link_config;
+            if (savedAutoLink) {
+                form.setValue('recordingAutoLink', {
+                    enabled: savedAutoLink.enabled,
+                    slideStatus: savedAutoLink.slide_status,
+                    notify: savedAutoLink.notify,
+                    destinations: savedAutoLink.destinations,
+                    touched: false, // hydrated, not yet edited by the admin — don't resend unless they open the section
+                });
             }
 
             // Mark initialisation done so this block never runs again
@@ -445,13 +476,83 @@ export default function ScheduleStep2() {
         name: 'options',
     });
 
-    const { control, handleSubmit, watch, getValues } = form;
+    const { control, handleSubmit, watch, getValues, setValue } = form;
     const { fields, move, append, remove } = useFieldArray({
         control,
         name: 'fields',
     });
 
     const accessType = watch('accessType');
+    const batchSelectionType = watch('batchSelectionType');
+    const watchedSelectedLevels = watch('selectedLevels');
+    const recordingAutoLink = watch('recordingAutoLink');
+
+    // Currently-selected batches, resolved to packageSessionIds + display
+    // names — feeds the "Auto-add recordings to course" destination picker.
+    // Only meaningful in batch mode; empty for individual-learner selection.
+    const recordingAutoLinkBatches = useMemo<DestinationBatch[]>(() => {
+        if (!instituteDetails || batchSelectionType !== 'batch') return [];
+        return (watchedSelectedLevels ?? [])
+            .map((level) => {
+                const batch = instituteDetails.batches_for_sessions.find(
+                    (b) =>
+                        b.package_dto.id === level.courseId &&
+                        b.session.id === level.sessionId &&
+                        b.level.id === level.levelId
+                );
+                if (!batch) return null;
+                return {
+                    packageSessionId: batch.id,
+                    displayName: [batch.package_dto.package_name, batch.level.level_name, batch.session.session_name]
+                        .filter(Boolean)
+                        .join(' · '),
+                };
+            })
+            .filter((b): b is DestinationBatch => b !== null);
+    }, [instituteDetails, batchSelectionType, watchedSelectedLevels]);
+
+    // Collapsed by default unless the admin already has a saved/enabled config.
+    const [recordingAutoLinkOpen, setRecordingAutoLinkOpen] = useState(false);
+    const hasOpenedAutoLinkOnce = useRef(false);
+    useEffect(() => {
+        if (hasOpenedAutoLinkOnce.current) return;
+        if (recordingAutoLink?.enabled) {
+            setRecordingAutoLinkOpen(true);
+            hasOpenedAutoLinkOnce.current = true;
+        }
+    }, [recordingAutoLink?.enabled]);
+
+    const handleRecordingAutoLinkToggle = (enabled: boolean) => {
+        const current = getValues('recordingAutoLink');
+        setValue(
+            'recordingAutoLink',
+            {
+                enabled,
+                slideStatus: current?.slideStatus ?? 'PUBLISHED',
+                notify: current?.notify ?? false,
+                destinations: current?.destinations ?? [],
+                touched: true,
+            },
+            { shouldDirty: true }
+        );
+        if (enabled) setRecordingAutoLinkOpen(true);
+    };
+
+    const handleRecordingAutoLinkDestinationsChange = (payload: DestinationPickerSubmitPayload) => {
+        const current = getValues('recordingAutoLink');
+        setValue(
+            'recordingAutoLink',
+            {
+                enabled: current?.enabled ?? true,
+                slideStatus: payload.slideStatus,
+                notify: payload.notify,
+                destinations: payload.destinations,
+                touched: true,
+            },
+            { shouldDirty: true }
+        );
+    };
+
     const rawPortalUrl = instituteDetails?.learner_portal_base_url;
     const learnerBaseUrl = rawPortalUrl
         ? rawPortalUrl.startsWith('http')
@@ -1223,6 +1324,75 @@ export default function ScheduleStep2() {
                                 )}
                         </div>
                     </SectionCard>
+
+                    {/* Auto-add recordings to course — batch mode only. Gated behind the
+                        institute-wide "Auto-upload recordings to course" setting (see
+                        docs/LIVE_SESSION_RECORDING_AUTO_LINK_PLAN.md, Phase 2). */}
+                    {batchSelectionType === 'batch' &&
+                        liveSessionSettings.lmsConnection.autoUploadRecordingsEnabled && (
+                            <Collapsible
+                                open={recordingAutoLinkOpen}
+                                onOpenChange={setRecordingAutoLinkOpen}
+                            >
+                                <SectionCard
+                                    icon={<VideoCamera size={18} />}
+                                    title="Auto-add recordings to course"
+                                    description="When a recording of this class becomes available, automatically add it as a video slide in the chosen chapter — no manual step needed."
+                                    headerRight={
+                                        <div className="flex items-center gap-2">
+                                            <Switch
+                                                checked={recordingAutoLink?.enabled ?? false}
+                                                onCheckedChange={handleRecordingAutoLinkToggle}
+                                            />
+                                            <CollapsibleTrigger asChild>
+                                                <button
+                                                    type="button"
+                                                    className="flex size-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100"
+                                                    aria-label="Toggle section"
+                                                >
+                                                    <CaretDown
+                                                        size={14}
+                                                        className={cn(
+                                                            'transition-transform',
+                                                            recordingAutoLinkOpen && 'rotate-180'
+                                                        )}
+                                                    />
+                                                </button>
+                                            </CollapsibleTrigger>
+                                        </div>
+                                    }
+                                >
+                                    <CollapsibleContent>
+                                        {recordingAutoLinkBatches.length === 0 ? (
+                                            <p className="text-body text-neutral-500">
+                                                Select at least one batch above to choose a
+                                                destination chapter.
+                                            </p>
+                                        ) : (
+                                            <SessionContentDestinationPicker
+                                                batches={recordingAutoLinkBatches}
+                                                initialDestinations={
+                                                    recordingAutoLink?.destinations as
+                                                        | ContentLinkDestination[]
+                                                        | undefined
+                                                }
+                                                initialSlideStatus={
+                                                    recordingAutoLink?.slideStatus as
+                                                        | SlideStatus
+                                                        | undefined
+                                                }
+                                                initialNotify={recordingAutoLink?.notify}
+                                                hideSubmit
+                                                hidePosition
+                                                onDestinationsChange={
+                                                    handleRecordingAutoLinkDestinationsChange
+                                                }
+                                            />
+                                        )}
+                                    </CollapsibleContent>
+                                </SectionCard>
+                            </Collapsible>
+                        )}
 
                     {/* Registration Form Fields - Only for Public classes */}
                     {accessType === AccessType.PUBLIC && (

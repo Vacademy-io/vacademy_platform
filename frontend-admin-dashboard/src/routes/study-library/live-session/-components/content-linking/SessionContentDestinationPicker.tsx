@@ -58,11 +58,26 @@ interface Props {
     batches: DestinationBatch[];
     /** Prior links (any content type) — used only to preselect the most-recently-used chapter per batch. */
     existingLinks?: SessionContentLink[];
-    onSubmit: (payload: DestinationPickerSubmitPayload) => void | Promise<void>;
+    /**
+     * Seeds row state directly (subject/module/chapter per batch) instead of
+     * relying on `existingLinks` inference — used for edit-mode prefill of a
+     * previously-saved config (e.g. recording auto-link). Rows for batches
+     * not present here start empty as usual.
+     */
+    initialDestinations?: ContentLinkDestination[];
+    initialSlideStatus?: SlideStatus;
+    initialNotify?: boolean;
+    onSubmit?: (payload: DestinationPickerSubmitPayload) => void | Promise<void>;
     isSubmitting?: boolean;
     submitLabel?: string;
     /** Extra gate from the caller (e.g. an empty title) on top of "at least one destination chosen". */
     submitDisabled?: boolean;
+    /** Hides the submit button — for callers that lift picker state via `onDestinationsChange` instead of an immediate "Add" action. */
+    hideSubmit?: boolean;
+    /** Hides the Position ("End of chapter"/"Beginning of chapter") control — irrelevant to callers whose backend hardcodes position. */
+    hidePosition?: boolean;
+    /** Fired whenever the selection (destinations/status/notify) changes — for callers lifting state into a parent form instead of using the built-in submit button. */
+    onDestinationsChange?: (payload: DestinationPickerSubmitPayload) => void;
 }
 
 interface RowState {
@@ -108,10 +123,16 @@ async function findSubjectModuleForChapter(
 export function SessionContentDestinationPicker({
     batches,
     existingLinks,
+    initialDestinations,
+    initialSlideStatus,
+    initialNotify,
     onSubmit,
     isSubmitting,
     submitLabel = 'Add',
     submitDisabled,
+    hideSubmit,
+    hidePosition,
+    onDestinationsChange,
 }: Props) {
     const queryClient = useQueryClient();
     const studyLibraryData = useStudyLibraryStore((s) => s.studyLibraryData);
@@ -126,18 +147,34 @@ export function SessionContentDestinationPicker({
 
     const [rows, setRows] = useState<Record<string, RowState>>({});
     const [position, setPosition] = useState<ContentLinkPosition>('BOTTOM');
-    const [slideStatus, setSlideStatus] = useState<SlideStatus>('PUBLISHED');
-    const [notify, setNotify] = useState(false);
+    const [slideStatus, setSlideStatus] = useState<SlideStatus>(initialSlideStatus ?? 'PUBLISHED');
+    const [notify, setNotify] = useState(initialNotify ?? false);
 
-    // Keep a row per batch, preserving any state a batch already has.
+    // Keep a row per batch, preserving any state a batch already has. New
+    // batches seed from `initialDestinations` (edit-mode prefill) when present.
     useEffect(() => {
         setRows((prev) => {
             const next: Record<string, RowState> = {};
             for (const b of batches) {
-                next[b.packageSessionId] = prev[b.packageSessionId] ?? emptyRow();
+                if (prev[b.packageSessionId]) {
+                    next[b.packageSessionId] = prev[b.packageSessionId]!;
+                    continue;
+                }
+                const seed = initialDestinations?.find(
+                    (d) => d.package_session_id === b.packageSessionId
+                );
+                next[b.packageSessionId] = seed
+                    ? {
+                          included: true,
+                          subjectId: seed.subject_id ?? '',
+                          moduleId: seed.module_id ?? '',
+                          chapterId: seed.chapter_id,
+                      }
+                    : emptyRow();
             }
             return next;
         });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [batches]);
 
     // Subjects available for each batch's fixed course/session/level.
@@ -275,9 +312,16 @@ export function SessionContentDestinationPicker({
     const canSubmit = destinations.length > 0 && !submitDisabled && !isSubmitting;
 
     const handleSubmit = async () => {
-        if (!canSubmit) return;
+        if (!canSubmit || !onSubmit) return;
         await onSubmit({ destinations, position, slideStatus, notify });
     };
+
+    // Lifted-state mode: report every selection change to the parent instead
+    // of (or in addition to) an explicit submit action.
+    useEffect(() => {
+        onDestinationsChange?.({ destinations, position, slideStatus, notify });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [destinations, position, slideStatus, notify]);
 
     return (
         <div className="flex flex-col gap-4 rounded-lg border border-neutral-200 bg-white p-4">
@@ -314,21 +358,25 @@ export function SessionContentDestinationPicker({
 
             <div className="flex flex-col gap-3 border-t border-neutral-100 pt-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
                 <div className="flex flex-wrap items-end gap-4">
-                    <div className="flex flex-col gap-1.5">
-                        <span className="text-caption font-medium text-neutral-600">Position</span>
-                        <Select
-                            value={position}
-                            onValueChange={(v) => setPosition(v as ContentLinkPosition)}
-                        >
-                            <SelectTrigger className="w-44">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="BOTTOM">End of chapter</SelectItem>
-                                <SelectItem value="TOP">Beginning of chapter</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
+                    {!hidePosition && (
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-caption font-medium text-neutral-600">
+                                Position
+                            </span>
+                            <Select
+                                value={position}
+                                onValueChange={(v) => setPosition(v as ContentLinkPosition)}
+                            >
+                                <SelectTrigger className="w-44">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="BOTTOM">End of chapter</SelectItem>
+                                    <SelectItem value="TOP">Beginning of chapter</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    )}
 
                     <label className="flex flex-col gap-1.5">
                         <span className="text-caption font-medium text-neutral-600">Status</span>
@@ -352,15 +400,17 @@ export function SessionContentDestinationPicker({
                     </label>
                 </div>
 
-                <MyButton
-                    type="button"
-                    buttonType="primary"
-                    scale="medium"
-                    disable={!canSubmit}
-                    onClick={handleSubmit}
-                >
-                    {isSubmitting ? 'Adding…' : submitLabel}
-                </MyButton>
+                {!hideSubmit && (
+                    <MyButton
+                        type="button"
+                        buttonType="primary"
+                        scale="medium"
+                        disable={!canSubmit}
+                        onClick={handleSubmit}
+                    >
+                        {isSubmitting ? 'Adding…' : submitLabel}
+                    </MyButton>
+                )}
             </div>
         </div>
     );

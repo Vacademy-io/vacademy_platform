@@ -187,6 +187,18 @@ public class GetSessionByIdService {
                         System.err.println("Error deserializing feedbackConfigJson: " + e.getMessage());
                     }
                 }
+                // Load recording auto-link config (echoed back for edit-mode prefill)
+                if (liveSession.getRecordingAutoLinkJson() != null && !liveSession.getRecordingAutoLinkJson().isBlank()) {
+                    try {
+                        vacademy.io.admin_core_service.features.live_session.dto.RecordingAutoLinkConfigDTO autoLinkCfg =
+                                new com.fasterxml.jackson.databind.ObjectMapper().readValue(
+                                        liveSession.getRecordingAutoLinkJson(),
+                                        vacademy.io.admin_core_service.features.live_session.dto.RecordingAutoLinkConfigDTO.class);
+                        dto.setRecordingAutoLinkConfig(autoLinkCfg);
+                    } catch (Exception e) {
+                        System.err.println("Error deserializing recordingAutoLinkJson: " + e.getMessage());
+                    }
+                }
             });
         }
 

@@ -63,6 +63,17 @@ public class LiveSessionContentLinkService {
 
     @Transactional
     public List<ContentLinkOutcomeDTO> linkContent(LinkContentRequestDTO request, CustomUserDetails user) {
+        return linkContent(request, user != null ? user.getUserId() : null);
+    }
+
+    /**
+     * Overload for automated (non-authenticated-request) callers, e.g.
+     * {@code RecordingAutoLinkService} triggered from a provider recording sync
+     * — there is no {@link CustomUserDetails} principal in that path, so the
+     * session's {@code createdByUserId} is passed directly.
+     */
+    @Transactional
+    public List<ContentLinkOutcomeDTO> linkContent(LinkContentRequestDTO request, String userId) {
         if (request.getDestinations() == null || request.getDestinations().isEmpty()) {
             throw new VacademyException(HttpStatus.BAD_REQUEST, "At least one destination is required");
         }
@@ -131,7 +142,7 @@ public class LiveSessionContentLinkService {
                     .slideId(slideId)
                     .chapterId(chapterId)
                     .packageSessionId(destination.getPackageSessionId())
-                    .createdByUserId(user != null ? user.getUserId() : null)
+                    .createdByUserId(userId)
                     .status("ACTIVE")
                     .build();
             liveSessionContentLinkRepository.save(link);

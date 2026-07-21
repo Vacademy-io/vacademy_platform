@@ -5,6 +5,7 @@ import {
     addParticipantsSchema,
 } from '../schedule/-schema/schema';
 import { RecurringType } from '../-constants/enums';
+import type { RecordingAutoLinkConfig } from '../-services/content-link-service';
 
 export const timeOptions = Array.from({ length: 96 }, (_, i) => {
     const hours = Math.floor(i / 4)
@@ -120,6 +121,14 @@ export interface LiveSessionStep2RequestDTO {
     added_fields: CustomFieldDTO[];
     updated_fields: CustomFieldDTO[];
     deleted_field_ids: string[];
+
+    /**
+     * "Auto-add recordings to course" config. Omitted entirely (not even
+     * `undefined`-serialized) when the admin never touched the section in
+     * edit mode, so an update request leaves the stored config unchanged —
+     * see docs/LIVE_SESSION_RECORDING_AUTO_LINK_PLAN.md.
+     */
+    recording_auto_link_config?: RecordingAutoLinkConfig;
 }
 
 export interface NotificationActionDTO {
@@ -443,6 +452,7 @@ export function transformFormToDTOStep2(
         fields,
         selectedLearners,
         batchSelectionType,
+        recordingAutoLink,
     } = formData;
 
     const addedNotificationActions: NotificationActionDTO[] = [];
@@ -552,6 +562,27 @@ export function transformFormToDTOStep2(
     // Add individual user IDs if individual selection is used
     if (batchSelectionType === 'individual' && selectedLearners) {
         result.individual_user_ids = selectedLearners;
+    }
+
+    // "Auto-add recordings to course": only meaningful for batch mode, and
+    // only sent when the admin actually opened/edited the section — omitting
+    // it on update leaves the stored config untouched (per the contract).
+    if (recordingAutoLink?.touched && batchSelectionType === 'batch') {
+        const selectedPackageSessionIds = new Set(packageSessionIds);
+        result.recording_auto_link_config = {
+            enabled: recordingAutoLink.enabled,
+            slide_status: recordingAutoLink.slideStatus,
+            notify: recordingAutoLink.notify,
+            // Drop destinations for batches the admin has since deselected.
+            destinations: recordingAutoLink.destinations
+                .filter((d) => selectedPackageSessionIds.has(d.package_session_id))
+                .map((d) => ({
+                    package_session_id: d.package_session_id,
+                    subject_id: d.subject_id ?? '',
+                    module_id: d.module_id ?? '',
+                    chapter_id: d.chapter_id,
+                })),
+        };
     }
 
     return result;

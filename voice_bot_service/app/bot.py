@@ -559,7 +559,10 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         f"speaks 3+ consecutive full sentences in the other language.\n"
         "6) NEVER end a turn in silence: every turn must end with a question, a quick check-in "
         "('right?', 'shall I continue?') or a clear closing — never trail off mid-explanation "
-        "and wait for the caller."
+        "and wait for the caller.\n"
+        "7) A neutral acknowledgment to your yes/no question ('okay', 'cool', 'hmm', 'go ahead', "
+        "'haan', 'achha') means YES — move forward. Never re-ask a question you already asked, "
+        "and never repeat any sentence verbatim; if you must clarify, rephrase it in under 8 words."
     )
 
     prompt = _fill_placeholders(agent.get("systemPrompt") or "", context)
@@ -649,6 +652,9 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             "NEVER end a turn in silence: every turn must end with a question, a quick "
             "check-in (\u2018right?\u2019, \u2018shall I continue?\u2019) or a clear closing — never trail "
             "off mid-explanation and wait.",
+            "A neutral acknowledgment to your yes/no question (\u2018okay\u2019, \u2018cool\u2019, \u2018hmm\u2019, "
+            "\u2018go ahead\u2019) means YES — move forward. Never re-ask a question you already asked, "
+            "and never repeat any sentence verbatim; to clarify, rephrase in under 8 words.",
             language_stability_rule,
             f"{gender_line} {addressee_line}",
             script_rule,
@@ -731,7 +737,13 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
              # bare VAD activity, pickup noise/breath was making the greet think the
              # callee had spoken → scripted opening skipped → the model improvised
              # bare "Hello."s (observed live).
-             "transcript_t": 0.0}
+             "transcript_t": 0.0,
+             # When the caller last STOPPED speaking (VAD) + the last orphan we
+             # handled — Sarvam sometimes swallows a short utterance ENTIRELY (no
+             # data message, not even an empty one), leaving the turn machinery
+             # with nothing to react to. The watchdog compares these to detect
+             # "spoke but no transcript ever came" and continues the conversation.
+             "user_stopped_t": 0.0, "orphan_handled_t": 0.0}
 
     def on_activity(user: bool = True):
         flags["t"] = time.time()
@@ -743,6 +755,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     def set_user_speaking(speaking: bool):
         flags["user_speaking"] = speaking
+        if not speaking:
+            flags["user_stopped_t"] = time.time()
 
     stt_lang, _ = _agent_language(agent)
     # Operational utterances (nudge, closings, fillers) in the AGENT's language — an
@@ -930,6 +944,28 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # stale — the nudge fired at the caller mid-sentence.
             if flags["bot_speaking"] or flags["user_speaking"]:
                 continue
+
+            # VAD-orphan continuation: the caller audibly spoke (VAD start+stop)
+            # but NO transcript ever arrived (observed live: "Yeah, I'm Shreyash"
+            # produced no STT data message at all → 5s dead air until the caller
+            # prodded). Well before the nudge, hand the turn back to the model.
+            ust = flags["user_stopped_t"]
+            if (ust > 0 and ust > flags["transcript_t"] and ust > flags["orphan_handled_t"]
+                    and 2.5 <= time.time() - ust <= 8.0
+                    and time.time() - outcome.connected_at > 6.0):
+                flags["orphan_handled_t"] = time.time()
+                flags["t"] = time.time()
+                logger.info("vad-orphan continue corr=%s (no transcript %.1fs after speech)",
+                            corr, time.time() - ust)
+                await task.queue_frames([LLMMessagesAppendFrame(
+                    messages=[{"role": "user", "content":
+                        "[The caller said something brief that was not captured clearly. "
+                        "Continue naturally: if you just asked a question, treat their "
+                        "reply as a short acknowledgment; do not repeat your question "
+                        "verbatim.]"}],
+                    run_llm=True)])
+                continue
+
             idle = time.time() - flags["t"]
             if idle < settings.idle_timeout_secs:
                 continue

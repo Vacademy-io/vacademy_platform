@@ -218,7 +218,8 @@ admin_core.
 
 Lets a guardian switch into their child's learner view.
 `POST /parent-portal/v1/children/{id}/view-session` → guard + the institute's
-`allowViewAsChild` gate (default **off**) → reuses the existing internal mint
+`allowViewAsChild` gate (**default on** once the portal is enabled; set
+`allowViewAsChild:false` to disable) → reuses the existing internal mint
 (`AuthService.generateJwtTokensWithUser` → auth_service
 `generate-token-for-learner`) to return a token that **is** the child. **No
 auth_service or JwtAuthFilter change.**

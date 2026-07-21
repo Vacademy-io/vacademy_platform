@@ -35,7 +35,9 @@ export function ParentProfileMenu({ childId, childName, childFileId }: ParentPro
   const { data: settings } = useParentSettings();
   const parentName = getParentName();
   const hasMultiple = (children?.length ?? 0) > 1;
-  const canViewAsChild = settings?.allowViewAsChild ?? false;
+  // Default ON — a school that turned on the parent portal gets view-as-child too,
+  // unless it explicitly sets allowViewAsChild:false in PARENT_SETTING.
+  const canViewAsChild = settings?.allowViewAsChild ?? true;
   const [switching, setSwitching] = useState(false);
 
   const viewAsChild = async () => {

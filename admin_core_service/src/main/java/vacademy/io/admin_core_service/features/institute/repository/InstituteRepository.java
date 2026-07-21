@@ -219,6 +219,17 @@ public interface InstituteRepository extends CrudRepository<Institute, String> {
             """, nativeQuery = true)
     Long countCoursesByInstitute(@Param("instituteId") String instituteId, @Param("search") String search);
 
+    /**
+     * Candidate scan for the institute-gated package-session renewal scheduler.
+     * The LIKE on the raw setting JSON is only a cheap pre-filter (institutes
+     * that have a PAYMENT_SETTING block at all); the caller parses each row's
+     * JSON envelope and keeps only those with
+     * packageSessionRenewalSchedulerEnabled = true. Returns [id, setting].
+     */
+    @Query(value = "SELECT id, setting FROM institutes WHERE setting LIKE '%PAYMENT_SETTING%'",
+            nativeQuery = true)
+    List<Object[]> findIdAndSettingWithPaymentSetting();
+
     // ==================== Lead Tag Queries ====================
 
     @Transactional

@@ -54,6 +54,19 @@ public interface CustomFieldValuesRepository extends JpaRepository<CustomFieldVa
     List<CustomFieldValues> findByPhoneNumber(@Param("phoneNumber") String phoneNumber);
 
     /**
+     * Distinct (customFieldId, value) pairs collected for one type_id under a source
+     * type — powers the admin registration listing's per-custom-field filter options.
+     * Blank values excluded; each row is [customFieldId, value].
+     */
+    @Query("SELECT DISTINCT cfv.customFieldId, cfv.value FROM CustomFieldValues cfv " +
+            "WHERE cfv.sourceType = :sourceType AND cfv.typeId = :typeId " +
+            "AND cfv.value IS NOT NULL AND TRIM(cfv.value) <> '' " +
+            "ORDER BY cfv.customFieldId, cfv.value")
+    List<Object[]> findDistinctFieldValuesByTypeId(
+            @Param("sourceType") String sourceType,
+            @Param("typeId") String typeId);
+
+    /**
      * Distinct audience_response IDs whose value for a given custom field is one
      * of the supplied values. Single indexed lookup (idx_cfv_field_source_value)
      * used to pre-resolve the leads custom-field filter into a concrete id set,

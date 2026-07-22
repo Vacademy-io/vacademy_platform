@@ -183,17 +183,51 @@ export interface SubOrgListItem {
     created_at?: string | number | null;
 }
 
-/** Manage VLEs list — one call returns admin email/phone, plan status, seats and invite per sub-org. */
+/** Paginated Manage VLEs list (snake_case rows in a camelCase Spring Page wrapper). */
+export interface SubOrgListPage {
+    content: SubOrgListItem[];
+    total_pages: number;
+    total_elements: number;
+    /** 0-based current page. */
+    page_no: number;
+    page_size: number;
+    last: boolean;
+}
+
+/**
+ * Manage VLEs list — one call returns admin email/phone, plan status, seats and invite per
+ * sub-org, paginated (newest first). Tolerates a bare array in case an older API is hit.
+ */
 export const getSubOrgsWithDetails = async (
-    parentInstituteId?: string
-): Promise<SubOrgListItem[]> => {
+    parentInstituteId?: string,
+    page = 0,
+    size = 10
+): Promise<SubOrgListPage> => {
     const id = parentInstituteId || getCurrentInstituteId();
     const response = await authenticatedAxiosInstance({
         method: 'GET',
         url: GET_SUB_ORGS_WITH_DETAILS,
-        params: { parentInstituteId: id },
+        params: { parentInstituteId: id, page, size },
     });
-    return Array.isArray(response.data) ? response.data : [];
+    const data = response.data;
+    if (Array.isArray(data)) {
+        return {
+            content: data,
+            total_pages: 1,
+            total_elements: data.length,
+            page_no: 0,
+            page_size: data.length,
+            last: true,
+        };
+    }
+    return {
+        content: Array.isArray(data?.content) ? data.content : [],
+        total_pages: data?.totalPages ?? 1,
+        total_elements: data?.totalElements ?? 0,
+        page_no: data?.number ?? 0,
+        page_size: data?.size ?? size,
+        last: data?.last ?? true,
+    };
 };
 
 export const getAllRoles = async () => {

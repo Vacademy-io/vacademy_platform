@@ -3,6 +3,9 @@ package vacademy.io.admin_core_service.features.suborg.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -47,10 +50,11 @@ public class SubOrgListService {
     private final EnrollInviteRepository enrollInviteRepository;
 
     @Transactional(readOnly = true)
-    public List<SubOrgListItemDTO> getSubOrgsWithDetails(String parentInstituteId) {
-        List<InstituteSubOrg> subOrgs = instituteSubOrgRepository.findByInstituteId(parentInstituteId);
+    public Page<SubOrgListItemDTO> getSubOrgsWithDetails(String parentInstituteId, Pageable pageable) {
+        Page<InstituteSubOrg> subOrgPage = instituteSubOrgRepository.findByInstituteId(parentInstituteId, pageable);
+        List<InstituteSubOrg> subOrgs = subOrgPage.getContent();
         if (subOrgs.isEmpty()) {
-            return List.of();
+            return new PageImpl<>(List.of(), pageable, subOrgPage.getTotalElements());
         }
 
         List<String> subOrgIds = subOrgs.stream()
@@ -151,7 +155,9 @@ public class SubOrgListService {
                     .createdAt(so.getCreatedAt())
                     .build());
         }
-        return result;
+        // Preserve the page's paging metadata (total count / number / size) while returning
+        // the enriched rows for just this page.
+        return new PageImpl<>(result, pageable, subOrgPage.getTotalElements());
     }
 
     /** Read the sub-org's seat cap (MEMBER_COUNT) off the org-level invite's settingJson. */

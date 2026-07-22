@@ -2,6 +2,10 @@ package vacademy.io.admin_core_service.features.suborg.controller;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -66,14 +70,18 @@ public class SubOrgController {
         return ResponseEntity.ok(subOrgService.getSubOrgs(parentInstituteId));
     }
 
-    /** Enriched list for the Manage VLEs table: admin email/phone, plan status, seats + invite.
-     *  Guarded to the caller's own institute — the row returns admin PII (email/phone). */
+    /** Enriched, paginated list for the Manage VLEs table: admin email/phone, plan status,
+     *  seats + invite. Newest sub-orgs first. Guarded to the caller's own institute — the
+     *  row returns admin PII (email/phone). */
     @GetMapping("/get-all-with-details")
-    public ResponseEntity<List<SubOrgListItemDTO>> getSubOrgsWithDetails(
+    public ResponseEntity<Page<SubOrgListItemDTO>> getSubOrgsWithDetails(
             @RequestParam String parentInstituteId,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "10") int size,
             @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
         assertInstituteAdmin(user, parentInstituteId);
-        return ResponseEntity.ok(subOrgListService.getSubOrgsWithDetails(parentInstituteId));
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        return ResponseEntity.ok(subOrgListService.getSubOrgsWithDetails(parentInstituteId, pageable));
     }
 
     /**

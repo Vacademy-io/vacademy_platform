@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
     getSubOrgsWithDetails,
     type SubOrgListItem,
@@ -21,6 +21,7 @@ import { Plus, Buildings, Copy, LinkSimple } from '@phosphor-icons/react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { CreateSubOrgModal } from './create-sub-org-modal';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
+import { MyPagination } from '@/components/design-system/pagination';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { buildSubOrgSlug } from '@/routes/manage-suborg-teams/-utils/sub-org-slug';
@@ -28,8 +29,12 @@ import { humanizeStatus, statusToneClass } from '../../-utils/status-display';
 import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
+/** Rows-per-page for the Manage VLEs listing. */
+const SUB_ORG_PAGE_SIZE = 10;
+
 export function SubOrgList() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [page, setPage] = useState(0);
     const navigate = useNavigate();
 
     const instituteId = getCurrentInstituteId();
@@ -37,11 +42,14 @@ export function SubOrgList() {
     // the institute's own portal; a backend `short_url` (already domain-correct)
     // still wins when present.
     const { instituteDetails } = useInstituteDetailsStore();
-    const { data: subOrgs = [], isLoading } = useQuery({
-        queryKey: ['sub-orgs-with-details', instituteId],
-        queryFn: () => getSubOrgsWithDetails(instituteId),
+    const { data, isLoading, isFetching } = useQuery({
+        queryKey: ['sub-orgs-with-details', instituteId, page],
+        queryFn: () => getSubOrgsWithDetails(instituteId, page, SUB_ORG_PAGE_SIZE),
         enabled: !!instituteId,
+        placeholderData: keepPreviousData,
     });
+    const subOrgs = data?.content ?? [];
+    const totalPages = data?.total_pages ?? 1;
 
     // Row click navigates to the institute-admin deep page for that sub-org.
     const openSubOrg = (org: SubOrgListItem) => {
@@ -193,6 +201,16 @@ export function SubOrgList() {
                     </TableBody>
                 </Table>
             </div>
+
+            {totalPages > 1 && (
+                <div className={isFetching ? 'opacity-60' : ''}>
+                    <MyPagination
+                        currentPage={page}
+                        totalPages={totalPages}
+                        onPageChange={setPage}
+                    />
+                </div>
+            )}
 
             <CreateSubOrgModal open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen} />
         </div>

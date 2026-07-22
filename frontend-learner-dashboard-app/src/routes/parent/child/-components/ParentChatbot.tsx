@@ -3,6 +3,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { motion, AnimatePresence } from "framer-motion";
 import chatTeacher from "@/assets/parent-icons/chat-teacher.webp";
+import chatTeacherTalk from "@/assets/parent-icons/chat-teacher-talk.webp";
+import chatTeacherThink from "@/assets/parent-icons/chat-teacher-think.webp";
 import {
   CaretRight,
   PaperPlaneTilt,
@@ -179,18 +181,31 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
   // The most recent answer drives the centre text + the "speaking" teacher.
   const lastBot = [...messages].reverse().find((m) => m.role === "bot");
 
-  // Teacher motion: talkative bob while speaking, gentle sway while listening,
-  // slow idle float otherwise — so it visibly "speaks" the answer.
-  const teacherAnimate = voice.speaking
-    ? { scale: [1, 1.07, 1], rotate: [0, -3, 3, -2, 2, 0] }
-    : voice.listening
-      ? { scale: [1, 1.04, 1] }
-      : { y: [0, -8, 0] };
-  const teacherTransition = voice.speaking
-    ? { duration: 0.6, repeat: Infinity, ease: "easeInOut" as const }
-    : voice.listening
-      ? { duration: 1.1, repeat: Infinity, ease: "easeInOut" as const }
-      : { duration: 3.5, repeat: Infinity, ease: "easeInOut" as const };
+  // Lip-sync: while speaking, flip the mouth open/closed on a short interval so the
+  // teacher visibly "talks"; a separate thinking frame shows while an answer loads.
+  const [mouthOpen, setMouthOpen] = useState(false);
+  useEffect(() => {
+    if (!voice.speaking) {
+      setMouthOpen(false);
+      return;
+    }
+    const id = setInterval(() => setMouthOpen((m) => !m), 220);
+    return () => clearInterval(id);
+  }, [voice.speaking]);
+
+  const teacherSrc = pending
+    ? chatTeacherThink
+    : voice.speaking && mouthOpen
+      ? chatTeacherTalk
+      : chatTeacher;
+
+  // Gentle idle float / listening pulse (the mouth frames carry the "speaking" cue).
+  const teacherAnimate = voice.listening ? { scale: [1, 1.04, 1] } : { y: [0, -7, 0] };
+  const teacherTransition = {
+    duration: voice.listening ? 1.1 : 3.2,
+    repeat: Infinity,
+    ease: "easeInOut" as const,
+  };
 
   return (
     <>
@@ -218,8 +233,8 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
               aria-label={t("chat.open")}
               data-tour="parent-chat"
               className={cn(
-                "relative -mt-8 flex size-16 items-center justify-center rounded-full",
-                "bg-gradient-to-br from-primary-50 to-secondary-50 shadow-lg ring-4 ring-background",
+                "relative -mt-8 flex size-16 items-center justify-center overflow-hidden rounded-full",
+                "bg-background shadow-lg ring-2 ring-primary-200",
                 "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
               )}
               animate={{ rotate: [0, -7, 7, -5, 5, 0], scale: [1, 1.06, 1] }}
@@ -256,32 +271,27 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
         </div>
       </nav>
 
-      {/* Full-screen voice assistant — teacher speaks the answer, tap-to-speak, suggested questions */}
+      {/* Full-screen voice assistant — teacher speaks the answer, tap-to-speak, suggested questions.
+          Light "playful-clean" theme: white stage so the white-background teacher blends (no box). */}
       <AnimatePresence>
         {open ? (
           <motion.div
             role="dialog"
             aria-modal="true"
             aria-label={t("chat.title")}
-            className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-foreground"
+            className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
           >
-            {/* Warm glow so the dark stage still feels on-brand */}
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-500/30 via-transparent to-secondary-500/20"
-            />
-
             {/* Header: close · mute · child chip */}
-            <div className="relative flex items-center justify-between gap-2 px-4 pb-2 pt-5">
+            <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-5">
               <button
                 type="button"
                 onClick={closeAssistant}
                 aria-label={t("common.back")}
-                className="flex size-9 items-center justify-center rounded-full bg-background/10 text-background hover:bg-background/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-background/50"
+                className="flex size-9 items-center justify-center rounded-full bg-muted text-foreground hover:bg-primary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
               >
                 <X weight="bold" className="size-5" aria-hidden />
               </button>
@@ -295,7 +305,7 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
                     }}
                     aria-label={muted ? t("chat.unmute") : t("chat.mute")}
                     aria-pressed={muted}
-                    className="flex size-9 items-center justify-center rounded-full bg-background/10 text-background hover:bg-background/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-background/50"
+                    className="flex size-9 items-center justify-center rounded-full bg-muted text-primary-500 hover:bg-primary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
                   >
                     {muted ? (
                       <SpeakerSlash weight="fill" className="size-5" aria-hidden />
@@ -304,29 +314,29 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
                     )}
                   </button>
                 ) : null}
-                <div className="flex items-center gap-2 rounded-full bg-background/10 py-1 pe-3 ps-1">
+                <div className="flex items-center gap-2 rounded-full bg-muted py-1 pe-3 ps-1">
                   <span className="size-7 shrink-0 overflow-hidden rounded-full">
                     <ChildAvatar name={childName} size={28} />
                   </span>
-                  <span className="max-w-32 truncate text-caption font-medium text-background">{childName}</span>
+                  <span className="max-w-32 truncate text-caption font-medium text-foreground">{childName}</span>
                 </div>
               </div>
             </div>
 
-            {/* Centre stage: the teacher + the current answer (or the intro prompt) */}
-            <div className="relative flex flex-1 flex-col items-center justify-center px-6 text-center">
+            {/* Centre stage: the teacher (mouth-swap while speaking) + the answer / intro */}
+            <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
               <motion.img
-                src={chatTeacher}
+                src={teacherSrc}
                 alt=""
                 aria-hidden
-                className="h-40 w-auto drop-shadow-xl sm:h-48"
+                className="h-44 w-auto drop-shadow-lg sm:h-52"
                 animate={teacherAnimate}
                 transition={teacherTransition}
               />
 
               {lastBot ? (
-                <div ref={scrollRef} className="mt-5 max-h-44 w-full max-w-md overflow-y-auto">
-                  <p className="text-h3 font-medium leading-relaxed text-background">{lastBot.text}</p>
+                <div ref={scrollRef} className="mt-4 max-h-44 w-full max-w-md overflow-y-auto">
+                  <p className="text-h3 font-medium leading-relaxed text-foreground">{lastBot.text}</p>
                   {lastBot.module ? (
                     <button
                       type="button"
@@ -334,7 +344,7 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
                         navigate({ to: `/parent/child/${childId}/${lastBot.module}` as never });
                         closeAssistant();
                       }}
-                      className="mt-3 inline-flex items-center gap-1 rounded-full bg-background/10 px-3 py-1.5 text-caption font-medium text-background hover:bg-background/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-background/50"
+                      className="mt-3 inline-flex items-center gap-1 rounded-full bg-primary-50 px-3 py-1.5 text-caption font-medium text-primary-500 hover:bg-primary-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
                     >
                       {t("chat.view")}
                       <CaretRight className="size-3 rtl:rotate-180" aria-hidden />
@@ -343,20 +353,20 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
                 </div>
               ) : (
                 <>
-                  <h2 className="mt-5 text-h1 font-bold text-background">{t("chat.askTitle", { name: childName })}</h2>
-                  <p className="mt-2 max-w-xs text-body text-background/70">{t("chat.askSubtitle")}</p>
+                  <h2 className="mt-4 text-h1 font-bold text-foreground">{t("chat.askTitle", { name: childName })}</h2>
+                  <p className="mt-2 max-w-xs text-body text-muted-foreground">{t("chat.askSubtitle")}</p>
                 </>
               )}
 
               {pending ? (
-                <p className="mt-4 text-caption text-background/60">{t("chat.thinking")}</p>
+                <p className="mt-4 text-caption text-muted-foreground">{t("chat.thinking")}</p>
               ) : null}
             </div>
 
-            {/* Tap to speak — big mic, pulses while listening */}
+            {/* Tap to speak — big orange mic, pulses while listening */}
             {voice.recognitionSupported ? (
-              <div className="relative flex flex-col items-center gap-2 pb-2">
-                <span className="text-caption font-medium text-background/70">
+              <div className="flex flex-col items-center gap-2 pb-2">
+                <span className="text-caption font-medium text-muted-foreground">
                   {voice.listening ? t("chat.listening") : t("chat.micCta")}
                 </span>
                 <button
@@ -367,7 +377,7 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
                   className={cn(
                     "relative flex size-16 items-center justify-center rounded-full text-white shadow-lg",
                     "bg-gradient-to-br from-primary-400 to-primary-500",
-                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-background/60 disabled:opacity-50",
+                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 disabled:opacity-50",
                   )}
                 >
                   {voice.listening ? (
@@ -384,15 +394,15 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
             ) : null}
 
             {/* Suggested / most-asked questions — horizontal scroll like the reference */}
-            <div className="relative flex gap-2 overflow-x-auto px-4 py-3">
+            <div className="flex gap-2 overflow-x-auto px-4 py-3">
               {QUESTIONS.map((q) => (
                 <button
                   key={q}
                   type="button"
                   onClick={() => ask(q)}
                   className={cn(
-                    "shrink-0 whitespace-nowrap rounded-full bg-background/10 px-4 py-2 text-caption text-background",
-                    "hover:bg-background/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-background/50",
+                    "shrink-0 whitespace-nowrap rounded-full border border-border bg-card px-4 py-2 text-caption text-foreground",
+                    "hover:bg-primary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
                   )}
                 >
                   {t(`chat.q.${q}`, { name: childName })}
@@ -406,7 +416,7 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
                 e.preventDefault();
                 void submit(input);
               }}
-              className="relative flex items-center gap-2 px-4 pb-6 pt-1"
+              className="flex items-center gap-2 border-t border-border px-4 pb-6 pt-3"
             >
               <input
                 value={input}
@@ -415,8 +425,8 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
                 aria-label={t("chat.placeholder")}
                 disabled={pending}
                 className={cn(
-                  "flex-1 rounded-full border border-background/20 bg-background/10 px-4 py-2.5 text-body text-background",
-                  "placeholder:text-background/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-background/50 disabled:opacity-60",
+                  "flex-1 rounded-full border border-border bg-card px-4 py-2.5 text-body text-foreground",
+                  "placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 disabled:opacity-60",
                 )}
               />
               <button
@@ -425,7 +435,7 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
                 disabled={!input.trim() || pending}
                 className={cn(
                   "flex size-11 shrink-0 items-center justify-center rounded-full bg-primary-500 text-white",
-                  "transition-opacity disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-background/50",
+                  "transition-opacity disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
                 )}
               >
                 <PaperPlaneTilt weight="fill" className="size-5" aria-hidden />

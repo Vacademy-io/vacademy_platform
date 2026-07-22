@@ -431,9 +431,23 @@ public class CallingReportService {
                                     .leadStatusColor(rs.getString("lead_status_color"))
                                     .counsellorUserId(rs.getString("counsellor_user_id"))
                                     .build());
-            Map<String, String> names = fetchNames(rows.stream()
-                    .map(CallsByLeadResponseDTO.UncalledLeadRow::getCounsellorUserId).toList());
-            rows.forEach(r -> r.setCounsellorName(names.get(r.getCounsellorUserId())));
+            // One auth batch resolves counsellor names AND the lead identity for
+            // user-linked leads (their name/mobile live on the auth user, not on
+            // audience_response — parent_name is null for them).
+            Map<String, UserDTO> users = fetchUsers(rows.stream()
+                    .flatMap(r -> java.util.stream.Stream.of(
+                            r.getCounsellorUserId(),
+                            isBlank(r.getLeadName()) || isBlank(r.getLeadPhone()) ? r.getUserId() : null))
+                    .toList());
+            rows.forEach(r -> {
+                UserDTO c = users.get(r.getCounsellorUserId());
+                if (c != null) r.setCounsellorName(c.getFullName());
+                UserDTO u = users.get(r.getUserId());
+                if (u != null) {
+                    if (isBlank(r.getLeadName())) r.setLeadName(u.getFullName());
+                    if (isBlank(r.getLeadPhone())) r.setLeadPhone(u.getMobileNumber());
+                }
+            });
             out.uncalledRows(rows).totalRows(summary.getUncalledNewLeads());
         } else {
             List<CallsByLeadResponseDTO.CalledLeadRow> rows =
@@ -456,9 +470,21 @@ public class CallingReportService {
                                     .lastDispositionKey(rs.getString("last_disposition_key"))
                                     .nextCallbackAt(rs.getString("next_callback_at"))
                                     .build());
-            Map<String, String> names = fetchNames(rows.stream()
-                    .map(CallsByLeadResponseDTO.CalledLeadRow::getCounsellorUserId).toList());
-            rows.forEach(r -> r.setCounsellorName(names.get(r.getCounsellorUserId())));
+            // Same dual-purpose auth batch as the UNCALLED view (see above).
+            Map<String, UserDTO> users = fetchUsers(rows.stream()
+                    .flatMap(r -> java.util.stream.Stream.of(
+                            r.getCounsellorUserId(),
+                            isBlank(r.getLeadName()) || isBlank(r.getLeadPhone()) ? r.getUserId() : null))
+                    .toList());
+            rows.forEach(r -> {
+                UserDTO c = users.get(r.getCounsellorUserId());
+                if (c != null) r.setCounsellorName(c.getFullName());
+                UserDTO u = users.get(r.getUserId());
+                if (u != null) {
+                    if (isBlank(r.getLeadName())) r.setLeadName(u.getFullName());
+                    if (isBlank(r.getLeadPhone())) r.setLeadPhone(u.getMobileNumber());
+                }
+            });
             Long total = jdbc.queryForObject(CALLS_BY_LEAD_COUNT_SQL, params, Long.class);
             out.rows(rows).totalRows(total == null ? 0 : total);
         }
@@ -607,22 +633,33 @@ public class CallingReportService {
     }
 
     /**
-     * Batch display-name hydration via auth-service (cross-DB — never JOIN
-     * users in admin_core SQL). One HTTP call; failure leaves names null
-     * instead of failing the report.
+     * Batch user hydration via auth-service (cross-DB — never JOIN users in
+     * admin_core SQL). One HTTP call; failure leaves the map empty (names/
+     * phones stay null) instead of failing the report.
      */
-    private Map<String, String> fetchNames(Collection<String> userIds) {
+    private Map<String, UserDTO> fetchUsers(Collection<String> userIds) {
         List<String> ids = userIds.stream().filter(id -> id != null && !id.isBlank()).distinct().toList();
         if (ids.isEmpty()) return Map.of();
-        Map<String, String> out = new HashMap<>();
+        Map<String, UserDTO> out = new HashMap<>();
         try {
             for (UserDTO u : authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(ids))) {
-                if (u != null && u.getId() != null) out.put(u.getId(), u.getFullName());
+                if (u != null && u.getId() != null) out.put(u.getId(), u);
             }
         } catch (Exception e) {
-            log.warn("[CallingReport] counsellor name hydration failed: {}", e.getMessage());
+            log.warn("[CallingReport] auth user hydration failed: {}", e.getMessage());
         }
         return out;
+    }
+
+    /** Display-name view over {@link #fetchUsers}. */
+    private Map<String, String> fetchNames(Collection<String> userIds) {
+        Map<String, String> out = new HashMap<>();
+        fetchUsers(userIds).forEach((id, u) -> out.put(id, u.getFullName()));
+        return out;
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 
     private static LocalDate parseOr(String iso, LocalDate fallback) {

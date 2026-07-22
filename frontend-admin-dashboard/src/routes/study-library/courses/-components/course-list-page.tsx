@@ -580,7 +580,7 @@ const CourseListPage = ({
                                             })
                                         }
                                     >
-                                        <div className="relative flex aspect-video w-full flex-shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br from-primary-50 via-primary-100/50 to-white">
+                                        <div className="relative flex aspect-[2/1] w-full flex-shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br from-primary-50 via-primary-100/50 to-white">
                                             {isLoadingImages ? (
                                                 <CourseImageShimmer />
                                             ) : courseImageUrls[course.id] ? (
@@ -875,7 +875,7 @@ const CourseListPage = ({
                                             })
                                         }
                                     >
-                                        <div className="relative flex aspect-video w-full flex-shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br from-primary-50 via-primary-100/50 to-white">
+                                        <div className="relative flex aspect-[2/1] w-full flex-shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br from-primary-50 via-primary-100/50 to-white">
                                             {isLoadingImages ? (
                                                 <CourseImageShimmer />
                                             ) : courseImageUrls[course.id] ? (

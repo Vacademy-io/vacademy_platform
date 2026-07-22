@@ -33,6 +33,15 @@ public class UnifiedSendRequest {
 
     private SendOptions options;
 
+    /**
+     * When TRUE, the send is queued to the durable batch processor regardless of
+     * recipient count. Bulk callers (audience blasts, list bulk-actions) must set
+     * this: a multi-recipient sync send loops one provider call per recipient and
+     * can outlive the internal 30s HTTP read timeout, surfacing as a 510 to the
+     * caller even though delivery continues server-side.
+     */
+    private Boolean forceAsync;
+
     @Data
     @Builder
     @NoArgsConstructor

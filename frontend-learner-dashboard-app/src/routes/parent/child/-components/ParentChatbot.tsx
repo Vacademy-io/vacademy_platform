@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
-  Robot,
+  ChalkboardTeacher,
   CaretRight,
   PaperPlaneTilt,
   Microphone,
@@ -170,14 +170,14 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
             "transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
           )}
         >
-          <Robot weight="fill" size={28} aria-hidden />
+          <ChalkboardTeacher weight="fill" size={28} aria-hidden />
         </button>
       </SheetTrigger>
 
       <SheetContent side="bottom" className="mx-auto max-w-2xl rounded-t-2xl">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <Robot weight="duotone" className="size-5 text-primary-500" aria-hidden />
+            <ChalkboardTeacher weight="duotone" className="size-5 text-primary-500" aria-hidden />
             {t("chat.title")}
             {voice.speechSupported ? (
               <button

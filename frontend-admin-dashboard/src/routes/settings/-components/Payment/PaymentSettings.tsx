@@ -35,6 +35,7 @@ import { DAYS_IN_MONTH } from '../../-constants/terms';
 import { useCreateCPO } from '@/routes/financial-management/fee-plans/-services/cpo-service';
 import { buildCreateCPOPayload } from '@/routes/financial-management/fee-plans/-components/CreateCPODialog';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import PackageSessionRenewalSettings from './PackageSessionRenewalSettings';
 
 interface Interval {
     price: string;
@@ -670,6 +671,10 @@ const PaymentSettings = () => {
                     </div>
                 </CardContent>
             </Card>
+
+            <div className="mt-6">
+                <PackageSessionRenewalSettings />
+            </div>
 
             <PaymentPlanCreator
                 key={editingPlan?.id}

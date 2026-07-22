@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import chatTeacher from "@/assets/parent-icons/chat-teacher.webp";
 import {
-  ChalkboardTeacher,
   CaretRight,
   PaperPlaneTilt,
   Microphone,
@@ -12,15 +11,10 @@ import {
   SpeakerSlash,
   House,
   Eye,
+  X,
 } from "@phosphor-icons/react";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { ChildAvatar } from "./ChildAvatar";
 import { useChildOverview } from "../-hooks/use-parent-child";
 import { askChildAssistant } from "../-services/parent-portal-api";
 import { useParentVoice } from "../-lib/use-parent-voice";
@@ -71,6 +65,7 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
   const { viewAsChild, switching: switchingToChild } = useViewAsChild(childId, childName);
   const voice = useParentVoice(i18n.language);
   const { data: overview } = useChildOverview(childId);
+  const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
@@ -164,8 +159,41 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
     });
   };
 
+  const closeAssistant = () => {
+    voice.cancelSpeak();
+    voice.stopListen();
+    setOpen(false);
+  };
+
+  // Esc closes the full-screen assistant.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeAssistant();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // The most recent answer drives the centre text + the "speaking" teacher.
+  const lastBot = [...messages].reverse().find((m) => m.role === "bot");
+
+  // Teacher motion: talkative bob while speaking, gentle sway while listening,
+  // slow idle float otherwise — so it visibly "speaks" the answer.
+  const teacherAnimate = voice.speaking
+    ? { scale: [1, 1.07, 1], rotate: [0, -3, 3, -2, 2, 0] }
+    : voice.listening
+      ? { scale: [1, 1.04, 1] }
+      : { y: [0, -8, 0] };
+  const teacherTransition = voice.speaking
+    ? { duration: 0.6, repeat: Infinity, ease: "easeInOut" as const }
+    : voice.listening
+      ? { duration: 1.1, repeat: Infinity, ease: "easeInOut" as const }
+      : { duration: 3.5, repeat: Infinity, ease: "easeInOut" as const };
+
   return (
-    <Sheet onOpenChange={(open) => { if (!open) voice.cancelSpeak(); }}>
+    <>
       {/* Mobile bottom navigation: Home · Ask (teacher bot) · Student view */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 pb-safe backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-end justify-around px-4 pb-1.5 pt-2">
@@ -178,36 +206,36 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
               "transition-colors hover:text-primary-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
             )}
           >
-            <House weight="fill" className="size-6" aria-hidden />
+            <House weight="fill" className="size-7" aria-hidden />
             <span className="text-caption font-medium">{t("nav.home")}</span>
           </button>
 
-          {/* Centre bot — raised above the bar, same attention animation as the old FAB */}
+          {/* Centre bot — raised above the bar, same attention animation as before */}
           <div className="flex flex-1 flex-col items-center">
-            <SheetTrigger asChild>
-              <motion.button
-                aria-label={t("chat.open")}
-                data-tour="parent-chat"
-                className={cn(
-                  "relative -mt-8 flex size-16 items-center justify-center rounded-full",
-                  "bg-gradient-to-br from-primary-50 to-secondary-50 shadow-lg ring-4 ring-background",
-                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
-                )}
-                animate={{ rotate: [0, -7, 7, -5, 5, 0], scale: [1, 1.06, 1] }}
-                transition={{ duration: 1.4, repeat: Infinity, repeatDelay: 3.2, ease: "easeInOut" }}
-                whileHover={{ scale: 1.08, rotate: 0 }}
-                whileTap={{ scale: 0.94 }}
-              >
-                {/* Pulsing halo — a soft ripple that keeps drawing attention. */}
-                <motion.span
-                  aria-hidden
-                  className="absolute inset-0 rounded-full bg-primary-300/40"
-                  animate={{ scale: [1, 1.55], opacity: [0.45, 0] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
-                />
-                <img src={chatTeacher} alt="" aria-hidden className="relative size-full object-contain p-1" />
-              </motion.button>
-            </SheetTrigger>
+            <motion.button
+              type="button"
+              onClick={() => setOpen(true)}
+              aria-label={t("chat.open")}
+              data-tour="parent-chat"
+              className={cn(
+                "relative -mt-8 flex size-16 items-center justify-center rounded-full",
+                "bg-gradient-to-br from-primary-50 to-secondary-50 shadow-lg ring-4 ring-background",
+                "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
+              )}
+              animate={{ rotate: [0, -7, 7, -5, 5, 0], scale: [1, 1.06, 1] }}
+              transition={{ duration: 1.4, repeat: Infinity, repeatDelay: 3.2, ease: "easeInOut" }}
+              whileHover={{ scale: 1.08, rotate: 0 }}
+              whileTap={{ scale: 0.94 }}
+            >
+              {/* Pulsing halo — a soft ripple that keeps drawing attention. */}
+              <motion.span
+                aria-hidden
+                className="absolute inset-0 rounded-full bg-primary-300/40"
+                animate={{ scale: [1, 1.55], opacity: [0.45, 0] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
+              />
+              <img src={chatTeacher} alt="" aria-hidden className="relative size-full object-contain p-1" />
+            </motion.button>
             <span className="mt-0.5 text-caption font-semibold text-primary-500">{t("nav.ask")}</span>
           </div>
 
@@ -228,144 +256,184 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
         </div>
       </nav>
 
-      <SheetContent side="bottom" className="mx-auto max-w-2xl rounded-t-2xl">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
-            <ChalkboardTeacher weight="duotone" className="size-5 text-primary-500" aria-hidden />
-            {t("chat.title")}
-            {voice.speechSupported ? (
+      {/* Full-screen voice assistant — teacher speaks the answer, tap-to-speak, suggested questions */}
+      <AnimatePresence>
+        {open ? (
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("chat.title")}
+            className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-foreground"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+          >
+            {/* Warm glow so the dark stage still feels on-brand */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary-500/30 via-transparent to-secondary-500/20"
+            />
+
+            {/* Header: close · mute · child chip */}
+            <div className="relative flex items-center justify-between gap-2 px-4 pb-2 pt-5">
               <button
                 type="button"
-                onClick={() => {
-                  voice.cancelSpeak();
-                  setMuted((m) => !m);
-                }}
-                aria-label={muted ? t("chat.unmute") : t("chat.mute")}
-                aria-pressed={muted}
-                className="ms-auto flex size-8 items-center justify-center rounded-full text-primary-500 hover:bg-primary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+                onClick={closeAssistant}
+                aria-label={t("common.back")}
+                className="flex size-9 items-center justify-center rounded-full bg-background/10 text-background hover:bg-background/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-background/50"
               >
-                {muted ? (
-                  <SpeakerSlash weight="fill" className="size-4" aria-hidden />
-                ) : (
-                  <SpeakerHigh weight="fill" className="size-4" aria-hidden />
-                )}
+                <X weight="bold" className="size-5" aria-hidden />
               </button>
-            ) : null}
-          </SheetTitle>
-        </SheetHeader>
-
-        <div ref={scrollRef} className="mt-2 flex max-h-72 flex-col gap-2 overflow-y-auto py-2">
-          <div className="self-start rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-body text-foreground">
-            {t("chat.greeting", { name: childName })}
-          </div>
-          {messages.map((m) =>
-            m.role === "user" ? (
-              <div key={m.id} className="self-end rounded-2xl rounded-br-sm bg-primary-500 px-3 py-2 text-body text-primary-50">
-                {m.text}
-              </div>
-            ) : (
-              <div key={m.id} className="flex flex-col items-start gap-1">
-                <div className="rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-body text-foreground">
-                  {m.text}
+              <div className="flex items-center gap-2">
+                {voice.speechSupported ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      voice.cancelSpeak();
+                      setMuted((m) => !m);
+                    }}
+                    aria-label={muted ? t("chat.unmute") : t("chat.mute")}
+                    aria-pressed={muted}
+                    className="flex size-9 items-center justify-center rounded-full bg-background/10 text-background hover:bg-background/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-background/50"
+                  >
+                    {muted ? (
+                      <SpeakerSlash weight="fill" className="size-5" aria-hidden />
+                    ) : (
+                      <SpeakerHigh weight="fill" className="size-5" aria-hidden />
+                    )}
+                  </button>
+                ) : null}
+                <div className="flex items-center gap-2 rounded-full bg-background/10 py-1 pe-3 ps-1">
+                  <span className="size-7 shrink-0 overflow-hidden rounded-full">
+                    <ChildAvatar name={childName} size={28} />
+                  </span>
+                  <span className="max-w-32 truncate text-caption font-medium text-background">{childName}</span>
                 </div>
-                <div className="ms-1 flex items-center gap-3">
-                  {voice.speechSupported ? (
+              </div>
+            </div>
+
+            {/* Centre stage: the teacher + the current answer (or the intro prompt) */}
+            <div className="relative flex flex-1 flex-col items-center justify-center px-6 text-center">
+              <motion.img
+                src={chatTeacher}
+                alt=""
+                aria-hidden
+                className="h-40 w-auto drop-shadow-xl sm:h-48"
+                animate={teacherAnimate}
+                transition={teacherTransition}
+              />
+
+              {lastBot ? (
+                <div ref={scrollRef} className="mt-5 max-h-44 w-full max-w-md overflow-y-auto">
+                  <p className="text-h3 font-medium leading-relaxed text-background">{lastBot.text}</p>
+                  {lastBot.module ? (
                     <button
-                      onClick={() => voice.speak(m.text)}
-                      aria-label={t("chat.speak")}
-                      className="inline-flex items-center gap-1 text-caption font-medium text-primary-500 focus:outline-none focus-visible:underline"
-                    >
-                      <SpeakerHigh weight="fill" className="size-3.5" aria-hidden />
-                      {t("chat.speak")}
-                    </button>
-                  ) : null}
-                  {m.module ? (
-                    <button
-                      onClick={() => navigate({ to: `/parent/child/${childId}/${m.module}` as never })}
-                      className="inline-flex items-center gap-1 text-caption font-medium text-primary-500 focus:outline-none focus-visible:underline"
+                      type="button"
+                      onClick={() => {
+                        navigate({ to: `/parent/child/${childId}/${lastBot.module}` as never });
+                        closeAssistant();
+                      }}
+                      className="mt-3 inline-flex items-center gap-1 rounded-full bg-background/10 px-3 py-1.5 text-caption font-medium text-background hover:bg-background/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-background/50"
                     >
                       {t("chat.view")}
                       <CaretRight className="size-3 rtl:rotate-180" aria-hidden />
                     </button>
                   ) : null}
                 </div>
-              </div>
-            ),
-          )}
-          {pending ? (
-            <div className="self-start rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-body text-muted-foreground">
-              {t("chat.thinking")}
-            </div>
-          ) : null}
-        </div>
-
-        {/* Preset questions ("basic questionnaire") */}
-        <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-          {QUESTIONS.map((q) => (
-            <button
-              key={q}
-              onClick={() => ask(q)}
-              className={cn(
-                "rounded-full border border-border bg-card px-3 py-1.5 text-caption text-foreground",
-                "transition-colors hover:bg-primary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
+              ) : (
+                <>
+                  <h2 className="mt-5 text-h1 font-bold text-background">{t("chat.askTitle", { name: childName })}</h2>
+                  <p className="mt-2 max-w-xs text-body text-background/70">{t("chat.askSubtitle")}</p>
+                </>
               )}
+
+              {pending ? (
+                <p className="mt-4 text-caption text-background/60">{t("chat.thinking")}</p>
+              ) : null}
+            </div>
+
+            {/* Tap to speak — big mic, pulses while listening */}
+            {voice.recognitionSupported ? (
+              <div className="relative flex flex-col items-center gap-2 pb-2">
+                <span className="text-caption font-medium text-background/70">
+                  {voice.listening ? t("chat.listening") : t("chat.micCta")}
+                </span>
+                <button
+                  type="button"
+                  onClick={toggleMic}
+                  aria-pressed={voice.listening}
+                  disabled={pending}
+                  className={cn(
+                    "relative flex size-16 items-center justify-center rounded-full text-white shadow-lg",
+                    "bg-gradient-to-br from-primary-400 to-primary-500",
+                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-background/60 disabled:opacity-50",
+                  )}
+                >
+                  {voice.listening ? (
+                    <motion.span
+                      aria-hidden
+                      className="absolute inset-0 rounded-full bg-primary-300/50"
+                      animate={{ scale: [1, 1.7], opacity: [0.5, 0] }}
+                      transition={{ duration: 1.2, repeat: Infinity, ease: "easeOut" }}
+                    />
+                  ) : null}
+                  <Microphone weight="fill" className="relative size-7" aria-hidden />
+                </button>
+              </div>
+            ) : null}
+
+            {/* Suggested / most-asked questions — horizontal scroll like the reference */}
+            <div className="relative flex gap-2 overflow-x-auto px-4 py-3">
+              {QUESTIONS.map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => ask(q)}
+                  className={cn(
+                    "shrink-0 whitespace-nowrap rounded-full bg-background/10 px-4 py-2 text-caption text-background",
+                    "hover:bg-background/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-background/50",
+                  )}
+                >
+                  {t(`chat.q.${q}`, { name: childName })}
+                </button>
+              ))}
+            </div>
+
+            {/* Type instead (accessibility fallback) */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void submit(input);
+              }}
+              className="relative flex items-center gap-2 px-4 pb-6 pt-1"
             >
-              {t(`chat.q.${q}`, { name: childName })}
-            </button>
-          ))}
-        </div>
-
-        {/* Primary call-to-action: speak. Big, highlighted, pulses while listening. */}
-        {voice.recognitionSupported ? (
-          <button
-            type="button"
-            onClick={toggleMic}
-            aria-pressed={voice.listening}
-            disabled={pending}
-            className={cn(
-              "mt-3 flex w-full items-center justify-center gap-2 rounded-full py-3 text-body font-semibold shadow-sm",
-              "transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 disabled:opacity-50",
-              voice.listening ? "animate-pulse bg-danger-500 text-white" : "bg-primary-500 text-primary-50",
-            )}
-          >
-            <Microphone weight="fill" className="size-5" aria-hidden />
-            {voice.listening ? t("chat.listening") : t("chat.micCta")}
-          </button>
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder={t("chat.placeholder")}
+                aria-label={t("chat.placeholder")}
+                disabled={pending}
+                className={cn(
+                  "flex-1 rounded-full border border-background/20 bg-background/10 px-4 py-2.5 text-body text-background",
+                  "placeholder:text-background/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-background/50 disabled:opacity-60",
+                )}
+              />
+              <button
+                type="submit"
+                aria-label={t("chat.send")}
+                disabled={!input.trim() || pending}
+                className={cn(
+                  "flex size-11 shrink-0 items-center justify-center rounded-full bg-primary-500 text-white",
+                  "transition-opacity disabled:opacity-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-background/50",
+                )}
+              >
+                <PaperPlaneTilt weight="fill" className="size-5" aria-hidden />
+              </button>
+            </form>
+          </motion.div>
         ) : null}
-
-        {/* Or type */}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void submit(input);
-          }}
-          className="mt-2 flex items-center gap-2"
-        >
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={voice.listening ? t("chat.listening") : t("chat.placeholder")}
-            aria-label={t("chat.open")}
-            disabled={pending}
-            className={cn(
-              "flex-1 rounded-full border border-border bg-card px-4 py-2 text-body text-foreground",
-              "placeholder:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
-              "disabled:opacity-60",
-            )}
-          />
-          <button
-            type="submit"
-            aria-label={t("chat.send")}
-            disabled={!input.trim() || pending}
-            className={cn(
-              "flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-500 text-primary-50",
-              "transition-opacity disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
-            )}
-          >
-            <PaperPlaneTilt weight="fill" className="size-4" aria-hidden />
-          </button>
-        </form>
-      </SheetContent>
-    </Sheet>
+      </AnimatePresence>
+    </>
   );
 }

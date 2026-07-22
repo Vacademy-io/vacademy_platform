@@ -93,6 +93,8 @@
     "open": "Ask about your child",
     "title": "Quick answers",
     "greeting": "Hi! Tap a question to learn about {{name}}.",
+    "askTitle": "اسأل أي شيء عن {{name}}",
+    "askSubtitle": "اضغط الزر وتحدث بلغتك.",
     "view": "View",
     "q": {
       "attendance": "How is attendance?",

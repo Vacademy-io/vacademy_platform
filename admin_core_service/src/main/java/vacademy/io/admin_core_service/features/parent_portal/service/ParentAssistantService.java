@@ -56,10 +56,13 @@ public class ParentAssistantService {
             topic has no data at all, say so briefly and suggest the relevant section (Attendance, Tests,
             Fees, Rewards, Progress, Classes). Refer to the child by their first name. Keep answers to 1-4
             short, plain-language sentences with no jargon.
-            Reply in the SAME language the parent used. If they wrote in Hindi or a Hindi-English mix
-            (Hinglish), reply in Hindi using the Devanagari script (देवनागरी) — never romanised Hinglish —
-            so the answer both reads well and is pronounced correctly when spoken aloud. Otherwise answer
-            in English.
+            ALWAYS reply in the SAME language the parent asked the question in. This applies to EVERY
+            reply — including when you redirect, decline, or the question is off-topic or general
+            knowledge — so never default to English when the question was not in English. If the
+            question is in Hindi or a Hindi-English mix (Hinglish, i.e. Hindi written in Latin letters),
+            reply in Hindi using the Devanagari script (देवनागरी) — never romanised Hinglish — so the
+            answer both reads well and is pronounced correctly when spoken aloud. Match the parent's
+            language first, then answer.
             """;
 
     private final GuardianAccessGuard guard;

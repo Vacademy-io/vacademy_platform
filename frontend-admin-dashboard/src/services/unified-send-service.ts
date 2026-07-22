@@ -50,6 +50,13 @@ export interface UnifiedSendRequest {
     languageCode?: string;
     recipients: UnifiedSendRecipient[];
     options?: UnifiedSendOptions;
+    /**
+     * Queue the send as a durable batch even under the 100-recipient sync
+     * threshold. Set this for bulk sends — the sync path sends one provider
+     * call per recipient inside the request and can hit gateway/internal
+     * timeouts; the response then carries batchId for polling.
+     */
+    forceAsync?: boolean;
 }
 
 export interface RecipientResult {

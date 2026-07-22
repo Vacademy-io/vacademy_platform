@@ -20,6 +20,7 @@ import { useState, useRef } from 'react';
 import { getInstituteId } from '@/constants/helper';
 import { Input } from '@/components/ui/input';
 import { ImageSquare, X } from '@phosphor-icons/react';
+import { ImageCropperDialog } from '@/components/design-system/image-cropper-dialog';
 
 const formSchema = z.object({
     subjectName: z.string().min(1, 'Subject name is required'),
@@ -43,6 +44,8 @@ export const AddSubjectForm = ({ onSubmitSuccess, initialValues }: AddSubjectFor
     );
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string>('');
+    const [cropperOpen, setCropperOpen] = useState(false);
+    const [cropSrc, setCropSrc] = useState<string>('');
 
     const form = useForm<FormValues>({
         resolver: zodResolver(formSchema),
@@ -54,17 +57,25 @@ export const AddSubjectForm = ({ onSubmitSuccess, initialValues }: AddSubjectFor
 
     const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
-        if (file) {
-            setSelectedFile(file);
-            // Create preview URL
+        if (file && file.type.startsWith('image/')) {
+            // Open the cropper on the raw image; the cropped result becomes the upload
             const url = URL.createObjectURL(file);
-            setPreviewUrl(url);
+            setCropSrc(url);
+            setCropperOpen(true);
         }
+    };
+
+    const handleImageCropped = (croppedFile: File) => {
+        setSelectedFile(croppedFile);
+        const url = URL.createObjectURL(croppedFile);
+        setPreviewUrl(url);
+        setCropperOpen(false);
     };
 
     const clearSelectedFile = () => {
         setSelectedFile(null);
         setPreviewUrl('');
+        setCropSrc('');
         setUploadedImageId('');
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
@@ -166,14 +177,16 @@ export const AddSubjectForm = ({ onSubmitSuccess, initialValues }: AddSubjectFor
                                 <p className="mb-1 text-sm text-gray-600">
                                     Click to upload an image
                                 </p>
-                                <p className="text-xs text-gray-400">PNG, JPG, GIF up to 10MB</p>
+                                <p className="text-xs text-gray-400">
+                                    PNG, JPG, GIF up to 10MB · 16:9 recommended
+                                </p>
                             </div>
                         ) : (
                             <div className="relative">
                                 <img
                                     src={previewUrl}
                                     alt="Preview"
-                                    className="h-32 w-full rounded-lg border object-cover"
+                                    className="aspect-video w-full rounded-lg border object-cover"
                                 />
                                 <button
                                     type="button"
@@ -199,6 +212,20 @@ export const AddSubjectForm = ({ onSubmitSuccess, initialValues }: AddSubjectFor
                     </MyButton>
                 </div>
             </form>
+
+            {/* Image Cropper Dialog */}
+            {cropSrc && (
+                <ImageCropperDialog
+                    open={cropperOpen}
+                    onOpenChange={setCropperOpen}
+                    src={cropSrc}
+                    aspectRatio={16 / 9} // 16:9 ratio to match the display tile (no crop on display)
+                    title="Crop Subject Thumbnail"
+                    outputMimeType="image/jpeg"
+                    outputQuality={0.9}
+                    onCropped={handleImageCropped}
+                />
+            )}
         </Form>
     );
 };

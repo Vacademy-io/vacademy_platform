@@ -128,6 +128,121 @@ export async function fetchCallsHeatmap(p: CallingReportParams): Promise<CallsHe
     return { cells: Array.isArray(data?.cells) ? data.cells : [] };
 }
 
+// ── GET /v1/reports/calls-by-lead ──────────────────────────────────────
+
+export type CallsByLeadView = 'CALLED' | 'UNCALLED';
+
+export interface CallsByLeadParams extends CallingReportParams {
+    audienceId?: string;
+    /** Substring match on lead name / mobile. */
+    search?: string;
+    view: CallsByLeadView;
+    page: number;
+    size: number;
+}
+
+export interface CallsByLeadSummary {
+    leads_called: number;
+    total_dials: number;
+    leads_connected: number;
+    leads_callback: number;
+    leads_never_connected: number;
+    uncalled_new_leads: number;
+}
+
+export interface CalledLeadRow {
+    response_id: string;
+    user_id: string | null;
+    lead_name: string | null;
+    lead_phone: string | null;
+    lead_status_label: string | null;
+    lead_status_color: string | null;
+    counsellor_user_id: string | null;
+    counsellor_name: string | null;
+    attempts: number;
+    connected: number;
+    callbacks: number;
+    not_picked: number;
+    failed: number;
+    /** ISO-8601 UTC. */
+    last_call_at: string | null;
+    last_call_status: string | null;
+    last_disposition_key: string | null;
+    next_callback_at: string | null;
+}
+
+export interface UncalledLeadRow {
+    response_id: string;
+    user_id: string | null;
+    lead_name: string | null;
+    lead_phone: string | null;
+    source_type: string | null;
+    /** ISO-8601 UTC. */
+    submitted_at: string | null;
+    lead_status_label: string | null;
+    lead_status_color: string | null;
+    counsellor_user_id: string | null;
+    counsellor_name: string | null;
+}
+
+export interface CallsByLeadReport {
+    summary: CallsByLeadSummary;
+    rows: CalledLeadRow[];
+    uncalled_rows: UncalledLeadRow[];
+    total_rows: number;
+    page: number;
+    size: number;
+}
+
+const CALLS_BY_LEAD_URL = `${BASE_URL}/admin-core-service/v1/reports/calls-by-lead`;
+
+export const callsByLeadQueryKey = (p: CallsByLeadParams) =>
+    [
+        'crm-reports-calls-by-lead',
+        p.instituteId,
+        p.fromDate,
+        p.toDate,
+        p.teamId,
+        p.counsellorUserId,
+        p.audienceId,
+        p.search,
+        p.view,
+        p.page,
+        p.size,
+    ] as const;
+
+export async function fetchCallsByLead(p: CallsByLeadParams): Promise<CallsByLeadReport> {
+    const { data } = await authenticatedAxiosInstance.get(CALLS_BY_LEAD_URL, {
+        params: {
+            instituteId: p.instituteId,
+            fromDate: p.fromDate,
+            toDate: p.toDate,
+            teamId: p.teamId,
+            counsellorUserId: p.counsellorUserId,
+            audienceId: p.audienceId,
+            search: p.search || undefined,
+            view: p.view,
+            page: p.page,
+            size: p.size,
+        },
+    });
+    return {
+        summary: {
+            leads_called: data?.summary?.leads_called ?? 0,
+            total_dials: data?.summary?.total_dials ?? 0,
+            leads_connected: data?.summary?.leads_connected ?? 0,
+            leads_callback: data?.summary?.leads_callback ?? 0,
+            leads_never_connected: data?.summary?.leads_never_connected ?? 0,
+            uncalled_new_leads: data?.summary?.uncalled_new_leads ?? 0,
+        },
+        rows: Array.isArray(data?.rows) ? data.rows : [],
+        uncalled_rows: Array.isArray(data?.uncalled_rows) ? data.uncalled_rows : [],
+        total_rows: data?.total_rows ?? 0,
+        page: data?.page ?? 0,
+        size: data?.size ?? p.size,
+    };
+}
+
 // ── Error classification ───────────────────────────────────────────────
 
 /**

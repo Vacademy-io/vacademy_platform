@@ -322,6 +322,8 @@ export const GET_LEAD_FOLLOWUPS = (audienceResponseId: string) =>
     `${FOLLOWUP_BASE}/${audienceResponseId}`;
 export const CREATE_LEAD_FOLLOWUP = FOLLOWUP_BASE;
 export const CLOSE_LEAD_FOLLOWUP = (id: string) => `${FOLLOWUP_BASE}/${id}/close`;
+// Caller's own open follow-ups (no instituteId → backend scopes to created_by=caller).
+export const MY_PENDING_LEAD_FOLLOWUPS = `${FOLLOWUP_BASE}/my-pending`;
 export const UPDATE_LEAD_FOLLOWUP = (id: string) => `${FOLLOWUP_BASE}/${id}`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 export const SUBMIT_AUDIENCE_LEAD_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;

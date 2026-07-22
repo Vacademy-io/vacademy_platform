@@ -11,6 +11,7 @@ export const REPORT_TABS = [
     'funnel',
     'dispositions',
     'calling',
+    'lead-calls',
     'call-intelligence',
     'activity',
     'followups',

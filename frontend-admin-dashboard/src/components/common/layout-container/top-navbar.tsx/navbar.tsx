@@ -84,6 +84,8 @@ import { getSubOrgInstituteQuery } from '@/services/student-list-section/getInst
 import { LanguageDropdown } from '@/components/common/localization/language-dropdown';
 import { useLanguageStore } from '@/stores/localization/useLanguageStore';
 import { getEnabledLocales } from '@/services/language-settings';
+import { dueLabel, useDueFollowupReminders } from '@/components/shared/leads/followup-reminders';
+import { Alarm } from '@phosphor-icons/react';
 
 export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolean }) {
     const roleColors: Record<string, string> = {
@@ -158,6 +160,11 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
     const unreadCount = useMemo(() => {
         return alertsList?.content?.reduce((acc, item) => acc + (item.isRead ? 0 : 1), 0) || 0;
     }, [alertsList]);
+
+    // Due/overdue follow-ups (own only) — surfaced above the alerts and
+    // counted in the bell badge so a due follow-up is impossible to miss.
+    const { due: dueFollowups } = useDueFollowupReminders();
+    const bellCount = unreadCount + dueFollowups.length;
 
     const markVisibleAlertsAsRead = async () => {
         if (!userId) return;
@@ -593,9 +600,9 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                     isCompact ? 'size-4' : 'size-4 md:size-5'
                                 )}
                             />
-                            {!!unreadCount && (
+                            {!!bellCount && (
                                 <span className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white">
-                                    {unreadCount}
+                                    {bellCount}
                                 </span>
                             )}
                         </div>
@@ -606,6 +613,66 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                             isMobile ? 'w-[calc(100vw-2rem)] max-w-[320px]' : 'w-80'
                         )}
                     >
+                        {/* Due follow-up reminders — pinned above the alerts. */}
+                        {dueFollowups.length > 0 && (
+                            <>
+                                <div className="flex items-center justify-between bg-warning-50 px-3 py-2">
+                                    <span className="flex items-center gap-1.5 text-sm font-medium text-warning-700">
+                                        <Alarm size={15} weight="bold" />
+                                        Follow-ups due ({dueFollowups.length})
+                                    </span>
+                                    <button
+                                        className="text-xs text-primary-500 hover:underline"
+                                        onClick={() =>
+                                            navigate({ to: '/audience-manager/follow-ups' })
+                                        }
+                                    >
+                                        View all
+                                    </button>
+                                </div>
+                                <div className="max-h-40 overflow-y-auto p-2">
+                                    {dueFollowups.slice(0, 4).map((f) => {
+                                        const due = dueLabel(f.schedule_time);
+                                        return (
+                                            <button
+                                                key={f.id}
+                                                className="flex w-full items-center justify-between gap-2 rounded-md p-2 text-left hover:bg-neutral-100"
+                                                onClick={() =>
+                                                    navigate({ to: '/audience-manager/follow-ups' })
+                                                }
+                                            >
+                                                <span className="min-w-0">
+                                                    <span className="block truncate text-xs font-medium text-neutral-800">
+                                                        {f.lead_name ?? 'Lead'}
+                                                    </span>
+                                                    {f.lead_mobile && (
+                                                        <span className="block text-caption text-neutral-500">
+                                                            {f.lead_mobile}
+                                                        </span>
+                                                    )}
+                                                </span>
+                                                <span
+                                                    className={cn(
+                                                        'shrink-0 rounded px-1.5 py-0.5 text-caption font-medium',
+                                                        due.tone === 'overdue'
+                                                            ? 'bg-danger-100 text-danger-700'
+                                                            : 'bg-warning-100 text-warning-700'
+                                                    )}
+                                                >
+                                                    {due.text}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                    {dueFollowups.length > 4 && (
+                                        <p className="p-1 text-center text-caption text-neutral-500">
+                                            +{dueFollowups.length - 4} more due
+                                        </p>
+                                    )}
+                                </div>
+                                <Separator />
+                            </>
+                        )}
                         <div className="flex items-center justify-between px-3 py-2">
                             <span className="text-sm font-medium">System Alerts</span>
                             <div className="flex items-center gap-3">

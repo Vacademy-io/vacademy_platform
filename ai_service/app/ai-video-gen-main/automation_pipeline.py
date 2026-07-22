@@ -821,7 +821,7 @@ try:
 except ImportError:
     # Fallback when `app/` isn't on path (legacy / standalone). Keep the
     # numeric default in lockstep with `ai_video_constants.py`.
-    AI_VIDEO_PER_VIDEO_COST_CAP_USD = 8.00
+    AI_VIDEO_PER_VIDEO_COST_CAP_USD = 24.00
 
 QUALITY_TIERS: dict[str, dict[str, Any]] = {
     "free": {
@@ -18771,13 +18771,30 @@ class VideoGenerationPipeline:
                             pass
                         return [_av_entry], {}
                     else:
-                        # Failure — downgrade to a non-AI shot type and fall
-                        # through to the LLM path. The cost tracker already
-                        # refunded the reservation (orchestrator handles it).
-                        _fallback_st = "VIDEO_HERO" if shot.get("video_query") else "IMAGE_HERO"
+                        # Failure (fal error, budget/cap exhausted, safety
+                        # block) — downgrade to a non-AI shot type. The cost
+                        # tracker already refunded the reservation.
+                        # Prefer a MOVING fallback: keep the video aesthetic by
+                        # demoting to VIDEO_HERO (stock footage) rather than a
+                        # dead still. The planner card requires video_query, but
+                        # a manually-flipped shot or a dropped field may lack
+                        # it — derive one from the shot's description so an
+                        # exhausted AI shot still lands on relevant footage,
+                        # never a static image.
+                        _fb_query = str(shot.get("video_query") or "").strip()
+                        if not _fb_query:
+                            _fb_query = " ".join(
+                                str(shot.get(k) or "").strip()
+                                for k in ("visual_description", "scene_description",
+                                          "narration_excerpt")
+                            ).strip()[:120]
+                            if _fb_query:
+                                shot["video_query"] = _fb_query
+                        _fallback_st = "VIDEO_HERO" if _fb_query else "IMAGE_HERO"
                         print(
                             f"   ⚠️  {_log_label} AI_VIDEO_HERO {_av_result.error_class}: "
                             f"{_av_result.error} — falling back to {_fallback_st}"
+                            + ("" if shot.get("video_query") else " (no description to derive a stock query)")
                         )
                         # Tell the USER, not just the run log. A demotion means
                         # they opted in (and pre-paid the credit hold) for AI
@@ -18793,7 +18810,7 @@ class VideoGenerationPipeline:
                                 "message": (
                                     f"Shot {shot_idx}: AI video unavailable "
                                     f"({_av_result.error_class}) — using "
-                                    f"{'stock footage' if _fallback_st == 'VIDEO_HERO' else 'a still image'}"
+                                    f"{'placeholder stock footage' if _fallback_st == 'VIDEO_HERO' else 'a still image'}"
                                 ),
                             })
                         except Exception:

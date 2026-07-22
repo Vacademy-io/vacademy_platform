@@ -180,10 +180,17 @@ export const handleFetchCampaignUsers = (payload: CampaignLeadsRequest) => {
             payload.sla_filter ?? '',
             payload.assigned_counselor_id ?? '',
             payload.is_unassigned ?? false,
-            // Stable cache key for an order-independent set of custom-field filters.
+            // Stable cache key for an order-independent set of custom-field
+            // filters. The operator is part of the key — "Empty" vs "Has any
+            // value" on the same field both serialize to empty values, and
+            // without the operator they'd collide and serve each other's
+            // cached page.
             payload.custom_field_filters
                 ? payload.custom_field_filters
-                      .map((f) => `${f.field_id}=${[...f.values].sort().join(',')}`)
+                      .map(
+                          (f) =>
+                              `${f.field_id}:${f.operator ?? 'IN'}=${[...f.values].sort().join(',')}`
+                      )
                       .sort()
                       .join('|')
                 : '',

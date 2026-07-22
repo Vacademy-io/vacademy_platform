@@ -72,6 +72,43 @@ public interface CustomFieldValuesRepository extends JpaRepository<CustomFieldVa
             @Param("values") List<String> values);
 
     /**
+     * Distinct user IDs whose USER-scoped answer for a custom field is one of
+     * the supplied values. Indexed lookup (idx_cfv_field_source_value) used by
+     * the All Contacts custom-field filter; institute scoping happens in the
+     * main paging query the resulting IDs are intersected with.
+     */
+    @Query(value = """
+            SELECT DISTINCT cfv.source_id
+            FROM custom_field_values cfv
+            WHERE cfv.source_type = 'USER'
+              AND cfv.custom_field_id = :customFieldId
+              AND cfv.value IN (:values)
+            """, nativeQuery = true)
+    List<String> findUserIdsByUserSourceCustomFieldValue(
+            @Param("customFieldId") String customFieldId,
+            @Param("values") List<String> values);
+
+    /**
+     * Distinct user IDs whose AUDIENCE_RESPONSE-scoped answer (i.e. an answer
+     * they gave on a lead/audience form) for a custom field is one of the
+     * supplied values. Complements findUserIdsByUserSourceCustomFieldValue so
+     * the All Contacts filter matches on EITHER answer source for the same
+     * person.
+     */
+    @Query(value = """
+            SELECT DISTINCT ar.user_id
+            FROM custom_field_values cfv
+            JOIN audience_response ar ON ar.id = cfv.source_id
+            WHERE cfv.source_type = 'AUDIENCE_RESPONSE'
+              AND cfv.custom_field_id = :customFieldId
+              AND cfv.value IN (:values)
+              AND ar.user_id IS NOT NULL
+            """, nativeQuery = true)
+    List<String> findUserIdsByAudienceResponseCustomFieldValue(
+            @Param("customFieldId") String customFieldId,
+            @Param("values") List<String> values);
+
+    /**
      * Find custom field values with field metadata by user IDs
      * Returns: [sourceId, customFieldId, fieldKey, fieldName, fieldType, value, sourceType]
      */
@@ -133,6 +170,69 @@ public interface CustomFieldValuesRepository extends JpaRepository<CustomFieldVa
                   AND (COALESCE(:search, '') = '' OR cfv.value ILIKE CONCAT('%', :search, '%'))
             """, nativeQuery = true)
     Page<String> findDistinctStudentCustomFieldValues(
+            @Param("instituteId") String instituteId,
+            @Param("customFieldId") String customFieldId,
+            @Param("search") String search,
+            Pageable pageable);
+
+    /**
+     * Distinct values a custom field holds across an institute's CONTACTS —
+     * the union of USER-scoped answers (enrolled learners, scoped via
+     * student_session_institute_group_mapping) and AUDIENCE_RESPONSE-scoped
+     * answers (leads, scoped via audience_response → audience). Powers the
+     * searchable multi-select custom-field dropdowns on the All Contacts page,
+     * mirroring findDistinctStudentCustomFieldValues /
+     * findDistinctLeadCustomFieldValues for their surfaces.
+     */
+    @Query(value = """
+                SELECT value FROM (
+                    SELECT DISTINCT cfv.value
+                    FROM custom_field_values cfv
+                    JOIN student_session_institute_group_mapping ssigm ON ssigm.user_id = cfv.source_id
+                    WHERE cfv.source_type = 'USER'
+                      AND ssigm.institute_id = :instituteId
+                      AND cfv.custom_field_id = :customFieldId
+                      AND cfv.value IS NOT NULL
+                      AND cfv.value <> ''
+                      AND (COALESCE(:search, '') = '' OR cfv.value ILIKE CONCAT('%', :search, '%'))
+                    UNION
+                    SELECT DISTINCT cfv.value
+                    FROM custom_field_values cfv
+                    JOIN audience_response ar ON ar.id = cfv.source_id
+                    JOIN audience a ON a.id = ar.audience_id
+                    WHERE cfv.source_type = 'AUDIENCE_RESPONSE'
+                      AND a.institute_id = :instituteId
+                      AND cfv.custom_field_id = :customFieldId
+                      AND cfv.value IS NOT NULL
+                      AND cfv.value <> ''
+                      AND (COALESCE(:search, '') = '' OR cfv.value ILIKE CONCAT('%', :search, '%'))
+                ) combined
+                ORDER BY value ASC
+            """, countQuery = """
+                SELECT COUNT(*) FROM (
+                    SELECT DISTINCT cfv.value
+                    FROM custom_field_values cfv
+                    JOIN student_session_institute_group_mapping ssigm ON ssigm.user_id = cfv.source_id
+                    WHERE cfv.source_type = 'USER'
+                      AND ssigm.institute_id = :instituteId
+                      AND cfv.custom_field_id = :customFieldId
+                      AND cfv.value IS NOT NULL
+                      AND cfv.value <> ''
+                      AND (COALESCE(:search, '') = '' OR cfv.value ILIKE CONCAT('%', :search, '%'))
+                    UNION
+                    SELECT DISTINCT cfv.value
+                    FROM custom_field_values cfv
+                    JOIN audience_response ar ON ar.id = cfv.source_id
+                    JOIN audience a ON a.id = ar.audience_id
+                    WHERE cfv.source_type = 'AUDIENCE_RESPONSE'
+                      AND a.institute_id = :instituteId
+                      AND cfv.custom_field_id = :customFieldId
+                      AND cfv.value IS NOT NULL
+                      AND cfv.value <> ''
+                      AND (COALESCE(:search, '') = '' OR cfv.value ILIKE CONCAT('%', :search, '%'))
+                ) combined
+            """, nativeQuery = true)
+    Page<String> findDistinctContactCustomFieldValues(
             @Param("instituteId") String instituteId,
             @Param("customFieldId") String customFieldId,
             @Param("search") String search,

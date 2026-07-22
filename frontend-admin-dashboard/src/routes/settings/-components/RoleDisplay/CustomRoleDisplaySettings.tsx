@@ -19,7 +19,7 @@ import { CUSTOM_ROLE_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/display-settings';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { LearnerListColumnsCard } from './LearnerListColumnsCard';
-import { LeadsFilterCustomFieldsCard } from './LeadsFilterCustomFieldsCard';
+import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import { toast } from 'sonner';
@@ -2083,14 +2083,17 @@ export default function CustomRoleDisplaySettings({
                 }
             />
 
-            {/* Which custom fields show as filters on the leads views — per this role.
-                Saved with the rest of this blob via the shared unsaved-changes bar. */}
-            <LeadsFilterCustomFieldsCard
-                value={settings.leadsFilterCustomFields ?? []}
+            {/* Which custom fields are filter/sort controls on the list pages.
+                Saved with the rest of this blob via the shared unsaved-changes bar.
+                Note: the list pages read the institute-wide (admin) blob, so this
+                panel mirrors the same card for consistency. */}
+            <ListCustomFieldControlsCard
+                value={settings.listCustomFieldControls}
+                legacyLeadsFields={settings.leadsFilterCustomFields ?? []}
                 onChange={(next) =>
                     updateSettings((prev) => ({
                         ...prev,
-                        leadsFilterCustomFields: next,
+                        listCustomFieldControls: next,
                     }))
                 }
             />

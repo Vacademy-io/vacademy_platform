@@ -63,6 +63,9 @@ public class DistinctUserAudienceService {
     private UserLeadProfileService userLeadProfileService;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver customFieldListFilterResolver;
+
+    @Autowired
     private ObjectMapper objectMapper;
 
     public CombinedUserAudienceResponseDTO getCombinedUsersWithCustomFields(CombinedUserAudienceRequestDTO request) {
@@ -100,6 +103,19 @@ public class DistinctUserAudienceService {
         List<String> effectiveStatuses = includeInstituteUsers ? request.getStatuses() : List.of("__EXCLUDE__");
         List<String> effectivePackageSessionIds = includeInstituteUsers ? request.getPackageSessionIds() : List.of("__EXCLUDE__");
 
+        // Pre-resolve custom-field filters into matching user IDs (either-match
+        // across USER and AUDIENCE_RESPONSE answers) — one indexed lookup per
+        // field instead of a correlated subquery in the paging query. Positive
+        // operators produce a matched set (null = no filter; empty = nothing
+        // matches → empty page); IS_EMPTY entries produce an exclusion set.
+        vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution cfResolution =
+                customFieldListFilterResolver.resolve(
+                        request.getCustomFieldFilters(),
+                        vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Surface.CONTACT);
+        if (cfResolution.shortCircuitsToEmpty()) {
+            return emptyResponse(request, audienceIds);
+        }
+
         Page<String> userPage = instituteStudentRepository.findPagedCombinedUserIds(
                 request.getInstituteId(),
                 effectiveStatuses,
@@ -109,6 +125,14 @@ public class DistinctUserAudienceService {
                 nameSearch,
                 genders,
                 effectiveAudienceIds,
+                cfResolution.matchedIdsCsv(),
+                cfResolution.excludedIdsCsv(),
+                (request.getSortCustomFieldId() != null && !request.getSortCustomFieldId().isBlank())
+                        ? request.getSortCustomFieldId() : null,
+                // SQL compares :cfSortDirection = 'ASC' literally — normalize
+                // case so a lowercase "asc" doesn't silently fall back to DESC.
+                request.getSortDirection() == null ? null
+                        : request.getSortDirection().trim().toUpperCase(java.util.Locale.ENGLISH),
                 PageRequest.of(page, size));
 
         List<String> pagedUserIds = userPage.getContent();

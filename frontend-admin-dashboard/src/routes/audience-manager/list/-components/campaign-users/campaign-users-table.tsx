@@ -9,6 +9,14 @@ import {
     type ExportColumnOption,
 } from '@/components/shared/leads/export-column-picker-dialog';
 import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
+import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
+import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
+import {
+    decodeSelectionToEntries,
+    filterEntryValueLabel,
+    isRangeFieldType,
+    removeEntryFromSelection,
+} from '@/components/shared/leads/custom-field-filter-encoding';
 import { useLeadFilterCustomFields } from '@/components/shared/leads/use-lead-filter-custom-fields';
 import { toast } from 'sonner';
 import {
@@ -215,11 +223,13 @@ const CampaignUsersContent = ({
             return next;
         });
     };
+    // Sentinel selections (contains / empty / ranges) decode into operator
+    // entries; plain values stay an IN entry.
     const customFieldFiltersPayload = useMemo(
         () =>
             Object.entries(customFieldFilters)
                 .filter(([, vals]) => vals.length > 0)
-                .map(([field_id, values]) => ({ field_id, values })),
+                .flatMap(([fieldId, values]) => decodeSelectionToEntries(fieldId, values)),
         [customFieldFilters]
     );
 
@@ -738,8 +748,14 @@ const CampaignUsersContent = ({
         const fieldName =
             filterCustomFields.find((cf) => cf.customFieldId === f.field_id)?.fieldName ?? 'Field';
         chips.push({
-            label: `${fieldName}: ${f.values.join(', ')}`,
-            onRemove: () => setCustomFieldFilter(f.field_id, []),
+            label: `${fieldName}: ${filterEntryValueLabel(f)}`,
+            // Remove only this entry's backing values — one field can carry
+            // several chips (values + contains + empty) at once.
+            onRemove: () =>
+                setCustomFieldFilter(
+                    f.field_id,
+                    removeEntryFromSelection(customFieldFilters[f.field_id] ?? [], f)
+                ),
         });
     });
 
@@ -1019,16 +1035,28 @@ const CampaignUsersContent = ({
                             isLoading={counsellorOptionsLoading}
                         />
                     )}
-                    {filterCustomFields.map((f) => (
-                        <CustomFieldMultiSelectFilter
-                            key={f.customFieldId}
-                            instituteId={instituteId ?? ''}
-                            fieldId={f.customFieldId}
-                            fieldName={f.fieldName}
-                            selected={customFieldFilters[f.customFieldId] ?? []}
-                            onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
-                        />
-                    ))}
+                    {filterCustomFields.map((f) =>
+                        isRangeFieldType(f.fieldType) ? (
+                            <CustomFieldRangeFilter
+                                key={f.customFieldId}
+                                fieldId={f.customFieldId}
+                                fieldName={f.fieldName}
+                                fieldType={f.fieldType}
+                                selected={customFieldFilters[f.customFieldId] ?? []}
+                                onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
+                            />
+                        ) : (
+                            <CustomFieldMultiSelectFilter
+                                key={f.customFieldId}
+                                instituteId={instituteId ?? ''}
+                                fieldId={f.customFieldId}
+                                fieldName={f.fieldName}
+                                selected={customFieldFilters[f.customFieldId] ?? []}
+                                onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
+                            />
+                        )
+                    )}
+                    <ManageListFiltersLink />
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button variant="outline" size="sm" className="h-10">

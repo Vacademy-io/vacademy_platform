@@ -594,6 +594,13 @@ function mergeDisplayWithDefaults(
     merged.leadsFilterCustomFields =
         incoming?.leadsFilterCustomFields ?? defaults.leadsFilterCustomFields ?? [];
 
+    // Unified per-surface custom-field filter/sort controls (institute-wide).
+    // Pass saved surfaces through untouched so they survive the field-by-field
+    // merge; absent surfaces stay absent — consumers apply their own fallback
+    // (LEADS → leadsFilterCustomFields, STUDENTS → legacy auto-expose).
+    merged.listCustomFieldControls =
+        incoming?.listCustomFieldControls ?? defaults.listCustomFieldControls;
+
     // Live class scheduling (role-level overlay on top of institute-level
     // Live Session Settings). Both flags default ON so existing roles aren't
     // suddenly locked out of either flow.

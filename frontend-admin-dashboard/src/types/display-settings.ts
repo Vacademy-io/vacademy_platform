@@ -317,6 +317,20 @@ export interface WorkbenchVisibilitySettings {
     salesDashboardVisible?: boolean;
 }
 
+// Admin list surfaces that support custom-field filter/sort gating.
+export type ListCustomFieldSurface = 'LEADS' | 'CONTACTS' | 'STUDENTS';
+
+export interface ListCustomFieldSurfaceControls {
+    // custom_field_ids exposed as filters in this surface's filter bar.
+    filterFields: string[];
+    // custom_field_ids sortable from this surface's column headers.
+    sortableFields: string[];
+}
+
+export type ListCustomFieldControls = Partial<
+    Record<ListCustomFieldSurface, ListCustomFieldSurfaceControls>
+>;
+
 export interface DisplaySettingsData {
     // 1) Sidebar tabs and sub-tabs configuration and ordering
     sidebar: SidebarTabConfig[];
@@ -439,7 +453,25 @@ export interface DisplaySettingsData {
     //      in the filter bar; empty/absent = no custom-field filters and the
     //      distinct-values API is never called. Saved with the rest of this blob
     //      via the display-settings unsaved-changes bar.
+    //      DEPRECATED in favor of listCustomFieldControls.LEADS.filterFields —
+    //      kept as a read-fallback so institutes that configured leads filters
+    //      before the unified controls existed keep them without a migration.
     leadsFilterCustomFields?: string[];
+
+    // 12d) Unified per-surface custom-field filter/sort gating for the admin
+    //      list pages. Institute-wide (applies to all roles), like
+    //      leadsFilterCustomFields. Per surface:
+    //        - filterFields: custom_field_ids rendered as filter controls in
+    //          that page's filter bar (searchable multi-selects fed by the
+    //          surface's distinct-values endpoint).
+    //        - sortableFields: custom_field_ids whose columns offer sorting
+    //          (consumed once custom-field sorting ships; safe to configure
+    //          ahead of that).
+    //      Absent surface entry falls back:
+    //        LEADS    → leadsFilterCustomFields (legacy key)
+    //        STUDENTS → legacy auto-expose (all TEXT + dropdown fields)
+    //        CONTACTS → none
+    listCustomFieldControls?: ListCustomFieldControls;
 
     // 13) Learner management permissions for admins/teachers
     learnerManagement?: LearnerManagementSettings;

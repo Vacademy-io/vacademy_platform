@@ -321,6 +321,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                  AND lf.schedule_time < NOW()))))
                               AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
+                              AND (COALESCE(:customFieldExcludedIdsCsv, '') = ''
+                                   OR NOT (ar.id = ANY(STRING_TO_ARRAY(:customFieldExcludedIdsCsv, ','))))
                               AND (COALESCE(:callHistoryFilter, '') = ''
                                    OR (:callHistoryFilter = 'NOT_CALLED' AND NOT EXISTS (
                                          SELECT 1 FROM telephony_call_log tcl
@@ -379,6 +381,14 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    THEN ar.parent_name END ASC,
                               CASE WHEN :sortBy = 'PARENT_NAME' AND :sortDirection = 'DESC'
                                    THEN ar.parent_name END DESC,
+                              CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND :sortDirection = 'ASC'
+                                   THEN CASE WHEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) ~ '^-?[0-9]+([.][0-9]+)?$' THEN CAST((SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) AS numeric) END END ASC NULLS LAST,
+                              CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN CASE WHEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) ~ '^-?[0-9]+([.][0-9]+)?$' THEN CAST((SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) AS numeric) END END DESC NULLS LAST,
+                              CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND :sortDirection = 'ASC'
+                                   THEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) END ASC NULLS LAST,
+                              CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) END DESC NULLS LAST,
                               ar.submitted_at DESC
                         """, countQuery = """
                             SELECT COUNT(*)
@@ -527,6 +537,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                  AND lf.schedule_time < NOW()))))
                               AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
+                              AND (COALESCE(:customFieldExcludedIdsCsv, '') = ''
+                                   OR NOT (ar.id = ANY(STRING_TO_ARRAY(:customFieldExcludedIdsCsv, ','))))
                               AND (COALESCE(:callHistoryFilter, '') = ''
                                    OR (:callHistoryFilter = 'NOT_CALLED' AND NOT EXISTS (
                                          SELECT 1 FROM telephony_call_log tcl
@@ -574,6 +586,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("isUnassigned") Boolean isUnassigned,
                         @Param("overallStatusStr") String overallStatusStr,
                         @Param("customFieldMatchedIdsCsv") String customFieldMatchedIdsCsv,
+                        @Param("customFieldExcludedIdsCsv") String customFieldExcludedIdsCsv,
                         @Param("callHistoryFilter") String callHistoryFilter,
                         @Param("conversionStatusFilter") String conversionStatusFilter,
                         @Param("audienceStatusFilter") String audienceStatusFilter,
@@ -581,6 +594,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("tatHours") Integer tatHours,
                         @Param("sortBy") String sortBy,
                         @Param("sortDirection") String sortDirection,
+                        @Param("sortCustomFieldId") String sortCustomFieldId,
                         Pageable pageable);
 
         /**
@@ -748,6 +762,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                  AND lf.schedule_time < NOW()))))
                               AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
+                              AND (COALESCE(:customFieldExcludedIdsCsv, '') = ''
+                                   OR NOT (ar.id = ANY(STRING_TO_ARRAY(:customFieldExcludedIdsCsv, ','))))
                               AND (COALESCE(:callHistoryFilter, '') = ''
                                    OR (:callHistoryFilter = 'NOT_CALLED' AND NOT EXISTS (
                                          SELECT 1 FROM telephony_call_log tcl
@@ -806,6 +822,14 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    THEN ar.parent_name END ASC,
                               CASE WHEN :sortBy = 'PARENT_NAME' AND :sortDirection = 'DESC'
                                    THEN ar.parent_name END DESC,
+                              CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND :sortDirection = 'ASC'
+                                   THEN CASE WHEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) ~ '^-?[0-9]+([.][0-9]+)?$' THEN CAST((SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) AS numeric) END END ASC NULLS LAST,
+                              CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN CASE WHEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) ~ '^-?[0-9]+([.][0-9]+)?$' THEN CAST((SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) AS numeric) END END DESC NULLS LAST,
+                              CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND :sortDirection = 'ASC'
+                                   THEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) END ASC NULLS LAST,
+                              CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) END DESC NULLS LAST,
                               ar.submitted_at DESC
                         """, countQuery = """
                             SELECT COUNT(*)
@@ -950,6 +974,8 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                  AND lf.schedule_time < NOW()))))
                               AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
+                              AND (COALESCE(:customFieldExcludedIdsCsv, '') = ''
+                                   OR NOT (ar.id = ANY(STRING_TO_ARRAY(:customFieldExcludedIdsCsv, ','))))
                               AND (COALESCE(:callHistoryFilter, '') = ''
                                    OR (:callHistoryFilter = 'NOT_CALLED' AND NOT EXISTS (
                                          SELECT 1 FROM telephony_call_log tcl
@@ -996,9 +1022,11 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("slaFilter") String slaFilter,
                         @Param("tatHours") Integer tatHours,
                         @Param("customFieldMatchedIdsCsv") String customFieldMatchedIdsCsv,
+                        @Param("customFieldExcludedIdsCsv") String customFieldExcludedIdsCsv,
                         @Param("callHistoryFilter") String callHistoryFilter,
                         @Param("sortBy") String sortBy,
                         @Param("sortDirection") String sortDirection,
+                        @Param("sortCustomFieldId") String sortCustomFieldId,
                         Pageable pageable);
 
         /**

@@ -182,6 +182,45 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         }
     }
 
+    /**
+     * ORDER BY fragment for custom-field sorting: the learner's latest
+     * USER-scoped answer for the field, numeric-aware (numeric-looking values
+     * order numerically before the text fallback), rows without an answer
+     * last. Direction is whitelisted to ASC/DESC — never interpolated raw.
+     * The :sortCustomFieldId parameter is bound on the MAIN query only (the
+     * count query has no ORDER BY).
+     */
+    private String buildCustomFieldSortOrderBy(String sortCustomFieldId, String direction) {
+        if (sortCustomFieldId == null || sortCustomFieldId.isBlank()) {
+            return "";
+        }
+        String dir = "ASC".equalsIgnoreCase(direction) ? "ASC" : "DESC";
+        String sub = "(SELECT scf.value FROM custom_field_values scf"
+                + " WHERE scf.source_type = 'USER' AND scf.source_id = s.user_id"
+                + " AND scf.custom_field_id = :sortCustomFieldId"
+                + " ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1)";
+        String numericKey = "(CASE WHEN " + sub + " ~ '^-?[0-9]+([.][0-9]+)?$'"
+                + " THEN CAST(" + sub + " AS numeric) END)";
+        return " ORDER BY " + numericKey + " " + dir + " NULLS LAST, "
+                + sub + " " + dir + " NULLS LAST";
+    }
+
+    /** Applies the pre-resolved typed custom-field filter sets (matched → IN, excluded → NOT IN). */
+    private void appendTypedCustomFieldFilter(StringBuilder whereClause, Map<String, Object> parameters,
+            List<String> cfTypedMatchedUserIds, List<String> cfTypedExcludedUserIds) {
+        // CSV + ANY(STRING_TO_ARRAY) keeps each set a single bind parameter —
+        // a broad match (e.g. NOT_EMPTY on a common field) can exceed the
+        // 32k JDBC bind limit as an expanded IN list.
+        if (cfTypedMatchedUserIds != null && !cfTypedMatchedUserIds.isEmpty()) {
+            whereClause.append("AND ssigm.user_id = ANY(STRING_TO_ARRAY(:cfTypedMatchedUserIdsCsv, ',')) ");
+            parameters.put("cfTypedMatchedUserIdsCsv", String.join(",", cfTypedMatchedUserIds));
+        }
+        if (cfTypedExcludedUserIds != null && !cfTypedExcludedUserIds.isEmpty()) {
+            whereClause.append("AND NOT (ssigm.user_id = ANY(STRING_TO_ARRAY(:cfTypedExcludedUserIdsCsv, ','))) ");
+            parameters.put("cfTypedExcludedUserIdsCsv", String.join(",", cfTypedExcludedUserIds));
+        }
+    }
+
     @Override
     public Page<StudentListV2Projection> getAllStudentV2WithSearchAndCustomFieldFilters(
             String name,
@@ -201,6 +240,10 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             LocalDate endDate,
             List<String> enrollInviteIds,
             List<String> enrollInvitePackageSessionIds,
+            List<String> cfTypedMatchedUserIds,
+            List<String> cfTypedExcludedUserIds,
+            String sortCustomFieldId,
+            String sortCustomFieldDirection,
             Pageable pageable) {
 
         StringBuilder whereClause = new StringBuilder(" WHERE (");
@@ -274,11 +317,17 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             }
         }
 
+        // Typed custom-field filters (operator-aware: CONTAINS / IS_EMPTY / ranges),
+        // pre-resolved by CustomFieldListFilterResolver into user-id sets — one
+        // indexed lookup per field upstream, plain IN/NOT IN predicates here.
+        appendTypedCustomFieldFilter(whereClause, parameters, cfTypedMatchedUserIds, cfTypedExcludedUserIds);
+
         // Enroll invite filter
         appendEnrollInviteFilter(whereClause, parameters, enrollInviteIds, enrollInvitePackageSessionIds);
 
         // Build main query
-        String mainQuery = BASE_SELECT + whereClause.toString() + GROUP_BY;
+        String mainQuery = BASE_SELECT + whereClause.toString() + GROUP_BY
+                + buildCustomFieldSortOrderBy(sortCustomFieldId, sortCustomFieldDirection);
         String countQuery = BASE_COUNT + whereClause.toString();
 
         // Execute count query
@@ -290,6 +339,9 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         Query nativeQuery = entityManager.createNativeQuery(mainQuery, jakarta.persistence.Tuple.class);
         setParameters(nativeQuery, parameters);
         nativeQuery.setParameter("customFieldStatus", customFieldStatus);
+        if (sortCustomFieldId != null && !sortCustomFieldId.isBlank()) {
+            nativeQuery.setParameter("sortCustomFieldId", sortCustomFieldId);
+        }
         nativeQuery.setFirstResult((int) pageable.getOffset());
         nativeQuery.setMaxResults(pageable.getPageSize());
 
@@ -319,6 +371,10 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             LocalDate endDate,
             List<String> enrollInviteIds,
             List<String> enrollInvitePackageSessionIds,
+            List<String> cfTypedMatchedUserIds,
+            List<String> cfTypedExcludedUserIds,
+            String sortCustomFieldId,
+            String sortCustomFieldDirection,
             Pageable pageable) {
 
         StringBuilder whereClause = new StringBuilder(" WHERE 1=1 ");
@@ -376,11 +432,17 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
             }
         }
 
+        // Typed custom-field filters (operator-aware: CONTAINS / IS_EMPTY / ranges),
+        // pre-resolved by CustomFieldListFilterResolver into user-id sets — one
+        // indexed lookup per field upstream, plain IN/NOT IN predicates here.
+        appendTypedCustomFieldFilter(whereClause, parameters, cfTypedMatchedUserIds, cfTypedExcludedUserIds);
+
         // Enroll invite filter
         appendEnrollInviteFilter(whereClause, parameters, enrollInviteIds, enrollInvitePackageSessionIds);
 
         // Build main query
-        String mainQuery = BASE_SELECT + whereClause.toString() + GROUP_BY;
+        String mainQuery = BASE_SELECT + whereClause.toString() + GROUP_BY
+                + buildCustomFieldSortOrderBy(sortCustomFieldId, sortCustomFieldDirection);
         String countQuery = BASE_COUNT + whereClause.toString();
 
         // Execute count query
@@ -392,6 +454,9 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         Query nativeQuery = entityManager.createNativeQuery(mainQuery, jakarta.persistence.Tuple.class);
         setParameters(nativeQuery, parameters);
         nativeQuery.setParameter("customFieldStatus", customFieldStatus);
+        if (sortCustomFieldId != null && !sortCustomFieldId.isBlank()) {
+            nativeQuery.setParameter("sortCustomFieldId", sortCustomFieldId);
+        }
         nativeQuery.setFirstResult((int) pageable.getOffset());
         nativeQuery.setMaxResults(pageable.getPageSize());
 

@@ -403,6 +403,7 @@ export const BATCHES_SUMMARY = `${BASE_URL}/admin-core-service/institute/v1/batc
 export const ADMIN_DETAILS_URL = `${BASE_URL}/auth-service/v1/user-details/get`;
 export const GET_STUDENTS = `${BASE_URL}/admin-core-service/institute/institute_learner/get/v2/all`;
 export const GET_CONTACTS_LIST = `${BASE_URL}/admin-core-service/v1/audience/distinct-institute-users-and-audience`;
+export const GET_CONTACT_CUSTOM_FIELD_VALUES = `${BASE_URL}/admin-core-service/v1/audience/contact-custom-field-values`;
 export const GET_ASSESSMENT_DETAILS = `${BASE_URL}/assessment-service/assessment/create/v1/status`;
 export const GET_STUDENTS_CSV = `${BASE_URL}/admin-core-service/institute/institute_learner/get/v1/all-csv`;
 

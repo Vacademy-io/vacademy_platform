@@ -111,6 +111,9 @@ public class AudienceService {
     private CustomFieldValuesRepository customFieldValuesRepository;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver customFieldListFilterResolver;
+
+    @Autowired
     private AuthService authService;
 
     @Autowired
@@ -2644,15 +2647,16 @@ public class AudienceService {
         // using one indexed lookup per field (intersected across fields). This
         // replaces a per-row correlated jsonb subquery that scanned
         // custom_field_values for every candidate lead and timed out on the
-        // institute-wide Recent Leads query. null = no filter; empty list =
-        // filters set but nothing matches → short-circuit to an empty page.
-        List<String> customFieldMatchedIds =
-                resolveCustomFieldMatchedResponseIds(filterDTO.getCustomFieldFilters());
-        if (customFieldMatchedIds != null && customFieldMatchedIds.isEmpty()) {
+        // institute-wide Recent Leads query. Positive operators produce the
+        // matched set (null = no filter; empty = nothing matches → empty page);
+        // IS_EMPTY entries produce an exclusion set.
+        vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution
+                cfResolution = resolveCustomFieldFilters(filterDTO.getCustomFieldFilters());
+        if (cfResolution.shortCircuitsToEmpty()) {
             return Page.empty(pageable);
         }
-        String customFieldMatchedIdsCsv =
-                customFieldMatchedIds == null ? null : String.join(",", customFieldMatchedIds);
+        String customFieldMatchedIdsCsv = cfResolution.matchedIdsCsv();
+        String customFieldExcludedIdsCsv = cfResolution.excludedIdsCsv();
 
         // Cross-audience path: when no audienceId is supplied, return leads
         // across every campaign in the institute. Used by the "Recent Leads"
@@ -2679,9 +2683,11 @@ public class AudienceService {
                     filterDTO.getSlaFilter(),
                     filterTatHours,
                     customFieldMatchedIdsCsv,
+                    customFieldExcludedIdsCsv,
                     filterDTO.getCallHistoryFilter(),
                     filterDTO.getSortBy(),
                     filterDTO.getSortDirection(),
+                    filterDTO.getSortCustomFieldId(),
                     pageable);
             return mapResponsesToLeadDetails(all, filterDTO.getInstituteId());
         }
@@ -2705,6 +2711,7 @@ public class AudienceService {
                 filterDTO.getIsUnassigned(),
                 overallStatusStr,
                 customFieldMatchedIdsCsv,
+                customFieldExcludedIdsCsv,
                 filterDTO.getCallHistoryFilter(),
                 conversionStatusFilter,
                 audienceStatusFilter,
@@ -2712,6 +2719,7 @@ public class AudienceService {
                 filterTatHours,
                 filterDTO.getSortBy(),
                 filterDTO.getSortDirection(),
+                filterDTO.getSortCustomFieldId(),
                 pageable);
 
         // Resolve the institute for SLA-deadline computation: the filter usually
@@ -2728,50 +2736,23 @@ public class AudienceService {
     }
 
     /**
-     * Resolves the audience_response IDs that match the custom-field filters:
-     * for each field, the response IDs whose stored value is one of the selected
-     * values (OR within a field), intersected across fields (AND across fields).
-     * Each field is one indexed lookup, so this scales far better than a per-row
-     * correlated subquery in the leads query.
-     *
-     * @return {@code null} when there are no usable filters (predicate disabled);
-     *         an empty list when filters are set but nothing matches (caller
-     *         short-circuits to an empty page); otherwise the matched IDs.
+     * Resolves the leads custom-field filters (now operator-aware: IN, CONTAINS,
+     * IS_EMPTY, NOT_EMPTY, BETWEEN, GTE, LTE) through the shared
+     * CustomFieldListFilterResolver against AUDIENCE_RESPONSE answers. Positive
+     * operators intersect into a matched response-ID set; IS_EMPTY entries
+     * produce an exclusion set the leads queries apply as NOT-IN.
      */
-    private List<String> resolveCustomFieldMatchedResponseIds(
-            List<LeadFilterDTO.CustomFieldFilter> filters) {
-        if (filters == null || filters.isEmpty()) {
-            return null;
-        }
-        Set<String> matched = null;
-        for (LeadFilterDTO.CustomFieldFilter f : filters) {
-            if (f == null || f.getFieldId() == null || f.getFieldId().isBlank()
-                    || f.getValues() == null) {
-                continue;
-            }
-            // Strip blank values; a whitespace/empty option would otherwise widen
-            // or zero out the IN (...) match unexpectedly.
-            List<String> values = f.getValues().stream()
-                    .filter(v -> v != null && !v.isEmpty())
-                    .distinct()
-                    .collect(Collectors.toList());
-            if (values.isEmpty()) {
-                continue;
-            }
-            Set<String> ids = new HashSet<>(
-                    customFieldValuesRepository.findAudienceResponseIdsByCustomFieldValue(
-                            f.getFieldId(), values));
-            if (matched == null) {
-                matched = ids;
-            } else {
-                matched.retainAll(ids);
-            }
-            if (matched.isEmpty()) {
-                return Collections.emptyList();
-            }
-        }
-        // matched stays null when every entry was blank → treat as "no filter".
-        return matched == null ? null : new ArrayList<>(matched);
+    private vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution
+            resolveCustomFieldFilters(List<LeadFilterDTO.CustomFieldFilter> filters) {
+        List<vacademy.io.admin_core_service.features.common.dto.CustomFieldListFilterDTO> converted =
+                filters == null ? null
+                        : filters.stream()
+                                .filter(Objects::nonNull)
+                                .map(f -> new vacademy.io.admin_core_service.features.common.dto.CustomFieldListFilterDTO(
+                                        f.getFieldId(), f.getOperator(), f.getValues()))
+                                .collect(Collectors.toList());
+        return customFieldListFilterResolver.resolve(converted,
+                vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Surface.RESPONSE);
     }
 
     /**

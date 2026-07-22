@@ -1,8 +1,20 @@
-import { ColumnDef, Row } from '@tanstack/react-table';
+import { ColumnDef, Row, Table } from '@tanstack/react-table';
+import { CaretUpDown } from '@phosphor-icons/react';
 import { StudentTable } from '@/types/student-table-types';
 import { useClickHandlers } from './table-column-data';
 import { convertToUpperCase } from '@/utils/customFields';
 import { getCustomFieldSettingsFromCache } from '@/services/custom-field-settings';
+import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { ADMIN_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
+import { MyDropdown } from '../../dropdown';
+
+// Custom-field ids the institute marked sortable for the Students list
+// (Settings → Display Settings → "List Filters & Sorting — Custom Fields").
+// Cache-backed sync read, same pattern as the role column gates.
+const getSortableStudentCustomFieldIds = (): Set<string> => {
+    const cached = getDisplaySettingsFromCache(ADMIN_DISPLAY_SETTINGS_KEY);
+    return new Set(cached?.listCustomFieldControls?.STUDENTS?.sortableFields ?? []);
+};
 
 // Live list of every custom field defined for the institute. The Learner's List
 // table includes columns for ALL of them; per-role visibility is the single
@@ -114,6 +126,8 @@ export const generateCustomFieldColumns = (): ColumnDef<StudentTable>[] => {
             return [];
         }
 
+        const sortableIds = getSortableStudentCustomFieldIds();
+
         return customFields
             .filter((field) => field.id && field.name)
             .map((field) => ({
@@ -122,7 +136,34 @@ export const generateCustomFieldColumns = (): ColumnDef<StudentTable>[] => {
                 size: 180,
                 minSize: 120,
                 maxSize: 300,
-                header: convertToUpperCase(field.name),
+                // Sortable fields get the same ASC/DESC header dropdown as the
+                // Name column, emitting a "cf:<field_id>" sort key the backend
+                // resolves to an order-by on the field's latest USER answer.
+                header: sortableIds.has(field.id)
+                    ? (props: { table: Table<StudentTable> }) => {
+                          const meta = props.table.options.meta as {
+                              onSort?: (columnId: string, direction: string) => void;
+                          };
+                          return (
+                              <div className="relative">
+                                  <MyDropdown
+                                      dropdownList={['ASC', 'DESC']}
+                                      onSelect={(value) => {
+                                          if (typeof value == 'string')
+                                              meta.onSort?.(`cf:${field.id}`, value);
+                                      }}
+                                  >
+                                      <button className="flex w-full cursor-pointer items-center justify-between">
+                                          <div>{convertToUpperCase(field.name)}</div>
+                                          <div>
+                                              <CaretUpDown />
+                                          </div>
+                                      </button>
+                                  </MyDropdown>
+                              </div>
+                          );
+                      }
+                    : convertToUpperCase(field.name),
                 cell: ({ row }: { row: Row<StudentTable> }) => (
                     <CustomFieldCell row={row} customFieldId={field.id} fieldType={field.type} />
                 ),

@@ -2459,9 +2459,11 @@ export const CourseStructureDetails = ({
                     >
                       {toTitleCase(subject.subject_name)}
                     </h3>
-                    <p className="text-caption text-muted-foreground">
-                      {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)} {idx + 1}
-                    </p>
+                    {showContentPrefixes && (
+                      <p className="text-caption text-muted-foreground">
+                        {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)} {idx + 1}
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -2520,9 +2522,11 @@ export const CourseStructureDetails = ({
                     >
                       {toTitleCase(m.module.module_name)}
                     </h3>
-                    <p className="text-caption text-muted-foreground">
-                      {getTerminology(ContentTerms.Modules, SystemTerms.Modules)} {idx + 1}
-                    </p>
+                    {showContentPrefixes && (
+                      <p className="text-caption text-muted-foreground">
+                        {getTerminology(ContentTerms.Modules, SystemTerms.Modules)} {idx + 1}
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -2603,9 +2607,11 @@ export const CourseStructureDetails = ({
                           >
                             {toTitleCase(ch.chapter_name)}
                           </h3>
-                          <p className="text-caption text-muted-foreground">
-                            {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)} {idx + 1}
-                          </p>
+                          {showContentPrefixes && (
+                            <p className="text-caption text-muted-foreground">
+                              {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)} {idx + 1}
+                            </p>
+                          )}
                           {isChapterLocked && (
                             <LockedBadge size="sm" unlockMessage="" />
                           )}

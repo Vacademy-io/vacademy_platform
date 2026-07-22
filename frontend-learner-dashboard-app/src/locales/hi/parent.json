@@ -34,6 +34,11 @@
     "liveClasses": "आगामी कक्षाएँ",
     "fees": "Fees"
   },
+  "nav": {
+    "home": "होम",
+    "ask": "पूछें",
+    "studentView": "छात्र दृश्य"
+  },
   "tiles": {
     "progress": "Progress",
     "attendance": "Attendance",

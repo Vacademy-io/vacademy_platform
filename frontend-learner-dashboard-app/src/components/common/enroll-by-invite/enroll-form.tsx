@@ -3045,11 +3045,11 @@ const EnrollByInvite = ({
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               {/* Course Thumbnail */}
               {courseData.courseBanner && (
-                <div className="w-full sm:w-32 h-20 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
+                <div className="w-full sm:w-48 aspect-[2.64/1] rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
                   <img
                     src={courseData.courseBanner}
                     alt={courseData.course}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                   />
                 </div>
               )}

@@ -32,6 +32,11 @@ export interface ReminderConfig {
     on_booking_confirmation?: boolean;
     channels?: ReminderChannel[];
     before_meeting_offsets_minutes?: number[];
+    /** WhatsApp confirmation template (when channels includes WHATSAPP). */
+    whatsapp_template_name?: string;
+    whatsapp_language_code?: string;
+    /** template variable name -> booking field key or 'static:<value>'. */
+    whatsapp_variable_mapping?: Record<string, string>;
 }
 
 export interface BookingPageDTO {

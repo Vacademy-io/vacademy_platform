@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -12,6 +13,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { getUserId, getUserName } from '@/utils/userDetails';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
+import {
+    listTemplates,
+    type WhatsAppTemplateDTO,
+} from '@/routes/communication/whatsapp-templates/-services/template-api';
 import { useCreateBookingPage, useUpdateBookingPage } from '../-hooks/use-meetings';
 import {
     BookingPageDTO,
@@ -97,7 +109,30 @@ const buildInitialDays = (windows: WeeklyWindow[] | undefined): DayRow[] =>
         };
     });
 
-export interface BookingPageFormProps {
+export /** Booking values an admin can map a WhatsApp template variable to. */
+const BOOKING_FIELD_OPTIONS: { value: string; label: string }[] = [
+    { value: 'invitee_name', label: "Invitee's name" },
+    { value: 'meeting_datetime', label: 'Meeting date & time' },
+    { value: 'meeting_date', label: 'Meeting date' },
+    { value: 'meeting_time', label: 'Meeting time' },
+    { value: 'meet_link', label: 'Google Meet / join link' },
+    { value: 'host_name', label: "Host's name" },
+    { value: 'meeting_title', label: 'Meeting title' },
+    { value: 'duration_minutes', label: 'Duration (minutes)' },
+];
+
+// Template variables: prefer the template's semantic names, else parse {{n}} tokens.
+const templateVars = (t?: WhatsAppTemplateDTO | null): string[] => {
+    if (!t) return [];
+    if (t.bodyVariableNames && t.bodyVariableNames.length) return t.bodyVariableNames;
+    const found = new Set<string>();
+    const re = /\{\{(\w+)\}\}/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(t.bodyText || '')) !== null) if (m[1]) found.add(m[1]);
+    return Array.from(found);
+};
+
+interface BookingPageFormProps {
     instituteId: string;
     /** Present → edit mode (PUT); absent → create mode (POST). */
     initialPage?: BookingPageDTO;
@@ -155,6 +190,23 @@ export const BookingPageForm = ({
     const [remindWhatsapp, setRemindWhatsapp] = useState(
         initialChannels ? initialChannels.includes('WHATSAPP') : false
     );
+    const [waTemplateName, setWaTemplateName] = useState(
+        initialPage?.reminder_config?.whatsapp_template_name ?? ''
+    );
+    const [waVarMapping, setWaVarMapping] = useState<Record<string, string>>(
+        initialPage?.reminder_config?.whatsapp_variable_mapping ?? {}
+    );
+    const waTemplatesQuery = useQuery({
+        queryKey: ['wa-templates-booking', instituteId],
+        queryFn: () => listTemplates(instituteId),
+        enabled: !!instituteId && remindWhatsapp,
+        staleTime: 60_000,
+    });
+    const waTemplates = (waTemplatesQuery.data ?? []).filter(
+        (t) => t.status === 'APPROVED'
+    );
+    const selectedWaTemplate = waTemplates.find((t) => t.name === waTemplateName) ?? null;
+    const waVars = templateVars(selectedWaTemplate);
 
     const timezoneOptions = useMemo(() => {
         const zones = new Set<string>(COMMON_TIMEZONES);
@@ -230,6 +282,19 @@ export const BookingPageForm = ({
                 channels,
                 before_meeting_offsets_minutes:
                     values.reminderOffset === 'none' ? [] : [Number(values.reminderOffset)],
+                ...(remindWhatsapp && waTemplateName
+                    ? {
+                          whatsapp_template_name: waTemplateName,
+                          whatsapp_language_code: selectedWaTemplate?.language ?? 'en',
+                          whatsapp_variable_mapping: waVars.reduce(
+                              (acc, v) => {
+                                  acc[v] = waVarMapping[v] ?? '';
+                                  return acc;
+                              },
+                              {} as Record<string, string>
+                          ),
+                      }
+                    : {}),
             },
         };
 
@@ -441,6 +506,83 @@ export const BookingPageForm = ({
                             <span className="text-body text-neutral-600">WhatsApp</span>
                         </label>
                     </div>
+
+                    {remindWhatsapp && (
+                        <div className="flex flex-col gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                            <div className="flex flex-col gap-1.5">
+                                <Label>WhatsApp template</Label>
+                                <Select value={waTemplateName || 'NONE'} onValueChange={(v) => setWaTemplateName(v === 'NONE' ? '' : v)}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Choose an approved template" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="NONE">No template (won\u2019t send WhatsApp)</SelectItem>
+                                        {waTemplates.map((t) => (
+                                            <SelectItem key={t.id} value={t.name}>
+                                                {t.name} ({t.language})
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {waTemplatesQuery.isLoading && (
+                                    <p className="text-caption text-neutral-500">Loading templates\u2026</p>
+                                )}
+                                {!waTemplatesQuery.isLoading && waTemplates.length === 0 && (
+                                    <p className="text-caption text-warning-600">
+                                        No approved WhatsApp templates yet. Create and get one approved in
+                                        Communication \u2192 WhatsApp Templates first.
+                                    </p>
+                                )}
+                            </div>
+
+                            {selectedWaTemplate && (
+                                <div className="flex flex-col gap-2">
+                                    {selectedWaTemplate.bodyText && (
+                                        <p className="rounded bg-white p-2 text-caption text-neutral-600">
+                                            {selectedWaTemplate.bodyText}
+                                        </p>
+                                    )}
+                                    {waVars.length > 0 ? (
+                                        <>
+                                            <Label>Fill the template variables</Label>
+                                            {waVars.map((v) => (
+                                                <div key={v} className="flex items-center gap-2">
+                                                    <span className="w-28 shrink-0 truncate text-caption font-medium text-neutral-600">
+                                                        {`{{${v}}}`}
+                                                    </span>
+                                                    <Select
+                                                        value={waVarMapping[v] || 'UNSET'}
+                                                        onValueChange={(val) =>
+                                                            setWaVarMapping((prev) => ({
+                                                                ...prev,
+                                                                [v]: val === 'UNSET' ? '' : val,
+                                                            }))
+                                                        }
+                                                    >
+                                                        <SelectTrigger className="flex-1">
+                                                            <SelectValue placeholder="Map to\u2026" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="UNSET">\u2014 not set \u2014</SelectItem>
+                                                            {BOOKING_FIELD_OPTIONS.map((o) => (
+                                                                <SelectItem key={o.value} value={o.value}>
+                                                                    {o.label}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            ))}
+                                        </>
+                                    ) : (
+                                        <p className="text-caption text-neutral-500">
+                                            This template has no variables \u2014 it will send as-is.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
                     <SelectField
                         label="Remind before meeting"
                         name="reminderOffset"

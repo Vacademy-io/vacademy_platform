@@ -601,8 +601,8 @@ export const AddChapterForm = ({
                                     </span>
                                 </label>
                                 <div className="text-body text-neutral-500">
-                                    Upload a thumbnail image for this chapter. The image will be
-                                    cropped to maintain consistency.
+                                    Upload a thumbnail image for this chapter. It will be cropped to
+                                    a 16:9 ratio for consistency (16:9 recommended).
                                 </div>
                                 {thumbnailPreview ? (
                                     <div className="relative h-20 w-32 overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50">
@@ -899,7 +899,7 @@ export const AddChapterForm = ({
                     open={cropperOpen}
                     onOpenChange={setCropperOpen}
                     src={selectedImage || ''}
-                    aspectRatio={2.64} // 2.64:1 aspect ratio for chapter thumbnails
+                    aspectRatio={16 / 9} // 16:9 ratio to match the display tile (no crop on display)
                     title="Crop Chapter Thumbnail"
                     outputMimeType="image/jpeg"
                     outputQuality={0.9}

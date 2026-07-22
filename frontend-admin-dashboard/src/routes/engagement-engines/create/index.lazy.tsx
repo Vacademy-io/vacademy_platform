@@ -123,9 +123,13 @@ function CreateEnginePage() {
     const enabledChannelKeys = CHANNEL_ORDER.filter((c) => channels[c]?.enabled);
     const audienceCount = batchIds.length + audienceIds.length;
 
+    // Use the campaign's `id` (the audience row PK) — that IS the audience id the engagement
+    // backend's leadsByAudience(ar.audience_id = :id) resolves against. The DTO's `campaign_id`
+    // and `audience_id` fields are vestigial and always null, so filtering on audience_id
+    // dropped every campaign and left this picker permanently empty for all institutes.
     const campaignOptions = campaigns
-        .filter((c) => c.audience_id)
-        .map((c) => ({ label: c.campaign_name, value: c.audience_id as string }));
+        .filter((c) => c.id)
+        .map((c) => ({ label: c.campaign_name, value: c.id as string }));
 
     const canProceed = (s: number): boolean => {
         switch (s) {

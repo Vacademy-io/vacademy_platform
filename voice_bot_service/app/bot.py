@@ -636,11 +636,24 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
     # Live call: the lead's real name was missing, so the model addressed the caller by the
     # AUDIENCE-LIST name ('Am I speaking with Mr. or Ms. Robotics STEM Programs for Schools?').
     name_sanity_rule = (
-        "- If the only name you have looks like a company, a program, a topic or a list "
-        "(e.g. 'Robotics Programs for Schools', 'AI and Machine Learning') rather than a "
-        "real person's name, do NOT address the caller by it. Instead greet warmly and ask "
-        "who you're speaking with, or reference the organisation ('am I speaking with someone "
-        "who handles admissions at <org>?'). Never call a person by a program or list name."
+        "- NEVER say 'Mr.' or 'Ms.' with nothing (or a non-name) after it, and never invent a "
+        "surname. If you do NOT have the person's real name — it is blank, a placeholder, the "
+        "word 'hello', or looks like a company/program/list ('Robotics Programs for Schools', "
+        "'AI and Machine Learning') — do NOT attempt 'Am I speaking with Mr./Ms. ___'. That "
+        "produces a broken 'Mr. Hello' or a dangling 'Mr.'. Instead ask warmly 'May I know who "
+        "I'm speaking with?' or confirm the organisation ('Am I speaking with someone from "
+        "<org>?'). Only use 'Mr./Ms. <surname>' when you actually have a real surname."
+    )
+    # Live calls: the caller asked 'who are you?' / said 'we already spoke' and the agent
+    # ignored it and ploughed the next scripted line. This forces a response FIRST.
+    listen_rule = (
+        "- LISTEN AND RESPOND to what the caller just said BEFORE moving to your next scripted "
+        "line. If they ask 'who are you?', 'which company?', 'why are you calling?', 'where are "
+        "you calling from?' — answer it plainly and immediately (your name, your company, one "
+        "short reason), THEN continue. If they say you have ALREADY SPOKEN, 'we discussed this', "
+        "or 'I explained already' — acknowledge it and do NOT repeat your introduction or pitch; "
+        "pick up from there and ask what they'd like to do next. NEVER deliver the next script "
+        "line as if the caller said nothing when they have just spoken."
     )
     # Live calls showed the model compressing several script steps into one turn
     # ("How are you? That's wonderful to hear." — answering its OWN question), and
@@ -710,6 +723,7 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             now_line,
             greeting_rule,
             name_sanity_rule,
+            listen_rule,
             "End every turn with a question, a quick check-in (\u2018right?\u2019) or a clear closing — "
             "then STOP and wait for the caller\u2019s answer. Never answer your own question or "
             "continue as if they replied when they haven\u2019t; their silence is NOT consent.",
@@ -738,6 +752,7 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         now_line,
         greeting_rule,
         name_sanity_rule,
+        listen_rule,
         f"You are {name}. {gender_line}",
         addressee_line,
         intent_line,

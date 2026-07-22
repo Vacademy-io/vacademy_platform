@@ -35,6 +35,7 @@ export interface CustomFieldConfig {
     countryCode?: string;
     allowedFileTypes?: string[];
     maxSizeMB?: number;
+    heading?: string;
     description?: string;
 }
 
@@ -67,6 +68,7 @@ export const AddCustomFieldDialog = ({
     const [dropdownOptions, setDropdownOptions] = useState<DropdownOption[]>([]);
     const [defaultValue, setDefaultValue] = useState('');
     const [checkboxDefault, setCheckboxDefault] = useState(false);
+    const [checkboxHeading, setCheckboxHeading] = useState('');
     const [checkboxDescription, setCheckboxDescription] = useState('');
     const [allowedFileTypes, setAllowedFileTypes] = useState<string[]>([]);
     const [maxSizeMB, setMaxSizeMB] = useState<number>(5);
@@ -116,6 +118,7 @@ export const AddCustomFieldDialog = ({
         setDropdownOptions([]);
         setDefaultValue('');
         setCheckboxDefault(false);
+        setCheckboxHeading('');
         setCheckboxDescription('');
         setAllowedFileTypes([]);
         setMaxSizeMB(5);
@@ -126,6 +129,9 @@ export const AddCustomFieldDialog = ({
 
         if (selectedType === 'checkbox') {
             config.defaultValue = checkboxDefault ? 'true' : 'false';
+            if (checkboxHeading.trim()) {
+                config.heading = checkboxHeading.trim();
+            }
             if (checkboxDescription.trim()) {
                 config.description = checkboxDescription.trim();
             }
@@ -344,6 +350,22 @@ export const AddCustomFieldDialog = ({
                     <div className="mt-2 flex flex-col gap-3">
                         <div className="flex flex-col gap-1">
                             <Label className="text-sm font-medium">
+                                Heading (Optional)
+                            </Label>
+                            <MyInput
+                                inputType="text"
+                                inputPlaceholder="e.g. Terms & Conditions"
+                                input={checkboxHeading}
+                                onChangeFunction={(e) => setCheckboxHeading(e.target.value)}
+                                size="large"
+                                className="w-full"
+                            />
+                            <p className="text-caption text-neutral-500">
+                                Bold section title shown above the content.
+                            </p>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <Label className="text-sm font-medium">
                                 Description / Consent Text (Optional)
                             </Label>
                             <textarea
@@ -440,6 +462,7 @@ export const AddCustomFieldDialog = ({
                                 setDropdownOptions([]);
                                 setDefaultValue('');
                                 setCheckboxDefault(false);
+                                setCheckboxHeading('');
                                 setCheckboxDescription('');
                                 setAllowedFileTypes([]);
                             }}

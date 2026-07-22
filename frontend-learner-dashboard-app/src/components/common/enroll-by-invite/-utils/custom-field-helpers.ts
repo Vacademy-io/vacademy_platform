@@ -126,6 +126,9 @@ export interface CustomFieldFullConfig {
   minDate?: string;
   maxDate?: string;
   maxLength?: number;
+  // Optional bold section heading rendered above the description block
+  // (e.g. a "Terms & Conditions" title). Pairs with `description`.
+  heading?: string;
   // Long descriptive body shown above the input (e.g. a Terms & Conditions
   // block above a "Yes, I agree" checkbox). Stored here instead of fieldName
   // because fieldName is varchar(255); config is unbounded text.

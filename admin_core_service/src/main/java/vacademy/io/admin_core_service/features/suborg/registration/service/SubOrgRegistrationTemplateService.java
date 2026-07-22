@@ -387,6 +387,7 @@ public class SubOrgRegistrationTemplateService {
     public Page<RegistrationListItemDTO> listRegistrations(
             String templateId, String instituteId,
             List<String> cities, List<String> states, List<String> pincodes,
+            String legacyCity, String legacyState, String legacyPincode,
             String status, String search, Map<String, List<String>> customFieldFilters,
             Pageable pageable) {
         EnrollInvite template = requireTemplate(templateId, instituteId);
@@ -398,7 +399,9 @@ public class SubOrgRegistrationTemplateService {
 
         Specification<SubOrgRegistration> spec =
                 SubOrgRegistrationSpecification.withFilters(
-                        templateId, cities, states, pincodes, status, search, customFieldFilters);
+                        templateId, cities, states, pincodes,
+                        legacyCity, legacyState, legacyPincode,
+                        status, search, customFieldFilters);
         Page<SubOrgRegistration> page = registrationRepository.findAll(spec, pageable);
 
         // One bulk query for the used-seat counts of every spawned sub-org on this page.

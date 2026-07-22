@@ -91,6 +91,11 @@ public class SubOrgRegistrationAdminController {
             @RequestParam(value = "cities", required = false) List<String> cities,
             @RequestParam(value = "states", required = false) List<String> states,
             @RequestParam(value = "pincodes", required = false) List<String> pincodes,
+            // Rollout-safety shim: older admin bundles send singular free-text params with
+            // "contains" semantics — honour them so a stale bundle's filter keeps filtering.
+            @RequestParam(value = "city", required = false) String legacyCity,
+            @RequestParam(value = "state", required = false) String legacyState,
+            @RequestParam(value = "pincode", required = false) String legacyPincode,
             @RequestParam(value = "status", required = false) String status,
             @RequestParam(value = "search", required = false) String search,
             // Per-custom-field filters as repeated "fieldId:value" params (colon-delimited;
@@ -102,7 +107,8 @@ public class SubOrgRegistrationAdminController {
         assertInstituteAdmin(user, instituteId);
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         return ResponseEntity.ok(templateService.listRegistrations(
-                templateInviteId, instituteId, cities, states, pincodes, status, search,
+                templateInviteId, instituteId, cities, states, pincodes,
+                legacyCity, legacyState, legacyPincode, status, search,
                 parseCustomFieldFilters(customField), pageable));
     }
 

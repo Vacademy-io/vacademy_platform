@@ -39,6 +39,7 @@ public class SubOrgRegistrationSpecification {
 
     public static Specification<SubOrgRegistration> withFilters(
             String templateInviteId, List<String> cities, List<String> states, List<String> pincodes,
+            String legacyCityContains, String legacyStateContains, String legacyPincodeContains,
             String status, String search, Map<String, List<String>> customFieldFilters) {
 
         return (root, query, cb) -> {
@@ -50,6 +51,14 @@ public class SubOrgRegistrationSpecification {
             addInAnyOf(predicates, cb, root.get("city"), cities);
             addInAnyOf(predicates, cb, root.get("state"), states);
             addInAnyOf(predicates, cb, root.get("pincode"), pincodes);
+
+            // Rollout-safety shim: older admin bundles send singular free-text `city`/
+            // `state`/`pincode` params with the original case-insensitive "contains"
+            // semantics. Honour them so a stale bundle's filter keeps filtering (instead
+            // of silently returning everything). Remove once no shipped bundle sends them.
+            addContains(predicates, cb, root.get("city"), legacyCityContains);
+            addContains(predicates, cb, root.get("state"), legacyStateContains);
+            addContains(predicates, cb, root.get("pincode"), legacyPincodeContains);
 
             if (StringUtils.hasText(status)) {
                 predicates.add(cb.equal(root.get("status"), status.trim()));
@@ -66,6 +75,18 @@ public class SubOrgRegistrationSpecification {
 
             return cb.and(predicates.toArray(new Predicate[0]));
         };
+    }
+
+    /** Legacy free-text filter: case-insensitive "contains"; no-op when blank. */
+    private static void addContains(
+            List<Predicate> predicates,
+            CriteriaBuilder cb,
+            Path<String> column,
+            String value) {
+        if (!StringUtils.hasText(value)) {
+            return;
+        }
+        predicates.add(cb.like(cb.lower(column), "%" + value.trim().toLowerCase() + "%"));
     }
 
     /**

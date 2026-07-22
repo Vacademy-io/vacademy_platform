@@ -72,15 +72,28 @@ public class SubOrgController {
 
     /** Enriched, paginated list for the Manage VLEs table: admin email/phone, plan status,
      *  seats + invite. Newest sub-orgs first. Guarded to the caller's own institute — the
-     *  row returns admin PII (email/phone). */
+     *  row returns admin PII (email/phone).
+     *
+     *  Dual response shape for rollout safety: callers that pass NO paging params (older
+     *  web bundles and mobile-app builds that predate pagination and expect a bare JSON
+     *  array) get the full legacy {@code List}; passing {@code page} and/or {@code size}
+     *  opts into the Spring {@code Page} wrapper. Do not collapse this until every shipped
+     *  admin bundle sends paging params. */
     @GetMapping("/get-all-with-details")
-    public ResponseEntity<Page<SubOrgListItemDTO>> getSubOrgsWithDetails(
+    public ResponseEntity<?> getSubOrgsWithDetails(
             @RequestParam String parentInstituteId,
-            @RequestParam(value = "page", defaultValue = "0") int page,
-            @RequestParam(value = "size", defaultValue = "10") int size,
+            @RequestParam(value = "page", required = false) Integer page,
+            @RequestParam(value = "size", required = false) Integer size,
             @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
         assertInstituteAdmin(user, parentInstituteId);
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
+        if (page == null && size == null) {
+            // Legacy shape: everything in one bare array (page of MAX size keeps one code path).
+            return ResponseEntity.ok(subOrgListService
+                    .getSubOrgsWithDetails(parentInstituteId, PageRequest.of(0, Integer.MAX_VALUE, sort))
+                    .getContent());
+        }
+        Pageable pageable = PageRequest.of(page != null ? page : 0, size != null ? size : 10, sort);
         return ResponseEntity.ok(subOrgListService.getSubOrgsWithDetails(parentInstituteId, pageable));
     }
 

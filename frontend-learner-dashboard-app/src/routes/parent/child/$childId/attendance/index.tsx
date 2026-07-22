@@ -1,18 +1,20 @@
+import type { ReactNode } from "react";
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { CalendarCheck } from "@phosphor-icons/react";
+import { CalendarCheck, Fire, Clock } from "@phosphor-icons/react";
 import { ModuleScaffold } from "../../-components/ModuleScaffold";
 import { ParentStatusChip } from "../../-components/ParentStatusChip";
 import type { ParentStatusTone } from "../../-components/ParentStatusChip";
-import { useChildAttendance, useChildOverview } from "../../-hooks/use-parent-child";
+import { computeAttendanceStats } from "@/services/attendance/useAttendanceStats";
+import type { ScheduleItem } from "@/services/attendance/getAttendanceReport";
+import { cn } from "@/lib/utils";
+import { useChildAttendance, useChildOverview, useChildPoints } from "../../-hooks/use-parent-child";
 
 export const Route = createFileRoute("/parent/child/$childId/attendance/")({
   component: AttendanceScreen,
 });
 
-// present → green tick, absent → red cross, late → amber, anything else → neutral.
-// Always colour + icon + word (ParentStatusChip), never colour alone.
 function statusToneLabel(status: unknown, t: TFunction): { tone: ParentStatusTone; label: string } {
   const s = String(status ?? "").toUpperCase();
   if (s === "PRESENT") return { tone: "good", label: t("attendance.present") };
@@ -29,26 +31,40 @@ function formatDate(meetingDate: unknown): string {
   return d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
 }
 
+function formatMinutes(total: number): string {
+  if (total <= 0) return "0m";
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
 function AttendanceScreen() {
   const { childId } = useParams({ from: "/parent/child/$childId/attendance/" });
   const { t } = useTranslation("parent");
   const overview = useChildOverview(childId);
   const { data, isLoading, isError, refetch } = useChildAttendance(childId);
+  const { data: points } = useChildPoints(childId);
 
   const childName = overview.data?.child?.fullName || t("common.yourChild");
-  const percent = typeof data?.attendancePercentage === "number" ? Math.round(data.attendancePercentage) : null;
+  // Focused-activity minutes — the platform's real "time engaged" metric. (Live
+  // sessions don't record per-class attended duration, so this is the meaningful
+  // duration/engagement figure we can show.)
+  const engagedMinutes = points?.points ?? 0;
   const schedules = Array.isArray(data?.schedules) ? (data!.schedules as Record<string, unknown>[]) : [];
+
+  // Use the SAME day-wise computation as the student app (multiple classes in a
+  // day = one day; PRESENT if any class that day was attended), so the parent %
+  // matches what the learner sees — not the backend's session-wise number.
+  const stats = computeAttendanceStats(schedules as unknown as ScheduleItem[]);
+  const percent = schedules.length > 0 ? stats.attendancePercentage : null;
+  const total = stats.totalClassDays;
+  const pctOf = (n: number) => (total > 0 ? (n / total) * 100 : 0);
 
   // Most recent classes first.
   const recent = [...schedules].sort((a, b) =>
     String(b.meetingDate ?? "").localeCompare(String(a.meetingDate ?? "")),
   );
-  const presentCount = schedules.filter(
-    (s) => String(s.attendanceStatus ?? "").toUpperCase() === "PRESENT",
-  ).length;
 
-  // Descriptive attendance labels — NOT the generic "needs your attention"
-  // wording, which contradicted the home's "nothing needs your attention".
   const summaryTone: ParentStatusTone =
     percent === null ? "neutral" : percent >= 75 ? "good" : percent >= 60 ? "watch" : "action";
   const summaryLabelKey =
@@ -77,18 +93,67 @@ function AttendanceScreen() {
       emptyBody={t("attendance.emptyBody")}
     >
       <div className="flex flex-col gap-5">
-        {/* Headline: big % + how many classes attended */}
+        {/* Headline: big % + how many days attended */}
         {percent !== null ? (
           <div className="flex items-center justify-between gap-3 rounded-2xl bg-card px-5 py-4 shadow-sm">
             <div className="flex flex-col">
               <span className="text-h1 font-semibold text-foreground">{percent}%</span>
-              {schedules.length > 0 ? (
-                <span className="text-caption text-muted-foreground">
-                  {t("attendance.attended", { present: presentCount, total: schedules.length })}
-                </span>
-              ) : null}
+              <span className="text-caption text-muted-foreground">
+                {t("attendance.daysAttended", { present: stats.presentDays, total })}
+              </span>
             </div>
             <ParentStatusChip tone={summaryTone} label={t(summaryLabelKey)} />
+          </div>
+        ) : null}
+
+        {/* Focused learning time (engagement) */}
+        {engagedMinutes > 0 ? (
+          <div className="flex items-center gap-3 rounded-2xl bg-card px-5 py-4 shadow-sm">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-info-50">
+              <Clock weight="fill" className="size-6 text-info-600" aria-hidden />
+            </span>
+            <div className="flex flex-col">
+              <span className="text-h2 font-bold text-foreground">{formatMinutes(engagedMinutes)}</span>
+              <span className="text-caption text-muted-foreground">{t("attendance.engagementTitle")}</span>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Breakdown graph: present / absent / unmarked days */}
+        {total > 0 ? (
+          <div className="flex flex-col gap-3 rounded-2xl bg-card px-5 py-4 shadow-sm">
+            <h2 className="text-body font-semibold text-foreground">{t("attendance.graphTitle")}</h2>
+            <div className="flex h-3 overflow-hidden rounded-full bg-muted">
+              {stats.presentDays > 0 ? (
+                <div className="bg-success-500" style={{ width: `${pctOf(stats.presentDays)}%` }} />
+              ) : null}
+              {stats.absentDays > 0 ? (
+                <div className="bg-danger-500" style={{ width: `${pctOf(stats.absentDays)}%` }} />
+              ) : null}
+              {stats.unmarkedDays > 0 ? (
+                <div className="bg-warning-400" style={{ width: `${pctOf(stats.unmarkedDays)}%` }} />
+              ) : null}
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <LegendDot className="bg-success-500" label={t("attendance.presentDays")} value={stats.presentDays} />
+              <LegendDot className="bg-danger-500" label={t("attendance.absentDays")} value={stats.absentDays} />
+              {stats.unmarkedDays > 0 ? (
+                <LegendDot className="bg-warning-400" label={t("attendance.unmarkedDays")} value={stats.unmarkedDays} />
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Insight stats: streak + counts */}
+        {total > 0 ? (
+          <div className="grid grid-cols-3 gap-3">
+            <StatTile
+              icon={<Fire weight="fill" className="size-5 text-warning-500" aria-hidden />}
+              value={stats.currentStreak}
+              label={t("attendance.streak")}
+            />
+            <StatTile value={stats.presentDays} label={t("attendance.presentDays")} tone="text-success-600" />
+            <StatTile value={stats.absentDays} label={t("attendance.absentDays")} tone="text-danger-600" />
           </div>
         ) : null}
 
@@ -121,5 +186,34 @@ function AttendanceScreen() {
         ) : null}
       </div>
     </ModuleScaffold>
+  );
+}
+
+function LegendDot({ className, label, value }: { className: string; label: string; value: number }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 text-caption text-muted-foreground">
+      <span className={cn("size-2 rounded-full", className)} aria-hidden />
+      {label} · <span className="font-semibold text-foreground">{value}</span>
+    </span>
+  );
+}
+
+function StatTile({
+  icon,
+  value,
+  label,
+  tone,
+}: {
+  icon?: ReactNode;
+  value: number;
+  label: string;
+  tone?: string;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1 rounded-2xl bg-card px-3 py-4 text-center shadow-sm">
+      {icon}
+      <span className={cn("text-h2 font-bold tabular-nums text-foreground", tone)}>{value}</span>
+      <span className="text-caption text-muted-foreground">{label}</span>
+    </div>
   );
 }

@@ -10,6 +10,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import heroGreeting from "@/assets/cleaner-play/hero-greeting.webp";
 import { useChildOverview } from "../-hooks/use-parent-child";
 import { askChildAssistant } from "../-services/parent-portal-api";
 import { useParentVoice } from "../-lib/use-parent-voice";
@@ -150,12 +151,15 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
           aria-label={t("chat.open")}
           data-tour="parent-chat"
           className={cn(
-            "fixed bottom-5 end-5 z-50 flex size-14 items-center justify-center rounded-full",
-            "bg-primary-500 text-primary-50 shadow-lg transition-transform hover:scale-105",
-            "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
+            "fixed bottom-5 end-5 z-50 flex size-16 items-center justify-center rounded-full",
+            "bg-gradient-to-br from-primary-100 to-secondary-50 shadow-lg ring-2 ring-primary-200",
+            "transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
           )}
         >
-          <ChatCircleDots size={26} weight="fill" aria-hidden />
+          <img src={heroGreeting} alt="" aria-hidden className="size-full object-contain p-1.5" />
+          <span className="absolute -right-0.5 -top-0.5 flex size-6 items-center justify-center rounded-full bg-primary-500 text-primary-50 shadow-md">
+            <ChatCircleDots weight="fill" className="size-3.5" aria-hidden />
+          </span>
         </button>
       </SheetTrigger>
 
@@ -216,13 +220,31 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
           ))}
         </div>
 
-        {/* Free-text question box */}
+        {/* Primary call-to-action: speak. Big, highlighted, pulses while listening. */}
+        {voice.recognitionSupported ? (
+          <button
+            type="button"
+            onClick={toggleMic}
+            aria-pressed={voice.listening}
+            disabled={pending}
+            className={cn(
+              "mt-3 flex w-full items-center justify-center gap-2 rounded-full py-3 text-body font-semibold shadow-sm",
+              "transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 disabled:opacity-50",
+              voice.listening ? "animate-pulse bg-danger-500 text-white" : "bg-primary-500 text-primary-50",
+            )}
+          >
+            <Microphone weight="fill" className="size-5" aria-hidden />
+            {voice.listening ? t("chat.listening") : t("chat.micCta")}
+          </button>
+        ) : null}
+
+        {/* Or type */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
             void submit(input);
           }}
-          className="mt-3 flex items-center gap-2"
+          className="mt-2 flex items-center gap-2"
         >
           <input
             value={input}
@@ -236,24 +258,6 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
               "disabled:opacity-60",
             )}
           />
-          {voice.recognitionSupported ? (
-            <button
-              type="button"
-              onClick={toggleMic}
-              aria-label={t("chat.mic")}
-              aria-pressed={voice.listening}
-              disabled={pending}
-              className={cn(
-                "flex size-9 shrink-0 items-center justify-center rounded-full transition-colors",
-                "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 disabled:opacity-50",
-                voice.listening
-                  ? "animate-pulse bg-danger-500 text-white"
-                  : "bg-primary-50 text-primary-500",
-              )}
-            >
-              <Microphone weight="fill" className="size-4" aria-hidden />
-            </button>
-          ) : null}
           <button
             type="submit"
             aria-label={t("chat.send")}

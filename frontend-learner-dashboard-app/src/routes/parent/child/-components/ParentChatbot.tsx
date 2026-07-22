@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { motion } from "framer-motion";
+import chatTeacher from "@/assets/parent-icons/chat-teacher.webp";
 import {
   ChalkboardTeacher,
   CaretRight,
@@ -161,17 +163,29 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
   return (
     <Sheet onOpenChange={(open) => { if (!open) voice.cancelSpeak(); }}>
       <SheetTrigger asChild>
-        <button
+        <motion.button
           aria-label={t("chat.open")}
           data-tour="parent-chat"
           className={cn(
-            "fixed bottom-5 end-5 z-50 flex size-14 items-center justify-center rounded-full",
-            "bg-gradient-to-br from-primary-400 to-primary-500 text-primary-50 shadow-lg",
-            "transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
+            "fixed bottom-5 end-5 z-50 flex size-16 items-center justify-center rounded-full",
+            "bg-gradient-to-br from-primary-50 to-secondary-50 shadow-lg ring-2 ring-primary-200",
+            "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
           )}
+          // Gentle periodic wiggle + pop so a parent's eye is drawn to the teacher.
+          animate={{ rotate: [0, -7, 7, -5, 5, 0], scale: [1, 1.06, 1] }}
+          transition={{ duration: 1.4, repeat: Infinity, repeatDelay: 3.2, ease: "easeInOut" }}
+          whileHover={{ scale: 1.1, rotate: 0 }}
+          whileTap={{ scale: 0.94 }}
         >
-          <ChalkboardTeacher weight="fill" size={28} aria-hidden />
-        </button>
+          {/* Pulsing halo — a soft ripple that keeps drawing attention to the button. */}
+          <motion.span
+            aria-hidden
+            className="absolute inset-0 rounded-full bg-primary-300/40"
+            animate={{ scale: [1, 1.55], opacity: [0.45, 0] }}
+            transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
+          />
+          <img src={chatTeacher} alt="" aria-hidden className="relative size-full object-contain p-1" />
+        </motion.button>
       </SheetTrigger>
 
       <SheetContent side="bottom" className="mx-auto max-w-2xl rounded-t-2xl">

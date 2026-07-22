@@ -821,7 +821,7 @@ try:
 except ImportError:
     # Fallback when `app/` isn't on path (legacy / standalone). Keep the
     # numeric default in lockstep with `ai_video_constants.py`.
-    AI_VIDEO_PER_VIDEO_COST_CAP_USD = 4.00
+    AI_VIDEO_PER_VIDEO_COST_CAP_USD = 8.00
 
 QUALITY_TIERS: dict[str, dict[str, Any]] = {
     "free": {
@@ -14012,6 +14012,24 @@ class VideoGenerationPipeline:
             tier_config.get("ai_video_per_video_cost_cap_usd")
             or AI_VIDEO_PER_VIDEO_COST_CAP_USD
         )
+        # The planner's AI-shot budget = cap / per-clip cost. Per-clip cost
+        # depends on the SELECTED Veo tier (full ≈ $1.60/8s, lite ≈ $0.24),
+        # so compute it from the model rather than assuming lite — otherwise
+        # a full-Veo run plans ~7x too many AI shots and the excess silently
+        # demotes to stock at the cap.
+        _ai_video_per_clip = 0.24
+        try:
+            try:
+                from app.services.fal_veo_client import price_per_call_usd as _veo_price
+            except ImportError:
+                from fal_veo_client import price_per_call_usd as _veo_price  # type: ignore[no-redef]
+            _ai_video_per_clip = _veo_price(
+                resolution="720p", duration_s=8,
+                audio_on=bool(getattr(self, "_ai_video_audio_run_enabled", False)),
+                model=getattr(self, "_ai_video_model", None),
+            )
+        except Exception:
+            pass
         brand_brief = self._extract_brand_brief() or {}
 
         # Pillar 3 — eager reference-asset prefetch (mirrors the v2 path in
@@ -14105,6 +14123,7 @@ class VideoGenerationPipeline:
             ai_video_enabled=getattr(self, "_ai_video_run_enabled", False),
             ai_video_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
             ai_video_cost_cap_usd=ai_video_cost_cap,
+            ai_video_per_clip_usd=_ai_video_per_clip,
             source_clip_available=self._v3_source_clip_available(),
             dialogue_scenes_enabled=getattr(self, "_dialogue_scenes_enabled", False),
             dialogue_mode=getattr(self, "_dialogue_mode", "storybook"),

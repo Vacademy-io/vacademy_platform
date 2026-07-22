@@ -486,6 +486,7 @@ def build_shot_planner_user_prompt(
     ai_video_enabled: bool = False,
     ai_video_audio_enabled: bool = False,
     ai_video_cost_cap_usd: float = 1.50,
+    ai_video_per_clip_usd: float = 0.24,
     source_clip_available: bool = False,
     dialogue_scenes_enabled: bool = False,
     dialogue_mode: str = "storybook",
@@ -543,12 +544,13 @@ def build_shot_planner_user_prompt(
             if ai_video_audio_enabled
             else "Audio mode is OFF — do NOT set `ai_video_audio: true`."
         )
-        # Derive the REAL shot budget from the cap instead of hardcoding
-        # "1-3": at $0.03/s (720p silent) an 8s clip costs $0.24, so even the
-        # default $1.50 cap funds ~6 clips — most of a 60s video. The old
-        # wording made the planner ship 0-1 AI shots even when the user had
-        # opted in specifically to get AI footage.
-        _ai_shot_budget = max(1, int(ai_video_cost_cap_usd / 0.24))
+        # Derive the REAL shot budget from the cap AND the selected model's
+        # per-clip cost — NOT a hardcoded lite price. Full Veo ($1.60/clip)
+        # funds ~7x fewer clips than lite ($0.24) for the same cap; hardcoding
+        # 0.24 would make the planner plan far more AI shots than the cap can
+        # fund, and the excess would silently demote to stock mid-video.
+        _per_clip = ai_video_per_clip_usd if ai_video_per_clip_usd and ai_video_per_clip_usd > 0 else 0.24
+        _ai_shot_budget = max(1, int(ai_video_cost_cap_usd / _per_clip))
         lines.append("")
         # AI_VIDEO_HERO has NO entry in this file's shot-type vocabulary —
         # the only place its required fields (`ai_video_prompt`,
@@ -1433,6 +1435,7 @@ def plan_shots(
     ai_video_enabled: bool = False,
     ai_video_audio_enabled: bool = False,
     ai_video_cost_cap_usd: float = 1.50,
+    ai_video_per_clip_usd: float = 0.24,
     source_clip_available: bool = False,
     dialogue_scenes_enabled: bool = False,
     dialogue_mode: str = "storybook",
@@ -1502,6 +1505,7 @@ def plan_shots(
         ai_video_enabled=ai_video_enabled,
         ai_video_audio_enabled=ai_video_audio_enabled,
         ai_video_cost_cap_usd=ai_video_cost_cap_usd,
+        ai_video_per_clip_usd=ai_video_per_clip_usd,
         source_clip_available=source_clip_available,
         dialogue_scenes_enabled=dialogue_scenes_enabled,
         dialogue_mode=dialogue_mode,

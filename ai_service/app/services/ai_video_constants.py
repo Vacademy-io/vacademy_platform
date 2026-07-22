@@ -22,17 +22,18 @@ sys.path).
 # Veo-aware pre-flight check reads this directly to compute the credit
 # upper bound the institute must have on hand before a run can start.
 #
-# Tuning: sized for AI-FOOTAGE-LED videos, not occasional hero garnish.
-# An 8s 720p audio-off segment costs $0.24, so $4.00 funds ~16 clips —
-# a fully AI-shot 2-minute film, with headroom for inline `<aivideo>`
-# tags and the odd audio-on segment ($0.40/8s). Beyond the cap the
-# circuit breaker rejects further Veo calls and the shot falls back to a
-# non-AI variant. The planner derives its per-run AI shot budget from
-# this number (shot_planner: _ai_shot_budget), so raising it directly
-# widens how AI-video-heavy a plan may be. Institute credits are still
-# billed per call by AiVideoLedger — this is a per-video blast radius,
-# not a spend allowance.
-AI_VIDEO_PER_VIDEO_COST_CAP_USD: float = 4.00
+# Tuning: sized for AI-FOOTAGE-LED videos on the FULL Veo tier. A full-Veo
+# 8s 720p clip costs ~$1.60 (lite is ~$0.24), so $8.00 funds ~5 full-Veo
+# clips or ~33 lite — enough AI footage for a 50-60s film either way. The
+# planner derives its per-run AI shot budget from THIS cap divided by the
+# SELECTED model's per-clip cost (shot_planner: _ai_shot_budget), so the
+# budget auto-scales with model choice — raising the cap widens how
+# AI-heavy a plan may be, without over-planning on the pricey tiers.
+# Beyond the cap the circuit breaker rejects further Veo calls and the
+# shot falls back to a non-AI variant. Institute credits are still billed
+# per call by AiVideoLedger — this is a per-video blast radius, not a
+# spend allowance.
+AI_VIDEO_PER_VIDEO_COST_CAP_USD: float = 8.00
 
 # Fraction of the cap the credit pre-flight holds before a run may start.
 # The cap is a blast radius sized for an ALL-AI film; most runs spend a

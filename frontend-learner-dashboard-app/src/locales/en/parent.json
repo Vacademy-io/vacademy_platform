@@ -111,7 +111,8 @@
     "thinking": "Thinking…",
     "mic": "Ask by voice",
     "listening": "Listening…",
-    "micCta": "Tap to speak"
+    "micCta": "Tap to speak",
+    "speak": "Listen"
   },
   "tone": {
     "good": "Going well",

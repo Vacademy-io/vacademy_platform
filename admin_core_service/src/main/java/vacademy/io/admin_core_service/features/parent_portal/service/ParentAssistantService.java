@@ -7,14 +7,20 @@ import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.core.security.GuardedChild;
 import vacademy.io.admin_core_service.core.security.GuardianAccessGuard;
 import vacademy.io.admin_core_service.features.parent_portal.client.AiServiceCompletionClient;
+import vacademy.io.admin_core_service.features.certificate.service.CertificateReadService;
 import vacademy.io.admin_core_service.features.invoice.dto.InvoiceDTO;
 import vacademy.io.admin_core_service.features.invoice.service.InvoiceService;
+import vacademy.io.admin_core_service.features.leaderboard.dto.LeaderboardEntryDTO;
+import vacademy.io.admin_core_service.features.leaderboard.dto.LeaderboardResponseDTO;
+import vacademy.io.admin_core_service.features.leaderboard.service.LeaderboardService;
 import vacademy.io.admin_core_service.features.learner_badge.service.LearnerBadgeService;
 import vacademy.io.admin_core_service.features.learner_reports.dto.LearnerSubjectWiseProgressReportDTO;
 import vacademy.io.admin_core_service.features.learner_reports.service.LearnerReportService;
+import vacademy.io.admin_core_service.features.live_session.dto.GroupedSessionsByDateDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.ScheduleDetailDTO;
 import vacademy.io.admin_core_service.features.live_session.dto.StudentAttendanceReportDTO;
 import vacademy.io.admin_core_service.features.live_session.service.AttendanceReportService;
+import vacademy.io.admin_core_service.features.live_session.service.GetLiveSessionService;
 import vacademy.io.admin_core_service.features.student_analysis.client.AssessmentServiceClient;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -48,8 +54,10 @@ public class ParentAssistantService {
             when a parent asks how to help or how their child can improve; do not just refuse.
             Do NOT invent specific facts, numbers, marks, or events that are not in the data. If a whole
             topic has no data at all, say so briefly and suggest the relevant section (Attendance, Tests,
-            Fees, Rewards, Progress). Refer to the child by their first name. Keep answers to 1-4 short,
-            plain-language sentences with no jargon.
+            Fees, Rewards, Progress, Classes). Refer to the child by their first name. Keep answers to 1-4
+            short, plain-language sentences with no jargon.
+            Reply in the SAME language the parent used: if they wrote in Hindi or a Hindi-English mix
+            (Hinglish), answer in that same style; otherwise answer in English.
             """;
 
     private final GuardianAccessGuard guard;
@@ -59,6 +67,9 @@ public class ParentAssistantService {
     private final LearnerBadgeService learnerBadgeService;
     private final AssessmentServiceClient assessmentServiceClient;
     private final LearnerReportService learnerReportService;
+    private final GetLiveSessionService getLiveSessionService;
+    private final CertificateReadService certificateReadService;
+    private final LeaderboardService leaderboardService;
     private final AiServiceCompletionClient aiServiceCompletionClient;
 
     @Value("${parent.assistant.model:google/gemini-2.5-flash}")
@@ -136,22 +147,67 @@ public class ParentAssistantService {
             }
         }
 
-        // Fees
+        // Upcoming classes — "does my child have class tomorrow?"
+        if (primaryBatch != null) {
+            try {
+                List<GroupedSessionsByDateDTO> groups = getLiveSessionService
+                        .getLiveAndUpcomingSessionsForUserAndBatch(primaryBatch, child.childUserId(), 0, null, null, null, caller);
+                if (groups != null && !groups.isEmpty()) {
+                    sb.append("Upcoming classes:\n");
+                    groups.stream().limit(6).forEach(g -> {
+                        if (g.getSessions() == null) return;
+                        g.getSessions().forEach(s -> sb.append("- ")
+                                .append(g.getDate() != null ? g.getDate() : "")
+                                .append(s.getStartTime() != null ? " " + s.getStartTime() : "")
+                                .append(" ").append(s.getTitle() != null ? s.getTitle()
+                                        : (s.getSubject() != null ? s.getSubject() : "Class"))
+                                .append('\n'));
+                    });
+                }
+            } catch (Exception e) {
+                log.debug("[ParentAssistant] upcoming classes context unavailable: {}", e.getMessage());
+            }
+        }
+
+        // Fees — count + pending amounts / due dates
         try {
             List<InvoiceDTO> invoices = invoiceService.getInvoicesByUserId(child.childUserId(), child.instituteId());
             long pending = invoices.stream().filter(this::isPending).count();
             sb.append("Fees: ").append(pending).append(" payment(s) pending of ")
                     .append(invoices.size()).append(" total.\n");
+            invoices.stream().filter(this::isPending).limit(5).forEach(inv -> sb.append("- Due: ")
+                    .append(inv.getCurrency() != null ? inv.getCurrency() + " " : "")
+                    .append(inv.getTotalAmount() != null ? inv.getTotalAmount() : "?")
+                    .append(inv.getDueDate() != null ? " by " + inv.getDueDate().toLocalDate() : "")
+                    .append('\n'));
         } catch (Exception e) {
             log.debug("[ParentAssistant] fees context unavailable: {}", e.getMessage());
         }
 
-        // Rewards
+        // Rewards — badges + certificates + engagement points/rank
         try {
             int badges = learnerBadgeService.getActiveAwardsForUser(child.childUserId(), child.instituteId()).size();
             sb.append("Rewards: ").append(badges).append(" badge(s) earned.\n");
         } catch (Exception e) {
             log.debug("[ParentAssistant] rewards context unavailable: {}", e.getMessage());
+        }
+        try {
+            int certs = certificateReadService.listForUser(child.childUserId(), child.instituteId()).size();
+            sb.append("Certificates earned: ").append(certs).append(".\n");
+        } catch (Exception e) {
+            log.debug("[ParentAssistant] certificates context unavailable: {}", e.getMessage());
+        }
+        try {
+            LeaderboardResponseDTO board = leaderboardService.buildInstituteLeaderboard(
+                    child.instituteId(), child.childUserId(), false, 1);
+            LeaderboardEntryDTO me = board != null ? board.getCurrentUser() : null;
+            if (me != null) {
+                sb.append("Focused learning time: ").append(me.getPoints()).append(" minutes");
+                if (me.getRank() != null) sb.append("; class rank ").append(me.getRank());
+                sb.append(".\n");
+            }
+        } catch (Exception e) {
+            log.debug("[ParentAssistant] points context unavailable: {}", e.getMessage());
         }
 
         // Tests — recent scores

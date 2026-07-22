@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { ChatCircleDots, Robot, CaretRight, PaperPlaneTilt, Microphone } from "@phosphor-icons/react";
+import { ChatCircleDots, Robot, CaretRight, PaperPlaneTilt, Microphone, SpeakerHigh } from "@phosphor-icons/react";
 import {
   Sheet,
   SheetContent,
@@ -145,7 +145,7 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
   };
 
   return (
-    <Sheet>
+    <Sheet onOpenChange={(open) => { if (!open) voice.cancelSpeak(); }}>
       <SheetTrigger asChild>
         <button
           aria-label={t("chat.open")}
@@ -185,15 +185,27 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
                 <div className="rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-body text-foreground">
                   {m.text}
                 </div>
-                {m.module ? (
-                  <button
-                    onClick={() => navigate({ to: `/parent/child/${childId}/${m.module}` as never })}
-                    className="ms-1 inline-flex items-center gap-1 text-caption font-medium text-primary-500 focus:outline-none focus-visible:underline"
-                  >
-                    {t("chat.view")}
-                    <CaretRight className="size-3 rtl:rotate-180" aria-hidden />
-                  </button>
-                ) : null}
+                <div className="ms-1 flex items-center gap-3">
+                  {voice.speechSupported ? (
+                    <button
+                      onClick={() => voice.speak(m.text)}
+                      aria-label={t("chat.speak")}
+                      className="inline-flex items-center gap-1 text-caption font-medium text-primary-500 focus:outline-none focus-visible:underline"
+                    >
+                      <SpeakerHigh weight="fill" className="size-3.5" aria-hidden />
+                      {t("chat.speak")}
+                    </button>
+                  ) : null}
+                  {m.module ? (
+                    <button
+                      onClick={() => navigate({ to: `/parent/child/${childId}/${m.module}` as never })}
+                      className="inline-flex items-center gap-1 text-caption font-medium text-primary-500 focus:outline-none focus-visible:underline"
+                    >
+                      {t("chat.view")}
+                      <CaretRight className="size-3 rtl:rotate-180" aria-hidden />
+                    </button>
+                  ) : null}
+                </div>
               </div>
             ),
           )}

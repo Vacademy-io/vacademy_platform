@@ -3150,6 +3150,9 @@ class VideoGenerationPipeline:
         # warning rather than failing, so the rest of the run still works.
         ai_video_enabled: bool = False,
         ai_video_audio_enabled: bool = False,
+        # Which Veo tier films AI_VIDEO_HERO shots (lite/full/fast). None ⇒
+        # the client's lite default. full/fast are the fidelity upgrade.
+        ai_video_model: Optional[str] = None,
         # Institute identity — used to bind the AI video ledger writer so
         # Veo charges land as `USAGE_DEDUCTION` rows on the right institute.
         # None ⇒ ledger writes are skipped (legacy / standalone runs that
@@ -3488,6 +3491,7 @@ class VideoGenerationPipeline:
             ai_video_audio_enabled = False
         self._ai_video_run_enabled: bool = bool(ai_video_enabled)
         self._ai_video_audio_run_enabled: bool = bool(ai_video_audio_enabled)
+        self._ai_video_model: Optional[str] = ai_video_model or None
         self._fal_veo_client = None
         self._ai_video_cost_tracker = None
         self._ai_video_ledger = None
@@ -3606,7 +3610,9 @@ class VideoGenerationPipeline:
                     self._ai_video_run_enabled = False
                     self._ai_video_audio_run_enabled = False
                 else:
-                    self._fal_veo_client = FalVeoClient(_fal_key)
+                    self._fal_veo_client = FalVeoClient(
+                        _fal_key, model=getattr(self, "_ai_video_model", None)
+                    )
                     _cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or AI_VIDEO_PER_VIDEO_COST_CAP_USD)
                     self._ai_video_cost_tracker = AiVideoCostTracker(cap_usd=_cap)
                     # Credit ledger writer. Bound to (institute_id, run_name)

@@ -443,6 +443,7 @@ async def generate_video_external(
                         # service / pipeline gates tier eligibility internally.
                         ai_video_enabled=bool(getattr(p, "ai_video_enabled", False)),
                         ai_video_audio_enabled=bool(getattr(p, "ai_video_audio_enabled", False)),
+                        ai_video_model=getattr(p, "ai_video_model", None),
                         # Per-stage model overrides (DB-backed routing). When set,
                         # the service resolves a per-stage map via
                         # `AIModelsService.get_stage_model_map(...)`. The legacy
@@ -793,6 +794,7 @@ async def resume_video_external(
                         # preserved. Resumed runs default OFF when absent.
                         ai_video_enabled=bool(_meta.get("ai_video_enabled", False)),
                         ai_video_audio_enabled=bool(_meta.get("ai_video_audio_enabled", False)),
+                        ai_video_model=_meta.get("ai_video_model"),
                         # Resume parity: rehydrate per-stage overrides from
                         # saved metadata if present; otherwise fall through to
                         # the legacy `model` field (which the service collapses
@@ -1300,6 +1302,7 @@ async def decision_video_external(
                         brand_overrides=m.get("brand_overrides"),
                         ai_video_enabled=bool(m.get("ai_video_enabled", False)),
                         ai_video_audio_enabled=bool(m.get("ai_video_audio_enabled", False)),
+                        ai_video_model=m.get("ai_video_model"),
                         model_overrides=m.get("model_overrides"),
                     ):
                         await q.put(json.dumps(event))
@@ -1639,6 +1642,7 @@ async def retry_video_external(
                     # AI video (Phase 3b) — retry rehydrates from saved meta
                     ai_video_enabled=bool(_meta.get("ai_video_enabled", False)),
                     ai_video_audio_enabled=bool(_meta.get("ai_video_audio_enabled", False)),
+                        ai_video_model=_meta.get("ai_video_model"),
                     # Retry parity: rehydrate per-stage overrides from saved meta
                     model_overrides=_meta.get("model_overrides"),
                 ):

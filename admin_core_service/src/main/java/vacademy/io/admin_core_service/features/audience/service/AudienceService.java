@@ -133,6 +133,10 @@ public class AudienceService {
     @Autowired
     private vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService counsellorScopeService;
 
+    /** Resolves a sub-org admin's lead scope (their sub-org's members) — see getLeads. */
+    @Autowired
+    private vacademy.io.admin_core_service.features.suborg.service.SubOrgLeadScopeService subOrgLeadScopeService;
+
     @Autowired
     private InstituteCustomFieldRepository instituteCustomFieldRepository;
 
@@ -2418,6 +2422,34 @@ public class AudienceService {
             return LeadCounsellorOptionsDTO.builder().scoped(false).counsellors(List.of()).build();
         }
 
+        // Sub-org admin: scope the counsellor roster to their sub-org, consistent
+        // with the sub-org-scoped leads in getLeads. Detected by the ACTIVE SUB_ORG
+        // FSPSSM linkage (a sub-org admin also holds the parent ADMIN role and would
+        // otherwise get the full institute roster). This one branch covers BOTH the
+        // filter dropdown (assignable=false) and the assignment pickers
+        // (assignable=true), so a sub-org admin can neither filter by nor assign to
+        // counsellors outside their sub-org. scoped=true tells the frontend the
+        // roster is narrowed server-side.
+        List<String> subOrgMembers = subOrgLeadScopeService
+                .subOrgScopedCounsellorUserIds(caller.getUserId());
+        if (!subOrgMembers.isEmpty()) {
+            // Show only the sub-org's actual COUNSELLORS — not the sub-org admin
+            // themselves or other non-counsellor team members (teachers, etc.).
+            // Intersect the sub-org members with the institute's COUNSELLOR-role
+            // roster. Fall back to the full member set only if that intersection is
+            // empty, so a sub-org whose counsellors don't yet carry the COUNSELLOR
+            // role still gets a usable picker rather than an empty dropdown.
+            Set<String> counsellorRoster = new HashSet<>(
+                    counsellorScopeService.allCounsellorUserIds(instituteId));
+            List<String> subOrgCounsellors = subOrgMembers.stream()
+                    .filter(counsellorRoster::contains)
+                    .collect(Collectors.toList());
+            List<String> rosterIds = subOrgCounsellors.isEmpty() ? subOrgMembers : subOrgCounsellors;
+            List<vacademy.io.common.auth.dto.UserDTO> subOrgUsers =
+                    authService.getUsersFromAuthServiceByUserIds(rosterIds);
+            return LeadCounsellorOptionsDTO.builder().scoped(true).counsellors(subOrgUsers).build();
+        }
+
         boolean scoped = counsellorScopeService.isScopedCaller(instituteId, caller);
         // assignable=true resolves ASSIGNMENT targets (bulk-assign dialog,
         // telephony/IVR routing config): ADMIN-role callers get the
@@ -2480,7 +2512,32 @@ public class AudienceService {
         // sending assignedCounselorId.
         String assignedCounselorIdsCsv = null;
         boolean rbacApplied = false;
+
+        // Sub-org admin scoping (highest precedence). A sub-org admin is ALSO
+        // granted the parent institute's ADMIN role, so without this they'd
+        // resolve to DEFAULT above and see the entire parent lead pool. Detection
+        // is by ACTIVE SUB_ORG FSPSSM linkage (SubOrgLeadScopeService) — the only
+        // reliable fingerprint, since by role they're indistinguishable from a
+        // true institute admin. We hard-scope their visible leads to the members
+        // of the sub-org(s) they administer, reusing the same assignedCounselorIdsCsv
+        // filter the counsellor-hierarchy RBAC below uses. The member set always
+        // includes the admin themselves, so a non-empty result also means "is a
+        // sub-org admin"; an empty result means a normal admin/user and this
+        // branch is a no-op that preserves the pre-existing behaviour exactly.
+        boolean subOrgScopeApplied = false;
         if (user != null && user.getUserId() != null
+                && filterDTO.getInstituteId() != null
+                && !filterDTO.getInstituteId().isBlank()) {
+            List<String> subOrgScope = subOrgLeadScopeService
+                    .subOrgScopedCounsellorUserIds(user.getUserId());
+            if (!subOrgScope.isEmpty()) {
+                assignedCounselorIdsCsv = String.join(",", subOrgScope);
+                rbacApplied = true;
+                subOrgScopeApplied = true;
+            }
+        }
+
+        if (!subOrgScopeApplied && user != null && user.getUserId() != null
                 && filterDTO.getInstituteId() != null
                 && !filterDTO.getInstituteId().isBlank()) {
             String instituteId = filterDTO.getInstituteId();
@@ -2512,7 +2569,10 @@ public class AudienceService {
         // we drop unassigned leads (no counsellor on either linked_users or
         // user_lead_profile) from the result; any other mode keeps them visible
         // to anyone in scope, as before.
-        boolean includeUnassigned = access.getMode() != Mode.COUNSELOR;
+        // A sub-org admin sees ONLY leads assigned to their sub-org's members;
+        // the shared unassigned pool belongs to the parent institute, so it is
+        // excluded from their view alongside the COUNSELOR-mode exclusion.
+        boolean includeUnassigned = access.getMode() != Mode.COUNSELOR && !subOrgScopeApplied;
 
         String allowedAudienceIdsCsv = null;
         if (access.getMode() == Mode.AUDIENCE_LIST) {

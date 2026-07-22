@@ -618,7 +618,10 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
     # (TTS synthesizes the first chunk while the rest streams).
     plain_speech_rule = (
         "- Speak plain text only: NEVER output markdown — no *, #, bullets, numbered lists or "
-        "headings. No stage directions or parentheticals. Only words meant to be heard."
+        "headings. No stage directions or parentheticals. Only words meant to be heard.\n"
+        "- Write NUMBERS AS WORDS so they are spoken correctly: say 'a ten-minute demo' (not "
+        "'10-minute'), 'two minutes', 'nine thirty', 'twenty five'. Digits like '10' get read "
+        "out as 'one zero'. The ONLY exception is a phone number, which you read digit by digit."
     )
     fast_open_rule = (
         "- Begin every reply with a short natural clause (a few words) before any longer "
@@ -673,7 +676,7 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         "- DON'T ACCEPT THE FIRST BRUSH-OFF. Common deflections — 'just email me' / 'send a "
         "proposal' / 'we handle it ourselves' / 'we work directly' / 'not right now' / 'we're "
         "busy' — are not a no; they're a reflex. Acknowledge briefly, then redirect ONCE to "
-        "value + a concrete small next step: a 10-minute demo at a specific time. Example — if "
+        "value + a concrete small next step: a ten-minute demo at a specific time. Example — if "
         "they say 'email me the details', reply: 'Happy to — honestly it lands better as a "
         "quick 10-minute look so I show only what fits you. Would tomorrow evening or Thursday "
         "morning work?' Make ONE genuine, specific attempt like this. Only if they still "
@@ -855,6 +858,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     "Dhanyavaad!")
     transfer_closing = ("One moment, connecting you now." if eng
                         else "Ek moment, main aapko connect kar rahi hoon.")
+    idle_farewell = ("It seems I've lost you — I'll follow up shortly. Thank you, and have a "
+                     "great day!" if eng else
+                     "Lagta hai aapki awaaz nahi aa rahi — main baad mein sampark karti hoon. "
+                     "Dhanyavaad, aapka din shubh ho!")
     end_closing = ("Alright, thank you. Have a great day!" if eng
                    else "Theek hai, dhanyavaad. Aapka din shubh ho!")
     # 'Hmm…' only — 'Right…'/'Okay…' sound like complete replies, and a filler that
@@ -1077,8 +1084,12 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": nudge_text}]),
                     TTSSpeakFrame(nudge_text)])
             else:
+                # Speak a brief closing BEFORE dropping — a silent hangup felt like the
+                # call "disconnected without a proper close" (live feedback). _begin_stop's
+                # graceful-stop deadline lets the farewell play out (same as cap_farewell).
                 logger.info("idle hangup corr=%s", corr)
                 outcome.end_requested = True
+                await task.queue_frames([TTSSpeakFrame(idle_farewell)])
                 await _begin_stop()
 
     watchdog_task = asyncio.create_task(watchdog())

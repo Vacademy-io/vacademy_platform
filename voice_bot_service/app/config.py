@@ -172,7 +172,7 @@ class Settings:
     # silence. The clock only runs while the BOT is not speaking AND the caller is not
     # mid-utterance (VAD-armed — see bot.py). 10s: at 7s the nudge kept firing while a
     # slow-thinking caller was composing an answer (observed live).
-    idle_timeout_secs: float = field(default_factory=lambda: float(_env("IDLE_TIMEOUT_SECS", "10.0")))
+    idle_timeout_secs: float = field(default_factory=lambda: float(_env("IDLE_TIMEOUT_SECS", "8.0")))
 
     # Hard per-call ceiling when the agent config doesn't set maxCallMinutes —
     # bounds telephony + STT/LLM/TTS spend on a runaway conversation.

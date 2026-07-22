@@ -20,8 +20,7 @@ import { useOtaUpdate } from "@/stores/useOtaUpdate";
 import {
   checkForOtaUpdate,
   downloadAndApplyUpdate,
-  downloadAndStageUpdate,
-  isSilentOtaApp,
+  getOtaUpdateMode,
   notifyUpdateSuccess,
 } from "@/services/ota-update";
 import { Preferences } from "@capacitor/preferences";
@@ -245,7 +244,8 @@ const isPublicRoute = (pathname: string): boolean => {
 
 const RootComponent = () => {
   const { setUpdateAvailable } = useUpdate();
-  const { setOtaUpdate, setOtaDownloading } = useOtaUpdate();
+  const { setOtaUpdate, setOtaDownloading, setOtaAutoUpdating } =
+    useOtaUpdate();
   const { setPrimaryColor } = useTheme();
   const { setInstituteId } = useInstituteFeatureStore();
   const [isChatbotEnabled, setIsChatbotEnabled] = useState(false);
@@ -304,22 +304,31 @@ const RootComponent = () => {
       try {
         const result = await checkForOtaUpdate();
         if (result.update_available && result.bundle_download_url) {
-          // Native apps update silently: download in the background and stage the
-          // bundle for the next restart/resume. No banner, no toast, no mid-session
-          // reload — a reload here would wipe a learner's in-progress attempt.
-          if (await isSilentOtaApp()) {
+          const mode = await getOtaUpdateMode();
+
+          // AUTO mode (fleet default): show a non-dismissible "Updating app…"
+          // loader dialog, then download + apply the bundle in place. This runs
+          // at launch ONLY, so the set() reload can never wipe a learner's
+          // in-progress exam attempt (the reason the old silent path existed).
+          // Applies for both optional and force updates.
+          if (mode === "auto") {
             try {
-              await downloadAndStageUpdate(
+              setOtaAutoUpdating(true, result.version ?? null);
+              await downloadAndApplyUpdate(
                 result.bundle_download_url,
                 result.version!,
                 result.checksum!,
               );
-            } catch (stageErr) {
-              console.error("OTA silent stage failed:", stageErr);
+              // set() reloads the WebView — the line below only runs if it fails.
+              setOtaAutoUpdating(false);
+            } catch (autoErr) {
+              console.error("OTA auto update failed:", autoErr);
+              setOtaAutoUpdating(false);
             }
             return;
           }
 
+          // BANNER mode: dismissible banner (optional) or blocking overlay (force).
           setOtaUpdate({
             otaUpdateAvailable: true,
             otaVersion: result.version ?? null,

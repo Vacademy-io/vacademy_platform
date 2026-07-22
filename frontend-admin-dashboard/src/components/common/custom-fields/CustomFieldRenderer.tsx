@@ -32,6 +32,7 @@ interface CustomFieldRendererProps {
         defaultValue?: string;
         allowedFileTypes?: string[];
         maxSizeMB?: number;
+        description?: string;
     };
     onFileUpload?: (file: File) => void;
 }
@@ -228,19 +229,33 @@ export const CustomFieldRenderer = ({
                 />
             );
 
-        case 'checkbox':
+        case 'checkbox': {
+            // Optional long body (e.g. Terms & Conditions) shown above the box.
+            // whitespace-pre-line preserves the admin's line breaks; scrolls if long.
+            const description = config?.description;
             return (
-                <div className="flex items-center gap-2">
-                    <Checkbox
-                        checked={value === 'true'}
-                        onCheckedChange={(checked) =>
-                            handleChange(checked === true ? 'true' : 'false')
-                        }
-                        disabled={disabled}
-                    />
-                    <Label className="text-sm">{name}</Label>
+                <div className="flex flex-col gap-2">
+                    {description && (
+                        <div className="max-h-60 overflow-y-auto whitespace-pre-line rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-700">
+                            {description}
+                        </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                        <Checkbox
+                            checked={value === 'true'}
+                            onCheckedChange={(checked) =>
+                                handleChange(checked === true ? 'true' : 'false')
+                            }
+                            disabled={disabled}
+                        />
+                        <Label className="text-sm">
+                            {name}
+                            {required && <span className="text-danger-600"> *</span>}
+                        </Label>
+                    </div>
                 </div>
             );
+        }
 
         case 'dropdown':
             return (

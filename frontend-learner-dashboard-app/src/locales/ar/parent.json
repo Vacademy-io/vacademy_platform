@@ -110,7 +110,11 @@
     "fallback": "I can help with attendance, fees, tests, progress and rewards — try asking about one of those.",
     "thinking": "Thinking…",
     "mic": "Ask by voice",
-    "listening": "Listening…"
+    "listening": "Listening…",
+    "micCta": "Tap to speak",
+    "speak": "Listen",
+    "mute": "Mute voice",
+    "unmute": "Turn on voice"
   },
   "tone": {
     "good": "Going well",
@@ -135,7 +139,14 @@
     "statusOkay": "Okay",
     "statusLow": "Low",
     "emptyTitle": "No attendance yet",
-    "emptyBody": "Attendance will show here once classes begin."
+    "emptyBody": "Attendance will show here once classes begin.",
+    "daysAttended": "{{present}} of {{total}} days",
+    "graphTitle": "Attendance breakdown",
+    "presentDays": "Present",
+    "absentDays": "Absent",
+    "unmarkedDays": "Unmarked",
+    "streak": "Day streak",
+    "engagementTitle": "Focused learning time"
   },
   "progress": {
     "summary": "{{name}} has completed {{percent}}% of their lessons.",

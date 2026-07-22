@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { ChatCircleDots, Robot, CaretRight, PaperPlaneTilt, Microphone } from "@phosphor-icons/react";
+import {
+  ChatCircleDots,
+  Robot,
+  CaretRight,
+  PaperPlaneTilt,
+  Microphone,
+  SpeakerHigh,
+  SpeakerSlash,
+} from "@phosphor-icons/react";
 import {
   Sheet,
   SheetContent,
@@ -10,6 +18,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import heroGreeting from "@/assets/cleaner-play/hero-greeting.webp";
 import { useChildOverview } from "../-hooks/use-parent-child";
 import { askChildAssistant } from "../-services/parent-portal-api";
 import { useParentVoice } from "../-lib/use-parent-voice";
@@ -61,9 +70,14 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
+  // Auto-speak answers by default; the parent can mute from the header.
+  const [muted, setMuted] = useState(false);
   const idRef = useRef(0);
   const nextId = () => ++idRef.current;
   const addMsg = (m: Msg) => setMessages((prev) => [...prev, m]);
+  const speakIfAuto = (text: string) => {
+    if (!muted && voice.speechSupported) voice.speak(text);
+  };
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Keep the newest message in view as the conversation grows.
@@ -99,6 +113,7 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
   const push = (userText: string, a: { text: string; module?: string }) => {
     addMsg({ id: nextId(), role: "user", text: userText });
     addMsg({ id: nextId(), role: "bot", text: a.text, module: a.module });
+    speakIfAuto(a.text);
   };
 
   const ask = (q: QKey) => push(t(`chat.q.${q}`, { name: childName }), answer(q));
@@ -120,6 +135,7 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
       const res = await askChildAssistant(childId, text);
       if (res?.available && res.answer) {
         addMsg({ id: nextId(), role: "bot", text: res.answer });
+        speakIfAuto(res.answer);
         return;
       }
     } catch {
@@ -129,6 +145,7 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
     }
     const a = keywordAnswer(text);
     addMsg({ id: nextId(), role: "bot", text: a.text, module: a.module });
+    speakIfAuto(a.text);
   };
 
   // Mic: transcribe the spoken question, drop it in the box, and ask.
@@ -144,18 +161,21 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
   };
 
   return (
-    <Sheet>
+    <Sheet onOpenChange={(open) => { if (!open) voice.cancelSpeak(); }}>
       <SheetTrigger asChild>
         <button
           aria-label={t("chat.open")}
           data-tour="parent-chat"
           className={cn(
-            "fixed bottom-5 end-5 z-50 flex size-14 items-center justify-center rounded-full",
-            "bg-primary-500 text-primary-50 shadow-lg transition-transform hover:scale-105",
-            "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
+            "fixed bottom-5 end-5 z-50 flex size-16 items-center justify-center rounded-full",
+            "bg-gradient-to-br from-primary-100 to-secondary-50 shadow-lg ring-2 ring-primary-200",
+            "transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
           )}
         >
-          <ChatCircleDots size={26} weight="fill" aria-hidden />
+          <img src={heroGreeting} alt="" aria-hidden className="size-full object-contain p-1.5" />
+          <span className="absolute -right-0.5 -top-0.5 flex size-6 items-center justify-center rounded-full bg-primary-500 text-primary-50 shadow-md">
+            <ChatCircleDots weight="fill" className="size-3.5" aria-hidden />
+          </span>
         </button>
       </SheetTrigger>
 
@@ -164,6 +184,24 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
           <SheetTitle className="flex items-center gap-2">
             <Robot weight="duotone" className="size-5 text-primary-500" aria-hidden />
             {t("chat.title")}
+            {voice.speechSupported ? (
+              <button
+                type="button"
+                onClick={() => {
+                  voice.cancelSpeak();
+                  setMuted((m) => !m);
+                }}
+                aria-label={muted ? t("chat.unmute") : t("chat.mute")}
+                aria-pressed={muted}
+                className="ms-auto flex size-8 items-center justify-center rounded-full text-primary-500 hover:bg-primary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+              >
+                {muted ? (
+                  <SpeakerSlash weight="fill" className="size-4" aria-hidden />
+                ) : (
+                  <SpeakerHigh weight="fill" className="size-4" aria-hidden />
+                )}
+              </button>
+            ) : null}
           </SheetTitle>
         </SheetHeader>
 
@@ -181,15 +219,27 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
                 <div className="rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-body text-foreground">
                   {m.text}
                 </div>
-                {m.module ? (
-                  <button
-                    onClick={() => navigate({ to: `/parent/child/${childId}/${m.module}` as never })}
-                    className="ms-1 inline-flex items-center gap-1 text-caption font-medium text-primary-500 focus:outline-none focus-visible:underline"
-                  >
-                    {t("chat.view")}
-                    <CaretRight className="size-3 rtl:rotate-180" aria-hidden />
-                  </button>
-                ) : null}
+                <div className="ms-1 flex items-center gap-3">
+                  {voice.speechSupported ? (
+                    <button
+                      onClick={() => voice.speak(m.text)}
+                      aria-label={t("chat.speak")}
+                      className="inline-flex items-center gap-1 text-caption font-medium text-primary-500 focus:outline-none focus-visible:underline"
+                    >
+                      <SpeakerHigh weight="fill" className="size-3.5" aria-hidden />
+                      {t("chat.speak")}
+                    </button>
+                  ) : null}
+                  {m.module ? (
+                    <button
+                      onClick={() => navigate({ to: `/parent/child/${childId}/${m.module}` as never })}
+                      className="inline-flex items-center gap-1 text-caption font-medium text-primary-500 focus:outline-none focus-visible:underline"
+                    >
+                      {t("chat.view")}
+                      <CaretRight className="size-3 rtl:rotate-180" aria-hidden />
+                    </button>
+                  ) : null}
+                </div>
               </div>
             ),
           )}
@@ -216,13 +266,31 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
           ))}
         </div>
 
-        {/* Free-text question box */}
+        {/* Primary call-to-action: speak. Big, highlighted, pulses while listening. */}
+        {voice.recognitionSupported ? (
+          <button
+            type="button"
+            onClick={toggleMic}
+            aria-pressed={voice.listening}
+            disabled={pending}
+            className={cn(
+              "mt-3 flex w-full items-center justify-center gap-2 rounded-full py-3 text-body font-semibold shadow-sm",
+              "transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 disabled:opacity-50",
+              voice.listening ? "animate-pulse bg-danger-500 text-white" : "bg-primary-500 text-primary-50",
+            )}
+          >
+            <Microphone weight="fill" className="size-5" aria-hidden />
+            {voice.listening ? t("chat.listening") : t("chat.micCta")}
+          </button>
+        ) : null}
+
+        {/* Or type */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
             void submit(input);
           }}
-          className="mt-3 flex items-center gap-2"
+          className="mt-2 flex items-center gap-2"
         >
           <input
             value={input}
@@ -236,24 +304,6 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
               "disabled:opacity-60",
             )}
           />
-          {voice.recognitionSupported ? (
-            <button
-              type="button"
-              onClick={toggleMic}
-              aria-label={t("chat.mic")}
-              aria-pressed={voice.listening}
-              disabled={pending}
-              className={cn(
-                "flex size-9 shrink-0 items-center justify-center rounded-full transition-colors",
-                "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300 disabled:opacity-50",
-                voice.listening
-                  ? "animate-pulse bg-danger-500 text-white"
-                  : "bg-primary-50 text-primary-500",
-              )}
-            >
-              <Microphone weight="fill" className="size-4" aria-hidden />
-            </button>
-          ) : null}
           <button
             type="submit"
             aria-label={t("chat.send")}

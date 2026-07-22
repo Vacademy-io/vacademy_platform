@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-// Speech-to-text for the parent chatbot: the parent asks by voice, the bot answers
-// in text. Uses the browser Web Speech API — no backend, no API keys. Capability-
-// gated, so the mic renders nothing where the platform doesn't support it (e.g.
-// some native webviews).
+// Voice for the parent chatbot: speech-to-text (ask by voice) AND text-to-speech
+// (hear the answer). Browser Web Speech API — no backend, no API keys. Everything
+// is capability-gated so it renders nothing where the platform doesn't support it
+// (e.g. some native webviews).
 
 interface RecognitionResultEvent {
   results: ArrayLike<ArrayLike<{ transcript: string }>>;
@@ -30,7 +30,7 @@ function getRecognitionCtor(): (new () => SpeechRecognitionLike) | null {
   return w.SpeechRecognition || w.webkitSpeechRecognition || null;
 }
 
-// i18n locale → BCP-47 for recognition.
+// i18n locale → BCP-47 for recognition + synthesis.
 const LOCALE_TO_BCP47: Record<string, string> = { en: "en-US", hi: "hi-IN", ar: "ar-SA" };
 
 export function useParentVoice(locale: string) {
@@ -38,8 +38,20 @@ export function useParentVoice(locale: string) {
   const lang = LOCALE_TO_BCP47[short] || locale || "en-US";
 
   const recognitionSupported = !!getRecognitionCtor();
+  const speechSupported = typeof window !== "undefined" && "speechSynthesis" in window;
+
   const [listening, setListening] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
+
+  // Warm up the voice list (getVoices() is empty on first call in some browsers).
+  useEffect(() => {
+    if (!speechSupported) return;
+    const warm = () => window.speechSynthesis.getVoices();
+    warm();
+    window.speechSynthesis.addEventListener?.("voiceschanged", warm);
+    return () => window.speechSynthesis.removeEventListener?.("voiceschanged", warm);
+  }, [speechSupported]);
 
   const stopListen = useCallback(() => {
     try {
@@ -80,17 +92,64 @@ export function useParentVoice(locale: string) {
     [lang],
   );
 
-  // Stop any in-flight recognition on unmount.
+  const cancelSpeak = useCallback(() => {
+    if (!speechSupported) return;
+    try {
+      window.speechSynthesis.cancel();
+    } catch {
+      /* ignore */
+    }
+    setSpeaking(false);
+  }, [speechSupported]);
+
+  // Speak the given text. Must be triggered from a user gesture (iOS WKWebView).
+  // Prefers a voice whose language matches the answer's script when detectable,
+  // otherwise the app locale.
+  const speak = useCallback(
+    (text: string) => {
+      if (!speechSupported || !text) return;
+      try {
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(text);
+        // Devanagari in the text → speak Hindi even if the app locale is English.
+        const isDevanagari = /[ऀ-ॿ]/.test(text);
+        utter.lang = isDevanagari ? "hi-IN" : lang;
+        const want = (isDevanagari ? "hi" : short).toLowerCase();
+        const voice = window.speechSynthesis
+          .getVoices()
+          .find((v) => v.lang?.toLowerCase().startsWith(want));
+        if (voice) utter.voice = voice;
+        utter.onend = () => setSpeaking(false);
+        utter.onerror = () => setSpeaking(false);
+        setSpeaking(true);
+        window.speechSynthesis.speak(utter);
+      } catch {
+        setSpeaking(false);
+      }
+    },
+    [speechSupported, lang, short],
+  );
+
   useEffect(
     () => () => {
+      cancelSpeak();
       try {
         recRef.current?.abort();
       } catch {
         /* ignore */
       }
     },
-    [],
+    [cancelSpeak],
   );
 
-  return { recognitionSupported, listening, listen, stopListen };
+  return {
+    recognitionSupported,
+    speechSupported,
+    listening,
+    speaking,
+    listen,
+    stopListen,
+    speak,
+    cancelSpeak,
+  };
 }

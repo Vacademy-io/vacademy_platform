@@ -178,9 +178,6 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // The most recent answer drives the centre text + the "speaking" teacher.
-  const lastBot = [...messages].reverse().find((m) => m.role === "bot");
-
   // Lip-sync: while speaking, flip the mouth open/closed on a short interval so the
   // teacher visibly "talks"; a separate thinking frame shows while an answer loads.
   const [mouthOpen, setMouthOpen] = useState(false);
@@ -323,44 +320,80 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
               </div>
             </div>
 
-            {/* Centre stage: the teacher (mouth-swap while speaking) + the answer / intro */}
-            <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
+            {/* Centre stage: the teacher (mouth-swap while speaking) shrinks once a
+                conversation starts, with the running Q&A history below it (scrollable). */}
+            <div className="flex min-h-0 flex-1 flex-col items-center px-6">
               <motion.img
                 src={teacherSrc}
                 alt=""
                 aria-hidden
-                className="h-44 w-auto drop-shadow-lg sm:h-52"
+                className={cn(
+                  "w-auto shrink-0",
+                  messages.length > 0 ? "mt-1 h-28" : "mt-2 h-44 sm:h-52",
+                )}
                 animate={teacherAnimate}
                 transition={teacherTransition}
               />
 
-              {lastBot ? (
-                <div ref={scrollRef} className="mt-4 max-h-44 w-full max-w-md overflow-y-auto">
-                  <p className="text-h3 font-medium leading-relaxed text-foreground">{lastBot.text}</p>
-                  {lastBot.module ? (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigate({ to: `/parent/child/${childId}/${lastBot.module}` as never });
-                        closeAssistant();
-                      }}
-                      className="mt-3 inline-flex items-center gap-1 rounded-full bg-primary-50 px-3 py-1.5 text-caption font-medium text-primary-500 hover:bg-primary-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
-                    >
-                      {t("chat.view")}
-                      <CaretRight className="size-3 rtl:rotate-180" aria-hidden />
-                    </button>
-                  ) : null}
+              {messages.length === 0 ? (
+                <div className="flex flex-1 flex-col items-center justify-center text-center">
+                  <h2 className="text-h1 font-bold text-foreground">{t("chat.askTitle", { name: childName })}</h2>
+                  <p className="mt-2 max-w-xs text-body text-muted-foreground">{t("chat.askSubtitle")}</p>
                 </div>
               ) : (
-                <>
-                  <h2 className="mt-4 text-h1 font-bold text-foreground">{t("chat.askTitle", { name: childName })}</h2>
-                  <p className="mt-2 max-w-xs text-body text-muted-foreground">{t("chat.askSubtitle")}</p>
-                </>
+                <div
+                  ref={scrollRef}
+                  className="mt-3 flex min-h-0 w-full max-w-md flex-1 flex-col gap-2 overflow-y-auto pb-1"
+                >
+                  {messages.map((m) =>
+                    m.role === "user" ? (
+                      <div
+                        key={m.id}
+                        className="self-end rounded-2xl rounded-br-sm bg-primary-500 px-3 py-2 text-body text-white"
+                      >
+                        {m.text}
+                      </div>
+                    ) : (
+                      <div key={m.id} className="flex flex-col items-start gap-1 self-start">
+                        <div className="rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-body text-foreground">
+                          {m.text}
+                        </div>
+                        <div className="ms-1 flex items-center gap-3">
+                          {voice.speechSupported ? (
+                            <button
+                              type="button"
+                              onClick={() => voice.speak(m.text)}
+                              aria-label={t("chat.speak")}
+                              className="inline-flex items-center gap-1 text-caption font-medium text-primary-500 focus:outline-none focus-visible:underline"
+                            >
+                              <SpeakerHigh weight="fill" className="size-3.5" aria-hidden />
+                              {t("chat.speak")}
+                            </button>
+                          ) : null}
+                          {m.module ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigate({ to: `/parent/child/${childId}/${m.module}` as never });
+                                closeAssistant();
+                              }}
+                              className="inline-flex items-center gap-1 text-caption font-medium text-primary-500 focus:outline-none focus-visible:underline"
+                            >
+                              {t("chat.view")}
+                              <CaretRight className="size-3 rtl:rotate-180" aria-hidden />
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    ),
+                  )}
+                  {pending ? (
+                    <div className="self-start rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-body text-muted-foreground">
+                      {t("chat.thinking")}
+                    </div>
+                  ) : null}
+                </div>
               )}
-
-              {pending ? (
-                <p className="mt-4 text-caption text-muted-foreground">{t("chat.thinking")}</p>
-              ) : null}
             </div>
 
             {/* Tap to speak — big orange mic, pulses while listening */}

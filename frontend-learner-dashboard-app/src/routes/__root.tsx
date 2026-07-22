@@ -444,10 +444,30 @@ const RootComponent = () => {
       "/",
     ];
 
-    const isRootRoute = (path: string) =>
-      ROOT_ROUTES.some(
+    // The institute may configure a custom post-login landing route
+    // (STUDENT_DISPLAY_SETTINGS.postLoginRedirectRoute) that isn't one of the
+    // built-in root routes above. Treat that landing route as an exit route
+    // too, so hardware back on the learner's home screen minimizes the app
+    // instead of walking history back toward /login. Read from cache (already
+    // populated at login); a missing/failed lookup just leaves ROOT_ROUTES.
+    let landingRoute: string | null = null;
+    getStudentDisplaySettings()
+      .then((s) => {
+        const r = s?.postLoginRedirectRoute?.trim();
+        if (r && !/^https?:\/\//.test(r)) {
+          landingRoute = r.split("?")[0].split("#")[0];
+        }
+      })
+      .catch(() => {});
+
+    const isRootRoute = (path: string) => {
+      const routes = landingRoute
+        ? [...ROOT_ROUTES, landingRoute]
+        : ROOT_ROUTES;
+      return routes.some(
         (r) => path === r || path === `${r}/` || path.startsWith(`${r}?`),
       );
+    };
 
     let handle: { remove: () => void } | null = null;
 

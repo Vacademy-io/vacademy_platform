@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { motion } from "framer-motion";
+import chatTeacher from "@/assets/parent-icons/chat-teacher.webp";
 import {
   ChalkboardTeacher,
   CaretRight,
@@ -8,6 +10,8 @@ import {
   Microphone,
   SpeakerHigh,
   SpeakerSlash,
+  House,
+  Eye,
 } from "@phosphor-icons/react";
 import {
   Sheet,
@@ -20,6 +24,7 @@ import { cn } from "@/lib/utils";
 import { useChildOverview } from "../-hooks/use-parent-child";
 import { askChildAssistant } from "../-services/parent-portal-api";
 import { useParentVoice } from "../-lib/use-parent-voice";
+import { useViewAsChild } from "../-lib/use-view-as-child";
 
 type QKey = "attendance" | "fees" | "rewards" | "tests" | "progress";
 const QUESTIONS: QKey[] = ["attendance", "fees", "rewards", "tests", "progress"];
@@ -63,6 +68,7 @@ interface ParentChatbotProps {
 export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
   const { t, i18n } = useTranslation("parent");
   const navigate = useNavigate();
+  const { viewAsChild, switching: switchingToChild } = useViewAsChild(childId, childName);
   const voice = useParentVoice(i18n.language);
   const { data: overview } = useChildOverview(childId);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -160,19 +166,67 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
 
   return (
     <Sheet onOpenChange={(open) => { if (!open) voice.cancelSpeak(); }}>
-      <SheetTrigger asChild>
-        <button
-          aria-label={t("chat.open")}
-          data-tour="parent-chat"
-          className={cn(
-            "fixed bottom-5 end-5 z-50 flex size-14 items-center justify-center rounded-full",
-            "bg-gradient-to-br from-primary-400 to-primary-500 text-primary-50 shadow-lg",
-            "transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
-          )}
-        >
-          <ChalkboardTeacher weight="fill" size={28} aria-hidden />
-        </button>
-      </SheetTrigger>
+      {/* Mobile bottom navigation: Home · Ask (teacher bot) · Student view */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 pb-safe backdrop-blur">
+        <div className="mx-auto flex max-w-4xl items-end justify-around px-4 pb-1.5 pt-2">
+          <button
+            type="button"
+            onClick={() => navigate({ to: "/parent/child/$childId", params: { childId } })}
+            aria-label={t("nav.home")}
+            className={cn(
+              "flex flex-1 flex-col items-center gap-1 rounded-xl py-1 text-muted-foreground",
+              "transition-colors hover:text-primary-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
+            )}
+          >
+            <House weight="fill" className="size-6" aria-hidden />
+            <span className="text-caption font-medium">{t("nav.home")}</span>
+          </button>
+
+          {/* Centre bot — raised above the bar, same attention animation as the old FAB */}
+          <div className="flex flex-1 flex-col items-center">
+            <SheetTrigger asChild>
+              <motion.button
+                aria-label={t("chat.open")}
+                data-tour="parent-chat"
+                className={cn(
+                  "relative -mt-8 flex size-16 items-center justify-center rounded-full",
+                  "bg-gradient-to-br from-primary-50 to-secondary-50 shadow-lg ring-4 ring-background",
+                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
+                )}
+                animate={{ rotate: [0, -7, 7, -5, 5, 0], scale: [1, 1.06, 1] }}
+                transition={{ duration: 1.4, repeat: Infinity, repeatDelay: 3.2, ease: "easeInOut" }}
+                whileHover={{ scale: 1.08, rotate: 0 }}
+                whileTap={{ scale: 0.94 }}
+              >
+                {/* Pulsing halo — a soft ripple that keeps drawing attention. */}
+                <motion.span
+                  aria-hidden
+                  className="absolute inset-0 rounded-full bg-primary-300/40"
+                  animate={{ scale: [1, 1.55], opacity: [0.45, 0] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
+                />
+                <img src={chatTeacher} alt="" aria-hidden className="relative size-full object-contain p-1" />
+              </motion.button>
+            </SheetTrigger>
+            <span className="mt-0.5 text-caption font-semibold text-primary-500">{t("nav.ask")}</span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void viewAsChild()}
+            disabled={switchingToChild}
+            aria-label={t("nav.studentView")}
+            className={cn(
+              "flex flex-1 flex-col items-center gap-1 rounded-xl py-1 text-muted-foreground",
+              "transition-colors hover:text-primary-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
+              "disabled:opacity-50",
+            )}
+          >
+            <Eye weight="duotone" className="size-6" aria-hidden />
+            <span className="text-caption font-medium">{t("nav.studentView")}</span>
+          </button>
+        </div>
+      </nav>
 
       <SheetContent side="bottom" className="mx-auto max-w-2xl rounded-t-2xl">
         <SheetHeader>

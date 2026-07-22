@@ -19,4 +19,6 @@ public class ScheduleDetailDTO {
     private String sessionStatus;
     private String accessLevel;
     private String attendanceStatus;
+    // Real per-class attended minutes from the provider; null when not attended.
+    private Integer durationMinutes;
 }

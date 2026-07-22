@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { createFileRoute, useNavigate, useParams } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
-import { CheckCircle, Receipt } from "@phosphor-icons/react";
+import { CheckCircle, Receipt, Exam, VideoCamera } from "@phosphor-icons/react";
 import { LoadingState, ErrorState } from "@/components/design-system/states";
 import heroGreeting from "@/assets/cleaner-play/hero-greeting.webp";
 import { ParentModuleIcon } from "@/components/parent/ParentModuleIcon";
@@ -14,8 +14,10 @@ import { getParentFirstName } from "../-lib/parent-identity";
 import { buildParentTourSteps } from "../-components/ParentHelpButton";
 import { runParentTour } from "../-lib/parent-tour";
 import { MODULE_TILES } from "../-components/module-tiles";
-import { useChildOverview } from "../-hooks/use-parent-child";
+import { useChildAttendance, useChildOverview } from "../-hooks/use-parent-child";
 import { buildAttentionItems } from "../-lib/summaries";
+import { computeAttendanceStats } from "@/services/attendance/useAttendanceStats";
+import type { ScheduleItem } from "@/services/attendance/getAttendanceReport";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/parent/child/$childId/")({
@@ -27,6 +29,9 @@ function ChildHome() {
   const { t } = useTranslation("parent");
   const navigate = useNavigate();
   const { data: overview, isLoading, isError, refetch } = useChildOverview(childId);
+  // Same day-wise attendance as the Attendance tab, so the landing headline and the
+  // tab never disagree (the backend overview % is session-wise and would differ).
+  const { data: attendance } = useChildAttendance(childId);
 
   // First-visit guided tour (once). Small settle delay so anchors are painted.
   useEffect(() => {
@@ -63,6 +68,25 @@ function ChildHome() {
     navigate({ to: `/parent/child/${childId}/${segment}` as never });
 
   const pendingFees = overview.pendingInvoiceCount ?? 0;
+
+  // Day-wise % from the shared schedules; fall back to the overview number only
+  // until the attendance query resolves.
+  const attSchedules = (attendance?.schedules ?? []) as unknown as ScheduleItem[];
+  const attStats = computeAttendanceStats(attSchedules);
+  const attendancePercent =
+    attSchedules.length > 0
+      ? attStats.attendancePercentage
+      : overview.attendancePercent != null
+        ? Math.round(overview.attendancePercent)
+        : null;
+  const attendanceTone =
+    attendancePercent == null
+      ? "neutral"
+      : attendancePercent >= 75
+        ? "good"
+        : attendancePercent >= 60
+          ? "watch"
+          : "action";
 
   return (
     <ParentChildShell childId={childId} backTo="picker">
@@ -135,14 +159,30 @@ function ChildHome() {
           <ParentInfoRow
             icon={CheckCircle}
             title={t("info.attendance")}
-            tone="good"
-            value={
-              overview.attendancePercent != null
-                ? `${Math.round(overview.attendancePercent)}%`
-                : undefined
-            }
+            tone={attendanceTone}
+            value={attendancePercent != null ? `${attendancePercent}%` : undefined}
             onClick={() => goTo("attendance")}
           />
+
+          {overview.assessmentCount != null && available.has("assessments") ? (
+            <ParentInfoRow
+              icon={Exam}
+              title={t("info.tests")}
+              tone="neutral"
+              value={t("tiles.sub.tests", { count: overview.assessmentCount })}
+              onClick={() => goTo("assessments")}
+            />
+          ) : null}
+
+          {overview.upcomingSessionCount != null && available.has("liveSessions") ? (
+            <ParentInfoRow
+              icon={VideoCamera}
+              title={t("info.liveClasses")}
+              tone={overview.upcomingSessionCount > 0 ? "watch" : "neutral"}
+              value={t("tiles.sub.upcoming", { count: overview.upcomingSessionCount })}
+              onClick={() => goTo("live-classes")}
+            />
+          ) : null}
 
           <AttentionCard childId={childId} items={attention} />
 

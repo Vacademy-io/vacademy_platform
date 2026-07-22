@@ -9,7 +9,7 @@ import type { ParentStatusTone } from "../../-components/ParentStatusChip";
 import { computeAttendanceStats } from "@/services/attendance/useAttendanceStats";
 import type { ScheduleItem } from "@/services/attendance/getAttendanceReport";
 import { cn } from "@/lib/utils";
-import { useChildAttendance, useChildOverview, useChildPoints } from "../../-hooks/use-parent-child";
+import { useChildAttendance, useChildOverview } from "../../-hooks/use-parent-child";
 
 export const Route = createFileRoute("/parent/child/$childId/attendance/")({
   component: AttendanceScreen,
@@ -43,14 +43,16 @@ function AttendanceScreen() {
   const { t } = useTranslation("parent");
   const overview = useChildOverview(childId);
   const { data, isLoading, isError, refetch } = useChildAttendance(childId);
-  const { data: points } = useChildPoints(childId);
 
   const childName = overview.data?.child?.fullName || t("common.yourChild");
-  // Focused-activity minutes — the platform's real "time engaged" metric. (Live
-  // sessions don't record per-class attended duration, so this is the meaningful
-  // duration/engagement figure we can show.)
-  const engagedMinutes = points?.points ?? 0;
   const schedules = Array.isArray(data?.schedules) ? (data!.schedules as Record<string, unknown>[]) : [];
+
+  // Real time the child actually spent in class — the provider-reported attended
+  // minutes summed across every class (not points, not a proxy).
+  const totalMinutes = schedules.reduce(
+    (sum, s) => sum + (Number(s.durationMinutes) || 0),
+    0,
+  );
 
   // Use the SAME day-wise computation as the student app (multiple classes in a
   // day = one day; PRESENT if any class that day was attended), so the parent %
@@ -106,15 +108,15 @@ function AttendanceScreen() {
           </div>
         ) : null}
 
-        {/* Focused learning time (engagement) */}
-        {engagedMinutes > 0 ? (
+        {/* Real time spent in class (summed provider-reported attended minutes) */}
+        {totalMinutes > 0 ? (
           <div className="flex items-center gap-3 rounded-2xl bg-card px-5 py-4 shadow-sm">
             <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-info-50">
               <Clock weight="fill" className="size-6 text-info-600" aria-hidden />
             </span>
             <div className="flex flex-col">
-              <span className="text-h2 font-bold text-foreground">{formatMinutes(engagedMinutes)}</span>
-              <span className="text-caption text-muted-foreground">{t("attendance.engagementTitle")}</span>
+              <span className="text-h2 font-bold text-foreground">{formatMinutes(totalMinutes)}</span>
+              <span className="text-caption text-muted-foreground">{t("attendance.timeInClassTitle")}</span>
             </div>
           </div>
         ) : null}
@@ -166,6 +168,7 @@ function AttendanceScreen() {
                 const info = statusToneLabel(s.attendanceStatus, t);
                 const title = String(s.sessionTitle ?? s.subject ?? t("liveClasses.session"));
                 const dateLabel = formatDate(s.meetingDate);
+                const mins = Number(s.durationMinutes) || 0;
                 return (
                   <li
                     key={String(s.scheduleId ?? i)}
@@ -173,9 +176,15 @@ function AttendanceScreen() {
                   >
                     <div className="flex min-w-0 flex-col">
                       <span className="truncate text-body font-medium text-foreground">{title}</span>
-                      {dateLabel ? (
-                        <span className="text-caption text-muted-foreground">{dateLabel}</span>
-                      ) : null}
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-caption text-muted-foreground">
+                        {dateLabel ? <span>{dateLabel}</span> : null}
+                        {mins > 0 ? (
+                          <span className="inline-flex items-center gap-1">
+                            <Clock weight="fill" className="size-3 text-info-600" aria-hidden />
+                            {t("attendance.attendedFor", { duration: formatMinutes(mins) })}
+                          </span>
+                        ) : null}
+                      </span>
                     </div>
                     <ParentStatusChip tone={info.tone} label={info.label} />
                   </li>

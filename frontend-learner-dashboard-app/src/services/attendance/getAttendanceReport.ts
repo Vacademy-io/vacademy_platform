@@ -19,6 +19,8 @@ export interface ScheduleItem {
   sessionTitle: string;
   startTime: string;
   subject: string;
+  /** real per-class attended minutes from the provider; null/absent when not attended */
+  durationMinutes?: number | null;
 }
 export interface StudentAttendanceApi {
   userId: string;

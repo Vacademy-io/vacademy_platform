@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
-  ChatCircleDots,
   Robot,
   CaretRight,
   PaperPlaneTilt,
@@ -18,7 +17,6 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import heroGreeting from "@/assets/cleaner-play/hero-greeting.webp";
 import { useChildOverview } from "../-hooks/use-parent-child";
 import { askChildAssistant } from "../-services/parent-portal-api";
 import { useParentVoice } from "../-lib/use-parent-voice";
@@ -167,15 +165,12 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
           aria-label={t("chat.open")}
           data-tour="parent-chat"
           className={cn(
-            "fixed bottom-5 end-5 z-50 flex size-16 items-center justify-center rounded-full",
-            "bg-gradient-to-br from-primary-100 to-secondary-50 shadow-lg ring-2 ring-primary-200",
+            "fixed bottom-5 end-5 z-50 flex size-14 items-center justify-center rounded-full",
+            "bg-gradient-to-br from-primary-400 to-primary-500 text-primary-50 shadow-lg",
             "transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300",
           )}
         >
-          <img src={heroGreeting} alt="" aria-hidden className="size-full object-contain p-1.5" />
-          <span className="absolute -right-0.5 -top-0.5 flex size-6 items-center justify-center rounded-full bg-primary-500 text-primary-50 shadow-md">
-            <ChatCircleDots weight="fill" className="size-3.5" aria-hidden />
-          </span>
+          <Robot weight="fill" size={28} aria-hidden />
         </button>
       </SheetTrigger>
 

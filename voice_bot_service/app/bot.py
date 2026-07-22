@@ -624,6 +624,24 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         "- Begin every reply with a short natural clause (a few words) before any longer "
         "sentence — it reaches the caller faster and sounds more human."
     )
+    # Live call went out in the evening but opened 'Good morning' — the authored script
+    # hard-codes a greeting and nothing tied it to the clock. The RIGHT-NOW line above
+    # gives the time; this makes the model USE it for the greeting, overriding a fixed one.
+    greeting_rule = (
+        "- GREET FOR THE CURRENT TIME shown above: say 'good morning' before 12 noon, "
+        "'good afternoon' from 12 noon to 5 PM, and 'good evening' after 5 PM. If your "
+        "scripted opening contains a fixed greeting, ADAPT it to the current time — never "
+        "say 'good morning' in the afternoon or evening."
+    )
+    # Live call: the lead's real name was missing, so the model addressed the caller by the
+    # AUDIENCE-LIST name ('Am I speaking with Mr. or Ms. Robotics STEM Programs for Schools?').
+    name_sanity_rule = (
+        "- If the only name you have looks like a company, a program, a topic or a list "
+        "(e.g. 'Robotics Programs for Schools', 'AI and Machine Learning') rather than a "
+        "real person's name, do NOT address the caller by it. Instead greet warmly and ask "
+        "who you're speaking with, or reference the organisation ('am I speaking with someone "
+        "who handles admissions at <org>?'). Never call a person by a program or list name."
+    )
     # Live calls showed the model compressing several script steps into one turn
     # ("How are you? That's wonderful to hear." — answering its OWN question), and
     # closing on a vague "okay, thanks" with no day, no time, no contact captured.
@@ -635,11 +653,22 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         "the caller between them."
     )
     goal_drive_rule = (
-        "- CLOSE CONCRETELY: pursue your objective actively. A vague acknowledgment "
-        "('okay', 'thanks', 'theek hai') is NOT a confirmation — when booking anything, "
-        "propose two specific slots, get ONE explicitly confirmed (exact day + time), "
-        "and confirm the contact channel (read a number back digit by digit). Never "
-        "announce a meeting/demo as scheduled unless the caller has named or accepted "
+        "- SELL WITH INTENT — you are a sharp, warm salesperson working toward a goal "
+        "(usually a short demo or meeting), NOT a passive form-filler. Tie your pitch to "
+        "something the caller actually said (a pain, a tool they already use, their size) "
+        "and lead with ONE crisp benefit, never a feature list.\n"
+        "- DON'T ACCEPT THE FIRST BRUSH-OFF. Common deflections — 'just email me' / 'send a "
+        "proposal' / 'we handle it ourselves' / 'we work directly' / 'not right now' / 'we're "
+        "busy' — are not a no; they're a reflex. Acknowledge briefly, then redirect ONCE to "
+        "value + a concrete small next step: a 10-minute demo at a specific time. Example — if "
+        "they say 'email me the details', reply: 'Happy to — honestly it lands better as a "
+        "quick 10-minute look so I show only what fits you. Would tomorrow evening or Thursday "
+        "morning work?' Make ONE genuine, specific attempt like this. Only if they still "
+        "decline do you take the email or a callback time gracefully and thank them.\n"
+        "- CLOSE CONCRETELY: a vague acknowledgment ('okay', 'thanks', 'theek hai') is NOT a "
+        "confirmation — when booking, propose two specific slots, get ONE explicitly confirmed "
+        "(exact day + time), and confirm the contact channel (read a number back digit by "
+        "digit). Never announce a meeting/demo as scheduled unless the caller named or accepted "
         "a specific day and time."
     )
     language_stability_rule = (
@@ -679,6 +708,8 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             "caller speaks first (a 'hello' or anything else), your FIRST reply IS your scripted "
             "opening — never reply with just a bare greeting word.",
             now_line,
+            greeting_rule,
+            name_sanity_rule,
             "End every turn with a question, a quick check-in (\u2018right?\u2019) or a clear closing — "
             "then STOP and wait for the caller\u2019s answer. Never answer your own question or "
             "continue as if they replied when they haven\u2019t; their silence is NOT consent.",
@@ -705,6 +736,8 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         prompt or "You are a friendly, concise phone assistant.",
         non_negotiable,
         now_line,
+        greeting_rule,
+        name_sanity_rule,
         f"You are {name}. {gender_line}",
         addressee_line,
         intent_line,

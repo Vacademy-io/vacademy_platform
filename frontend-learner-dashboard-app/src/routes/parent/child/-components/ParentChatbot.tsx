@@ -1,7 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { ChatCircleDots, Robot, CaretRight, PaperPlaneTilt, Microphone, SpeakerHigh } from "@phosphor-icons/react";
+import {
+  ChatCircleDots,
+  Robot,
+  CaretRight,
+  PaperPlaneTilt,
+  Microphone,
+  SpeakerHigh,
+  SpeakerSlash,
+} from "@phosphor-icons/react";
 import {
   Sheet,
   SheetContent,
@@ -62,9 +70,14 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
+  // Auto-speak answers by default; the parent can mute from the header.
+  const [muted, setMuted] = useState(false);
   const idRef = useRef(0);
   const nextId = () => ++idRef.current;
   const addMsg = (m: Msg) => setMessages((prev) => [...prev, m]);
+  const speakIfAuto = (text: string) => {
+    if (!muted && voice.speechSupported) voice.speak(text);
+  };
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Keep the newest message in view as the conversation grows.
@@ -100,6 +113,7 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
   const push = (userText: string, a: { text: string; module?: string }) => {
     addMsg({ id: nextId(), role: "user", text: userText });
     addMsg({ id: nextId(), role: "bot", text: a.text, module: a.module });
+    speakIfAuto(a.text);
   };
 
   const ask = (q: QKey) => push(t(`chat.q.${q}`, { name: childName }), answer(q));
@@ -121,6 +135,7 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
       const res = await askChildAssistant(childId, text);
       if (res?.available && res.answer) {
         addMsg({ id: nextId(), role: "bot", text: res.answer });
+        speakIfAuto(res.answer);
         return;
       }
     } catch {
@@ -130,6 +145,7 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
     }
     const a = keywordAnswer(text);
     addMsg({ id: nextId(), role: "bot", text: a.text, module: a.module });
+    speakIfAuto(a.text);
   };
 
   // Mic: transcribe the spoken question, drop it in the box, and ask.
@@ -168,6 +184,24 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
           <SheetTitle className="flex items-center gap-2">
             <Robot weight="duotone" className="size-5 text-primary-500" aria-hidden />
             {t("chat.title")}
+            {voice.speechSupported ? (
+              <button
+                type="button"
+                onClick={() => {
+                  voice.cancelSpeak();
+                  setMuted((m) => !m);
+                }}
+                aria-label={muted ? t("chat.unmute") : t("chat.mute")}
+                aria-pressed={muted}
+                className="ms-auto flex size-8 items-center justify-center rounded-full text-primary-500 hover:bg-primary-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+              >
+                {muted ? (
+                  <SpeakerSlash weight="fill" className="size-4" aria-hidden />
+                ) : (
+                  <SpeakerHigh weight="fill" className="size-4" aria-hidden />
+                )}
+              </button>
+            ) : null}
           </SheetTitle>
         </SheetHeader>
 

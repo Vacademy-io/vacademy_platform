@@ -112,7 +112,9 @@
     "mic": "Ask by voice",
     "listening": "Listening…",
     "micCta": "Tap to speak",
-    "speak": "Listen"
+    "speak": "Listen",
+    "mute": "Mute voice",
+    "unmute": "Turn on voice"
   },
   "tone": {
     "good": "Going well",

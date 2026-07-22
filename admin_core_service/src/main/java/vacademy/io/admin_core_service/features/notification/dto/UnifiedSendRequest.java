@@ -26,6 +26,14 @@ public class UnifiedSendRequest {
     private List<Recipient> recipients;
     private SendOptions options;
 
+    /**
+     * When TRUE, notification-service queues the send to its durable batch
+     * processor instead of sending inline. Required for multi-recipient sends:
+     * the inline loop can outlive InternalClientUtils' 30s read timeout, which
+     * surfaces as a 510 here even though delivery continues on the other side.
+     */
+    private Boolean forceAsync;
+
     @Data
     @Builder
     @NoArgsConstructor

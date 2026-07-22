@@ -194,6 +194,14 @@ public class AudienceService {
     @Autowired
     private PlaceholderEmailService placeholderEmailService;
 
+    /**
+     * Recipient count above which an audience send is queued as a durable batch on
+     * notification-service instead of sent inline. Inline sends loop one provider
+     * call per recipient; past this size they risk exceeding InternalClientUtils'
+     * 30s read timeout (spurious 510 while delivery continues server-side).
+     */
+    private static final int ASYNC_SEND_THRESHOLD = 10;
+
     public List<String> getConvertedUserIdsByCampaign(String audienceId, String instituteId) {
         logger.info("Getting converted user IDs for campaign: {} (institute: {})", audienceId, instituteId);
 
@@ -5142,6 +5150,11 @@ public class AudienceService {
                 .languageCode(request.getLanguageCode() != null ? request.getLanguageCode() : "en")
                 .recipients(recipients)
                 .options(optsBuilder.build())
+                // Above ~10 recipients the inline send loop (one provider call per
+                // recipient) can outlive InternalClientUtils' 30s read timeout →
+                // spurious 510 while delivery keeps running. Queue those as a batch;
+                // getCommunications() syncs the final counts back from the batch.
+                .forceAsync(recipients.size() > ASYNC_SEND_THRESHOLD)
                 .build();
 
         // 8. Call notification service
@@ -5258,6 +5271,28 @@ public class AudienceService {
         Pageable pageable = PageRequest.of(page, size);
         Page<AudienceCommunication> comms = audienceCommunicationRepository
                 .findByAudienceIdOrderByCreatedAtDesc(audienceId, pageable);
+        // Async sends are recorded as QUEUED/PROCESSING with a batchId; the batch runs
+        // on notification-service, so pull its final counts in on read.
+        for (AudienceCommunication c : comms) {
+            if (StringUtils.hasText(c.getBatchId())
+                    && ("QUEUED".equals(c.getStatus()) || "PROCESSING".equals(c.getStatus()))) {
+                UnifiedSendResponse batchStatus;
+                try {
+                    batchStatus = notificationService.getUnifiedBatchStatus(c.getBatchId());
+                } catch (Exception e) {
+                    logger.warn("Failed to refresh batch status for communication {} (batch {}): {}",
+                            c.getId(), c.getBatchId(), e.getMessage());
+                    continue; // status unknown — keep the stored value
+                }
+                if (batchStatus != null && StringUtils.hasText(batchStatus.getStatus())
+                        && !batchStatus.getStatus().equals(c.getStatus())) {
+                    c.setStatus(batchStatus.getStatus());
+                    c.setSuccessful(batchStatus.getAccepted());
+                    c.setFailed(batchStatus.getFailed());
+                    audienceCommunicationRepository.save(c);
+                }
+            }
+        }
         return comms.map(c -> AudienceCommunicationDTO.builder()
                 .id(c.getId())
                 .channel(c.getChannel())

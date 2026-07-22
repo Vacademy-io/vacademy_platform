@@ -40,4 +40,22 @@ public interface SubOrgRegistrationRepository
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT r FROM SubOrgRegistration r WHERE r.id = :id")
     Optional<SubOrgRegistration> findWithLockById(@Param("id") String id);
+
+    // ── Distinct address facets (drive the admin listing's multi-select filters) ──
+    // Non-blank, sorted, deduped values as the registrants typed them.
+
+    @Query("SELECT DISTINCT r.city FROM SubOrgRegistration r " +
+            "WHERE r.templateInviteId = :templateInviteId AND r.city IS NOT NULL AND TRIM(r.city) <> '' " +
+            "ORDER BY r.city")
+    List<String> findDistinctCities(@Param("templateInviteId") String templateInviteId);
+
+    @Query("SELECT DISTINCT r.state FROM SubOrgRegistration r " +
+            "WHERE r.templateInviteId = :templateInviteId AND r.state IS NOT NULL AND TRIM(r.state) <> '' " +
+            "ORDER BY r.state")
+    List<String> findDistinctStates(@Param("templateInviteId") String templateInviteId);
+
+    @Query("SELECT DISTINCT r.pincode FROM SubOrgRegistration r " +
+            "WHERE r.templateInviteId = :templateInviteId AND r.pincode IS NOT NULL AND TRIM(r.pincode) <> '' " +
+            "ORDER BY r.pincode")
+    List<String> findDistinctPincodes(@Param("templateInviteId") String templateInviteId);
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -7,6 +7,7 @@ import {
     DownloadSimple,
     LinkSimple,
     MagnifyingGlass,
+    MapPin,
     PencilSimple,
     Plus,
     UsersThree,
@@ -35,6 +36,7 @@ import createSubOrgRegistrationLink from '@/routes/manage-students/invite/-utils
 import {
     fetchAllTemplateRegistrations,
     getRegistrationTemplateDetail,
+    getRegistrationFacets,
     listRegistrationTemplates,
     listTemplateRegistrations,
     updateRegistrationTemplateStatus,
@@ -43,7 +45,12 @@ import {
     type TemplateDetail,
 } from '../../-services/sub-org-registration-services';
 import { RegistrationLinkCreateModal } from './registration-link-create-modal';
+import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
 import { humanizeStatus, statusToneClass } from '../../-utils/status-display';
+
+/** Distinct facet values → MultiSelectFilter options (value === label; searchable by label). */
+const toFilterOptions = (values: string[] | undefined) =>
+    (values ?? []).map((v) => ({ value: v, label: v }));
 
 // The list response only carries `steps`; paid templates include a "PAYMENT" step and
 // templates with DigiLocker identity verification include a "KYC" step.
@@ -490,51 +497,73 @@ function RegistrationsDialog({
 }) {
     const instituteId = getCurrentInstituteId();
 
-    // Raw filter inputs (what the user types) vs the debounced values sent to the API.
+    // Free-text search is debounced; the discrete selectors (status + City/State/Pincode
+    // multi-selects) apply immediately.
     const [searchInput, setSearchInput] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
-    const [cityInput, setCityInput] = useState('');
-    const [stateInput, setStateInput] = useState('');
-    const [pincodeInput, setPincodeInput] = useState('');
-    const [filters, setFilters] = useState({
-        search: '',
-        status: '',
-        city: '',
-        state: '',
-        pincode: '',
-    });
+    const [cityFilter, setCityFilter] = useState<string[]>([]);
+    const [stateFilter, setStateFilter] = useState<string[]>([]);
+    const [pincodeFilter, setPincodeFilter] = useState<string[]>([]);
+    // Per-custom-field selections, keyed by custom_field id.
+    const [customFieldFilters, setCustomFieldFilters] = useState<Record<string, string[]>>({});
     const [page, setPage] = useState(0);
     const [isExporting, setIsExporting] = useState(false);
 
     // Reset all filter + page state when a different template's dialog opens.
     useEffect(() => {
         setSearchInput('');
+        setDebouncedSearch('');
         setStatusFilter('');
-        setCityInput('');
-        setStateInput('');
-        setPincodeInput('');
-        setFilters({ search: '', status: '', city: '', state: '', pincode: '' });
+        setCityFilter([]);
+        setStateFilter([]);
+        setPincodeFilter([]);
+        setCustomFieldFilters({});
         setPage(0);
     }, [template?.id]);
 
-    // Debounce the raw inputs (300ms) into the committed filters that drive the query.
+    // Debounce the free-text search (300ms).
     useEffect(() => {
-        const timeout = setTimeout(() => {
-            setFilters({
-                search: searchInput.trim(),
-                status: statusFilter,
-                city: cityInput.trim(),
-                state: stateInput.trim(),
-                pincode: pincodeInput.trim(),
-            });
-        }, 300);
+        const timeout = setTimeout(() => setDebouncedSearch(searchInput.trim()), 300);
         return () => clearTimeout(timeout);
-    }, [searchInput, statusFilter, cityInput, stateInput, pincodeInput]);
+    }, [searchInput]);
+
+    const filters = useMemo(
+        () => ({
+            search: debouncedSearch,
+            status: statusFilter,
+            cities: cityFilter,
+            states: stateFilter,
+            pincodes: pincodeFilter,
+            customFieldFilters,
+        }),
+        [debouncedSearch, statusFilter, cityFilter, stateFilter, pincodeFilter, customFieldFilters]
+    );
 
     // Any filter change jumps back to the first page.
     useEffect(() => {
         setPage(0);
     }, [filters]);
+
+    // Distinct City/State/Pincode values actually present in this link's registrations —
+    // populate the multi-select filters by default (nothing hardcoded).
+    const { data: facets } = useQuery({
+        queryKey: ['sub-org-registration-facets', template?.id, instituteId],
+        queryFn: () => getRegistrationFacets(template?.id || '', instituteId || ''),
+        enabled: !!template?.id && !!instituteId,
+    });
+    const cityOptions = useMemo(() => toFilterOptions(facets?.cities), [facets?.cities]);
+    const stateOptions = useMemo(() => toFilterOptions(facets?.states), [facets?.states]);
+    const pincodeOptions = useMemo(() => toFilterOptions(facets?.pincodes), [facets?.pincodes]);
+    const customFieldFacets = facets?.customFields ?? [];
+
+    const setCustomFieldSelection = (fieldId: string, values: string[]) =>
+        setCustomFieldFilters((prev) => {
+            const next = { ...prev };
+            if (values.length) next[fieldId] = values;
+            else delete next[fieldId];
+            return next;
+        });
 
     const { data, isLoading, isFetching } = useQuery({
         queryKey: ['sub-org-registrations', template?.id, instituteId, page, filters],
@@ -546,9 +575,10 @@ function RegistrationsDialog({
                 size: REGISTRATIONS_PAGE_SIZE,
                 search: filters.search,
                 status: filters.status,
-                city: filters.city,
-                state: filters.state,
-                pincode: filters.pincode,
+                cities: filters.cities,
+                states: filters.states,
+                pincodes: filters.pincodes,
+                customFieldFilters: filters.customFieldFilters,
             }),
         enabled: !!template?.id && !!instituteId,
         placeholderData: keepPreviousData,
@@ -557,20 +587,25 @@ function RegistrationsDialog({
     const registrations = data?.content ?? [];
     const totalPages = data?.total_pages ?? 1;
     const totalElements = data?.total_elements ?? 0;
+    const activeCustomFieldCount = Object.values(filters.customFieldFilters).filter(
+        (v) => v.length
+    ).length;
     const hasActiveFilters = !!(
         filters.search ||
         filters.status ||
-        filters.city ||
-        filters.state ||
-        filters.pincode
+        filters.cities.length ||
+        filters.states.length ||
+        filters.pincodes.length ||
+        activeCustomFieldCount
     );
 
     const clearFilters = () => {
         setSearchInput('');
         setStatusFilter('');
-        setCityInput('');
-        setStateInput('');
-        setPincodeInput('');
+        setCityFilter([]);
+        setStateFilter([]);
+        setPincodeFilter([]);
+        setCustomFieldFilters({});
     };
 
     // Export ALL rows matching the current filters (not just the visible page).
@@ -583,9 +618,10 @@ function RegistrationsDialog({
                 instituteId,
                 search: filters.search,
                 status: filters.status,
-                city: filters.city,
-                state: filters.state,
-                pincode: filters.pincode,
+                cities: filters.cities,
+                states: filters.states,
+                pincodes: filters.pincodes,
+                customFieldFilters: filters.customFieldFilters,
             });
             if (rows.length === 0) {
                 toast.info('No registrations to export.');
@@ -611,8 +647,10 @@ function RegistrationsDialog({
             dialogWidth="max-w-5xl"
         >
             <div className="space-y-3">
-                {/* Filters: search + status + City/State/Pincode. Address columns show "-"
-                    for links created without "Collect full address". */}
+                {/* Filters: search + status + the fixed City/State/Pincode address columns +
+                    one searchable multi-select per form-collected custom field. Every option
+                    list is pulled live from submitted data (facets) — nothing hardcoded. A
+                    filter only appears when there is data to filter on. */}
                 <div className="rounded-lg border bg-neutral-50 p-3">
                     <div className="flex flex-wrap items-center gap-2">
                         <div className="relative min-w-0 flex-1 sm:max-w-xs">
@@ -635,24 +673,48 @@ function RegistrationsDialog({
                             }}
                             className="w-44"
                         />
-                        <Input
-                            value={cityInput}
-                            onChange={(e) => setCityInput(e.target.value)}
-                            placeholder="City"
-                            className="h-9 w-28"
-                        />
-                        <Input
-                            value={stateInput}
-                            onChange={(e) => setStateInput(e.target.value)}
-                            placeholder="State"
-                            className="h-9 w-32"
-                        />
-                        <Input
-                            value={pincodeInput}
-                            onChange={(e) => setPincodeInput(e.target.value)}
-                            placeholder="Pincode"
-                            className="h-9 w-28"
-                        />
+                        {cityOptions.length > 0 && (
+                            <MultiSelectFilter
+                                label="City"
+                                icon={<MapPin className="size-4 text-neutral-400" />}
+                                options={cityOptions}
+                                selected={cityFilter}
+                                onChange={setCityFilter}
+                                placeholder="Search city…"
+                                widthClass="w-36"
+                            />
+                        )}
+                        {stateOptions.length > 0 && (
+                            <MultiSelectFilter
+                                label="State"
+                                options={stateOptions}
+                                selected={stateFilter}
+                                onChange={setStateFilter}
+                                placeholder="Search state…"
+                                widthClass="w-36"
+                            />
+                        )}
+                        {pincodeOptions.length > 0 && (
+                            <MultiSelectFilter
+                                label="Pincode"
+                                options={pincodeOptions}
+                                selected={pincodeFilter}
+                                onChange={setPincodeFilter}
+                                placeholder="Search pincode…"
+                                widthClass="w-36"
+                            />
+                        )}
+                        {customFieldFacets.map((field) => (
+                            <MultiSelectFilter
+                                key={field.id}
+                                label={field.label}
+                                options={toFilterOptions(field.values)}
+                                selected={customFieldFilters[field.id] ?? []}
+                                onChange={(values) => setCustomFieldSelection(field.id, values)}
+                                placeholder={`Search ${field.label.toLowerCase()}…`}
+                                widthClass="w-40"
+                            />
+                        ))}
                     </div>
                     <div className="mt-3 flex items-center justify-between">
                         <p className="text-xs text-muted-foreground">

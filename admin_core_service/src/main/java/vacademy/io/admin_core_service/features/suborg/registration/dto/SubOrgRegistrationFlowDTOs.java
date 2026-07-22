@@ -347,4 +347,42 @@ public final class SubOrgRegistrationFlowDTOs {
         /** Null = KYC not started / not required. */
         private String kycStatus;
     }
+
+    /**
+     * Distinct values actually present in a template's registrations — used to
+     * populate the admin listing's multi-select filters with real, searchable
+     * options (nothing hardcoded).
+     *
+     * `cities`/`states`/`pincodes` are the fixed address columns (present only
+     * when the template collects address); `customFields` is one entry per
+     * form-collected custom field that is worth filtering on (its distinct
+     * submitted values), so the filter set adapts to whatever each form asks.
+     * All lists are empty when nothing was collected yet.
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class RegistrationFacetsDTO {
+        private List<String> cities;
+        private List<String> states;
+        private List<String> pincodes;
+        private List<CustomFieldFacetDTO> customFields;
+    }
+
+    /** One filterable custom field + the distinct values its registrants submitted. */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class CustomFieldFacetDTO {
+        /** The custom_field id (matches CustomFieldValues.customFieldId). */
+        private String id;
+        /** Human label shown on the filter (the field name). */
+        private String label;
+        /** Distinct, non-blank, sorted values submitted for this field. */
+        private List<String> values;
+    }
 }

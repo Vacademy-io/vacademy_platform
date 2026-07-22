@@ -6,6 +6,7 @@ import {
     SUB_ORG_REGISTRATION_TEMPLATE_DETAIL,
     SUB_ORG_REGISTRATION_TEMPLATE_UPDATE,
     SUB_ORG_REGISTRATION_REGISTRATIONS,
+    SUB_ORG_REGISTRATION_REGISTRATION_FACETS,
 } from '@/constants/urls';
 
 /**
@@ -173,14 +174,60 @@ export interface ListTemplateRegistrationsParams {
     instituteId: string;
     page?: number;
     size?: number;
-    city?: string;
-    state?: string;
-    pincode?: string;
+    /** Match any of the selected cities (exact, case-insensitive). Empty/undefined = no filter. */
+    cities?: string[];
+    /** Match any of the selected states. */
+    states?: string[];
+    /** Match any of the selected pincodes. */
+    pincodes?: string[];
+    /**
+     * Per-custom-field filters: custom_field id → selected values. A registration must
+     * match at least one selected value for EACH field with a non-empty selection.
+     */
+    customFieldFilters?: Record<string, string[]>;
     /** Exact registration status (DRAFT | OTP_VERIFIED | PENDING_PAYMENT | COMPLETED | FAILED). */
     status?: string;
     /** Free-text search across org name / admin name / admin email. */
     search?: string;
 }
+
+/** One filterable custom field + the distinct values its registrants submitted. */
+export interface CustomFieldFacet {
+    id: string;
+    label: string;
+    values: string[];
+}
+
+/** Distinct values present in a template's registrations — drive the listing filters. */
+export interface RegistrationFacets {
+    cities: string[];
+    states: string[];
+    pincodes: string[];
+    /** One entry per form-collected custom field worth filtering on. */
+    customFields: CustomFieldFacet[];
+}
+
+/** Drop blank entries; return undefined when nothing is selected so the param is omitted. */
+const cleanList = (values?: string[]): string[] | undefined => {
+    if (!values) return undefined;
+    const cleaned = values.map((v) => v.trim()).filter(Boolean);
+    return cleaned.length ? cleaned : undefined;
+};
+
+/** Flatten {fieldId: [v1, v2]} into ["fieldId:v1", "fieldId:v2"] for repeated `customField` params. */
+const encodeCustomFieldFilters = (
+    filters?: Record<string, string[]>
+): string[] | undefined => {
+    if (!filters) return undefined;
+    const pairs: string[] = [];
+    Object.entries(filters).forEach(([fieldId, values]) => {
+        (values || []).forEach((value) => {
+            const v = value?.trim();
+            if (fieldId && v) pairs.push(`${fieldId}:${v}`);
+        });
+    });
+    return pairs.length ? pairs : undefined;
+};
 
 /** Raw Spring Page<> passthrough (camelCase wrapper, snake_case rows). */
 export interface SubOrgRegistrationPage {
@@ -261,28 +308,59 @@ export const updateRegistrationTemplateStatus = async (
     return response.data;
 };
 
+export const getRegistrationFacets = async (
+    templateInviteId: string,
+    instituteId: string
+): Promise<RegistrationFacets> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: SUB_ORG_REGISTRATION_REGISTRATION_FACETS,
+        params: { templateInviteId, instituteId },
+    });
+    const data = response.data ?? {};
+    return {
+        cities: Array.isArray(data.cities) ? data.cities : [],
+        states: Array.isArray(data.states) ? data.states : [],
+        pincodes: Array.isArray(data.pincodes) ? data.pincodes : [],
+        customFields: Array.isArray(data.custom_fields)
+            ? data.custom_fields
+                  .filter((f: CustomFieldFacet) => f && f.id && Array.isArray(f.values))
+                  .map((f: CustomFieldFacet) => ({
+                      id: f.id,
+                      label: f.label || f.id,
+                      values: f.values,
+                  }))
+            : [],
+    };
+};
+
 export const listTemplateRegistrations = async ({
     templateInviteId,
     instituteId,
     page = 0,
     size = 10,
-    city,
-    state,
-    pincode,
+    cities,
+    states,
+    pincodes,
+    customFieldFilters,
     status,
     search,
 }: ListTemplateRegistrationsParams): Promise<SubOrgRegistrationPage> => {
     const response = await authenticatedAxiosInstance({
         method: 'GET',
         url: SUB_ORG_REGISTRATION_REGISTRATIONS,
+        // indexes:null → arrays serialize as repeated keys (cities=A&cities=B), which
+        // Spring binds to List<String>. Bracketed keys (the axios default) would not.
+        paramsSerializer: { indexes: null },
         params: {
             templateInviteId,
             instituteId,
             page,
             size,
-            city: city?.trim() || undefined,
-            state: state?.trim() || undefined,
-            pincode: pincode?.trim() || undefined,
+            cities: cleanList(cities),
+            states: cleanList(states),
+            pincodes: cleanList(pincodes),
+            customField: encodeCustomFieldFilters(customFieldFilters),
             status: status || undefined,
             search: search?.trim() || undefined,
         },

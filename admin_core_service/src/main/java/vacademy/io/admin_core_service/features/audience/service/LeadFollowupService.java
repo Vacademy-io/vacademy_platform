@@ -118,11 +118,11 @@ public class LeadFollowupService {
     @Transactional(readOnly = true)
     public List<LeadFollowupDto> myPending(CustomUserDetails user, String instituteId, String counsellorUserId) {
         if (instituteId == null || instituteId.isBlank()) {
-            return leadFollowupRepository
+            return withLeadInfo(leadFollowupRepository
                     .findByCreatedByAndIsClosedFalseOrderByScheduleTimeAsc(user.getUserId())
                     .stream()
                     .map(LeadFollowupDto::from)
-                    .collect(Collectors.toList());
+                    .collect(Collectors.toList()));
         }
 
         boolean scoped = counsellorScopeService.isScopedCaller(instituteId, user);
@@ -145,9 +145,35 @@ public class LeadFollowupService {
             rows = leadFollowupRepository
                     .findByInstituteIdAndIsClosedFalseOrderByScheduleTimeAsc(instituteId);
         }
-        return rows.stream()
+        return withLeadInfo(rows.stream()
                 .map(LeadFollowupDto::from)
+                .collect(Collectors.toList()));
+    }
+
+    /**
+     * Batch-hydrate lead display fields (name/mobile/userId) from
+     * audience_response — the reminder popup and pending lists need a name,
+     * not just an id. One findAllById; missing leads leave the fields null.
+     */
+    private List<LeadFollowupDto> withLeadInfo(List<LeadFollowupDto> dtos) {
+        List<String> responseIds = dtos.stream()
+                .map(LeadFollowupDto::getAudienceResponseId)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
                 .collect(Collectors.toList());
+        if (responseIds.isEmpty()) return dtos;
+        Map<String, AudienceResponse> byId = audienceResponseRepository.findAllById(responseIds)
+                .stream()
+                .collect(Collectors.toMap(AudienceResponse::getId, r -> r, (a, b) -> a));
+        dtos.forEach(d -> {
+            AudienceResponse ar = byId.get(d.getAudienceResponseId());
+            if (ar != null) {
+                d.setLeadName(ar.getParentName());
+                d.setLeadMobile(ar.getParentMobile());
+                d.setLeadUserId(ar.getUserId());
+            }
+        });
+        return dtos;
     }
 
     @Transactional

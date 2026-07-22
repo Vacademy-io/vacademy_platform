@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import vacademy.io.admin_core_service.features.audience.dto.reports.calling.CallsByLeadResponseDTO;
 import vacademy.io.admin_core_service.features.audience.dto.reports.calling.CallsDailyResponseDTO;
 import vacademy.io.admin_core_service.features.audience.dto.reports.calling.CallsHeatmapResponseDTO;
 import vacademy.io.admin_core_service.features.audience.dto.reports.calling.FollowupAgingResponseDTO;
@@ -52,6 +53,28 @@ public class CallingReportController {
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(callingReportService.callsHeatmap(instituteId, fromDate, toDate,
                 teamId, counsellorUserId, user.getUserId()));
+    }
+
+    /**
+     * Lead-wise call roll-up: per-lead attempt/connected/callback/not-picked
+     * counts (view=CALLED) or in-window new leads never dialled (view=UNCALLED),
+     * plus a summary covering both. Paginated; search matches lead name/mobile.
+     */
+    @GetMapping("/calls-by-lead")
+    public ResponseEntity<CallsByLeadResponseDTO> getCallsByLead(
+            @RequestParam String instituteId,
+            @RequestParam(required = false) String fromDate,
+            @RequestParam(required = false) String toDate,
+            @RequestParam(required = false) String teamId,
+            @RequestParam(required = false) String counsellorUserId,
+            @RequestParam(required = false) String audienceId,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false, defaultValue = "CALLED") String view,
+            @RequestParam(required = false, defaultValue = "0") int page,
+            @RequestParam(required = false, defaultValue = "25") int size,
+            @RequestAttribute("user") CustomUserDetails user) {
+        return ResponseEntity.ok(callingReportService.callsByLead(instituteId, fromDate, toDate,
+                teamId, counsellorUserId, audienceId, search, view, page, size, user.getUserId()));
     }
 
     /**

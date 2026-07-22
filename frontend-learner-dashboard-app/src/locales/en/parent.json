@@ -34,6 +34,11 @@
     "liveClasses": "Upcoming classes",
     "fees": "Fees"
   },
+  "nav": {
+    "home": "Home",
+    "ask": "Ask",
+    "studentView": "Student view"
+  },
   "tiles": {
     "progress": "Progress",
     "attendance": "Attendance",

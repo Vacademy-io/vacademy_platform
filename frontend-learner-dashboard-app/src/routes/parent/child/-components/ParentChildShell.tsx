@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 import { ParentChatbot } from "./ParentChatbot";
 import { ParentProfileMenu } from "./ParentProfileMenu";
 import { ParentHelpButton } from "./ParentHelpButton";
-import { ParentViewAsChildButton } from "./ParentViewAsChildButton";
 import { useChildOverview } from "../-hooks/use-parent-child";
 
 interface ParentChildShellProps {
@@ -61,7 +60,6 @@ export function ParentChildShell({ childId, backTo = "home", children }: ParentC
         />
 
         <div className="ms-auto flex items-center gap-1">
-          <ParentViewAsChildButton childId={childId} childName={childName} />
           <ParentHelpButton />
           <MyButton
             layoutVariant="icon"
@@ -74,7 +72,8 @@ export function ParentChildShell({ childId, backTo = "home", children }: ParentC
         </div>
       </header>
 
-      <main className="px-4 py-4">{children}</main>
+      {/* pb clears the fixed bottom navigation (Home · bot · student view) */}
+      <main className="px-4 pb-28 pt-4">{children}</main>
 
       <ParentChatbot childId={childId} childName={childName} />
     </div>

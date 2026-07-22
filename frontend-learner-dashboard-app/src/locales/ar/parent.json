@@ -34,6 +34,11 @@
     "liveClasses": "الحصص القادمة",
     "fees": "Fees"
   },
+  "nav": {
+    "home": "الرئيسية",
+    "ask": "اسأل",
+    "studentView": "عرض الطالب"
+  },
   "tiles": {
     "progress": "Progress",
     "attendance": "Attendance",

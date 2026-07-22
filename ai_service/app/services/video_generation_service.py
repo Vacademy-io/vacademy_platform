@@ -1201,6 +1201,17 @@ class VideoGenerationService:
                 gen_metadata["dialogue_clip_model"] = str(dialogue_clip_model)
             if cast_id:
                 gen_metadata["cast_id"] = str(cast_id)
+            # Persist the AI-video (Veo) opt-in so a RESUME leg re-enables it.
+            # Without this, the router's resume path reads
+            # `_meta.get("ai_video_enabled", False)` = False and every
+            # AI_VIDEO_HERO shot the plan committed to falls back to
+            # VIDEO_HERO after the shot-plan gate (observed live: plan had 4
+            # AI shots, all demoted "run disabled" on resume). Mirrors the
+            # dialogue-flag persistence above.
+            if ai_video_enabled:
+                gen_metadata["ai_video_enabled"] = True
+            if ai_video_audio_enabled:
+                gen_metadata["ai_video_audio_enabled"] = True
             # Persist the TTS voice knobs so per-sentence re-narration in the
             # editor can reproduce the same voice without the user having to
             # re-supply them. Defaults are skipped to keep the row small.

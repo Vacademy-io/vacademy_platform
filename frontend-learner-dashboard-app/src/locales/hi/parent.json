@@ -30,6 +30,8 @@
   },
   "info": {
     "attendance": "Attendance overview",
+    "tests": "टेस्ट अवलोकन",
+    "liveClasses": "आगामी कक्षाएँ",
     "fees": "Fees"
   },
   "tiles": {
@@ -146,7 +148,8 @@
     "absentDays": "Absent",
     "unmarkedDays": "Unmarked",
     "streak": "Day streak",
-    "engagementTitle": "Focused learning time"
+    "timeInClassTitle": "कक्षा में बिताया गया समय",
+    "attendedFor": "{{duration}} उपस्थित रहे"
   },
   "progress": {
     "summary": "{{name}} has completed {{percent}}% of their lessons.",

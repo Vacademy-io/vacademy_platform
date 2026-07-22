@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { ParentChatbot } from "./ParentChatbot";
 import { ParentProfileMenu } from "./ParentProfileMenu";
 import { ParentHelpButton } from "./ParentHelpButton";
+import { ParentViewAsChildButton } from "./ParentViewAsChildButton";
 import { useChildOverview } from "../-hooks/use-parent-child";
 
 interface ParentChildShellProps {
@@ -60,6 +61,7 @@ export function ParentChildShell({ childId, backTo = "home", children }: ParentC
         />
 
         <div className="ms-auto flex items-center gap-1">
+          <ParentViewAsChildButton childId={childId} childName={childName} />
           <ParentHelpButton />
           <MyButton
             layoutVariant="icon"

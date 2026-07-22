@@ -29,14 +29,28 @@ const STYLE =
   "app-icon style, generous even padding, square 1:1 composition. Cheerful, warm, approachable — " +
   "legible at 56 pixels.";
 
-// Only what cleaner-play doesn't already provide. Add more subjects here to regenerate the full set.
+// For friendly CHARACTER mascots (people allowed) — matches the hero-greeting mascot.
+const CHARACTER_STYLE =
+  "Matte felted-clay / soft plasticine texture with visible fibre grain, chunky rounded friendly " +
+  "shapes, big warm smile. Soft warm palette: peach, terracotta, cream, sage, warm off-white. Soft " +
+  "diffused studio lighting from upper left, gentle contact shadow. Fully transparent background. " +
+  "No text, no letters, no numbers, no UI. Isolated app-icon style, centred, generous even padding, " +
+  "square 1:1 composition. Cheerful, warm, approachable — legible at 56 pixels.";
+
+// Each: { subject, character? }. character:true uses CHARACTER_STYLE (people allowed).
 const ICONS = {
-  payments: "a small stack of coins beside a paid receipt with a checkmark",
-  attention: "a soft rounded bell with a gentle glow",
+  payments: { subject: "a small stack of coins beside a paid receipt with a checkmark" },
+  attention: { subject: "a soft rounded bell with a gentle glow" },
+  "chat-teacher": {
+    subject:
+      "a friendly cartoon teacher character shown from the chest up, warm welcoming smile, one hand " +
+      "raised waving hello, holding a small book, wearing simple smart clothes",
+    character: true,
+  },
 };
 
-function prompt(subject) {
-  return `A single 3D rendered icon of ${subject}. ${STYLE}`;
+function prompt(entry) {
+  return `A single 3D rendered icon of ${entry.subject}. ${entry.character ? CHARACTER_STYLE : STYLE}`;
 }
 
 async function main() {
@@ -58,7 +72,7 @@ async function main() {
     console.warn("sharp not installed — raw PNGs will be written; run the optimize step before committing.");
   }
 
-  for (const [key_, subject] of Object.entries(ICONS)) {
+  for (const [key_, entry] of Object.entries(ICONS)) {
     if (only && key_ !== only) continue;
     const webpPath = join(OUT, `${key_}.webp`);
     if (existsSync(webpPath) && !force) {
@@ -71,7 +85,7 @@ async function main() {
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         model: MODEL,
-        messages: [{ role: "user", content: prompt(subject) }],
+        messages: [{ role: "user", content: prompt(entry) }],
         modalities: ["image"],
         image_config: { aspect_ratio: "1:1" },
       }),

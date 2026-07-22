@@ -376,12 +376,13 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         ls.subject AS subject,
         ls.status AS sessionStatus,
         ls.access_level AS accessLevel,
-        COALESCE(lsl.status, 'UNMARKED') AS attendanceStatus
+        COALESCE(lsl.status, 'UNMARKED') AS attendanceStatus,
+        lsl.provider_total_duration_minutes AS durationMinutes
     FROM live_session_participants lsp
     JOIN session_schedules ss ON ss.session_id = lsp.session_id
     JOIN live_session ls ON ls.id = lsp.session_id
     LEFT JOIN LATERAL (
-        SELECT status, details, created_at
+        SELECT status, details, created_at, provider_total_duration_minutes
         FROM live_session_logs
         WHERE session_id = lsp.session_id
           AND schedule_id = ss.id

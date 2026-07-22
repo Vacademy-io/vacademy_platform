@@ -30,6 +30,8 @@
   },
   "info": {
     "attendance": "Attendance overview",
+    "tests": "نظرة عامة على الاختبارات",
+    "liveClasses": "الحصص القادمة",
     "fees": "Fees"
   },
   "tiles": {
@@ -146,7 +148,8 @@
     "absentDays": "Absent",
     "unmarkedDays": "Unmarked",
     "streak": "Day streak",
-    "engagementTitle": "Focused learning time"
+    "timeInClassTitle": "الوقت المستغرق في الحصة",
+    "attendedFor": "حضر {{duration}}"
   },
   "progress": {
     "summary": "{{name}} has completed {{percent}}% of their lessons.",

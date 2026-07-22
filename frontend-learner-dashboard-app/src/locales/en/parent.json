@@ -30,6 +30,8 @@
   },
   "info": {
     "attendance": "Attendance overview",
+    "tests": "Test overview",
+    "liveClasses": "Upcoming classes",
     "fees": "Fees"
   },
   "tiles": {
@@ -146,7 +148,8 @@
     "absentDays": "Absent",
     "unmarkedDays": "Unmarked",
     "streak": "Day streak",
-    "engagementTitle": "Focused learning time"
+    "timeInClassTitle": "Time spent in class",
+    "attendedFor": "Attended {{duration}}"
   },
   "progress": {
     "summary": "{{name}} has completed {{percent}}% of their lessons.",

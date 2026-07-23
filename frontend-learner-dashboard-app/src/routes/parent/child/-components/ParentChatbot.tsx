@@ -190,11 +190,17 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
     return () => clearInterval(id);
   }, [voice.speaking]);
 
-  const teacherSrc = pending
-    ? chatTeacherThink
-    : voice.speaking && mouthOpen
-      ? chatTeacherTalk
-      : chatTeacher;
+  // Preload every frame once — at a 220ms flip cadence a first-time network
+  // fetch would otherwise never finish before the frame flips back, which made
+  // the mouth swap invisible.
+  useEffect(() => {
+    [chatTeacher, chatTeacherTalk, chatTeacherThink].forEach((s) => {
+      const img = new Image();
+      img.src = s;
+    });
+  }, []);
+
+  const teacherFrame = pending ? "think" : voice.speaking && mouthOpen ? "talk" : "base";
 
   // Gentle idle float / listening pulse (the mouth frames carry the "speaking" cue).
   const teacherAnimate = voice.listening ? { scale: [1, 1.04, 1] } : { y: [0, -7, 0] };
@@ -335,17 +341,39 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
             {/* Centre stage: the teacher (mouth-swap while speaking) shrinks once a
                 conversation starts, with the running Q&A history below it (scrollable). */}
             <div className="flex min-h-0 flex-1 flex-col items-center px-6">
-              <motion.img
-                src={teacherSrc}
-                alt=""
+              {/* All three frames stay mounted (stacked); visibility toggling makes
+                  the 220ms mouth swap instant — no image reload per flip. */}
+              <motion.div
                 aria-hidden
                 className={cn(
-                  "w-auto shrink-0",
+                  "relative shrink-0",
                   messages.length > 0 ? "mt-1 h-28" : "mt-2 h-44 sm:h-52",
                 )}
                 animate={teacherAnimate}
                 transition={teacherTransition}
-              />
+              >
+                <img
+                  src={chatTeacher}
+                  alt=""
+                  className={cn("h-full w-auto", teacherFrame !== "base" && "invisible")}
+                />
+                <img
+                  src={chatTeacherTalk}
+                  alt=""
+                  className={cn(
+                    "absolute inset-0 h-full w-auto",
+                    teacherFrame !== "talk" && "invisible",
+                  )}
+                />
+                <img
+                  src={chatTeacherThink}
+                  alt=""
+                  className={cn(
+                    "absolute inset-0 h-full w-auto",
+                    teacherFrame !== "think" && "invisible",
+                  )}
+                />
+              </motion.div>
 
               {messages.length === 0 ? (
                 <div className="flex flex-1 flex-col items-center justify-center text-center">

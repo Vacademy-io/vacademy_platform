@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { AI_SERVICE_URL } from "@/constants/urls";
 
 // Voice for the parent chatbot: speech-to-text (ask by voice) AND text-to-speech
@@ -161,39 +160,49 @@ export function useParentVoice(locale: string) {
   // ai_service — far more natural than the robotic browser voices), then falls
   // back to on-device speechSynthesis. Devanagari in the text → Hindi voice
   // even when the app locale is English.
+  //
+  // The server audio is STREAMED (GET + progressive <audio>), so playback starts
+  // on the first buffered bytes instead of after the whole file — and `speaking`
+  // is bound to the real playback events, which is what drives the lip-sync.
   const speak = useCallback(
     (text: string) => {
       if (!text) return;
       const isDevanagari = /[ऀ-ॿ]/.test(text);
       const langShort = isDevanagari ? "hi" : short;
-      void (async () => {
-        try {
-          const res = await authenticatedAxiosInstance.post(
-            `${AI_SERVICE_URL}/tts/v1/speak`,
-            { text, language: langShort },
-            { responseType: "blob", timeout: 15000 },
-          );
-          // Stop anything already talking before starting the new answer.
-          stopAudio();
-          if (browserSpeechSupported) window.speechSynthesis.cancel();
-          const url = URL.createObjectURL(res.data as Blob);
-          const audio = new Audio(url);
-          audioRef.current = audio;
-          const done = () => {
-            setSpeaking(false);
-            URL.revokeObjectURL(url);
-          };
-          audio.onended = done;
-          audio.onerror = done;
-          setSpeaking(true);
-          await audio.play();
-          return;
-        } catch {
-          setSpeaking(false);
-          // server TTS unavailable (offline / not deployed / autoplay blocked)
-        }
+
+      // Very long text would blow the URL; answers are 1-4 sentences, but be safe.
+      if (text.length > 1500) {
         speakWithBrowser(text, isDevanagari);
-      })();
+        return;
+      }
+
+      // Stop anything already talking before starting the new answer.
+      stopAudio();
+      if (browserSpeechSupported) {
+        try {
+          window.speechSynthesis.cancel();
+        } catch {
+          /* ignore */
+        }
+      }
+
+      const src =
+        `${AI_SERVICE_URL}/tts/v1/speak?language=${encodeURIComponent(langShort)}` +
+        `&text=${encodeURIComponent(text)}`;
+      const audio = new Audio(src);
+      audioRef.current = audio;
+      let fellBack = false;
+      const fallBack = () => {
+        if (fellBack) return;
+        fellBack = true;
+        setSpeaking(false);
+        stopAudio();
+        speakWithBrowser(text, isDevanagari);
+      };
+      audio.onplaying = () => setSpeaking(true);
+      audio.onended = () => setSpeaking(false);
+      audio.onerror = fallBack;
+      audio.play().catch(fallBack);
     },
     [short, browserSpeechSupported, stopAudio, speakWithBrowser],
   );

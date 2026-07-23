@@ -156,6 +156,7 @@
     "unmarkedDays": "Unmarked",
     "streak": "Day streak",
     "timeInClassTitle": "Time spent in class",
+    "upcomingChip": "Upcoming",
     "attendedFor": "Attended {{duration}}"
   },
   "progress": {
@@ -206,6 +207,11 @@
     "emptyTitle": "No rewards yet",
     "emptyBody": "Badges and points will show here as {{name}} learns.",
     "points": "Points earned",
-    "rank": "Rank #{{value}}"
+    "rank": "Rank #{{value}}",
+    "badgesTitle": "Badges",
+    "certificatesTitle": "Certificates",
+    "certificate": "Certificate",
+    "earnedOn": "Earned {{date}}",
+    "completed": "{{percent}}% completed"
   }
 }

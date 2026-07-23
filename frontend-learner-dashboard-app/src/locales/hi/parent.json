@@ -156,6 +156,7 @@
     "unmarkedDays": "Unmarked",
     "streak": "Day streak",
     "timeInClassTitle": "कक्षा में बिताया गया समय",
+    "upcomingChip": "आगामी",
     "attendedFor": "{{duration}} उपस्थित रहे"
   },
   "progress": {
@@ -206,6 +207,11 @@
     "emptyTitle": "No rewards yet",
     "emptyBody": "Badges and points will show here as {{name}} learns.",
     "points": "Points earned",
-    "rank": "Rank #{{value}}"
+    "rank": "Rank #{{value}}",
+    "badgesTitle": "बैज",
+    "certificatesTitle": "प्रमाणपत्र",
+    "certificate": "प्रमाणपत्र",
+    "earnedOn": "{{date}} को अर्जित",
+    "completed": "{{percent}}% पूर्ण"
   }
 }

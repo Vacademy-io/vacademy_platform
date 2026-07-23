@@ -1405,8 +1405,10 @@ function ViewLiveSession() {
                                             </div>
 
                                                 {contentLinkBatches.length > 0 &&
-                                                    instituteLiveSessionSettings.lmsConnection
-                                                        .recordingAddToCourseEnabled && (
+                                                    (instituteLiveSessionSettings.lmsConnection
+                                                        .recordingAddToCourseEnabled ||
+                                                        instituteLiveSessionSettings.lmsConnection
+                                                            .autoUploadRecordingsEnabled) && (
                                                     <AddRecordingToCourseCard
                                                         sessionId={sessionId}
                                                         scheduleId={rec.scheduleId}
@@ -1416,6 +1418,11 @@ function ViewLiveSession() {
                                                         needsSaveToLibraryFirst={canSaveToLibrary}
                                                         onSaveToLibrary={() =>
                                                             handleSyncToS3(rec.scheduleId)
+                                                        }
+                                                        showAddAction={
+                                                            instituteLiveSessionSettings
+                                                                .lmsConnection
+                                                                .recordingAddToCourseEnabled
                                                         }
                                                     />
                                                 )}

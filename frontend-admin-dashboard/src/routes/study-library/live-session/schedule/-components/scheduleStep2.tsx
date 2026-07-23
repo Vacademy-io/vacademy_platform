@@ -1381,9 +1381,9 @@ export default function ScheduleStep2() {
                                                         | SlideStatus
                                                         | undefined
                                                 }
-                                                initialNotify={recordingAutoLink?.notify}
                                                 hideSubmit
                                                 hidePosition
+                                                hideNotify
                                                 onDestinationsChange={
                                                     handleRecordingAutoLinkDestinationsChange
                                                 }

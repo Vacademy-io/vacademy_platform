@@ -70,6 +70,10 @@ public class RecordingAutoLinkService {
             if (config.getDestinations() == null || config.getDestinations().isEmpty()) {
                 return;
             }
+            // Learner notification for auto-uploads is governed solely by the
+            // institute-level "Notify learners on auto-upload" setting — the
+            // per-session config no longer carries its own notify choice.
+            config.setNotify(resolveAutoUploadNotify(session.getInstituteId()));
 
             List<MeetingRecordingDTO> recordings = parseRecordings(schedule.getProviderRecordingsJson());
             if (recordings.isEmpty()) {
@@ -228,7 +232,11 @@ public class RecordingAutoLinkService {
         return resolveInstituteDefaultConfig(session.getInstituteId());
     }
 
-    private RecordingAutoLinkConfigDTO resolveInstituteDefaultConfig(String instituteId) {
+    /**
+     * Reads {@code lmsConnection} out of the institute's LIVE_SESSION_SETTING
+     * blob. Returns null on any missing/malformed data — never throws.
+     */
+    private JsonNode readLmsConnection(String instituteId) {
         if (!StringUtils.hasText(instituteId)) {
             return null;
         }
@@ -238,13 +246,26 @@ public class RecordingAutoLinkService {
             if (rawData == null) {
                 return null;
             }
+            JsonNode lmsConnection = objectMapper.valueToTree(rawData).path("lmsConnection");
+            return lmsConnection.isObject() ? lmsConnection : null;
+        } catch (Exception e) {
+            log.warn("recording_auto_link.setting_read_failed instituteId={}: {}", instituteId, e.getMessage());
+            return null;
+        }
+    }
 
-            JsonNode root = objectMapper.valueToTree(rawData);
-            JsonNode lmsConnection = root.path("lmsConnection");
-            if (lmsConnection.isMissingNode() || !lmsConnection.isObject()) {
-                return null;
-            }
+    /** Institute-level "Notify learners on auto-upload" switch; off on any missing/malformed setting. */
+    private boolean resolveAutoUploadNotify(String instituteId) {
+        JsonNode lmsConnection = readLmsConnection(instituteId);
+        return lmsConnection != null && lmsConnection.path("autoUploadNotifyLearners").asBoolean(false);
+    }
 
+    private RecordingAutoLinkConfigDTO resolveInstituteDefaultConfig(String instituteId) {
+        JsonNode lmsConnection = readLmsConnection(instituteId);
+        if (lmsConnection == null) {
+            return null;
+        }
+        try {
             boolean autoUploadEnabled = lmsConnection.path("autoUploadRecordingsEnabled").asBoolean(false);
             if (!autoUploadEnabled) {
                 return null;
@@ -276,7 +297,7 @@ public class RecordingAutoLinkService {
             RecordingAutoLinkConfigDTO config = new RecordingAutoLinkConfigDTO();
             config.setEnabled(true);
             config.setSlideStatus(SlideStatus.PUBLISHED.name());
-            config.setNotify(lmsConnection.path("autoUploadNotifyLearners").asBoolean(false));
+            // notify is stamped in processSchedule from the institute setting.
             config.setDestinations(Collections.singletonList(destination));
             return config;
         } catch (Exception e) {

@@ -76,6 +76,8 @@ interface Props {
     hideSubmit?: boolean;
     /** Hides the Position ("End of chapter"/"Beginning of chapter") control — irrelevant to callers whose backend hardcodes position. */
     hidePosition?: boolean;
+    /** Hides the "Notify learners" switch — for the auto-upload flow, where notification is governed by the institute-level Live Session setting instead of per session. */
+    hideNotify?: boolean;
     /** Fired whenever the selection (destinations/status/notify) changes — for callers lifting state into a parent form instead of using the built-in submit button. */
     onDestinationsChange?: (payload: DestinationPickerSubmitPayload) => void;
 }
@@ -132,6 +134,7 @@ export function SessionContentDestinationPicker({
     submitDisabled,
     hideSubmit,
     hidePosition,
+    hideNotify,
     onDestinationsChange,
 }: Props) {
     const queryClient = useQueryClient();
@@ -391,13 +394,19 @@ export function SessionContentDestinationPicker({
                         </span>
                     </label>
 
-                    <label className="flex flex-col gap-1.5">
-                        <span className="text-caption font-medium text-neutral-600">Notify learners</span>
-                        <span className="flex items-center gap-2">
-                            <Switch checked={notify} onCheckedChange={setNotify} />
-                            <span className="text-body text-neutral-700">{notify ? 'On' : 'Off'}</span>
-                        </span>
-                    </label>
+                    {!hideNotify && (
+                        <label className="flex flex-col gap-1.5">
+                            <span className="text-caption font-medium text-neutral-600">
+                                Notify learners
+                            </span>
+                            <span className="flex items-center gap-2">
+                                <Switch checked={notify} onCheckedChange={setNotify} />
+                                <span className="text-body text-neutral-700">
+                                    {notify ? 'On' : 'Off'}
+                                </span>
+                            </span>
+                        </label>
+                    )}
                 </div>
 
                 {!hideSubmit && (

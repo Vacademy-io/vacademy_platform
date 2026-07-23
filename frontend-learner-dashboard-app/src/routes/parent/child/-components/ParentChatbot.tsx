@@ -16,6 +16,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
+import { FullScreenLoader } from "@/components/common/FullScreenLoader";
 import { ChildAvatar } from "./ChildAvatar";
 import { useChildOverview } from "../-hooks/use-parent-child";
 import { askChildAssistant } from "../-services/parent-portal-api";
@@ -212,6 +213,11 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
 
   return (
     <>
+      {/* Preparing the delegated session + hard reload into the learner app
+          takes a few seconds — cover it instead of leaving the screen idle.
+          The boot splash in index.html takes over after the reload. */}
+      {switchingToChild && <FullScreenLoader label="Opening student view…" />}
+
       {/* Mobile bottom navigation: Home · Ask (teacher bot) · Student view */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 pb-safe backdrop-blur">
         <div className="mx-auto flex max-w-4xl items-end justify-around px-4 pb-1.5 pt-2">

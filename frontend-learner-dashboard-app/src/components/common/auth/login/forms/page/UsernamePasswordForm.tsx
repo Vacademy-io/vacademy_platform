@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { MyInput } from "@/components/design-system/input";
+import { FullScreenLoader } from "@/components/common/FullScreenLoader";
 import { loginSchema } from "@/schemas/login/login";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -306,6 +307,9 @@ export function UsernameLogin({
 
   return (
     <div className="w-full space-y-5">
+      {/* Signing-in covers the whole authenticate → hydrate → navigate window,
+          which previously looked like a blank/idle screen. */}
+      {isLoading && <FullScreenLoader label="Signing you in…" />}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           {/* Username Field */}

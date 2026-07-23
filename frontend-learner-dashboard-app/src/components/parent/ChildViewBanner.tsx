@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Eye, SignOut } from "@phosphor-icons/react";
+import { FullScreenLoader } from "@/components/common/FullScreenLoader";
 import {
   isChildViewActive,
   getChildViewName,
@@ -28,6 +29,9 @@ export function ChildViewBanner() {
 
   if (!active) return null;
   const name = getChildViewName();
+
+  // Restoring the parent session + hard reload takes a few seconds — cover it.
+  if (exiting) return <FullScreenLoader label="Exiting student view…" />;
 
   return (
     <div className="fixed inset-x-0 top-0 z-50 flex h-10 items-center justify-center gap-3 bg-primary-500 px-4 text-primary-50 shadow-md">

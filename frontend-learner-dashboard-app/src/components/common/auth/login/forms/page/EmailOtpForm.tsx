@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
+import { FullScreenLoader } from "@/components/common/FullScreenLoader";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -470,6 +471,9 @@ export function EmailLogin({
 
   return (
     <div className="w-full space-y-5">
+      {/* Only during OTP VERIFY (login + hydration) — sending the code keeps the
+          inline button spinner so the form stays visible. */}
+      {isOtpSent && isLoading && <FullScreenLoader label="Signing you in…" />}
       <AnimatePresence mode="wait">
         {!isOtpSent ? (
           <motion.div

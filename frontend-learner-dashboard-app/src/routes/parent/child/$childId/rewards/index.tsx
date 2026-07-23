@@ -2,6 +2,9 @@ import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Medal, Star, Certificate, Trophy } from "@phosphor-icons/react";
 import { ModuleScaffold } from "../../-components/ModuleScaffold";
+// Same renderer the student app uses — built-in medallion icons or the
+// admin-uploaded badge artwork, so parent and student see identical badges.
+import { BadgeVisual } from "@/routes/dashboard/-components/badge-icons";
 import { cn } from "@/lib/utils";
 import {
   useChildBadges,
@@ -97,8 +100,16 @@ function RewardsScreen() {
                       "transition-transform hover:-translate-y-0.5",
                     )}
                   >
-                    <span className="flex size-14 items-center justify-center rounded-full bg-cp-gold-tint">
-                      <Medal weight="fill" className="size-8 text-cp-gold" aria-hidden />
+                    <span className="flex size-14 items-center justify-center overflow-hidden rounded-full bg-cp-gold-tint">
+                      <BadgeVisual
+                        icon={String(
+                          (b.iconFileId as string | undefined) ?? (b.icon as string | undefined) ?? "Medal",
+                        )}
+                        fill
+                        weight="fill"
+                        size={30}
+                        className="text-cp-gold"
+                      />
                     </span>
                     <span className="text-caption font-semibold text-foreground">
                       {String(b.name ?? b.badgeName ?? t("rewards.badge"))}

@@ -2,6 +2,7 @@ import { LayoutContainer } from '@/components/common/layout-container/layout-con
 import { ChapterSidebarAddButton } from '../-components/slides-sidebar/slides-sidebar-add-button';
 import { ChapterSidebarSlides } from '../-components/slides-sidebar/slides-sidebar-slides';
 import { ChapterNavigator } from '../-components/chapter-navigator';
+import { CourseUnsavedBanner } from '../-components/course-unsaved-banner';
 import '../slides-sidebar-scrollbar.css';
 // import { studyLibrarySteps } from '@/constants/intro/steps';
 // import { StudyLibraryIntroKey } from '@/constants/storage/introKey';
@@ -315,6 +316,9 @@ export function NonAdminSlidesView({
                         );
                     })()}
                 </div>
+
+                {/* Course-level unsaved-changes banner (only while drafts exist) */}
+                <CourseUnsavedBanner courseId={courseId} />
 
                 {/* Chapter Navigator */}
                 <div className="w-full border-b border-primary-100 bg-white/50 p-2">

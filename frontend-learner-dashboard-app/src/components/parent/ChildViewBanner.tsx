@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Eye, SignOut } from "@phosphor-icons/react";
 import {
   isChildViewActive,
@@ -13,12 +13,24 @@ import {
  */
 export function ChildViewBanner() {
   const [exiting, setExiting] = useState(false);
+  const active = isChildViewActive();
 
-  if (!isChildViewActive()) return null;
+  // The banner is fixed (h-10), so push the whole app down while it is shown —
+  // otherwise it covers the learner top bar (which sticks below it, see navbar).
+  useEffect(() => {
+    if (!active) return;
+    const prev = document.body.style.paddingTop;
+    document.body.style.paddingTop = "2.5rem"; // = h-10, genuinely dynamic (banner active)
+    return () => {
+      document.body.style.paddingTop = prev;
+    };
+  }, [active]);
+
+  if (!active) return null;
   const name = getChildViewName();
 
   return (
-    <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-center gap-3 bg-primary-500 px-4 py-2 text-primary-50 shadow-md">
+    <div className="fixed inset-x-0 top-0 z-50 flex h-10 items-center justify-center gap-3 bg-primary-500 px-4 text-primary-50 shadow-md">
       <Eye weight="fill" className="size-4 shrink-0" aria-hidden />
       <span className="text-caption font-medium">
         Student view · {name || "your child"} · read only

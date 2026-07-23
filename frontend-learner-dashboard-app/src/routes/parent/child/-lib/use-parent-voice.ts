@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
+import { AI_SERVICE_URL } from "@/constants/urls";
 
 // Voice for the parent chatbot: speech-to-text (ask by voice) AND text-to-speech
 // (hear the answer). Browser Web Speech API — no backend, no API keys. Everything
@@ -38,7 +40,11 @@ export function useParentVoice(locale: string) {
   const lang = LOCALE_TO_BCP47[short] || locale || "en-US";
 
   const recognitionSupported = !!getRecognitionCtor();
-  const speechSupported = typeof window !== "undefined" && "speechSynthesis" in window;
+  const browserSpeechSupported = typeof window !== "undefined" && "speechSynthesis" in window;
+  // Voice output is primarily server neural TTS played through an <audio>
+  // element (available everywhere the app runs); browser synthesis is only the
+  // fallback — so "speech" is supported wherever we have a window at all.
+  const speechSupported = typeof window !== "undefined";
 
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -46,15 +52,30 @@ export function useParentVoice(locale: string) {
   // Strong reference to the current utterance — Chrome garbage-collects it
   // mid-speech otherwise, which cuts the audio off silently.
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
+  // The currently playing server-TTS audio element (edge-tts MP3).
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const stopAudio = useCallback(() => {
+    const a = audioRef.current;
+    if (a) {
+      try {
+        a.pause();
+        a.src = "";
+      } catch {
+        /* ignore */
+      }
+      audioRef.current = null;
+    }
+  }, []);
 
   // Warm up the voice list (getVoices() is empty on first call in some browsers).
   useEffect(() => {
-    if (!speechSupported) return;
+    if (!browserSpeechSupported) return;
     const warm = () => window.speechSynthesis.getVoices();
     warm();
     window.speechSynthesis.addEventListener?.("voiceschanged", warm);
     return () => window.speechSynthesis.removeEventListener?.("voiceschanged", warm);
-  }, [speechSupported]);
+  }, [browserSpeechSupported]);
 
   const stopListen = useCallback(() => {
     try {
@@ -96,27 +117,25 @@ export function useParentVoice(locale: string) {
   );
 
   const cancelSpeak = useCallback(() => {
-    if (!speechSupported) return;
-    try {
-      window.speechSynthesis.cancel();
-    } catch {
-      /* ignore */
+    stopAudio();
+    if (browserSpeechSupported) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {
+        /* ignore */
+      }
     }
     setSpeaking(false);
-  }, [speechSupported]);
+  }, [browserSpeechSupported, stopAudio]);
 
-  // Speak the given text. Must be triggered from a user gesture (iOS WKWebView).
-  // Prefers a voice whose language matches the answer's script when detectable,
-  // otherwise the app locale.
-  const speak = useCallback(
-    (text: string) => {
-      if (!speechSupported || !text) return;
+  // Browser speechSynthesis — the FALLBACK voice when server TTS is unavailable.
+  const speakWithBrowser = useCallback(
+    (text: string, isDevanagari: boolean) => {
+      if (!browserSpeechSupported) return;
       try {
         const synth = window.speechSynthesis;
         synth.cancel();
         const utter = new SpeechSynthesisUtterance(text);
-        // Devanagari in the text → speak Hindi even if the app locale is English.
-        const isDevanagari = /[ऀ-ॿ]/.test(text);
         utter.lang = isDevanagari ? "hi-IN" : lang;
         const want = (isDevanagari ? "hi" : short).toLowerCase();
         const voice = synth.getVoices().find((v) => v.lang?.toLowerCase().startsWith(want));
@@ -135,7 +154,48 @@ export function useParentVoice(locale: string) {
         setSpeaking(false);
       }
     },
-    [speechSupported, lang, short],
+    [browserSpeechSupported, lang, short],
+  );
+
+  // Speak the given text. Tries the server's neural TTS first (edge-tts via
+  // ai_service — far more natural than the robotic browser voices), then falls
+  // back to on-device speechSynthesis. Devanagari in the text → Hindi voice
+  // even when the app locale is English.
+  const speak = useCallback(
+    (text: string) => {
+      if (!text) return;
+      const isDevanagari = /[ऀ-ॿ]/.test(text);
+      const langShort = isDevanagari ? "hi" : short;
+      void (async () => {
+        try {
+          const res = await authenticatedAxiosInstance.post(
+            `${AI_SERVICE_URL}/tts/v1/speak`,
+            { text, language: langShort },
+            { responseType: "blob", timeout: 15000 },
+          );
+          // Stop anything already talking before starting the new answer.
+          stopAudio();
+          if (browserSpeechSupported) window.speechSynthesis.cancel();
+          const url = URL.createObjectURL(res.data as Blob);
+          const audio = new Audio(url);
+          audioRef.current = audio;
+          const done = () => {
+            setSpeaking(false);
+            URL.revokeObjectURL(url);
+          };
+          audio.onended = done;
+          audio.onerror = done;
+          setSpeaking(true);
+          await audio.play();
+          return;
+        } catch {
+          setSpeaking(false);
+          // server TTS unavailable (offline / not deployed / autoplay blocked)
+        }
+        speakWithBrowser(text, isDevanagari);
+      })();
+    },
+    [short, browserSpeechSupported, stopAudio, speakWithBrowser],
   );
 
   useEffect(

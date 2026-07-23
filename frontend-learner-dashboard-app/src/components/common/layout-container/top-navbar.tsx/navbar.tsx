@@ -1,5 +1,6 @@
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { Sidebar } from "@phosphor-icons/react";
+import { isChildViewActive } from "@/routes/parent/child/-lib/child-view";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { useEffect, useMemo, useState } from "react";
 import useStore from "../sidebar/useSidebar";
@@ -208,7 +209,7 @@ export function Navbar() {
     );
     // Return a simplified navbar without role-dependent features
     return (
-      <div className="navbar sticky top-0 z-50 border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap [.ui-play_&]:border-b [.ui-play_&]:border-border [.ui-play_&]:bg-white [.ui-play_&]:backdrop-blur-none">
+      <div className={`navbar sticky ${isChildViewActive() ? "top-10" : "top-0"} z-50 border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap [.ui-play_&]:border-b [.ui-play_&]:border-border [.ui-play_&]:bg-white [.ui-play_&]:backdrop-blur-none`}>
         {/* Left Section */}
         <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
           {canGoBack && !isDashboard && (
@@ -372,7 +373,7 @@ export function Navbar() {
 
   return (
     <div
-      className={`navbar sticky top-0 z-50 border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap [.ui-play_&]:border-b [.ui-play_&]:border-border [.ui-play_&]:bg-white [.ui-play_&]:backdrop-blur-none ${isIOS ? "mt-10" : ""}`}
+      className={`navbar sticky ${isChildViewActive() ? "top-10" : "top-0"} z-50 border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap [.ui-play_&]:border-b [.ui-play_&]:border-border [.ui-play_&]:bg-white [.ui-play_&]:backdrop-blur-none ${isIOS ? "mt-10" : ""}`}
     >
       {/* Left Section */}
       <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">

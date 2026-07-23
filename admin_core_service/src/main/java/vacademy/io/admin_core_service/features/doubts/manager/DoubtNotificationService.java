@@ -119,7 +119,11 @@ public class DoubtNotificationService {
         if (prefs == null) return;
 
         boolean pushOn = prefs.getPushEnabled() == null || Boolean.TRUE.equals(prefs.getPushEnabled());
-        boolean emailOn = Boolean.TRUE.equals(prefs.getEmailEnabled());
+        // Match push/system-alert: a null (unconfigured) channel flag defaults to ON, per the
+        // documented DoubtNotificationChannelPrefs default and resolvePrefs' all-true fallback.
+        // Only an explicit `false` silences email. (Previously null was treated as OFF, which
+        // silently suppressed doubt emails for any partial/legacy notification prefs object.)
+        boolean emailOn = !Boolean.FALSE.equals(prefs.getEmailEnabled());
         boolean systemAlertOn = prefs.getSystemAlertEnabled() == null
                 || Boolean.TRUE.equals(prefs.getSystemAlertEnabled());
 
@@ -165,7 +169,11 @@ public class DoubtNotificationService {
         if (prefs == null) return;
 
         boolean pushOn = prefs.getPushEnabled() == null || Boolean.TRUE.equals(prefs.getPushEnabled());
-        boolean emailOn = Boolean.TRUE.equals(prefs.getEmailEnabled());
+        // Match push/system-alert: a null (unconfigured) channel flag defaults to ON, per the
+        // documented DoubtNotificationChannelPrefs default and resolvePrefs' all-true fallback.
+        // Only an explicit `false` silences email. (Previously null was treated as OFF, which
+        // silently suppressed doubt emails for any partial/legacy notification prefs object.)
+        boolean emailOn = !Boolean.FALSE.equals(prefs.getEmailEnabled());
         boolean systemAlertOn = prefs.getSystemAlertEnabled() == null
                 || Boolean.TRUE.equals(prefs.getSystemAlertEnabled());
 
@@ -197,7 +205,7 @@ public class DoubtNotificationService {
     private void notifyGuestResolved(Doubts doubt, String instituteId) {
         if (doubt.getGuestEmail() == null || doubt.getGuestEmail().isBlank()) return;
         DoubtNotificationChannelPrefs prefs = resolvePrefs(instituteId, /*raised*/ false);
-        if (prefs == null || !Boolean.TRUE.equals(prefs.getEmailEnabled())) return;
+        if (prefs == null || Boolean.FALSE.equals(prefs.getEmailEnabled())) return;
 
         InstituteContext ctx = loadInstituteContext(instituteId);
         String templateId = resolveTemplateId(prefs.getEmailTemplateId(), instituteId,
@@ -220,7 +228,7 @@ public class DoubtNotificationService {
         // Reuse the resolved-event channel prefs as the gate — a per-event guest-reply pref isn't
         // worth a settings schema bump; institutes silencing learner emails silence these too.
         DoubtNotificationChannelPrefs prefs = resolvePrefs(instituteId, /*raised*/ false);
-        if (prefs == null || !Boolean.TRUE.equals(prefs.getEmailEnabled())) return;
+        if (prefs == null || Boolean.FALSE.equals(prefs.getEmailEnabled())) return;
 
         InstituteContext ctx = loadInstituteContext(instituteId);
         String templateId = resolveTemplateId(null, instituteId,

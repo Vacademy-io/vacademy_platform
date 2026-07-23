@@ -15,6 +15,8 @@ import {
 import { MyButton } from '@/components/design-system/button';
 import { PencilSimple, Play, Plus, Robot, SpinnerGap, Stop, Trash } from '@phosphor-icons/react';
 import { fetchBookingPages } from '@/routes/meetings/-services/meetings-services';
+import { AiAgentPromptAssistant } from './AiAgentPromptAssistant';
+import type { AssistDerived } from '../-services/ai-agent-assist';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
@@ -497,6 +499,24 @@ export function AiAgentsCard({
                                 onChange={(e) => patch({ systemPrompt: e.target.value })}
                             />
                         </div>
+                        <AiAgentPromptAssistant
+                            instituteId={instituteId}
+                            agentId={editing.id}
+                            prompt={editing.systemPrompt ?? ''}
+                            language={editing.language}
+                            onPromptChange={(p) => patch({ systemPrompt: p })}
+                            onApplyDerived={(d: AssistDerived) =>
+                                patch({
+                                    ...(d.opening_line ? { openingLine: d.opening_line } : {}),
+                                    ...(d.extraction_questions?.length
+                                        ? { extractionQuestions: d.extraction_questions }
+                                        : {}),
+                                    ...(d.dispositions?.length
+                                        ? { dispositions: d.dispositions }
+                                        : {}),
+                                })
+                            }
+                        />
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                             <div className="space-y-1.5">
                                 <Label>Questions to find out (one per line)</Label>

@@ -17,7 +17,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import { Lock as LockIcon, Loader2 } from 'lucide-react';
+import { CircleNotch, Lock as LockIcon, MagnifyingGlass } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MyButton } from '@/components/design-system/button';
@@ -177,6 +177,8 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
     // PS ids the admin has ticked in this session that aren't already linked. Existing
     // PSes can't be unticked (add-only). Reset when the modal opens.
     const [pendingAddPsIds, setPendingAddPsIds] = useState<string[]>([]);
+    // Free-text filter for the "Add courses" picker (matches package/level/session name).
+    const [addCourseSearch, setAddCourseSearch] = useState('');
 
     // Snapshot of the pre-fill values so we can compute a diff on Save.
     const [baseline, setBaseline] = useState<{
@@ -208,6 +210,7 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
         setValidityInDays(initValidity);
         setPaymentOptionId(initOption);
         setPendingAddPsIds([]);
+        setAddCourseSearch('');
         setBaseline({
             authRoles: initAuth,
             allowedTeamRoles: initAllowed,
@@ -307,11 +310,38 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
         () => flatRows.filter((r) => !linkedPsIdSet.has(r.packageSessionId)),
         [flatRows, linkedPsIdSet]
     );
+    // The label a row is shown/searched by (package · level · session).
+    const rowLabel = (row: (typeof addableRows)[number]) =>
+        `${row.packageName} · ${row.levelName} · ${row.sessionName}`;
+    // Rows matching the search box (case-insensitive substring across the label).
+    const visibleAddableRows = useMemo(() => {
+        const q = addCourseSearch.trim().toLowerCase();
+        if (!q) return addableRows;
+        return addableRows.filter((r) => rowLabel(r).toLowerCase().includes(q));
+    }, [addableRows, addCourseSearch]);
+    // "Select all" targets exactly what's visible; it's fully checked only when every
+    // visible row is already pending.
+    const allVisibleSelected =
+        visibleAddableRows.length > 0 &&
+        visibleAddableRows.every((r) => pendingAddPsIds.includes(r.packageSessionId));
 
     const togglePendingPs = (psId: string) => {
         setPendingAddPsIds((prev) =>
             prev.includes(psId) ? prev.filter((p) => p !== psId) : [...prev, psId]
         );
+    };
+
+    // Add/remove every currently-visible (filtered) row in one click.
+    const toggleSelectAllVisible = () => {
+        const visibleIds = visibleAddableRows.map((r) => r.packageSessionId);
+        setPendingAddPsIds((prev) => {
+            if (allVisibleSelected) {
+                return prev.filter((id) => !visibleIds.includes(id));
+            }
+            const merged = new Set(prev);
+            visibleIds.forEach((id) => merged.add(id));
+            return [...merged];
+        });
     };
 
     return (
@@ -328,7 +358,7 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
 
                 {isLoading ? (
                     <div className="flex items-center justify-center py-8">
-                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        <CircleNotch className="h-5 w-5 animate-spin text-muted-foreground" />
                     </div>
                 ) : (
                     <div className="-mx-2 flex-1 overflow-y-auto px-2">
@@ -363,28 +393,62 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
 
                                 {addableRows.length > 0 ? (
                                     <div className="space-y-1">
-                                        <p className="text-caption font-medium text-neutral-700">
-                                            Add courses
-                                        </p>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <p className="text-caption font-medium text-neutral-700">
+                                                Add courses
+                                            </p>
+                                            <button
+                                                type="button"
+                                                onClick={toggleSelectAllVisible}
+                                                disabled={visibleAddableRows.length === 0}
+                                                className="text-caption font-medium text-primary-600 hover:text-primary-700 disabled:cursor-not-allowed disabled:text-neutral-300"
+                                            >
+                                                {allVisibleSelected ? 'Clear selection' : 'Select all'}
+                                                {addCourseSearch.trim() &&
+                                                    visibleAddableRows.length > 0 &&
+                                                    ` (${visibleAddableRows.length})`}
+                                            </button>
+                                        </div>
+                                        <div className="relative">
+                                            <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                                            <Input
+                                                value={addCourseSearch}
+                                                onChange={(e) => setAddCourseSearch(e.target.value)}
+                                                placeholder="Search courses by name"
+                                                className="h-9 pl-8"
+                                            />
+                                        </div>
                                         <div className="max-h-44 space-y-1 overflow-y-auto rounded-md border border-neutral-200 p-2">
-                                            {addableRows.map((row) => {
-                                                const checked = pendingAddPsIds.includes(row.packageSessionId);
-                                                const label = `${row.packageName} · ${row.levelName} · ${row.sessionName}`;
-                                                return (
-                                                    <label
-                                                        key={row.packageSessionId}
-                                                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-neutral-50"
-                                                    >
-                                                        <Checkbox
-                                                            checked={checked}
-                                                            onCheckedChange={() =>
-                                                                togglePendingPs(row.packageSessionId)
-                                                            }
-                                                        />
-                                                        <span className="truncate">{label}</span>
-                                                    </label>
-                                                );
-                                            })}
+                                            {visibleAddableRows.length === 0 ? (
+                                                <p className="px-2 py-3 text-center text-caption text-neutral-500">
+                                                    No courses match &ldquo;{addCourseSearch.trim()}
+                                                    &rdquo;.
+                                                </p>
+                                            ) : (
+                                                visibleAddableRows.map((row) => {
+                                                    const checked = pendingAddPsIds.includes(
+                                                        row.packageSessionId
+                                                    );
+                                                    return (
+                                                        <label
+                                                            key={row.packageSessionId}
+                                                            className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-neutral-50"
+                                                        >
+                                                            <Checkbox
+                                                                checked={checked}
+                                                                onCheckedChange={() =>
+                                                                    togglePendingPs(
+                                                                        row.packageSessionId
+                                                                    )
+                                                                }
+                                                            />
+                                                            <span className="truncate">
+                                                                {rowLabel(row)}
+                                                            </span>
+                                                        </label>
+                                                    );
+                                                })
+                                            )}
                                         </div>
                                         {pendingAddPsIds.length > 0 && (
                                             <p className="text-caption text-primary-600">
@@ -596,7 +660,7 @@ export function EditSubOrgModal({ open, onOpenChange, subOrgId, subOrgName }: Ed
                     >
                         {mutation.isPending ? (
                             <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <CircleNotch className="h-4 w-4 animate-spin" />
                                 Saving…
                             </>
                         ) : (

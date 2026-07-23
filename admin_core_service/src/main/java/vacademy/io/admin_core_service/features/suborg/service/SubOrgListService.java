@@ -15,12 +15,14 @@ import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteSet
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.institute.entity.InstituteSubOrg;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.institute.repository.InstituteSubOrgRepository;
 import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgListItemDTO;
 import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 import vacademy.io.admin_core_service.features.user_subscription.repository.UserPlanRepository;
 import vacademy.io.common.auth.dto.UserDTO;
+import vacademy.io.common.institute.entity.Institute;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -44,6 +46,7 @@ public class SubOrgListService {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final InstituteSubOrgRepository instituteSubOrgRepository;
+    private final InstituteRepository instituteRepository;
     private final StudentSessionInstituteGroupMappingRepository ssigmRepository;
     private final AuthService authService;
     private final UserPlanRepository userPlanRepository;
@@ -99,6 +102,14 @@ public class SubOrgListService {
             }
         }
 
+        // 5. The spawned institutes themselves, in one query — carry the address the
+        // registration stamped on them (city/state/pincode; null when never collected).
+        Map<String, Institute> instituteBySubOrg = new HashMap<>();
+        if (!subOrgIds.isEmpty()) {
+            instituteRepository.findAllById(subOrgIds)
+                    .forEach(inst -> instituteBySubOrg.put(inst.getId(), inst));
+        }
+
         List<SubOrgListItemDTO> result = new ArrayList<>(subOrgs.size());
         for (InstituteSubOrg so : subOrgs) {
             String soId = so.getSuborgId();
@@ -140,6 +151,8 @@ public class SubOrgListService {
                 }
             }
 
+            Institute spawned = StringUtils.hasText(soId) ? instituteBySubOrg.get(soId) : null;
+
             result.add(SubOrgListItemDTO.builder()
                     .suborgId(soId)
                     .name(so.getName())
@@ -147,6 +160,9 @@ public class SubOrgListService {
                     .adminName(user != null ? user.getFullName() : null)
                     .adminEmail(user != null ? user.getEmail() : null)
                     .adminPhone(user != null ? user.getMobileNumber() : null)
+                    .city(spawned != null ? spawned.getCity() : null)
+                    .state(spawned != null ? spawned.getState() : null)
+                    .pincode(spawned != null ? spawned.getPinCode() : null)
                     .planStatus(planStatus)
                     .usedSeats(StringUtils.hasText(soId) ? usedBySubOrg.getOrDefault(soId, 0L) : null)
                     .totalSeats(totalSeats)

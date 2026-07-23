@@ -19,7 +19,7 @@ import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSet
 import { MyButton } from '@/components/design-system/button';
 import { Input } from '@/components/ui/input';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
-import { Plus, Buildings, Copy, LinkSimple, MagnifyingGlass, X } from '@phosphor-icons/react';
+import { Plus, Buildings, Copy, LinkSimple, MagnifyingGlass, MapPin, X } from '@phosphor-icons/react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { CreateSubOrgModal } from './create-sub-org-modal';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -37,10 +37,23 @@ const SUB_ORG_PAGE_SIZE = 10;
 /** Facet key for rows whose admin has no plan yet (plan_status null). */
 const NO_PLAN = '__NO_PLAN__';
 
+/** Distinct, sorted non-blank values of one field across the rows → filter options. */
+const facetOptions = (rows: SubOrgListItem[], pick: (row: SubOrgListItem) => string | null | undefined) => {
+    const values = new Set<string>();
+    rows.forEach((row) => {
+        const v = pick(row)?.trim();
+        if (v) values.add(v);
+    });
+    return [...values].sort((a, b) => a.localeCompare(b)).map((value) => ({ value, label: value }));
+};
+
 export function SubOrgList() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [searchInput, setSearchInput] = useState('');
     const [statusFilter, setStatusFilter] = useState<string[]>([]);
+    const [cityFilter, setCityFilter] = useState<string[]>([]);
+    const [stateFilter, setStateFilter] = useState<string[]>([]);
+    const [pincodeFilter, setPincodeFilter] = useState<string[]>([]);
     const [page, setPage] = useState(0);
     const navigate = useNavigate();
 
@@ -75,6 +88,12 @@ export function SubOrgList() {
         return options;
     }, [allSubOrgs]);
 
+    // City/State/Pincode options come from the loaded rows too (address stamped on the
+    // spawned institute at registration) — a filter only appears when values exist.
+    const cityOptions = useMemo(() => facetOptions(allSubOrgs, (o) => o.city), [allSubOrgs]);
+    const stateOptions = useMemo(() => facetOptions(allSubOrgs, (o) => o.state), [allSubOrgs]);
+    const pincodeOptions = useMemo(() => facetOptions(allSubOrgs, (o) => o.pincode), [allSubOrgs]);
+
     const q = searchInput.trim().toLowerCase();
     const filteredSubOrgs = useMemo(
         () =>
@@ -83,12 +102,19 @@ export function SubOrgList() {
                     const key = o.plan_status || NO_PLAN;
                     if (!statusFilter.includes(key)) return false;
                 }
+                if (cityFilter.length && !cityFilter.includes(o.city?.trim() || '')) return false;
+                if (stateFilter.length && !stateFilter.includes(o.state?.trim() || '')) return false;
+                if (pincodeFilter.length && !pincodeFilter.includes(o.pincode?.trim() || ''))
+                    return false;
                 if (q) {
                     const haystack = [
                         o.name,
                         o.admin_name,
                         o.admin_email,
                         o.admin_phone,
+                        o.city,
+                        o.state,
+                        o.pincode,
                         o.invite_code,
                     ]
                         .filter(Boolean)
@@ -98,14 +124,19 @@ export function SubOrgList() {
                 }
                 return true;
             }),
-        [allSubOrgs, q, statusFilter]
+        [allSubOrgs, q, statusFilter, cityFilter, stateFilter, pincodeFilter]
     );
-    const hasActiveFilters = !!q || statusFilter.length > 0;
+    const hasActiveFilters =
+        !!q ||
+        statusFilter.length > 0 ||
+        cityFilter.length > 0 ||
+        stateFilter.length > 0 ||
+        pincodeFilter.length > 0;
 
     // Any filter change jumps back to the first page.
     useEffect(() => {
         setPage(0);
-    }, [q, statusFilter]);
+    }, [q, statusFilter, cityFilter, stateFilter, pincodeFilter]);
 
     const totalPages = Math.max(1, Math.ceil(filteredSubOrgs.length / SUB_ORG_PAGE_SIZE));
     const subOrgs = filteredSubOrgs.slice(
@@ -167,6 +198,37 @@ export function SubOrgList() {
                             widthClass="w-36"
                         />
                     )}
+                    {cityOptions.length > 0 && (
+                        <MultiSelectFilter
+                            label="City"
+                            icon={<MapPin className="size-4 text-neutral-400" />}
+                            options={cityOptions}
+                            selected={cityFilter}
+                            onChange={setCityFilter}
+                            placeholder="Search city…"
+                            widthClass="w-36"
+                        />
+                    )}
+                    {stateOptions.length > 0 && (
+                        <MultiSelectFilter
+                            label="State"
+                            options={stateOptions}
+                            selected={stateFilter}
+                            onChange={setStateFilter}
+                            placeholder="Search state…"
+                            widthClass="w-36"
+                        />
+                    )}
+                    {pincodeOptions.length > 0 && (
+                        <MultiSelectFilter
+                            label="Pincode"
+                            options={pincodeOptions}
+                            selected={pincodeFilter}
+                            onChange={setPincodeFilter}
+                            placeholder="Search pincode…"
+                            widthClass="w-36"
+                        />
+                    )}
                     {hasActiveFilters && (
                         <MyButton
                             buttonType="secondary"
@@ -174,6 +236,9 @@ export function SubOrgList() {
                             onClick={() => {
                                 setSearchInput('');
                                 setStatusFilter([]);
+                                setCityFilter([]);
+                                setStateFilter([]);
+                                setPincodeFilter([]);
                             }}
                         >
                             <X className="mr-1 size-3.5" />
@@ -202,6 +267,9 @@ export function SubOrgList() {
                             <TableHead>Name</TableHead>
                             <TableHead>Email</TableHead>
                             <TableHead>Phone</TableHead>
+                            <TableHead>City</TableHead>
+                            <TableHead>State</TableHead>
+                            <TableHead>Pincode</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Seats</TableHead>
                             <TableHead>{getTerminology(OtherTerms.Invite, SystemTerms.Invite)}</TableHead>
@@ -210,7 +278,7 @@ export function SubOrgList() {
                     <TableBody>
                         {!subOrgs || subOrgs.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={6} className="h-24 text-center">
+                                <TableCell colSpan={9} className="h-24 text-center">
                                     <div className="flex flex-col items-center justify-center gap-2 text-gray-500">
                                         <Buildings className="h-8 w-8 opacity-50" />
                                         <p>
@@ -255,6 +323,9 @@ export function SubOrgList() {
                                         </TableCell>
                                         <TableCell>{org.admin_email || '-'}</TableCell>
                                         <TableCell>{org.admin_phone || '-'}</TableCell>
+                                        <TableCell>{org.city || '-'}</TableCell>
+                                        <TableCell>{org.state || '-'}</TableCell>
+                                        <TableCell>{org.pincode || '-'}</TableCell>
                                         <TableCell>
                                             {org.plan_status ? (
                                                 <Badge

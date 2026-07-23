@@ -174,6 +174,10 @@ export interface SubOrgListItem {
     admin_name?: string | null;
     admin_email?: string | null;
     admin_phone?: string | null;
+    /** Address stamped on the spawned institute at registration; null when never collected. */
+    city?: string | null;
+    state?: string | null;
+    pincode?: string | null;
     /** Admin's UserPlan status (ACTIVE, PENDING_FOR_PAYMENT, …); null when no plan. */
     plan_status?: string | null;
     used_seats?: number | null;

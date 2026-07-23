@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { AI_SERVICE_URL } from "@/constants/urls";
 
 // Voice for the parent chatbot: speech-to-text (ask by voice) AND text-to-speech
@@ -190,7 +191,7 @@ export function useParentVoice(locale: string) {
 
       // Stop anything already talking before starting the new answer — and
       // invalidate any browser-speak still waiting inside its 60ms delay.
-      speakSeqRef.current += 1;
+      const seq = ++speakSeqRef.current;
       stopAudio();
       if (browserSpeechSupported) {
         try {
@@ -200,23 +201,71 @@ export function useParentVoice(locale: string) {
         }
       }
 
+      // ── Tier 3: on-device browser voice ──
+      const browserFallback = () => {
+        if (speakSeqRef.current !== seq) return; // cancelled / superseded
+        setSpeaking(false);
+        stopAudio();
+        speakWithBrowser(text, isDevanagari);
+      };
+
+      // ── Tier 2: POST + full blob — works against ai_service builds that
+      // predate the streaming GET route (deploy-order resilience). ──
+      const postFallback = () => {
+        if (speakSeqRef.current !== seq) return;
+        setSpeaking(false);
+        stopAudio();
+        void (async () => {
+          try {
+            const res = await authenticatedAxiosInstance.post(
+              `${AI_SERVICE_URL}/tts/v1/speak`,
+              { text, language: langShort },
+              { responseType: "blob", timeout: 15000 },
+            );
+            if (speakSeqRef.current !== seq) return;
+            const url = URL.createObjectURL(res.data as Blob);
+            const audio = new Audio(url);
+            audioRef.current = audio;
+            let failed = false;
+            const fail = () => {
+              if (failed) return;
+              failed = true;
+              URL.revokeObjectURL(url);
+              browserFallback();
+            };
+            audio.onplaying = () => {
+              if (speakSeqRef.current === seq) setSpeaking(true);
+            };
+            audio.onended = () => {
+              setSpeaking(false);
+              URL.revokeObjectURL(url);
+            };
+            audio.onerror = fail;
+            audio.play().catch(fail);
+          } catch {
+            browserFallback();
+          }
+        })();
+      };
+
+      // ── Tier 1: streamed GET — playback starts on the first buffered bytes. ──
       const src =
         `${AI_SERVICE_URL}/tts/v1/speak?language=${encodeURIComponent(langShort)}` +
         `&text=${encodeURIComponent(text)}`;
       const audio = new Audio(src);
       audioRef.current = audio;
-      let fellBack = false;
-      const fallBack = () => {
-        if (fellBack) return;
-        fellBack = true;
-        setSpeaking(false);
-        stopAudio();
-        speakWithBrowser(text, isDevanagari);
+      let streamFailed = false;
+      const streamFail = () => {
+        if (streamFailed) return;
+        streamFailed = true;
+        postFallback();
       };
-      audio.onplaying = () => setSpeaking(true);
+      audio.onplaying = () => {
+        if (speakSeqRef.current === seq) setSpeaking(true);
+      };
       audio.onended = () => setSpeaking(false);
-      audio.onerror = fallBack;
-      audio.play().catch(fallBack);
+      audio.onerror = streamFail;
+      audio.play().catch(streamFail);
     },
     [short, browserSpeechSupported, stopAudio, speakWithBrowser],
   );

@@ -53,6 +53,12 @@ export function useParentVoice(locale: string) {
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
   // The currently playing server-TTS audio element (edge-tts MP3).
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Monotonic token: every speak()/cancelSpeak() bumps it, and the DELAYED
+  // browser-speak only fires when its token is still current. Without this,
+  // a cancel that lands inside the 60ms delay cannot stop the utterance —
+  // rapid speaks then QUEUE behind each other (the "read every message from
+  // the start" bug) and a pending timer can replay after close.
+  const speakSeqRef = useRef(0);
 
   const stopAudio = useCallback(() => {
     const a = audioRef.current;
@@ -116,6 +122,7 @@ export function useParentVoice(locale: string) {
   );
 
   const cancelSpeak = useCallback(() => {
+    speakSeqRef.current += 1; // invalidate any pending delayed speak
     stopAudio();
     if (browserSpeechSupported) {
       try {
@@ -146,9 +153,14 @@ export function useParentVoice(locale: string) {
         // Chrome quirks: speak() issued synchronously after cancel() is sometimes
         // silently dropped, and a paused queue swallows every later utterance
         // (cancel-while-paused leaves it stuck). resume() + a short delay makes
-        // the speak reliable.
+        // the speak reliable — but the delayed call MUST re-check the token so a
+        // cancel/newer speak that landed inside the delay wins.
+        const seq = ++speakSeqRef.current;
         synth.resume();
-        window.setTimeout(() => synth.speak(utter), 60);
+        window.setTimeout(() => {
+          if (speakSeqRef.current !== seq) return; // cancelled / superseded
+          synth.speak(utter);
+        }, 60);
       } catch {
         setSpeaking(false);
       }
@@ -176,7 +188,9 @@ export function useParentVoice(locale: string) {
         return;
       }
 
-      // Stop anything already talking before starting the new answer.
+      // Stop anything already talking before starting the new answer — and
+      // invalidate any browser-speak still waiting inside its 60ms delay.
+      speakSeqRef.current += 1;
       stopAudio();
       if (browserSpeechSupported) {
         try {

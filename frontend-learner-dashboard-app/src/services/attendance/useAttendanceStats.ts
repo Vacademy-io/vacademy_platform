@@ -16,6 +16,17 @@ export interface AttendanceStats {
 }
 
 /**
+ * A class that has not STARTED yet (today's later classes, future classes).
+ * The backend coalesces missing attendance to "UNMARKED", so without a time
+ * check these would count as unmarked/absent before the class even began.
+ */
+export function notStartedYet(s: ScheduleItem, now: Date): boolean {
+  if (!s.meetingDate) return false;
+  const start = new Date(`${s.meetingDate}T${s.startTime || "00:00:00"}`);
+  return !Number.isNaN(start.getTime()) && start > now;
+}
+
+/**
  * Pure function: compute day-wise attendance stats from raw schedules.
  * Multiple classes in one day count as one day.
  * PRESENT if any class that day was attended.
@@ -48,6 +59,7 @@ export function computeAttendanceStats(
   // Compute per-day status
   const dayStatuses: { date: string; status: "PRESENT" | "ABSENT" | "UNMARKED" }[] = [];
 
+  const now = new Date();
   for (const [dateKey, daySchedules] of dayMap) {
     const dayDate = parseISO(dateKey);
     const isDayInPast = isPast(dayDate) && !isToday(dayDate);
@@ -55,7 +67,14 @@ export function computeAttendanceStats(
     const hasAnyPresent = daySchedules.some(
       (s) => s.attendanceStatus === "PRESENT"
     );
-    const hasAnyPending = daySchedules.some((s) => !s.attendanceStatus);
+    // Pending = no status yet, OR the class simply hasn't started (the backend
+    // reports not-yet-started classes as UNMARKED, which must not read as
+    // absent/unmarked before the class begins).
+    const hasAnyPending = daySchedules.some(
+      (s) =>
+        !s.attendanceStatus ||
+        (s.attendanceStatus === "UNMARKED" && notStartedYet(s, now))
+    );
     const hasAnyUnmarked = daySchedules.some(
       (s) => s.attendanceStatus === "UNMARKED"
     );

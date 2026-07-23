@@ -45,6 +45,7 @@ import {
 } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, OtherTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { cn } from '@/lib/utils';
+import { useAssistDockVisible } from '@/components/assist-dock/visibility';
 import {
     getDisplaySettingsWithFallback,
     getDisplaySettingsFromCache,
@@ -132,6 +133,7 @@ export const StudentSidebar = ({
 }) => {
     const { state, setOpen, setOpenMobile } = useSidebar();
     const { isCompact } = useCompactMode();
+    const assistDockVisible = useAssistDockVisible();
     const [category, setCategory] = useState('overview');
     // Tab-bar scroll affordance: track whether more tabs sit off either edge so
     // we can show clickable chevrons — the plain fade wasn't a clear enough cue
@@ -358,9 +360,13 @@ export const StudentSidebar = ({
                 className
             )}
         >
-            {/* pr-14 keeps content clear of the fixed Assist Dock rail (w-14) that overlays this panel's right edge. */}
+            {/* pr-14 keeps content clear of the fixed Assist Dock rail (w-14) that overlays this
+                panel's right edge — only when the rail is visible for this role. */}
             <SidebarContent
-                className={`sidebar-content flex flex-col !gap-0 border-l border-t border-neutral-200 bg-white pr-14 font-app text-neutral-700`}
+                className={cn(
+                    'sidebar-content flex flex-col !gap-0 border-l border-t border-neutral-200 bg-white font-app text-neutral-700',
+                    assistDockVisible && 'pr-14'
+                )}
             >
                 <SidebarHeader className="sticky top-0 z-10 !mt-0 !gap-0 !p-0 border-b border-neutral-200 bg-white shadow-sm">
                     <div className="flex flex-col gap-1.5 px-3 pb-2 pt-1.5">

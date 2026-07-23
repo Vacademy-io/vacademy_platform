@@ -16,6 +16,11 @@ const CACHE_EXPIRY_HOURS = 24;
 const LEGACY_ADMIN_KEY = StorageKey.ADMIN_DISPLAY_SETTINGS;
 const LEGACY_TEACHER_KEY = StorageKey.TEACHER_DISPLAY_SETTINGS;
 
+/** Fired on window whenever a display-settings blob is (re)cached — fetch or
+ *  save. Components that read settings outside React state (e.g. AssistDock)
+ *  listen to re-resolve without waiting for a navigation. */
+export const DISPLAY_SETTINGS_UPDATED_EVENT = 'vacademy:display-settings-updated';
+
 type RoleKey = string;
 
 interface CachedDisplaySettings {
@@ -317,6 +322,11 @@ function mergeDisplayWithDefaults(
             incoming?.ui?.showSupportButton ?? defaults.ui?.showSupportButton ?? true,
         showSidebar: incoming?.ui?.showSidebar ?? defaults.ui?.showSidebar ?? true,
         showAiCredits: incoming?.ui?.showAiCredits ?? defaults.ui?.showAiCredits ?? true,
+        // Admin-only by default; other roles must be opted in explicitly.
+        showAssistDock:
+            incoming?.ui?.showAssistDock ??
+            defaults.ui?.showAssistDock ??
+            role === ADMIN_DISPLAY_SETTINGS_KEY,
     };
 
     // Content Types
@@ -731,6 +741,7 @@ function writeCache(role: RoleKey, data: DisplaySettingsData): void {
             instituteId,
         };
         localStorage.setItem(key, JSON.stringify(payload));
+        window.dispatchEvent(new Event(DISPLAY_SETTINGS_UPDATED_EVENT));
     } catch (e) {
         console.error('Error writing display settings cache', e);
     }

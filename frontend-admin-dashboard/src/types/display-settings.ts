@@ -366,6 +366,11 @@ export interface DisplaySettingsData {
         // Controls whether the left sidebar is shown for this role
         showSidebar?: boolean;
         showAiCredits?: boolean;
+        // Controls the right-edge Assist Dock rail (Guides / Assist / Issues /
+        // What's new / Explore / Admin App). Defaults to VISIBLE for the admin
+        // role and HIDDEN for teacher/custom roles; admins can opt a specific
+        // role in from that role's Display Settings.
+        showAssistDock?: boolean;
     };
 
     // 7) Course content types (slides) visibility

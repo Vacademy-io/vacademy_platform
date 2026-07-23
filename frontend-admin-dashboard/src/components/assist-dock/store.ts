@@ -36,6 +36,12 @@ interface AssistDockState {
     /** Whether the right rail is collapsed to a small pull-tab. Persisted across sessions. */
     minimized: boolean;
     setMinimized: (minimized: boolean) => void;
+    /** Per-role resolved visibility of the whole dock (ui.showAssistDock in
+     *  display settings). null until AssistDock resolves it. Components that
+     *  reserve space for the rail read it via useAssistDockVisible() so they
+     *  stay in lockstep with the rail itself. */
+    dockVisible: boolean | null;
+    setDockVisible: (dockVisible: boolean) => void;
 }
 
 export const useAssistDock = create<AssistDockState>((set) => ({
@@ -48,6 +54,8 @@ export const useAssistDock = create<AssistDockState>((set) => ({
     activeTutorial: null,
     openTutorial: (file, title) => set({ activeTutorial: { file, title } }),
     closeTutorial: () => set({ activeTutorial: null }),
+    dockVisible: null,
+    setDockVisible: (dockVisible) => set({ dockVisible }),
     minimized: readMinimized(),
     setMinimized: (minimized) => {
         try {

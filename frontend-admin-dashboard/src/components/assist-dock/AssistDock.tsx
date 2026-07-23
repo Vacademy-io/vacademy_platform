@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouterState } from '@tanstack/react-router';
 import {
     BookOpen,
@@ -15,6 +15,16 @@ import {
 import { cn } from '@/lib/utils';
 import { getTokenFromCookie, isTokenExpired } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import {
+    DISPLAY_SETTINGS_UPDATED_EVENT,
+    getDisplaySettingsFromCache,
+    getDisplaySettingsWithFallback,
+} from '@/services/display-settings';
+import {
+    ADMIN_DISPLAY_SETTINGS_KEY,
+    type DisplaySettingsData,
+} from '@/types/display-settings';
 import { useSupportConfig } from '@/services/support';
 import { useRoadmap } from '@/services/roadmap';
 import { SupportPanel } from '@/components/common/support/SupportPanel';
@@ -66,7 +76,48 @@ export function AssistDock() {
     const token = getTokenFromCookie(TokenKey.accessToken);
     const isAuthed = !!token && !isTokenExpired(token);
     const onPublicRoute = PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
-    if (!isAuthed || onPublicRoute) return null;
+
+    // Per-role visibility from Display Settings (ui.showAssistDock). Admin sees
+    // the dock by default; teacher/custom roles are hidden unless an admin opts
+    // that role in from Settings → Display Settings → UI Options. The cache is
+    // usually warm (mySidebar fetches on mount); the async fetch covers cold
+    // starts and roles whose left sidebar is hidden.
+    const roleKey = isAuthed ? getActiveRoleDisplaySettingsKey() : null;
+    const cachedDS = roleKey ? getDisplaySettingsFromCache(roleKey) : null;
+    const [fetchedDS, setFetchedDS] = useState<DisplaySettingsData | null>(null);
+    const needsSettingsFetch = isAuthed && !onPublicRoute && !cachedDS;
+    useEffect(() => {
+        if (!needsSettingsFetch || !roleKey) return;
+        let cancelled = false;
+        getDisplaySettingsWithFallback(roleKey).then((ds) => {
+            if (!cancelled) setFetchedDS(ds);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [needsSettingsFetch, roleKey]);
+
+    // Re-read the cache whenever any settings blob is (re)cached — e.g. the
+    // admin flips the toggle on the settings page (saveDisplaySettings) or
+    // another surface refreshes this role's settings.
+    const [, setSettingsVersion] = useState(0);
+    useEffect(() => {
+        const bump = () => setSettingsVersion((v) => v + 1);
+        window.addEventListener(DISPLAY_SETTINGS_UPDATED_EVENT, bump);
+        return () => window.removeEventListener(DISPLAY_SETTINGS_UPDATED_EVENT, bump);
+    }, []);
+
+    const roleDS = cachedDS ?? fetchedDS;
+    const showDock = roleDS?.ui?.showAssistDock ?? roleKey === ADMIN_DISPLAY_SETTINGS_KEY;
+
+    // Publish the resolved visibility so gutter-reserving components
+    // (LayoutContainer, student side views) stay in lockstep with the rail.
+    const setDockVisible = useAssistDock((s) => s.setDockVisible);
+    useEffect(() => {
+        if (isAuthed && !onPublicRoute) setDockVisible(showDock);
+    }, [showDock, isAuthed, onPublicRoute, setDockVisible]);
+
+    if (!isAuthed || onPublicRoute || !showDock) return null;
 
     const tutorials = tutorialsForRoute(pathname, search?.selectedTab);
     const hasNewRoadmap = !!roadmap.data?.updatedAt && roadmap.data.updatedAt !== roadmapSeenAt;

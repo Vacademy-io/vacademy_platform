@@ -80,6 +80,7 @@ import {
     dirtySlideIds as getDirtySlideIds,
     pruneOldDrafts,
     hasDraft as hasLocalDraft,
+    SLIDE_DRAFTS_CHANGED_EVENT,
     type SlideDraftContext,
 } from '../-utils/slide-draft-store';
 import { UnsavedDraftsDialog } from './unsaved-drafts-dialog';
@@ -421,6 +422,10 @@ export const SlideMaterial = ({
     });
     // One blank-load re-apply attempt per slide (see captureInitialDocSnapshot).
     const blankLoadRetrySlideIdRef = useRef<string | null>(null);
+    // Whether the last explicit SaveDraft run actually persisted to the DB.
+    // SaveDraft swallows most failures without throwing, so this ref is the
+    // ONLY reliable success signal (see the note at SaveDraft's entry).
+    const lastSaveDraftOutcomeRef = useRef<'success' | 'failure'>('failure');
     // Last successfully-serialized DOC editor HTML, TAGGED with the slide it came
     // from. It's the fallback when html.serialize throws (a degenerate custom-block
     // Slate state). Without the slideId, that fallback could hand back a DIFFERENT
@@ -683,6 +688,27 @@ export const SlideMaterial = ({
     const { drafts: courseDrafts } = useSlideDrafts(currentUserId, courseId || '');
     const [isDiscardConfirmOpen, setIsDiscardConfirmOpen] = useState(false);
     const [isCompareOpen, setIsCompareOpen] = useState(false);
+    // Content hash of the ACTIVE slide's draft, kept live via draft-change
+    // events. dirtySlideIdSet deliberately keeps the same reference when
+    // membership is unchanged (render optimisation), so content-only stash
+    // rewrites would otherwise never recompute the memos below — the pill /
+    // Compare / Discard would freeze on a stale verdict for the whole session.
+    const [activeDraftHash, setActiveDraftHash] = useState<string | null>(null);
+    useEffect(() => {
+        const update = () => {
+            const draft = activeItem?.id
+                ? loadLocalDraft<string>(currentUserId, activeItem.id)
+                : null;
+            setActiveDraftHash(draft?.contentHash ?? null);
+        };
+        update();
+        window.addEventListener(SLIDE_DRAFTS_CHANGED_EVENT, update);
+        window.addEventListener('storage', update);
+        return () => {
+            window.removeEventListener(SLIDE_DRAFTS_CHANGED_EVENT, update);
+            window.removeEventListener('storage', update);
+        };
+    }, [activeItem?.id, currentUserId]);
     // Occasional-use header actions relocated into the ⋯ menu — dialogs are
     // controlled from here, triggers hidden.
     const [isStatsOpen, setIsStatsOpen] = useState(false);
@@ -706,6 +732,7 @@ export const SlideMaterial = ({
         activeItem?.status,
         activeItem?.document_slide?.data,
         activeItem?.document_slide?.published_data,
+        activeDraftHash,
         currentUserId,
     ]);
     // Show "Discard changes" only when the ACTIVE slide's local draft actually
@@ -713,7 +740,7 @@ export const SlideMaterial = ({
     // has nothing to discard. Normalized compare on both sides so serializer
     // round-trip noise (empty blocks, wrapper divs) doesn't fake a difference.
     const activeSlideHasRealChanges = useMemo(() => {
-        if (!activeItem?.id || !dirtySlideIdSet.has(activeItem.id)) return false;
+        if (!activeItem?.id || !activeDraftHash) return false;
         const draft = loadLocalDraft<string>(currentUserId, activeItem.id);
         if (!draft || typeof draft.content !== 'string') return false;
         const savedHtml =
@@ -729,7 +756,7 @@ export const SlideMaterial = ({
         activeItem?.status,
         activeItem?.document_slide?.data,
         activeItem?.document_slide?.published_data,
-        dirtySlideIdSet,
+        activeDraftHash,
         currentUserId,
     ]);
     const clearCourseDrafts = useCallback(() => {
@@ -767,6 +794,10 @@ export const SlideMaterial = ({
         withResolver: true,
         disabled: courseDrafts.length === 0,
         shouldBlockFn: ({ current, next }) => current.pathname !== next.pathname,
+        // TanStack defaults this to TRUE, silently re-adding the browser-native
+        // refresh/close prompt we deliberately removed (drafts persist in
+        // localStorage and restore on reopen — the prompt's warning is false).
+        enableBeforeUnload: false,
     });
     const [isUnpublishDialogOpen, setIsUnpublishDialogOpen] = useState(false);
     const [isEditLinkDialogOpen, setIsEditLinkDialogOpen] = useState(false);
@@ -1812,9 +1843,13 @@ export const SlideMaterial = ({
             initialDocHtmlRef.current.slideId === previous.id
                 ? initialDocHtmlRef.current.html
                 : getCurrentEditorHTMLContent();
-        // Always read latest editor state at the moment of handling to avoid stale saves
+        // Always read latest editor state at the moment of handling to avoid stale saves.
+        // NORMALIZED compare (same rule as the onChange path): a no-op click adds an
+        // empty paragraph, and a raw !== here would stash a phantom "unsaved" draft
+        // that arms the banner/badges/leave-guard for a never-edited slide.
         const currentHtml = getCurrentEditorHTMLContent() || initialHtml;
-        const hasEditorChanged = currentHtml !== initialHtml;
+        const hasEditorChanged =
+            normalizeHtmlForDirtyCompare(currentHtml) !== normalizeHtmlForDirtyCompare(initialHtml);
 
         // Only act if the user actually changed something in the editor
         if (!hasEditorChanged) {
@@ -1859,7 +1894,10 @@ export const SlideMaterial = ({
                     ? initialDocHtmlRef.current.html
                     : snapshotHtml; // fallback: treat as unchanged if we have no baseline
 
-            const hasEditorChanged = snapshotHtml !== initialHtml;
+            // NORMALIZED compare — same reasoning as handleUnsavedDoc above.
+            const hasEditorChanged =
+                normalizeHtmlForDirtyCompare(snapshotHtml) !==
+                normalizeHtmlForDirtyCompare(initialHtml);
 
             // Only act if the user actually changed something
             if (!hasEditorChanged) {
@@ -3063,6 +3101,12 @@ export const SlideMaterial = ({
 
     const SaveDraft = async (slideToSave?: Slide | null) => {
         setIsSaving(true);
+        // Pessimistic until a branch actually persists: SaveDraft swallows most
+        // failures (guard refusals, declined 409 confirm, network errors) with a
+        // toast but NO throw, so callers can't infer success from "didn't throw".
+        // Draft-clearing MUST key off this ref, not heuristics — clearing after
+        // a refused save deletes the browser's only copy of the edits.
+        lastSaveDraftOutcomeRef.current = 'failure';
         try {
             const slide = slideToSave ? slideToSave : activeItem;
             // Determine the correct status based on slide type and current state
@@ -3419,6 +3463,7 @@ export const SlideMaterial = ({
                                       ? `Split Screen ${activeItem.document_slide.type.replace('SPLIT_', '')}`
                                       : 'Interactive Slide';
                         toast.success(`${slideTypeName} is already up to date!`);
+                        lastSaveDraftOutcomeRef.current = 'success'; // no-op, nothing to persist
                         return;
                     }
 
@@ -3454,6 +3499,7 @@ export const SlideMaterial = ({
                                   ? `Split Screen ${activeItem.document_slide.type.replace('SPLIT_', '')}`
                                   : 'Interactive Slide';
                     toast.success(`${slideTypeName} saved successfully!`);
+                    lastSaveDraftOutcomeRef.current = 'success';
                 } catch (error) {
                     console.error(`Error saving ${activeItem.document_slide.type} slide:`, error);
                     toast.error(
@@ -3480,7 +3526,10 @@ export const SlideMaterial = ({
                     slide.document_slide?.published_data ||
                     '';
                 const saved = await saveHtmlDocDraft(slide, htmlString, { silent: false });
-                if (saved) toast.success('slide saved in draft successfully!');
+                if (saved) {
+                    toast.success('slide saved in draft successfully!');
+                    lastSaveDraftOutcomeRef.current = 'success';
+                }
                 return;
             }
 
@@ -3529,6 +3578,7 @@ export const SlideMaterial = ({
                         notify: false,
                     });
                     toast.success(`slide saved in draft successfully!`);
+                    lastSaveDraftOutcomeRef.current = 'success';
                 } catch {
                     toast.error(`Error in saving the slide`);
                 }
@@ -3633,6 +3683,7 @@ export const SlideMaterial = ({
 
             try {
                 await saveDocDraft(false);
+                lastSaveDraftOutcomeRef.current = 'success';
                 if (!containsBase64Images(currentHtml) || uploadedImagesCount === 0) {
                     toast.success(`slide saved in draft successfully!`);
                 }
@@ -3651,6 +3702,7 @@ export const SlideMaterial = ({
                     try {
                         await saveDocDraft(true);
                         toast.success('Slide saved (forced override).');
+                        lastSaveDraftOutcomeRef.current = 'success';
                     } catch {
                         toast.error('Error in saving the slide');
                     }
@@ -3797,26 +3849,22 @@ export const SlideMaterial = ({
                 }
             }
 
-            // Clear the browser draft ONLY when the save could actually have
-            // gone through. SaveDraft REFUSES empty/degraded serializations
-            // (mid-reload editor) with a toast but no throw — clearing in that
-            // case deletes the browser's only copy of edits the DB never
-            // received (draft gone + DB stale = silent loss).
-            const canClearDraftAfterSave = () => {
-                const isEditableDoc =
-                    activeItem?.source_type === 'DOCUMENT' &&
-                    (activeItem?.document_slide?.type === 'DOC' ||
-                        activeItem?.document_slide?.type === HTML_DOC_TYPE);
-                if (!isEditableDoc) return true;
-                const editorHtml = getCurrentEditorHTMLContent();
-                return !checkIsHtmlEmpty(editorHtml) && !lastSerializeDegradedRef.current;
-            };
+            const isEditableDocSlide =
+                activeItem?.source_type === 'DOCUMENT' &&
+                (activeItem?.document_slide?.type === 'DOC' ||
+                    activeItem?.document_slide?.type === HTML_DOC_TYPE);
 
-            // Use custom save function if provided (for non-admin users)
+            // Use custom save function if provided (for non-admin users).
+            // The custom fn isn't instrumented for success, so fall back to the
+            // editor-readability heuristic before clearing the browser draft.
             if (customSaveFunction && activeItem) {
                 console.log('🔄 Using custom save function for non-admin');
                 await customSaveFunction(activeItem);
-                if (canClearDraftAfterSave()) clearLocalDraft(activeItem?.id);
+                const editorReadable =
+                    !isEditableDocSlide ||
+                    (!checkIsHtmlEmpty(getCurrentEditorHTMLContent()) &&
+                        !lastSerializeDegradedRef.current);
+                if (editorReadable) clearLocalDraft(activeItem?.id);
                 return; // Don't show additional toast as custom function handles it
             }
 
@@ -3825,8 +3873,16 @@ export const SlideMaterial = ({
             // here — it produced duplicate success toasts on every save and a
             // success-after-error stack when the DOC branch guarded empty
             // editor content.
+            //
+            // Clear the browser draft ONLY on a confirmed persist. SaveDraft
+            // swallows guard refusals / declined 409s / network errors without
+            // throwing, so "didn't throw" is NOT success — the outcome ref is.
+            // Clearing after a refused save deletes the browser's only copy of
+            // edits the DB never received (draft gone + DB stale = silent loss).
             await SaveDraft(activeItem);
-            if (canClearDraftAfterSave()) clearLocalDraft(activeItem?.id);
+            if (!isEditableDocSlide || lastSaveDraftOutcomeRef.current === 'success') {
+                clearLocalDraft(activeItem?.id);
+            }
         } catch {
             toast.error('error saving document');
         }

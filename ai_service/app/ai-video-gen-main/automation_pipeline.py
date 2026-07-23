@@ -8888,6 +8888,27 @@ class VideoGenerationPipeline:
                         duration_s=clip_s,
                         aspect_ratio=aspect,
                     )
+                # TRUE frame continuity (Seedance i2v): when this scene
+                # CONTINUES the previous one and has no spoken lines, use
+                # image-to-video with the previous clip's last frame as the
+                # LITERAL first frame — a mathematically seamless cut, vs the
+                # approximate reference-conditioning of reference-to-video.
+                # Speaking scenes can't take this path: i2v has no audio
+                # input, so it would lose the TTS lip-sync voice lock.
+                _prev_frame = None
+                for _i, _rn in enumerate(ref_names or []):
+                    if _rn == "__PREV_FRAME__" and _i < len(image_urls):
+                        _prev_frame = image_urls[_i]
+                        break
+                if _silent and _prev_frame:
+                    return self._fal_seedance_client.generate_image_to_video(
+                        prompt=prompt,
+                        image_url=_prev_frame,
+                        duration_s=clip_s,
+                        aspect_ratio=aspect,
+                        resolution="720p",
+                        generate_audio=not _muted,
+                    )
                 # Silent character clip → NO audio INPUT (no TTS pre-pass);
                 # `_dialogue_audio_url` is absent, so guard the lookup. A MUTED
                 # silent clip generates no audio (narrator plays over it); a
@@ -8975,9 +8996,18 @@ class VideoGenerationPipeline:
             tag = f"<IMAGE_REF_{i}>" if _use_omni else f"@Image{i + 1}"
             if rn == "__PREV_FRAME__":
                 bindings.append(
-                    f"{tag} is the final frame of the PREVIOUS scene — continue "
-                    "seamlessly from it: same location, same lighting, same "
-                    "character positions evolving naturally."
+                    f"{tag} is the final frame of the PREVIOUS scene. Your FIRST "
+                    "frame must reproduce it as exactly as possible — identical "
+                    "framing, location, lighting and character positions — then "
+                    "the action continues naturally from that exact moment, with "
+                    "no visual jump at the cut."
+                )
+            elif rn == "__GRADE_REF__":
+                bindings.append(
+                    f"{tag} shows the previous scene, which has ENDED — do NOT "
+                    "reuse its location, moment, or composition. Match ONLY its "
+                    "color grade, lighting character and overall cinematic style "
+                    "so the film feels continuous."
                 )
             elif rn == "the full cast":
                 bindings.append(f"{tag} shows the full cast — match every character exactly.")
@@ -9378,7 +9408,15 @@ class VideoGenerationPipeline:
                     print(f"   🎬 Shot {shot_idx}: chaining continuity across an "
                           f"intervening shot (continuous scene)")
             elif prev_frame_url and not _do_chain:
-                print(f"   🎬 Shot {shot_idx}: new scene — chain skipped")
+                # New scene: don't CONTINUE the old one, but keep the FILM
+                # coherent — pass the previous frame as a grade/style-only
+                # reference so lighting character and color grade match
+                # across the cut. The binding text forbids reusing the
+                # location/moment; clip QC catches wrongful continuation.
+                if len(image_urls) < 8:
+                    image_urls = image_urls + [prev_frame_url]
+                    ref_names = ref_names + ["__GRADE_REF__"]
+                print(f"   🎬 Shot {shot_idx}: new scene — chain skipped (grade ref only)")
 
             result = self._call_seedance_dialogue_clip(s, image_urls, ref_names)
             if result is None:
@@ -10031,6 +10069,37 @@ class VideoGenerationPipeline:
                 _dur = 0.0
             s_copy["shot_duration_s"] = max(_dur, 0.0)
             _v2_shots.append(s_copy)
+
+        # ── Boundary dedup sweep ─────────────────────────────────────────
+        # The NarrationWriter sometimes ends shot N and opens shot N+1 with
+        # the SAME sentence — the viewer hears the words twice across the
+        # cut. Trim the duplicate from the LATER shot (compare the previous
+        # narrated shot's last sentence with the next one's first; ≥4 words
+        # so interjections survive).
+        def _sentences(txt: str) -> List[str]:
+            return [x.strip() for x in re.split(r"(?<=[.!?])\s+", txt or "") if x.strip()]
+
+        def _norm_sent(txt: str) -> str:
+            return re.sub(r"[^a-z0-9 ]", "", txt.lower()).strip()
+
+        _prev_last: str = ""
+        for s_copy in _v2_shots:
+            _txt = s_copy.get("_v2_narration_text") or ""
+            if not _txt.strip():
+                continue  # intrinsic/silent windows don't reset the chain
+            _sents = _sentences(_txt)
+            if (
+                _sents and _prev_last
+                and _norm_sent(_sents[0]) == _prev_last
+                and len(_prev_last.split()) >= 4
+            ):
+                print(
+                    f"   ✂️  shot {s_copy.get('shot_index')}: dropped duplicated "
+                    f"boundary sentence \"{_sents[0][:50]}…\""
+                )
+                _sents = _sents[1:]
+                s_copy["_v2_narration_text"] = " ".join(_sents)
+            _prev_last = _norm_sent(_sents[-1]) if _sents else ""
 
         total_shots = len(_v2_shots)
         self._emit_progress({

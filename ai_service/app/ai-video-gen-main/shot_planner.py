@@ -1252,6 +1252,28 @@ def _check_dialogue_conformance(plan: Dict[str, Any], dialogue_mode: str = "stor
                 f"shot {idx}: {words} words of dialogue cannot fit one clip — cut to "
                 f"≤{_DIALOGUE_MAX_WORDS} words or split the scene into two continuous shots"
             )
+    # No line may appear in TWO scenes. When a longer exchange is split
+    # across continuous scenes, the planner/writer sometimes repeats the
+    # boundary line — the viewer hears the same words twice across the cut.
+    _seen_lines: Dict[str, Any] = {}
+    for s in dlg:
+        idx = s.get("shot_index")
+        for l in (s.get("dialogue") or []):
+            if not isinstance(l, dict):
+                continue
+            norm = re.sub(r"[^a-z0-9 ]", "", str(l.get("line") or "").lower()).strip()
+            if len(norm.split()) < 3:
+                continue  # short interjections ("yes", "okay") may repeat
+            if norm in _seen_lines and _seen_lines[norm] != idx:
+                issues.append(
+                    f"shots {_seen_lines[norm]} and {idx}: the line "
+                    f"\"{str(l.get('line'))[:60]}\" appears in BOTH scenes — every "
+                    "line must be spoken exactly once; continue the exchange with "
+                    "NEW words, never repeat across a cut"
+                )
+            else:
+                _seen_lines[norm] = idx
+
     if str(dialogue_mode or "").lower() == "drama" and len(dlg) >= 2:
         # Ends-on-despair detector: the arc must MOVE. Compare the beat_map
         # emotions covering the first and last dialogue scenes when available.

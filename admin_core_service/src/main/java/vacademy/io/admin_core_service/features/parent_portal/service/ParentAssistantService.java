@@ -25,8 +25,12 @@ import vacademy.io.admin_core_service.features.student_analysis.client.Assessmen
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * The parent AI assistant. Answers a free-form parent question about their
@@ -133,11 +137,21 @@ public class ParentAssistantService {
                 StudentAttendanceReportDTO att = attendanceReportService.getStudentReport(
                         child.childUserId(), primaryBatch, LocalDate.now().minusDays(365), LocalDate.now());
                 if (att != null) {
-                    sb.append("Attendance: ").append(Math.round(att.getAttendancePercentage())).append("% present.\n");
                     List<ScheduleDetailDTO> schedules = att.getSchedules();
+                    Integer dayWise = dayWiseAttendancePercent(schedules);
+                    if (dayWise != null) {
+                        // Day-wise, matching what the parent/student apps display —
+                        // NOT the raw session-wise report percentage.
+                        sb.append("Attendance: ").append(dayWise).append("% present.\n");
+                    }
                     if (schedules != null && !schedules.isEmpty()) {
-                        sb.append("Recent classes (most recent first):\n");
+                        LocalDateTime nowDt = LocalDateTime.now();
+                        // Classes that have NOT started yet are excluded — they are
+                        // listed under "Upcoming classes" and must never be described
+                        // as absent or not-marked.
+                        sb.append("Recent classes (most recent first; classes that have not started yet are excluded):\n");
                         schedules.stream()
+                                .filter(s -> hasStarted(s, nowDt))
                                 .sorted((a, b) -> nullSafe(b.getMeetingDate()).compareTo(nullSafe(a.getMeetingDate())))
                                 .limit(15)
                                 .forEach(s -> sb.append("- ")
@@ -273,5 +287,45 @@ public class ParentAssistantService {
 
     private String nullSafe(java.time.LocalDate d) {
         return d != null ? d.toString() : "";
+    }
+
+    /** A schedule has started once its date + start time is not in the future. */
+    private static boolean hasStarted(ScheduleDetailDTO s, LocalDateTime now) {
+        if (s.getMeetingDate() == null) return true;
+        LocalTime t = s.getStartTime() != null ? s.getStartTime() : LocalTime.MIN;
+        return !LocalDateTime.of(s.getMeetingDate(), t).isAfter(now);
+    }
+
+    /**
+     * Day-wise attendance %, matching the apps' computeAttendanceStats: multiple
+     * classes in one day count as ONE day, PRESENT if any class that day was
+     * attended; a day whose unattended classes have not started yet is skipped
+     * entirely (in progress ≠ absent); UNMARKED days count in the denominator.
+     * Returns null when no day is countable.
+     */
+    private static Integer dayWiseAttendancePercent(List<ScheduleDetailDTO> schedules) {
+        if (schedules == null || schedules.isEmpty()) return null;
+        LocalDateTime now = LocalDateTime.now();
+        Map<LocalDate, List<ScheduleDetailDTO>> byDay = schedules.stream()
+                .filter(s -> s.getMeetingDate() != null)
+                .collect(Collectors.groupingBy(ScheduleDetailDTO::getMeetingDate));
+        int present = 0;
+        int counted = 0;
+        for (List<ScheduleDetailDTO> day : byDay.values()) {
+            boolean anyPresent = day.stream()
+                    .anyMatch(s -> "PRESENT".equalsIgnoreCase(s.getAttendanceStatus()));
+            if (anyPresent) {
+                present++;
+                counted++;
+                continue;
+            }
+            boolean anyNotStarted = day.stream().anyMatch(s -> !hasStarted(s, now)
+                    && (s.getAttendanceStatus() == null
+                            || "UNMARKED".equalsIgnoreCase(s.getAttendanceStatus())));
+            if (anyNotStarted) continue; // day still upcoming / in progress — not absent
+            counted++;
+        }
+        if (counted == 0) return null;
+        return (int) Math.round(present * 100.0 / counted);
     }
 }

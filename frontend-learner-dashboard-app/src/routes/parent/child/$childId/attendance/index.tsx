@@ -6,7 +6,7 @@ import { CalendarCheck, Fire, Clock } from "@phosphor-icons/react";
 import { ModuleScaffold } from "../../-components/ModuleScaffold";
 import { ParentStatusChip } from "../../-components/ParentStatusChip";
 import type { ParentStatusTone } from "../../-components/ParentStatusChip";
-import { computeAttendanceStats } from "@/services/attendance/useAttendanceStats";
+import { computeAttendanceStats, notStartedYet } from "@/services/attendance/useAttendanceStats";
 import type { ScheduleItem } from "@/services/attendance/getAttendanceReport";
 import { cn } from "@/lib/utils";
 import { useChildAttendance, useChildOverview } from "../../-hooks/use-parent-child";
@@ -165,7 +165,14 @@ function AttendanceScreen() {
             <h2 className="text-body font-semibold text-foreground">{t("attendance.recentTitle")}</h2>
             <ul className="flex flex-col gap-2">
               {recent.map((s, i) => {
-                const info = statusToneLabel(s.attendanceStatus, t);
+                // A class that has not started yet is "Upcoming" — never
+                // "Not marked"/"Absent" (the backend coalesces it to UNMARKED).
+                const upcoming =
+                  String(s.attendanceStatus ?? "UNMARKED").toUpperCase() === "UNMARKED" &&
+                  notStartedYet(s as unknown as ScheduleItem, new Date());
+                const info = upcoming
+                  ? { tone: "neutral" as ParentStatusTone, label: t("attendance.upcomingChip") }
+                  : statusToneLabel(s.attendanceStatus, t);
                 const title = String(s.sessionTitle ?? s.subject ?? t("liveClasses.session"));
                 const dateLabel = formatDate(s.meetingDate);
                 const mins = Number(s.durationMinutes) || 0;

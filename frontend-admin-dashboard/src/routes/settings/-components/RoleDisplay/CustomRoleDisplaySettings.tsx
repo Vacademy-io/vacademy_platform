@@ -1303,6 +1303,30 @@ export default function CustomRoleDisplaySettings({
                                 }
                             />
                         </div>
+                        <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                            <div>
+                                <div className="text-sm font-medium text-neutral-800">
+                                    Show Right Side Rail
+                                </div>
+                                <div className="text-xs text-neutral-500">
+                                    Guides, Assist, Issues, What&apos;s new, Explore &amp; Admin
+                                    App. Hidden for this role by default.
+                                </div>
+                            </div>
+                            <Switch
+                                checked={settings.ui?.showAssistDock === true}
+                                onCheckedChange={(checked) =>
+                                    updateSettings((prev) => ({
+                                        ...prev,
+                                        ui: {
+                                            showSupportButton: true,
+                                            ...prev.ui,
+                                            showAssistDock: checked,
+                                        },
+                                    }))
+                                }
+                            />
+                        </div>
                     </div>
                 </CardContent>
             </Card>

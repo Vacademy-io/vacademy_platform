@@ -161,6 +161,9 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         showSupportButton: true,
         showSidebar: true,
         showAiCredits: false,
+        // Hidden by default for non-admin roles (custom roles inherit these
+        // defaults too); enable per role from Display Settings → UI Options.
+        showAssistDock: false,
     },
     contentTypes: {
         pdf: true,

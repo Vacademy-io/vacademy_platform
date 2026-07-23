@@ -3,7 +3,7 @@ import { DoubtType, StudentDetailsType } from "../types/add-doubt-type"
 import { getFromStorage } from "@/components/common/auth/login/forms/page/login-form";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { useAddDoubt } from "../services/AddDoubt";
-import { ArrowUp } from "@phosphor-icons/react";
+import { ArrowUp, CircleNotch } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { useMediaRefsStore } from "@/stores/mediaRefsStore";
@@ -19,12 +19,18 @@ interface AddDoubtProps {
     formattedTime?: string;
 }
 
+// Quill emits "<p><br></p>" (and &nbsp; for spaces) for an "empty" editor, so a raw
+// `length === 0` check treats a blank editor as having content. Strip tags/entities and
+// trim to decide whether there is anything real to submit.
+const isDoubtTextEmpty = (html: string) =>
+    (html || "").replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim().length === 0;
+
 export const AddDoubt = ({
-    doubtText, 
-    refetch, 
-    setDoubt, 
-    setShowInput, 
-    timestamp, 
+    doubtText,
+    refetch,
+    setDoubt,
+    setShowInput,
+    timestamp,
 }: AddDoubtProps) => {
 
     const { t } = useTranslation("studyContent");
@@ -49,13 +55,13 @@ export const AddDoubt = ({
     }, [currentPackageSessionId]);
 
     const packageSessionId = currentPackageSessionId || fallbackPackageSessionId;
-    
+
     const progressMarker = (() => {
         // If timestamp is provided, use it
         if (timestamp !== undefined) {
             return timestamp;
         }
-        
+
         // Otherwise use current position
         switch(activeItem?.source_type){
             case "DOCUMENT":
@@ -71,8 +77,15 @@ export const AddDoubt = ({
                 return null;
         }
     })();
-    
+
     const handleAddDoubt = async () => {
+        // Guard against double-submit: a second click while the first request is still in
+        // flight would create a duplicate doubt (and could reset the composer mid-way, which
+        // reads as "can't submit another doubt"). React Query's isPending also drives the
+        // disabled + spinner UI below so the learner gets clear feedback.
+        if (addDoubt.isPending) return;
+        if (isDoubtTextEmpty(doubtText)) return;
+
         const studentDetails = await getFromStorage("StudentDetails");
         const studentDetailsData: StudentDetailsType = JSON.parse(studentDetails || "{}");
         const doubtData: DoubtType = {
@@ -108,17 +121,22 @@ export const AddDoubt = ({
         })
     }
 
+    const isDisabled = addDoubt.isPending || isDoubtTextEmpty(doubtText);
+
     return (
         <button
             onClick={handleAddDoubt}
-            disabled={doubtText.length === 0}
+            disabled={isDisabled}
+            aria-busy={addDoubt.isPending}
             className={`flex items-center justify-center w-10 h-10 rounded-xl transition-all duration-200 ${
-                doubtText.length === 0 
-                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                isDisabled
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                     : 'bg-gradient-to-r from-primary-500 to-primary-600 hover:from-primary-600 hover:to-primary-700 text-white shadow-lg hover:shadow-xl hover:scale-105 active:scale-95'
             }`}
         >
-            <ArrowUp size={18} />
+            {addDoubt.isPending
+                ? <CircleNotch size={18} className="animate-spin" />
+                : <ArrowUp size={18} />}
         </button>
     )
 }

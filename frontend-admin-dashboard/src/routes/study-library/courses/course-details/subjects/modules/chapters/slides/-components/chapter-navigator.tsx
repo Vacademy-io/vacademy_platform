@@ -12,7 +12,6 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
@@ -156,7 +155,7 @@ export const ChapterNavigator = ({
                             </span>
                         </div>
                         <div className="flex shrink-0 items-center gap-1">
-                            <span className="rounded-full bg-neutral-100 px-1 py-0.5 text-[10px] text-neutral-500 group-hover:bg-primary-100 group-hover:text-primary-600">
+                            <span className="rounded-full bg-neutral-100 px-1 py-0.5 text-2xs text-neutral-500 group-hover:bg-primary-100 group-hover:text-primary-600">
                                 {currentChapterIndex + 1}/{chapters.length}
                             </span>
                             <CaretDown
@@ -194,7 +193,9 @@ export const ChapterNavigator = ({
                         </div>
 
                         {/* Chapter List */}
-                        <ScrollArea className="max-h-64">
+                        {/* Plain overflow div: Radix ScrollArea's viewport (h-full) can't resolve
+                            against a max-h-only root, so the list gets clipped instead of scrolling */}
+                        <div className="max-h-64 overflow-y-auto">
                             <div className="p-1">
                                 {filteredChapters.length === 0 ? (
                                     <div className="px-3 py-6 text-center text-sm text-neutral-400">
@@ -261,7 +262,7 @@ export const ChapterNavigator = ({
                                     })
                                 )}
                             </div>
-                        </ScrollArea>
+                        </div>
                     </div>
                 </PopoverContent>
             </Popover>

@@ -27,6 +27,11 @@ public class SubOrgListItemDTO {
     private String adminName;
     private String adminEmail;
     private String adminPhone;
+    /** Address of the spawned institute (stamped at registration when the link collects
+     *  address; null for manually-created sub-orgs or links without address collection). */
+    private String city;
+    private String state;
+    private String pincode;
     /** The admin's UserPlan status (ACTIVE, PENDING_FOR_PAYMENT, …); null when no plan. */
     private String planStatus;
     /** Active learner-seat count; null total = no cap configured. */

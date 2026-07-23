@@ -2,7 +2,8 @@ import { useEffect } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Users } from "@phosphor-icons/react";
-import { LoadingState, ErrorState, EmptyState } from "@/components/design-system/states";
+import { ErrorState, EmptyState } from "@/components/design-system/states";
+import { FullScreenLoader } from "@/components/common/FullScreenLoader";
 import { ChildPickerGrid } from "./-components/ChildPickerGrid";
 import { useChildren, useParentSettings } from "./-hooks/use-parent-child";
 
@@ -28,7 +29,9 @@ function ParentChildPicker() {
     }
   }, [children, navigate]);
 
-  if (isLoading || settings.isLoading) return <LoadingState variant="list" />;
+  // Branded full-screen loader — the bare list skeleton rendered here without
+  // the page container (squished to the left) and read as a broken screen.
+  if (isLoading || settings.isLoading) return <FullScreenLoader />;
 
   if (settings.data && !settings.data.enabled) {
     return (
@@ -60,7 +63,7 @@ function ParentChildPicker() {
     );
   }
 
-  if (children.length === 1) return <LoadingState variant="list" />; // navigating
+  if (children.length === 1) return <FullScreenLoader />; // navigating to the only child
 
   return (
     <ChildPickerGrid

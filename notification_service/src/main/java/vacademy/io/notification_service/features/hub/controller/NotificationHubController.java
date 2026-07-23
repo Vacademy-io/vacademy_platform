@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.notification_service.features.hub.dto.HubEmailEventListDTO;
 import vacademy.io.notification_service.features.hub.dto.HubOverviewDTO;
 import vacademy.io.notification_service.features.hub.dto.HubRecentItemDTO;
 import vacademy.io.notification_service.features.hub.service.NotificationHubService;
@@ -28,6 +29,24 @@ public class NotificationHubController {
             @RequestParam(defaultValue = "7") int windowDays) {
         int clamped = Math.max(1, Math.min(windowDays, 90));
         return ResponseEntity.ok(hubService.getOverview(instituteId, clamped));
+    }
+
+    /**
+     * Drill-down behind an overview email stat tile — the individual emails that were
+     * delivered / opened / clicked / bounced / complained within the window.
+     */
+    @GetMapping("/emails")
+    public ResponseEntity<HubEmailEventListDTO> getEmailEvents(
+            @RequestParam String instituteId,
+            @RequestParam String eventType,
+            @RequestParam(defaultValue = "7") int windowDays,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        int clampedWindow = Math.max(1, Math.min(windowDays, 90));
+        int clampedPage = Math.max(0, page);
+        int clampedSize = Math.max(1, Math.min(size, 100));
+        return ResponseEntity.ok(
+                hubService.getEmailEvents(instituteId, clampedWindow, eventType, clampedPage, clampedSize));
     }
 
     @GetMapping("/recent")

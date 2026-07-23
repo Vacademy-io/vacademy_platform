@@ -47,6 +47,7 @@ import {
 import { RegistrationLinkCreateModal } from './registration-link-create-modal';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
 import { humanizeStatus, statusToneClass } from '../../-utils/status-display';
+import { buildCsv, downloadCsv, formatDate } from '../../-utils/list-export';
 
 /** Distinct facet values → MultiSelectFilter options (value === label; searchable by label). */
 const toFilterOptions = (values: string[] | undefined) =>
@@ -74,17 +75,6 @@ const LINK_STATUS_LABELS = [ALL_STATUSES, ...LINK_STATUS_VALUES.map(humanizeStat
 const LINK_TYPE_LABELS = [ALL_TYPES, ...LINK_TYPE_VALUES.map(humanizeStatus)];
 const DIALOG_STATUS_LABELS = [ALL_STATUSES, ...REGISTRATION_STATUS_VALUES.map(humanizeStatus)];
 
-const formatDate = (value?: string | number | null) => {
-    if (value === null || value === undefined || value === '') return '-';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '-';
-    return date.toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-    });
-};
-
 const REGISTRATIONS_CSV_HEADERS = [
     'Organization',
     'Admin',
@@ -100,50 +90,24 @@ const REGISTRATIONS_CSV_HEADERS = [
     'Registered On',
 ] as const;
 
-/** RFC-4180 escaping: quote when the value contains a comma, quote, or newline. */
-const csvCell = (value: unknown): string => {
-    if (value === null || value === undefined) return '';
-    const s = String(value);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-
-const buildRegistrationsCsv = (rows: SubOrgRegistrationRow[]): string => {
-    const lines = [REGISTRATIONS_CSV_HEADERS.join(',')];
-    rows.forEach((r) => {
-        lines.push(
-            [
-                r.org_name,
-                r.admin_name,
-                r.admin_email,
-                r.admin_phone,
-                r.city,
-                r.state,
-                r.pincode,
-                r.used_seats ?? '',
-                r.total_seats ?? '',
-                humanizeStatus(r.status),
-                humanizeStatus(r.kyc_status),
-                formatDate(r.created_at),
-            ]
-                .map(csvCell)
-                .join(',')
-        );
-    });
-    return lines.join('\n');
-};
-
-const downloadCsv = (csv: string, filename: string) => {
-    // Prefix a BOM so Excel opens UTF-8 (accented city/org names) correctly.
-    const blob = new Blob(['﻿', csv], { type: 'text/csv;charset=utf-8;' });
-    const url = window.URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', filename);
-    document.body.appendChild(link);
-    link.click();
-    link.parentNode?.removeChild(link);
-    window.URL.revokeObjectURL(url);
-};
+const buildRegistrationsCsv = (rows: SubOrgRegistrationRow[]): string =>
+    buildCsv(
+        REGISTRATIONS_CSV_HEADERS,
+        rows.map((r) => [
+            r.org_name,
+            r.admin_name,
+            r.admin_email,
+            r.admin_phone,
+            r.city,
+            r.state,
+            r.pincode,
+            r.used_seats ?? '',
+            r.total_seats ?? '',
+            humanizeStatus(r.status),
+            humanizeStatus(r.kyc_status),
+            formatDate(r.created_at),
+        ])
+    );
 
 export function RegistrationLinksTab() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);

@@ -19,7 +19,17 @@ import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSet
 import { MyButton } from '@/components/design-system/button';
 import { Input } from '@/components/ui/input';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
-import { Plus, Buildings, Copy, LinkSimple, MagnifyingGlass, MapPin, X } from '@phosphor-icons/react';
+import {
+    Plus,
+    Buildings,
+    Copy,
+    DownloadSimple,
+    LinkSimple,
+    MagnifyingGlass,
+    MapPin,
+    X,
+} from '@phosphor-icons/react';
+import { buildCsv, downloadCsv, formatDate } from '../../-utils/list-export';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { CreateSubOrgModal } from './create-sub-org-modal';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -36,6 +46,21 @@ const SUB_ORG_PAGE_SIZE = 10;
 
 /** Facet key for rows whose admin has no plan yet (plan_status null). */
 const NO_PLAN = '__NO_PLAN__';
+
+const SUB_ORG_CSV_HEADERS = [
+    'Name',
+    'Admin',
+    'Email',
+    'Phone',
+    'City',
+    'State',
+    'Pincode',
+    'Status',
+    'Seats Used',
+    'Seats Total',
+    'Invite Code',
+    'Created On',
+] as const;
 
 /** Distinct, sorted non-blank values of one field across the rows → filter options. */
 const facetOptions = (rows: SubOrgListItem[], pick: (row: SubOrgListItem) => string | null | undefined) => {
@@ -171,6 +196,41 @@ export function SubOrgList() {
         }
     };
 
+    // Export every row matching the current filters (all pages, not just the visible one).
+    const handleExport = () => {
+        if (filteredSubOrgs.length === 0) {
+            toast.info('Nothing to export.');
+            return;
+        }
+        const csv = buildCsv(
+            SUB_ORG_CSV_HEADERS,
+            filteredSubOrgs.map((o) => [
+                o.name,
+                o.admin_name,
+                o.admin_email,
+                o.admin_phone,
+                o.city,
+                o.state,
+                o.pincode,
+                o.plan_status ? humanizeStatus(o.plan_status) : '',
+                o.used_seats ?? '',
+                o.total_seats ?? '',
+                o.invite_code,
+                formatDate(o.created_at),
+            ])
+        );
+        const safeName = getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg)
+            .replace(/[^\w.-]+/g, '_');
+        downloadCsv(csv, `${safeName}_list.csv`);
+        toast.success(
+            `Exported ${filteredSubOrgs.length} ${
+                filteredSubOrgs.length === 1
+                    ? getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase()
+                    : getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase()
+            }.`
+        );
+    };
+
     if (isLoading) return <DashboardLoader />;
 
     return (
@@ -246,10 +306,20 @@ export function SubOrgList() {
                         </MyButton>
                     )}
                 </div>
-                <MyButton onClick={() => setIsCreateModalOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Create {getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}
-                </MyButton>
+                <div className="flex items-center gap-2">
+                    <MyButton
+                        buttonType="secondary"
+                        onClick={handleExport}
+                        disable={filteredSubOrgs.length === 0}
+                    >
+                        <DownloadSimple className="mr-2 size-4" />
+                        Export CSV
+                    </MyButton>
+                    <MyButton onClick={() => setIsCreateModalOpen(true)}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create {getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}
+                    </MyButton>
+                </div>
             </div>
 
             {hasActiveFilters && (

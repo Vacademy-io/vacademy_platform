@@ -296,10 +296,13 @@ export function FollowUpReminderDialog() {
                                             {f.lead_name ?? 'Lead'}
                                         </p>
                                         {f.lead_mobile && (
-                                            <p className="flex items-center gap-1 text-xs text-neutral-500">
-                                                <Phone size={12} />
+                                            <a
+                                                href={`tel:${f.lead_mobile.replace(/[^+\d]/g, '')}`}
+                                                className="flex items-center gap-1 text-xs font-medium text-primary-500 hover:underline"
+                                            >
+                                                <Phone size={12} weight="bold" />
                                                 {f.lead_mobile}
-                                            </p>
+                                            </a>
                                         )}
                                     </div>
                                     <span

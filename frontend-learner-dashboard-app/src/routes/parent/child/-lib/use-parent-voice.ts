@@ -54,6 +54,12 @@ export function useParentVoice(locale: string) {
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
   // The currently playing server-TTS audio element (edge-tts MP3).
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Monotonic token: every speak()/cancelSpeak() bumps it, and the DELAYED
+  // browser-speak only fires when its token is still current. Without this,
+  // a cancel that lands inside the 60ms delay cannot stop the utterance —
+  // rapid speaks then QUEUE behind each other (the "read every message from
+  // the start" bug) and a pending timer can replay after close.
+  const speakSeqRef = useRef(0);
 
   const stopAudio = useCallback(() => {
     const a = audioRef.current;
@@ -117,6 +123,7 @@ export function useParentVoice(locale: string) {
   );
 
   const cancelSpeak = useCallback(() => {
+    speakSeqRef.current += 1; // invalidate any pending delayed speak
     stopAudio();
     if (browserSpeechSupported) {
       try {
@@ -147,9 +154,14 @@ export function useParentVoice(locale: string) {
         // Chrome quirks: speak() issued synchronously after cancel() is sometimes
         // silently dropped, and a paused queue swallows every later utterance
         // (cancel-while-paused leaves it stuck). resume() + a short delay makes
-        // the speak reliable.
+        // the speak reliable — but the delayed call MUST re-check the token so a
+        // cancel/newer speak that landed inside the delay wins.
+        const seq = ++speakSeqRef.current;
         synth.resume();
-        window.setTimeout(() => synth.speak(utter), 60);
+        window.setTimeout(() => {
+          if (speakSeqRef.current !== seq) return; // cancelled / superseded
+          synth.speak(utter);
+        }, 60);
       } catch {
         setSpeaking(false);
       }
@@ -161,39 +173,99 @@ export function useParentVoice(locale: string) {
   // ai_service — far more natural than the robotic browser voices), then falls
   // back to on-device speechSynthesis. Devanagari in the text → Hindi voice
   // even when the app locale is English.
+  //
+  // The server audio is STREAMED (GET + progressive <audio>), so playback starts
+  // on the first buffered bytes instead of after the whole file — and `speaking`
+  // is bound to the real playback events, which is what drives the lip-sync.
   const speak = useCallback(
     (text: string) => {
       if (!text) return;
       const isDevanagari = /[ऀ-ॿ]/.test(text);
       const langShort = isDevanagari ? "hi" : short;
-      void (async () => {
-        try {
-          const res = await authenticatedAxiosInstance.post(
-            `${AI_SERVICE_URL}/tts/v1/speak`,
-            { text, language: langShort },
-            { responseType: "blob", timeout: 15000 },
-          );
-          // Stop anything already talking before starting the new answer.
-          stopAudio();
-          if (browserSpeechSupported) window.speechSynthesis.cancel();
-          const url = URL.createObjectURL(res.data as Blob);
-          const audio = new Audio(url);
-          audioRef.current = audio;
-          const done = () => {
-            setSpeaking(false);
-            URL.revokeObjectURL(url);
-          };
-          audio.onended = done;
-          audio.onerror = done;
-          setSpeaking(true);
-          await audio.play();
-          return;
-        } catch {
-          setSpeaking(false);
-          // server TTS unavailable (offline / not deployed / autoplay blocked)
-        }
+
+      // Very long text would blow the URL; answers are 1-4 sentences, but be safe.
+      if (text.length > 1500) {
         speakWithBrowser(text, isDevanagari);
-      })();
+        return;
+      }
+
+      // Stop anything already talking before starting the new answer — and
+      // invalidate any browser-speak still waiting inside its 60ms delay.
+      const seq = ++speakSeqRef.current;
+      stopAudio();
+      if (browserSpeechSupported) {
+        try {
+          window.speechSynthesis.cancel();
+        } catch {
+          /* ignore */
+        }
+      }
+
+      // ── Tier 3: on-device browser voice ──
+      const browserFallback = () => {
+        if (speakSeqRef.current !== seq) return; // cancelled / superseded
+        setSpeaking(false);
+        stopAudio();
+        speakWithBrowser(text, isDevanagari);
+      };
+
+      // ── Tier 2: POST + full blob — works against ai_service builds that
+      // predate the streaming GET route (deploy-order resilience). ──
+      const postFallback = () => {
+        if (speakSeqRef.current !== seq) return;
+        setSpeaking(false);
+        stopAudio();
+        void (async () => {
+          try {
+            const res = await authenticatedAxiosInstance.post(
+              `${AI_SERVICE_URL}/tts/v1/speak`,
+              { text, language: langShort },
+              { responseType: "blob", timeout: 15000 },
+            );
+            if (speakSeqRef.current !== seq) return;
+            const url = URL.createObjectURL(res.data as Blob);
+            const audio = new Audio(url);
+            audioRef.current = audio;
+            let failed = false;
+            const fail = () => {
+              if (failed) return;
+              failed = true;
+              URL.revokeObjectURL(url);
+              browserFallback();
+            };
+            audio.onplaying = () => {
+              if (speakSeqRef.current === seq) setSpeaking(true);
+            };
+            audio.onended = () => {
+              setSpeaking(false);
+              URL.revokeObjectURL(url);
+            };
+            audio.onerror = fail;
+            audio.play().catch(fail);
+          } catch {
+            browserFallback();
+          }
+        })();
+      };
+
+      // ── Tier 1: streamed GET — playback starts on the first buffered bytes. ──
+      const src =
+        `${AI_SERVICE_URL}/tts/v1/speak?language=${encodeURIComponent(langShort)}` +
+        `&text=${encodeURIComponent(text)}`;
+      const audio = new Audio(src);
+      audioRef.current = audio;
+      let streamFailed = false;
+      const streamFail = () => {
+        if (streamFailed) return;
+        streamFailed = true;
+        postFallback();
+      };
+      audio.onplaying = () => {
+        if (speakSeqRef.current === seq) setSpeaking(true);
+      };
+      audio.onended = () => setSpeaking(false);
+      audio.onerror = streamFail;
+      audio.play().catch(streamFail);
     },
     [short, browserSpeechSupported, stopAudio, speakWithBrowser],
   );

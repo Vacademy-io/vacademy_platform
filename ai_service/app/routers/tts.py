@@ -6,8 +6,8 @@ this first and falls back to on-device Web Speech when unavailable.
 """
 
 import edge_tts
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/tts", tags=["tts"])
@@ -27,14 +27,41 @@ class SpeakRequest(BaseModel):
     language: str = "en"
 
 
+def _voice_for(language: str | None) -> str:
+    lang = (language or "en").split("-")[0].lower()
+    return VOICES.get(lang, VOICES["en"])
+
+
+@router.get(
+    "/v1/speak",
+    summary="Stream synthesised speech (MP3) — starts playing before synthesis finishes",
+    response_class=StreamingResponse,
+)
+async def speak_stream(
+    text: str = Query(..., min_length=1, max_length=2000),
+    language: str = Query("en"),
+) -> StreamingResponse:
+    """GET + streaming so an <audio src=…> element can start playback on the
+    first buffered bytes instead of waiting for the whole file — this is what
+    keeps the assistant's spoken answer snappy."""
+    voice = _voice_for(language)
+
+    async def gen():
+        communicate = edge_tts.Communicate(text, voice)
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                yield chunk["data"]
+
+    return StreamingResponse(gen(), media_type="audio/mpeg")
+
+
 @router.post(
     "/v1/speak",
     summary="Synthesise speech (MP3) for short assistant answers",
     response_class=Response,
 )
 async def speak(req: SpeakRequest) -> Response:
-    lang = (req.language or "en").split("-")[0].lower()
-    voice = VOICES.get(lang, VOICES["en"])
+    voice = _voice_for(req.language)
     try:
         communicate = edge_tts.Communicate(req.text, voice)
         chunks: list[bytes] = []

@@ -156,6 +156,7 @@
     "unmarkedDays": "Unmarked",
     "streak": "Day streak",
     "timeInClassTitle": "الوقت المستغرق في الحصة",
+    "upcomingChip": "قادمة",
     "attendedFor": "حضر {{duration}}"
   },
   "progress": {
@@ -206,6 +207,11 @@
     "emptyTitle": "No rewards yet",
     "emptyBody": "Badges and points will show here as {{name}} learns.",
     "points": "Points earned",
-    "rank": "Rank #{{value}}"
+    "rank": "Rank #{{value}}",
+    "badgesTitle": "الشارات",
+    "certificatesTitle": "الشهادات",
+    "certificate": "شهادة",
+    "earnedOn": "حصل عليها في {{date}}",
+    "completed": "اكتمل {{percent}}%"
   }
 }

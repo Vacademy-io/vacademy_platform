@@ -51,8 +51,17 @@ const { ORNAMENT_PRESETS } = await importTs('src/routes/manage-pages/-utils/cata
 
 // Data-bound / structural / risky types the composer must NOT invent content
 // for. Data components (courseCatalog etc.) ARE allowed — they render live
-// institute data — but get a special note. htmlBlock is forbidden entirely.
-const FORBIDDEN = new Set(['htmlBlock']);
+// institute data — but get a special note. htmlBlock is a governed escape
+// hatch: allowed, sanitized server-side (nh3 + CSS scrub) and rendered in a
+// contained shadow root; usage rules live in the composer's design doctrine.
+const FORBIDDEN = new Set([]);
+const ESCAPE_HATCH_NOTES = {
+    htmlBlock:
+        'ESCAPE HATCH for bespoke sections only. props {html, css, prompt}. Sanitized + rendered in a scoped sandbox: ' +
+        'no scripts/iframes/svg/forms; style via the css prop with class selectors using the theme CSS variables ' +
+        '(var(--primary-500), var(--catalogue-text-primary), var(--catalogue-heading-font)); must include @media rules; ' +
+        'images only from provided URLs. Max 2 per page. Prefer typed components whenever they fit.',
+};
 const DATA_BOUND = {
     courseCatalog: 'Renders the institute\'s LIVE course grid. Configure filters/title only — never invent course entries.',
     bookCatalogue: 'Renders the LIVE book store. Configure presentation only.',
@@ -74,6 +83,7 @@ for (const [key, tpl] of Object.entries(componentTemplates)) {
         templateKey: key,
         exampleProps: tpl.props,
         ...(DATA_BOUND[tpl.type] ? { dataBound: DATA_BOUND[tpl.type] } : {}),
+        ...(ESCAPE_HATCH_NOTES[tpl.type] ? { escapeHatch: ESCAPE_HATCH_NOTES[tpl.type] } : {}),
     });
 }
 
@@ -120,7 +130,7 @@ const globalSettingsSchema = {
 const doctrine = [
     'Output is a single Page object: {id, name, route, components: Component[]}. Component = {id, type, enabled:true, props, style?}.',
     'ids: kebab-case unique strings.',
-    'NEVER emit htmlBlock. NEVER invent image URLs — only use media URLs provided in the source pack (or leave image fields empty).',
+    'htmlBlock is a LAST-RESORT escape hatch (see its note) — typed components first. NEVER invent image URLs — only use media URLs provided in the source pack (or leave image fields empty).',
     'Data-bound components render live institute data; configure, do not fabricate their entries.',
     'Rhythm: open with ONE hero; use sectionHeading before dense sections; alternate section surface tints; end with a CTA and/or contact section.',
     'Copy: concise, benefit-led, in the institute\'s voice; use the institute\'s configured terminology for Course/Batch/etc. when provided.',

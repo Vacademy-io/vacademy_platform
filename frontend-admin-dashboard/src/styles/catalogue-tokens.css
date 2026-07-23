@@ -1093,4 +1093,15 @@
   [data-catalogue-theme] :is(.catalogue-display, .catalogue-h1, .catalogue-h2, .catalogue-h3) {
     font-family: var(--catalogue-heading-font, inherit);
   }
+  /* Custom-HTML section host (htmlBlock escape hatch). The shadow root scopes
+     the section's CSS in; this class scopes its layout OUT: translateZ creates
+     a containing block so position:fixed inside the section can never overlay
+     the rest of the page, and overflow:clip keeps absolutely-positioned
+     decorations inside the band. Theme CSS variables still inherit through. */
+  .catalogue-html-section {
+    display: block;
+    transform: translateZ(0);
+    overflow: clip;
+  }
 }
+

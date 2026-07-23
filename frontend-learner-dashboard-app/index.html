@@ -204,7 +204,8 @@
           },
           true
         );
-        // Clear the guard once the app has actually rendered.
+        // Clear the guard once the app has actually rendered. (The boot splash
+        // lives OUTSIDE #root, so root children = real app render.)
         window.addEventListener("load", function () {
           setTimeout(function () {
             var root = document.getElementById("root");
@@ -230,9 +231,99 @@
     <script src="https://secure.ewaypayments.com/scripts/eCrypt.min.js"></script>
 
     <title>Course Catalogue</title>
+
+    <!-- Boot splash: shown instantly on every hard load (cold start, login
+         redirects, switching in/out of student view) until the app mounts and
+         removes it (see __root.tsx). It lives OUTSIDE #root — main.tsx refuses
+         to mount when #root already has content. Branded from the
+         localStorage "InstituteBranding" cache (logo + theme colour) when
+         available; falls back to the neutral bar on a first-ever visit.
+         Colors inline on purpose — the app CSS has not loaded yet. -->
+    <style>
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        background: #fff;
+        transition: opacity 0.25s ease;
+      }
+      .boot-splash-logo {
+        height: 64px;
+        max-width: 200px;
+        object-fit: contain;
+        display: none;
+        animation: boot-pulse 1.6s ease-in-out infinite;
+      }
+      .boot-splash-track {
+        width: 160px;
+        height: 4px;
+        border-radius: 9999px;
+        background: #f1f5f9;
+        overflow: hidden;
+      }
+      .boot-splash-bar {
+        height: 100%;
+        border-radius: 9999px;
+        background: hsl(24 85% 54%);
+        animation: boot-progress 2s ease-in-out infinite;
+      }
+      @keyframes boot-pulse {
+        0%,
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        50% {
+          transform: scale(1.06);
+          opacity: 0.85;
+        }
+      }
+      @keyframes boot-progress {
+        0% {
+          width: 0%;
+          margin-left: 0%;
+        }
+        50% {
+          width: 70%;
+          margin-left: 15%;
+        }
+        100% {
+          width: 0%;
+          margin-left: 100%;
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="boot-splash">
+      <img id="boot-splash-logo" class="boot-splash-logo" alt="" />
+      <div class="boot-splash-track"><div id="boot-splash-bar" class="boot-splash-bar"></div></div>
+    </div>
+    <script>
+      // Brand the splash from the cached institute branding (same cache the
+      // in-app DashboardLoader uses). Safe no-op on a first-ever visit.
+      (function () {
+        try {
+          var b = JSON.parse(localStorage.getItem("InstituteBranding") || "null");
+          if (b && b.instituteLogoUrl) {
+            var img = document.getElementById("boot-splash-logo");
+            img.onload = function () {
+              img.style.display = "block";
+            };
+            img.src = b.instituteLogoUrl;
+          }
+          if (b && b.instituteThemeCode) {
+            document.getElementById("boot-splash-bar").style.background = b.instituteThemeCode;
+          }
+        } catch (e) {}
+      })();
+    </script>
     <div id="portal-root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

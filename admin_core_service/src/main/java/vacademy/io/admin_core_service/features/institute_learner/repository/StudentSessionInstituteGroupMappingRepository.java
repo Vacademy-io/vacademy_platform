@@ -461,10 +461,13 @@ public interface StudentSessionInstituteGroupMappingRepository
    * (avoids N+1 when listing many spawned sub-orgs). Membership + ROOT_ADMIN exclusion mirror
    * {@link #findActiveSubOrgRoster(String)}; each mapping is attributed to
    * COALESCE(ssigm.sub_org_id, enroll_invite.sub_org_id) — the stamp wins, else the invite the
-   * user_plan came from. Returns rows of [sub_org_id, used_count]; sub-orgs with zero are absent.
+   * user_plan came from. Counts DISTINCT users, not mappings — a learner enrolled in several
+   * of the sub-org's batches occupies ONE seat (COUNT(*) here overstated "used" for every
+   * multi-batch learner). Returns rows of [sub_org_id, used_count]; zero-count sub-orgs absent.
    */
   @Query(value = """
-      SELECT COALESCE(ssigm.sub_org_id, ei.sub_org_id) AS sub_org_id, COUNT(*) AS used_count
+      SELECT COALESCE(ssigm.sub_org_id, ei.sub_org_id) AS sub_org_id,
+             COUNT(DISTINCT ssigm.user_id) AS used_count
       FROM student_session_institute_group_mapping ssigm
       LEFT JOIN user_plan up ON up.id = ssigm.user_plan_id
       LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id

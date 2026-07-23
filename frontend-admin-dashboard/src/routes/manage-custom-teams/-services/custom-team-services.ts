@@ -196,17 +196,21 @@ export interface SubOrgListPage {
 
 /**
  * Manage VLEs list — one call returns admin email/phone, plan status, seats and invite per
- * sub-org, paginated (newest first). Tolerates a bare array in case an older API is hit.
+ * sub-org (newest first). Omit page/size to fetch EVERYTHING (the backend's legacy bare-array
+ * shape) — used by the list screen so search/status filters can match across the whole
+ * dataset (admin email/phone/plan status come from cross-service enrichment, so they can't
+ * be filtered in the DB query). Pass page+size for the paginated Spring Page shape.
  */
 export const getSubOrgsWithDetails = async (
     parentInstituteId?: string,
-    page = 0,
-    size = 10
+    page?: number,
+    size?: number
 ): Promise<SubOrgListPage> => {
     const id = parentInstituteId || getCurrentInstituteId();
     const response = await authenticatedAxiosInstance({
         method: 'GET',
         url: GET_SUB_ORGS_WITH_DETAILS,
+        // axios drops undefined params — no page/size sent → backend returns the full bare array.
         params: { parentInstituteId: id, page, size },
     });
     const data = response.data;
@@ -225,7 +229,7 @@ export const getSubOrgsWithDetails = async (
         total_pages: data?.totalPages ?? 1,
         total_elements: data?.totalElements ?? 0,
         page_no: data?.number ?? 0,
-        page_size: data?.size ?? size,
+        page_size: data?.size ?? size ?? 10,
         last: data?.last ?? true,
     };
 };

@@ -15,6 +15,11 @@
         <item name="android:background">@null</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- The learner app is light-themed and draws edge-to-edge under a
+             transparent status bar. Force DARK status-bar icons so the clock /
+             battery / signal stay visible over the white content (otherwise the
+             system light icons vanish into the white and the notch reads blank). -->
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 
 

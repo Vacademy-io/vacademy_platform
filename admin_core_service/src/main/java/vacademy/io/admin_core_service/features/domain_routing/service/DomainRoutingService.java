@@ -120,7 +120,8 @@ public class DomainRoutingService {
                 .commaSeparatedPreferredCountry(mapping.getCommaSeparatedPreferredCountry())
                 .hideInstituteName(mapping.getHideInstituteName())
                 .logoWidthPx(mapping.getLogoWidthPx())
-                .logoHeightPx(mapping.getLogoHeightPx());
+                .logoHeightPx(mapping.getLogoHeightPx())
+                .stackNameBelowLogo(mapping.getStackNameBelowLogo());
 
         if (institute != null) {
             responseBuilder.instituteId(institute.getId())

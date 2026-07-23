@@ -1001,6 +1001,7 @@ class VideoGenerationService:
         visual_preferences: Optional[Any] = None,
         ai_video_enabled: bool = False,
         ai_video_audio_enabled: bool = False,
+        ai_video_model: Optional[str] = None,
         # Per-stage model overrides (V200 — DB-backed routing). Untyped here
         # (Any) to avoid a schemas → service circular import.
         model_overrides: Optional[Any] = None,
@@ -1201,6 +1202,19 @@ class VideoGenerationService:
                 gen_metadata["dialogue_clip_model"] = str(dialogue_clip_model)
             if cast_id:
                 gen_metadata["cast_id"] = str(cast_id)
+            # Persist the AI-video (Veo) opt-in so a RESUME leg re-enables it.
+            # Without this, the router's resume path reads
+            # `_meta.get("ai_video_enabled", False)` = False and every
+            # AI_VIDEO_HERO shot the plan committed to falls back to
+            # VIDEO_HERO after the shot-plan gate (observed live: plan had 4
+            # AI shots, all demoted "run disabled" on resume). Mirrors the
+            # dialogue-flag persistence above.
+            if ai_video_enabled:
+                gen_metadata["ai_video_enabled"] = True
+            if ai_video_audio_enabled:
+                gen_metadata["ai_video_audio_enabled"] = True
+            if ai_video_enabled and ai_video_model:
+                gen_metadata["ai_video_model"] = str(ai_video_model)
             # Persist the TTS voice knobs so per-sentence re-narration in the
             # editor can reproduce the same voice without the user having to
             # re-supply them. Defaults are skipped to keep the row small.
@@ -1409,6 +1423,7 @@ class VideoGenerationService:
                     visual_preferences=visual_preferences,
                     ai_video_enabled=ai_video_enabled,
                     ai_video_audio_enabled=ai_video_audio_enabled,
+                    ai_video_model=ai_video_model,
                     model_overrides=model_overrides,
                     # Assist mode: the pipeline pauses at the HTML-stage
                     # visual_casting gate when enabled. None ⇒ no HTML gate.
@@ -1575,6 +1590,7 @@ class VideoGenerationService:
         # tiers, so callers can pass these flags unconditionally.
         ai_video_enabled: bool = False,
         ai_video_audio_enabled: bool = False,
+        ai_video_model: Optional[str] = None,
         # Per-stage model overrides (V200 — DB-backed routing). When set,
         # resolved into a per-stage map via AIModelsService.get_stage_model_map
         # and passed to VideoGenerationPipeline. Untyped here (Any) to avoid a
@@ -2882,6 +2898,7 @@ class VideoGenerationService:
                     # so it's safe to forward whatever the request had.
                     ai_video_enabled=bool(ai_video_enabled),
                     ai_video_audio_enabled=bool(ai_video_audio_enabled),
+                    ai_video_model=ai_video_model,
                     # Bind the AI video ledger writer to this institute so
                     # Veo USAGE_DEDUCTION rows are attributed correctly.
                     # Pipeline downgrades to no-op when institute_id is None.

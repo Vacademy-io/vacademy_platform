@@ -81,6 +81,7 @@ export function ParentProfileMenu({ childId, childName, childFileId }: ParentPro
             ))}
           </>
         ) : null}
+        {/* "View as my child" now lives as a one-tap header icon (ParentViewAsChildButton). */}
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -9,6 +9,14 @@ import {
     type ExportColumnOption,
 } from '@/components/shared/leads/export-column-picker-dialog';
 import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
+import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
+import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
+import {
+    decodeSelectionToEntries,
+    filterEntryValueLabel,
+    isRangeFieldType,
+    removeEntryFromSelection,
+} from '@/components/shared/leads/custom-field-filter-encoding';
 import { useLeadFilterCustomFields } from '@/components/shared/leads/use-lead-filter-custom-fields';
 import { toast } from 'sonner';
 import {
@@ -78,12 +86,19 @@ import {
     LeadEmptyState,
     LeadTable,
     LeadPagination,
+    ManageColumnsPopover,
+    useLeadColumnPrefs,
+    buildLeadColumnToggles,
     useUpdateLeadTier,
     campaignRowToVM,
     type LeadActionHandlers,
     type LeadSortKey,
     type LeadSortDirection,
 } from '@/components/shared/leads';
+
+// Every row in this view is from the same audience, so "Lead source" is
+// redundant — hidden by default and not offered in the Manage Column list.
+const AUDIENCE_LEADS_DEFAULT_HIDDEN = ['source'];
 
 const ALL_VALUE = '__ALL__'; // every lead regardless of status (default — enrolled leads stay visible)
 const ALL_ACTIVE_VALUE = '__ACTIVE__'; // all leads except those enrolled/Converted
@@ -208,11 +223,13 @@ const CampaignUsersContent = ({
             return next;
         });
     };
+    // Sentinel selections (contains / empty / ranges) decode into operator
+    // entries; plain values stay an IN entry.
     const customFieldFiltersPayload = useMemo(
         () =>
             Object.entries(customFieldFilters)
                 .filter(([, vals]) => vals.length > 0)
-                .map(([field_id, values]) => ({ field_id, values })),
+                .flatMap(([fieldId, values]) => decodeSelectionToEntries(fieldId, values)),
         [customFieldFilters]
     );
 
@@ -604,8 +621,18 @@ const CampaignUsersContent = ({
         }
     };
 
-    // Hide the "Lead source" column — every row in this view is from the same audience.
-    const hiddenColumns = useMemo(() => new Set(['source']), []);
+    // Column show/hide is persisted per user (localStorage), seeded with the
+    // source column hidden. Kept on its own storage key so this audience view
+    // and the Recent Leads page each remember their own layout.
+    const { hiddenColumns, toggleColumn, resetColumns } = useLeadColumnPrefs(
+        'crm-lead-columns:audience-leads',
+        AUDIENCE_LEADS_DEFAULT_HIDDEN
+    );
+    // "Manage Column" list — source stays hidden and is not offered here.
+    const toggleableColumns = useMemo(
+        () => buildLeadColumnToggles(showOps, showScore).filter((c) => c.id !== 'source'),
+        [showOps, showScore]
+    );
 
     // ── Filter handlers ──────────────────────────────────────
     const handleTierChange = (values: string[]) => {
@@ -721,8 +748,14 @@ const CampaignUsersContent = ({
         const fieldName =
             filterCustomFields.find((cf) => cf.customFieldId === f.field_id)?.fieldName ?? 'Field';
         chips.push({
-            label: `${fieldName}: ${f.values.join(', ')}`,
-            onRemove: () => setCustomFieldFilter(f.field_id, []),
+            label: `${fieldName}: ${filterEntryValueLabel(f)}`,
+            // Remove only this entry's backing values — one field can carry
+            // several chips (values + contains + empty) at once.
+            onRemove: () =>
+                setCustomFieldFilter(
+                    f.field_id,
+                    removeEntryFromSelection(customFieldFilters[f.field_id] ?? [], f)
+                ),
         });
     });
 
@@ -1002,16 +1035,28 @@ const CampaignUsersContent = ({
                             isLoading={counsellorOptionsLoading}
                         />
                     )}
-                    {filterCustomFields.map((f) => (
-                        <CustomFieldMultiSelectFilter
-                            key={f.customFieldId}
-                            instituteId={instituteId ?? ''}
-                            fieldId={f.customFieldId}
-                            fieldName={f.fieldName}
-                            selected={customFieldFilters[f.customFieldId] ?? []}
-                            onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
-                        />
-                    ))}
+                    {filterCustomFields.map((f) =>
+                        isRangeFieldType(f.fieldType) ? (
+                            <CustomFieldRangeFilter
+                                key={f.customFieldId}
+                                fieldId={f.customFieldId}
+                                fieldName={f.fieldName}
+                                fieldType={f.fieldType}
+                                selected={customFieldFilters[f.customFieldId] ?? []}
+                                onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
+                            />
+                        ) : (
+                            <CustomFieldMultiSelectFilter
+                                key={f.customFieldId}
+                                instituteId={instituteId ?? ''}
+                                fieldId={f.customFieldId}
+                                fieldName={f.fieldName}
+                                selected={customFieldFilters[f.customFieldId] ?? []}
+                                onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
+                            />
+                        )
+                    )}
+                    <ManageListFiltersLink />
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button variant="outline" size="sm" className="h-10">
@@ -1098,6 +1143,12 @@ const CampaignUsersContent = ({
                             Import CSV
                         </Button>
                     )}
+                    <ManageColumnsPopover
+                        columns={toggleableColumns}
+                        hiddenColumns={hiddenColumns}
+                        onToggle={toggleColumn}
+                        onReset={resetColumns}
+                    />
                     <Button
                         variant="outline"
                         size="sm"

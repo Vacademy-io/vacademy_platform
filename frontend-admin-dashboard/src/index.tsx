@@ -239,6 +239,7 @@ if (!rootElement.innerHTML) {
                                 typeof cached.logoHeightPx === 'number'
                                     ? cached.logoHeightPx
                                     : null,
+                            stackNameBelowLogo: cached.stackNameBelowLogo === true,
                         });
                     }
                 }
@@ -317,6 +318,7 @@ if (!rootElement.innerHTML) {
                         logoWidthPx: typeof data.logoWidthPx === 'number' ? data.logoWidthPx : null,
                         logoHeightPx:
                             typeof data.logoHeightPx === 'number' ? data.logoHeightPx : null,
+                        stackNameBelowLogo: data.stackNameBelowLogo === true,
                     });
                 }
             }

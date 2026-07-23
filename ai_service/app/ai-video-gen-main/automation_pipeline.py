@@ -821,7 +821,7 @@ try:
 except ImportError:
     # Fallback when `app/` isn't on path (legacy / standalone). Keep the
     # numeric default in lockstep with `ai_video_constants.py`.
-    AI_VIDEO_PER_VIDEO_COST_CAP_USD = 4.00
+    AI_VIDEO_PER_VIDEO_COST_CAP_USD = 24.00
 
 QUALITY_TIERS: dict[str, dict[str, Any]] = {
     "free": {
@@ -3150,6 +3150,9 @@ class VideoGenerationPipeline:
         # warning rather than failing, so the rest of the run still works.
         ai_video_enabled: bool = False,
         ai_video_audio_enabled: bool = False,
+        # Which Veo tier films AI_VIDEO_HERO shots (lite/full/fast). None ⇒
+        # the client's lite default. full/fast are the fidelity upgrade.
+        ai_video_model: Optional[str] = None,
         # Institute identity — used to bind the AI video ledger writer so
         # Veo charges land as `USAGE_DEDUCTION` rows on the right institute.
         # None ⇒ ledger writes are skipped (legacy / standalone runs that
@@ -3488,6 +3491,7 @@ class VideoGenerationPipeline:
             ai_video_audio_enabled = False
         self._ai_video_run_enabled: bool = bool(ai_video_enabled)
         self._ai_video_audio_run_enabled: bool = bool(ai_video_audio_enabled)
+        self._ai_video_model: Optional[str] = ai_video_model or None
         self._fal_veo_client = None
         self._ai_video_cost_tracker = None
         self._ai_video_ledger = None
@@ -3606,7 +3610,9 @@ class VideoGenerationPipeline:
                     self._ai_video_run_enabled = False
                     self._ai_video_audio_run_enabled = False
                 else:
-                    self._fal_veo_client = FalVeoClient(_fal_key)
+                    self._fal_veo_client = FalVeoClient(
+                        _fal_key, model=getattr(self, "_ai_video_model", None)
+                    )
                     _cap = float(self._tier_config.get("ai_video_per_video_cost_cap_usd") or AI_VIDEO_PER_VIDEO_COST_CAP_USD)
                     self._ai_video_cost_tracker = AiVideoCostTracker(cap_usd=_cap)
                     # Credit ledger writer. Bound to (institute_id, run_name)
@@ -8882,6 +8888,27 @@ class VideoGenerationPipeline:
                         duration_s=clip_s,
                         aspect_ratio=aspect,
                     )
+                # TRUE frame continuity (Seedance i2v): when this scene
+                # CONTINUES the previous one and has no spoken lines, use
+                # image-to-video with the previous clip's last frame as the
+                # LITERAL first frame — a mathematically seamless cut, vs the
+                # approximate reference-conditioning of reference-to-video.
+                # Speaking scenes can't take this path: i2v has no audio
+                # input, so it would lose the TTS lip-sync voice lock.
+                _prev_frame = None
+                for _i, _rn in enumerate(ref_names or []):
+                    if _rn == "__PREV_FRAME__" and _i < len(image_urls):
+                        _prev_frame = image_urls[_i]
+                        break
+                if _silent and _prev_frame:
+                    return self._fal_seedance_client.generate_image_to_video(
+                        prompt=prompt,
+                        image_url=_prev_frame,
+                        duration_s=clip_s,
+                        aspect_ratio=aspect,
+                        resolution="720p",
+                        generate_audio=not _muted,
+                    )
                 # Silent character clip → NO audio INPUT (no TTS pre-pass);
                 # `_dialogue_audio_url` is absent, so guard the lookup. A MUTED
                 # silent clip generates no audio (narrator plays over it); a
@@ -8969,9 +8996,18 @@ class VideoGenerationPipeline:
             tag = f"<IMAGE_REF_{i}>" if _use_omni else f"@Image{i + 1}"
             if rn == "__PREV_FRAME__":
                 bindings.append(
-                    f"{tag} is the final frame of the PREVIOUS scene — continue "
-                    "seamlessly from it: same location, same lighting, same "
-                    "character positions evolving naturally."
+                    f"{tag} is the final frame of the PREVIOUS scene. Your FIRST "
+                    "frame must reproduce it as exactly as possible — identical "
+                    "framing, location, lighting and character positions — then "
+                    "the action continues naturally from that exact moment, with "
+                    "no visual jump at the cut."
+                )
+            elif rn == "__GRADE_REF__":
+                bindings.append(
+                    f"{tag} shows the previous scene, which has ENDED — do NOT "
+                    "reuse its location, moment, or composition. Match ONLY its "
+                    "color grade, lighting character and overall cinematic style "
+                    "so the film feels continuous."
                 )
             elif rn == "the full cast":
                 bindings.append(f"{tag} shows the full cast — match every character exactly.")
@@ -9372,7 +9408,15 @@ class VideoGenerationPipeline:
                     print(f"   🎬 Shot {shot_idx}: chaining continuity across an "
                           f"intervening shot (continuous scene)")
             elif prev_frame_url and not _do_chain:
-                print(f"   🎬 Shot {shot_idx}: new scene — chain skipped")
+                # New scene: don't CONTINUE the old one, but keep the FILM
+                # coherent — pass the previous frame as a grade/style-only
+                # reference so lighting character and color grade match
+                # across the cut. The binding text forbids reusing the
+                # location/moment; clip QC catches wrongful continuation.
+                if len(image_urls) < 8:
+                    image_urls = image_urls + [prev_frame_url]
+                    ref_names = ref_names + ["__GRADE_REF__"]
+                print(f"   🎬 Shot {shot_idx}: new scene — chain skipped (grade ref only)")
 
             result = self._call_seedance_dialogue_clip(s, image_urls, ref_names)
             if result is None:
@@ -10025,6 +10069,37 @@ class VideoGenerationPipeline:
                 _dur = 0.0
             s_copy["shot_duration_s"] = max(_dur, 0.0)
             _v2_shots.append(s_copy)
+
+        # ── Boundary dedup sweep ─────────────────────────────────────────
+        # The NarrationWriter sometimes ends shot N and opens shot N+1 with
+        # the SAME sentence — the viewer hears the words twice across the
+        # cut. Trim the duplicate from the LATER shot (compare the previous
+        # narrated shot's last sentence with the next one's first; ≥4 words
+        # so interjections survive).
+        def _sentences(txt: str) -> List[str]:
+            return [x.strip() for x in re.split(r"(?<=[.!?])\s+", txt or "") if x.strip()]
+
+        def _norm_sent(txt: str) -> str:
+            return re.sub(r"[^a-z0-9 ]", "", txt.lower()).strip()
+
+        _prev_last: str = ""
+        for s_copy in _v2_shots:
+            _txt = s_copy.get("_v2_narration_text") or ""
+            if not _txt.strip():
+                continue  # intrinsic/silent windows don't reset the chain
+            _sents = _sentences(_txt)
+            if (
+                _sents and _prev_last
+                and _norm_sent(_sents[0]) == _prev_last
+                and len(_prev_last.split()) >= 4
+            ):
+                print(
+                    f"   ✂️  shot {s_copy.get('shot_index')}: dropped duplicated "
+                    f"boundary sentence \"{_sents[0][:50]}…\""
+                )
+                _sents = _sents[1:]
+                s_copy["_v2_narration_text"] = " ".join(_sents)
+            _prev_last = _norm_sent(_sents[-1]) if _sents else ""
 
         total_shots = len(_v2_shots)
         self._emit_progress({
@@ -14006,6 +14081,24 @@ class VideoGenerationPipeline:
             tier_config.get("ai_video_per_video_cost_cap_usd")
             or AI_VIDEO_PER_VIDEO_COST_CAP_USD
         )
+        # The planner's AI-shot budget = cap / per-clip cost. Per-clip cost
+        # depends on the SELECTED Veo tier (full ≈ $1.60/8s, lite ≈ $0.24),
+        # so compute it from the model rather than assuming lite — otherwise
+        # a full-Veo run plans ~7x too many AI shots and the excess silently
+        # demotes to stock at the cap.
+        _ai_video_per_clip = 0.24
+        try:
+            try:
+                from app.services.fal_veo_client import price_per_call_usd as _veo_price
+            except ImportError:
+                from fal_veo_client import price_per_call_usd as _veo_price  # type: ignore[no-redef]
+            _ai_video_per_clip = _veo_price(
+                resolution="720p", duration_s=8,
+                audio_on=bool(getattr(self, "_ai_video_audio_run_enabled", False)),
+                model=getattr(self, "_ai_video_model", None),
+            )
+        except Exception:
+            pass
         brand_brief = self._extract_brand_brief() or {}
 
         # Pillar 3 — eager reference-asset prefetch (mirrors the v2 path in
@@ -14099,6 +14192,7 @@ class VideoGenerationPipeline:
             ai_video_enabled=getattr(self, "_ai_video_run_enabled", False),
             ai_video_audio_enabled=getattr(self, "_ai_video_audio_run_enabled", False),
             ai_video_cost_cap_usd=ai_video_cost_cap,
+            ai_video_per_clip_usd=_ai_video_per_clip,
             source_clip_available=self._v3_source_clip_available(),
             dialogue_scenes_enabled=getattr(self, "_dialogue_scenes_enabled", False),
             dialogue_mode=getattr(self, "_dialogue_mode", "storybook"),
@@ -18746,13 +18840,30 @@ class VideoGenerationPipeline:
                             pass
                         return [_av_entry], {}
                     else:
-                        # Failure — downgrade to a non-AI shot type and fall
-                        # through to the LLM path. The cost tracker already
-                        # refunded the reservation (orchestrator handles it).
-                        _fallback_st = "VIDEO_HERO" if shot.get("video_query") else "IMAGE_HERO"
+                        # Failure (fal error, budget/cap exhausted, safety
+                        # block) — downgrade to a non-AI shot type. The cost
+                        # tracker already refunded the reservation.
+                        # Prefer a MOVING fallback: keep the video aesthetic by
+                        # demoting to VIDEO_HERO (stock footage) rather than a
+                        # dead still. The planner card requires video_query, but
+                        # a manually-flipped shot or a dropped field may lack
+                        # it — derive one from the shot's description so an
+                        # exhausted AI shot still lands on relevant footage,
+                        # never a static image.
+                        _fb_query = str(shot.get("video_query") or "").strip()
+                        if not _fb_query:
+                            _fb_query = " ".join(
+                                str(shot.get(k) or "").strip()
+                                for k in ("visual_description", "scene_description",
+                                          "narration_excerpt")
+                            ).strip()[:120]
+                            if _fb_query:
+                                shot["video_query"] = _fb_query
+                        _fallback_st = "VIDEO_HERO" if _fb_query else "IMAGE_HERO"
                         print(
                             f"   ⚠️  {_log_label} AI_VIDEO_HERO {_av_result.error_class}: "
                             f"{_av_result.error} — falling back to {_fallback_st}"
+                            + ("" if shot.get("video_query") else " (no description to derive a stock query)")
                         )
                         # Tell the USER, not just the run log. A demotion means
                         # they opted in (and pre-paid the credit hold) for AI
@@ -18768,7 +18879,7 @@ class VideoGenerationPipeline:
                                 "message": (
                                     f"Shot {shot_idx}: AI video unavailable "
                                     f"({_av_result.error_class}) — using "
-                                    f"{'stock footage' if _fallback_st == 'VIDEO_HERO' else 'a still image'}"
+                                    f"{'placeholder stock footage' if _fallback_st == 'VIDEO_HERO' else 'a still image'}"
                                 ),
                             })
                         except Exception:

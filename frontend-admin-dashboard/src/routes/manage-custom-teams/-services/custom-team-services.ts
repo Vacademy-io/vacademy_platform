@@ -8,6 +8,7 @@ import {
     ROLES_BASE,
     INVITE_USERS_URL,
     GET_SUB_ORGS,
+    GET_SUB_ORGS_WITH_DETAILS,
     CREATE_SUB_ORG_WITH_SUBSCRIPTION,
     GET_SUB_ORG_SCOPED_INVITES,
     GET_SUB_ORG_SEAT_USAGE,
@@ -163,6 +164,78 @@ export const getSubOrgs = async (parentInstituteId?: string) => {
         params: { parentInstituteId: id },
     });
     return response.data;
+};
+
+/** Enriched VLE/sub-org list row: record + admin contact + plan status + seats + invite. */
+export interface SubOrgListItem {
+    suborg_id?: string | null;
+    name?: string | null;
+    status?: string | null;
+    admin_name?: string | null;
+    admin_email?: string | null;
+    admin_phone?: string | null;
+    /** Address stamped on the spawned institute at registration; null when never collected. */
+    city?: string | null;
+    state?: string | null;
+    pincode?: string | null;
+    /** Admin's UserPlan status (ACTIVE, PENDING_FOR_PAYMENT, …); null when no plan. */
+    plan_status?: string | null;
+    used_seats?: number | null;
+    total_seats?: number | null;
+    invite_code?: string | null;
+    short_url?: string | null;
+    created_at?: string | number | null;
+}
+
+/** Paginated Manage VLEs list (snake_case rows in a camelCase Spring Page wrapper). */
+export interface SubOrgListPage {
+    content: SubOrgListItem[];
+    total_pages: number;
+    total_elements: number;
+    /** 0-based current page. */
+    page_no: number;
+    page_size: number;
+    last: boolean;
+}
+
+/**
+ * Manage VLEs list — one call returns admin email/phone, plan status, seats and invite per
+ * sub-org (newest first). Omit page/size to fetch EVERYTHING (the backend's legacy bare-array
+ * shape) — used by the list screen so search/status filters can match across the whole
+ * dataset (admin email/phone/plan status come from cross-service enrichment, so they can't
+ * be filtered in the DB query). Pass page+size for the paginated Spring Page shape.
+ */
+export const getSubOrgsWithDetails = async (
+    parentInstituteId?: string,
+    page?: number,
+    size?: number
+): Promise<SubOrgListPage> => {
+    const id = parentInstituteId || getCurrentInstituteId();
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: GET_SUB_ORGS_WITH_DETAILS,
+        // axios drops undefined params — no page/size sent → backend returns the full bare array.
+        params: { parentInstituteId: id, page, size },
+    });
+    const data = response.data;
+    if (Array.isArray(data)) {
+        return {
+            content: data,
+            total_pages: 1,
+            total_elements: data.length,
+            page_no: 0,
+            page_size: data.length,
+            last: true,
+        };
+    }
+    return {
+        content: Array.isArray(data?.content) ? data.content : [],
+        total_pages: data?.totalPages ?? 1,
+        total_elements: data?.totalElements ?? 0,
+        page_no: data?.number ?? 0,
+        page_size: data?.size ?? size ?? 10,
+        last: data?.last ?? true,
+    };
 };
 
 export const getAllRoles = async () => {

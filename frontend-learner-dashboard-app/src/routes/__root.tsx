@@ -20,8 +20,7 @@ import { useOtaUpdate } from "@/stores/useOtaUpdate";
 import {
   checkForOtaUpdate,
   downloadAndApplyUpdate,
-  downloadAndStageUpdate,
-  isSilentOtaApp,
+  getOtaUpdateMode,
   notifyUpdateSuccess,
 } from "@/services/ota-update";
 import { Preferences } from "@capacitor/preferences";
@@ -46,6 +45,7 @@ import { ChatbotProvider } from "@/components/chatbot/ChatbotContext";
 import { getChatbotSettings } from "@/services/chatbot-settings";
 import { ChatbotFloatingButton } from "@/components/chatbot/ChatbotFloatingButton";
 import { OtaUpdateBanner } from "@/components/ota-update/OtaUpdateBanner";
+import { ChildViewBanner } from "@/components/parent/ChildViewBanner";
 import { AppOverlayHost } from "@/components/announcements/AppOverlayHost";
 
 // Define public routes that don't require authentication
@@ -244,7 +244,8 @@ const isPublicRoute = (pathname: string): boolean => {
 
 const RootComponent = () => {
   const { setUpdateAvailable } = useUpdate();
-  const { setOtaUpdate, setOtaDownloading } = useOtaUpdate();
+  const { setOtaUpdate, setOtaDownloading, setOtaAutoUpdating } =
+    useOtaUpdate();
   const { setPrimaryColor } = useTheme();
   const { setInstituteId } = useInstituteFeatureStore();
   const [isChatbotEnabled, setIsChatbotEnabled] = useState(false);
@@ -303,22 +304,31 @@ const RootComponent = () => {
       try {
         const result = await checkForOtaUpdate();
         if (result.update_available && result.bundle_download_url) {
-          // Native apps update silently: download in the background and stage the
-          // bundle for the next restart/resume. No banner, no toast, no mid-session
-          // reload — a reload here would wipe a learner's in-progress attempt.
-          if (await isSilentOtaApp()) {
+          const mode = await getOtaUpdateMode();
+
+          // AUTO mode (fleet default): show a non-dismissible "Updating app…"
+          // loader dialog, then download + apply the bundle in place. This runs
+          // at launch ONLY, so the set() reload can never wipe a learner's
+          // in-progress exam attempt (the reason the old silent path existed).
+          // Applies for both optional and force updates.
+          if (mode === "auto") {
             try {
-              await downloadAndStageUpdate(
+              setOtaAutoUpdating(true, result.version ?? null);
+              await downloadAndApplyUpdate(
                 result.bundle_download_url,
                 result.version!,
                 result.checksum!,
               );
-            } catch (stageErr) {
-              console.error("OTA silent stage failed:", stageErr);
+              // set() reloads the WebView — the line below only runs if it fails.
+              setOtaAutoUpdating(false);
+            } catch (autoErr) {
+              console.error("OTA auto update failed:", autoErr);
+              setOtaAutoUpdating(false);
             }
             return;
           }
 
+          // BANNER mode: dismissible banner (optional) or blocking overlay (force).
           setOtaUpdate({
             otaUpdateAvailable: true,
             otaVersion: result.version ?? null,
@@ -443,10 +453,30 @@ const RootComponent = () => {
       "/",
     ];
 
-    const isRootRoute = (path: string) =>
-      ROOT_ROUTES.some(
+    // The institute may configure a custom post-login landing route
+    // (STUDENT_DISPLAY_SETTINGS.postLoginRedirectRoute) that isn't one of the
+    // built-in root routes above. Treat that landing route as an exit route
+    // too, so hardware back on the learner's home screen minimizes the app
+    // instead of walking history back toward /login. Read from cache (already
+    // populated at login); a missing/failed lookup just leaves ROOT_ROUTES.
+    let landingRoute: string | null = null;
+    getStudentDisplaySettings()
+      .then((s) => {
+        const r = s?.postLoginRedirectRoute?.trim();
+        if (r && !/^https?:\/\//.test(r)) {
+          landingRoute = r.split("?")[0].split("#")[0];
+        }
+      })
+      .catch(() => {});
+
+    const isRootRoute = (path: string) => {
+      const routes = landingRoute
+        ? [...ROOT_ROUTES, landingRoute]
+        : ROOT_ROUTES;
+      return routes.some(
         (r) => path === r || path === `${r}/` || path.startsWith(`${r}?`),
       );
+    };
 
     let handle: { remove: () => void } | null = null;
 
@@ -715,6 +745,7 @@ const RootComponent = () => {
 
   return (
     <ChatbotProvider>
+      <ChildViewBanner />
       <OtaUpdateBanner />
       <Outlet />
       {/* Full-screen APP_OVERLAY announcements — authenticated app surfaces only */}

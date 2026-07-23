@@ -67,6 +67,7 @@ public class OnboardingStepInstanceService {
     private final OnboardingStudentCreationService onboardingStudentCreationService;
     private final OnboardingRoleAccessResolutionService roleAccessResolutionService;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private static final String AUTO_COMPLETE_ACTOR = "SYSTEM_AUTO";
 
     /**
      * @Lazy breaks the same init-time bean cycle CallAiNodeHandler/SetLeadStatusNodeHandler guard
@@ -105,7 +106,32 @@ public class OnboardingStepInstanceService {
         }
 
         fireTrigger(instance, step, WorkflowTriggerEvent.ONBOARDING_STEP_ENTERED);
-        return savedStepInstance;
+        return tryAutoCompleteOnEntry(step, savedStepInstance);
+    }
+
+    /**
+     * The "assign course" step's skip-course-selection setting means "this step has nothing
+     * left to do for a subject who's already enrolled" -- so rather than making an admin open
+     * the step and hit Complete with an empty course picker just to get past it, complete it
+     * immediately on entry. Reuses the normal completion path (not a shortcut) so any OTHER
+     * mandatory field on the same step still blocks it exactly as a manual completion would --
+     * if that happens, this simply leaves the step IN_PROGRESS for a human to finish, same as if
+     * auto-complete had never been attempted.
+     */
+    private OnboardingStepInstance tryAutoCompleteOnEntry(OnboardingStep step, OnboardingStepInstance stepInstance) {
+        if (!isCreateStudentConfigured(step) || !skipCourseSelectionIfAlreadyEnrolled(step)) {
+            return stepInstance;
+        }
+        if (!onboardingStudentCreationService.subjectAlreadyHasActiveEnrollment(stepInstance)) {
+            return stepInstance;
+        }
+        try {
+            return submitStep(stepInstance.getId(), Map.of(), OnboardingRoleKey.ADMIN.name(), AUTO_COMPLETE_ACTOR, true);
+        } catch (Exception e) {
+            log.info("Could not auto-complete step {} (stepInstance {}) on entry despite an existing enrollment: {}",
+                    step.getId(), stepInstance.getId(), e.getMessage());
+            return stepInstance;
+        }
     }
 
     @Transactional
@@ -135,12 +161,23 @@ public class OnboardingStepInstanceService {
         OnboardingStep step = onboardingStepRepository.findById(stepInstance.getStepId())
                 .orElseThrow(() -> new ResourceNotFoundException("Onboarding step not found: " + stepInstance.getStepId()));
 
-        // Idempotent no-op on a step already finalized -- a double-click, client retry, or
-        // replayed request must not re-run side effects (credentials email isn't itself
-        // idempotent, and re-advancing would regress an already-COMPLETED next step back to
-        // IN_PROGRESS and re-fire its ONBOARDING_STEP_ENTERED trigger).
-        if (OnboardingStepInstanceStatus.COMPLETED.name().equals(stepInstance.getStatus())
-                || OnboardingStepInstanceStatus.SKIPPED.name().equals(stepInstance.getStatus())) {
+        boolean alreadyFinalized = OnboardingStepInstanceStatus.COMPLETED.name().equals(stepInstance.getStatus())
+                || OnboardingStepInstanceStatus.SKIPPED.name().equals(stepInstance.getStatus());
+        if (alreadyFinalized) {
+            if (!requireComplete) {
+                // A "save" (unlike "complete") is never itself a repeat of a prior call the
+                // client already saw succeed -- so silently discarding it here (as the
+                // idempotent-no-op path below does for completeStep) would report fake success
+                // for input that was actually never persisted. Surface it as a real error instead
+                // of a silent no-op, so the caller doesn't think their edit was saved when it
+                // wasn't (e.g. another actor completed/skipped this step in between).
+                throw new InvalidRequestException(
+                        "This step is already " + stepInstance.getStatus().toLowerCase() + " -- nothing more can be saved on it.");
+            }
+            // Idempotent no-op on a step already finalized -- a double-click, client retry, or
+            // replayed request must not re-run side effects (credentials email isn't itself
+            // idempotent, and re-advancing would regress an already-COMPLETED next step back to
+            // IN_PROGRESS and re-fire its ONBOARDING_STEP_ENTERED trigger).
             return stepInstance;
         }
 
@@ -485,6 +522,17 @@ public class OnboardingStepInstanceService {
         if (json == null || json.isBlank()) return false;
         try {
             JsonNode v = objectMapper.readTree(json).get("create_student");
+            return v != null && ("true".equalsIgnoreCase(v.asText()) || v.asBoolean(false));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean skipCourseSelectionIfAlreadyEnrolled(OnboardingStep step) {
+        String json = step.getStepTypeConfig();
+        if (json == null || json.isBlank()) return false;
+        try {
+            JsonNode v = objectMapper.readTree(json).get("skip_if_already_enrolled");
             return v != null && ("true".equalsIgnoreCase(v.asText()) || v.asBoolean(false));
         } catch (Exception e) {
             return false;

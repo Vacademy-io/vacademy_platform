@@ -30,7 +30,14 @@
   },
   "info": {
     "attendance": "Attendance overview",
+    "tests": "Test overview",
+    "liveClasses": "Upcoming classes",
     "fees": "Fees"
+  },
+  "nav": {
+    "home": "Home",
+    "ask": "Ask",
+    "studentView": "Student view"
   },
   "tiles": {
     "progress": "Progress",
@@ -57,7 +64,8 @@
     "logout": "Log out",
     "menu": "Account",
     "signedInAs": "Signed in as {{name}}",
-    "switchChild": "Switch child"
+    "switchChild": "Switch child",
+    "viewAsChild": "View {{name}}'s screen"
   },
   "search": {
     "placeholder": "Search — try 'attendance'"
@@ -78,13 +86,15 @@
     },
     "chat": {
       "title": "Ask a quick question",
-      "body": "Tap here any time to ask how your child is doing — attendance, fees, tests and more."
+      "body": "Tap here any time to ask how your child is doing — type your question or tap the mic to ask by voice."
     }
   },
   "chat": {
     "open": "Ask about your child",
     "title": "Quick answers",
     "greeting": "Hi! Tap a question to learn about {{name}}.",
+    "askTitle": "Ask me anything about {{name}}",
+    "askSubtitle": "Tap the button and speak in your own language.",
     "view": "View",
     "q": {
       "attendance": "How is attendance?",
@@ -103,7 +113,17 @@
       "testsNone": "No test results yet.",
       "progress": "{{name}} has completed {{percent}}% of lessons.",
       "progressNone": "See the Progress section for details."
-    }
+    },
+    "placeholder": "Ask about your child…",
+    "send": "Send",
+    "fallback": "I can help with attendance, fees, tests, progress and rewards — try asking about one of those.",
+    "thinking": "Thinking…",
+    "mic": "Ask by voice",
+    "listening": "Listening…",
+    "micCta": "Tap to speak",
+    "speak": "Listen",
+    "mute": "Mute voice",
+    "unmute": "Turn on voice"
   },
   "tone": {
     "good": "Going well",
@@ -128,7 +148,15 @@
     "statusOkay": "Okay",
     "statusLow": "Low",
     "emptyTitle": "No attendance yet",
-    "emptyBody": "Attendance will show here once classes begin."
+    "emptyBody": "Attendance will show here once classes begin.",
+    "daysAttended": "{{present}} of {{total}} days",
+    "graphTitle": "Attendance breakdown",
+    "presentDays": "Present",
+    "absentDays": "Absent",
+    "unmarkedDays": "Unmarked",
+    "streak": "Day streak",
+    "timeInClassTitle": "Time spent in class",
+    "attendedFor": "Attended {{duration}}"
   },
   "progress": {
     "summary": "{{name}} has completed {{percent}}% of their lessons.",
@@ -147,7 +175,11 @@
     "reportPendingTitle": "Report not ready yet",
     "reportPendingBody": "This detailed report is still being prepared. Please check back soon.",
     "emptyTitle": "No tests yet",
-    "emptyBody": "Test results will show here once {{name}} takes a test."
+    "emptyBody": "Test results will show here once {{name}} takes a test.",
+    "classAvg": "Class average {{value}}%",
+    "rank": "Rank {{value}}",
+    "percentile": "{{value}} percentile",
+    "accuracy": "{{value}}% accuracy"
   },
   "liveClasses": {
     "summary": "{{name}} has {{count}} class coming up.",
@@ -172,6 +204,8 @@
     "summary_other": "{{name}} has earned {{count}} badges.",
     "badge": "Badge",
     "emptyTitle": "No rewards yet",
-    "emptyBody": "Badges and points will show here as {{name}} learns."
+    "emptyBody": "Badges and points will show here as {{name}} learns.",
+    "points": "Points earned",
+    "rank": "Rank #{{value}}"
   }
 }

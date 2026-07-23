@@ -77,6 +77,7 @@ public class AttendanceReportService {
 
             String attendanceStatus = projection.getAttendanceStatus();
             dto.setAttendanceStatus(attendanceStatus);
+            dto.setDurationMinutes(projection.getDurationMinutes());
 
             if("PRESENT".equals(attendanceStatus)) {
                 presentCount++;

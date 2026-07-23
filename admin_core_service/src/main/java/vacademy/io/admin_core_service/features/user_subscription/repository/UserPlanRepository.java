@@ -190,6 +190,25 @@ public interface UserPlanRepository extends JpaRepository<UserPlan, String> {
         List<UserPlan> findAllByStatusIn(List<String> statuses);
 
         /**
+         * Institute-scoped variant of {@link #findAllByStatusIn}, used by the
+         * institute-gated renewal scheduler
+         * ({@code PackageSessionScheduler.processPackageSessionRenewals}) so the
+         * daily scan only ever loads plans belonging to institutes that opted in
+         * via PAYMENT_SETTING — never the whole user_plan table. EnrollInvite is
+         * fetched eagerly because downstream processing reads institute/invite
+         * data off it.
+         */
+        @Query("""
+                SELECT up FROM UserPlan up
+                JOIN FETCH up.enrollInvite ei
+                WHERE up.status IN :statuses
+                  AND ei.instituteId IN :instituteIds
+                """)
+        List<UserPlan> findAllByStatusInAndInstituteIdIn(
+                        @Param("statuses") List<String> statuses,
+                        @Param("instituteIds") List<String> instituteIds);
+
+        /**
          * Find active UserPlan for a sub-organization with payment plan loaded
          * Used to retrieve member count limits for sub-org enrollments
          */

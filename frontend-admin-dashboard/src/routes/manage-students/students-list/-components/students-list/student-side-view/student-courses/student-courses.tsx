@@ -237,12 +237,6 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
 
     return (
         <div className="flex flex-col gap-3">
-            {/* Enrollment workflow run(s) for this learner's enrolments — renders
-                nothing when no workflow is attached. */}
-            <EnrollmentWorkflowStatus
-                instituteId={instituteId}
-                packageSessionIds={learnerPackageSessionIds}
-            />
             {/* Hero stat grid — passive counters per handoff CoursesSection.
                 Click-to-filter has been dropped: the 3 sections below always
                 render, so these tiles are purely orientation/status read-outs. */}
@@ -399,6 +393,14 @@ export const StudentCourses = ({ isSubmissionTab, packageSessionId }: { isSubmis
                 page={pastPage}
                 totalPages={pastCourses?.totalPages || 0}
                 onPageChange={setPastPage}
+            />
+
+            {/* Enrollment workflow run(s) for this learner's enrolments — shown
+                after the course info per handoff; renders nothing when no
+                workflow is attached. */}
+            <EnrollmentWorkflowStatus
+                instituteId={instituteId}
+                packageSessionIds={learnerPackageSessionIds}
             />
 
             {/* Dialogs */}

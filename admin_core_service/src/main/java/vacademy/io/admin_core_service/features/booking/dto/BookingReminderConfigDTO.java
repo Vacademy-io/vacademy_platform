@@ -8,6 +8,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Serialized into {@code booking_page.reminder_config_json}.
@@ -29,4 +30,14 @@ public class BookingReminderConfigDTO {
 
     /** Minutes before the meeting to send reminders, e.g. [1440, 60]. */
     private List<Integer> beforeMeetingOffsetsMinutes;
+
+    // ── WhatsApp confirmation (used when channels contains WHATSAPP) ──
+    /** Approved Meta/WhatsApp template name to send on booking. */
+    private String whatsappTemplateName;
+    /** Template language code (e.g. "en"); defaults to "en" if blank. */
+    private String whatsappLanguageCode;
+    /** Map of template variable name -> source: a booking field key
+     *  ("invitee_name","meeting_datetime","meeting_date","meeting_time",
+     *  "meet_link","host_name","meeting_title","duration_minutes") or "static:<literal>". */
+    private Map<String, String> whatsappVariableMapping;
 }

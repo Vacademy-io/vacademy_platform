@@ -21,6 +21,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import {
+    AddressBook,
     ArrowsClockwise,
     ArrowsLeftRight,
     CalendarCheck,
@@ -76,6 +77,7 @@ import { useCallIntelligenceEnabled } from '@/components/shared/leads';
 // Inter-agent contract: the Calling tab module lives at exactly this path and
 // default-exports CallingTab(props: ReportTabProps). Built by a sibling agent.
 const CallingTab = lazy(() => import('./calling/CallingTab'));
+const LeadCallsTab = lazy(() => import('./calling/LeadCallsTab'));
 const CrmIntelligenceReportTab = lazy(() => import('./crm-intelligence-report-tab'));
 
 // ── Date helpers ───────────────────────────────────────────────────────
@@ -113,6 +115,7 @@ const ALL_AUDIENCES_VALUE = '__ALL_AUDIENCES__';
 const CAMPAIGN_FILTERABLE_TABS = new Set<string>([
     'overview',
     'sources',
+    'lead-calls',
     'funnel',
     'dispositions',
     'activity',
@@ -340,6 +343,10 @@ export function LeadReportsPage() {
                         <Phone size={14} weight="bold" />
                         Calling
                     </TabsTrigger>
+                    <TabsTrigger value="lead-calls" className="gap-1.5">
+                        <AddressBook size={14} weight="bold" />
+                        Lead Calls
+                    </TabsTrigger>
                     {callIntelligenceEnabled && (
                         <TabsTrigger value="call-intelligence" className="gap-1.5">
                             <Sparkle size={14} weight="bold" />
@@ -389,6 +396,11 @@ export function LeadReportsPage() {
                 <TabsContent value="calling">
                     <Suspense fallback={<ReportTabSkeleton />}>
                         <CallingTab {...tabProps} />
+                    </Suspense>
+                </TabsContent>
+                <TabsContent value="lead-calls">
+                    <Suspense fallback={<ReportTabSkeleton />}>
+                        <LeadCallsTab {...tabProps} />
                     </Suspense>
                 </TabsContent>
                 {callIntelligenceEnabled && (

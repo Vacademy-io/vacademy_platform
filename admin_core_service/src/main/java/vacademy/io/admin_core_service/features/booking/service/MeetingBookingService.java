@@ -25,6 +25,8 @@ import vacademy.io.admin_core_service.features.live_session.service.Step2Service
 import vacademy.io.admin_core_service.features.notification.dto.NotificationDTO;
 import vacademy.io.admin_core_service.features.notification.dto.NotificationToUserDTO;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
+import vacademy.io.admin_core_service.features.notification.dto.UnifiedSendRequest;
+import vacademy.io.admin_core_service.features.notification.util.PhoneCountryUtil;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.exceptions.VacademyException;
@@ -139,6 +141,7 @@ public class MeetingBookingService {
             instance = allocateMeetLink(instance, title, duration, timezone);
         }
         sendConfirmationEmail(instance, title, zone, reminderConfig);
+        sendConfirmationWhatsapp(instance, title, zone, reminderConfig);
 
         return toDTO(instance, Map.of(), page != null ? page.getTitle() : null);
     }
@@ -293,6 +296,103 @@ public class MeetingBookingService {
         } catch (Exception e) {
             log.error("Booking confirmation email failed for instance {}: {}", instance.getId(), e.getMessage());
         }
+    }
+
+    /**
+     * WhatsApp confirmation on booking, sent through the unified send path with the
+     * institute's chosen approved template. Best-effort (like the email): a missing
+     * template / phone / provider error is logged and never fails the booking. Runs
+     * post-persist. Covers BOTH booking-page bookings and AI-call auto-bookings, since
+     * both flow through createBooking with the page's reminder config.
+     */
+    private void sendConfirmationWhatsapp(BookingInstance instance, String title, ZoneId zone,
+                                          BookingReminderConfigDTO config) {
+        boolean enabled = config == null || !Boolean.FALSE.equals(config.getOnBookingConfirmation());
+        List<String> channels = config != null && config.getChannels() != null
+                ? config.getChannels() : List.of();
+        if (!enabled || !channels.contains("WHATSAPP")) return;
+        if (config == null || config.getWhatsappTemplateName() == null
+                || config.getWhatsappTemplateName().isBlank()) {
+            log.info("Booking {} has WHATSAPP channel but no template configured — skipping WA confirmation",
+                    instance.getId());
+            return;
+        }
+        String phone = instance.getInviteePhone();
+        if (phone == null || phone.isBlank()) {
+            log.info("Booking {} WHATSAPP confirmation skipped — invitee has no phone", instance.getId());
+            return;
+        }
+        try {
+            java.util.Map<String, String> resolved = resolveWhatsappVariables(instance, title, zone, config);
+            String normalized = PhoneCountryUtil.normalizePhone(phone, true);
+            UnifiedSendRequest.Recipient recipient = UnifiedSendRequest.Recipient.builder()
+                    .phone(normalized)
+                    .userId(instance.getInviteeUserId())
+                    .name(firstNonBlank(instance.getInviteeName(), "there", null))
+                    .variables(resolved)
+                    .build();
+            UnifiedSendRequest req = UnifiedSendRequest.builder()
+                    .instituteId(instance.getInstituteId())
+                    .channel("WHATSAPP")
+                    .templateName(config.getWhatsappTemplateName())
+                    .languageCode(firstNonBlank(config.getWhatsappLanguageCode(), "en", "en"))
+                    .recipients(List.of(recipient))
+                    .build();
+            notificationService.sendUnified(req);
+            log.info("Booking {} WHATSAPP confirmation sent via template {}",
+                    instance.getId(), config.getWhatsappTemplateName());
+        } catch (Exception e) {
+            log.error("Booking {} WHATSAPP confirmation failed: {}", instance.getId(), e.getMessage());
+        }
+    }
+
+    /** Resolve each mapped template variable to a value from the booking. */
+    private java.util.Map<String, String> resolveWhatsappVariables(
+            BookingInstance instance, String title, ZoneId zone, BookingReminderConfigDTO config) {
+        java.util.Map<String, String> out = new java.util.HashMap<>();
+        java.util.Map<String, String> mapping = config.getWhatsappVariableMapping();
+        if (mapping == null || mapping.isEmpty()) return out;
+
+        java.time.ZonedDateTime when = instance.getScheduledStartUtc().toInstant().atZone(zone);
+        String dateStr = when.format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
+        String timeStr = when.format(DateTimeFormatter.ofPattern("HH:mm")) + " (" + zone.getId() + ")";
+        String dateTimeStr = when.format(DateTimeFormatter.ofPattern("EEE, dd MMM yyyy 'at' HH:mm"))
+                + " (" + zone.getId() + ")";
+        long durationMin = instance.getScheduledEndUtc() != null
+                ? java.time.Duration.between(instance.getScheduledStartUtc().toInstant(),
+                        instance.getScheduledEndUtc().toInstant()).toMinutes() : 0;
+
+        String hostName = null;
+        boolean needsHost = mapping.values().stream().anyMatch(v -> "host_name".equals(v));
+        if (needsHost) {
+            try {
+                hostName = authService.getUsersFromAuthServiceByUserIds(List.of(instance.getHostUserId()))
+                        .stream().findFirst().map(u -> u.getFullName()).orElse(null);
+            } catch (Exception ignore) { /* host name is optional */ }
+        }
+
+        for (java.util.Map.Entry<String, String> e : mapping.entrySet()) {
+            String var = e.getKey();
+            String src = e.getValue() == null ? "" : e.getValue().trim();
+            String val;
+            if (src.startsWith("static:")) {
+                val = src.substring("static:".length());
+            } else {
+                switch (src) {
+                    case "invitee_name": val = firstNonBlank(instance.getInviteeName(), "there", "there"); break;
+                    case "meeting_title": val = title != null ? title : "your meeting"; break;
+                    case "meeting_datetime": val = dateTimeStr; break;
+                    case "meeting_date": val = dateStr; break;
+                    case "meeting_time": val = timeStr; break;
+                    case "meet_link": val = firstNonBlank(instance.getMeetLink(), "", ""); break;
+                    case "host_name": val = firstNonBlank(hostName, "our team", "our team"); break;
+                    case "duration_minutes": val = String.valueOf(durationMin); break;
+                    default: val = ""; // unmapped/unknown -> empty (Meta rejects nulls)
+                }
+            }
+            out.put(var, val == null ? "" : val);
+        }
+        return out;
     }
 
     private static NotificationToUserDTO recipient(String email, String userId, String name) {

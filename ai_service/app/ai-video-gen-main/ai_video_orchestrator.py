@@ -451,8 +451,12 @@ def orchestrate_ai_video_shot(
         )
 
     # ── Circuit-breaker reservation ──────────────────────────────────
+    # Reserve at the SELECTED model's rate, not lite's — full Veo is ~7x
+    # lite, so pricing the reservation at lite would let the cap overspend.
+    _veo_model = getattr(veo_client, "_model", None)
     expected_cost = price_per_call_usd(
         resolution=resolution, duration_s=duration_s, audio_on=audio_on,
+        model=_veo_model,
     )
     if cost_tracker is not None:
         try:
@@ -1029,8 +1033,12 @@ def orchestrate_ai_video_chain(
     # the whole budget atomically — if we can't, fail fast WITHOUT making
     # any Veo calls. This avoids the "half a chain shipped before cap
     # tripped" outcome.
+    _chain_model = getattr(veo_client, "_model", None)
     per_seg_costs = [
-        price_per_call_usd(resolution=resolution, duration_s=seg["duration_s"], audio_on=audio_on)
+        price_per_call_usd(
+            resolution=resolution, duration_s=seg["duration_s"],
+            audio_on=audio_on, model=_chain_model,
+        )
         for seg in segments_spec
     ]
     total_cost = sum(per_seg_costs)

@@ -74,6 +74,10 @@ interface EnrollInviteData {
   institute_id: string;
   type: string; // e.g., 'ENROLL_INVITE'
   type_id: string;
+  // Per-form field order on the mapping row (institute_custom_fields.individual_order).
+  // This is the order the admin sets for THIS invite; the nested master formOrder is
+  // shared across every form and must not drive per-form ordering.
+  individual_order?: number | null;
   custom_field: CustomField;
 }
 
@@ -203,7 +207,10 @@ export function convertInviteCustomFields(
       id: field.id,
       field_name: field.fieldName,
       field_key: field.fieldKey,
-      field_order: field.formOrder,
+      // Prefer the per-form mapping order (individual_order); fall back to the shared
+      // master formOrder only when the mapping order is null. `??` (not `||`) so order 0
+      // is respected. Mirrors the audience-response form fix.
+      field_order: item.individual_order ?? field.formOrder,
       comma_separated_options:
         field.fieldType === "dropdown"
           ? (() => {

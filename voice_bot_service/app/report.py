@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from zoneinfo import ZoneInfo
 import logging
 import re
 from typing import Any, Dict, List, Optional
@@ -62,15 +63,36 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
     if not transcript.strip():
         return {"disposition": "Incomplete", "summary": "No conversation captured.",
                 "leadRating": None, "extractedQa": {}, "callbackRequested": False,
-                "callbackTimeText": None}
+                "callbackTimeText": None, "meetingRequested": False,
+                "meetingDatetimeIso": None, "meetingDatetimeText": None, "meetingType": None}
+
+    # Current date/time so the analyser can resolve relative dates spoken on the call
+    # ("tomorrow 3pm", "day after") into a concrete ISO instant. Same tz convention as
+    # the live prompt (agent tz, default Asia/Kolkata).
+    tzname = (agent.get("timezone") or outcome.context.get("timezone") or "Asia/Kolkata").strip()
+    try:
+        now = dt.datetime.now(ZoneInfo(tzname))
+    except Exception:
+        tzname, now = "Asia/Kolkata", dt.datetime.now(ZoneInfo("Asia/Kolkata"))
+    now_stamp = now.strftime("%A, %-d %B %Y, %-I:%M %p")
+    now_offset = now.strftime("%z")
+    now_offset = f"{now_offset[:3]}:{now_offset[3:]}" if now_offset else "+05:30"
 
     prompt = (
         "You analyse a phone call transcript between an assistant and a caller.\n"
+        f"RIGHT NOW it is {now_stamp} ({tzname}, UTC offset {now_offset}). Use this to resolve any "
+        "relative day the caller mentioned into an exact date.\n"
         f"Return STRICT JSON with keys: disposition (one of {dispositions}), "
         "summary (2-3 sentences), leadRating (integer 1-10 interest score or null), "
         "extractedQa (object: question -> answer, only what was actually said"
         + (f"; questions of interest: {questions}" if questions else "")
-        + "), callbackRequested (boolean), callbackTimeText (string or null).\n\n"
+        + "), callbackRequested (boolean), callbackTimeText (string or null), "
+        "meetingRequested (boolean: true ONLY if the caller AGREED to a scheduled meeting, demo, "
+        "visit or callback at a specific day/time — not vague 'maybe later'), "
+        "meetingDatetimeIso (ISO 8601 with offset for the agreed meeting time resolved from RIGHT "
+        f"NOW, e.g. '2026-07-23T15:00:00{now_offset}', or null if none agreed), "
+        "meetingDatetimeText (the caller's own words for the time, e.g. 'tomorrow 3 pm', or null), "
+        "meetingType (short label: 'demo' | 'visit' | 'call' | 'meeting', or null).\n\n"
         f"Transcript:\n{transcript}\n\nJSON:"
     )
     base_url, api_key, model = _llm_target(s)
@@ -139,6 +161,11 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
         "extractedQa": analysis.get("extractedQa") or {},
         "callbackRequested": bool(analysis.get("callbackRequested")),
         "callbackTimeText": analysis.get("callbackTimeText"),
+        # Meeting intent → admin_core auto-books on the agent's linked booking page.
+        "meetingRequested": bool(analysis.get("meetingRequested")),
+        "meetingDatetimeIso": analysis.get("meetingDatetimeIso"),
+        "meetingDatetimeText": analysis.get("meetingDatetimeText"),
+        "meetingType": analysis.get("meetingType"),
         "transferAttempted": outcome.transfer_requested,
         "transferStatus": "registered" if outcome.transfer_registered
                           else ("failed" if outcome.transfer_requested else None),

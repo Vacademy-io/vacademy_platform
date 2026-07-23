@@ -322,6 +322,8 @@ export const GET_LEAD_FOLLOWUPS = (audienceResponseId: string) =>
     `${FOLLOWUP_BASE}/${audienceResponseId}`;
 export const CREATE_LEAD_FOLLOWUP = FOLLOWUP_BASE;
 export const CLOSE_LEAD_FOLLOWUP = (id: string) => `${FOLLOWUP_BASE}/${id}/close`;
+// Caller's own open follow-ups (no instituteId → backend scopes to created_by=caller).
+export const MY_PENDING_LEAD_FOLLOWUPS = `${FOLLOWUP_BASE}/my-pending`;
 export const UPDATE_LEAD_FOLLOWUP = (id: string) => `${FOLLOWUP_BASE}/${id}`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 export const SUBMIT_AUDIENCE_LEAD_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;
@@ -401,6 +403,7 @@ export const BATCHES_SUMMARY = `${BASE_URL}/admin-core-service/institute/v1/batc
 export const ADMIN_DETAILS_URL = `${BASE_URL}/auth-service/v1/user-details/get`;
 export const GET_STUDENTS = `${BASE_URL}/admin-core-service/institute/institute_learner/get/v2/all`;
 export const GET_CONTACTS_LIST = `${BASE_URL}/admin-core-service/v1/audience/distinct-institute-users-and-audience`;
+export const GET_CONTACT_CUSTOM_FIELD_VALUES = `${BASE_URL}/admin-core-service/v1/audience/contact-custom-field-values`;
 export const GET_ASSESSMENT_DETAILS = `${BASE_URL}/assessment-service/assessment/create/v1/status`;
 export const GET_STUDENTS_CSV = `${BASE_URL}/admin-core-service/institute/institute_learner/get/v1/all-csv`;
 
@@ -1031,6 +1034,7 @@ export const SUB_ORG_REGISTRATION_TEMPLATE_DETAIL = (templateId: string) =>
 export const SUB_ORG_REGISTRATION_TEMPLATE_UPDATE = (templateId: string) =>
     `${SUB_ORG_REGISTRATION_BASE}/template/${templateId}`;
 export const SUB_ORG_REGISTRATION_REGISTRATIONS = `${SUB_ORG_REGISTRATION_BASE}/registrations`;
+export const SUB_ORG_REGISTRATION_REGISTRATION_FACETS = `${SUB_ORG_REGISTRATION_BASE}/registrations/facets`;
 // Invoices
 export const GET_INVOICES_BY_USER = (userId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/user/${userId}`;
@@ -1157,6 +1161,7 @@ export const GRANT_USER_ACCESS = `${BASE_URL}/admin-core-service/institute/v1/fa
 export const GET_ALL_FACULTY_V2 = `${BASE_URL}/admin-core-service/institute/v1/faculty/faculty/get-all`;
 export const CREATE_SUB_ORG = `${BASE_URL}/admin-core-service/institute/v1/sub-org/create`;
 export const GET_SUB_ORGS = `${BASE_URL}/admin-core-service/institute/v1/sub-org/get-all`;
+export const GET_SUB_ORGS_WITH_DETAILS = `${BASE_URL}/admin-core-service/institute/v1/sub-org/get-all-with-details`;
 export const CREATE_SUB_ORG_WITH_SUBSCRIPTION = `${BASE_URL}/admin-core-service/institute/v1/sub-org/create-with-subscription`;
 export const GET_SUB_ORG_SCOPED_INVITES = `${BASE_URL}/admin-core-service/institute/v1/sub-org/scoped-invites`;
 export const GET_SUB_ORG_SEAT_USAGE = `${BASE_URL}/admin-core-service/institute/v1/sub-org/seat-usage`;

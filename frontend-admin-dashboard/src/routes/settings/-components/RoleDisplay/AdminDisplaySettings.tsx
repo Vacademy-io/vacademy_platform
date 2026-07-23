@@ -31,7 +31,7 @@ import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/
 import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/admin-defaults';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { LearnerListColumnsCard } from './LearnerListColumnsCard';
-import { LeadsFilterCustomFieldsCard } from './LeadsFilterCustomFieldsCard';
+import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { toast } from 'sonner';
 import {
@@ -2099,18 +2099,23 @@ export default function AdminDisplaySettings() {
                 }
             />
 
-            {/* Institute-wide (applies to all roles): which custom fields are leads
-                filters on the Lead List / Recent Leads. Persisted with the rest of
-                this blob via the shared unsaved-changes bar. */}
-            <LeadsFilterCustomFieldsCard
-                value={settings.leadsFilterCustomFields ?? []}
-                onChange={(next) =>
-                    updateSettings((prev) => ({
-                        ...prev,
-                        leadsFilterCustomFields: next,
-                    }))
-                }
-            />
+            {/* Institute-wide (applies to all roles): which custom fields are
+                filter/sort controls on the Leads, All Contacts and Students list
+                pages. Replaces the leads-only card; the LEADS surface seeds from
+                the legacy leadsFilterCustomFields key until saved here. Persisted
+                with the rest of this blob via the shared unsaved-changes bar. */}
+            <div id="list-custom-field-controls">
+                <ListCustomFieldControlsCard
+                    value={settings.listCustomFieldControls}
+                    legacyLeadsFields={settings.leadsFilterCustomFields ?? []}
+                    onChange={(next) =>
+                        updateSettings((prev) => ({
+                            ...prev,
+                            listCustomFieldControls: next,
+                        }))
+                    }
+                />
+            </div>
 
             <Card>
                 <CardHeader>

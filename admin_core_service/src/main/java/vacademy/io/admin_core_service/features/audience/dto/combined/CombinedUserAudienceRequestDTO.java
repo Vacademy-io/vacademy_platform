@@ -40,9 +40,19 @@ public class CombinedUserAudienceRequestDTO {
     private List<String> paymentStatuses;
     private List<String> subOrgUserTypes;
 
+    // Custom-field filters — same wire shape as the leads endpoint:
+    // [{field_id, values}], OR within a field, AND across fields. A contact
+    // matches when EITHER their learner (USER) answer or any of their lead
+    // (AUDIENCE_RESPONSE) answers holds one of the values.
+    private List<vacademy.io.admin_core_service.features.common.dto.CustomFieldListFilterDTO> customFieldFilters;
+
     // Pagination
     private Integer page;
     private Integer size;
     private String sortBy;
     private String sortDirection;
+    // When set: sort contacts by this custom field's value (latest learner
+    // answer, falling back to the latest lead answer). Numeric-aware; contacts
+    // without an answer sort last. sortDirection applies (default DESC).
+    private String sortCustomFieldId;
 }

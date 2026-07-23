@@ -2,6 +2,7 @@ import { toast } from 'sonner';
 import {
     checkForOtaUpdate,
     downloadAndApplyUpdate,
+    getOtaUpdateMode,
     notifyUpdateSuccess,
 } from '@/services/ota-update';
 import { useOtaUpdate } from '@/stores/useOtaUpdate';
@@ -27,7 +28,32 @@ export async function initSelfHostedOTA(): Promise<void> {
         const result = await checkForOtaUpdate();
         if (!result.update_available || !result.bundle_download_url) return;
 
-        const { setOtaUpdate, setOtaDownloading } = useOtaUpdate.getState();
+        const { setOtaUpdate, setOtaDownloading, setOtaAutoUpdating } =
+            useOtaUpdate.getState();
+
+        // AUTO mode (fleet default): show a non-dismissible "Updating app…"
+        // loader dialog, then download + apply the bundle in place. Runs at
+        // launch only, so the set() reload never interrupts mid-session work.
+        // Applies for both optional and force updates. Falls through to banner
+        // mode if the backend omitted version/checksum (can't apply without them).
+        const mode = await getOtaUpdateMode();
+        if (mode === 'auto' && result.version && result.checksum) {
+            try {
+                setOtaAutoUpdating(true, result.version);
+                await downloadAndApplyUpdate(
+                    result.bundle_download_url,
+                    result.version,
+                    result.checksum
+                );
+                // set() reloads the app — code below only runs if it doesn't.
+                setOtaAutoUpdating(false);
+            } catch {
+                setOtaAutoUpdating(false);
+            }
+            return;
+        }
+
+        // BANNER mode: dismissible banner (optional) or blocking overlay (force).
         setOtaUpdate({
             otaUpdateAvailable: true,
             otaVersion: result.version ?? null,

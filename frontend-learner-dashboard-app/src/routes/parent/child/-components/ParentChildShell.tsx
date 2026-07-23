@@ -72,7 +72,8 @@ export function ParentChildShell({ childId, backTo = "home", children }: ParentC
         </div>
       </header>
 
-      <main className="px-4 py-4">{children}</main>
+      {/* pb clears the fixed bottom navigation (Home · bot · student view) */}
+      <main className="px-4 pb-28 pt-4">{children}</main>
 
       <ParentChatbot childId={childId} childName={childName} />
     </div>

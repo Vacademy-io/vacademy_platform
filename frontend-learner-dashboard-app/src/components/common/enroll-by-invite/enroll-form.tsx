@@ -3045,11 +3045,11 @@ const EnrollByInvite = ({
             <div className="flex flex-col sm:flex-row sm:items-center gap-4">
               {/* Course Thumbnail */}
               {courseData.courseBanner && (
-                <div className="w-full sm:w-32 h-20 rounded-md overflow-hidden bg-gray-100 flex-shrink-0">
+                <div className="w-full sm:w-48 rounded-md overflow-hidden flex-shrink-0">
                   <img
                     src={courseData.courseBanner}
                     alt={courseData.course}
-                    className="w-full h-full object-cover"
+                    className="w-full h-auto object-cover"
                   />
                 </div>
               )}
@@ -3212,7 +3212,7 @@ const EnrollByInvite = ({
         >
           {/* Main Form Area */}
           <div
-            className={`${isWideLayout ? "lg:col-span-2" : "w-full"} space-y-4`}
+            className={`${isWideLayout ? "lg:col-span-2 lg:sticky lg:top-20 lg:self-start" : "w-full"} space-y-4`}
           >
             {/* Step Content */}
             {renderCurrentStep()}
@@ -3392,7 +3392,7 @@ const EnrollByInvite = ({
           {/* Sidebar - Course Details */}
           {hasRightSectionContent && currentStep === 0 && (
             <div className="lg:col-span-1">
-              <div className="bg-white border border-gray-200 rounded-lg p-4 lg:sticky lg:top-20">
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
                 <CourseInfoCard
                   courseData={{
                     ...courseData,

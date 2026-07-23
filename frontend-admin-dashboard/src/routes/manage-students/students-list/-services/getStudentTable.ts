@@ -61,6 +61,15 @@ export const useStudentList = (
                           {} as Record<string, string[]>
                       )
                 : {},
+            // Typed (operator-aware) custom-field filters — stable ordering by
+            // field, operator, then values.
+            custom_field_typed_filters: (filters.custom_field_typed_filters ?? [])
+                .map((f) => ({ ...f, values: [...f.values].sort() }))
+                .sort((a, b) =>
+                    `${a.field_id}:${a.operator ?? 'IN'}`.localeCompare(
+                        `${b.field_id}:${b.operator ?? 'IN'}`
+                    )
+                ),
         });
     }, [filters]);
 

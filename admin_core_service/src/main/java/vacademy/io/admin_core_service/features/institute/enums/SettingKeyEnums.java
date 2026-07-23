@@ -25,5 +25,11 @@ public enum SettingKeyEnums {
     // Institute-level language/i18n preferences (default locale, enabled
     // locales) — tags must come from vacademy.io.common.core.i18n.LocaleRegistry.
     // Read/write handled by GenericSettingStrategy like any other key.
-    LANGUAGE_SETTING
+    LANGUAGE_SETTING,
+    // Institute-level payment behaviour. Currently carries
+    // packageSessionRenewalSchedulerEnabled (default false): opts the institute
+    // into the daily enrolment-policy expiry/renewal scan
+    // (PackageSessionScheduler.processPackageSessionRenewals). Read/write via
+    // GenericSettingStrategy; absence of the key means everything stays off.
+    PAYMENT_SETTING
 }

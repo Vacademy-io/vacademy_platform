@@ -42,7 +42,7 @@ public class ParentPortalSettingService {
                 .enabled(false)
                 .modules(new LinkedHashMap<>(DEFAULT_MODULES))
                 .reportAccess("COMPLETED_ONLY")
-                .allowViewAsChild(false)
+                .allowViewAsChild(true)
                 .allowSwitchToParentView(true)
                 .build();
         try {
@@ -73,7 +73,7 @@ public class ParentPortalSettingService {
                     .enabled(pp.path("enabled").asBoolean(false))
                     .modules(modules)
                     .reportAccess(pp.path("reportAccess").asText("COMPLETED_ONLY"))
-                    .allowViewAsChild(pp.path("allowViewAsChild").asBoolean(false))
+                    .allowViewAsChild(pp.path("allowViewAsChild").asBoolean(true))
                     .allowSwitchToParentView(pp.path("allowSwitchToParentView").asBoolean(true))
                     .build();
         } catch (Exception e) {
@@ -87,6 +87,15 @@ public class ParentPortalSettingService {
         ParentPortalSettingsDTO settings = getSettings(instituteId);
         if (!settings.isEnabled()) {
             throw new ForbiddenException("Parent portal is not enabled for this institute");
+        }
+        return settings;
+    }
+
+    /** Throws 403 unless the portal is enabled AND "view as my child" is turned on. */
+    public ParentPortalSettingsDTO requireViewAsChild(String instituteId) {
+        ParentPortalSettingsDTO settings = requireEnabled(instituteId);
+        if (!settings.isAllowViewAsChild()) {
+            throw new ForbiddenException("Viewing as the child is not enabled for this institute");
         }
         return settings;
     }

@@ -88,8 +88,13 @@ public class LeadFilterDTO {
     // Pagination
     private Integer page;
     private Integer size;
-    private String sortBy;                  // SUBMITTED_AT, LEAD_SCORE, LEAD_TIER, STATUS, PARENT_NAME
+    private String sortBy;                  // SUBMITTED_AT, LEAD_SCORE, LEAD_TIER, STATUS, PARENT_NAME, CUSTOM_FIELD
     private String sortDirection;           // ASC, DESC
+    // When sortBy = CUSTOM_FIELD: the custom_field_id to sort by. The latest
+    // AUDIENCE_RESPONSE-scoped answer per lead is the sort key — numeric-aware
+    // (numeric-looking values order numerically, everything else as text),
+    // rows without an answer sort last.
+    private String sortCustomFieldId;
 
     @Data
     @NoArgsConstructor
@@ -97,6 +102,11 @@ public class LeadFilterDTO {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class CustomFieldFilter {
         private String fieldId;
+        // Optional operator: IN (default) | CONTAINS | IS_EMPTY | NOT_EMPTY |
+        // BETWEEN | GTE | LTE. See CustomFieldListFilterDTO for semantics —
+        // this mirrors that shared shape so every list surface accepts the
+        // same payload.
+        private String operator;
         // Selected values for this field (multi-select). A response matches the
         // field when ANY of these values is present (OR within the field).
         private java.util.List<String> values;

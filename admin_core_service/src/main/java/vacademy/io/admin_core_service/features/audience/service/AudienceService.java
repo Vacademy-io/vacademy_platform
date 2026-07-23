@@ -111,6 +111,9 @@ public class AudienceService {
     private CustomFieldValuesRepository customFieldValuesRepository;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver customFieldListFilterResolver;
+
+    @Autowired
     private AuthService authService;
 
     @Autowired
@@ -132,6 +135,10 @@ public class AudienceService {
     /** Resolves caller + user-to-user descendants in the leads team. */
     @Autowired
     private vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService counsellorScopeService;
+
+    /** Resolves a sub-org admin's lead scope (their sub-org's members) — see getLeads. */
+    @Autowired
+    private vacademy.io.admin_core_service.features.suborg.service.SubOrgLeadScopeService subOrgLeadScopeService;
 
     @Autowired
     private InstituteCustomFieldRepository instituteCustomFieldRepository;
@@ -194,6 +201,14 @@ public class AudienceService {
     /** Synthesizes / detects non-deliverable placeholder emails for emailless webhook leads. */
     @Autowired
     private PlaceholderEmailService placeholderEmailService;
+
+    /**
+     * Recipient count above which an audience send is queued as a durable batch on
+     * notification-service instead of sent inline. Inline sends loop one provider
+     * call per recipient; past this size they risk exceeding InternalClientUtils'
+     * 30s read timeout (spurious 510 while delivery continues server-side).
+     */
+    private static final int ASYNC_SEND_THRESHOLD = 10;
 
     public List<String> getConvertedUserIdsByCampaign(String audienceId, String instituteId) {
         logger.info("Getting converted user IDs for campaign: {} (institute: {})", audienceId, instituteId);
@@ -2418,6 +2433,34 @@ public class AudienceService {
             return LeadCounsellorOptionsDTO.builder().scoped(false).counsellors(List.of()).build();
         }
 
+        // Sub-org admin: scope the counsellor roster to their sub-org, consistent
+        // with the sub-org-scoped leads in getLeads. Detected by the ACTIVE SUB_ORG
+        // FSPSSM linkage (a sub-org admin also holds the parent ADMIN role and would
+        // otherwise get the full institute roster). This one branch covers BOTH the
+        // filter dropdown (assignable=false) and the assignment pickers
+        // (assignable=true), so a sub-org admin can neither filter by nor assign to
+        // counsellors outside their sub-org. scoped=true tells the frontend the
+        // roster is narrowed server-side.
+        List<String> subOrgMembers = subOrgLeadScopeService
+                .subOrgScopedCounsellorUserIds(caller.getUserId());
+        if (!subOrgMembers.isEmpty()) {
+            // Show only the sub-org's actual COUNSELLORS — not the sub-org admin
+            // themselves or other non-counsellor team members (teachers, etc.).
+            // Intersect the sub-org members with the institute's COUNSELLOR-role
+            // roster. Fall back to the full member set only if that intersection is
+            // empty, so a sub-org whose counsellors don't yet carry the COUNSELLOR
+            // role still gets a usable picker rather than an empty dropdown.
+            Set<String> counsellorRoster = new HashSet<>(
+                    counsellorScopeService.allCounsellorUserIds(instituteId));
+            List<String> subOrgCounsellors = subOrgMembers.stream()
+                    .filter(counsellorRoster::contains)
+                    .collect(Collectors.toList());
+            List<String> rosterIds = subOrgCounsellors.isEmpty() ? subOrgMembers : subOrgCounsellors;
+            List<vacademy.io.common.auth.dto.UserDTO> subOrgUsers =
+                    authService.getUsersFromAuthServiceByUserIds(rosterIds);
+            return LeadCounsellorOptionsDTO.builder().scoped(true).counsellors(subOrgUsers).build();
+        }
+
         boolean scoped = counsellorScopeService.isScopedCaller(instituteId, caller);
         // assignable=true resolves ASSIGNMENT targets (bulk-assign dialog,
         // telephony/IVR routing config): ADMIN-role callers get the
@@ -2480,7 +2523,32 @@ public class AudienceService {
         // sending assignedCounselorId.
         String assignedCounselorIdsCsv = null;
         boolean rbacApplied = false;
+
+        // Sub-org admin scoping (highest precedence). A sub-org admin is ALSO
+        // granted the parent institute's ADMIN role, so without this they'd
+        // resolve to DEFAULT above and see the entire parent lead pool. Detection
+        // is by ACTIVE SUB_ORG FSPSSM linkage (SubOrgLeadScopeService) — the only
+        // reliable fingerprint, since by role they're indistinguishable from a
+        // true institute admin. We hard-scope their visible leads to the members
+        // of the sub-org(s) they administer, reusing the same assignedCounselorIdsCsv
+        // filter the counsellor-hierarchy RBAC below uses. The member set always
+        // includes the admin themselves, so a non-empty result also means "is a
+        // sub-org admin"; an empty result means a normal admin/user and this
+        // branch is a no-op that preserves the pre-existing behaviour exactly.
+        boolean subOrgScopeApplied = false;
         if (user != null && user.getUserId() != null
+                && filterDTO.getInstituteId() != null
+                && !filterDTO.getInstituteId().isBlank()) {
+            List<String> subOrgScope = subOrgLeadScopeService
+                    .subOrgScopedCounsellorUserIds(user.getUserId());
+            if (!subOrgScope.isEmpty()) {
+                assignedCounselorIdsCsv = String.join(",", subOrgScope);
+                rbacApplied = true;
+                subOrgScopeApplied = true;
+            }
+        }
+
+        if (!subOrgScopeApplied && user != null && user.getUserId() != null
                 && filterDTO.getInstituteId() != null
                 && !filterDTO.getInstituteId().isBlank()) {
             String instituteId = filterDTO.getInstituteId();
@@ -2512,7 +2580,10 @@ public class AudienceService {
         // we drop unassigned leads (no counsellor on either linked_users or
         // user_lead_profile) from the result; any other mode keeps them visible
         // to anyone in scope, as before.
-        boolean includeUnassigned = access.getMode() != Mode.COUNSELOR;
+        // A sub-org admin sees ONLY leads assigned to their sub-org's members;
+        // the shared unassigned pool belongs to the parent institute, so it is
+        // excluded from their view alongside the COUNSELOR-mode exclusion.
+        boolean includeUnassigned = access.getMode() != Mode.COUNSELOR && !subOrgScopeApplied;
 
         String allowedAudienceIdsCsv = null;
         if (access.getMode() == Mode.AUDIENCE_LIST) {
@@ -2584,15 +2655,16 @@ public class AudienceService {
         // using one indexed lookup per field (intersected across fields). This
         // replaces a per-row correlated jsonb subquery that scanned
         // custom_field_values for every candidate lead and timed out on the
-        // institute-wide Recent Leads query. null = no filter; empty list =
-        // filters set but nothing matches → short-circuit to an empty page.
-        List<String> customFieldMatchedIds =
-                resolveCustomFieldMatchedResponseIds(filterDTO.getCustomFieldFilters());
-        if (customFieldMatchedIds != null && customFieldMatchedIds.isEmpty()) {
+        // institute-wide Recent Leads query. Positive operators produce the
+        // matched set (null = no filter; empty = nothing matches → empty page);
+        // IS_EMPTY entries produce an exclusion set.
+        vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution
+                cfResolution = resolveCustomFieldFilters(filterDTO.getCustomFieldFilters());
+        if (cfResolution.shortCircuitsToEmpty()) {
             return Page.empty(pageable);
         }
-        String customFieldMatchedIdsCsv =
-                customFieldMatchedIds == null ? null : String.join(",", customFieldMatchedIds);
+        String customFieldMatchedIdsCsv = cfResolution.matchedIdsCsv();
+        String customFieldExcludedIdsCsv = cfResolution.excludedIdsCsv();
 
         // Cross-audience path: when no audienceId is supplied, return leads
         // across every campaign in the institute. Used by the "Recent Leads"
@@ -2619,9 +2691,11 @@ public class AudienceService {
                     filterDTO.getSlaFilter(),
                     filterTatHours,
                     customFieldMatchedIdsCsv,
+                    customFieldExcludedIdsCsv,
                     filterDTO.getCallHistoryFilter(),
                     filterDTO.getSortBy(),
                     filterDTO.getSortDirection(),
+                    filterDTO.getSortCustomFieldId(),
                     pageable);
             return mapResponsesToLeadDetails(all, filterDTO.getInstituteId());
         }
@@ -2645,6 +2719,7 @@ public class AudienceService {
                 filterDTO.getIsUnassigned(),
                 overallStatusStr,
                 customFieldMatchedIdsCsv,
+                customFieldExcludedIdsCsv,
                 filterDTO.getCallHistoryFilter(),
                 conversionStatusFilter,
                 audienceStatusFilter,
@@ -2652,6 +2727,7 @@ public class AudienceService {
                 filterTatHours,
                 filterDTO.getSortBy(),
                 filterDTO.getSortDirection(),
+                filterDTO.getSortCustomFieldId(),
                 pageable);
 
         // Resolve the institute for SLA-deadline computation: the filter usually
@@ -2668,50 +2744,23 @@ public class AudienceService {
     }
 
     /**
-     * Resolves the audience_response IDs that match the custom-field filters:
-     * for each field, the response IDs whose stored value is one of the selected
-     * values (OR within a field), intersected across fields (AND across fields).
-     * Each field is one indexed lookup, so this scales far better than a per-row
-     * correlated subquery in the leads query.
-     *
-     * @return {@code null} when there are no usable filters (predicate disabled);
-     *         an empty list when filters are set but nothing matches (caller
-     *         short-circuits to an empty page); otherwise the matched IDs.
+     * Resolves the leads custom-field filters (now operator-aware: IN, CONTAINS,
+     * IS_EMPTY, NOT_EMPTY, BETWEEN, GTE, LTE) through the shared
+     * CustomFieldListFilterResolver against AUDIENCE_RESPONSE answers. Positive
+     * operators intersect into a matched response-ID set; IS_EMPTY entries
+     * produce an exclusion set the leads queries apply as NOT-IN.
      */
-    private List<String> resolveCustomFieldMatchedResponseIds(
-            List<LeadFilterDTO.CustomFieldFilter> filters) {
-        if (filters == null || filters.isEmpty()) {
-            return null;
-        }
-        Set<String> matched = null;
-        for (LeadFilterDTO.CustomFieldFilter f : filters) {
-            if (f == null || f.getFieldId() == null || f.getFieldId().isBlank()
-                    || f.getValues() == null) {
-                continue;
-            }
-            // Strip blank values; a whitespace/empty option would otherwise widen
-            // or zero out the IN (...) match unexpectedly.
-            List<String> values = f.getValues().stream()
-                    .filter(v -> v != null && !v.isEmpty())
-                    .distinct()
-                    .collect(Collectors.toList());
-            if (values.isEmpty()) {
-                continue;
-            }
-            Set<String> ids = new HashSet<>(
-                    customFieldValuesRepository.findAudienceResponseIdsByCustomFieldValue(
-                            f.getFieldId(), values));
-            if (matched == null) {
-                matched = ids;
-            } else {
-                matched.retainAll(ids);
-            }
-            if (matched.isEmpty()) {
-                return Collections.emptyList();
-            }
-        }
-        // matched stays null when every entry was blank → treat as "no filter".
-        return matched == null ? null : new ArrayList<>(matched);
+    private vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution
+            resolveCustomFieldFilters(List<LeadFilterDTO.CustomFieldFilter> filters) {
+        List<vacademy.io.admin_core_service.features.common.dto.CustomFieldListFilterDTO> converted =
+                filters == null ? null
+                        : filters.stream()
+                                .filter(Objects::nonNull)
+                                .map(f -> new vacademy.io.admin_core_service.features.common.dto.CustomFieldListFilterDTO(
+                                        f.getFieldId(), f.getOperator(), f.getValues()))
+                                .collect(Collectors.toList());
+        return customFieldListFilterResolver.resolve(converted,
+                vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Surface.RESPONSE);
     }
 
     /**
@@ -5339,6 +5388,11 @@ public class AudienceService {
                 .languageCode(request.getLanguageCode() != null ? request.getLanguageCode() : "en")
                 .recipients(recipients)
                 .options(optsBuilder.build())
+                // Above ~10 recipients the inline send loop (one provider call per
+                // recipient) can outlive InternalClientUtils' 30s read timeout →
+                // spurious 510 while delivery keeps running. Queue those as a batch;
+                // getCommunications() syncs the final counts back from the batch.
+                .forceAsync(recipients.size() > ASYNC_SEND_THRESHOLD)
                 .build();
 
         // 8. Call notification service
@@ -5455,6 +5509,28 @@ public class AudienceService {
         Pageable pageable = PageRequest.of(page, size);
         Page<AudienceCommunication> comms = audienceCommunicationRepository
                 .findByAudienceIdOrderByCreatedAtDesc(audienceId, pageable);
+        // Async sends are recorded as QUEUED/PROCESSING with a batchId; the batch runs
+        // on notification-service, so pull its final counts in on read.
+        for (AudienceCommunication c : comms) {
+            if (StringUtils.hasText(c.getBatchId())
+                    && ("QUEUED".equals(c.getStatus()) || "PROCESSING".equals(c.getStatus()))) {
+                UnifiedSendResponse batchStatus;
+                try {
+                    batchStatus = notificationService.getUnifiedBatchStatus(c.getBatchId());
+                } catch (Exception e) {
+                    logger.warn("Failed to refresh batch status for communication {} (batch {}): {}",
+                            c.getId(), c.getBatchId(), e.getMessage());
+                    continue; // status unknown — keep the stored value
+                }
+                if (batchStatus != null && StringUtils.hasText(batchStatus.getStatus())
+                        && !batchStatus.getStatus().equals(c.getStatus())) {
+                    c.setStatus(batchStatus.getStatus());
+                    c.setSuccessful(batchStatus.getAccepted());
+                    c.setFailed(batchStatus.getFailed());
+                    audienceCommunicationRepository.save(c);
+                }
+            }
+        }
         return comms.map(c -> AudienceCommunicationDTO.builder()
                 .id(c.getId())
                 .channel(c.getChannel())

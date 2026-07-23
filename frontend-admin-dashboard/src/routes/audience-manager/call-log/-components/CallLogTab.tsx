@@ -268,7 +268,12 @@ export default function CallLogTab({
     const rows = data?.content ?? [];
 
     return (
-        <SidebarProvider open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
+        <SidebarProvider
+            style={{ ['--sidebar-width' as string]: '565px' }}
+            defaultOpen={false}
+            open={isSidebarOpen}
+            onOpenChange={setIsSidebarOpen}
+        >
             <div className="flex w-full min-w-0 flex-col gap-6">
             {/* 1 — KPI strip */}
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">

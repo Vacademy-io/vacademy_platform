@@ -25,6 +25,8 @@ import logging
 import random
 import re
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -434,6 +436,30 @@ def _clean_opening(text: str) -> str:
     return out[:600]
 
 
+def _now_line(context: Dict[str, Any]) -> str:
+    """A prominent 'right now it is ...' line so the model can resolve relative dates
+    ('tomorrow', 'day after', 'next Monday') the caller mentions. Without it the LLM
+    has NO idea what today is and mis-schedules. Timezone: the agent's configured
+    tz if set, else Asia/Kolkata (all current calls are India). Computed fresh per
+    call so it never goes stale."""
+    agent = context.get("agent") or {}
+    tzname = (agent.get("timezone") or context.get("timezone") or "Asia/Kolkata").strip()
+    try:
+        now = datetime.now(ZoneInfo(tzname))
+    except Exception:
+        tzname = "Asia/Kolkata"
+        now = datetime.now(ZoneInfo(tzname))
+    # e.g. "Wednesday, 22 July 2026, 3:45 PM"
+    stamp = now.strftime("%A, %-d %B %Y, %-I:%M %p")
+    return (
+        f"RIGHT NOW it is {stamp} ({tzname}). Use this as the current date and time. "
+        "When the caller mentions a relative day — 'today', 'tomorrow', 'day after tomorrow', "
+        "'this weekend', 'next Monday' — work out the ACTUAL calendar date from this, and when "
+        "you confirm a time say the concrete day and date (e.g. 'tomorrow, Thursday the 23rd, at 3 PM'). "
+        "Never guess the day of week or the date."
+    )
+
+
 def build_system_prompt(context: Dict[str, Any]) -> str:
     agent = context.get("agent") or {}
     lead_name = context.get("leadName")
@@ -444,6 +470,7 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
     is_english = stt_tag == "en-IN"
     gender = _voice_gender(agent.get("voice"))
     direction = str(context.get("direction") or agent.get("direction") or "OUTBOUND").upper()
+    now_line = _now_line(context)
 
     if gender == "female":
         gender_line = (
@@ -591,11 +618,45 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
     # (TTS synthesizes the first chunk while the rest streams).
     plain_speech_rule = (
         "- Speak plain text only: NEVER output markdown — no *, #, bullets, numbered lists or "
-        "headings. No stage directions or parentheticals. Only words meant to be heard."
+        "headings. No stage directions or parentheticals. Only words meant to be heard.\n"
+        "- Write NUMBERS AS WORDS so they are spoken correctly: say 'a ten-minute demo' (not "
+        "'10-minute'), 'two minutes', 'nine thirty', 'twenty five'. Digits like '10' get read "
+        "out as 'one zero'. The ONLY exception is a phone number, which you read digit by digit."
     )
     fast_open_rule = (
         "- Begin every reply with a short natural clause (a few words) before any longer "
         "sentence — it reaches the caller faster and sounds more human."
+    )
+    # Live call went out in the evening but opened 'Good morning' — the authored script
+    # hard-codes a greeting and nothing tied it to the clock. The RIGHT-NOW line above
+    # gives the time; this makes the model USE it for the greeting, overriding a fixed one.
+    greeting_rule = (
+        "- GREET FOR THE CURRENT TIME shown above: say 'good morning' before 12 noon, "
+        "'good afternoon' from 12 noon to 5 PM, and 'good evening' after 5 PM. If your "
+        "scripted opening contains a fixed greeting, ADAPT it to the current time — never "
+        "say 'good morning' in the afternoon or evening."
+    )
+    # Live call: the lead's real name was missing, so the model addressed the caller by the
+    # AUDIENCE-LIST name ('Am I speaking with Mr. or Ms. Robotics STEM Programs for Schools?').
+    name_sanity_rule = (
+        "- NEVER say 'Mr.' or 'Ms.' with nothing (or a non-name) after it, and never invent a "
+        "surname. If you do NOT have the person's real name — it is blank, a placeholder, the "
+        "word 'hello', or looks like a company/program/list ('Robotics Programs for Schools', "
+        "'AI and Machine Learning') — do NOT attempt 'Am I speaking with Mr./Ms. ___'. That "
+        "produces a broken 'Mr. Hello' or a dangling 'Mr.'. Instead ask warmly 'May I know who "
+        "I'm speaking with?' or confirm the organisation ('Am I speaking with someone from "
+        "<org>?'). Only use 'Mr./Ms. <surname>' when you actually have a real surname."
+    )
+    # Live calls: the caller asked 'who are you?' / said 'we already spoke' and the agent
+    # ignored it and ploughed the next scripted line. This forces a response FIRST.
+    listen_rule = (
+        "- LISTEN AND RESPOND to what the caller just said BEFORE moving to your next scripted "
+        "line. If they ask 'who are you?', 'which company?', 'why are you calling?', 'where are "
+        "you calling from?' — answer it plainly and immediately (your name, your company, one "
+        "short reason), THEN continue. If they say you have ALREADY SPOKEN, 'we discussed this', "
+        "or 'I explained already' — acknowledge it and do NOT repeat your introduction or pitch; "
+        "pick up from there and ask what they'd like to do next. NEVER deliver the next script "
+        "line as if the caller said nothing when they have just spoken."
     )
     # Live calls showed the model compressing several script steps into one turn
     # ("How are you? That's wonderful to hear." — answering its OWN question), and
@@ -608,11 +669,22 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         "the caller between them."
     )
     goal_drive_rule = (
-        "- CLOSE CONCRETELY: pursue your objective actively. A vague acknowledgment "
-        "('okay', 'thanks', 'theek hai') is NOT a confirmation — when booking anything, "
-        "propose two specific slots, get ONE explicitly confirmed (exact day + time), "
-        "and confirm the contact channel (read a number back digit by digit). Never "
-        "announce a meeting/demo as scheduled unless the caller has named or accepted "
+        "- SELL WITH INTENT — you are a sharp, warm salesperson working toward a goal "
+        "(usually a short demo or meeting), NOT a passive form-filler. Tie your pitch to "
+        "something the caller actually said (a pain, a tool they already use, their size) "
+        "and lead with ONE crisp benefit, never a feature list.\n"
+        "- DON'T ACCEPT THE FIRST BRUSH-OFF. Common deflections — 'just email me' / 'send a "
+        "proposal' / 'we handle it ourselves' / 'we work directly' / 'not right now' / 'we're "
+        "busy' — are not a no; they're a reflex. Acknowledge briefly, then redirect ONCE to "
+        "value + a concrete small next step: a ten-minute demo at a specific time. Example — if "
+        "they say 'email me the details', reply: 'Happy to — honestly it lands better as a "
+        "quick 10-minute look so I show only what fits you. Would tomorrow evening or Thursday "
+        "morning work?' Make ONE genuine, specific attempt like this. Only if they still "
+        "decline do you take the email or a callback time gracefully and thank them.\n"
+        "- CLOSE CONCRETELY: a vague acknowledgment ('okay', 'thanks', 'theek hai') is NOT a "
+        "confirmation — when booking, propose two specific slots, get ONE explicitly confirmed "
+        "(exact day + time), and confirm the contact channel (read a number back digit by "
+        "digit). Never announce a meeting/demo as scheduled unless the caller named or accepted "
         "a specific day and time."
     )
     language_stability_rule = (
@@ -651,6 +723,10 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             "ONCE as they specify; never add a second greeting or re-introduce yourself. If the "
             "caller speaks first (a 'hello' or anything else), your FIRST reply IS your scripted "
             "opening — never reply with just a bare greeting word.",
+            now_line,
+            greeting_rule,
+            name_sanity_rule,
+            listen_rule,
             "End every turn with a question, a quick check-in (\u2018right?\u2019) or a clear closing — "
             "then STOP and wait for the caller\u2019s answer. Never answer your own question or "
             "continue as if they replied when they haven\u2019t; their silence is NOT consent.",
@@ -676,6 +752,10 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
     lines = [
         prompt or "You are a friendly, concise phone assistant.",
         non_negotiable,
+        now_line,
+        greeting_rule,
+        name_sanity_rule,
+        listen_rule,
         f"You are {name}. {gender_line}",
         addressee_line,
         intent_line,
@@ -778,6 +858,10 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     "Dhanyavaad!")
     transfer_closing = ("One moment, connecting you now." if eng
                         else "Ek moment, main aapko connect kar rahi hoon.")
+    idle_farewell = ("It seems I've lost you — I'll follow up shortly. Thank you, and have a "
+                     "great day!" if eng else
+                     "Lagta hai aapki awaaz nahi aa rahi — main baad mein sampark karti hoon. "
+                     "Dhanyavaad, aapka din shubh ho!")
     end_closing = ("Alright, thank you. Have a great day!" if eng
                    else "Theek hai, dhanyavaad. Aapka din shubh ho!")
     # 'Hmm…' only — 'Right…'/'Okay…' sound like complete replies, and a filler that
@@ -1000,8 +1084,12 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": nudge_text}]),
                     TTSSpeakFrame(nudge_text)])
             else:
+                # Speak a brief closing BEFORE dropping — a silent hangup felt like the
+                # call "disconnected without a proper close" (live feedback). _begin_stop's
+                # graceful-stop deadline lets the farewell play out (same as cap_farewell).
                 logger.info("idle hangup corr=%s", corr)
                 outcome.end_requested = True
+                await task.queue_frames([TTSSpeakFrame(idle_farewell)])
                 await _begin_stop()
 
     watchdog_task = asyncio.create_task(watchdog())

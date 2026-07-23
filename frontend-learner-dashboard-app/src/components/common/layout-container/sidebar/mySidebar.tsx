@@ -110,6 +110,7 @@ export const MySidebar = ({
     hideInstituteName,
     logoWidthPx,
     logoHeightPx,
+    stackNameBelowLogo,
   } = useStore();
   const handleInstituteLogoClick = () => {
     if (homeIconClickRoute) {
@@ -301,6 +302,12 @@ export const MySidebar = ({
 
   const isExpanded = state === "expanded";
 
+  // When the operator enables "stack name below logo", switch the expanded
+  // header to a centered vertical layout (logo on top, name beneath). Only in
+  // expanded, non-sub-org, name-visible mode; the collapsed rail stays icon-only.
+  const stackNameBelowLogoLayout =
+    stackNameBelowLogo && isExpanded && !hideInstituteName && !subOrgName;
+
   // Operator-configured logo dimensions only apply when the sidebar is
   // expanded — in icon-collapsed mode the rail has a fixed narrow width, so
   // a wide custom logo would overflow. Fall back to the default 28px square
@@ -358,7 +365,9 @@ export const MySidebar = ({
                   // When the institute name is hidden and we're not in
                   // sub-org mode, center the logo in the expanded sidebar
                   // so a wide custom-sized logo fills the sheet area.
-                  hideInstituteName && !subOrgName && isExpanded && "justify-center"
+                  hideInstituteName && !subOrgName && isExpanded && "justify-center",
+                  // "Stack name below logo": centered vertical header.
+                  stackNameBelowLogoLayout && "flex-col items-center gap-2 py-2 text-center"
                 )}
                 onClick={
                   homeIconClickRoute ? handleInstituteLogoClick : undefined
@@ -430,8 +439,24 @@ export const MySidebar = ({
                       )}
                     </div>
                     {!hideInstituteName && (
-                      <div className="grid h-10 flex-1 content-center text-start leading-tight">
-                        <span className="truncate text-subtitle font-semibold">
+                      <div
+                        className={cn(
+                          "leading-tight",
+                          stackNameBelowLogoLayout
+                            ? "w-full min-w-0 text-center"
+                            : "grid h-10 flex-1 content-center text-start"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "text-subtitle font-semibold",
+                            // Stacked: wrap up to 2 lines (centered), ellipsis
+                            // beyond. Beside the logo: single-line ellipsis.
+                            stackNameBelowLogoLayout
+                              ? "w-full line-clamp-2 break-words"
+                              : "truncate"
+                          )}
+                        >
                           {instituteName}
                         </span>
                       </div>

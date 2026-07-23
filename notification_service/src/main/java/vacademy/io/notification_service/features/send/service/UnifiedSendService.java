@@ -51,7 +51,12 @@ public class UnifiedSendService implements SendChannelRouter {
 
         int recipientCount = request.getRecipients().size();
 
-        if (recipientCount <= SYNC_THRESHOLD) {
+        // forceAsync: bulk callers opt into the durable batch queue even under the
+        // threshold — a sync multi-recipient loop can exceed the caller's HTTP read
+        // timeout while delivery keeps running here (caller sees a spurious failure).
+        boolean forceAsync = Boolean.TRUE.equals(request.getForceAsync()) && recipientCount > 1;
+
+        if (recipientCount <= SYNC_THRESHOLD && !forceAsync) {
             return routeSync(request);
         }
 

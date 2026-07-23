@@ -46,6 +46,9 @@ export type DomainResolveResponse = {
     // the default responsive classes.
     logoWidthPx?: number | null;
     logoHeightPx?: number | null;
+    // When true, the institute name is stacked below the logo instead of beside
+    // it. Default (undefined/false): name sits to the right of the logo.
+    stackNameBelowLogo?: boolean | null;
 };
 
 /**

@@ -11,13 +11,11 @@ import {
     X,
     Flame,
     CheckCircle,
-    Columns,
     Clock,
     Megaphone,
     CalendarBlank,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -49,10 +47,23 @@ import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
 import {
+    ManageColumnsPopover,
+    useLeadColumnPrefs,
+    buildLeadColumnToggles,
+} from '@/components/shared/leads';
+import {
     ExportColumnPickerDialog,
     type ExportColumnOption,
 } from '@/components/shared/leads/export-column-picker-dialog';
 import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
+import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
+import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
+import {
+    decodeSelectionToEntries,
+    filterEntryValueLabel,
+    isRangeFieldType,
+    removeEntryFromSelection,
+} from '@/components/shared/leads/custom-field-filter-encoding';
 import { useLeadFilterCustomFields } from '@/components/shared/leads/use-lead-filter-custom-fields';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
@@ -298,18 +309,20 @@ const RecentLeadsContent = () => {
             return next;
         });
     };
-    // Serialized {field_id, values} payload + a stable cache key (order-independent).
+    // Serialized {field_id, operator, values} payload + a stable cache key
+    // (order-independent). Sentinel selections (contains / empty / ranges)
+    // decode into their operator entries; plain values stay an IN entry.
     const customFieldFiltersPayload = useMemo(
         () =>
             Object.entries(customFieldFilters)
                 .filter(([, vals]) => vals.length > 0)
-                .map(([field_id, values]) => ({ field_id, values })),
+                .flatMap(([fieldId, values]) => decodeSelectionToEntries(fieldId, values)),
         [customFieldFilters]
     );
     const customFieldFiltersKey = useMemo(
         () =>
             customFieldFiltersPayload
-                .map((f) => `${f.field_id}=${[...f.values].sort().join(',')}`)
+                .map((f) => `${f.field_id}:${f.operator ?? 'IN'}=${[...f.values].sort().join(',')}`)
                 .sort()
                 .join('|'),
         [customFieldFiltersPayload]
@@ -369,8 +382,11 @@ const RecentLeadsContent = () => {
     // editable status chip in the table.
     const { statuses: leadStatusCatalog } = useLeadStatuses();
 
-    // Table UI state
-    const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
+    // Table UI state — column show/hide is persisted per user (localStorage) so
+    // the "Manage Column" choice survives reloads and navigation.
+    const { hiddenColumns, toggleColumn, resetColumns } = useLeadColumnPrefs(
+        'crm-lead-columns:recent-leads'
+    );
 
     const [noteTarget, setNoteTarget] = useState<{
         userId: string;
@@ -385,25 +401,10 @@ const RecentLeadsContent = () => {
 
     // "Manage Column" toggle list — only the columns actually visible for the
     // current config (the Lead-name column is always shown).
-    const toggleableColumns = useMemo(() => {
-        const cols: { id: string; label: string }[] = [
-            { id: 'contact', label: 'Contact' },
-            { id: 'source', label: 'Lead source' },
-        ];
-        if (showOps) cols.push({ id: 'status', label: 'Lead status' });
-        if (showScore) cols.push({ id: 'score', label: 'Lead score' });
-        if (showOps) {
-            cols.push(
-                { id: 'tier', label: 'Tier' },
-                { id: 'reachout', label: 'Reach out in' },
-                { id: 'followup', label: 'Follow up at' },
-                { id: 'owner', label: 'Lead owner' },
-                { id: 'activity', label: 'Activity' }
-            );
-        }
-        cols.push({ id: 'submitted', label: 'Submitted' });
-        return cols;
-    }, [showOps, showScore]);
+    const toggleableColumns = useMemo(
+        () => buildLeadColumnToggles(showOps, showScore),
+        [showOps, showScore]
+    );
 
     const audiencesQuery = useQuery(
         handleFetchCampaignsList({ institute_id: instituteId ?? '', page: 0, size: 200 })
@@ -696,14 +697,6 @@ const RecentLeadsContent = () => {
             setSelectAllLoading(false);
         }
     };
-
-    const toggleColumn = (id: string) =>
-        setHiddenColumns((prev) => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
 
     // Filters
     const handleClearFilter = () => {
@@ -1037,8 +1030,14 @@ const RecentLeadsContent = () => {
         const fieldName =
             filterCustomFields.find((cf) => cf.customFieldId === f.field_id)?.fieldName ?? 'Field';
         chips.push({
-            label: `${fieldName}: ${f.values.join(', ')}`,
-            onRemove: () => setCustomFieldFilter(f.field_id, []),
+            label: `${fieldName}: ${filterEntryValueLabel(f)}`,
+            // Remove only this entry's backing values — one field can carry
+            // several chips (values + contains + empty) at once.
+            onRemove: () =>
+                setCustomFieldFilter(
+                    f.field_id,
+                    removeEntryFromSelection(customFieldFilters[f.field_id] ?? [], f)
+                ),
         });
     });
     if (rangeDays !== DEFAULT_RANGE_DAYS) {
@@ -1151,16 +1150,28 @@ const RecentLeadsContent = () => {
                             <SelectItem value="MANUAL_CALLED">Manually called</SelectItem>
                         </SelectContent>
                     </Select>
-                    {filterCustomFields.map((f) => (
-                        <CustomFieldMultiSelectFilter
-                            key={f.customFieldId}
-                            instituteId={instituteId ?? ''}
-                            fieldId={f.customFieldId}
-                            fieldName={f.fieldName}
-                            selected={customFieldFilters[f.customFieldId] ?? []}
-                            onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
-                        />
-                    ))}
+                    {filterCustomFields.map((f) =>
+                        isRangeFieldType(f.fieldType) ? (
+                            <CustomFieldRangeFilter
+                                key={f.customFieldId}
+                                fieldId={f.customFieldId}
+                                fieldName={f.fieldName}
+                                fieldType={f.fieldType}
+                                selected={customFieldFilters[f.customFieldId] ?? []}
+                                onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
+                            />
+                        ) : (
+                            <CustomFieldMultiSelectFilter
+                                key={f.customFieldId}
+                                instituteId={instituteId ?? ''}
+                                fieldId={f.customFieldId}
+                                fieldName={f.fieldName}
+                                selected={customFieldFilters[f.customFieldId] ?? []}
+                                onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
+                            />
+                        )
+                    )}
+                    <ManageListFiltersLink />
                     <Select value={rangeDays} onValueChange={setDateRange}>
                         <SelectTrigger className="h-10 w-40">
                             <CalendarBlank className="mr-1.5 size-4 text-neutral-400" />
@@ -1237,33 +1248,12 @@ const RecentLeadsContent = () => {
                             {showDeleted ? 'Viewing deleted' : 'Deleted leads'}
                         </Button>
                     )}
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button variant="outline" size="sm" className="h-10">
-                                <Columns className="mr-1.5 size-4" />
-                                Manage Column
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="end" className="w-52">
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                                Columns
-                            </p>
-                            <div className="space-y-1">
-                                {toggleableColumns.map((c) => (
-                                    <label
-                                        key={c.id}
-                                        className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm text-neutral-700 hover:bg-neutral-50"
-                                    >
-                                        <Checkbox
-                                            checked={!hiddenColumns.has(c.id)}
-                                            onCheckedChange={() => toggleColumn(c.id)}
-                                        />
-                                        {c.label}
-                                    </label>
-                                ))}
-                            </div>
-                        </PopoverContent>
-                    </Popover>
+                    <ManageColumnsPopover
+                        columns={toggleableColumns}
+                        hiddenColumns={hiddenColumns}
+                        onToggle={toggleColumn}
+                        onReset={resetColumns}
+                    />
                     <Button
                         size="sm"
                         variant="outline"

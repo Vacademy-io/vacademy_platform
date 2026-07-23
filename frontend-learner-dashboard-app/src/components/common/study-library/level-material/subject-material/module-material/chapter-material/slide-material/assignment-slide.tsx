@@ -1032,7 +1032,13 @@ const AssignmentSlide = ({
       };
 
       const urlParams = new URLSearchParams(window.location.search);
-      const slideId = urlParams.get("slideId") || activeItem?.id || "";
+      // Key the submission off the assignment slide's own id (same value the
+      // body's slide_id uses), NOT the URL's slideId. The URL param tracks the
+      // currently-viewed slide, which can drift to a neighbouring slide (e.g.
+      // the answer-key DOCUMENT that follows the assignment in the chapter).
+      // The backend resolves this slideId -> source_id -> assignment_slide, so
+      // a drifted DOCUMENT id makes it 404 "Assignment slide not found".
+      const slideId = activeItem?.id || urlParams.get("slideId") || "";
       const userId = await getUserId();
       return authenticatedAxiosInstance.post(
         SUBMIT_ASSIGNMENT_SLIDE_ANSWERS,

@@ -22,17 +22,23 @@ sys.path).
 # Veo-aware pre-flight check reads this directly to compute the credit
 # upper bound the institute must have on hand before a run can start.
 #
-# Tuning: sized for AI-FOOTAGE-LED videos, not occasional hero garnish.
-# An 8s 720p audio-off segment costs $0.24, so $4.00 funds ~16 clips —
-# a fully AI-shot 2-minute film, with headroom for inline `<aivideo>`
-# tags and the odd audio-on segment ($0.40/8s). Beyond the cap the
-# circuit breaker rejects further Veo calls and the shot falls back to a
-# non-AI variant. The planner derives its per-run AI shot budget from
-# this number (shot_planner: _ai_shot_budget), so raising it directly
-# widens how AI-video-heavy a plan may be. Institute credits are still
-# billed per call by AiVideoLedger — this is a per-video blast radius,
-# not a spend allowance.
-AI_VIDEO_PER_VIDEO_COST_CAP_USD: float = 4.00
+# Tuning: sized so a full 2-minute video can be ENTIRELY full-Veo footage.
+# A full-Veo 8s 720p clip costs ~$1.60 (lite ~$0.24), and 2 min ≈ 15 clips,
+# so $24.00 covers ~15 full-Veo clips (a wholly AI-shot 2-min film) or far
+# more on the cheaper tiers. This is a per-video BLAST RADIUS ceiling, not a
+# target — a typical run plans a handful of AI shots and spends a fraction.
+# NOTE: the credit pre-flight holds cap × AI_VIDEO_PREFLIGHT_HOLD_FRACTION
+# before a run starts (~$9.6 ≈ 1440 credits at 150/USD here), so institutes
+# on thin balances may need a top-up to start an AI-video run. The
+# planner derives its per-run AI shot budget from THIS cap divided by the
+# SELECTED model's per-clip cost (shot_planner: _ai_shot_budget), so the
+# budget auto-scales with model choice — raising the cap widens how
+# AI-heavy a plan may be, without over-planning on the pricey tiers.
+# Beyond the cap the circuit breaker rejects further Veo calls and the
+# shot falls back to a non-AI variant. Institute credits are still billed
+# per call by AiVideoLedger — this is a per-video blast radius, not a
+# spend allowance.
+AI_VIDEO_PER_VIDEO_COST_CAP_USD: float = 24.00
 
 # Fraction of the cap the credit pre-flight holds before a run may start.
 # The cap is a blast radius sized for an ALL-AI film; most runs spend a

@@ -48,6 +48,30 @@ public class PackageSessionEnrolmentService {
 
         // Find all ACTIVE UserPlans
         List<UserPlan> activeUserPlans = userPlanRepository.findAllByStatusIn(List.of(UserPlanStatusEnum.ACTIVE.name(),UserPlanStatusEnum.CANCELED.name()));
+        processPlans(activeUserPlans);
+    }
+
+    /**
+     * Institute-gated variant used by the daily renewal scheduler: loads only
+     * the plans of institutes that opted in via
+     * PAYMENT_SETTING.packageSessionRenewalSchedulerEnabled, instead of the
+     * whole user_plan table.
+     */
+    @Transactional
+    public void processActiveEnrollmentsForInstitutes(List<String> instituteIds) {
+        if (CollectionUtils.isEmpty(instituteIds)) {
+            log.info("No institutes opted into renewal-scheduler processing");
+            return;
+        }
+        log.info("Starting processing of ACTIVE UserPlans for {} institute(s)", instituteIds.size());
+
+        List<UserPlan> activeUserPlans = userPlanRepository.findAllByStatusInAndInstituteIdIn(
+                List.of(UserPlanStatusEnum.ACTIVE.name(), UserPlanStatusEnum.CANCELED.name()),
+                instituteIds);
+        processPlans(activeUserPlans);
+    }
+
+    private void processPlans(List<UserPlan> activeUserPlans) {
         if (CollectionUtils.isEmpty(activeUserPlans)) {
             log.info("No ACTIVE UserPlans to process");
             return;

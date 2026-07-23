@@ -33,7 +33,7 @@ public class ParentPortalSettingsDTO {
     /** "COMPLETED_ONLY" (default) etc. — which reports a parent may open. */
     private String reportAccess;
 
-    /** "View as my child" gate. Default false. */
+    /** "View as my child" gate. Default true once the portal is enabled. */
     private boolean allowViewAsChild;
 
     /** Show a "Switch to Parent view" action for dual-role (STUDENT+PARENT) users. */

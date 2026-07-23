@@ -120,11 +120,26 @@ public class CallingReportService {
             """;
 
     /**
+     * Shared lead-ownership scope arm for both calls-by-lead views. This report
+     * is LEAD-centric, so the counsellor/team filter means "this counsellor's
+     * leads" (COALESCE(linked_users, ulp.assigned_counselor_id) — same rule the
+     * leads list applies), NOT "calls this counsellor dialled": attempts always
+     * count every dial on the lead, whoever made it, so the numbers don't shrink
+     * when a colleague or admin worked a lead. When the scope comes from caller
+     * RBAC rather than an explicit picker, the unassigned pool stays visible
+     * (:includeUnassigned) — mirroring AudienceResponseRepository's list rule.
+     */
+    private static final String LEAD_OWNER_SCOPE = """
+              AND (:scopeCsv IS NULL
+                   OR COALESCE(lu.user_id, ulp.assigned_counselor_id) = ANY(STRING_TO_ARRAY(:scopeCsv, ','))
+                   OR (:includeUnassigned AND lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
+            """;
+
+    /**
      * Lead-wise base: every in-window dial joined to its lead. Calls are matched
      * by response_id with the user_id fallback for legacy rows (same rule as
      * SOURCE_PERFORMANCE_SQL); the audience join pins the fallback to THIS
      * institute's leads. subject_type guard keeps student/live-session calls out.
-     * Scope is on tcl.counsellor_user_id (who dialled — Calling-tab convention).
      */
     private static final String CALLS_BY_LEAD_BASE = """
             FROM telephony_call_log tcl
@@ -132,6 +147,13 @@ public class CallingReportService {
               ON (tcl.response_id = ar.id
                   OR (tcl.response_id IS NULL AND ar.user_id IS NOT NULL AND tcl.user_id = ar.user_id))
             JOIN audience a ON a.id = ar.audience_id AND a.institute_id = :instituteId
+            LEFT JOIN LATERAL (
+                SELECT lu.user_id FROM linked_users lu
+                WHERE lu.source = 'ENQUIRY' AND lu.source_id = ar.enquiry_id
+                ORDER BY lu.created_at DESC LIMIT 1
+            ) lu ON true
+            LEFT JOIN user_lead_profile ulp
+                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
             LEFT JOIN lead_status ls ON ls.id = ar.lead_status_id
             LEFT JOIN call_disposition_catalog cdc
               ON cdc.institute_id = tcl.institute_id AND cdc.disposition_key = tcl.disposition_key
@@ -140,7 +162,7 @@ public class CallingReportService {
               AND COALESCE(tcl.start_time, tcl.created_at) >= :fromUtc
               AND COALESCE(tcl.start_time, tcl.created_at) < :toUtc
               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
-              AND (:scopeCsv IS NULL OR tcl.counsellor_user_id = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+            """ + LEAD_OWNER_SCOPE + """
               AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
               AND (:search IS NULL OR ar.parent_name ILIKE '%' || :search || '%'
                    OR ar.parent_mobile ILIKE '%' || :search || '%')
@@ -166,8 +188,9 @@ public class CallingReportService {
                    (ARRAY_AGG(tcl.status ORDER BY COALESCE(tcl.start_time, tcl.created_at) DESC))[1] AS last_call_status,
                    (ARRAY_AGG(tcl.disposition_key ORDER BY COALESCE(tcl.start_time, tcl.created_at) DESC)
                         FILTER (WHERE tcl.disposition_key IS NOT NULL))[1] AS last_disposition_key,
-                   (ARRAY_AGG(tcl.counsellor_user_id ORDER BY COALESCE(tcl.start_time, tcl.created_at) DESC)
-                        FILTER (WHERE tcl.counsellor_user_id IS NOT NULL))[1] AS counsellor_user_id,
+                   COALESCE(MAX(COALESCE(lu.user_id, ulp.assigned_counselor_id)),
+                            (ARRAY_AGG(tcl.counsellor_user_id ORDER BY COALESCE(tcl.start_time, tcl.created_at) DESC)
+                                 FILTER (WHERE tcl.counsellor_user_id IS NOT NULL))[1]) AS counsellor_user_id,
                    TO_CHAR(MIN(tcl.callback_at) FILTER (WHERE tcl.callback_at > NOW() AT TIME ZONE 'UTC'), """ + ISO_UTC + """
             ) AS next_callback_at
             """ + CALLS_BY_LEAD_BASE + """
@@ -189,9 +212,7 @@ public class CallingReportService {
     /**
      * In-window new leads (submitted_at) with ZERO call attempts ever — the
      * never-called check is intentionally not date-bounded: one old dial means
-     * the lead was worked. Scope here is lead OWNERSHIP (assigned counsellor /
-     * linked-users lateral — PipelineReportService convention), not call
-     * ownership: an uncalled lead has no caller to scope on.
+     * the lead was worked. Same lead-ownership scope as the CALLED view.
      */
     private static final String UNCALLED_LEADS_BASE = """
             FROM audience_response ar
@@ -207,7 +228,7 @@ public class CallingReportService {
             WHERE ar.submitted_at >= :fromUtc
               AND ar.submitted_at < :toUtc
               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
-              AND (:scopeCsv IS NULL OR COALESCE(lu.user_id, ulp.assigned_counselor_id) = ANY(STRING_TO_ARRAY(:scopeCsv, ',')))
+            """ + LEAD_OWNER_SCOPE + """
               AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
               AND (:search IS NULL OR ar.parent_name ILIKE '%' || :search || '%'
                    OR ar.parent_mobile ILIKE '%' || :search || '%')
@@ -390,10 +411,15 @@ public class CallingReportService {
         int safeSize = Math.max(1, Math.min(size, 100));
         int safePage = Math.max(0, page);
         boolean uncalledView = "UNCALLED".equalsIgnoreCase(trimToNull(view) == null ? "" : view.trim());
+        // Explicit counsellor/team pick narrows to exactly those books; a scope
+        // that only comes from caller RBAC keeps the unassigned pool visible
+        // (leads-list rule — unassigned leads are everyone's to pick up).
+        boolean includeUnassigned = trimToNull(counsellorUserId) == null && trimToNull(teamId) == null;
 
         MapSqlParameterSource params = callParams(instituteId, fromDate, toDate, tz, settings, scopeCsv)
                 .addValue("audienceId", trimToNull(audienceId), Types.VARCHAR)
                 .addValue("search", trimToNull(search), Types.VARCHAR)
+                .addValue("includeUnassigned", includeUnassigned)
                 .addValue("limit", safeSize)
                 .addValue("offset", safePage * safeSize);
 

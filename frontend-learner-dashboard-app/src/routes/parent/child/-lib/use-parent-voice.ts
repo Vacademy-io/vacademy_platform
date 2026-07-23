@@ -43,6 +43,9 @@ export function useParentVoice(locale: string) {
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
+  // Strong reference to the current utterance — Chrome garbage-collects it
+  // mid-speech otherwise, which cuts the audio off silently.
+  const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   // Warm up the voice list (getVoices() is empty on first call in some browsers).
   useEffect(() => {
@@ -109,20 +112,25 @@ export function useParentVoice(locale: string) {
     (text: string) => {
       if (!speechSupported || !text) return;
       try {
-        window.speechSynthesis.cancel();
+        const synth = window.speechSynthesis;
+        synth.cancel();
         const utter = new SpeechSynthesisUtterance(text);
         // Devanagari in the text → speak Hindi even if the app locale is English.
         const isDevanagari = /[ऀ-ॿ]/.test(text);
         utter.lang = isDevanagari ? "hi-IN" : lang;
         const want = (isDevanagari ? "hi" : short).toLowerCase();
-        const voice = window.speechSynthesis
-          .getVoices()
-          .find((v) => v.lang?.toLowerCase().startsWith(want));
+        const voice = synth.getVoices().find((v) => v.lang?.toLowerCase().startsWith(want));
         if (voice) utter.voice = voice;
         utter.onend = () => setSpeaking(false);
         utter.onerror = () => setSpeaking(false);
+        utterRef.current = utter; // hold the reference (Chrome GC bug)
         setSpeaking(true);
-        window.speechSynthesis.speak(utter);
+        // Chrome quirks: speak() issued synchronously after cancel() is sometimes
+        // silently dropped, and a paused queue swallows every later utterance
+        // (cancel-while-paused leaves it stuck). resume() + a short delay makes
+        // the speak reliable.
+        synth.resume();
+        window.setTimeout(() => synth.speak(utter), 60);
       } catch {
         setSpeaking(false);
       }

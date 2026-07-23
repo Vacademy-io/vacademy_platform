@@ -21,7 +21,7 @@ export function ChildViewBanner() {
     <div className="fixed inset-x-0 top-0 z-50 flex items-center justify-center gap-3 bg-primary-500 px-4 py-2 text-primary-50 shadow-md">
       <Eye weight="fill" className="size-4 shrink-0" aria-hidden />
       <span className="text-caption font-medium">
-        Viewing as {name || "your child"} · read only
+        Student view · {name || "your child"} · read only
       </span>
       <button
         onClick={async () => {
@@ -32,7 +32,7 @@ export function ChildViewBanner() {
         className="ms-1 inline-flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-caption font-semibold transition-opacity disabled:opacity-60"
       >
         <SignOut className="size-3.5" aria-hidden />
-        Exit
+        Exit student view
       </button>
     </div>
   );

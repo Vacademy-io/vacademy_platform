@@ -12,7 +12,7 @@ import {
   SpeakerHigh,
   SpeakerSlash,
   House,
-  Eye,
+  UserSwitch,
   X,
 } from "@phosphor-icons/react";
 import { cn } from "@/lib/utils";
@@ -211,7 +211,11 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
         <div className="mx-auto flex max-w-4xl items-end justify-around px-4 pb-1.5 pt-2">
           <button
             type="button"
-            onClick={() => navigate({ to: "/parent/child/$childId", params: { childId } })}
+            onClick={() => {
+              // Home also dismisses the assistant if it is open on top.
+              closeAssistant();
+              navigate({ to: "/parent/child/$childId", params: { childId } });
+            }}
             aria-label={t("nav.home")}
             className={cn(
               "flex flex-1 flex-col items-center gap-1 rounded-xl py-1 text-muted-foreground",
@@ -226,8 +230,11 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
           <div className="flex flex-1 flex-col items-center">
             <motion.button
               type="button"
-              onClick={() => setOpen(true)}
+              // Toggles: the nav stays visible over the assistant, so tapping the
+              // teacher again is the natural way back out.
+              onClick={() => (open ? closeAssistant() : setOpen(true))}
               aria-label={t("chat.open")}
+              aria-expanded={open}
               data-tour="parent-chat"
               className={cn(
                 "relative -mt-8 flex size-16 items-center justify-center overflow-hidden rounded-full",
@@ -262,7 +269,10 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
               "disabled:opacity-50",
             )}
           >
-            <Eye weight="duotone" className="size-6" aria-hidden />
+            {/* A tinted "switch user" chip reads much clearer than a bare eye. */}
+            <span className="flex size-7 items-center justify-center rounded-full bg-primary-50">
+              <UserSwitch weight="duotone" className="size-5 text-primary-500" aria-hidden />
+            </span>
             <span className="text-caption font-medium">{t("nav.studentView")}</span>
           </button>
         </div>
@@ -276,7 +286,9 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
             role="dialog"
             aria-modal="true"
             aria-label={t("chat.title")}
-            className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-background"
+            // z-30 keeps the bottom navigation (z-40) visible ON TOP of the
+            // assistant, so Home / the teacher / Student-view stay reachable.
+            className="fixed inset-0 z-30 flex flex-col overflow-hidden bg-background"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -449,7 +461,8 @@ export function ParentChatbot({ childId, childName }: ParentChatbotProps) {
                 e.preventDefault();
                 void submit(input);
               }}
-              className="flex items-center gap-2 border-t border-border px-4 pb-6 pt-3"
+              // pb clears the bottom navigation, which stays visible over the assistant
+              className="flex items-center gap-2 border-t border-border px-4 pb-24 pt-3"
             >
               <input
                 value={input}

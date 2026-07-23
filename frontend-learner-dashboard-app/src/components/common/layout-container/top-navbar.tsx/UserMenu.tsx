@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { SignOut } from "@phosphor-icons/react";
+import { SignOut, UserSwitch } from "@phosphor-icons/react";
 import { Preferences } from "@capacitor/preferences";
 import {
   DropdownMenu,
@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useStudentPermissions } from "@/hooks/use-student-permissions";
+import { useParentPortalSwitch } from "@/hooks/use-parent-portal-switch";
 import { getPublicUrl } from "@/services/upload_file";
 import { cn, isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { Student } from "@/types/user/user-detail";
@@ -38,6 +39,9 @@ const MENU_LABEL_OVERRIDES: Record<string, string> = {
 export const UserMenu = ({ className }: { className?: string }) => {
   const navigate = useNavigate();
   const { permissions } = useStudentPermissions();
+  // Dual-role (STUDENT + PARENT) users may hop to the parent portal when the
+  // institute's Guardian Settings allow it.
+  const canSwitchToParent = useParentPortalSwitch();
 
   const [studentData, setStudentData] = useState<Student | null>(null);
   const [profileImageUrl, setProfileImageUrl] = useState<string | undefined>(
@@ -175,6 +179,16 @@ export const UserMenu = ({ className }: { className?: string }) => {
             {MENU_LABEL_OVERRIDES[item.to ?? ""] ?? item.title}
           </DropdownMenuItem>
         ))}
+
+        {canSwitchToParent && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => navigate({ to: "/parent" as never })}>
+              <UserSwitch />
+              Switch to parent portal
+            </DropdownMenuItem>
+          </>
+        )}
 
         <DropdownMenuSeparator />
         <DropdownMenuItem

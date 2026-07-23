@@ -377,6 +377,59 @@ export default function GuardianSettings() {
                                                 );
                                             })}
                                         </div>
+
+                                        <p className="pt-2 text-body font-medium text-neutral-700">
+                                            View switching
+                                        </p>
+                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                            <div className="flex items-center gap-3">
+                                                <Switch
+                                                    id="pp-view-as-child"
+                                                    checked={
+                                                        settings.parentPortal?.allowViewAsChild ?? true
+                                                    }
+                                                    onCheckedChange={(v) =>
+                                                        update({
+                                                            parentPortal: {
+                                                                ...(settings.parentPortal ??
+                                                                    DEFAULT_PARENT_PORTAL),
+                                                                allowViewAsChild: v,
+                                                            },
+                                                        })
+                                                    }
+                                                />
+                                                <Label
+                                                    htmlFor="pp-view-as-child"
+                                                    className="cursor-pointer"
+                                                >
+                                                    Parent can open student view (read-only)
+                                                </Label>
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <Switch
+                                                    id="pp-switch-to-parent"
+                                                    checked={
+                                                        settings.parentPortal
+                                                            ?.allowSwitchToParentView ?? true
+                                                    }
+                                                    onCheckedChange={(v) =>
+                                                        update({
+                                                            parentPortal: {
+                                                                ...(settings.parentPortal ??
+                                                                    DEFAULT_PARENT_PORTAL),
+                                                                allowSwitchToParentView: v,
+                                                            },
+                                                        })
+                                                    }
+                                                />
+                                                <Label
+                                                    htmlFor="pp-switch-to-parent"
+                                                    className="cursor-pointer"
+                                                >
+                                                    Student can switch to their parent portal
+                                                </Label>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </div>

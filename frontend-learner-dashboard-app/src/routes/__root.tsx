@@ -250,6 +250,17 @@ const RootComponent = () => {
   const { setInstituteId } = useInstituteFeatureStore();
   const [isChatbotEnabled, setIsChatbotEnabled] = useState(false);
 
+  // Dismiss the index.html boot splash once the app has actually mounted.
+  // (It lives OUTSIDE #root — main.tsx refuses to mount into a non-empty root —
+  // so the app must remove it explicitly.)
+  useEffect(() => {
+    const splash = document.getElementById("boot-splash");
+    if (!splash) return;
+    splash.style.opacity = "0";
+    const t = window.setTimeout(() => splash.remove(), 250);
+    return () => window.clearTimeout(t);
+  }, []);
+
   const setPrimaryColorFromStorage = async () => {
     const details = await Preferences.get({ key: "InstituteDetails" });
     const parsedDetails = details.value ? JSON.parse(details.value) : null;

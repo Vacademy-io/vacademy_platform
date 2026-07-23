@@ -12,15 +12,17 @@ import {
     getAssessmentSubmissionsFilteredDataStudentData,
 } from '../-utils/helper';
 import { Route } from '..';
-import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getInstituteId } from '@/constants/helper';
 import {
     getAdminParticipants,
+    getAttemptsFileStatus,
     handleGetAssessmentTotalMarksData,
     handleExportResultCSV,
 } from '../-services/assessment-details-services';
+import { getAssessmentDetails } from '@/routes/assessment/create-assessment/$assessmentId/$examtype/-services/assessment-services';
 import { MyPagination } from '@/components/design-system/pagination';
 import { MyButton } from '@/components/design-system/button';
 import { ArrowCounterClockwise, Export } from '@phosphor-icons/react';
@@ -58,6 +60,9 @@ export interface SelectedSubmissionsFilterInterface {
     status: string[];
     // Optional: filter Attempted rows by evaluation state (COMPLETED / PENDING).
     evaluation_status?: MyFilterOption[];
+    // Optional (manual evaluation only): filter Attempted rows by whether the
+    // attempt has a submitted answer-sheet file.
+    submission_status?: MyFilterOption[];
     sort_columns: Record<string, string>;
 }
 
@@ -65,7 +70,15 @@ export interface SelectedSubmissionsFilterInterface {
 // result_status values the backend filters on.
 export const EVALUATION_STATUS_FILTER_OPTIONS: MyFilterOption[] = [
     { id: 'PENDING', name: 'Pending' },
+    { id: 'EVALUATING', name: 'Evaluating' },
     { id: 'COMPLETED', name: 'Evaluated' },
+];
+
+// Options for the Submission filter (manual evaluation only). ids are the values
+// the backend maps to "attempt has a submitted answer-sheet file" or not.
+export const SUBMISSION_STATUS_FILTER_OPTIONS: MyFilterOption[] = [
+    { id: 'SUBMITTED', name: 'Submitted' },
+    { id: 'NOT_SUBMITTED', name: 'Not Submitted' },
 ];
 
 export interface SelectedReleaseResultFilterInterface {
@@ -80,6 +93,15 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     const { assessmentId, examType, assesssmentType, assessmentTab } = Route.useParams();
     const assessmentSettings = getAssessmentSettingsFromCache();
     const isOfflineEntryEnabled = assessmentSettings.offlineEntry.enabled;
+    const queryClient = useQueryClient();
+    // MANUAL evaluation assessments get an extra "Submission" column showing
+    // whether each attempt has a submitted answer-sheet file. Same cached query
+    // the row dropdown uses for its menu.
+    const { data: assessmentDetailsData } = useSuspenseQuery(
+        getAssessmentDetails({ assessmentId, instituteId, type: 'EXAM' })
+    );
+    const isManualEvaluation =
+        assessmentDetailsData?.[0]?.saved_data?.evaluation_type === 'MANUAL';
     const { data: totalMarks } = useSuspenseQuery(
         handleGetAssessmentTotalMarksData({ assessmentId })
     );
@@ -96,6 +118,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
         batches: [],
         status: ['ACTIVE'],
         evaluation_status: [],
+        submission_status: [],
         sort_columns: {},
     });
 
@@ -138,8 +161,31 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
             pageSize: number;
             selectedFilter: SelectedSubmissionsFilterInterface;
         }) => getAdminParticipants(assessmentId, instituteId, pageNo, pageSize, selectedFilter),
-        onSuccess: (data) => {
+        onSuccess: async (data) => {
             console.log('submissions data', data);
+            // For manual-evaluation assessments, batch-fetch which attempts on
+            // this page have a submitted answer sheet and seed the per-attempt
+            // cache BEFORE rendering rows, so the Submission cells don't each
+            // fire their own request.
+            if (isManualEvaluation) {
+                const attemptIds = (data?.content ?? [])
+                    .map((student) => student.attempt_id)
+                    .filter(Boolean);
+                if (attemptIds.length > 0) {
+                    try {
+                        const fileMap = await getAttemptsFileStatus(attemptIds);
+                        attemptIds.forEach((id) => {
+                            queryClient.setQueryData(
+                                ['GET_ATTEMPT_SUBMISSION_FILE', id],
+                                fileMap?.[id] ?? null
+                            );
+                        });
+                    } catch (error) {
+                        // Non-fatal: cells fall back to per-attempt fetches.
+                        console.error('Failed to batch-fetch submission file status:', error);
+                    }
+                }
+            }
             setParticipantsData(data);
         },
         onError: (error: unknown) => {
@@ -182,13 +228,15 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
     };
 
     const getAssessmentColumn = {
-        Attempted: getAllColumnsForTable(type, selectedParticipantsTab).Attempted,
+        Attempted: getAllColumnsForTable(type, selectedParticipantsTab, isManualEvaluation)
+            .Attempted,
         Pending: getAllColumnsForTable(type, selectedParticipantsTab).Pending,
         Ongoing: getAllColumnsForTable(type, selectedParticipantsTab).Ongoing,
     };
 
     const getAssessmentColumnWidth = {
-        Attempted: getAllColumnsForTableWidth(type, selectedParticipantsTab).Attempted,
+        Attempted: getAllColumnsForTableWidth(type, selectedParticipantsTab, isManualEvaluation)
+            .Attempted,
         Pending: getAllColumnsForTableWidth(type, selectedParticipantsTab).Pending,
         Ongoing: getAllColumnsForTableWidth(type, selectedParticipantsTab).Ongoing,
     };
@@ -678,6 +726,28 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
         });
     };
 
+    // Submission filter (manual evaluation, Attempted only) — same immediate-apply
+    // behavior as the Evaluation Status filter below.
+    const handleSubmissionStatusFilter = (items: MyFilterOption[]) => {
+        const nextFilter = {
+            ...selectedFilter,
+            submission_status: items,
+            registration_source: getCurrentRegistrationSource(),
+            attempt_type: [getCurrentAttemptType()],
+        };
+        setSelectedFilter(nextFilter);
+        setPage(0);
+        // Filtering changes which rows are present; clear index-keyed selections.
+        handleResetSelections();
+        getParticipantsListData.mutate({
+            assessmentId,
+            instituteId,
+            pageNo: 0,
+            pageSize: 10,
+            selectedFilter: nextFilter,
+        });
+    };
+
     // Evaluation Status filter (Attempted only) — applies immediately and refetches
     // page 0 so a teacher can jump straight to submissions that still need grading.
     const handleEvaluationStatusFilter = (items: MyFilterOption[]) => {
@@ -706,6 +776,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
             name: '',
             batches: [],
             evaluation_status: [],
+            submission_status: [],
         }));
         setSearchText('');
         if (selectedParticipantsTab === 'internal' && batchSelectionTab === 'batch') {
@@ -719,6 +790,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                     name: '',
                     batches: [],
                     evaluation_status: [],
+                    submission_status: [],
                     registration_source: 'BATCH_PREVIEW_REGISTRATION',
                     attempt_type: [
                         selectedTab === 'Attempted'
@@ -742,6 +814,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                     name: '',
                     batches: [],
                     evaluation_status: [],
+                    submission_status: [],
                     registration_source: 'ADMIN_PRE_REGISTRATION',
                     attempt_type: [
                         selectedTab === 'Attempted'
@@ -765,6 +838,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                     name: '',
                     batches: [],
                     evaluation_status: [],
+                    submission_status: [],
                     registration_source: 'OPEN_REGISTRATION',
                     attempt_type: [
                         selectedTab === 'Attempted'
@@ -1116,6 +1190,16 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                                 onSelectionChange={handleEvaluationStatusFilter}
                             />
                         )}
+                        {/* Response filter — manual evaluation only: filter by
+                            whether the attempt has a submitted answer-sheet file. */}
+                        {selectedTab === 'Attempted' && isManualEvaluation && (
+                            <ScheduleTestFilters
+                                label="Response"
+                                data={SUBMISSION_STATUS_FILTER_OPTIONS}
+                                selectedItems={selectedFilter.submission_status || []}
+                                onSelectionChange={handleSubmissionStatusFilter}
+                            />
+                        )}
                         <AssessmentSubmissionsFilterButtons
                             selectedQuestionPaperFilters={selectedFilter}
                             handleSubmitFilters={handleRefreshLeaderboard}
@@ -1176,6 +1260,7 @@ const AssessmentSubmissionsTab = ({ type }: { type: string }) => {
                             batches={selectedFilter.batches}
                             totalMarks={totalMarks.total_achievable_marks}
                             refreshKey={summaryRefreshKey}
+                            isManualEvaluation={isManualEvaluation}
                         />
                     )}
                     <TabsContent value={selectedTab} ref={tableRef}>

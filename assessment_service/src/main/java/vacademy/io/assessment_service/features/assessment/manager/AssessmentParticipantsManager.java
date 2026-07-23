@@ -534,7 +534,8 @@ public class AssessmentParticipantsManager {
                         .findUserRegistrationWithFilterWithSearchForSource(
                                 filter.getName(), assessmentId, instituteId, filter.getStatus(),
                                 filter.getAttemptType(), filter.getRegistrationSource(),
-                                evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
+                                evaluationStatusFilter(filter.getEvaluationStatus()),
+                                evaluationStatusFilter(filter.getSubmissionStatus()), pageable);
             }
 
             // If no results found, search for users based on batch, attempt type, and
@@ -544,7 +545,8 @@ public class AssessmentParticipantsManager {
                         .findUserRegistrationWithFilterForSource(
                                 assessmentId, instituteId, filter.getBatches(),
                                 filter.getAttemptType(), filter.getRegistrationSource(),
-                                evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
+                                evaluationStatusFilter(filter.getEvaluationStatus()),
+                                evaluationStatusFilter(filter.getSubmissionStatus()), pageable);
             }
         }
 
@@ -563,12 +565,14 @@ public class AssessmentParticipantsManager {
                 registeredUserPage = assessmentUserRegistrationRepository
                         .findUserRegistrationWithFilterWithSearchForBatch(filter.getName(), assessmentId, instituteId,
                                 filter.getBatches(), filter.getStatus(), filter.getAttemptType(),
-                                evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
+                                evaluationStatusFilter(filter.getEvaluationStatus()),
+                                evaluationStatusFilter(filter.getSubmissionStatus()), pageable);
             }
             if (Objects.isNull(registeredUserPage)) {
                 registeredUserPage = assessmentUserRegistrationRepository.findUserRegistrationWithFilterForBatch(
                         assessmentId, instituteId, filter.getBatches(), filter.getStatus(), filter.getAttemptType(),
-                        evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
+                        evaluationStatusFilter(filter.getEvaluationStatus()),
+                                evaluationStatusFilter(filter.getSubmissionStatus()), pageable);
             }
         }
 
@@ -635,7 +639,8 @@ public class AssessmentParticipantsManager {
                         .findUserRegistrationWithFilterWithSearchForSource(
                                 filter.getName(), assessmentId, instituteId, filter.getStatus(),
                                 filter.getAttemptType(), filter.getRegistrationSource(),
-                                evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
+                                evaluationStatusFilter(filter.getEvaluationStatus()),
+                                evaluationStatusFilter(filter.getSubmissionStatus()), pageable);
             }
 
             // If no results are found, perform a broader search
@@ -644,7 +649,8 @@ public class AssessmentParticipantsManager {
                         .findUserRegistrationWithFilterForSource(
                                 assessmentId, instituteId, filter.getStatus(),
                                 filter.getAttemptType(), filter.getRegistrationSource(),
-                                evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
+                                evaluationStatusFilter(filter.getEvaluationStatus()),
+                                evaluationStatusFilter(filter.getSubmissionStatus()), pageable);
             }
         }
 

@@ -469,6 +469,7 @@ export const GET_EXPORT_CSV_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-servic
 export const GET_EXPORT_PDF_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/pdf/registered-participants`;
 export const GET_EXPORT_CSV_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/registered-participants`;
 export const GET_QUESTIONS_INSIGHTS_URL = `${BASE_URL}/assessment-service/assessment/admin/get-question-insights`;
+// LOCAL TESTING: submission_status filter only exists on the local build — revert to BASE_URL before merging.
 export const GET_ADMIN_PARTICIPANTS = `${BASE_URL}/assessment-service/assessment/admin-participants/all/registered-participants`;
 export const GET_PARTICIPANT_REGISTRATION_DETAILS = `${BASE_URL}/assessment-service/assessment/admin-participants/registration-details`;
 export const GET_PARTICIPANTS_QUESTION_WISE = `${BASE_URL}/assessment-service/assessment/admin-participants/all/respondent-list`;
@@ -653,9 +654,13 @@ export const UPDATE_INVITE_LINK_STATUS = `${BASE_URL}/admin-core-service/learner
 export const UPDATE_INVITATION = `${BASE_URL}/admin-core-service/learner-invitation/update`;
 export const ENROLL_REQUESTS = `${BASE_URL}/admin-core-service/learner-invitation/invitation-responses`;
 
+// LOCAL TESTING: manual-evaluation endpoints pointed at the local assessment
+// service — revert to BASE_URL before merging.
 export const GET_ATTEMPT_DATA = `${BASE_URL}/assessment-service/assessment/manual-evaluation/get/attempt-data`;
+// Batch lookup: attemptId -> submitted answer-sheet fileId for the submissions table badge.
+export const GET_ATTEMPTS_FILE_STATUS = `${BASE_URL}/assessment-service/assessment/manual-evaluation/attempts/file-status`;
 export const UPDATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/manual-evaluation/update/attempt`;
-export const SUBMIT_MARKS = `${BASE_URL}/assessment-service/assessment/manual-evaluation/submit/marks`;
+export const SUBMIT_MARKS = `${BASE_URL}/asses  sment-service/assessment/manual-evaluation/submit/marks`;
 // Server-side "save draft": pause manual evaluation and resume it later from any device.
 export const SAVE_EVALUATION_DRAFT = `${BASE_URL}/assessment-service/assessment/manual-evaluation/save/draft`;
 export const GET_EVALUATION_DRAFT = `${BASE_URL}/assessment-service/assessment/manual-evaluation/get/draft`;

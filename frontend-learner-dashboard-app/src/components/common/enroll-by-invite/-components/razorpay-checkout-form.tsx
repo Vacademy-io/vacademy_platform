@@ -5,6 +5,20 @@ import {
   useImperativeHandle,
   forwardRef,
 } from "react";
+import { parseHtmlToString } from "@/lib/utils";
+
+// Razorpay rejects payment creation when `description` exceeds 255 characters
+// (BAD_REQUEST_ERROR: "The description may not be greater than 255 characters").
+// Course descriptions arrive as rich-text HTML, so strip markup and truncate.
+const RAZORPAY_DESCRIPTION_MAX = 255;
+
+function toRazorpayDescription(raw: string): string {
+  const text = parseHtmlToString(raw).replace(/\s+/g, " ").trim();
+  if (!text) return "Payment for course enrollment";
+  return text.length > RAZORPAY_DESCRIPTION_MAX
+    ? `${text.slice(0, RAZORPAY_DESCRIPTION_MAX - 1)}…`
+    : text;
+}
 
 export interface RazorpayCheckoutFormRef {
   openPayment: (orderDetails: {
@@ -142,7 +156,7 @@ export const RazorpayCheckoutForm = forwardRef<
               }
             : {}),
           name: courseName,
-          description: courseDescription,
+          description: toRazorpayDescription(courseDescription),
           handler: function (response: {
             razorpay_payment_id: string;
             razorpay_order_id: string;

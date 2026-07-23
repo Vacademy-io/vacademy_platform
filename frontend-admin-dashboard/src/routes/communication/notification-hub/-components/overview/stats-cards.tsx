@@ -9,11 +9,14 @@ import {
 } from '@phosphor-icons/react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { HubOverview } from '../../-services/hub-api';
+import { cn } from '@/lib/utils';
+import type { HubOverview, HubEmailEventType } from '../../-services/hub-api';
 
 interface Props {
     overview: HubOverview | null;
     loading: boolean;
+    /** Opens the drill-down list for an email stat (delivered/opened/clicked/bounced). */
+    onEmailStatClick?: (eventType: HubEmailEventType) => void;
 }
 
 interface Stat {
@@ -21,9 +24,10 @@ interface Stat {
     value: number | string;
     icon: React.ReactNode;
     tone?: 'default' | 'muted' | 'warn' | 'good';
+    onClick?: () => void;
 }
 
-export function StatsCards({ overview, loading }: Props) {
+export function StatsCards({ overview, loading, onEmailStatClick }: Props) {
     if (loading && !overview) {
         return (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -48,12 +52,15 @@ export function StatsCards({ overview, loading }: Props) {
     const wa = overview.whatsapp;
     const batches = overview.batches;
 
+    const drill = (eventType: HubEmailEventType) =>
+        onEmailStatClick ? () => onEmailStatClick(eventType) : undefined;
+
     const emailStats: Stat[] = [
         { label: 'Emails sent', value: email.sent, icon: <PaperPlaneTilt size={18} />, tone: 'default' },
-        { label: 'Delivered', value: email.delivered, icon: <CheckCircle size={18} />, tone: 'good' },
-        { label: 'Opened', value: email.opened, icon: <Eye size={18} />, tone: 'default' },
-        { label: 'Clicked', value: email.clicked, icon: <CursorClick size={18} />, tone: 'default' },
-        { label: 'Bounced', value: email.bounced, icon: <Warning size={18} />, tone: 'warn' },
+        { label: 'Delivered', value: email.delivered, icon: <CheckCircle size={18} />, tone: 'good', onClick: drill('DELIVERY') },
+        { label: 'Opened', value: email.opened, icon: <Eye size={18} />, tone: 'default', onClick: drill('OPEN') },
+        { label: 'Clicked', value: email.clicked, icon: <CursorClick size={18} />, tone: 'default', onClick: drill('CLICK') },
+        { label: 'Bounced', value: email.bounced, icon: <Warning size={18} />, tone: 'warn', onClick: drill('BOUNCE') },
         { label: 'Inbound replies', value: email.inbound, icon: <ArrowFatDown size={18} />, tone: 'default' },
     ];
 
@@ -131,24 +138,44 @@ function Section({
     );
 }
 
-function StatCard({ label, value, icon, tone = 'default' }: Stat) {
+function StatCard({ label, value, icon, tone = 'default', onClick }: Stat) {
     const toneClasses: Record<NonNullable<Stat['tone']>, string> = {
         default: 'text-gray-700',
         muted: 'text-gray-400',
         warn: 'text-amber-600',
         good: 'text-green-600',
     };
+    const body = (
+        <>
+            <div className="flex items-center justify-between text-xs text-gray-500">
+                <span>{label}</span>
+                <span className={toneClasses[tone]}>{icon}</span>
+            </div>
+            <div className={`mt-1 text-xl font-semibold ${toneClasses[tone]}`}>
+                {typeof value === 'number' ? value.toLocaleString() : value}
+            </div>
+        </>
+    );
     return (
-        <Card className="rounded-lg border-gray-200">
-            <CardContent className="p-3">
-                <div className="flex items-center justify-between text-xs text-gray-500">
-                    <span>{label}</span>
-                    <span className={toneClasses[tone]}>{icon}</span>
-                </div>
-                <div className={`mt-1 text-xl font-semibold ${toneClasses[tone]}`}>
-                    {typeof value === 'number' ? value.toLocaleString() : value}
-                </div>
-            </CardContent>
+        <Card
+            className={cn(
+                'rounded-lg border-gray-200',
+                onClick &&
+                    'cursor-pointer transition hover:border-primary-300 hover:shadow-sm focus-within:ring-2 focus-within:ring-primary-500'
+            )}
+        >
+            {onClick ? (
+                <button
+                    type="button"
+                    onClick={onClick}
+                    className="w-full text-left focus:outline-none"
+                    title={`View ${label.toLowerCase()}`}
+                >
+                    <CardContent className="p-3">{body}</CardContent>
+                </button>
+            ) : (
+                <CardContent className="p-3">{body}</CardContent>
+            )}
         </Card>
     );
 }

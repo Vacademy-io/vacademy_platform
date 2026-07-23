@@ -5,25 +5,30 @@ import { isChildViewActive } from "@/routes/parent/child/-lib/child-view";
 import { fetchParentSettings } from "@/routes/parent/child/-services/parent-portal-api";
 
 /**
- * Whether the signed-in learner may switch to the parent portal: a DUAL-ROLE
- * user (STUDENT + PARENT) in an institute whose Guardian Settings keep
- * parentPortal.enabled AND allowSwitchToParentView on. Never true while in
- * child-view — the delegated token is the child's identity, not the guardian's.
+ * Where the signed-in learner may hop for the "parent" perspective, or null.
+ *
+ * Gated on Guardian Settings (parentPortal.enabled AND allowSwitchToParentView):
+ * - A dual-role STUDENT+PARENT user goes to their real portal (/parent).
+ * - A plain student opens the parent-style monitoring view of THEMSELVES —
+ *   allowed server-side by the GuardianAccessGuard's self leg, so no PARENT
+ *   role is needed.
+ * Never available in child-view — the delegated token is the child's identity.
  */
-export function useParentPortalSwitch(): boolean {
+export function useParentPortalSwitch(): string | null {
   const { data } = useQuery({
     queryKey: ["parent-portal-switch"],
-    queryFn: async () => {
-      if (isChildViewActive()) return false;
+    queryFn: async (): Promise<string | null> => {
+      if (isChildViewActive()) return null;
       const token = await getAccessToken();
       const decoded = getTokenDecodedData(token);
-      // Dual-role only: PARENT-only guardians are routed to /parent at login
-      // and never see the learner shell.
-      if (!isParentToken(decoded) || !isStudentToken(decoded)) return false;
+      if (!isStudentToken(decoded)) return null;
       const settings = await fetchParentSettings();
-      return !!(settings?.enabled && settings?.allowSwitchToParentView);
+      if (!settings?.enabled || !settings?.allowSwitchToParentView) return null;
+      if (isParentToken(decoded)) return "/parent";
+      const ownUserId = (decoded as { user?: string } | null)?.user;
+      return ownUserId ? `/parent/child/${ownUserId}` : null;
     },
     staleTime: 5 * 60 * 1000,
   });
-  return data === true;
+  return data ?? null;
 }

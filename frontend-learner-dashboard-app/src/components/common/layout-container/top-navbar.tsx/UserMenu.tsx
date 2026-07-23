@@ -39,9 +39,10 @@ const MENU_LABEL_OVERRIDES: Record<string, string> = {
 export const UserMenu = ({ className }: { className?: string }) => {
   const navigate = useNavigate();
   const { permissions } = useStudentPermissions();
-  // Dual-role (STUDENT + PARENT) users may hop to the parent portal when the
-  // institute's Guardian Settings allow it.
-  const canSwitchToParent = useParentPortalSwitch();
+  // Any student may hop to the parent perspective when Guardian Settings allow
+  // it: dual-role users to their real portal, plain students to the parent-style
+  // view of themselves (guard self-leg).
+  const parentPortalTarget = useParentPortalSwitch();
 
   const [studentData, setStudentData] = useState<Student | null>(null);
   const [profileImageUrl, setProfileImageUrl] = useState<string | undefined>(
@@ -180,10 +181,10 @@ export const UserMenu = ({ className }: { className?: string }) => {
           </DropdownMenuItem>
         ))}
 
-        {canSwitchToParent && (
+        {parentPortalTarget && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => navigate({ to: "/parent" as never })}>
+            <DropdownMenuItem onSelect={() => navigate({ to: parentPortalTarget as never })}>
               <UserSwitch />
               Switch to parent portal
             </DropdownMenuItem>

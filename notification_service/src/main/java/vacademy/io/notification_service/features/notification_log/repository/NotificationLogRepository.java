@@ -705,6 +705,28 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
                         @Param("since") String since);
 
     /**
+     * Paginated list behind {@link #countEmailEvent} — the hub drill-down ("show me the emails
+     * that bounced/opened/clicked"). Same scoping: event joined to its parent EMAIL log, parent
+     * filtered by the institute's configured from-addresses, event within window. Newest first.
+     */
+    @Query(value = """
+            SELECT ev.* FROM notification_log ev
+            INNER JOIN notification_log orig ON orig.id = ev.source
+            WHERE ev.notification_type = 'EMAIL_EVENT'
+              AND ev.body LIKE CONCAT('Email Event: ', :eventName, '%')
+              AND orig.notification_type = 'EMAIL'
+              AND orig.sender_business_channel_id IN (:fromAddresses)
+              AND ev.notification_date >= CAST(:since AS TIMESTAMP)
+            ORDER BY ev.notification_date DESC
+            LIMIT :limit OFFSET :offset
+            """, nativeQuery = true)
+    List<NotificationLog> findEmailEventsForInstitute(@Param("fromAddresses") List<String> fromAddresses,
+                                                      @Param("eventName") String eventName,
+                                                      @Param("since") String since,
+                                                      @Param("limit") int limit,
+                                                      @Param("offset") int offset);
+
+    /**
      * Count INBOUND_EMAILs (learner replies) in window for an institute.
      */
     @Query(value = """

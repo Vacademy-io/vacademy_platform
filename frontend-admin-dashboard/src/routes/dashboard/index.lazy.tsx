@@ -75,6 +75,7 @@ import QuickActionsStrip from './-components/QuickActionsStrip';
 import { AssistantLaunchBar } from '@/components/vacademy-assistant/AssistantLaunchBar';
 import KpiBand from './-components/KpiBand';
 import FinanceSummaryWidget from './-components/FinanceSummaryWidget';
+import SubOrgOverviewWidget from './-components/SubOrgOverviewWidget';
 import RecentTransactionsWidget from './-components/RecentTransactionsWidget';
 import FreshInstituteEmptyState from './-components/FreshInstituteEmptyState';
 import TrackedWidget from './-components/TrackedWidget';
@@ -618,6 +619,14 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                             </TrackedWidget>
                         )}
                     </div>
+                )}
+                {/* Sub-org (VLE) network snapshot — which ROLES see it is controlled per-role
+                    from Settings → Display Settings → Dashboard Widgets (id: subOrgOverview);
+                    the widget itself hides for institutes with no sub-orgs. */}
+                {!isFreshTenant && isWidgetVisible('subOrgOverview') && (
+                    <TrackedWidget widgetId="subOrgOverview">
+                        <SubOrgOverviewWidget />
+                    </TrackedWidget>
                 )}
                 {/* My Courses Widget - Only for Non-Admin Users */}
                 {!isAdmin && isWidgetVisible('myCourses') && <MyCoursesWidget />}

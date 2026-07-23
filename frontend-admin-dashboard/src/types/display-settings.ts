@@ -48,7 +48,8 @@ export type DashboardWidgetId =
     | 'unresolvedDoubts'
     | 'liveClasses'
     | 'aiFeaturesCard'
-    | 'instituteOverview';
+    | 'instituteOverview'
+    | 'subOrgOverview';
 
 export interface DashboardWidgetConfig {
     id: DashboardWidgetId;

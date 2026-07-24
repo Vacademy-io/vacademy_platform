@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import type { CreateCPOPayload } from '../-types/cpo-types';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
     Select,
     SelectContent,
@@ -41,6 +42,8 @@ export interface CPOForm {
     packageSessionId: string;
     packageSessionIds: string[];
     feeTypes: FeeTypeForm[];
+    /** When true, learners enrolling via this CPO need admin approval before course access. */
+    requireApproval?: boolean;
 }
 
 export interface BatchOption {
@@ -147,6 +150,7 @@ export function buildCreateCPOPayload(form: CPOForm, allBatches: any[] = []): Cr
         status: form.status,
         created_by: null,
         approved_by: null,
+        require_approval: !!form.requireApproval,
         fee_types: form.feeTypes.map((ft) => ({
             id: null,
             name: ft.name,
@@ -798,6 +802,7 @@ export default function CreateCPODialog({
         packageSessionId: defaultPackageSessionId ?? '',
         packageSessionIds: defaultPackageSessionId ? [defaultPackageSessionId] : [],
         feeTypes: [createEmptyFeeType(1)],
+        requireApproval: false,
     });
 
     useEffect(() => {
@@ -973,6 +978,25 @@ export default function CreateCPODialog({
                                 </SelectContent>
                             </Select>
                         </div>
+                    </div>
+
+                    {/* Admin approval toggle */}
+                    <div className="flex items-start justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3">
+                        <div>
+                            <Label className="text-sm font-semibold text-gray-800">
+                                Enroll learners on approval
+                            </Label>
+                            <p className="mt-0.5 text-xs text-gray-500">
+                                When on, learners who enroll via this plan wait for admin approval
+                                before getting course access.
+                            </p>
+                        </div>
+                        <Switch
+                            checked={!!form.requireApproval}
+                            onCheckedChange={(checked) =>
+                                setForm((prev) => ({ ...prev, requireApproval: checked }))
+                            }
+                        />
                     </div>
 
                     {/* Fee Types Section */}

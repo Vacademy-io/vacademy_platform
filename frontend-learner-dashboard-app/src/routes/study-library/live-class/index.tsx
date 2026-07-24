@@ -33,6 +33,10 @@ import {
 import { calculateDuration } from "@/lib/live-class/utils";
 import { isBbbSession, openBbbJoinForLearner } from "@/lib/live-class/bbb-join";
 import {
+  fetchLiveSessionPaymentStatus,
+  registerAndPayForLiveSession,
+} from "./-services/livePayment";
+import {
   formatSessionTimeInUserTimezone,
   convertSessionTimeToUserTimezone,
   getTimezoneDisplayInfo,
@@ -203,6 +207,30 @@ function RouteComponent() {
     ) {
       console.log("Embed session clicked:", session);
     }
+
+    // Paid live class gate: the backend refuses joins until this learner's
+    // registration is PAID, so intercept and route through the payment page
+    // first. On any lookup failure, fall through — the server still enforces.
+    try {
+      const payStatus = await fetchLiveSessionPaymentStatus(session.session_id);
+      if (payStatus.payment_required && payStatus.payment_status !== "PAID") {
+        toast.info("This is a paid live class. Complete the payment to join.");
+        const registration = await registerAndPayForLiveSession(
+          session.session_id
+        );
+        if (registration.invoice_id) {
+          (navigate as any)({
+            to: "/pay/invoice/$invoiceId",
+            params: { invoiceId: registration.invoice_id },
+            search: { redirect: "/study-library/live-class" },
+          });
+          return;
+        }
+      }
+    } catch (error) {
+      console.error("Live-session payment status check failed:", error);
+    }
+
     const now = new Date();
 
     let sessionDate, sessionEndDate, waitingRoomStart;

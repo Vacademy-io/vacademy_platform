@@ -12,6 +12,11 @@ import java.util.Optional;
 @Repository
 public interface PaymentOptionRepository extends JpaRepository<PaymentOption, String> {
 
+    // Paid live sessions: at most one ACTIVE option per session (source=LIVE_SESSION,
+    // source_id=<live_session.id>); latest wins defensively if duplicates ever appear.
+    Optional<PaymentOption> findFirstBySourceAndSourceIdAndStatusOrderByCreatedAtDesc(
+            String source, String sourceId, String status);
+
     /**
      * NOTE on parameter shape:
      * Postgres JDBC cannot infer the SQL type for a List parameter bound to NULL inside

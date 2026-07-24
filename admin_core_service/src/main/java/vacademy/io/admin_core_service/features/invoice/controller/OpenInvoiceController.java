@@ -37,8 +37,13 @@ public class OpenInvoiceController {
     @PostMapping("/{invoiceId}/initiate-payment")
     public ResponseEntity<PaymentResponseDTO> initiatePaymentPublic(
             @PathVariable String invoiceId,
-            @RequestParam String instituteId) {
-        PaymentResponseDTO response = invoiceService.initiatePaymentForAdminInvoice(invoiceId, instituteId, null);
+            @RequestParam String instituteId,
+            @RequestBody(required = false) vacademy.io.common.payment.dto.PaymentInitiationRequestDTO clientData) {
+        // Body is the vendor-specific data the page collected (Stripe payment_method_id,
+        // eWay encrypted card, redirect URLs). Amount/currency/vendor are always taken
+        // from the invoice + institute config server-side, never from this body.
+        PaymentResponseDTO response = invoiceService.initiatePaymentForAdminInvoice(
+                invoiceId, instituteId, null, clientData);
         return ResponseEntity.ok(response);
     }
 

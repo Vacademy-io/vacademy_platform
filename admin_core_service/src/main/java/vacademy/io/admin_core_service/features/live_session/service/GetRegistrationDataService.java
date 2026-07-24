@@ -17,6 +17,7 @@ public class GetRegistrationDataService {
 
         private final CustomFieldRepository customFieldRepository;
         private final SessionGuestRegistrationRepository sessionGuestRegistrationRepository;
+        private final LiveSessionPaymentService liveSessionPaymentService;
 
         public RegistrationFromResponseDTO getRegistrationData(String sessionId) {
                 List<CustomFieldRepository.FlatFieldProjection> flatList = customFieldRepository
@@ -43,7 +44,7 @@ public class GetRegistrationDataService {
                                                 f.getIsHidden()))
                                 .collect(Collectors.toList());
 
-                return new RegistrationFromResponseDTO(
+                RegistrationFromResponseDTO response = new RegistrationFromResponseDTO(
                                 first.getSessionId(),
                                 first.getSessionTitle(),
                                 first.getStartTime(),
@@ -52,7 +53,19 @@ public class GetRegistrationDataService {
                                 first.getInstituteId(),
                                 first.getSubject(),
                                 first.getCoverFileId(),
-                                customFields);
+                                customFields,
+                                null, null, null,
+                                first.getRequireEmailVerification(),
+                                first.getRequirePhoneVerification());
+
+                // Paid session: surface the fee so the public form can show the price
+                // and route the registrant through the payment step.
+                liveSessionPaymentService.findActivePlan(sessionId).ifPresent(plan -> {
+                        response.setPaymentRequired(true);
+                        response.setPrice(plan.getActualPrice());
+                        response.setCurrency(plan.getCurrency());
+                });
+                return response;
         }
 
         public Optional<String> checkEmailRegistration(String email, String sessionId) {

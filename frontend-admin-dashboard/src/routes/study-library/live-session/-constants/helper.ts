@@ -120,6 +120,22 @@ export interface LiveSessionStep2RequestDTO {
     added_fields: CustomFieldDTO[];
     updated_fields: CustomFieldDTO[];
     deleted_field_ids: string[];
+
+    // Paid live class fee. Always sent so switching a paid session back to free
+    // (enabled=false) deactivates the fee server-side.
+    payment_config?: LiveSessionPaymentConfigDTO;
+
+    // Public-registration OTP verification toggles (phone = WhatsApp OTP,
+    // needs the institute's approved template). Always sent explicitly so
+    // unchecking turns verification off server-side.
+    require_email_verification?: boolean;
+    require_phone_verification?: boolean;
+}
+
+export interface LiveSessionPaymentConfigDTO {
+    enabled: boolean;
+    price: number | null;
+    currency: string | null;
 }
 
 export interface NotificationActionDTO {
@@ -443,6 +459,11 @@ export function transformFormToDTOStep2(
         fields,
         selectedLearners,
         batchSelectionType,
+        paymentEnabled,
+        paymentPrice,
+        paymentCurrency,
+        requireEmailVerification,
+        requirePhoneVerification,
     } = formData;
 
     const addedNotificationActions: NotificationActionDTO[] = [];
@@ -547,6 +568,13 @@ export function transformFormToDTOStep2(
         added_fields: added_fields,
         updated_fields: update_fields,
         deleted_field_ids: [],
+        payment_config: {
+            enabled: !!paymentEnabled,
+            price: paymentEnabled ? parseFloat(paymentPrice ?? '') || null : null,
+            currency: paymentEnabled ? (paymentCurrency ?? null) : null,
+        },
+        require_email_verification: !!requireEmailVerification,
+        require_phone_verification: !!requirePhoneVerification,
     };
 
     // Add individual user IDs if individual selection is used

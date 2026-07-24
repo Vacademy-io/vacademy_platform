@@ -19,6 +19,7 @@ import {
   Warning,
 } from "@phosphor-icons/react";
 import {
+  GET_INSTITUTE_DEFAULT_VENDOR,
   GET_INVOICE_PUBLIC,
   INITIATE_INVOICE_PAYMENT,
   PUBLIC_INSTITUTE_BRANDING_URL,
@@ -26,6 +27,13 @@ import {
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { getCurrencySymbol } from "@/utils/currency";
+import { useMemo } from "react";
+import { loadStripe, type Stripe as StripeJs } from "@stripe/stripe-js";
+import { Elements } from "@stripe/react-stripe-js";
+import { StripeCheckoutForm } from "@/components/common/enroll-by-invite/-components/stripe-checkout-form";
+import { EwayProvider } from "@/components/common/enroll-by-invite/-contexts/eway-context";
+import { EwayCardForm } from "@/components/common/enroll-by-invite/-components/eway-card-form";
+import { getKeyData } from "@/components/common/enroll-by-invite/-services/enroll-invite-services";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -76,7 +84,17 @@ interface PaymentResponseDTO {
 
 // ── Route definition ───────────────────────────────────────────────────────────
 
+import { z } from "zod";
+
+// Optional in-app path to return to after payment (e.g. the live-class
+// registration page) — forwarded to /payment-result which renders a
+// "Continue" action on success.
+const invoicePaySearchSchema = z.object({
+  redirect: z.string().optional(),
+});
+
 export const Route = createFileRoute("/pay/invoice/$invoiceId/")({
+  validateSearch: invoicePaySearchSchema,
   component: InvoicePaymentPage,
 });
 
@@ -106,6 +124,10 @@ function isOverdue(dueDateIso: string): boolean {
 
 function InvoicePaymentPage() {
   const { invoiceId } = Route.useParams();
+  const { redirect } = Route.useSearch();
+  const redirectParam = redirect
+    ? `&redirect=${encodeURIComponent(redirect)}`
+    : "";
   const { setPrimaryColor } = useTheme();
 
   const razorpayRef = useRef<RazorpayCheckoutFormRef>(null);
@@ -114,6 +136,18 @@ function InvoicePaymentPage() {
   const [isPaying, setIsPaying] = useState(false);
   const [paymentInitiated, setPaymentInitiated] = useState(false);
   const [razorpayError, setRazorpayError] = useState<string | null>(null);
+
+  // Card-collecting gateways (Stripe / eWay) — vendor data the forms produce
+  const [cardError, setCardError] = useState<string | null>(null);
+  const stripeProcessRef = useRef<
+    | (() => Promise<{ success: boolean; paymentMethodId?: string; error?: string }>)
+    | null
+  >(null);
+  const [ewayData, setEwayData] = useState<{
+    encryptedNumber: string;
+    encryptedCVN: string;
+    cardData: { name: string; expiryMonth: string; expiryYear: string };
+  } | null>(null);
 
   // Fetch invoice publicly (no auth)
   const {
@@ -130,6 +164,38 @@ function InvoicePaymentPage() {
     retry: 1,
     staleTime: 60_000,
   });
+
+  // Which gateway this institute's invoice payments charge through — decides
+  // whether we must collect card data (Stripe/eWay) before initiating.
+  const { data: vendorData } = useQuery<{ vendor?: string }>({
+    queryKey: ["invoice-default-vendor", invoice?.institute_id],
+    queryFn: async () => {
+      const resp = await axios.get(GET_INSTITUTE_DEFAULT_VENDOR, {
+        params: { instituteId: invoice!.institute_id },
+      });
+      return resp.data as { vendor?: string };
+    },
+    enabled: !!invoice?.institute_id && invoice?.status !== "PAID",
+    staleTime: 60_000 * 60,
+  });
+  const vendor = (vendorData?.vendor ?? "").toUpperCase();
+  const needsCardForm = vendor === "STRIPE" || vendor === "EWAY";
+
+  // Publishable keys for the card gateways (open endpoint)
+  const { data: gatewayKeys } = useQuery<Record<string, string>>({
+    queryKey: ["invoice-gateway-keys", invoice?.institute_id, vendor],
+    queryFn: () => getKeyData(invoice!.institute_id, vendor),
+    enabled: !!invoice?.institute_id && needsCardForm,
+    staleTime: 60_000 * 60,
+  });
+
+  const stripePromise: Promise<StripeJs | null> | null = useMemo(
+    () =>
+      vendor === "STRIPE" && gatewayKeys?.publishableKey
+        ? loadStripe(gatewayKeys.publishableKey)
+        : null,
+    [vendor, gatewayKeys?.publishableKey]
+  );
 
   // Fetch institute branding once institute_id is known
   const { data: branding } = useQuery<InstituteBranding>({
@@ -162,15 +228,76 @@ function InvoicePaymentPage() {
   // ── Pay handler ────────────────────────────────────────────────────────────
   const handlePay = async () => {
     if (!invoice) return;
+    setCardError(null);
+
+    // Card gateways: collect/tokenize the card BEFORE initiating — the backend
+    // charge cannot run without this vendor data (Stripe payment_method, eWay
+    // encrypted card). Amount/currency stay server-side from the invoice.
+    let vendorBody: Record<string, unknown> = {};
+    if (vendor === "STRIPE") {
+      const processPayment = stripeProcessRef.current;
+      if (!processPayment) {
+        toast.error("The payment form is still loading. Please try again.");
+        return;
+      }
+      setIsPaying(true);
+      const result = await processPayment();
+      if (!result.success || !result.paymentMethodId) {
+        setCardError(result.error ?? "Card verification failed");
+        setIsPaying(false);
+        return;
+      }
+      vendorBody = {
+        stripe_request: {
+          payment_method_id: result.paymentMethodId,
+          card_last4: null,
+          customer_id: null,
+          return_url: `${window.location.origin}/payment-result?source=invoice&instituteId=${invoice.institute_id}${redirectParam}`,
+        },
+      };
+    } else if (vendor === "EWAY") {
+      if (!ewayData) {
+        toast.error("Enter your card details to continue.");
+        return;
+      }
+      vendorBody = {
+        eway_request: {
+          customer_id: null,
+          card_name: ewayData.cardData.name,
+          expiry_month: ewayData.cardData.expiryMonth,
+          expiry_year: ewayData.cardData.expiryYear,
+          card_number: ewayData.encryptedNumber,
+          cvn: ewayData.encryptedCVN,
+          country_code: "au",
+        },
+      };
+    }
+
     setIsPaying(true);
     try {
       const resp = await axios.post<PaymentResponseDTO>(
         INITIATE_INVOICE_PAYMENT(invoiceId),
-        {},
+        vendorBody,
         { params: { instituteId: invoice.institute_id } }
       );
       const data = resp.data;
       const rd = data.response_data ?? {};
+      const paymentStatus = String(
+        (rd.paymentStatus as string) ?? (rd.payment_status as string) ?? ""
+      ).toUpperCase();
+
+      // Synchronous gateways (eWay always, Stripe without a 3DS challenge)
+      // confirm in-request — go straight to the result page.
+      if (paymentStatus === "PAID") {
+        window.location.href = `/payment-result?orderId=${data.order_id}&instituteId=${invoice.institute_id}&source=invoice${redirectParam}`;
+        return;
+      }
+      if (paymentStatus === "FAILED") {
+        setCardError(
+          "The payment was declined. Please check your card details and try again."
+        );
+        return;
+      }
 
       if (rd.payment_link) {
         window.location.href = rd.payment_link as string;
@@ -194,7 +321,7 @@ function InvoicePaymentPage() {
       }
 
       // Fallback redirect — source=invoice skips gateway-specific polling
-      window.location.href = `/payment-result?orderId=${data.order_id}&instituteId=${invoice.institute_id}&source=invoice`;
+      window.location.href = `/payment-result?orderId=${data.order_id}&instituteId=${invoice.institute_id}&source=invoice${redirectParam}`;
     } catch {
       toast.error("Failed to initiate payment. Please try again.");
     } finally {
@@ -205,7 +332,7 @@ function InvoicePaymentPage() {
   const handlePaymentReady = () => {
     // Navigate to the polling confirmation page; source=invoice skips gateway-specific status checks
     if (pendingOrderId.current && invoice?.institute_id) {
-      window.location.href = `/payment-result?orderId=${pendingOrderId.current}&source=invoice&instituteId=${invoice.institute_id}`;
+      window.location.href = `/payment-result?orderId=${pendingOrderId.current}&source=invoice&instituteId=${invoice.institute_id}${redirectParam}`;
     } else {
       setPaymentInitiated(true);
     }
@@ -450,12 +577,43 @@ function InvoicePaymentPage() {
               {overdue && <span className="text-warning-600">(Overdue)</span>}
             </div>
 
+            {/* Card entry for gateways that need it (Stripe / eWay) */}
+            {invoice.status !== "PAID" && vendor === "STRIPE" && stripePromise && (
+              <Elements stripe={stripePromise}>
+                <StripeCheckoutForm
+                  error={cardError}
+                  onPaymentMethodReady={(processPayment) => {
+                    stripeProcessRef.current = processPayment;
+                  }}
+                />
+              </Elements>
+            )}
+            {invoice.status !== "PAID" && vendor === "EWAY" && gatewayKeys && (
+              <EwayProvider
+                encryptionKey={gatewayKeys.encryptionKey}
+                publicKey={gatewayKeys.publicKey}
+              >
+                <EwayCardForm
+                  isProcessing={isPaying}
+                  onPaymentReady={setEwayData}
+                  onError={(err) => setCardError(err)}
+                />
+                {cardError && (
+                  <p className="text-caption text-danger-500">{cardError}</p>
+                )}
+              </EwayProvider>
+            )}
+
             {/* Action area */}
             <div className="space-y-2 pt-1">
               <Button
                 className="w-full gap-2"
                 size="lg"
-                disabled={isPaying || invoice.status === "PAID"}
+                disabled={
+                  isPaying ||
+                  invoice.status === "PAID" ||
+                  (vendor === "EWAY" && !ewayData)
+                }
                 onClick={handlePay}
               >
                 {isPaying ? (

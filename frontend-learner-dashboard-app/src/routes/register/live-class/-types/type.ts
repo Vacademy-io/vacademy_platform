@@ -21,6 +21,26 @@ export interface SessionCustomFieldsResponse {
   instituteId: string;
   coverFileId: string;
   customFields: CustomField[];
+  // Paid live sessions — absent/false for free sessions
+  paymentRequired?: boolean;
+  price?: number;
+  currency?: string;
+  // OTP verification the form must run before registering (per-session admin
+  // config). Phone OTP is delivered over WhatsApp.
+  requireEmailVerification?: boolean | null;
+  requirePhoneVerification?: boolean | null;
+}
+
+// Response of register-and-pay / payment-info (snake_case from backend)
+export interface LiveSessionPaymentInfo {
+  registration_id: string | null;
+  payment_required: boolean;
+  payment_status: "PENDING" | "PAID" | null;
+  invoice_id: string | null;
+  total_amount: number | null;
+  price: number | null;
+  currency: string | null;
+  institute_id: string | null;
 }
 
 export interface ApiError {

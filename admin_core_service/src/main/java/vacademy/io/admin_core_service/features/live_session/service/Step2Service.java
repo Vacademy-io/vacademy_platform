@@ -71,6 +71,9 @@ public class Step2Service {
     @Autowired
     private vacademy.io.admin_core_service.features.common.util.CustomFieldKeyGenerator customFieldKeyGenerator;
 
+    @Autowired
+    private LiveSessionPaymentService liveSessionPaymentService;
+
     public Boolean step2AddService(LiveSessionStep2RequestDTO request, CustomUserDetails user) {
         LiveSession session = getSessionOrThrow(request.getSessionId());
 
@@ -82,6 +85,7 @@ public class Step2Service {
         linkParticipants(request);
         processNotificationActions(request, session.getId(), isEdit);
         processCustomFields(request, session);
+        liveSessionPaymentService.upsertPaymentConfig(session, request.getPaymentConfig());
 
         session.setStatus(LiveSessionStatus.LIVE.name());
         sessionRepository.save(session);
@@ -98,6 +102,13 @@ public class Step2Service {
         session.setAccessLevel(request.getAccessType());
         if (LiveSessionAccessEnum.PUBLIC.name().equalsIgnoreCase(request.getAccessType())) {
             session.setRegistrationFormLinkForPublicSessions(request.getJoinLink());
+        }
+        // Null = older client that doesn't know these toggles; leave stored values.
+        if (request.getRequireEmailVerification() != null) {
+            session.setRequireEmailVerification(request.getRequireEmailVerification());
+        }
+        if (request.getRequirePhoneVerification() != null) {
+            session.setRequirePhoneVerification(request.getRequirePhoneVerification());
         }
     }
 

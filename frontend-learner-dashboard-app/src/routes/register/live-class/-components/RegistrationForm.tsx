@@ -11,7 +11,8 @@ import {
 } from "@/components/ui/form";
 import { generateZodSchema } from "../-types/registrationFormSchema";
 import { RegistrationFormValues, CustomField } from "../-types/type";
-import { useEffect, useMemo } from "react";
+import { type GuestIdentity } from "../-utils/guestSessionStorage";
+import { useEffect, useMemo, useRef } from "react";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import {
   getFieldRenderType,
@@ -30,9 +31,10 @@ interface RegistrationFormProps {
   customFields: CustomField[];
   verifiedEmail: string;
   verifiedEmails: string[];
+  paymentRequired: boolean;
   onSubmit: (formValues: RegistrationFormValues) => void;
   onError: (errors: FieldErrors) => void;
-  onEmailChange: (email: string) => void;
+  onIdentityChange: (identity: GuestIdentity) => void;
 }
 
 /**
@@ -41,6 +43,8 @@ interface RegistrationFormProps {
  * per institute (name/UUID-derived), so keying off the literal string meant the
  * verified email never prefilled and the field stayed editable.
  */
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 const isEmailField = (field: CustomField): boolean => {
   if (getFieldRenderType(field.fieldKey, field.fieldType) === FieldRenderType.EMAIL) {
     return true;
@@ -59,9 +63,10 @@ export default function RegistrationForm({
   customFields,
   verifiedEmail,
   verifiedEmails,
+  paymentRequired,
   onSubmit,
   onError,
-  onEmailChange,
+  onIdentityChange,
 }: RegistrationFormProps) {
   const schema = generateZodSchema(customFields);
   // Actual keys of every email field in this form (keys vary per institute).
@@ -69,6 +74,30 @@ export default function RegistrationForm({
     () => (customFields || []).filter(isEmailField).map((f) => f.fieldKey),
     [customFields],
   );
+  const phoneFieldKeys = useMemo(
+    () =>
+      (customFields || [])
+        .filter(
+          (f) =>
+            getFieldRenderType(f.fieldKey, f.fieldType) === FieldRenderType.PHONE
+        )
+        .map((f) => f.fieldKey),
+    [customFields],
+  );
+  // Phone-identity institutes: a mandatory phone field makes the mobile number
+  // a valid registration identity on its own, so email isn't forced. Paid
+  // sessions always need an email (the invoice is billed and mailed to it).
+  const hasMandatoryPhone = useMemo(
+    () =>
+      (customFields || []).some(
+        (f) =>
+          f.mandatory &&
+          getFieldRenderType(f.fieldKey, f.fieldType) === FieldRenderType.PHONE
+      ),
+    [customFields],
+  );
+  const injectStandaloneEmail =
+    emailFieldKeys.length === 0 && (paymentRequired || !hasMandatoryPhone);
   const form = useForm({
     resolver: zodResolver(schema),
     defaultValues: emailFieldKeys.reduce<Record<string, string>>(
@@ -82,13 +111,61 @@ export default function RegistrationForm({
     formState: { errors },
   } = form;
 
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastCheckedEmailRef = useRef<string>(verifiedEmail || "");
+  const lastCheckedPhoneRef = useRef<string>("");
+
   useEffect(() => {
     if (verifiedEmail) {
+      lastCheckedEmailRef.current = verifiedEmail;
       emailFieldKeys.forEach((key) => {
         form.setValue(key as never, verifiedEmail as never);
       });
+      if (injectStandaloneEmail) {
+        form.setValue("email" as never, verifiedEmail as never);
+      }
     }
-  }, [verifiedEmail, emailFieldKeys, form]);
+  }, [verifiedEmail, emailFieldKeys, injectStandaloneEmail, form]);
+
+  // As the learner types their email or mobile number, silently check
+  // (debounced) whether that identity is already registered for this session —
+  // the parent then swaps the form for the "already registered" state, so
+  // nobody fills the form twice.
+  useEffect(() => {
+    const subscription = form.watch((values, { name }) => {
+      if (!name) return;
+      const isEmailKey = emailFieldKeys.includes(name) || name === "email";
+      const isPhoneKey = phoneFieldKeys.includes(name);
+      if (!isEmailKey && !isPhoneKey) return;
+      const raw = (values as Record<string, unknown>)[name];
+      const value = typeof raw === "string" ? raw.trim() : "";
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+
+      if (isEmailKey) {
+        if (!EMAIL_REGEX.test(value) || value === lastCheckedEmailRef.current) {
+          return;
+        }
+        debounceRef.current = setTimeout(() => {
+          lastCheckedEmailRef.current = value;
+          onIdentityChange({ email: value });
+        }, 700);
+        return;
+      }
+
+      const digits = value.replace(/\D/g, "");
+      if (digits.length < 8 || digits === lastCheckedPhoneRef.current) {
+        return;
+      }
+      debounceRef.current = setTimeout(() => {
+        lastCheckedPhoneRef.current = digits;
+        onIdentityChange({ mobileNumber: value });
+      }, 700);
+    });
+    return () => {
+      subscription.unsubscribe();
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [form, emailFieldKeys, phoneFieldKeys, onIdentityChange]);
 
   return (
     <Card className="w-full border-primary-100/60 shadow-lg">
@@ -110,6 +187,33 @@ export default function RegistrationForm({
             className="flex flex-col gap-5"
           >
             <div className="flex flex-col gap-4 overflow-auto max-h-screen-50 pe-1">
+              {/* Some institutes configure the form without an email custom
+                  field. Email is still required unless a mandatory phone field
+                  provides the registration identity (and always for paid
+                  sessions), so render a standalone one in that case. */}
+              {injectStandaloneEmail && (
+                <FormField
+                  control={form.control}
+                  name={"email" as never}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-medium text-gray-700">
+                        Email<span className="text-red-500 ms-0.5">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <CustomFieldRenderer
+                          type={FieldRenderType.EMAIL}
+                          name="Email"
+                          value={(field.value as string) || ""}
+                          onChange={(val) => field.onChange(val)}
+                          config=""
+                          required
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              )}
               {[...(customFields || [])].sort((a, b) => (a.formOrder ?? 0) - (b.formOrder ?? 0)).map((responseField) => {
                 const renderType = getFieldRenderType(
                   responseField.fieldKey,
@@ -155,56 +259,33 @@ export default function RegistrationForm({
                         className="mt-2 w-full font-thin"
                         onSelect={(value) => {
                           form.setValue(responseField.fieldKey as never, value as never);
-                          onEmailChange(value);
+                          onIdentityChange({ email: value });
                         }}
                       />
                     ) : (
                       <FormField
                         control={form.control}
                         name={responseField.fieldKey as never}
-                        render={({ field }) => {
-                          const isVerifiedEmailField =
-                            isEmailField(responseField) && verifiedEmail !== "";
-                          return (
-                            <FormItem>
-                              <FormLabel className="text-sm font-medium text-gray-700">
-                                {responseField.fieldName}
-                                {responseField.mandatory && (
-                                  <span className="text-red-500 ms-0.5">*</span>
-                                )}
-                              </FormLabel>
-                              <FormControl>
-                                <CustomFieldRenderer
-                                  type={renderType}
-                                  name={responseField.fieldName}
-                                  value={field.value || ""}
-                                  onChange={(val) => field.onChange(val)}
-                                  config={responseField.config}
-                                  required={responseField.mandatory}
-                                  disabled={isVerifiedEmailField}
-                                />
-                              </FormControl>
-                              {isVerifiedEmailField && (
-                                <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                                  <svg
-                                    className="w-3.5 h-3.5"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                    strokeWidth={2.5}
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      d="M5 13l4 4L19 7"
-                                    />
-                                  </svg>
-                                  Email verified
-                                </p>
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-sm font-medium text-gray-700">
+                              {responseField.fieldName}
+                              {responseField.mandatory && (
+                                <span className="text-red-500 ms-0.5">*</span>
                               )}
-                            </FormItem>
-                          );
-                        }}
+                            </FormLabel>
+                            <FormControl>
+                              <CustomFieldRenderer
+                                type={renderType}
+                                name={responseField.fieldName}
+                                value={field.value || ""}
+                                onChange={(val) => field.onChange(val)}
+                                config={responseField.config}
+                                required={responseField.mandatory}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
                       />
                     )}
 

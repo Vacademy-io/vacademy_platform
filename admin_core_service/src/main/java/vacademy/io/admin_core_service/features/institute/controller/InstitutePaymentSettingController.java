@@ -22,6 +22,20 @@ public class InstitutePaymentSettingController {
         return ResponseEntity.ok(institutePaymentGatewayMappingService.getPaymentGatewayOpenDetails(instituteId,vendor));
     }
 
+    /**
+     * The gateway an invoice payment for this institute will actually charge
+     * through — resolved with the SAME rule the invoice initiation uses
+     * (latest ACTIVE mapping), so the payment page can render the right
+     * vendor form (Stripe Elements, eWay card, Razorpay modal, ...).
+     */
+    @GetMapping("/default-vendor")
+    public ResponseEntity<Map<String, String>> getDefaultVendorForInstitute(
+            @RequestParam String instituteId) {
+        InstitutePaymentGatewayMappingService.VendorInfo vendor =
+                institutePaymentGatewayMappingService.getLatestVendorInfoForInstitute(instituteId);
+        return ResponseEntity.ok(Map.of("vendor", vendor.getVendor()));
+    }
+
     @GetMapping("/vendors")
     public ResponseEntity<List<Map<String, String>>> getVendorsForInstitute(
             @RequestParam String instituteId) {

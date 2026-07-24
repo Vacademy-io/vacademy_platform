@@ -93,6 +93,17 @@ public class LiveSession {
     @Column(name = "source_id")
     private String sourceId;
 
+    /**
+     * Public-registration contact verification (V399). When true, the public
+     * form requires an email OTP / a WhatsApp OTP (institute must have an
+     * approved WhatsApp OTP template) before registering. Both default false.
+     */
+    @Column(name = "require_email_verification")
+    private Boolean requireEmailVerification;
+
+    @Column(name = "require_phone_verification")
+    private Boolean requirePhoneVerification;
+
     /** JSON config for BBB meetings (record, muteOnStart, webcamsOnlyForModerator, guestPolicy) */
     @Column(name = "bbb_config_json", columnDefinition = "text")
     private String bbbConfigJson;

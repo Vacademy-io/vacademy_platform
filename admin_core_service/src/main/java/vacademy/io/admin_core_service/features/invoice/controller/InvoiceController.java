@@ -163,8 +163,10 @@ public class InvoiceController {
     public ResponseEntity<PaymentResponseDTO> initiatePaymentForAdminInvoice(
             @PathVariable String invoiceId,
             @RequestParam String instituteId,
-            @RequestAttribute("user") CustomUserDetails userDetails) {
-        PaymentResponseDTO response = invoiceService.initiatePaymentForAdminInvoice(invoiceId, instituteId, userDetails);
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestBody(required = false) vacademy.io.common.payment.dto.PaymentInitiationRequestDTO clientData) {
+        PaymentResponseDTO response = invoiceService.initiatePaymentForAdminInvoice(
+                invoiceId, instituteId, userDetails, clientData);
         return ResponseEntity.ok(response);
     }
 

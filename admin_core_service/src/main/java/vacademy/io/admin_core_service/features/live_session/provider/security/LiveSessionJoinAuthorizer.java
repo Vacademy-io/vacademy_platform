@@ -51,6 +51,7 @@ public class LiveSessionJoinAuthorizer {
     private final LiveSessionRepository liveSessionRepository;
     private final LiveSessionParticipantRepository participantRepository;
     private final InstituteAccessValidator instituteAccessValidator;
+    private final vacademy.io.admin_core_service.features.live_session.service.LiveSessionPaymentService paymentService;
 
     /**
      * @param scheduleId          the schedule the caller wants to join
@@ -89,6 +90,15 @@ public class LiveSessionJoinAuthorizer {
         if (!enrolled && !isPublic) {
             log.warn("live.join.denied scheduleId={} userId={} reason=not_enrolled", scheduleId, user.getUserId());
             throw new VacademyException(HttpStatus.FORBIDDEN, "You are not enrolled in this session");
+        }
+
+        // Paid session gate: enrolment (or the session being public) is no longer
+        // enough when the admin configured a fee — the caller must hold a PAID
+        // registration. Hosts never pay (handled above).
+        if (paymentService.isPaymentPending(session.getId(), user.getUserId(), user.getEmail())) {
+            log.warn("live.join.denied scheduleId={} userId={} reason=payment_pending", scheduleId, user.getUserId());
+            throw new VacademyException(HttpStatus.FORBIDDEN,
+                    "This is a paid live class. Please complete the payment to join");
         }
 
         return new JoinAuthorization(JoinRole.PARTICIPANT, instituteId);

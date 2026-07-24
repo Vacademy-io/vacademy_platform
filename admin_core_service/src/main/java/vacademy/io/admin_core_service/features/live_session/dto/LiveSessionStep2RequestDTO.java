@@ -71,6 +71,22 @@ public class LiveSessionStep2RequestDTO {
      */
     private List<InstituteCustomFieldDTO> instituteCustomFields;
 
+    /**
+     * Paid live session config (one price for the whole session/series). Null =
+     * request doesn't touch payment settings (older clients keep working);
+     * enabled=false explicitly turns an existing paid session free again.
+     */
+    private LiveSessionPaymentConfigDTO paymentConfig;
+
+    /**
+     * Public-registration contact verification toggles. Null = request doesn't
+     * touch them (older clients keep working); explicit true/false overwrites.
+     * Phone verification is delivered over WhatsApp and needs the institute's
+     * approved OTP template.
+     */
+    private Boolean requireEmailVerification;
+    private Boolean requirePhoneVerification;
+
     @Data
     @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
     public static class NotificationActionDTO {

@@ -264,6 +264,17 @@ export interface LiveSessionReport {
 export interface SessionBySessionIdResponse {
     schedule: Schedule;
     notifications: Notifications;
+    // Paid live class fee config (null/absent for free sessions). Wrapper key is
+    // camelCase (backend response class has no snake-case naming), inner keys snake.
+    paymentConfig?: {
+        enabled?: boolean;
+        price?: number;
+        currency?: string;
+    } | null;
+    // Public-registration OTP verification toggles (camelCase wrapper keys,
+    // same as paymentConfig).
+    requireEmailVerification?: boolean | null;
+    requirePhoneVerification?: boolean | null;
 }
 
 export const getLiveSessions = async (instituteId: string) => {

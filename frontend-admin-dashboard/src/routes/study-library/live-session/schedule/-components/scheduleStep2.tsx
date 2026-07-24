@@ -60,7 +60,15 @@ import {
     type PreviewSessionRow,
     type PreviewRecurrenceBanner,
 } from './LiveSessionPreviewDialog';
-import { LockKey, UsersThree, Article, LinkSimple, BellRinging } from '@phosphor-icons/react';
+import {
+    LockKey,
+    UsersThree,
+    Article,
+    LinkSimple,
+    BellRinging,
+    CurrencyCircleDollar,
+} from '@phosphor-icons/react';
+import { CURRENCIES } from '@/constants/currencies';
 
 import { BASE_URL_LEARNER_DASHBOARD } from '@/constants/urls';
 
@@ -274,6 +282,11 @@ export default function ScheduleStep2() {
                 onAttendance: liveSessionSettings.defaultNotifyOnAttendance ?? false,
             },
             fields: [],
+            paymentEnabled: false,
+            paymentPrice: '',
+            paymentCurrency: 'INR',
+            requireEmailVerification: false,
+            requirePhoneVerification: false,
         },
     });
 
@@ -293,6 +306,17 @@ export default function ScheduleStep2() {
                 ? AccessType.PUBLIC
                 : AccessType.PRIVATE
         );
+
+        // Prefill paid-class fee config (edit mode)
+        if (sessionDetails.paymentConfig?.enabled) {
+            form.setValue('paymentEnabled', true);
+            form.setValue('paymentPrice', String(sessionDetails.paymentConfig.price ?? ''));
+            form.setValue('paymentCurrency', sessionDetails.paymentConfig.currency ?? 'INR');
+        }
+
+        // Prefill registration verification toggles (edit mode)
+        form.setValue('requireEmailVerification', !!sessionDetails.requireEmailVerification);
+        form.setValue('requirePhoneVerification', !!sessionDetails.requirePhoneVerification);
 
         // Set notification settings
         const defaultNotifySettings = {
@@ -1193,6 +1217,74 @@ export default function ScheduleStep2() {
                     </SectionCard>
 
                     <SectionCard
+                        icon={<CurrencyCircleDollar size={18} />}
+                        title="Payment"
+                        description="Charge a one-time fee for this live class. Attendees must pay before they can register and join, and receive an invoice by email."
+                    >
+                        <div className="flex flex-col gap-4">
+                            <FormField
+                                control={control}
+                                name="paymentEnabled"
+                                render={({ field }) => (
+                                    <label className="flex w-fit cursor-pointer items-center gap-3">
+                                        <Switch
+                                            checked={!!field.value}
+                                            onCheckedChange={field.onChange}
+                                        />
+                                        <span className="text-sm font-medium">Paid live class</span>
+                                    </label>
+                                )}
+                            />
+                            {watch('paymentEnabled') && (
+                                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                                    <FormField
+                                        control={control}
+                                        name="paymentPrice"
+                                        render={({ field, fieldState }) => (
+                                            <FormItem className="w-full sm:w-52">
+                                                <FormControl>
+                                                    <MyInput
+                                                        inputType="number"
+                                                        label="Price"
+                                                        required
+                                                        inputPlaceholder="e.g. 499"
+                                                        input={field.value ?? ''}
+                                                        onChangeFunction={(e) =>
+                                                            field.onChange(e.target.value)
+                                                        }
+                                                        error={fieldState.error?.message}
+                                                        className="!w-full min-w-0"
+                                                    />
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+                                    <div className="w-full sm:w-60">
+                                        <SelectField
+                                            label="Currency"
+                                            name="paymentCurrency"
+                                            options={CURRENCIES.map((currency, index) => ({
+                                                _id: index,
+                                                value: currency.code,
+                                                label: `${currency.code} — ${currency.name}`,
+                                            }))}
+                                            control={control}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                            {watch('paymentEnabled') && (
+                                <p className="text-sm text-neutral-500">
+                                    Payments are collected through your institute&apos;s configured
+                                    payment gateway. Each payer automatically receives an invoice
+                                    with a PDF attachment on successful payment.
+                                </p>
+                            )}
+                        </div>
+                    </SectionCard>
+
+                    <SectionCard
                         icon={<UsersThree size={18} />}
                         title="Select Participants"
                         description="Pick a session, then choose batches or individual learners to enroll."
@@ -1232,6 +1324,47 @@ export default function ScheduleStep2() {
                             description="Fields shown to learners on the public registration form. Drag to reorder."
                         >
                             <div className="flex flex-col gap-3">
+                                <div className="flex flex-col gap-3 rounded-md border bg-neutral-50 p-3">
+                                    <p className="text-sm font-medium">Contact verification</p>
+                                    <FormField
+                                        control={control}
+                                        name="requireEmailVerification"
+                                        render={({ field }) => (
+                                            <label className="flex w-fit cursor-pointer items-center gap-3">
+                                                <Switch
+                                                    checked={!!field.value}
+                                                    onCheckedChange={field.onChange}
+                                                />
+                                                <span className="text-sm">
+                                                    Verify email with an OTP before registering
+                                                </span>
+                                            </label>
+                                        )}
+                                    />
+                                    <FormField
+                                        control={control}
+                                        name="requirePhoneVerification"
+                                        render={({ field }) => (
+                                            <label className="flex w-fit cursor-pointer items-center gap-3">
+                                                <Switch
+                                                    checked={!!field.value}
+                                                    onCheckedChange={field.onChange}
+                                                />
+                                                <span className="text-sm">
+                                                    Verify mobile number with a WhatsApp OTP before
+                                                    registering
+                                                </span>
+                                            </label>
+                                        )}
+                                    />
+                                    {watch('requirePhoneVerification') && (
+                                        <p className="text-sm text-neutral-500">
+                                            The OTP is sent on WhatsApp — your institute needs an
+                                            approved WhatsApp OTP template registered for this to
+                                            work.
+                                        </p>
+                                    )}
+                                </div>
                                 <Sortable
                                     value={fields}
                                     onMove={({ activeIndex, overIndex }) =>

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as ReactDOM from 'react-dom';
 import {
     $getSelection,
@@ -184,46 +184,107 @@ export function SlashMenuPlugin({ extraOptions = [] }: { extraOptions?: SlashMen
             ) =>
                 anchorElementRef.current && options.length > 0
                     ? ReactDOM.createPortal(
-                          <div className="z-50 mt-6 max-h-80 w-72 overflow-y-auto rounded-lg border border-neutral-200 bg-white py-2 shadow-lg">
-                              {options.map((option, i) => {
-                                  const IconComp = option.menuIcon;
-                                  return (
-                                      <button
-                                          key={option.key}
-                                          type="button"
-                                          tabIndex={-1}
-                                          role="option"
-                                          aria-selected={selectedIndex === i}
-                                          className={cn(
-                                              'flex w-full items-center gap-3 px-3 py-2 text-left',
-                                              selectedIndex === i && 'bg-neutral-100'
-                                          )}
-                                          ref={option.setRefElement}
-                                          onMouseEnter={() => setHighlightedIndex(i)}
-                                          onClick={() => {
-                                              setHighlightedIndex(i);
-                                              selectOptionAndCleanUp(option);
-                                          }}
-                                      >
-                                          <span className="flex size-9 items-center justify-center rounded-md border border-neutral-200 bg-white">
-                                              <IconComp size={18} />
-                                          </span>
-                                          <span className="flex flex-col">
-                                              <span className="text-subtitle font-medium text-neutral-700">
-                                                  {option.title}
-                                              </span>
-                                              <span className="text-caption text-neutral-500">
-                                                  {option.description}
-                                              </span>
-                                          </span>
-                                      </button>
-                                  );
-                              })}
-                          </div>,
+                          <SlashMenuList
+                              anchorEl={anchorElementRef.current}
+                              options={options}
+                              selectedIndex={selectedIndex}
+                              selectOptionAndCleanUp={selectOptionAndCleanUp}
+                              setHighlightedIndex={setHighlightedIndex}
+                          />,
                           anchorElementRef.current
                       )
                     : null
             }
         />
+    );
+}
+
+/** The dropdown list: keeps the keyboard-highlighted option scrolled into
+ *  view, flips above the caret when there isn't enough room below, and clamps
+ *  its height to the available viewport space so the list always scrolls
+ *  instead of clipping off-screen. */
+function SlashMenuList({
+    anchorEl,
+    options,
+    selectedIndex,
+    selectOptionAndCleanUp,
+    setHighlightedIndex,
+}: {
+    anchorEl: HTMLElement;
+    options: SlashMenuOption[];
+    selectedIndex: number | null;
+    selectOptionAndCleanUp: (option: SlashMenuOption) => void;
+    setHighlightedIndex: (index: number) => void;
+}) {
+    const listRef = useRef<HTMLDivElement>(null);
+    const [placement, setPlacement] = useState<{ flipUp: boolean; maxHeight: number }>({
+        flipUp: false,
+        maxHeight: 320,
+    });
+
+    // Decide direction + height from the space around the caret anchor.
+    useLayoutEffect(() => {
+        const rect = anchorEl.getBoundingClientRect();
+        const margin = 12;
+        const spaceBelow = window.innerHeight - rect.bottom - margin;
+        const spaceAbove = rect.top - margin;
+        const flipUp = spaceBelow < 240 && spaceAbove > spaceBelow;
+        const maxHeight = Math.min(320, Math.max(160, flipUp ? spaceAbove : spaceBelow));
+        setPlacement({ flipUp, maxHeight });
+    }, [anchorEl, options.length]);
+
+    // Keep the keyboard-highlighted option visible while arrowing through.
+    useEffect(() => {
+        if (selectedIndex === null) return;
+        listRef.current
+            ?.querySelector(`[data-menu-index="${selectedIndex}"]`)
+            ?.scrollIntoView({ block: 'nearest' });
+    }, [selectedIndex]);
+
+    return (
+        <div
+            ref={listRef}
+            className={cn(
+                'absolute z-50 w-72 overflow-y-auto overscroll-contain rounded-lg border border-neutral-200 bg-white py-2 shadow-lg',
+                placement.flipUp ? 'bottom-full mb-1' : 'top-full mt-1'
+            )}
+            style={{ maxHeight: placement.maxHeight }}
+        >
+            {options.map((option, i) => {
+                const IconComp = option.menuIcon;
+                return (
+                    <button
+                        key={option.key}
+                        type="button"
+                        tabIndex={-1}
+                        role="option"
+                        aria-selected={selectedIndex === i}
+                        data-menu-index={i}
+                        className={cn(
+                            'flex w-full items-center gap-3 px-3 py-2 text-left',
+                            selectedIndex === i && 'bg-neutral-100'
+                        )}
+                        ref={option.setRefElement}
+                        onMouseEnter={() => setHighlightedIndex(i)}
+                        onClick={() => {
+                            setHighlightedIndex(i);
+                            selectOptionAndCleanUp(option);
+                        }}
+                    >
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white">
+                            <IconComp size={18} />
+                        </span>
+                        <span className="flex flex-col">
+                            <span className="text-subtitle font-medium text-neutral-700">
+                                {option.title}
+                            </span>
+                            <span className="text-caption text-neutral-500">
+                                {option.description}
+                            </span>
+                        </span>
+                    </button>
+                );
+            })}
+        </div>
     );
 }

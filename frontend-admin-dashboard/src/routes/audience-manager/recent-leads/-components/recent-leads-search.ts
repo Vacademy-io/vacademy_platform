@@ -59,6 +59,8 @@ export const RecentLeadsSearchSchema = z.object({
         .optional(),
     /** Lead source type — WEBSITE / META / GOOGLE / ORGANIC / … (LeadFilterDTO.sourceType). */
     source: z.string().optional(),
+    /** Call-history filter — NOT_CALLED / CALLED / CALLED_ONCE / CALLED_TWICE_PLUS / AI_CALLED / MANUAL_CALLED. */
+    called: z.string().optional(),
 });
 
 export type RecentLeadsSearch = z.infer<typeof RecentLeadsSearchSchema>;

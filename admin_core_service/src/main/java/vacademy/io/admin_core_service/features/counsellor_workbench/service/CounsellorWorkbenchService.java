@@ -339,6 +339,15 @@ public class CounsellorWorkbenchService {
         // response so the dialog can pre-populate.
         List<CounselorPoolMember> rows = counselorPoolMemberRepository
                 .findByInstituteAndCounselor(instituteId, userId);
+        if (rows.isEmpty()) {
+            // Nothing to flip — this counsellor has never been added as a member of
+            // any lead pool (the workbench roster is role-derived and independent of
+            // pool membership, so they can still show up here with zero rows). Without
+            // this check the call was a silent no-op that still returned 200, so the
+            // UI showed "Marked active" even though is_active stayed false forever.
+            throw new VacademyException(
+                    "This counsellor is not part of any lead pool yet. Add them to a pool from Settings > Leads > Pools before changing their status.");
+        }
         Set<String> affectedPoolIds = new HashSet<>();
         String upper = status.toUpperCase(Locale.ROOT);
         for (CounselorPoolMember m : rows) {
@@ -390,7 +399,7 @@ public class CounsellorWorkbenchService {
     private void assertCallerMayView(String instituteId, String targetUserId, CustomUserDetails caller) {
         if (caller == null || caller.getUserId() == null) return;
         if (caller.getUserId().equals(targetUserId)) return;
-        if (!scopeService.isScopedCaller(instituteId, caller.getUserId())) return;
+        if (!scopeService.isScopedCaller(instituteId, caller)) return;
         if (!scopeService.scopedCounsellorUserIds(instituteId, caller.getUserId()).contains(targetUserId)) {
             throw new VacademyException("You don't have access to this counsellor's data");
         }
@@ -417,7 +426,7 @@ public class CounsellorWorkbenchService {
             throw new VacademyException("Lead not found in this institute");
         }
         if (caller != null && caller.getUserId() != null
-                && scopeService.isScopedCaller(instituteId, caller.getUserId())) {
+                && scopeService.isScopedCaller(instituteId, caller)) {
             Set<String> allowed = new HashSet<>(
                     scopeService.scopedCounsellorUserIds(instituteId, caller.getUserId()));
             String assignee = currentAssignee.get();
@@ -427,7 +436,7 @@ public class CounsellorWorkbenchService {
             }
         }
 
-        List<LeadTransferDTO> rows = leadRepo.findTransfersForLead(leadUserId);
+        List<LeadTransferDTO> rows = leadRepo.findTransfersForLead(leadUserId, instituteId);
         if (rows.isEmpty()) return rows;
 
         // Hydrate display names for every distinct user_id surfaced in the

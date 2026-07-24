@@ -26,7 +26,7 @@ export const DonationEmailStep = ({
           <span className="font-semibold text-gray-900">${amount}</span>
         </div>
         <button
-          className="text-xs font-medium ml-auto block rounded border border-neutral-300 bg-white text-neutral-600 px-3 py-1 focus:outline-none transition-colors duration-200 hover:bg-blue-50/50 hover:border-blue-300"
+          className="text-xs font-medium ms-auto block rounded border border-neutral-300 bg-white text-neutral-600 px-3 py-1 focus:outline-none transition-colors duration-200 hover:bg-blue-50/50 hover:border-blue-300"
           onClick={onBack}
           style={{ boxShadow: 'none', textDecoration: 'none' }}
         >
@@ -39,13 +39,13 @@ export const DonationEmailStep = ({
           Your Email
         </label>
         <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+          <span className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-400">
             <Envelope size={16} />
           </span>
           <input
             id="donation-email"
             type="email"
-            className={`border rounded pl-9 p-2 text-xs w-full h-10 ${
+            className={`border rounded ps-9 p-2 text-xs w-full h-10 ${
               validationError ? 'border-red-500 bg-red-50' : ''
             }`}
             value={email}

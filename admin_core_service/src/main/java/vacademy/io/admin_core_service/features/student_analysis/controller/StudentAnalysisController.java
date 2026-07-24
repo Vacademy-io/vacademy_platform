@@ -46,6 +46,7 @@ public class StudentAnalysisController {
         private final ObjectMapper objectMapper;
         private final UserLinkedDataRepository userLinkedDataRepository;
         private final StudentReportPdfService reportPdfService;
+        private final vacademy.io.admin_core_service.core.security.GuardianAccessGuard guardianAccessGuard;
 
         @PostMapping("/initiate")
         @Operation(summary = "Initiate student analysis report generation", description = "Starts async processing of student analysis. Returns a process ID to check status later.")
@@ -58,6 +59,22 @@ public class StudentAnalysisController {
                                 request.getStartDateIso(), request.getEndDateIso());
 
                 try {
+                        // Reject an inverted/invalid window BEFORE any work starts. Every collector feeds
+                        // these dates straight into `meeting_date BETWEEN :start AND :end`; when start > end
+                        // that predicate is unsatisfiable, so every module finds zero rows and the report
+                        // silently publishes 0% attendance / 0% progress / "At Risk" for a learner whose
+                        // real numbers are fine. Fail loudly instead of producing a confidently wrong report.
+                        String dateError = validateWindow(request.getStartDateIso(), request.getEndDateIso());
+                        if (dateError != null) {
+                                log.warn("[Student-Analysis-API] Rejecting initiate for user {}: {}",
+                                                request.getUserId(), dateError);
+                                return ResponseEntity.badRequest()
+                                                .body(StudentAnalysisInitiateResponse.builder()
+                                                                .status("ERROR")
+                                                                .message(dateError)
+                                                                .build());
+                        }
+
                         // Create process record
                         StudentAnalysisProcess process = new StudentAnalysisProcess(
                                         request.getUserId(),
@@ -106,6 +123,21 @@ public class StudentAnalysisController {
                                                         .message("Failed to initiate analysis: " + e.getMessage())
                                                         .build());
                 }
+        }
+
+        /**
+         * Validates the report window. Returns null when valid, else a human-readable reason.
+         * Both dates are required and must parse as ISO yyyy-MM-dd, and start must not be after end.
+         */
+        private String validateWindow(java.time.LocalDate start, java.time.LocalDate end) {
+                if (start == null || end == null) {
+                        return "Both start_date_iso and end_date_iso are required (ISO yyyy-MM-dd).";
+                }
+                if (start.isAfter(end)) {
+                        return "start_date_iso (" + start + ") is after end_date_iso (" + end
+                                        + "). The report window is empty — no data can be collected for it.";
+                }
+                return null;
         }
 
         @GetMapping("/report/{processId}")
@@ -367,7 +399,13 @@ public class StudentAnalysisController {
                 if (u.getUserId() != null && u.getUserId().equals(p.getUserId())) {
                         return true; // owner (learner viewing their own)
                 }
-                return hasAnyRole(u, "ADMIN", "TEACHER", "EVALUATOR", "COURSE_CREATOR", "ADMIN_NON_ROOT");
+                if (hasAnyRole(u, "ADMIN", "TEACHER", "EVALUATOR", "COURSE_CREATOR", "ADMIN_NON_ROOT")) {
+                        return true; // staff
+                }
+                // Guardian link leg: a parent may read a report whose subject is their
+                // OWN linked child — resolved authoritatively (auth_service), fail-closed.
+                // NOT a blanket PARENT role check (that would expose any child to any parent).
+                return guardianAccessGuard.isLinkedChild(u, p.getUserId());
         }
 
         /** True if the user holds any of the given role/authority names (case-insensitive). */

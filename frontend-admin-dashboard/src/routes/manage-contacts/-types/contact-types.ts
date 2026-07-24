@@ -26,6 +26,11 @@ export interface ContactListRequest {
     package_session_ids?: string[];
     payment_statuses?: string[];
     sub_org_user_types?: string[];
+    // Custom-field filters — same wire shape as the leads endpoint. Values OR
+    // within a field, AND across fields; a contact matches on EITHER their
+    // learner answer or any of their lead answers. operator: IN (default) |
+    // CONTAINS | IS_EMPTY | NOT_EMPTY | BETWEEN | GTE | LTE.
+    custom_field_filters?: { field_id: string; operator?: string; values: string[] }[];
     page: number;
     size: number;
     sort_by?: string;

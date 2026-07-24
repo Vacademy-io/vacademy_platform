@@ -6,8 +6,10 @@ export interface PlaceAiCallRequest {
     /** The lead's audience_response id — the backend resolves phone + user id from it. */
     responseId: string;
     userId?: string;
-    /** Optional — backend falls back to the institute's default AI campaign. */
+    /** Optional — chosen AI agent id; blank ⇒ institute's default AI campaign. */
     campaignId?: string;
+    /** Optional — chosen caller-ID number id; blank ⇒ provider default. */
+    preferredNumberId?: string;
 }
 
 export interface PlaceAiCallResponse {

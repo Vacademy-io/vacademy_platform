@@ -51,7 +51,10 @@ public class ActivityCollector {
                 }
             }
 
-            int totalDays = (int) ChronoUnit.DAYS.between(startDate, endDate) + 1;
+            // Clamp to >= 1. An inverted window makes DAYS.between() negative, which would emit a
+            // negative totalDays and divide avgMinutesPerDay by it. The controller now rejects such
+            // windows, but this collector must not depend on that to stay arithmetically sane.
+            int totalDays = Math.max(1, (int) ChronoUnit.DAYS.between(startDate, endDate) + 1);
 
             double totalStudyHours = Math.round((totalMinutes / 60.0) * 10.0) / 10.0;
 
@@ -77,6 +80,20 @@ public class ActivityCollector {
                 log.warn("[ActivityCollector] Focus score query failed for userId={}: {}", userId, e.getMessage());
             }
 
+            // The daily series is built from generate_series, so it has one row per day even when the
+            // learner has no activity_log rows at all — an isEmpty() check can never fire. Decide
+            // availability from whether ANY signal actually carries data: without this, a learner
+            // with no tracked activity is reported as a measured "0 hrs, Low consistency" learner
+            // rather than as "no data".
+            boolean anySignal = totalMinutes > 0
+                    || focusScore != null
+                    || hasAnyCount(contentEngagement);
+            if (!anySignal) {
+                log.info("[ActivityCollector] No activity signal for userId={} in [{} .. {}] "
+                        + "— reporting as unavailable rather than zeroes.", userId, startDate, endDate);
+                return StudyHabitsSection.builder().available(false).build();
+            }
+
             return StudyHabitsSection.builder()
                     .available(true)
                     .totalStudyHours(totalStudyHours)
@@ -95,6 +112,14 @@ public class ActivityCollector {
             log.error("[ActivityCollector] Failed for userId={}: {}", userId, e.getMessage());
             return StudyHabitsSection.builder().available(false).build();
         }
+    }
+
+    /** True when the engagement block carries at least one non-null, non-zero count. */
+    private boolean hasAnyCount(StudyHabitsSection.ContentEngagement ce) {
+        if (ce == null) return false;
+        return (ce.getVideosWatched() != null && ce.getVideosWatched() > 0)
+                || (ce.getDocumentsRead() != null && ce.getDocumentsRead() > 0)
+                || (ce.getQuizzesAttempted() != null && ce.getQuizzesAttempted() > 0);
     }
 
     private int computeLongestStreak(List<StudyHabitsSection.DailyStudyEntry> daily) {
@@ -136,14 +161,23 @@ public class ActivityCollector {
                 return StudyHabitsSection.ContentEngagement.builder().build(); // all nulls
             }
 
+            // Map every source_type the platform actually writes (SlideTypeEnum + the lowercase
+            // "llm_assessment"). The old switch handled only VIDEO / DOCUMENT / QUIZ / "PDF" — and
+            // "PDF" is not a value anything writes — so HTML_VIDEO, AUDIO, SCORM, QUESTION,
+            // VIDEO_QUESTION, ASSIGNMENT and ASSESSMENT counts were silently discarded. An institute
+            // serving its videos as HTML_VIDEO reported "no videos watched" despite hundreds of rows.
             Integer videos = null, documents = null, quizzes = null;
             for (Object[] row : counts) {
                 String type = row[0] != null ? row[0].toString().toUpperCase() : "";
                 int count = row[1] != null ? ((Number) row[1]).intValue() : 0;
                 switch (type) {
-                    case "VIDEO" -> videos = count;
-                    case "DOCUMENT", "PDF" -> documents = (documents == null ? 0 : documents) + count;
-                    case "QUIZ" -> quizzes = count;
+                    case "VIDEO", "HTML_VIDEO", "VIDEO_QUESTION", "AUDIO" ->
+                            videos = (videos == null ? 0 : videos) + count;
+                    case "DOCUMENT", "PDF", "SCORM" ->
+                            documents = (documents == null ? 0 : documents) + count;
+                    case "QUIZ", "QUESTION", "ASSESSMENT", "LLM_ASSESSMENT" ->
+                            quizzes = (quizzes == null ? 0 : quizzes) + count;
+                    default -> log.debug("[ActivityCollector] Unmapped activity source_type '{}' ({} rows)", type, count);
                 }
             }
             return StudyHabitsSection.ContentEngagement.builder()

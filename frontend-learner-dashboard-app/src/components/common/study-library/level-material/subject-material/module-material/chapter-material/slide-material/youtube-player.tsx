@@ -19,6 +19,7 @@ import { convertTimeToSeconds } from "@/utils/study-library/tracking/convertTime
 import { formatVideoTime } from "@/utils/study-library/tracking/formatVideoTime";
 import { calculateNetDuration } from "@/utils/study-library/tracking/calculateNetDuration";
 import { useVideoSync } from "@/hooks/study-library/useVideoSync";
+import { getYouTubeEmbedOrigin } from "@/utils/youtube-embed";
 import { useSlideContentProtection } from "@/hooks/useSlideContentProtection";
 import YouTube, {
   type YouTubeEvent,
@@ -1019,15 +1020,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   // Note: CSS injection into YouTube iframe removed due to cross-origin restrictions
   // YouTube UI elements are controlled via playerVars (controls, modestbranding, etc.)
 
-  // Determine proper origin for Electron vs Web
-  const getPlayerOrigin = () => {
-    const origin = window.location.origin;
-    // If running in Electron with capacitor protocol, use localhost as origin
-    if (origin.includes('capacitor-electron') || origin.includes('file://')) {
-      return 'http://localhost';
-    }
-    return origin;
-  };
+  // Determine a valid http(s) origin for Electron / iOS WebView vs Web.
+  // iOS exposes `capacitor://localhost` which YouTube rejects → Error 153.
+  const getPlayerOrigin = () => getYouTubeEmbedOrigin();
 
   const opts: YouTubeProps["opts"] = {
     height: "100%",
@@ -1051,7 +1046,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       start: 0, // Start from the beginning
       end: 0, // End at the natural end of the video
       // autohide: 1, // Hide controls after play begins
-      widget_referrer: window.location.href, // Fix for error 153
+      // Web/Android keep their existing full-href referrer (unchanged behaviour); only
+      // iOS/Electron — where href is a rejected capacitor://…/file:// value — fall back to
+      // the sanitized origin. Fix for error 153.
+      widget_referrer: /^https?:/.test(window.location.origin)
+        ? window.location.href
+        : getPlayerOrigin(),
     },
   };
 
@@ -1964,7 +1964,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
           <div className="relative z-50 animate-in slide-in-from-bottom-10 fade-in duration-500 w-full max-w-lg px-6 pointer-events-auto">
             <div className="bg-zinc-950 border border-zinc-800 text-white rounded-2xl shadow-2xl overflow-hidden relative">
               {/* Progress Bar Background */}
-              <div className="absolute bottom-0 left-0 h-1 bg-zinc-800 w-full">
+              <div className="absolute bottom-0 start-0 h-1 bg-zinc-800 w-full">
                 <div
                   className="h-full bg-emerald-500 transition-all duration-1000 ease-linear"
                   style={{ width: `${(verificationCountdown / 59) * 100}%` }}
@@ -1972,7 +1972,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               </div>
 
               <div className="p-5 flex flex-col sm:flex-row items-center gap-6">
-                <div className="flex-1 text-center sm:text-left space-y-2">
+                <div className="flex-1 text-center sm:text-start space-y-2">
                   <div className="flex items-center justify-center sm:justify-start gap-2.5">
                     <span className="relative flex h-3 w-3">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -2011,7 +2011,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       <div
         ref={playerContainerRef}
         className={`aspect-video w-full max-w-vw-100 relative min-h-reg-200 sm:min-h-reg-250 md:min-h-reg-300 lg:h-full items-center flex justify-center overflow-hidden bg-black rounded-lg group ${isPseudoFullscreen
-            ? "!fixed !inset-0 !top-0 !left-0 !right-0 !bottom-0 !z-50 !rounded-none !overflow-hidden !w-vw-100 !h-screen !max-w-none !max-h-none !bg-black"
+            ? "!fixed !inset-0 !top-0 !start-0 !end-0 !bottom-0 !z-50 !rounded-none !overflow-hidden !w-vw-100 !h-screen !max-w-none !max-h-none !bg-black"
             : ""
           }`}
         onMouseMove={handleMouseMoveOnVideo}
@@ -2029,7 +2029,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
             <div className="relative animate-in slide-in-from-bottom-10 fade-in duration-500 w-full max-w-lg px-6">
               <div className="bg-zinc-950 border border-zinc-800 text-white rounded-2xl shadow-2xl overflow-hidden relative">
                 {/* Progress Bar Background */}
-                <div className="absolute bottom-0 left-0 h-1 bg-zinc-800 w-full">
+                <div className="absolute bottom-0 start-0 h-1 bg-zinc-800 w-full">
                   <div
                     className="h-full bg-emerald-500 transition-all duration-1000 ease-linear"
                     style={{ width: `${(verificationCountdown / 59) * 100}%` }}
@@ -2037,7 +2037,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                 </div>
 
                 <div className="p-5 flex flex-col sm:flex-row items-center gap-6">
-                  <div className="flex-1 text-center sm:text-left space-y-2">
+                  <div className="flex-1 text-center sm:text-start space-y-2">
                     <div className="flex items-center justify-center sm:justify-start gap-2.5">
                       <span className="relative flex h-3 w-3">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -2198,7 +2198,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     >
                       <Gauge size={18} weight="fill" />
                       {playbackSpeed !== 1 && (
-                        <span className="absolute -top-1 -right-1 bg-primary-500 text-white text-xs rounded-full min-w-5 h-5 flex items-center justify-center font-bold px-1 shadow-md border-2 border-white">
+                        <span className="absolute -top-1 -end-1 bg-primary-500 text-white text-xs rounded-full min-w-5 h-5 flex items-center justify-center font-bold px-1 shadow-md border-2 border-white">
                           {playbackSpeed}x
                         </span>
                       )}
@@ -2206,7 +2206,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
 
                     {/* Speed Options Dropdown - Inline in fullscreen controls */}
                     {showSpeedOptions && allowRewind && (
-                      <div className="speed-dropdown absolute bottom-full right-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 z-20 min-w-20 max-h-reg-250 overflow-y-auto">
+                      <div className="speed-dropdown absolute bottom-full end-0 mb-2 bg-black/90 backdrop-blur-sm rounded-lg shadow-lg border border-white/20 z-20 min-w-20 max-h-reg-250 overflow-y-auto">
                         <div className="px-3 py-1 text-xs font-medium text-white/70 border-b border-white/20 sticky top-0 bg-black/90">
                           Speed
                         </div>
@@ -2215,7 +2215,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                             <button
                               key={speed}
                               onClick={() => changePlaybackSpeed(speed)}
-                              className={`w-full px-3 py-2 text-sm text-left hover:bg-white/20 transition-colors ${playbackSpeed === speed
+                              className={`w-full px-3 py-2 text-sm text-start hover:bg-white/20 transition-colors ${playbackSpeed === speed
                                   ? "text-primary-400 bg-white/10 font-medium"
                                   : "text-white"
                                 }`}
@@ -2369,7 +2369,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         {/* Bottom Controls Overlay (always visible when not fullscreen) */}
         {!(isFullscreen || isPseudoFullscreen) && (
           <div
-            className={`absolute bottom-0 left-0 right-0 z-50 transition-all duration-300 ${showControls
+            className={`absolute bottom-0 start-0 end-0 z-50 transition-all duration-300 ${showControls
                 ? "opacity-100 translate-y-0"
                 : "opacity-0 translate-y-2"
               }`}
@@ -2465,7 +2465,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
                     >
                       <Gauge size={18} weight="fill" />
                       {playbackSpeed !== 1 && (
-                        <span className="absolute -top-1 -right-1 bg-primary-500 text-white text-xs rounded-full min-w-5 h-5 flex items-center justify-center font-bold px-1 shadow-md border-2 border-white">
+                        <span className="absolute -top-1 -end-1 bg-primary-500 text-white text-xs rounded-full min-w-5 h-5 flex items-center justify-center font-bold px-1 shadow-md border-2 border-white">
                           {playbackSpeed}x
                         </span>
                       )}
@@ -2589,7 +2589,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
         )}
         {/* Bottom gradient overlay in fullscreen */}
         {(isFullscreen || isPseudoFullscreen) && (
-          <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none rounded-b-lg z-40" />
+          <div className="absolute bottom-0 start-0 end-0 h-32 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none rounded-b-lg z-40" />
         )}
       </div>
 
@@ -2610,7 +2610,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
               <button
                 key={speed}
                 onClick={() => changePlaybackSpeed(speed)}
-                className={`w-full px-3 py-2 text-sm text-left hover:bg-white/20 transition-colors ${playbackSpeed === speed
+                className={`w-full px-3 py-2 text-sm text-start hover:bg-white/20 transition-colors ${playbackSpeed === speed
                     ? "text-primary-400 bg-white/10 font-medium"
                     : "text-white"
                   }`}

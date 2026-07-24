@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.workflow.spel;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.expression.MapAccessor;
 import org.springframework.expression.Expression;
 import org.springframework.expression.ExpressionParser;
 import org.springframework.expression.TypeLocator;
@@ -40,6 +41,11 @@ public class SpelEvaluator {
         ExpressionParser parser = new SpelExpressionParser();
         StandardEvaluationContext context = new StandardEvaluationContext(contextVars);
         context.setTypeLocator(new SafeTypeLocator());
+        // Dot access on Map values (e.g. #ctx['user'].fullName). Context objects that start
+        // life as beans (UserDTO) come back as LinkedHashMaps after a persisted-DELAY pause
+        // serializes the context to JSONB — without this accessor every dot-style expression
+        // in a node AFTER a multi-day delay would throw EL1008 and drop/abort the run.
+        context.addPropertyAccessor(new MapAccessor());
         context.setVariable("ctx", contextVars);
 
         try {
@@ -106,13 +112,24 @@ public class SpelEvaluator {
                 "javax.script", "java.net.URL", "java.net.URI"
         );
 
+        // Safe JDK utility types that the prefix-based block list would otherwise
+        // catch by accident. e.g. the "java.net.URL" entry (meant to block the
+        // network URL class) also prefix-matches java.net.URLEncoder /
+        // java.net.URLDecoder, which are pure string codecs with no I/O. These are
+        // allow-listed so expressions can URL-encode text (e.g. certificate URLs).
+        private static final Set<String> ALLOWED_TYPES = Set.of(
+                "java.net.URLEncoder", "java.net.URLDecoder"
+        );
+
         private final StandardTypeLocator delegate = new StandardTypeLocator();
 
         @Override
         public Class<?> findType(String typeName) {
-            for (String blocked : BLOCKED_PACKAGES) {
-                if (typeName.startsWith(blocked)) {
-                    throw new IllegalStateException("Type access denied for security: " + typeName);
+            if (!ALLOWED_TYPES.contains(typeName)) {
+                for (String blocked : BLOCKED_PACKAGES) {
+                    if (typeName.startsWith(blocked)) {
+                        throw new IllegalStateException("Type access denied for security: " + typeName);
+                    }
                 }
             }
             return delegate.findType(typeName);

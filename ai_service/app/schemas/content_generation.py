@@ -46,9 +46,19 @@ class ContentGenerationRequest(BaseModel):
         default=None,
         description=(
             "Course-level AI-video settings applied to AI_VIDEO / AI_VIDEO_CODE / "
-            "AI_SLIDES / AI_STORYBOOK todos (per-todo metadata wins). Recognized "
-            "keys: model, voice_gender, voice_id, tts_provider, quality_tier, "
-            "target_duration."
+            "AI_SLIDES / AI_STORYBOOK todos (override auto-injected defaults for "
+            "these todos). Recognized keys: model, voice_gender, voice_id, "
+            "tts_provider, quality_tier, target_duration, language (video-narration "
+            "language, e.g. 'English (India)', 'Hindi' — drives the TTS voice)."
+        ),
+    )
+    reference_document_file_ids: Optional[list] = Field(
+        default=None,
+        description=(
+            "Media fileIds of the uploaded reference PDFs (same ones sent to the "
+            "outline). Their real figures are made available to DOCUMENT slides so "
+            "the generator can embed the actual diagrams/tables instead of "
+            "AI-generated stand-ins."
         ),
     )
 

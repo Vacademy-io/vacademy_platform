@@ -306,7 +306,7 @@ const DetailsStep = ({
                       onClick={handleRemoveLogo}
                       className="!text-danger-600"
                     >
-                      <Trash className="mr-1 size-4" />
+                      <Trash className="me-1 size-4" />
                       Remove
                     </MyButton>
                   )}
@@ -509,7 +509,7 @@ const DetailsStep = ({
             >
               {isSubmitting ? (
                 <>
-                  <SpinnerGap className="mr-2 size-4 animate-spin" />
+                  <SpinnerGap className="me-2 size-4 animate-spin" />
                   {isEditingAfterVerification ? "Saving..." : "Sending code..."}
                 </>
               ) : (
@@ -555,7 +555,7 @@ const DetailsStep = ({
             >
               {isResuming ? (
                 <>
-                  <SpinnerGap className="mr-2 size-4 animate-spin" />
+                  <SpinnerGap className="me-2 size-4 animate-spin" />
                   Sending code...
                 </>
               ) : (

@@ -28,24 +28,21 @@ export class SessionLimitError extends Error {
     }
 }
 
-// Dummy login function
-async function loginUser(
-    username: string,
+// Single credential attempt against the login endpoint. Returns the parsed
+// token payload, or throws (SessionLimitError for a valid-but-capped account,
+// a plain Error for any other failure).
+async function attemptLogin(
+    userName: string,
     password: string,
-    convertToLowercase?: boolean | null,
 ): Promise<z.infer<typeof loginResponseSchema>> {
-    // Convert username and password to lowercase if flag is true
-    const finalUsername = convertToLowercase === true ? username.toLowerCase() : username;
-    const finalPassword = convertToLowercase === true ? password.toLowerCase() : password;
-
     const response = await fetch(LOGIN_URL, {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
         },
         body: JSON.stringify({
-            user_name: finalUsername,
-            password: finalPassword,
+            user_name: userName,
+            password: password,
             client_name: "ADMIN_PORTAL",
             // institute_id: INSTITUTE_ID,
         }),
@@ -60,6 +57,38 @@ async function loginUser(
     // Check for session limit exceeded BEFORE storing tokens
     if (tokenData.session_limit_exceeded === true) {
         throw new SessionLimitError(tokenData.active_sessions || []);
+    }
+
+    return tokenData;
+}
+
+// Dummy login function
+async function loginUser(
+    username: string,
+    password: string,
+    convertToLowercase?: boolean | null,
+): Promise<z.infer<typeof loginResponseSchema>> {
+    let tokenData: z.infer<typeof loginResponseSchema>;
+
+    if (convertToLowercase === true) {
+        // Try the lowercased credentials first (per institute config), but if
+        // that is rejected, fall back to the values exactly as the user typed
+        // them — some accounts were created with mixed-case usernames/passwords.
+        try {
+            tokenData = await attemptLogin(
+                username.toLowerCase(),
+                password.toLowerCase(),
+            );
+        } catch (error) {
+            // A capped-but-valid account isn't a credentials failure — don't
+            // retry, surface the session-limit dialog instead.
+            if (error instanceof SessionLimitError) {
+                throw error;
+            }
+            tokenData = await attemptLogin(username, password);
+        }
+    } else {
+        tokenData = await attemptLogin(username, password);
     }
 
     // --- BUG FIX: Save tokens and instituteId to storage ---

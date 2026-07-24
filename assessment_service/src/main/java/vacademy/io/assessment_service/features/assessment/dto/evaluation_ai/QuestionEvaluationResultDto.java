@@ -58,6 +58,10 @@ public class QuestionEvaluationResultDto {
         @JsonProperty("confidence")
         private Double confidence;
 
+        // True once a teacher has overridden this question on the review page.
+        @JsonProperty("is_edited")
+        private Boolean isEdited;
+
         // Timestamps
         @JsonProperty("started_at")
         private Date startedAt;

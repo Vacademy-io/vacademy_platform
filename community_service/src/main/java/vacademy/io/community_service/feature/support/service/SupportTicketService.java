@@ -14,10 +14,12 @@ import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.community_service.feature.support.dto.AddMessageRequest;
 import vacademy.io.community_service.feature.support.dto.AssignEngineerRequest;
 import vacademy.io.community_service.feature.support.dto.AttachmentDto;
+import vacademy.io.community_service.feature.support.dto.CreateSupportTicketRequest;
 import vacademy.io.community_service.feature.support.dto.CreateTicketRequest;
 import vacademy.io.community_service.feature.support.dto.PageResponseDto;
 import vacademy.io.community_service.feature.support.dto.SupportTicketDto;
 import vacademy.io.community_service.feature.support.dto.SupportTicketMessageDto;
+import vacademy.io.community_service.feature.support.dto.UpdateTicketRequest;
 import vacademy.io.community_service.feature.support.dto.UpdateTicketStatusRequest;
 import vacademy.io.community_service.feature.support.entity.SupportEngineer;
 import vacademy.io.community_service.feature.support.entity.SupportTicket;
@@ -26,11 +28,13 @@ import vacademy.io.community_service.feature.support.enums.SenderType;
 import vacademy.io.community_service.feature.support.enums.SupportPlan;
 import vacademy.io.community_service.feature.support.enums.TicketCategory;
 import vacademy.io.community_service.feature.support.enums.TicketPriority;
+import vacademy.io.community_service.feature.support.enums.TicketSource;
 import vacademy.io.community_service.feature.support.enums.TicketStatus;
 import vacademy.io.community_service.feature.support.repository.SupportTicketMessageRepository;
 import vacademy.io.community_service.feature.support.repository.SupportTicketRepository;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.LinkedHashMap;
@@ -93,6 +97,7 @@ public class SupportTicketService {
                 .priority(priority)
                 .status(TicketStatus.OPEN)
                 .planAtCreation(plan)
+                .source(TicketSource.PORTAL)
                 .firstResponseDueAt(computeDue(now, plan, priority))
                 .lastMessageAt(now)
                 .messageCount(1)
@@ -122,8 +127,10 @@ public class SupportTicketService {
                                                               Pageable pageable) {
         TicketStatus status = TicketStatus.fromName(statusFilter, null);
         Page<SupportTicket> page = (status == null)
-                ? ticketRepository.findByInstituteIdOrderByLastMessageAtDesc(instituteId, pageable)
-                : ticketRepository.findByInstituteIdAndStatusOrderByLastMessageAtDesc(instituteId, status, pageable);
+                ? ticketRepository.findByInstituteIdAndInternalOnlyFalseOrderByLastMessageAtDesc(
+                        instituteId, pageable)
+                : ticketRepository.findByInstituteIdAndStatusAndInternalOnlyFalseOrderByLastMessageAtDesc(
+                        instituteId, status, pageable);
         Map<String, String> names = engineerNames(page);
         return PageResponseDto.of(page, t -> toSummaryDto(t, names));
     }
@@ -186,19 +193,187 @@ public class SupportTicketService {
 
     // ============================== SUPER-ADMIN ===============================
 
+    /**
+     * The support team logs a ticket on an institute's behalf (issue reported over email / WhatsApp,
+     * etc.). Attributed to "Vacademy Support" but attached to the chosen institute, so it surfaces in
+     * that institute's own support panel like any client-raised ticket. The opening message is a
+     * visible SUPPORT message carrying the reported issue text; because support is already engaged we
+     * stamp firstRespondedAt so it is never flagged overdue against a first-response SLA.
+     */
+    @Transactional
+    public SupportTicketDto createBySupport(CreateSupportTicketRequest request, CustomUserDetails user) {
+        if (request == null || !StringUtils.hasText(request.getInstituteId())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "instituteId is required");
+        }
+        if (!StringUtils.hasText(request.getSubject())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "subject is required");
+        }
+        if (!StringUtils.hasText(request.getMessage())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "message is required");
+        }
+        String instituteId = request.getInstituteId().trim();
+        SupportPlan plan = configService.resolvePlan(instituteId);
+        TicketPriority priority = TicketPriority.fromName(request.getPriority(), TicketPriority.MINOR);
+        TicketCategory category = TicketCategory.fromName(request.getCategory(), TicketCategory.QUESTION);
+        TicketSource source = TicketSource.fromName(request.getSource(), TicketSource.MANUAL);
+        Date now = new Date();
+
+        String engineerId = null;
+        if (StringUtils.hasText(request.getAssignedEngineerId())) {
+            engineerId = engineerService.getOrThrow(request.getAssignedEngineerId().trim()).getId();
+        }
+
+        SupportTicket ticket = SupportTicket.builder()
+                .instituteId(instituteId)
+                .instituteName(StringUtils.hasText(request.getInstituteName()) ? request.getInstituteName().trim() : null)
+                .raisedByUserId(user != null ? user.getUserId() : null)
+                .raisedByName("Vacademy Support")
+                .raisedByRole("SUPPORT")
+                .subject(request.getSubject().trim())
+                .category(category)
+                .priority(priority)
+                .status(TicketStatus.OPEN)
+                .planAtCreation(plan)
+                .source(source)
+                .eta(request.getEta())
+                .internalOnly(Boolean.TRUE.equals(request.getInternalOnly()))
+                .assignedEngineerId(engineerId)
+                // support authored the first message → treat first response as already given (no SLA clock).
+                .firstRespondedAt(now)
+                .lastMessageAt(now)
+                .messageCount(1)
+                .build();
+        ticket = ticketRepository.save(ticket);
+
+        SupportTicketMessage first = SupportTicketMessage.builder()
+                .ticketId(ticket.getId())
+                .senderType(SenderType.SUPPORT)
+                .senderUserId(user != null ? user.getUserId() : null)
+                .senderName(user != null && StringUtils.hasText(user.getFullName()) ? user.getFullName() : "Vacademy Support")
+                .body(request.getMessage().trim())
+                .attachments(writeAttachments(request.getAttachments()))
+                .internalNote(false)
+                .build();
+        messageRepository.save(first);
+
+        return toDetailDto(ticket, true);
+    }
+
+    @Transactional
+    public SupportTicketDto setEta(String ticketId, Date eta) {
+        SupportTicket ticket = getOrThrow(ticketId);
+        ticket.setEta(eta);
+        ticketRepository.save(ticket);
+        return toDetailDto(ticket, true);
+    }
+
+    /**
+     * Edit an existing ticket from the support console. Only non-null fields are applied.
+     * {@code message}/{@code attachments} edit the ticket's opening message in place.
+     */
+    @Transactional
+    public SupportTicketDto updateTicket(String ticketId, UpdateTicketRequest request) {
+        SupportTicket ticket = getOrThrow(ticketId);
+        if (request == null) {
+            return toDetailDto(ticket, true);
+        }
+
+        if (StringUtils.hasText(request.getSubject())) {
+            ticket.setSubject(request.getSubject().trim());
+        }
+        if (StringUtils.hasText(request.getCategory())) {
+            ticket.setCategory(TicketCategory.fromName(request.getCategory(), ticket.getCategory()));
+        }
+        if (StringUtils.hasText(request.getSource())) {
+            ticket.setSource(TicketSource.fromName(request.getSource(), ticket.getSource()));
+        }
+        if (StringUtils.hasText(request.getPriority())) {
+            TicketPriority newPriority = TicketPriority.fromName(request.getPriority(), ticket.getPriority());
+            ticket.setPriority(newPriority);
+            // Re-derive the response-due time while we still owe a first response.
+            if (ticket.getFirstRespondedAt() == null && ticket.getPlanAtCreation() != null
+                    && ticket.getCreatedAt() != null) {
+                ticket.setFirstResponseDueAt(
+                        computeDue(ticket.getCreatedAt(), ticket.getPlanAtCreation(), newPriority));
+            }
+        }
+        if (StringUtils.hasText(request.getStatus())) {
+            applyStatus(ticket, TicketStatus.fromName(request.getStatus(), ticket.getStatus()));
+        }
+        if (request.getAssignedEngineerId() != null) {
+            if (StringUtils.hasText(request.getAssignedEngineerId())) {
+                ticket.setAssignedEngineerId(
+                        engineerService.getOrThrow(request.getAssignedEngineerId().trim()).getId());
+            } else {
+                ticket.setAssignedEngineerId(null);
+            }
+        }
+        if (request.getInternalOnly() != null) {
+            ticket.setInternalOnly(request.getInternalOnly());
+        }
+        if (request.isEtaSet()) {
+            ticket.setEta(request.getEta());
+        }
+        ticketRepository.save(ticket);
+
+        boolean editMessage = StringUtils.hasText(request.getMessage()) || request.isAttachmentsSet();
+        if (editMessage) {
+            messageRepository.findFirstByTicketIdOrderByCreatedAtAsc(ticket.getId()).ifPresent(first -> {
+                if (StringUtils.hasText(request.getMessage())) {
+                    first.setBody(request.getMessage().trim());
+                }
+                if (request.isAttachmentsSet()) {
+                    first.setAttachments(writeAttachments(request.getAttachments()));
+                }
+                messageRepository.save(first);
+            });
+        }
+        return toDetailDto(ticket, true);
+    }
+
+    /**
+     * @param instituteIds filter to these institutes; null/empty means "all institutes".
+     * @param unassigned   when true, only tickets with no assigned engineer (overrides engineerId).
+     * @param searchTerm   case-insensitive substring match on the subject; null/blank skips it.
+     */
     @Transactional(readOnly = true)
-    public PageResponseDto<SupportTicketDto> search(String instituteId, String statusFilter, String engineerId,
+    public PageResponseDto<SupportTicketDto> search(Collection<String> instituteIds, String statusFilter,
+                                                    String engineerId, boolean unassigned, String searchTerm,
                                                     boolean onlyOverdue, Pageable pageable) {
         TicketStatus status = TicketStatus.fromName(statusFilter, null);
+        List<String> institutes = instituteIds == null ? List.of() : instituteIds.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .collect(Collectors.toList());
         Page<SupportTicket> page = ticketRepository.searchTickets(
-                StringUtils.hasText(instituteId) ? instituteId : null,
+                !institutes.isEmpty(),
+                // Never bind an empty IN list; the sentinel is unreachable when hasInstitutes=false.
+                institutes.isEmpty() ? List.of("__none__") : institutes,
                 status,
-                StringUtils.hasText(engineerId) ? engineerId : null,
+                // "Unassigned" and "assigned to X" are mutually exclusive; unassigned wins.
+                (unassigned || !StringUtils.hasText(engineerId)) ? null : engineerId,
+                unassigned,
+                likeParam(searchTerm),
                 onlyOverdue,
                 new Date(),
                 pageable);
         Map<String, String> names = engineerNames(page);
         return PageResponseDto.of(page, t -> toSummaryDto(t, names));
+    }
+
+    /**
+     * Build the bind value for a case-insensitive "contains" LIKE. Escapes the LIKE wildcards so a
+     * literal % or _ typed into the search box matches itself instead of acting as a wildcard.
+     */
+    private String likeParam(String term) {
+        if (!StringUtils.hasText(term)) {
+            return null;
+        }
+        String escaped = term.trim().toLowerCase()
+                .replace("!", "!!")
+                .replace("%", "!%")
+                .replace("_", "!_");
+        return "%" + escaped + "%";
     }
 
     @Transactional(readOnly = true)
@@ -385,6 +560,9 @@ public class SupportTicketService {
                 .status(t.getStatus() != null ? t.getStatus().name() : null)
                 .planAtCreation(t.getPlanAtCreation() != null ? t.getPlanAtCreation().name() : null)
                 .assignedEngineerId(t.getAssignedEngineerId())
+                .source(t.getSource() != null ? t.getSource().name() : null)
+                .eta(t.getEta())
+                .internalOnly(t.isInternalOnly())
                 .firstResponseDueAt(t.getFirstResponseDueAt())
                 .firstRespondedAt(t.getFirstRespondedAt())
                 .resolvedAt(t.getResolvedAt())

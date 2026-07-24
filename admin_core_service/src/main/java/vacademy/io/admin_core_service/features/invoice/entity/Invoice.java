@@ -71,6 +71,15 @@ public class Invoice {
     @Column(name = "tax_included")
     private Boolean taxIncluded;
 
+    // Which business entity triggered this invoice.
+    // Values: USER_PLAN, STUDENT_FEE_PAYMENT, ADMIN_MANUAL
+    @Column(name = "source", length = 50)
+    private String source;
+
+    // ID of the source entity (user_plan.id, student_fee_payment.id, or user_id for ADMIN_MANUAL)
+    @Column(name = "source_id", length = 255)
+    private String sourceId;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 

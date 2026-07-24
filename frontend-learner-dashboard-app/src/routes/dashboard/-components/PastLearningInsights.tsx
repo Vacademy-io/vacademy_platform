@@ -1,4 +1,3 @@
-// import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { usePastLearningInsights } from "../-hooks/usePastLearningInsights";
 import { LineChartComponent } from "./LineChartComponent";
 import { StudentProgressTable } from "./StudentProgressTable";
@@ -11,10 +10,19 @@ import { Clock, Target, Medal, TrendUp, ChartBarHorizontal, Table } from "@phosp
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { cn } from "@/lib/utils";
+import { usePlayTheme } from "@/hooks/use-play-theme";
+import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
+import iconProgress from "@/assets/cleaner-play/icon-progress.webp";
 
 // Enhanced Loading Skeleton
 const AnalyticsLoadingSkeleton = () => (
-  <div className="space-y-6">
+  <div
+    className={cn(
+      "space-y-6",
+      "cp-card [.ui-cleaner-play_&]:p-4",
+      "[.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:bg-play-navy-soft/50 [.ui-play_&]:p-4 [.ui-play_&]:shadow-play-soft-card"
+    )}
+  >
     {/* Header Skeleton */}
     <div className="border rounded-lg p-5 flex flex-col sm:flex-row justify-between gap-4">
       <div className="flex items-center gap-4">
@@ -60,41 +68,84 @@ const InlineStat = ({
   icon: React.ComponentType<{ size?: number | string; className?: string }>;
 }) => (
   <div className="flex items-center gap-2">
-    <div className="p-1.5 rounded-lg bg-primary/10 text-primary [.ui-play_&]:bg-white/20 [.ui-play_&]:text-white">
+    <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
       <Icon size={14} />
     </div>
     <div>
-      <span className="text-sm font-bold [.ui-play_&]:text-white">{value}</span>
-      <span className="text-xs text-muted-foreground ml-1 [.ui-play_&]:text-white/90">{label}</span>
+      <span className="text-sm font-bold">{value}</span>
+      <span className="text-xs text-muted-foreground ms-1">{label}</span>
+    </div>
+  </div>
+);
+
+const PlayInlineStat = ({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  icon: React.ComponentType<{ size?: number | string; className?: string }>;
+}) => (
+  <div className="flex items-center gap-2">
+    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-play-navy-soft-ink">
+      <Icon size={14} />
+    </div>
+    <div>
+      <span className="text-caption font-black text-play-ink">{value}</span>
+      <span className="ms-1 text-3xs font-bold text-play-ink/60">{label}</span>
+    </div>
+  </div>
+);
+
+const CleanerInlineStat = ({
+  label,
+  value,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  icon: React.ComponentType<{ size?: number | string; className?: string }>;
+}) => (
+  <div className="flex items-center gap-2">
+    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-cp-sage-tint text-cp-sage">
+      <Icon size={14} />
+    </div>
+    <div>
+      <span className="cp-heading text-caption">{value}</span>
+      <span className="cp-muted ms-1 text-3xs">{label}</span>
     </div>
   </div>
 );
 
 export const PastLearningInsights = () => {
+  const isPlay = usePlayTheme();
+  const isCleanerPlay = useCleanerPlayTheme();
   const { mutate: pastLearningInsights, isPending } = usePastLearningInsights();
   const [userActivity, setUserActivity] = useState<UserActivityArray>([]);
   const [avgTimeSpent, setAvgTimeSpent] = useState<string>("0");
   const [totalSessions, setTotalSessions] = useState<number>(0);
   const [streakDays, setStreakDays] = useState<number>(0);
   const [activeView, setActiveView] = useState<"chart" | "table">("chart");
+  const [loadError, setLoadError] = useState(false);
 
   // Honesty gate: with zero recorded activity the header zero-stats are noise.
   const hasActivity = userActivity.some((day) => day.time_spent_by_user_millis > 0);
 
-  useEffect(() => {
-    const fetchUserActivity = async () => {
-      const { student } = await getStoredDetails();
-      pastLearningInsights(
-        {
-          user_id: student.user_id,
-          start_date: new Date(
-            new Date().setDate(new Date().getDate() - 6)
-          ).toISOString(),
-          end_date: new Date().toISOString(),
-        },
-        {
-          onSuccess: (data) => {
-            setUserActivity(data);
+  const fetchUserActivity = async () => {
+    setLoadError(false);
+    const { student } = await getStoredDetails();
+    pastLearningInsights(
+      {
+        user_id: student.user_id,
+        start_date: new Date(
+          new Date().setDate(new Date().getDate() - 6)
+        ).toISOString(),
+        end_date: new Date().toISOString(),
+      },
+      {
+        onSuccess: (data) => {
+          setUserActivity(data);
 
             if (data.length > 0) {
               // Calculate average time spent
@@ -127,17 +178,163 @@ export const PastLearningInsights = () => {
               }
               setStreakDays(streak);
             }
-          },
-          onError: (error) => {
-            console.error(error);
-          },
-        }
-      );
-    };
+        },
+        onError: (error) => {
+          console.error(error);
+          setLoadError(true);
+        },
+      }
+    );
+  };
+
+  useEffect(() => {
     fetchUserActivity();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (isPending) return <AnalyticsLoadingSkeleton />;
+
+  // Shared inner content for every skin branch: a recoverable error state,
+  // else the chart/table toggle (LineChartComponent handles the truly-empty
+  // case itself).
+  const insightsContent = loadError ? (
+    <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-muted/40 p-6 text-center">
+      <p className="text-sm font-medium text-muted-foreground">
+        Couldn't load your learning activity.
+      </p>
+      <button
+        type="button"
+        onClick={fetchUserActivity}
+        className="rounded-full bg-primary px-4 py-1.5 text-caption font-semibold text-primary-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+      >
+        Try again
+      </button>
+    </div>
+  ) : activeView === "chart" ? (
+    <LineChartComponent userActivity={userActivity} />
+  ) : (
+    <StudentProgressTable userActivity={userActivity} />
+  );
+
+  if (isPlay) {
+    return (
+      <div className="animate-fade-in-up overflow-hidden rounded-play-card-sm border border-border bg-play-navy-soft shadow-play-soft-card">
+        <div className="flex flex-col gap-3 border-b border-white/60 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <img
+              src={iconProgress}
+              alt=""
+              aria-hidden="true"
+              className="h-11 w-11 object-contain"
+            />
+            <div>
+              <p className="text-body font-black uppercase tracking-wide text-play-navy-soft-ink">Learning Progress</p>
+              <p className="text-caption font-bold text-play-ink/60">
+                Past 7 days activity vs {getTerminology(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()} average
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            {hasActivity && (
+              <>
+                <PlayInlineStat label="avg" value={avgTimeSpent} icon={Clock} />
+                <PlayInlineStat label="sessions" value={totalSessions.toString()} icon={Target} />
+                <PlayInlineStat label={`day${streakDays !== 1 ? "s" : ""} streak`} value={streakDays.toString()} icon={Medal} />
+              </>
+            )}
+
+            <div className="flex items-center gap-0.5 rounded-full bg-white/60 p-0.5">
+              <button
+                onClick={(e) => { e.stopPropagation(); setActiveView("chart"); }}
+                className={cn(
+                  "rounded-full p-1.5 transition-all",
+                  activeView === "chart" ? "bg-white text-play-navy-soft-ink shadow-sm" : "text-play-ink/50"
+                )}
+                title="Chart view"
+              >
+                <ChartBarHorizontal size={14} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setActiveView("table"); }}
+                className={cn(
+                  "rounded-full p-1.5 transition-all",
+                  activeView === "table" ? "bg-white text-play-navy-soft-ink shadow-sm" : "text-play-ink/50"
+                )}
+                title="Table view"
+              >
+                <Table size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4">
+          {insightsContent}
+        </div>
+      </div>
+    );
+  }
+
+  if (isCleanerPlay) {
+    return (
+      <div className="cp-card animate-fade-in-up overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-cp-border p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <img
+              src={iconProgress}
+              alt=""
+              aria-hidden="true"
+              className="h-11 w-11 object-contain"
+            />
+            <div>
+              <p className="cp-heading text-body">Learning Progress</p>
+              <p className="cp-muted text-caption">
+                Past 7 days activity vs {getTerminology(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()} average
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            {hasActivity && (
+              <>
+                <CleanerInlineStat label="avg" value={avgTimeSpent} icon={Clock} />
+                <CleanerInlineStat label="sessions" value={totalSessions.toString()} icon={Target} />
+                <CleanerInlineStat label={`day${streakDays !== 1 ? "s" : ""} streak`} value={streakDays.toString()} icon={Medal} />
+              </>
+            )}
+
+            <div className="flex items-center gap-0.5 rounded-full bg-cp-bg-deep p-0.5">
+              <button
+                onClick={(e) => { e.stopPropagation(); setActiveView("chart"); }}
+                className={cn(
+                  "rounded-full p-1.5 transition-all",
+                  activeView === "chart" ? "bg-cp-surface text-cp-ink shadow-sm" : "cp-muted"
+                )}
+                title="Chart view"
+              >
+                <ChartBarHorizontal size={14} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setActiveView("table"); }}
+                className={cn(
+                  "rounded-full p-1.5 transition-all",
+                  activeView === "table" ? "bg-cp-surface text-cp-ink shadow-sm" : "cp-muted"
+                )}
+                title="Table view"
+              >
+                <Table size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4">
+          {insightsContent}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in-up">
@@ -145,21 +342,18 @@ export const PastLearningInsights = () => {
         "shadow-none relative overflow-hidden",
         // Vibrant: white card with a tenant-primary top rail (no fixed hues)
         "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
-        "[.ui-vibrant_&]:shadow-sm",
-        // Navy is the only dark play surface that may carry white text;
-        // the bright play-info band failed the contrast rule.
-        "[.ui-play_&]:!bg-play-navy [.ui-play_&]:!border-2 [.ui-play_&]:!border-play-navy-deep [.ui-play_&]:rounded-2xl [.ui-play_&]:shadow-play-4d-navy"
+        "[.ui-vibrant_&]:shadow-sm"
       )}>
         {/* Header: title + inline stats + view toggle */}
-        <CardHeader className="px-5 py-3 border-b [.ui-play_&]:border-white/20">
+        <CardHeader className="px-5 py-3 border-b">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/10 text-primary [.ui-play_&]:bg-white/20 [.ui-play_&]:text-white">
+              <div className="p-2 rounded-lg bg-primary/10 text-primary">
                 <TrendUp size={18} />
               </div>
               <div>
-                <CardTitle className="text-sm font-semibold [.ui-play_&]:text-white [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">Learning Progress</CardTitle>
-                <CardDescription className="text-xs [.ui-play_&]:text-white/90">Past 7 days activity vs {getTerminology(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()} average</CardDescription>
+                <CardTitle className="text-sm font-semibold">Learning Progress</CardTitle>
+                <CardDescription className="text-xs">Past 7 days activity vs {getTerminology(ContentTerms.Batch, SystemTerms.Batch).toLowerCase()} average</CardDescription>
               </div>
             </div>
 
@@ -174,14 +368,14 @@ export const PastLearningInsights = () => {
               )}
 
               {/* View toggle */}
-              <div className="flex items-center bg-muted/50 rounded-lg p-0.5 [.ui-play_&]:bg-white/20">
+              <div className="flex items-center bg-muted/50 rounded-lg p-0.5">
                 <button
                   onClick={(e) => { e.stopPropagation(); setActiveView("chart"); }}
                   className={cn(
                     "p-1.5 rounded-md transition-all",
                     activeView === "chart"
-                      ? "bg-background shadow-sm text-foreground [.ui-play_&]:!bg-white [.ui-play_&]:!text-play-ink"
-                      : "text-muted-foreground hover:text-foreground [.ui-play_&]:text-white/90 [.ui-play_&]:hover:text-white"
+                      ? "bg-background shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
                   )}
                   title="Chart view"
                 >
@@ -192,8 +386,8 @@ export const PastLearningInsights = () => {
                   className={cn(
                     "p-1.5 rounded-md transition-all",
                     activeView === "table"
-                      ? "bg-background shadow-sm text-foreground [.ui-play_&]:!bg-white [.ui-play_&]:!text-play-ink"
-                      : "text-muted-foreground hover:text-foreground [.ui-play_&]:text-white/90 [.ui-play_&]:hover:text-white"
+                      ? "bg-background shadow-sm text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
                   )}
                   title="Table view"
                 >
@@ -205,12 +399,8 @@ export const PastLearningInsights = () => {
         </CardHeader>
 
         {/* Content: chart or table based on toggle */}
-        <CardContent className="p-4 [.ui-play_&]:bg-white [.ui-play_&]:m-3 [.ui-play_&]:rounded-xl">
-          {activeView === "chart" ? (
-            <LineChartComponent userActivity={userActivity} />
-          ) : (
-            <StudentProgressTable userActivity={userActivity} />
-          )}
+        <CardContent className="p-4">
+          {insightsContent}
         </CardContent>
       </Card>
     </div>

@@ -59,6 +59,7 @@ export const STUDENT_REPORT_URL = `${BASE_URL}/assessment-service/assessment/lea
 export const STUDENT_REPORT_DETAIL_URL = `${BASE_URL}/assessment-service/assessment/learner/report/detail`;
 export const LEARNER_REPORT_COMPARISON_URL = `${BASE_URL}/assessment-service/assessment/learner/report/comparison`;
 export const LEARNER_OPTION_DISTRIBUTION_URL = `${BASE_URL}/assessment-service/assessment/learner/report/option-distribution`;
+export const LEARNER_ANNOTATED_COPY_URL = `${BASE_URL}/assessment-service/assessment/learner/report/annotated-copy`;
 export const LEARNER_REPORT_LEADERBOARD_URL = `${BASE_URL}/assessment-service/assessment/learner/report/leaderboard`;
 export const SURVEY_STUDENT_REPORT_URL = `${BASE_URL}/assessment-service/assessment/survey/student-report`;
 export const GET_ASSESSMENT_DETAILS = `${BASE_URL}/assessment-service/assessment/create/v1/status`;
@@ -87,6 +88,12 @@ export const LEARNER_PAYMENT_METHOD_SUMMARY = `${BASE_URL}/admin-core-service/le
 export const LEARNER_PAYMENT_METHOD_SETUP_INTENT = `${BASE_URL}/admin-core-service/learner/payment-method/v1/stripe/setup-intent`;
 export const LEARNER_PAYMENT_METHOD_CONFIRM_CARD = `${BASE_URL}/admin-core-service/learner/payment-method/v1/confirm-card-update`;
 export const LEARNER_PAYMENT_METHOD_BILLING_DETAILS = `${BASE_URL}/admin-core-service/learner/payment-method/v1/billing-details`;
+
+// Learner self-service subscriptions + autopay mandate (list + cancel)
+export const LEARNER_SUBSCRIPTION_LIST = `${BASE_URL}/admin-core-service/learner/subscription/v1`;
+export const LEARNER_SUBSCRIPTION_CANCEL = (userPlanId: string) =>
+  `${BASE_URL}/admin-core-service/learner/subscription/v1/${userPlanId}/cancel`;
+
 export const EXPORT_ASSESSMENT_REPORT = `${BASE_URL}/assessment-service/assessment/learner/report/pdf`;
 export const EXPORT_AI_REPORT = `${BASE_URL}/assessment-service/assessment/learner/report/ai-pdf`;
 export const ASSESSMENT_SUBMIT_MANUAL = `${BASE_URL}/assessment-service/assessment/learner/manual-status/submit`;
@@ -147,6 +154,7 @@ export const LEAD_COLLECTION_ENROLL_URL = `${BASE_URL}/admin-core-service/v1/lea
 export const CATALOGUE_LEAD_SUBMIT_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-catalogue`;
 export const LIVE_SESSION_GET_REGISTRATION_DATA = `${BASE_URL}/admin-core-service/live-session/get-registration-data`;
 export const LIVE_SESSION_GET_LIVE_AND_UPCOMING = `${BASE_URL}/admin-core-service/get-sessions/learner/live-and-upcoming`;
+export const LIVE_SESSION_GET_PAST = `${BASE_URL}/admin-core-service/get-sessions/learner/past`;
 export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID = `${BASE_URL}/admin-core-service/get-sessions/by-schedule-id`;
 export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID_FOR_GUEST = `${BASE_URL}/admin-core-service/live-session/guest/get-session-by-schedule-id`;
 export const LIVE_SESSION_CHECK_EMAIL_REGISTRATION = `${BASE_URL}/admin-core-service/live-session/check-email-registration`;
@@ -245,6 +253,14 @@ export const GET_AUDIENCE_CAMPAIGN = `${BASE_URL}/admin-core-service/open/v1/aud
 export const SUBMIT_AUDIENCE_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 
+// Public booking pages (open — no auth). Calendly-style scheduling:
+// GET  {OPEN_BOOKING_BASE}/page/{instituteId}/{slug}            → page details
+// GET  {OPEN_BOOKING_BASE}/page/{instituteId}/{slug}/slots      → available slots
+// POST {OPEN_BOOKING_BASE}/page/{instituteId}/{slug}/book       → create booking
+// GET  {OPEN_BOOKING_BASE}/manage/{token}                       → booking by manage token
+// POST {OPEN_BOOKING_BASE}/manage/{token}/cancel|reschedule
+export const OPEN_BOOKING_BASE = `${BASE_URL}/admin-core-service/open/v1/booking`;
+
 // Sub-Organization Learner Management API endpoints
 export const SUB_ORG_MEMBER_ADMIN_DETAILS = `${BASE_URL}/admin-core-service/sub-org/v1/member-admin-details`;
 export const SUB_ORG_BASE = `${BASE_URL}/admin-core-service/sub-org/v1`;
@@ -321,3 +337,20 @@ export const GET_INVOICE_PUBLIC = (invoiceId: string) =>
 export const INITIATE_INVOICE_PAYMENT = (invoiceId: string) =>
   `${BASE_URL}/admin-core-service/open/v1/invoices/${invoiceId}/initiate-payment`;
 export const GET_PAYMENT_COMPLETION_STATUS = `${BASE_URL}/admin-core-service/open/v1/payment-log/status`;
+
+// ── Parent Portal ("My Child" monitoring) ────────────────────────────────────
+// Authenticated BFF. The guardian id comes from the JWT and the institute from
+// the clientId header (set by the axios interceptor) — never a URL param. The
+// only client-supplied id is childUserId, which the backend guard verifies is
+// genuinely linked to the caller before returning anything.
+const PARENT_PORTAL_V1 = `${BASE_URL}/admin-core-service/parent-portal/v1`;
+export const PARENT_PORTAL_SETTINGS = `${PARENT_PORTAL_V1}/settings`;
+export const PARENT_PORTAL_CHILDREN = `${PARENT_PORTAL_V1}/children`;
+export const PARENT_PORTAL_CHILD_ATTENDANCE = (childUserId: string) =>
+  `${PARENT_PORTAL_V1}/children/${childUserId}/attendance`;
+export const PARENT_PORTAL_CHILD_INVOICES = (childUserId: string) =>
+  `${PARENT_PORTAL_V1}/children/${childUserId}/payments/invoices`;
+export const PARENT_PORTAL_CHILD_BADGES = (childUserId: string) =>
+  `${PARENT_PORTAL_V1}/children/${childUserId}/badges`;
+export const PARENT_PORTAL_CHILD_CERTIFICATES = (childUserId: string) =>
+  `${PARENT_PORTAL_V1}/children/${childUserId}/certificates`;

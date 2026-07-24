@@ -55,7 +55,7 @@ export const DonationPaymentForm: React.FC<DonationPaymentFormProps> = ({
         }`}>
           {!cardElementReady && (
             <div className="flex items-center justify-center h-full text-gray-500">
-              <SpinnerGap className="w-4 h-4 animate-spin mr-2" />
+              <SpinnerGap className="w-4 h-4 animate-spin me-2" />
               Loading payment form...
             </div>
           )}
@@ -101,9 +101,9 @@ export const DonationPaymentForm: React.FC<DonationPaymentFormProps> = ({
           </MyButton>
         </div>
         <div className="text-xs text-gray-500 text-center mt-2 flex items-center justify-center gap-1">
-          <LockSimple size={14} className="inline-block mr-1" />
+          <LockSimple size={14} className="inline-block me-1" />
           Secure payment powered by
-          <span className="font-semibold flex items-center gap-1 ml-1">
+          <span className="font-semibold flex items-center gap-1 ms-1">
             <SiStripe size={16} className="text-indigo-600" /> 
             {paymentGatewayData?.vendor || 'Stripe'}
           </span>

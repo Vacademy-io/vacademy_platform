@@ -238,7 +238,7 @@ function ParentPortalIndex() {
               <button
                 key={child.id}
                 onClick={() => selectChild(child)}
-                className="w-full px-4 py-3 text-left bg-card border border-border rounded-lg hover:border-primary hover:bg-accent transition-colors"
+                className="w-full px-4 py-3 text-start bg-card border border-border rounded-lg hover:border-primary hover:bg-accent transition-colors"
               >
                 <p className="font-semibold text-foreground">
                   {child.full_name}

@@ -78,15 +78,10 @@ class GenerateNotesResponse(BaseModel):
     model: str
 
 
-_GEMINI_TEXT_ENDPOINT = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-2.5-flash:generateContent"
-)
-
-# OpenRouter is the preferred path because it isn't subject to per-project
-# Google Cloud restrictions — the same key works regardless of which Google
-# project the org's direct API key is in. We still keep a direct-Gemini
-# fallback so a single provider outage doesn't take the endpoint down.
+# OpenRouter is the sole provider — it isn't subject to per-project Google
+# Cloud restrictions, and the direct-Gemini fallback was retired (that key
+# was free-tier with a zero image quota; text now runs through OpenRouter
+# only, using Google's model via the billed OpenRouter account).
 _OPENROUTER_MODEL = "google/gemini-2.5-flash"
 
 # Placeholder the LLM emits on a line after each visual-concept H2 section
@@ -209,7 +204,7 @@ async def _call_openrouter(prompt: str, api_key: str, base_url: str) -> str:
         )
     if resp.status_code != 200:
         # Bubble up the OpenRouter error body so the orchestrator above can
-        # decide whether to fall back to direct Gemini or surface to the user.
+        # surface an actionable message to the user.
         raise httpx.HTTPStatusError(
             f"OpenRouter {resp.status_code}: {resp.text[:500]}",
             request=resp.request,
@@ -223,41 +218,6 @@ async def _call_openrouter(prompt: str, api_key: str, base_url: str) -> str:
     if not content.strip():
         raise RuntimeError(f"OpenRouter returned empty content: {str(data)[:300]}")
     return content
-
-
-async def _call_gemini_direct(prompt: str, api_key: str) -> str:
-    """Call Google's direct Generative Language API. Raises httpx.HTTPStatusError on
-    non-2xx, RuntimeError on empty payload, httpx.RequestError on transport failure."""
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        resp = await client.post(
-            f"{_GEMINI_TEXT_ENDPOINT}?key={api_key}",
-            headers={"Content-Type": "application/json"},
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "temperature": 0.3,
-                    "maxOutputTokens": 8192,
-                },
-            },
-        )
-    if resp.status_code != 200:
-        raise httpx.HTTPStatusError(
-            f"Gemini {resp.status_code}: {resp.text[:500]}",
-            request=resp.request,
-            response=resp,
-        )
-    data = resp.json()
-    markdown = ""
-    for cand in data.get("candidates", []):
-        for part in cand.get("content", {}).get("parts", []):
-            if "text" in part:
-                markdown = part["text"]
-                break
-        if markdown:
-            break
-    if not markdown.strip():
-        raise RuntimeError(f"Gemini returned empty payload: {str(data)[:300]}")
-    return markdown
 
 
 def _enrich_with_images(markdown: str) -> str:
@@ -384,14 +344,13 @@ async def generate_notes(
 
     settings = get_settings()
     openrouter_key: Optional[str] = getattr(settings, "openrouter_api_key", None)
-    gemini_key: Optional[str] = getattr(settings, "gemini_api_key", None)
     openrouter_url: str = getattr(settings, "llm_base_url",
                                   "https://openrouter.ai/api/v1/chat/completions")
 
-    if not openrouter_key and not gemini_key:
+    if not openrouter_key:
         raise HTTPException(
             status_code=503,
-            detail="No LLM provider configured. Set OPENROUTER_API_KEY (preferred) or GEMINI_API_KEY on ai-service.",
+            detail="No LLM provider configured. Set OPENROUTER_API_KEY on ai-service.",
         )
 
     # Pre-flight credit gate (academy-credits). notes cost is parametric on
@@ -422,8 +381,9 @@ async def generate_notes(
     markdown: Optional[str] = None
     used_model: Optional[str] = None
 
-    # Primary: OpenRouter. Works around per-project Google API restrictions
-    # because OpenRouter holds the upstream Google relationship, not us.
+    # OpenRouter is the sole provider. It works around per-project Google API
+    # restrictions because OpenRouter holds the upstream Google relationship,
+    # not us (the direct-Gemini fallback was retired).
     if openrouter_key:
         try:
             markdown = await _call_openrouter(prompt, openrouter_key, openrouter_url)
@@ -433,19 +393,6 @@ async def generate_notes(
             failures.append(f"OpenRouter: {e}")
     else:
         failures.append("OpenRouter: no key configured")
-
-    # Fallback: direct Gemini. Useful when OpenRouter is rate-limited or
-    # temporarily down AND the deploying env happens to have a working
-    # direct Gemini key.
-    if markdown is None and gemini_key:
-        try:
-            markdown = await _call_gemini_direct(prompt, gemini_key)
-            used_model = "gemini-2.5-flash"
-        except Exception as e:
-            logger.error("[transcript-notes] gemini direct failed: %s", e)
-            failures.append(f"Gemini direct: {e}")
-    elif markdown is None:
-        failures.append("Gemini direct: no key configured")
 
     if markdown is None:
         raise HTTPException(

@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.audience.entity.AudienceResponse;
+import vacademy.io.admin_core_service.features.audience.enums.AudienceStatusEnum;
 import vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile;
 import vacademy.io.admin_core_service.features.audience.repository.AudienceResponseRepository;
 import vacademy.io.admin_core_service.features.audience.repository.UserLeadProfileRepository;
@@ -24,6 +25,7 @@ import vacademy.io.admin_core_service.features.telephony.persistence.repository.
 import vacademy.io.admin_core_service.features.telephony.spi.dto.AiCallHandle;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.AiCallSpec;
 import vacademy.io.admin_core_service.features.telephony.spi.dto.CallSubjectType;
+import vacademy.io.common.exceptions.ConflictException;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.Duration;
@@ -119,9 +121,20 @@ public class AiCallService {
         String userId = req.getUserId();
         String phone = req.getPhoneNumber();
         // Resolve phone/userId from the lead when the caller supplied only a responseId.
-        if ((isBlank(userId) || isBlank(phone)) && !isBlank(req.getResponseId())) {
+        if (!isBlank(req.getResponseId())) {
             AudienceResponse ar = audienceResponseRepository.findById(req.getResponseId()).orElse(null);
             if (ar != null) {
+                // Last line of defence for soft-deleted leads. The recipient LISTS are filtered
+                // at selection time, but a workflow retry sequence resolves its lead from context
+                // captured days earlier and re-enters here on each attempt — so a lead deleted
+                // mid-sequence would keep being dialled without this check.
+                if (AudienceStatusEnum.INACTIVE.name().equalsIgnoreCase(ar.getAudienceStatus())) {
+                    log.info("Skipping AI call for soft-deleted lead {}", ar.getId());
+                    // 409, not the bare VacademyException the older throws in this class use —
+                    // that maps to 510 NOT_EXTENDED. The lead exists; its state conflicts with
+                    // the request, which is the same shape as refusing to delete a converted lead.
+                    throw new ConflictException("This lead has been deleted and cannot be called.");
+                }
                 if (isBlank(userId)) userId = ar.getUserId();
                 if (isBlank(phone)) phone = ar.getParentMobile();
             }
@@ -253,6 +266,7 @@ public class AiCallService {
                 .responseId(req.getResponseId())
                 .phoneNumber(phone)
                 .campaignId(campaignId)
+                .preferredNumberId(req.getPreferredNumberId())
                 .customerName(req.getCustomerName())
                 .customerEmail(req.getCustomerEmail())
                 .correlationId(callLogId)

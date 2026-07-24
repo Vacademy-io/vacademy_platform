@@ -53,6 +53,9 @@ type TipTapEditorProps = {
   // Optional: render a slim, Slack-style toolbar (text formatting + lists + code
   // only) instead of the full media/table/math toolbar. Ignored when hideToolbar.
   minimalToolbar?: boolean;
+  // Optional: keep the toolbar pinned while the page scrolls a long document
+  // (used by the HTML document slide editor, which relies on page scroll).
+  stickyToolbar?: boolean;
 };
 
 export function TipTapEditor({
@@ -67,6 +70,7 @@ export function TipTapEditor({
   addTableRow,
   hideToolbar = false,
   minimalToolbar = false,
+  stickyToolbar = false,
 }: TipTapEditorProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -1023,7 +1027,7 @@ export function TipTapEditor({
         </div>
       )}
       {editable && !hideToolbar && !minimalToolbar && (
-        <div className="flex flex-wrap items-center gap-1 overflow-x-auto border-b p-2 text-sm">
+        <div className={`flex flex-wrap items-center gap-1 overflow-x-auto border-b p-2 text-sm ${stickyToolbar ? 'sticky top-0 z-10 rounded-t-md bg-white' : ''}`}>
           <div className="flex items-center gap-1">
             <button type="button" title="Bold" onClick={() => editor?.chain().focus().toggleBold().run()} className={`rounded px-2 py-1 hover:bg-neutral-100 ${editor?.isActive('bold') ? 'bg-neutral-200' : ''}`}>B</button>
             <button type="button" title="Italic" onClick={() => editor?.chain().focus().toggleItalic().run()} className={`rounded px-2 py-1 hover:bg-neutral-100 ${editor?.isActive('italic') ? 'bg-neutral-200' : ''}`}>I</button>

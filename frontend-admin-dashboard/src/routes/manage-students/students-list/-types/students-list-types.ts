@@ -25,6 +25,18 @@ export interface FilterConfig {
     id: FilterId; // Change this line
     title: string;
     filterList: { id: string; label: string }[];
+    /** Default (undefined) renders a static multi-select from `filterList`.
+     *  'CUSTOM_FIELD_SEARCH' renders a searchable, lazily-fetched multi-select
+     *  instead — used for free-text custom fields with no fixed option list
+     *  (`filterList` is unused for this kind; see `customFieldId`).
+     *  'CUSTOM_FIELD_RANGE' renders the date/number range popover for DATE and
+     *  NUMBER custom fields (selection is sentinel-encoded; see
+     *  custom-field-filter-encoding). */
+    kind?: 'CUSTOM_FIELD_SEARCH' | 'CUSTOM_FIELD_RANGE';
+    /** custom_field.id — required when kind is a CUSTOM_FIELD_* value. */
+    customFieldId?: string;
+    /** custom_field.field_type — set for CUSTOM_FIELD_RANGE (DATE vs NUMBER inputs). */
+    fieldType?: string;
 }
 
 export interface StudentFiltersProps {

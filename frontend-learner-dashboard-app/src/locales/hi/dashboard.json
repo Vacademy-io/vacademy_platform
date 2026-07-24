@@ -1,0 +1,173 @@
+{
+    "notifications": {
+        "navHeading": "सूचनाएं",
+        "newBadge": "नया",
+        "viewDetails": "विवरण देखें",
+        "pageTitle": "सूचनाएं",
+        "pageSubtitle": "अपनी नवीनतम गतिविधियों और घोषणाओं से अपडेट रहें",
+        "tabGeneral": "सामान्य सूचनाएं",
+        "tabAnnouncements": "घोषणाएं",
+        "defaultTitle": "सूचना",
+        "occurrenceCount": "×{{count}}",
+        "errorTitle": "सूचनाएं लोड नहीं हो सकीं",
+        "emptyTitle": "अभी तक कोई सूचना नहीं",
+        "emptyDescription": "आप पूरी तरह अपडेट हैं। नई सूचनाएं यहां दिखाई देंगी।",
+        "loading": "लोड हो रहा है...",
+        "loadMore": "और लोड करें",
+        "announcementsErrorTitle": "घोषणाएं लोड नहीं हो सकीं",
+        "announcementsEmptyTitle": "अभी तक कोई घोषणा नहीं",
+        "announcementsEmptyDescription": "आपके संस्थान की घोषणाएं यहां दिखाई देंगी।"
+    },
+    "hero": {
+        "greeting": {
+            "morning": "सुप्रभात",
+            "afternoon": "नमस्कार",
+            "evening": "शुभ संध्या",
+            "morningWithName": "सुप्रभात, {{name}}",
+            "afternoonWithName": "नमस्कार, {{name}}",
+            "eveningWithName": "शुभ संध्या, {{name}}"
+        },
+        "pickUpWhereLeftOff": "जहां छोड़ा था वहीं से शुरू करें",
+        "yourFirstSlide": "आपका पहला {{slide}}",
+        "liveNow": "{{liveClass}} अभी लाइव",
+        "startsInMinutes_one": "{{liveClass}} {{count}} मिनट में",
+        "startsInMinutes_other": "{{liveClass}} {{count}} मिनट में",
+        "join": "जुड़ें",
+        "dayStreakChip": "लगातार दिन",
+        "dailyGoal": "दैनिक लक्ष्य",
+        "continueAria": "{{title}} जारी रखें",
+        "ctaContinue": "जारी रखें",
+        "ctaStartLearning": "सीखना शुरू करें",
+        "ctaContinueUpper": "जारी रखें",
+        "ctaStartUpper": "शुरू करें",
+        "ctaContinueLearningAria": "सीखना जारी रखें",
+        "ctaStartLearningAria": "सीखना शुरू करें"
+    },
+    "statCard": {
+        "getStarted": "शुरू करें",
+        "ariaAction": "{{title}} - {{action}}",
+        "ariaView_one": "{{title}} देखें - {{count}} आइटम",
+        "ariaView_other": "{{title}} देखें - {{count}} आइटम"
+    },
+    "membership": {
+        "title": "मेरी सदस्यता",
+        "planActive": "प्लान सक्रिय",
+        "daysRemaining": "शेष दिन"
+    },
+    "books": {
+        "title": "पुस्तकें",
+        "tabPurchased": "खरीदी गई",
+        "tabRented": "किराए पर ली गई",
+        "emptyPurchased": "कोई खरीदी गई पुस्तक उपलब्ध नहीं है।",
+        "emptyRented": "किराए पर ली गई कोई पुस्तक उपलब्ध नहीं है।",
+        "bookCount_one": "{{count}} पुस्तक",
+        "bookCount_other": "{{count}} पुस्तकें",
+        "pageIndicator": " · {{page}} / {{total}}"
+    },
+    "liveClasses": {
+        "title": "आगामी {{liveClasses}}",
+        "countInNext24h_one": "अगले 24 घंटों में {{count}} कक्षा",
+        "countInNext24h_other": "अगले 24 घंटों में {{count}} कक्षाएं",
+        "viewAll": "सभी देखें",
+        "liveNowBadge": "अभी लाइव",
+        "upcomingBadge": "आगामी",
+        "join": "जुड़ें",
+        "relativeNow": "अभी",
+        "relativeInMinutes": "{{minutes}} मि में",
+        "relativeInHoursMinutes": "{{hours}} घं {{minutes}} मि में",
+        "relativeInHours": "{{hours}} घं में"
+    },
+    "orders": {
+        "title": "मेरे ऑर्डर",
+        "empty": "कोई ऑर्डर नहीं मिला।",
+        "unknownBook": "अज्ञात",
+        "trackingExpected": "5-7 दिनों में अपेक्षित",
+        "trackingSource": "ट्रैकिंग स्रोत",
+        "paidAmount": "भुगतान {{amount}}",
+        "savedWith": "· {{amount}} की बचत, कोड",
+        "pageIndicator": "{{page}} / {{total}}",
+        "columnBook": "पुस्तक",
+        "columnStore": "स्टोर",
+        "columnDate": "तारीख",
+        "columnPayment": "भुगतान",
+        "columnOrderStatus": "ऑर्डर स्थिति",
+        "columnTrackingId": "ट्रैकिंग आईडी",
+        "columnSource": "स्रोत",
+        "columnTransactionId": "लेनदेन आईडी",
+        "paymentStatus": {
+            "PAID": "भुगतान हो गया",
+            "FAILED": "विफल",
+            "PAYMENT_PENDING": "भुगतान लंबित",
+            "NOT_INITIATED": "शुरू नहीं हुआ",
+            "PENDING": "लंबित"
+        },
+        "orderStatus": {
+            "ORDERED": "ऑर्डर किया गया",
+            "PREPARING_TO_SHIP": "शिपिंग की तैयारी",
+            "SHIPPED": "भेज दिया गया",
+            "IN_TRANSIT": "रास्ते में",
+            "DELIVERED": "डिलीवर हो गया"
+        }
+    },
+    "progressTable": {
+        "totalSessions": "कुल सत्र",
+        "aboveAverage": "औसत से ऊपर",
+        "consistency": "निरंतरता",
+        "columnDate": "तारीख",
+        "columnYourTime": "आपका समय",
+        "columnBatchAvg": "{{batch}} औसत",
+        "columnStatus": "स्थिति",
+        "statusAbove": "ऊपर",
+        "statusBelow": "नीचे",
+        "statusAverage": "औसत",
+        "batchAvgValue": "{{batch}} औसत: {{value}}",
+        "percentOfAvg": "औसत का {{percent}}%"
+    },
+    "raiseQuery": {
+        "title": "मदद चाहिए? प्रश्न भेजें",
+        "subtitle": "कोई शंका पूछें या तकनीकी / भुगतान समस्या की रिपोर्ट करें।",
+        "openQueries_one": "{{count}} खुला प्रश्न · उत्तर देखें",
+        "openQueries_other": "{{count}} खुले प्रश्न · उत्तर देखें"
+    },
+    "streak": {
+        "dayStreakLabel": "लगातार दिन",
+        "emptyPrompt": "स्ट्रीक शुरू करने के लिए आज उपस्थित हों या सीखें",
+        "best_one": "सर्वश्रेष्ठ: {{count}} दिन",
+        "best_other": "सर्वश्रेष्ठ: {{count}} दिन",
+        "dayInitial": {
+            "monday": "सो",
+            "tuesday": "मं",
+            "wednesday": "बु",
+            "thursday": "गु",
+            "friday": "शु",
+            "saturday": "श",
+            "sunday": "र"
+        }
+    },
+    "xp": {
+        "xpUnit": "XP",
+        "levelShort": "स्तर {{level}}",
+        "levelLong": "स्तर {{level}}",
+        "xpAmount": "{{amount}} XP",
+        "xpToGo": "{{amount}} XP शेष",
+        "xpToday": "+{{amount}} XP आज",
+        "howYouEarnPoints": "अंक कैसे कमाएं",
+        "emptyPrompt": "{{slide}} में आज अपना पहला XP कमाएं"
+    },
+    "gamification": {
+        "points": "अंक",
+        "pointsToLevel_one": "स्तर {{level}} तक {{count}} अंक",
+        "pointsToLevel_other": "स्तर {{level}} तक {{count}} अंक",
+        "startLearningPrompt": "अपने पहले अंक कमाने के लिए सीखना शुरू करें।",
+        "streakEmptyPrompt": "स्ट्रीक शुरू करने के लिए आज सीखें",
+        "badgesEmptyPrompt": "बैज अनलॉक करने के लिए एक {{slide}} पूरा करें"
+    },
+    "badges": {
+        "title": "बैज",
+        "tooltip": "{{name}}: {{description}}",
+        "awardedTooltip": "{{name}} — आपके संस्थान द्वारा प्रदान किया गया",
+        "awardedTooltipWithReason": "{{name}} — आपके संस्थान द्वारा प्रदान किया गया: {{reason}}",
+        "unlockedCount": "{{unlocked}}/{{total}} अनलॉक",
+        "emptyPrompt": "बैज अनलॉक करने के लिए अपना पहला {{slide}} पूरा करें"
+    }
+}

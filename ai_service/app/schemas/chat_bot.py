@@ -15,3 +15,18 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     content: str = Field(..., description="AI response in MDX format")
 
+
+class CompletionRequest(BaseModel):
+    """A generic single-prompt completion. The caller supplies the FULL prompt
+    (system instructions + context + question); ai_service adds no persona of its
+    own. Used by other services (e.g. the parent assistant in admin_core) so the
+    LLM API key lives only here, never in the calling service."""
+    prompt: str = Field(..., description="The full prompt to complete")
+    model: Optional[str] = Field(None, description="Optional model id override")
+    institute_id: Optional[str] = Field(None, description="Institute ID for credit deduction")
+    user_id: Optional[str] = Field(None, description="User ID for usage tracking")
+
+
+class CompletionResponse(BaseModel):
+    content: str = Field(..., description="The completion text (empty on failure)")
+

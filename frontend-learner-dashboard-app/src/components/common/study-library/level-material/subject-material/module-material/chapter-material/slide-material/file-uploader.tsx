@@ -59,6 +59,9 @@ const ALLOWED_TYPES_PREFIX = "types:"
 
 export const parseAllowedFileTypes = (raw?: string | null): AllowedFileType[] => {
   if (!raw || !raw.startsWith(ALLOWED_TYPES_PREFIX)) return []
+  // The admin's "All Files" option is encoded as the token "all", which isn't
+  // one of the AllowedFileType categories below, so it's filtered out here —
+  // leaving an empty array, which is exactly what "no restriction" means.
   return Array.from(
     new Set(
       raw
@@ -116,7 +119,11 @@ export const FileUploader = ({
   // Empty / unset → no restriction: accept any of the known types.
   const isUnrestricted = !allowedFileTypes || allowedFileTypes.length === 0
   const allowed = (isUnrestricted ? KNOWN_TYPES : allowedFileTypes) as AllowedFileType[]
-  const acceptAttr = isUnrestricted ? "" : buildAcceptAttr(allowed)
+  // A present-but-empty `accept=""` attribute makes some mobile browsers'
+  // native file pickers default to Photos/Camera only. Omit the attribute
+  // entirely (undefined) instead of an empty string so "unrestricted" truly
+  // opens the general file browser.
+  const acceptAttr = isUnrestricted ? undefined : buildAcceptAttr(allowed)
   const hintLabel = isUnrestricted ? "Any file" : buildHintLabel(allowed)
 
   const guardedUpload = async (file: File) => {

@@ -39,6 +39,7 @@ import {
 import { Smartphone, Tablet, Laptop, Plus } from 'lucide-react';
 import { MultiSelect, type OptionType } from '@/components/design-system/multi-select';
 import { SearchableSelect } from '@/components/design-system/searchable-select';
+import { AsyncSearchableSelect } from '@/components/design-system/async-searchable-select';
 import { TIMEZONE_OPTIONS } from '@/routes/study-library/live-session/schedule/-constants/options';
 import { getInstituteTags, getUserCountsByTags, type TagItem } from '@/services/tag-management';
 import { getInstituteId } from '@/constants/helper';
@@ -105,6 +106,7 @@ function EmailCampaigningPage() {
     const [modeSettings, setModeSettings] = useState<Record<ModeType, Record<string, unknown>>>({
         SYSTEM_ALERT: { priority: 'MEDIUM', expiresAt: '' },
         DASHBOARD_PIN: {},
+        APP_OVERLAY: {},
         DM: {},
         STREAM: {},
         RESOURCES: {},
@@ -164,8 +166,7 @@ function EmailCampaigningPage() {
     const [useTemplate, setUseTemplate] = useState(false);
     const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
     const [selectedTemplateData, setSelectedTemplateData] = useState<MessageTemplate | null>(null);
-    const [emailTemplates, setEmailTemplates] = useState<MessageTemplate[]>([]);
-    const [templatesLoading, setTemplatesLoading] = useState(false);
+    const [selectedTemplateName, setSelectedTemplateName] = useState<string>('');
     const [templatesError, setTemplatesError] = useState<string | null>(null);
 
     // Email configuration state
@@ -466,22 +467,21 @@ function EmailCampaigningPage() {
         })();
     }, []);
 
-    // Load email templates
-    const loadEmailTemplates = async () => {
-        if (emailTemplates.length > 0 || templatesLoading) return;
-
-        setTemplatesLoading(true);
+    // Fetch one page of email templates for the searchable/infinite-scroll template picker
+    const loadEmailTemplateOptions = async (search: string, page: number) => {
         setTemplatesError(null);
         try {
-            const response = await getMessageTemplates('EMAIL');
-            setEmailTemplates(response.templates);
+            const response = await getMessageTemplates('EMAIL', page, 20, search);
+            return {
+                options: response.templates
+                    .filter((template) => template.id && template.id.trim() !== '')
+                    .map((template) => ({ label: template.name, value: template.id })),
+                hasMore: !(response.isLast ?? true),
+            };
         } catch (error) {
             console.error('Error loading email templates:', error);
             setTemplatesError('Failed to load email templates. Please try again.');
-            // Set empty array on error to prevent further issues
-            setEmailTemplates([]);
-        } finally {
-            setTemplatesLoading(false);
+            return { options: [], hasMore: false };
         }
     };
 
@@ -619,11 +619,12 @@ function EmailCampaigningPage() {
         setSavedTz(timezone);
     }, [timezone, setSavedTz]);
 
-    const handleTemplateSelection = async (templateId: string) => {
+    const handleTemplateSelection = async (templateId: string, templateName?: string) => {
+        setSelectedTemplateId(templateId);
+        setSelectedTemplateName(templateName || '');
         try {
             // Fetch full template content from API
             const fullTemplate = await getMessageTemplate(templateId);
-            setSelectedTemplateId(templateId);
             setSelectedTemplateData(fullTemplate);
             if (fullTemplate.subject) {
                 setSubject(fullTemplate.subject);
@@ -636,22 +637,9 @@ function EmailCampaigningPage() {
             console.error('Error loading template:', error);
             toast({
                 title: 'Error',
-                description: 'Failed to load template content. Using cached version.',
+                description: 'Failed to load template content. Please try again.',
                 variant: 'destructive',
             });
-            // Fallback to cached template if API fails
-            const template = emailTemplates.find((t) => t.id === templateId);
-            if (template) {
-                setSelectedTemplateId(templateId);
-                setSelectedTemplateData(template);
-                if (template.subject) {
-                    setSubject(template.subject);
-                }
-                if (template.content) {
-                    setHtmlContent(template.content);
-                }
-                setPreviewText(template.previewText || '');
-            }
         }
     };
 
@@ -1213,6 +1201,7 @@ function EmailCampaigningPage() {
                 setModeSettings({
                     SYSTEM_ALERT: { priority: 'MEDIUM', expiresAt: '' },
                     DASHBOARD_PIN: {},
+                    APP_OVERLAY: {},
                     DM: {},
                     STREAM: {},
                     RESOURCES: {},
@@ -1533,12 +1522,11 @@ function EmailCampaigningPage() {
                         <Checkbox
                             id="use-template"
                             checked={useTemplate}
-                            onCheckedChange={async (checked) => {
+                            onCheckedChange={(checked) => {
                                 setUseTemplate(Boolean(checked));
-                                if (checked) {
-                                    await loadEmailTemplates();
-                                } else {
+                                if (!checked) {
                                     setSelectedTemplateId('');
+                                    setSelectedTemplateName('');
                                 }
                             }}
                         />
@@ -1552,79 +1540,37 @@ function EmailCampaigningPage() {
                             <Label className="mb-2 block text-sm font-medium">
                                 Select Template
                             </Label>
-                            <Select
+                            <AsyncSearchableSelect
                                 value={selectedTemplateId}
-                                onValueChange={(value) => {
-                                    if (value === 'add-new-template') {
-                                        navigate({
-                                            to: '/settings',
-                                            search: { selectedTab: 'templates' },
-                                        });
-                                    } else {
-                                        handleTemplateSelection(value);
-                                    }
-                                }}
-                                disabled={templatesLoading}
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue
-                                        placeholder={
-                                            templatesLoading
-                                                ? 'Loading templates...'
-                                                : 'Select a template'
-                                        }
-                                    />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {emailTemplates.length > 0 ? (
-                                        <>
-                                            {emailTemplates
-                                                .filter(
-                                                    (template) =>
-                                                        template.id && template.id.trim() !== ''
-                                                )
-                                                .map((template) => (
-                                                    <SelectItem
-                                                        key={template.id}
-                                                        value={template.id}
-                                                    >
-                                                        {template.name}
-                                                    </SelectItem>
-                                                ))}
-                                            <Separator className="my-1" />
-                                            <SelectItem
-                                                value="add-new-template"
-                                                className="font-medium text-primary-600"
-                                            >
-                                                <div className="flex items-center gap-2">
-                                                    <Plus className="size-4" />
-                                                    <span>Add New Template</span>
-                                                </div>
-                                            </SelectItem>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <SelectItem value="no-templates" disabled>
-                                                No templates available
-                                            </SelectItem>
-                                            <Separator className="my-1" />
-                                            <SelectItem
-                                                value="add-new-template"
-                                                className="font-medium text-primary-600"
-                                            >
-                                                <div className="flex items-center gap-2">
-                                                    <Plus className="size-4" />
-                                                    <span>Add New Template</span>
-                                                </div>
-                                            </SelectItem>
-                                        </>
-                                    )}
-                                </SelectContent>
-                            </Select>
-                            {selectedTemplateId && selectedTemplateId !== 'add-new-template' && (
+                                selectedLabel={selectedTemplateName}
+                                onChange={(value, option) =>
+                                    handleTemplateSelection(value, option?.label)
+                                }
+                                loadOptions={loadEmailTemplateOptions}
+                                placeholder="Select a template"
+                                searchPlaceholder="Search templates..."
+                                emptyText="No templates found."
+                                footer={
+                                    <div className="border-t p-1">
+                                        <button
+                                            type="button"
+                                            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm font-medium text-primary-600 hover:bg-accent"
+                                            onClick={() =>
+                                                navigate({
+                                                    to: '/settings',
+                                                    search: { selectedTab: 'templates' },
+                                                })
+                                            }
+                                        >
+                                            <Plus className="size-4" />
+                                            <span>Add New Template</span>
+                                        </button>
+                                    </div>
+                                }
+                            />
+                            {selectedTemplateId && (
                                 <div className="mt-2 text-xs text-neutral-600">
-                                    Template selected:{' '}
-                                    {emailTemplates.find((t) => t.id === selectedTemplateId)?.name}
+                                    Template selected: {selectedTemplateName}
                                 </div>
                             )}
                             {templatesError && (

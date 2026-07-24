@@ -55,6 +55,17 @@ public class WhiteLabelService {
     @Value("${cloudflare.teacher.target:teacher.vacademy.io}")
     private String teacherCnameTarget;
 
+    // Cloudflare Pages project names (i.e. <project>.pages.dev) that serve the SPAs.
+    // Only two exist: the learner dashboard and the admin dashboard. ADMIN and
+    // TEACHER portals are both the admin dashboard SPA, so they share the admin
+    // project. Blank when Pages provisioning is not configured on this deployment —
+    // in that case the setup falls back to the legacy DNS-only path.
+    @Value("${cloudflare.learner.pages-project:}")
+    private String learnerPagesProject;
+
+    @Value("${cloudflare.admin.pages-project:}")
+    private String adminPagesProject;
+
     @Value("${vacademy.base.domain:vacademy.io}")
     private String vacademyBaseDomain;
 
@@ -72,11 +83,13 @@ public class WhiteLabelService {
     public WhiteLabelSetupResponse setup(CustomUserDetails user, String instituteId,
             WhiteLabelSetupRequest request) {
 
-        // 0) Hard gate — Cloudflare must be configured on this deployment
-        if (!cloudflareService.isEnabled()) {
+        // 0) Hard gate — some Cloudflare capability must be configured on this
+        // deployment: DNS (token + zone) and/or Pages provisioning (token + account).
+        if (!cloudflareService.isEnabled() && !cloudflareService.isPagesEnabled()) {
             throw new VacademyException(
-                    "White-label DNS automation is not available on this deployment. " +
-                            "CLOUDFLARE_API_TOKEN and CLOUDFLARE_ZONE_ID env variables are not set.");
+                    "White-label automation is not available on this deployment. " +
+                            "Set CLOUDFLARE_API_TOKEN with CLOUDFLARE_ZONE_ID (DNS) and/or " +
+                            "CLOUDFLARE_ACCOUNT_ID (Pages custom domains).");
         }
 
         // 1) Security check
@@ -116,23 +129,63 @@ public class WhiteLabelService {
             }
         }
 
-        // 3) Process each entry: Cloudflare DNS + routing row
+        // 3) Process each entry: Cloudflare Pages custom domain (preferred) or the
+        // legacy DNS-only fallback, then the routing row.
         List<WhiteLabelSetupResponse.DnsRecordResult> dnsResults = new ArrayList<>();
+        List<WhiteLabelSetupResponse.PagesDomainResult> pagesResults = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
 
         for (WhiteLabelSetupRequest.DomainEntry entry : entries) {
-            // a) Create/update Cloudflare CNAME
-            String cnameTarget = cnameTargetForRole(entry.getRole());
-            try {
-                dnsResults.add(cloudflareService.upsertCname(entry.getDomain(), cnameTarget));
-            } catch (Exception e) {
-                warnings.add("Failed to configure DNS for " + entry.getDomain() + ": " + e.getMessage());
-                log.error("[WhiteLabel] DNS failed for domain={}, role={}: {}",
-                        entry.getDomain(), entry.getRole(), e.getMessage());
+            String host = entry.getDomain();
+            boolean inZone = isVacademySubdomain(host);
+            String pagesProject = pagesProjectForRole(entry.getRole());
+            boolean pagesEnabled = cloudflareService.isPagesEnabled() && StringUtils.hasText(pagesProject);
+
+            // a) Wire the host into the serving layer.
+            if (pagesEnabled) {
+                // Preferred: attach the host as a custom domain on the Pages project
+                // that serves this role. This is the step that makes the host actually
+                // SERVE the SPA. For in-zone (*.vacademy.io) hosts Cloudflare also
+                // creates the DNS record + certificate automatically; for external
+                // customer domains we can't touch their zone, so we surface the CNAME
+                // they must add themselves.
+                try {
+                    WhiteLabelSetupResponse.PagesDomainResult pr =
+                            cloudflareService.upsertPagesCustomDomain(pagesProject, host);
+                    pagesResults.add(pr);
+                    if (!inZone) {
+                        warnings.add("Custom domain " + host + ": add a CNAME at your DNS provider pointing "
+                                + host + " → " + pr.getPagesCnameTarget()
+                                + ". SSL activates automatically once Cloudflare validates it"
+                                + " (current status: " + pr.getStatus() + ").");
+                    }
+                } catch (Exception e) {
+                    warnings.add("Failed to attach Pages custom domain for " + host + ": " + e.getMessage());
+                    log.error("[WhiteLabel] Pages attach failed host={}, role={}: {}",
+                            host, entry.getRole(), e.getMessage());
+                }
+            } else if (inZone) {
+                // Legacy fallback (Pages not configured): proxied CNAME only. NOTE: this
+                // only serves traffic if a wildcard/Pages custom domain already covers
+                // the target — otherwise the host will 522 until registered on Pages.
+                String cnameTarget = cnameTargetForRole(entry.getRole());
+                try {
+                    dnsResults.add(cloudflareService.upsertCname(host, cnameTarget));
+                } catch (Exception e) {
+                    warnings.add("Failed to configure DNS for " + host + ": " + e.getMessage());
+                    log.error("[WhiteLabel] DNS failed for domain={}, role={}: {}",
+                            host, entry.getRole(), e.getMessage());
+                }
+            } else {
+                // External custom domain with no Pages provisioning configured — we can
+                // neither create DNS in the customer's zone nor register the domain.
+                warnings.add("Custom external domain " + host + " needs Cloudflare Pages provisioning "
+                        + "(CLOUDFLARE_ACCOUNT_ID + a Pages project for role " + entry.getRole()
+                        + "), which is not set on this deployment. Nothing was provisioned for it.");
             }
 
             // b) Upsert routing row (by exact domain+subdomain+role match)
-            upsertRoutingRow(instituteId, entry.getDomain(), entry.getRole(), entry.getRoutingConfig());
+            upsertRoutingRow(instituteId, host, entry.getRole(), entry.getRoutingConfig());
         }
 
         // 4) Update institute portal URLs for primary entries
@@ -186,6 +239,7 @@ public class WhiteLabelService {
                 .adminPortalUrl(adminUrl)
                 .teacherPortalUrl(teacherUrl)
                 .dnsRecordsConfigured(dnsResults)
+                .pagesDomainsConfigured(pagesResults)
                 .warnings(warnings)
                 .build();
     }
@@ -195,7 +249,7 @@ public class WhiteLabelService {
     @Transactional(readOnly = true)
     public WhiteLabelStatusResponse getStatus(CustomUserDetails user, String instituteId) {
 
-        if (!cloudflareService.isEnabled()) {
+        if (!cloudflareService.isEnabled() && !cloudflareService.isPagesEnabled()) {
             log.info("[WhiteLabel] getStatus called but Cloudflare is not configured on this deployment");
             return WhiteLabelStatusResponse.builder()
                     .cloudflareEnabled(false)
@@ -226,6 +280,9 @@ public class WhiteLabelService {
                         .role(r.getRole())
                         .domain(r.getDomain())
                         .subdomain(r.getSubdomain())
+                        // Live Cloudflare Pages custom-domain status (active/pending/…)
+                        .pagesStatus(pagesStatusFor(r))
+                        .pagesCnameTarget(pagesCnameTargetFor(r))
                         // Branding
                         .tabText(r.getTabText())
                         .tabIconFileId(r.getTabIconFileId())
@@ -256,6 +313,7 @@ public class WhiteLabelService {
                         .hideInstituteName(r.getHideInstituteName())
                         .logoWidthPx(r.getLogoWidthPx())
                         .logoHeightPx(r.getLogoHeightPx())
+                        .stackNameBelowLogo(r.getStackNameBelowLogo())
                         .build())
                 .collect(Collectors.toList());
 
@@ -325,6 +383,62 @@ public class WhiteLabelService {
             return teacherCnameTarget;
         // Custom-role-only entry: admin infra serves it.
         return adminCnameTarget;
+    }
+
+    /**
+     * Returns the Cloudflare Pages project name that serves a role string, or null
+     * when it isn't configured. Only LEARNER is served by its own project; ADMIN,
+     * TEACHER and any institute custom role are all served by the admin dashboard
+     * SPA, so they share the admin project (there is no separate teacher project —
+     * teacher.vacademy.io is just another custom domain on the admin project).
+     */
+    private String pagesProjectForRole(String role) {
+        List<String> tokens = splitRoleTokens(role);
+        if (tokens.contains(ROLE_LEARNER))
+            return trimToNull(learnerPagesProject);
+        return trimToNull(adminPagesProject);
+    }
+
+    /**
+     * Looks up the live Cloudflare Pages custom-domain status for a routing row
+     * (active/pending/…), or null when Pages isn't configured or the host isn't
+     * attached. Failure-safe — used only for display.
+     */
+    private String pagesStatusFor(InstituteDomainRouting r) {
+        if (!cloudflareService.isPagesEnabled()) {
+            return null;
+        }
+        String project = pagesProjectForRole(r.getRole());
+        if (!StringUtils.hasText(project)) {
+            return null;
+        }
+        String host = (StringUtils.hasText(r.getSubdomain()) && !"*".equals(r.getSubdomain()))
+                ? r.getSubdomain() + "." + r.getDomain()
+                : r.getDomain();
+        return cloudflareService.getPagesCustomDomainStatus(project, host);
+    }
+
+    /**
+     * The {@code <project>.pages.dev} CNAME target for a routing row, so the UI
+     * can show an external domain the exact record to add. Null when Pages isn't
+     * configured for the role.
+     */
+    private String pagesCnameTargetFor(InstituteDomainRouting r) {
+        String project = pagesProjectForRole(r.getRole());
+        return StringUtils.hasText(project) ? project + ".pages.dev" : null;
+    }
+
+    /** True when {@code host} is the base vacademy domain or a subdomain of it. */
+    private boolean isVacademySubdomain(String host) {
+        if (!StringUtils.hasText(host))
+            return false;
+        String h = host.trim().toLowerCase();
+        String base = vacademyBaseDomain.trim().toLowerCase();
+        return h.equals(base) || h.endsWith("." + base);
+    }
+
+    private String trimToNull(String s) {
+        return StringUtils.hasText(s) ? s.trim() : null;
     }
 
     /**
@@ -465,6 +579,7 @@ public class WhiteLabelService {
             r.setHideInstituteName(cfg.getHideInstituteName());
             r.setLogoWidthPx(cfg.getLogoWidthPx());
             r.setLogoHeightPx(cfg.getLogoHeightPx());
+            r.setStackNameBelowLogo(cfg.getStackNameBelowLogo());
         } else {
             r.setAllowUsernamePasswordAuth(true);
             r.setConvertUsernamePasswordToLowercase(false);

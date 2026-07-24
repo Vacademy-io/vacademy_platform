@@ -44,6 +44,7 @@ public class EnrollmentFormService {
     @Autowired
     private CustomFieldValueService customFieldValueService;
 
+
     @Transactional
     public EnrollmentFormSubmitResponseDTO submitEnrollmentForm(EnrollmentFormSubmitDTO request) {
         log.info("Processing enrollment form submission for email: {}", 
@@ -109,6 +110,9 @@ public class EnrollmentFormService {
 
         log.info("Enrollment form submitted successfully for user: {}, created {} ABANDONED_CART entries",
                 createdUser.getId(), abandonedCartEntryIds.size());
+
+        // Welcome/confirmation WhatsApp is handled by the workflow engine on the
+        // PAYMENT_SUCCESS trigger (per-invite, configurable), not from here.
 
         return EnrollmentFormSubmitResponseDTO.builder()
                 .userId(createdUser.getId())

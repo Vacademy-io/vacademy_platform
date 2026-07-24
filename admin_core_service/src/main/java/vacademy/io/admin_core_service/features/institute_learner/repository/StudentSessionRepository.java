@@ -163,6 +163,26 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
           @Param("userId") String userId,
           @Param("statuses") List<String> statuses);
 
+  /**
+   * The newest mapping this user can re-use for the session, ignoring the throwaway
+   * ABANDONED_CART / PAYMENT_FAILED rows. The type exclusion must happen in SQL: with
+   * "ORDER BY created_at DESC LIMIT 1" plus a filter in Java, a newer throwaway row
+   * hides the reusable one, and the caller then inserts a duplicate that trips
+   * uq_dest_pkg_inst_user_status. NULL type is a real mapping, so it must be kept.
+   */
+  @Query(value = "SELECT * FROM student_session_institute_group_mapping " +
+          "WHERE package_session_id = :packageSessionId " +
+          "AND user_id = :userId " +
+          "AND status IN (:statuses) AND institute_id = :instituteId " +
+          "AND (type IS NULL OR type NOT IN (:excludedTypes)) " +
+          "ORDER BY created_at DESC LIMIT 1", nativeQuery = true)
+  Optional<StudentSessionInstituteGroupMapping> findTopReusableMapping(
+          @Param("packageSessionId") String packageSessionId,
+          @Param("instituteId") String instituteId,
+          @Param("userId") String userId,
+          @Param("statuses") List<String> statuses,
+          @Param("excludedTypes") List<String> excludedTypes);
+
   Optional<StudentSessionInstituteGroupMapping> findTopByUserIdAndInstituteIdOrderByCreatedAtDesc(String userId,
                                                                                                   String instituteId);
 
@@ -346,4 +366,15 @@ public interface StudentSessionRepository extends CrudRepository<StudentSessionI
           String userId,
           String destinationPackageSessionId,
           List<String> statuses);
+
+  /**
+   * Existing ACTIVE enrollment of a user in a package session -- used to avoid creating a
+   * duplicate row. Scoped to ACTIVE only (not any status) so a legitimate re-enrollment after a
+   * prior CANCELLED/INACTIVE row is unaffected -- that's the same "new row per re-enrollment"
+   * pattern the existing re-enroll-learner endpoint already relies on.
+   */
+  List<StudentSessionInstituteGroupMapping> findByUserIdAndPackageSession_IdAndStatus(
+          String userId,
+          String packageSessionId,
+          String status);
 }

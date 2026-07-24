@@ -1,0 +1,217 @@
+{
+  "common": {
+    "yourChild": "your child",
+    "back": "Back",
+    "errorTitle": "We couldn't load this",
+    "errorBody": "Please check your connection and try again.",
+    "emptyTitle": "Nothing here yet"
+  },
+  "picker": {
+    "hello": "Hello, {{name}}",
+    "parent": "there",
+    "choose": "Choose a child to see how they're doing",
+    "disabledTitle": "Not available yet",
+    "disabledBody": "Your school hasn't turned on the parent view yet. Please check back later.",
+    "emptyTitle": "No children linked",
+    "emptyBody": "No students are linked to your account yet. Please contact your school office."
+  },
+  "home": {
+    "title": "My Child",
+    "greeting": "Here's how {{name}} is doing",
+    "greetingLabel": "Here's how",
+    "hiParent": "Hi {{name}} 👋",
+    "allClear": "Nothing needs your attention right now.",
+    "attentionTitle": "Needs your attention"
+  },
+  "stats": {
+    "badges": "Badges",
+    "certificates": "Certificates",
+    "feesDue": "Fees due"
+  },
+  "info": {
+    "attendance": "Attendance overview",
+    "tests": "نظرة عامة على الاختبارات",
+    "liveClasses": "الحصص القادمة",
+    "fees": "Fees"
+  },
+  "nav": {
+    "home": "الرئيسية",
+    "ask": "اسأل",
+    "studentView": "عرض الطالب"
+  },
+  "tiles": {
+    "progress": "Progress",
+    "attendance": "Attendance",
+    "assessments": "Tests",
+    "liveClasses": "Live Classes",
+    "payments": "Fees",
+    "rewards": "Rewards",
+    "sub": {
+      "badges": "{{count}} earned",
+      "feesDue": "{{count}} due",
+      "feesPaid": "All paid",
+      "tests": "{{count}} taken",
+      "seeTests": "See results",
+      "attendance": "{{percent}}% present",
+      "seeAttendance": "See attendance",
+      "progress": "{{percent}}% complete",
+      "seeProgress": "See lessons",
+      "upcoming": "{{count}} coming up",
+      "seeClasses": "See schedule"
+    }
+  },
+  "account": {
+    "logout": "Log out",
+    "menu": "Account",
+    "signedInAs": "Signed in as {{name}}",
+    "switchChild": "Switch child",
+    "viewAsChild": "View {{name}}'s screen"
+  },
+  "search": {
+    "placeholder": "Search — try 'attendance'"
+  },
+  "tour": {
+    "help": "Help & tour",
+    "search": {
+      "title": "Quick find",
+      "body": "Type a few letters — like 'at' — to jump straight to Attendance, Tests, and more."
+    },
+    "attention": {
+      "title": "What needs you",
+      "body": "Anything that needs your attention — like a fee due — shows here first."
+    },
+    "tiles": {
+      "title": "Everything in one place",
+      "body": "Tap any card to see your child's progress, attendance, tests, classes, fees and rewards."
+    },
+    "chat": {
+      "title": "Ask a quick question",
+      "body": "Tap here any time to ask how your child is doing — type your question or tap the mic to ask by voice."
+    }
+  },
+  "chat": {
+    "open": "Ask about your child",
+    "title": "Quick answers",
+    "greeting": "Hi! Tap a question to learn about {{name}}.",
+    "askTitle": "اسأل أي شيء عن {{name}}",
+    "askSubtitle": "اضغط الزر وتحدث بلغتك.",
+    "view": "View",
+    "q": {
+      "attendance": "How is attendance?",
+      "fees": "Any fees due?",
+      "rewards": "What has {{name}} earned?",
+      "tests": "How many tests?",
+      "progress": "How is progress?"
+    },
+    "a": {
+      "attendance": "{{name}} has attended {{percent}}% of classes.",
+      "attendanceNone": "I don't have attendance for {{name}} yet.",
+      "feesDue": "There are {{count}} fee payment(s) due.",
+      "feesPaid": "All fees are paid. Thank you!",
+      "rewards": "{{name}} has earned {{badges}} badges and {{certs}} certificates.",
+      "tests": "{{name}} has taken {{count}} test(s).",
+      "testsNone": "No test results yet.",
+      "progress": "{{name}} has completed {{percent}}% of lessons.",
+      "progressNone": "See the Progress section for details."
+    },
+    "placeholder": "Ask about your child…",
+    "send": "Send",
+    "fallback": "I can help with attendance, fees, tests, progress and rewards — try asking about one of those.",
+    "thinking": "Thinking…",
+    "mic": "Ask by voice",
+    "listening": "Listening…",
+    "micCta": "Tap to speak",
+    "speak": "Listen",
+    "mute": "Mute voice",
+    "unmute": "Turn on voice"
+  },
+  "tone": {
+    "good": "Going well",
+    "watch": "Keep an eye on this",
+    "action": "Needs your attention",
+    "neutral": "Coming up"
+  },
+  "attention": {
+    "pendingFees": "{{count}} fee payment is due",
+    "pendingFees_other": "{{count}} fee payments are due"
+  },
+  "attendance": {
+    "summary": "{{name}} has attended {{percent}}% of classes.",
+    "noData": "We don't have attendance for {{name}} yet.",
+    "attended": "{{present}} of {{total}} classes attended",
+    "recentTitle": "Recent classes",
+    "present": "Present",
+    "absent": "Absent",
+    "late": "Late",
+    "notMarked": "Not marked",
+    "statusGood": "Good",
+    "statusOkay": "Okay",
+    "statusLow": "Low",
+    "emptyTitle": "No attendance yet",
+    "emptyBody": "Attendance will show here once classes begin.",
+    "daysAttended": "{{present}} of {{total}} days",
+    "graphTitle": "Attendance breakdown",
+    "presentDays": "Present",
+    "absentDays": "Absent",
+    "unmarkedDays": "Unmarked",
+    "streak": "Day streak",
+    "timeInClassTitle": "الوقت المستغرق في الحصة",
+    "upcomingChip": "قادمة",
+    "attendedFor": "حضر {{duration}}"
+  },
+  "progress": {
+    "summary": "{{name}} has completed {{percent}}% of their lessons.",
+    "summaryGeneric": "How {{name}} is doing across their courses.",
+    "subject": "Subject",
+    "noCourseData": "No lessons here yet.",
+    "emptyTitle": "No lessons yet",
+    "emptyBody": "Course progress will appear here as {{name}} starts learning."
+  },
+  "assessments": {
+    "summary": "{{name}} has taken {{count}} test.",
+    "summary_other": "{{name}} has taken {{count}} tests.",
+    "test": "Test",
+    "report": "Report card",
+    "fullReports": "Detailed report cards",
+    "reportPendingTitle": "Report not ready yet",
+    "reportPendingBody": "This detailed report is still being prepared. Please check back soon.",
+    "emptyTitle": "No tests yet",
+    "emptyBody": "Test results will show here once {{name}} takes a test.",
+    "classAvg": "Class average {{value}}%",
+    "rank": "Rank {{value}}",
+    "percentile": "{{value}} percentile",
+    "accuracy": "{{value}}% accuracy"
+  },
+  "liveClasses": {
+    "summary": "{{name}} has {{count}} class coming up.",
+    "summary_other": "{{name}} has {{count}} classes coming up.",
+    "session": "Class",
+    "emptyTitle": "No upcoming classes",
+    "emptyBody": "Scheduled live classes will show here."
+  },
+  "payments": {
+    "allPaid": "All fees for {{name}} are paid. Thank you!",
+    "duesSummary": "{{name}} has {{count}} fee payment due.",
+    "duesSummary_other": "{{name}} has {{count}} fee payments due.",
+    "invoice": "Fee",
+    "paid": "Paid",
+    "due": "Due",
+    "payNow": "Pay now",
+    "emptyTitle": "No fees yet",
+    "emptyBody": "Fee details will appear here."
+  },
+  "rewards": {
+    "summary": "{{name}} has earned {{count}} badge.",
+    "summary_other": "{{name}} has earned {{count}} badges.",
+    "badge": "Badge",
+    "emptyTitle": "No rewards yet",
+    "emptyBody": "Badges and points will show here as {{name}} learns.",
+    "points": "Points earned",
+    "rank": "Rank #{{value}}",
+    "badgesTitle": "الشارات",
+    "certificatesTitle": "الشهادات",
+    "certificate": "شهادة",
+    "earnedOn": "حصل عليها في {{date}}",
+    "completed": "اكتمل {{percent}}%"
+  }
+}

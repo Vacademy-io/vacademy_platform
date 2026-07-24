@@ -24,7 +24,7 @@ export const StatusChip = ({ playMode, className }: StatusChipProps) => {
     <div
       className={`inline-flex items-center rounded-sm px-2 py-1  border border-gray-200 ${playModeColors[playMode]} ${className}`}
     >
-      <div className="w-2 h-2 rounded-full bg-white opacity-75 mr-1.5" />
+      <div className="w-2 h-2 rounded-full bg-white opacity-75 me-1.5" />
       <span className="text-xs font-medium">{playMode}</span>
     </div>
   );

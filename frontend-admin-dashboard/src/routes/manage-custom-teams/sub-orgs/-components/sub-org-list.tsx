@@ -1,10 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import {
-    getSubOrgs,
-    getSubscriptionStatus,
-    type SubOrgSubscriptionStatus,
+    getSubOrgsWithDetails,
+    type SubOrgListItem,
 } from '../../-services/custom-team-services';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import {
@@ -15,56 +14,321 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { MyButton } from '@/components/design-system/button';
-import { Plus, Building2, Copy, Link2 } from 'lucide-react';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Input } from '@/components/ui/input';
+import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
+import {
+    Plus,
+    Buildings,
+    Copy,
+    DownloadSimple,
+    LinkSimple,
+    MagnifyingGlass,
+    MapPin,
+    X,
+} from '@phosphor-icons/react';
+import { buildCsv, downloadCsv, formatDate } from '../../-utils/list-export';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { CreateSubOrgModal } from './create-sub-org-modal';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
-import { useFileUpload } from '@/hooks/use-file-upload';
-import { useEffect } from 'react';
+import { MyPagination } from '@/components/design-system/pagination';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { buildSubOrgSlug } from '@/routes/manage-suborg-teams/-utils/sub-org-slug';
+import { humanizeStatus, statusToneClass } from '../../-utils/status-display';
+import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+
+/** Rows-per-page for the Manage VLEs listing. */
+const SUB_ORG_PAGE_SIZE = 10;
+
+/** Facet key for rows whose admin has no plan yet (plan_status null). */
+const NO_PLAN = '__NO_PLAN__';
+
+const SUB_ORG_CSV_HEADERS = [
+    'Name',
+    'Admin',
+    'Email',
+    'Phone',
+    'City',
+    'State',
+    'Pincode',
+    'Status',
+    'Seats Used',
+    'Seats Total',
+    'Invite Code',
+    'Created On',
+] as const;
+
+/** Distinct, sorted non-blank values of one field across the rows → filter options. */
+const facetOptions = (rows: SubOrgListItem[], pick: (row: SubOrgListItem) => string | null | undefined) => {
+    const values = new Set<string>();
+    rows.forEach((row) => {
+        const v = pick(row)?.trim();
+        if (v) values.add(v);
+    });
+    return [...values].sort((a, b) => a.localeCompare(b)).map((value) => ({ value, label: value }));
+};
 
 export function SubOrgList() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [searchInput, setSearchInput] = useState('');
+    const [statusFilter, setStatusFilter] = useState<string[]>([]);
+    const [cityFilter, setCityFilter] = useState<string[]>([]);
+    const [stateFilter, setStateFilter] = useState<string[]>([]);
+    const [pincodeFilter, setPincodeFilter] = useState<string[]>([]);
+    const [page, setPage] = useState(0);
     const navigate = useNavigate();
 
     const instituteId = getCurrentInstituteId();
-    const { data: subOrgsData, isLoading } = useQuery({
-        queryKey: ['sub-orgs-list', instituteId],
-        queryFn: () => getSubOrgs(instituteId),
+    // Prefer the institute's white-label learner domain so the invite opens on
+    // the institute's own portal; a backend `short_url` (already domain-correct)
+    // still wins when present.
+    const { instituteDetails } = useInstituteDetailsStore();
+    // Fetch the WHOLE list (no page/size): search matches admin email/phone and the
+    // status filter matches plan status — enrichment fields that live outside this
+    // service's DB, so filtering must happen over the full dataset client-side.
+    const { data, isLoading } = useQuery({
+        queryKey: ['sub-orgs-with-details', instituteId],
+        queryFn: () => getSubOrgsWithDetails(instituteId),
         enabled: !!instituteId,
     });
+    const allSubOrgs = useMemo(() => data?.content ?? [], [data?.content]);
 
-    const subOrgs = Array.isArray(subOrgsData) ? subOrgsData : (subOrgsData as any)?.content || [];
+    // Status filter options come from the data itself (nothing hardcoded): the
+    // distinct plan statuses present, plus "No plan" only when such rows exist.
+    const statusOptions = useMemo(() => {
+        const present = new Set<string>();
+        let hasNoPlan = false;
+        allSubOrgs.forEach((o) => {
+            if (o.plan_status) present.add(o.plan_status);
+            else hasNoPlan = true;
+        });
+        const options = [...present]
+            .sort()
+            .map((value) => ({ value, label: humanizeStatus(value) }));
+        if (hasNoPlan) options.push({ value: NO_PLAN, label: 'No plan' });
+        return options;
+    }, [allSubOrgs]);
 
-    // Row click navigates to the institute-admin deep page for that sub-org. Modal is
-    // no longer mounted from here — drilldown is bookmarkable + shareable now.
-    const openSubOrg = (org: any) => {
-        const id =
-            org?.sub_org_id || org?.suborgId || org?.subOrgId || org?.suborg_id || org?.id;
-        const name =
-            org?.name || org?.institute_name || org?.instituteName || org?.subOrgName;
+    // City/State/Pincode options come from the loaded rows too (address stamped on the
+    // spawned institute at registration) — a filter only appears when values exist.
+    const cityOptions = useMemo(() => facetOptions(allSubOrgs, (o) => o.city), [allSubOrgs]);
+    const stateOptions = useMemo(() => facetOptions(allSubOrgs, (o) => o.state), [allSubOrgs]);
+    const pincodeOptions = useMemo(() => facetOptions(allSubOrgs, (o) => o.pincode), [allSubOrgs]);
+
+    const q = searchInput.trim().toLowerCase();
+    const filteredSubOrgs = useMemo(
+        () =>
+            allSubOrgs.filter((o) => {
+                if (statusFilter.length) {
+                    const key = o.plan_status || NO_PLAN;
+                    if (!statusFilter.includes(key)) return false;
+                }
+                if (cityFilter.length && !cityFilter.includes(o.city?.trim() || '')) return false;
+                if (stateFilter.length && !stateFilter.includes(o.state?.trim() || '')) return false;
+                if (pincodeFilter.length && !pincodeFilter.includes(o.pincode?.trim() || ''))
+                    return false;
+                if (q) {
+                    const haystack = [
+                        o.name,
+                        o.admin_name,
+                        o.admin_email,
+                        o.admin_phone,
+                        o.city,
+                        o.state,
+                        o.pincode,
+                        o.invite_code,
+                    ]
+                        .filter(Boolean)
+                        .join(' ')
+                        .toLowerCase();
+                    if (!haystack.includes(q)) return false;
+                }
+                return true;
+            }),
+        [allSubOrgs, q, statusFilter, cityFilter, stateFilter, pincodeFilter]
+    );
+    const hasActiveFilters =
+        !!q ||
+        statusFilter.length > 0 ||
+        cityFilter.length > 0 ||
+        stateFilter.length > 0 ||
+        pincodeFilter.length > 0;
+
+    // Any filter change jumps back to the first page.
+    useEffect(() => {
+        setPage(0);
+    }, [q, statusFilter, cityFilter, stateFilter, pincodeFilter]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredSubOrgs.length / SUB_ORG_PAGE_SIZE));
+    const subOrgs = filteredSubOrgs.slice(
+        page * SUB_ORG_PAGE_SIZE,
+        (page + 1) * SUB_ORG_PAGE_SIZE
+    );
+
+    // Row click navigates to the institute-admin deep page for that sub-org.
+    const openSubOrg = (org: SubOrgListItem) => {
+        const id = org.suborg_id;
         if (!id) return;
         navigate({
             to: '/manage-custom-teams/sub-orgs/$subOrgSlug',
-            params: { subOrgSlug: buildSubOrgSlug({ id, name }) },
+            params: { subOrgSlug: buildSubOrgSlug({ id, name: org.name || '' }) },
         });
+    };
+
+    // Full invite URL for a row: backend short_url when present, otherwise built
+    // from the invite code (never the bare code — that's not a usable link).
+    const buildInviteUrl = (org: SubOrgListItem): string =>
+        org.short_url ||
+        (org.invite_code
+            ? createInviteLink(org.invite_code, instituteDetails?.learner_portal_base_url)
+            : '');
+
+    const copyInviteLink = (e: React.MouseEvent, org: SubOrgListItem) => {
+        e.stopPropagation();
+        const url = buildInviteUrl(org);
+        if (url) {
+            navigator.clipboard.writeText(url);
+            toast.success('Invite link copied');
+        }
+    };
+
+    // Export every row matching the current filters (all pages, not just the visible one).
+    const handleExport = () => {
+        if (filteredSubOrgs.length === 0) {
+            toast.info('Nothing to export.');
+            return;
+        }
+        const csv = buildCsv(
+            SUB_ORG_CSV_HEADERS,
+            filteredSubOrgs.map((o) => [
+                o.name,
+                o.admin_name,
+                o.admin_email,
+                o.admin_phone,
+                o.city,
+                o.state,
+                o.pincode,
+                o.plan_status ? humanizeStatus(o.plan_status) : '',
+                o.used_seats ?? '',
+                o.total_seats ?? '',
+                o.invite_code,
+                formatDate(o.created_at),
+            ])
+        );
+        const safeName = getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg)
+            .replace(/[^\w.-]+/g, '_');
+        downloadCsv(csv, `${safeName}_list.csv`);
+        toast.success(
+            `Exported ${filteredSubOrgs.length} ${
+                filteredSubOrgs.length === 1
+                    ? getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase()
+                    : getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase()
+            }.`
+        );
     };
 
     if (isLoading) return <DashboardLoader />;
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-end">
-                <MyButton onClick={() => setIsCreateModalOpen(true)}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Create Sub-Organization
-                </MyButton>
+            {/* Search + Status filter left, Create button right. The status options are
+                derived from the loaded rows (see statusOptions) — nothing hardcoded. */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-1 flex-wrap items-center gap-2">
+                    <div className="relative min-w-0 flex-1 sm:max-w-xs">
+                        <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                        <Input
+                            value={searchInput}
+                            onChange={(e) => setSearchInput(e.target.value)}
+                            placeholder={`Search ${getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase()}, email or phone`}
+                            className="h-9 pl-8"
+                        />
+                    </div>
+                    {statusOptions.length > 0 && (
+                        <MultiSelectFilter
+                            label="Status"
+                            options={statusOptions}
+                            selected={statusFilter}
+                            onChange={setStatusFilter}
+                            placeholder="Search status…"
+                            widthClass="w-36"
+                        />
+                    )}
+                    {cityOptions.length > 0 && (
+                        <MultiSelectFilter
+                            label="City"
+                            icon={<MapPin className="size-4 text-neutral-400" />}
+                            options={cityOptions}
+                            selected={cityFilter}
+                            onChange={setCityFilter}
+                            placeholder="Search city…"
+                            widthClass="w-36"
+                        />
+                    )}
+                    {stateOptions.length > 0 && (
+                        <MultiSelectFilter
+                            label="State"
+                            options={stateOptions}
+                            selected={stateFilter}
+                            onChange={setStateFilter}
+                            placeholder="Search state…"
+                            widthClass="w-36"
+                        />
+                    )}
+                    {pincodeOptions.length > 0 && (
+                        <MultiSelectFilter
+                            label="Pincode"
+                            options={pincodeOptions}
+                            selected={pincodeFilter}
+                            onChange={setPincodeFilter}
+                            placeholder="Search pincode…"
+                            widthClass="w-36"
+                        />
+                    )}
+                    {hasActiveFilters && (
+                        <MyButton
+                            buttonType="secondary"
+                            scale="small"
+                            onClick={() => {
+                                setSearchInput('');
+                                setStatusFilter([]);
+                                setCityFilter([]);
+                                setStateFilter([]);
+                                setPincodeFilter([]);
+                            }}
+                        >
+                            <X className="mr-1 size-3.5" />
+                            Clear
+                        </MyButton>
+                    )}
+                </div>
+                <div className="flex items-center gap-2">
+                    <MyButton
+                        buttonType="secondary"
+                        onClick={handleExport}
+                        disable={filteredSubOrgs.length === 0}
+                    >
+                        <DownloadSimple className="mr-2 size-4" />
+                        Export CSV
+                    </MyButton>
+                    <MyButton onClick={() => setIsCreateModalOpen(true)}>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create {getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}
+                    </MyButton>
+                </div>
             </div>
+
+            {hasActiveFilters && (
+                <p className="text-xs text-muted-foreground">
+                    {filteredSubOrgs.length} of {allSubOrgs.length}{' '}
+                    {getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase()}{' '}
+                    match your filters
+                </p>
+            )}
 
             <div className="rounded-md border">
                 <Table>
@@ -73,6 +337,9 @@ export function SubOrgList() {
                             <TableHead>Name</TableHead>
                             <TableHead>Email</TableHead>
                             <TableHead>Phone</TableHead>
+                            <TableHead>City</TableHead>
+                            <TableHead>State</TableHead>
+                            <TableHead>Pincode</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead>Seats</TableHead>
                             <TableHead>{getTerminology(OtherTerms.Invite, SystemTerms.Invite)}</TableHead>
@@ -81,144 +348,115 @@ export function SubOrgList() {
                     <TableBody>
                         {!subOrgs || subOrgs.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={6} className="h-24 text-center">
+                                <TableCell colSpan={9} className="h-24 text-center">
                                     <div className="flex flex-col items-center justify-center gap-2 text-gray-500">
-                                        <Building2 className="h-8 w-8 opacity-50" />
-                                        <p>No sub-organizations found.</p>
+                                        <Buildings className="h-8 w-8 opacity-50" />
+                                        <p>
+                                            {hasActiveFilters
+                                                ? `No ${getTerminologyPlural(
+                                                      OtherTerms.SubOrg,
+                                                      SystemTerms.SubOrg
+                                                  ).toLowerCase()} match your filters.`
+                                                : `No ${getTerminologyPlural(
+                                                      OtherTerms.SubOrg,
+                                                      SystemTerms.SubOrg
+                                                  ).toLowerCase()} found.`}
+                                        </p>
                                     </div>
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            subOrgs.map((org: any) => (
-                                <SubOrgRow
-                                    key={
-                                        org.sub_org_id ||
-                                        org.suborgId ||
-                                        org.subOrgId ||
-                                        org.suborg_id ||
-                                        org.id
-                                    }
-                                    org={org}
-                                    onRowClick={() => openSubOrg(org)}
-                                />
-                            ))
+                            subOrgs.map((org) => {
+                                const name = org.name || 'Unknown';
+                                return (
+                                    <TableRow
+                                        key={org.suborg_id || name}
+                                        className="cursor-pointer hover:bg-muted/50"
+                                        onClick={() => openSubOrg(org)}
+                                    >
+                                        <TableCell className="font-medium">
+                                            <div className="flex items-center gap-2">
+                                                <Avatar className="h-8 w-8">
+                                                    <AvatarFallback className="text-xs">
+                                                        {String(name).charAt(0).toUpperCase()}
+                                                    </AvatarFallback>
+                                                </Avatar>
+                                                <div className="min-w-0">
+                                                    <p className="truncate">{name}</p>
+                                                    {org.admin_name && (
+                                                        <p className="truncate text-xs text-muted-foreground">
+                                                            {org.admin_name}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>{org.admin_email || '-'}</TableCell>
+                                        <TableCell>{org.admin_phone || '-'}</TableCell>
+                                        <TableCell>{org.city || '-'}</TableCell>
+                                        <TableCell>{org.state || '-'}</TableCell>
+                                        <TableCell>{org.pincode || '-'}</TableCell>
+                                        <TableCell>
+                                            {org.plan_status ? (
+                                                <Badge
+                                                    variant="outline"
+                                                    className={statusToneClass(org.plan_status)}
+                                                >
+                                                    {humanizeStatus(org.plan_status)}
+                                                </Badge>
+                                            ) : (
+                                                <span className="text-sm text-muted-foreground">
+                                                    -
+                                                </span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            {org.used_seats == null && org.total_seats == null ? (
+                                                <span className="text-sm text-muted-foreground">
+                                                    -
+                                                </span>
+                                            ) : (
+                                                <span className="text-sm">
+                                                    {org.used_seats ?? 0}
+                                                    {org.total_seats != null
+                                                        ? `/${org.total_seats}`
+                                                        : ''}
+                                                </span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
+                                            {org.invite_code ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => copyInviteLink(e, org)}
+                                                    className="flex items-center gap-1 text-sm text-primary hover:underline"
+                                                    title={buildInviteUrl(org)}
+                                                >
+                                                    <LinkSimple className="h-3.5 w-3.5" />
+                                                    <span className="w-20 truncate">
+                                                        {org.invite_code}
+                                                    </span>
+                                                    <Copy className="h-3 w-3" />
+                                                </button>
+                                            ) : (
+                                                <span className="text-sm text-muted-foreground">
+                                                    -
+                                                </span>
+                                            )}
+                                        </TableCell>
+                                    </TableRow>
+                                );
+                            })
                         )}
                     </TableBody>
                 </Table>
             </div>
 
-            <CreateSubOrgModal
-                open={isCreateModalOpen}
-                onOpenChange={setIsCreateModalOpen}
-            />
+            {totalPages > 1 && (
+                <MyPagination currentPage={page} totalPages={totalPages} onPageChange={setPage} />
+            )}
+
+            <CreateSubOrgModal open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen} />
         </div>
-    );
-}
-
-function SubOrgRow({ org, onRowClick }: { org: any; onRowClick: () => void }) {
-    const [logoUrl, setLogoUrl] = useState<string>('');
-    const { getPublicUrl } = useFileUpload();
-    const instituteId = getCurrentInstituteId();
-
-    const subOrgId =
-        org.sub_org_id || org.suborgId || org.subOrgId || org.suborg_id || org.id;
-
-    useEffect(() => {
-        const fileId = org.institute_logo_file_id || org.logo;
-        if (fileId && typeof fileId === 'string' && !fileId.startsWith('http')) {
-            getPublicUrl(fileId).then((url) => {
-                if (url) setLogoUrl(url);
-            });
-        } else if (fileId && typeof fileId === 'string' && fileId.startsWith('http')) {
-            setLogoUrl(fileId);
-        }
-    }, [org.institute_logo_file_id, org.logo, getPublicUrl]);
-
-    // Fetch subscription status
-    const { data: subscriptionStatus } = useQuery<SubOrgSubscriptionStatus>({
-        queryKey: ['sub-org-subscription-status', subOrgId],
-        queryFn: () => getSubscriptionStatus(subOrgId),
-        enabled: !!subOrgId && !!instituteId,
-    });
-
-    const name =
-        org.name || org.institute_name || org.instituteName || org.subOrgName || 'Unknown';
-
-    const totalUsed = subscriptionStatus?.seat_usages?.reduce(
-        (sum, s) => sum + (s.used_seats || 0),
-        0
-    );
-    const totalSeats = subscriptionStatus?.seat_usages?.reduce(
-        (sum, s) => sum + (s.total_seats || 0),
-        0
-    );
-
-    const copyInviteLink = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        const url = subscriptionStatus?.short_url || subscriptionStatus?.invite_code;
-        if (url) {
-            navigator.clipboard.writeText(url);
-            toast.success('Invite link copied');
-        }
-    };
-
-    return (
-        <TableRow className="cursor-pointer hover:bg-muted/50" onClick={onRowClick}>
-            <TableCell className="font-medium">
-                <div className="flex items-center gap-2">
-                    <Avatar className="h-8 w-8">
-                        <AvatarImage src={logoUrl} />
-                        <AvatarFallback className="text-xs">
-                            {String(name).charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                    </Avatar>
-                    <span>{name}</span>
-                </div>
-            </TableCell>
-            <TableCell>{org.email || '-'}</TableCell>
-            <TableCell>{org.phone || org.mobile_number || org.mobileNumber || '-'}</TableCell>
-            <TableCell>
-                {subscriptionStatus?.org_user_plan_status ? (
-                    <Badge
-                        variant={
-                            subscriptionStatus.org_user_plan_status === 'ACTIVE'
-                                ? 'default'
-                                : 'secondary'
-                        }
-                    >
-                        {subscriptionStatus.org_user_plan_status}
-                    </Badge>
-                ) : (
-                    <span className="text-sm text-muted-foreground">-</span>
-                )}
-            </TableCell>
-            <TableCell>
-                {totalSeats != null && totalSeats > 0 ? (
-                    <span className="text-sm">
-                        {totalUsed}/{totalSeats}
-                    </span>
-                ) : (
-                    <span className="text-sm text-muted-foreground">-</span>
-                )}
-            </TableCell>
-            <TableCell>
-                {subscriptionStatus?.invite_code ? (
-                    <button
-                        type="button"
-                        onClick={copyInviteLink}
-                        className="flex items-center gap-1 text-sm text-primary hover:underline"
-                        title={subscriptionStatus.short_url || subscriptionStatus.invite_code}
-                    >
-                        <Link2 className="h-3.5 w-3.5" />
-                        <span className="max-w-[80px] truncate">
-                            {subscriptionStatus.invite_code}
-                        </span>
-                        <Copy className="h-3 w-3" />
-                    </button>
-                ) : (
-                    <span className="text-sm text-muted-foreground">-</span>
-                )}
-            </TableCell>
-        </TableRow>
     );
 }

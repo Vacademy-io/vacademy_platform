@@ -3,6 +3,7 @@ import type {
   StudentDashboardWidgetConfig,
   StudentSidebarTabConfig,
 } from "@/types/student-display-settings";
+import { LEARNER_TOUR_KEYS } from "@/types/student-display-settings";
 
 function defaultSidebarTabs(): StudentSidebarTabConfig[] {
   return [
@@ -145,6 +146,8 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     outlineMode: "expanded",
     ratingsAndReviewsVisible: true,
     hideAuthorName: false,
+    // Teachers/Instructors section hidden by default; admins opt-in to show it.
+    showInstructors: false,
     // New defaults
     showCourseConfiguration: true,
     showCourseContentPrefixes: true,
@@ -178,6 +181,13 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
     allowSystemAlerts: true,
     allowDashboardPins: true,
     allowBatchStream: true,
+    allowAppOverlays: true,
+  },
+  tutorials: {
+    // Off by default — institutes opt in via Settings > Student Display.
+    enabled: false,
+    enabledTours: [...LEARNER_TOUR_KEYS],
+    pdfGuideEnabled: false,
   },
   certificates: {
     enabled: true,

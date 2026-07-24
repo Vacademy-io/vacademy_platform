@@ -25,8 +25,22 @@ public class LiveClassCollector {
 
     public LiveClassesSection collect(String userId, String batchId, LocalDate startDate, LocalDate endDate) {
         try {
+            // Same query and same batch-widening fallback as AttendanceCollector — these two cards
+            // are two views of one fact, so they must never be computed from different queries.
             List<ScheduleAttendanceProjection> userRecords =
-                    participantRepository.findAttendanceForUser(userId, batchId, startDate, endDate);
+                    participantRepository.findAttendanceForUserAcrossBatches(userId, batchId, startDate, endDate);
+
+            if ((userRecords == null || userRecords.isEmpty()) && batchId != null) {
+                userRecords = participantRepository.findAttendanceForUserAcrossBatches(userId, null, startDate, endDate);
+            }
+
+            // No sessions found ≠ attended none. See AttendanceCollector — a fabricated 0% here is
+            // indistinguishable from a real one and poisons the overview status.
+            if (userRecords == null || userRecords.isEmpty()) {
+                log.info("[LiveClassCollector] No sessions found for userId={} batchId={} in [{} .. {}] "
+                        + "— reporting as unavailable rather than 0%.", userId, batchId, startDate, endDate);
+                return LiveClassesSection.builder().available(false).total(0).build();
+            }
 
             int attended = 0, missed = 0, unmarked = 0;
 

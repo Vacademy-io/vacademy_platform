@@ -534,7 +534,8 @@ public class AssessmentParticipantsManager {
                         .findUserRegistrationWithFilterWithSearchForSource(
                                 filter.getName(), assessmentId, instituteId, filter.getStatus(),
                                 filter.getAttemptType(), filter.getRegistrationSource(),
-                                evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
+                                evaluationStatusFilter(filter.getEvaluationStatus()),
+                                evaluationStatusFilter(filter.getSubmissionStatus()), pageable);
             }
 
             // If no results found, search for users based on batch, attempt type, and
@@ -544,7 +545,8 @@ public class AssessmentParticipantsManager {
                         .findUserRegistrationWithFilterForSource(
                                 assessmentId, instituteId, filter.getBatches(),
                                 filter.getAttemptType(), filter.getRegistrationSource(),
-                                evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
+                                evaluationStatusFilter(filter.getEvaluationStatus()),
+                                evaluationStatusFilter(filter.getSubmissionStatus()), pageable);
             }
         }
 
@@ -563,12 +565,14 @@ public class AssessmentParticipantsManager {
                 registeredUserPage = assessmentUserRegistrationRepository
                         .findUserRegistrationWithFilterWithSearchForBatch(filter.getName(), assessmentId, instituteId,
                                 filter.getBatches(), filter.getStatus(), filter.getAttemptType(),
-                                evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
+                                evaluationStatusFilter(filter.getEvaluationStatus()),
+                                evaluationStatusFilter(filter.getSubmissionStatus()), pageable);
             }
             if (Objects.isNull(registeredUserPage)) {
                 registeredUserPage = assessmentUserRegistrationRepository.findUserRegistrationWithFilterForBatch(
                         assessmentId, instituteId, filter.getBatches(), filter.getStatus(), filter.getAttemptType(),
-                        evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
+                        evaluationStatusFilter(filter.getEvaluationStatus()),
+                                evaluationStatusFilter(filter.getSubmissionStatus()), pageable);
             }
         }
 
@@ -635,7 +639,8 @@ public class AssessmentParticipantsManager {
                         .findUserRegistrationWithFilterWithSearchForSource(
                                 filter.getName(), assessmentId, instituteId, filter.getStatus(),
                                 filter.getAttemptType(), filter.getRegistrationSource(),
-                                evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
+                                evaluationStatusFilter(filter.getEvaluationStatus()),
+                                evaluationStatusFilter(filter.getSubmissionStatus()), pageable);
             }
 
             // If no results are found, perform a broader search
@@ -644,7 +649,8 @@ public class AssessmentParticipantsManager {
                         .findUserRegistrationWithFilterForSource(
                                 assessmentId, instituteId, filter.getStatus(),
                                 filter.getAttemptType(), filter.getRegistrationSource(),
-                                evaluationStatusFilter(filter.getEvaluationStatus()), pageable);
+                                evaluationStatusFilter(filter.getEvaluationStatus()),
+                                evaluationStatusFilter(filter.getSubmissionStatus()), pageable);
             }
         }
 
@@ -876,6 +882,25 @@ public class AssessmentParticipantsManager {
                 throw new VacademyException("Invalid Question Type for Question ID: " + currentQuestion.getId());
             }
 
+            // Surface the AI evaluation to the learner: per-question feedback +
+            // criteria breakdown from the persisted copy-check verdict.
+            String aiFeedback = null;
+            String aiCriteriaBreakdown = null;
+            String aiJson = questionWiseMarks.getAiEvaluationDetailsJson();
+            if (aiJson != null && !aiJson.isBlank()) {
+                try {
+                    com.fasterxml.jackson.databind.JsonNode node = new ObjectMapper().readTree(aiJson);
+                    if (node.hasNonNull("feedback")) {
+                        aiFeedback = node.get("feedback").asText();
+                    }
+                    if (node.has("criteria_breakdown") && node.get("criteria_breakdown").isArray()) {
+                        aiCriteriaBreakdown = node.get("criteria_breakdown").toString();
+                    }
+                } catch (Exception ignored) {
+                    // Non-fatal — leave AI fields null.
+                }
+            }
+
             return StudentReportAnswerReviewDto.builder()
                     .questionId(currentQuestion.getId())
                     .questionText(currentQuestion.getTextData() != null ? currentQuestion.getTextData().toDTO() : null)
@@ -898,6 +923,9 @@ public class AssessmentParticipantsManager {
                             : null)
                     .timeTakenInSeconds(questionWiseMarks.getTimeTakenInSeconds())
                     .evaluatorFeedback(questionWiseMarks.getEvaluatorFeedback())
+                    .aiFeedback(aiFeedback)
+                    .aiCriteriaBreakdown(aiCriteriaBreakdown)
+                    .evaluationSource(questionWiseMarks.getMarksSource())
                     .build();
         } catch (Exception e) {
             // G: Return null instead of empty DTO — caller filters nulls

@@ -13,6 +13,7 @@ from .routers.models import router as models_router
 from .routers.api_keys import router as api_keys_router
 from .routers.token_usage import router as token_usage_router
 from .routers.chat_bot import router as chat_bot_router
+from .routers.tts import router as tts_router
 from .routers.chat_agent import router as chat_agent_router
 from .routers.assistant import router as assistant_router
 from .routers.validation import router as validation_router
@@ -37,6 +38,9 @@ from .routers.assessment_generation import router as assessment_generation_route
 from .routers.coding_question_gen import router as coding_question_gen_router
 from .routers.brand_kit_scrape import router as brand_kit_scrape_router
 from .routers.transcript_notes import router as transcript_notes_router
+from .routers.html_document import router as html_document_router
+from .routers.page_builder import router as page_builder_router
+from .routers.course_assist import router as course_assist_router
 from .routers.copy_check import router as copy_check_router
 from .routers.lecture import router as lecture_router
 from .routers.ai_task_status import router as ai_task_status_router
@@ -49,6 +53,7 @@ from .routers.audio_questions import router as audio_questions_router
 from .routers.chat_with_pdf import router as chat_with_pdf_router
 from .routers.evaluation import router as evaluation_router
 from .routers.retry import router as retry_router
+from .routers.translation import router as translation_router
 
 from .db import db_session
 from .repositories.ai_task_repository import ensure_ai_task_schema
@@ -203,6 +208,7 @@ def create_app() -> FastAPI:
     app.include_router(api_keys_router, prefix=settings.api_base_path)
     app.include_router(token_usage_router, prefix=settings.api_base_path)
     app.include_router(chat_bot_router, prefix=settings.api_base_path)
+    app.include_router(tts_router, prefix=settings.api_base_path)
     app.include_router(chat_agent_router, prefix=settings.api_base_path)
     app.include_router(assistant_router, prefix=settings.api_base_path)
     app.include_router(validation_router, prefix=settings.api_base_path)
@@ -239,6 +245,11 @@ def create_app() -> FastAPI:
     app.include_router(coding_question_gen_router, prefix=settings.api_base_path)
     app.include_router(brand_kit_scrape_router, prefix=settings.api_base_path)
     app.include_router(transcript_notes_router, prefix=settings.api_base_path)
+    app.include_router(html_document_router, prefix=settings.api_base_path)
+    app.include_router(page_builder_router, prefix=settings.api_base_path)
+    # Inline "generate with AI" for the manual Add Course form fields:
+    #   {api_base_path}/course/assist/v1/text  |  /v1/image
+    app.include_router(course_assist_router, prefix=settings.api_base_path)
     app.include_router(copy_check_router, prefix=settings.api_base_path)
     # Migrated from media_service: AI lecture planner (kick-off) + the
     # task-status polling mirror. Final paths:
@@ -255,6 +266,10 @@ def create_app() -> FastAPI:
     app.include_router(chat_with_pdf_router, prefix=settings.api_base_path)
     app.include_router(evaluation_router, prefix=settings.api_base_path)
     app.include_router(retry_router, prefix=settings.api_base_path)
+    # i18n Phase 1 — content translation pipeline (estimate / course job /
+    # strings / review-approve / job status). Router declares its own
+    # /translation/v1 prefix. Final paths: {api_base_path}/translation/v1/*.
+    app.include_router(translation_router, prefix=settings.api_base_path)
     # Reels-from-long-video — three-gate funnel (scan/preview/render) +
     # /frame/{add,update,delete} for the editor's `kind=reel` save loop.
     # The router declares its own `/external/reels/v1` prefix; we only add

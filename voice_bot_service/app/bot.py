@@ -23,7 +23,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
+import re
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -32,9 +35,12 @@ from pipecat.frames.frames import (
     BotStoppedSpeakingFrame,
     Frame,
     LLMFullResponseEndFrame,
+    LLMMessagesAppendFrame,
     LLMTextFrame,
     TranscriptionFrame,
     TTSSpeakFrame,
+    UserStartedSpeakingFrame,
+    UserStoppedSpeakingFrame,
 )
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -43,6 +49,9 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response import LLMUserAggregatorParams
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
+from pipecat.audio.interruptions.min_words_interruption_strategy import (
+    MinWordsInterruptionStrategy,
+)
 
 from . import admin_core
 from .config import get_settings
@@ -84,20 +93,35 @@ class TranscriptCollector(FrameProcessor):
     the reply's hard floor is ~1.5s of silence otherwise (VAD window + STT final +
     LLM TTFT), and a human-style acknowledgment makes it read as attentiveness."""
 
-    def __init__(self, outcome: CallOutcome, on_activity, is_bot_speaking):
+    def __init__(self, outcome: CallOutcome, on_activity, is_bot_speaking,
+                 set_user_speaking=None, filler_phrases=None, on_transcript=None):
         super().__init__()
         self._outcome = outcome
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
+        self._set_user_speaking = set_user_speaking or (lambda speaking: None)
+        self._on_transcript = on_transcript or (lambda: None)
         s = get_settings()
-        self._filler_phrases = list(s.filler_phrases)
+        self._filler_phrases = list(filler_phrases if filler_phrases is not None
+                                    else s.filler_phrases)
         self._filler_probability = max(0.0, min(1.0, s.filler_probability))
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
+        # VAD user-speech frames re-arm the idle clock. Sarvam STT emits FINAL
+        # transcripts only (no interims), so without this the clock goes stale during
+        # a LONG caller utterance and the watchdog spoke "kya aap sun paa rahe hain?"
+        # WHILE THE CALLER WAS TALKING (observed 13x in 48h of live calls).
+        if isinstance(frame, UserStartedSpeakingFrame):
+            self._set_user_speaking(True)
+            self._on_activity(user=True)
+        elif isinstance(frame, UserStoppedSpeakingFrame):
+            self._set_user_speaking(False)
+            self._on_activity(user=True)  # give them thinking time from speech END
         if isinstance(frame, TranscriptionFrame) and frame.text and frame.text.strip():
             self._outcome.transcript.append({"role": "user", "text": frame.text.strip()})
             self._on_activity(user=True)
+            self._on_transcript()
             # Filler only when the bot is quiet — a barge-in already has audio
             # to cancel, and stacking a filler on it would talk over the caller.
             if (self._filler_phrases and not self._is_bot_speaking()
@@ -107,21 +131,65 @@ class TranscriptCollector(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+class TtfbObserver:
+    """Corr-tagged per-turn latency telemetry. pipecat already computes per-service
+    TTFB (enable_metrics=True) but only logs it uncorrelated at DEBUG inside the
+    metrics module — useless for 'which call was slow'. This observer logs one INFO
+    line per service per turn tagged with the call corr, so 'replies were slow on
+    that call' is answerable from docker logs:  grep 'ttfb corr=<id>'."""
+
+    def __init__(self, corr: str):
+        from pipecat.observers.base_observer import BaseObserver
+
+        outer = self
+
+        class _Obs(BaseObserver):
+            async def on_push_frame(self, data):
+                try:
+                    from pipecat.frames.frames import MetricsFrame
+                    from pipecat.metrics.metrics import TTFBMetricsData
+                    if isinstance(data.frame, MetricsFrame):
+                        # The SAME frame object is observed once per pipeline hop
+                        # (~9x) — dedupe by object id or we log 9 duplicate lines
+                        # per metric (measured 3.3k lines/day; real CPU on 1 vCPU).
+                        fid = id(data.frame)
+                        if fid in outer._seen:
+                            return
+                        outer._seen.append(fid)
+                        if len(outer._seen) > 64:
+                            outer._seen.pop(0)
+                        for d in data.frame.data:
+                            if isinstance(d, TTFBMetricsData) and d.value:
+                                logger.info("ttfb corr=%s service=%s value=%.3f",
+                                            outer._corr, d.processor, d.value)
+                except Exception:
+                    pass
+
+        self._corr = corr
+        self._seen: list = []
+        self.observer = _Obs()
+
+
 class SentinelGate(FrameProcessor):
     """Between LLM and TTS: strips the steering markers from the token stream so
     they are never spoken, accumulates the assistant transcript one utterance at
     a time, tracks bot-speaking state for the idle watchdog, and stops the
     pipeline after the final utterance finished playing."""
 
-    def __init__(self, outcome: CallOutcome, on_activity, set_bot_speaking):
+    def __init__(self, outcome: CallOutcome, on_activity, set_bot_speaking,
+                 transfer_closing: str = "Ek moment, main aapko connect kar rahi hoon.",
+                 end_closing: str = "Theek hai, dhanyavaad. Aapka din shubh ho!"):
         super().__init__()
         self._outcome = outcome
         self._on_activity = on_activity
         self._set_bot_speaking = set_bot_speaking
+        self._transfer_closing = transfer_closing
+        self._end_closing = end_closing
         self._task: Optional[PipelineTask] = None
         self._buffer = ""          # marker hold-back across token chunks
         self._utterance = ""       # current assistant utterance (one transcript entry)
         self._spoke_this_response = False
+        self._response_active = False  # LLM tokens still streaming for this response
 
     def set_task(self, task: PipelineTask):
         self._task = task
@@ -131,6 +199,7 @@ class SentinelGate(FrameProcessor):
 
         if isinstance(frame, LLMTextFrame):
             self._on_activity(user=False)
+            self._response_active = True
             self._buffer += frame.text or ""
             if TRANSFER_MARKER in self._buffer:
                 self._outcome.transfer_requested = True
@@ -155,15 +224,15 @@ class SentinelGate(FrameProcessor):
                 if self._buffer.startswith("<<"):
                     self._outcome.end_requested = True
                 self._buffer = ""
+            self._response_active = False
             self._flush_utterance()
             await self.push_frame(frame, direction)
             # Marker-only response (nothing spoken): no BotStoppedSpeakingFrame
             # will ever arrive, so speak a short close to drive the stop path.
             if ((self._outcome.end_requested or self._outcome.transfer_requested)
                     and not self._spoke_this_response):
-                closing = ("Ek moment, main aapko connect kar rahi hoon."
-                           if self._outcome.transfer_requested
-                           else "Theek hai, dhanyavaad. Aapka din shubh ho!")
+                closing = (self._transfer_closing if self._outcome.transfer_requested
+                           else self._end_closing)
                 self._utterance = closing
                 self._spoke_this_response = True
                 self._flush_utterance()
@@ -180,7 +249,12 @@ class SentinelGate(FrameProcessor):
         if isinstance(frame, BotStoppedSpeakingFrame):
             self._set_bot_speaking(False)
             self._on_activity(user=False)
-            self._flush_utterance()
+            # Don't flush while LLM tokens are still streaming: a filler's playout
+            # ending mid-response used to split ONE sentence across two transcript
+            # entries ('...क्या' / 'यह दो मिनट...') — audio was continuous, only the
+            # saved transcript fractured. Flush happens at LLMFullResponseEndFrame.
+            if not self._response_active:
+                self._flush_utterance()
             await self.push_frame(frame, direction)
             if self._outcome.transfer_requested and not self._outcome.transfer_registered:
                 await self._register_handoff()
@@ -240,15 +314,163 @@ def _voice_gender(voice) -> str:
     return "male" if (voice or "priya").strip().lower() in _MALE_VOICES else "female"
 
 
+def _as_float(v) -> float | None:
+    """Tolerant numeric read for call-context JSON (numbers arrive as int/float/str)."""
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+# The agent's configured "language" (a UI value like "hinglish") → a Sarvam STT
+# BCP-47 tag to PIN transcription, plus a human label for the prompt. Pinning matters:
+# auto-detect drifts a Hindi/Hinglish caller into a neighbouring Indic language
+# (Punjabi/Marathi), and once a turn is transcribed as that, the LLM replies and the
+# TTS speaks it for the rest of the call. Hinglish pins to hi-IN — saarika still
+# transcribes the English words in a Hinglish sentence, it just never leaves Hindi.
+_STT_LANGS = {
+    "hinglish": ("hi-IN", "Hindi or Hinglish"),
+    "hindi": ("hi-IN", "Hindi"),
+    "english": ("en-IN", "English"),
+    "punjabi": ("pa-IN", "Punjabi"),
+    "marathi": ("mr-IN", "Marathi"),
+    "gujarati": ("gu-IN", "Gujarati"),
+    "bengali": ("bn-IN", "Bengali"),
+    "tamil": ("ta-IN", "Tamil"),
+    "telugu": ("te-IN", "Telugu"),
+    "kannada": ("kn-IN", "Kannada"),
+    "malayalam": ("ml-IN", "Malayalam"),
+    "odia": ("od-IN", "Odia"),
+}
+
+
+def _agent_language(agent) -> tuple[str | None, str]:
+    """(BCP-47 STT tag or None, human label). None ⇒ let build_stt use its env default."""
+    raw = (agent.get("language") or "").strip().lower()
+    if not raw:
+        return None, "Hindi or Hinglish"
+    if raw in _STT_LANGS:
+        return _STT_LANGS[raw]
+    if "-" in raw and len(raw) <= 6:  # already a tag like "hi-in"
+        parts = raw.split("-")
+        return f"{parts[0]}-{parts[1].upper()}", agent.get("language")
+    return None, agent.get("language")
+
+
+def _lead_fields_line(context: Dict[str, Any]) -> str:
+    """One prompt line listing the lead's captured form/custom fields, so the agent uses
+    what it already knows (company, role, …) instead of re-asking. Capped so a lead with
+    many fields can't blow up the prompt. Empty for unknown callers."""
+    fields = context.get("leadFields") or {}
+    if not isinstance(fields, dict) or not fields:
+        return ""
+    pairs = [f"{k}: {v}" for k, v in fields.items() if v and str(v).strip()][:15]
+    if not pairs:
+        return ""
+    return ("What you ALREADY KNOW about this person (from the form they filled — use it to "
+            "personalise, and do NOT ask again for anything already listed here): "
+            + "; ".join(pairs) + ".")
+
+
+_PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-zA-Z0-9_ ]+?)\s*\}\}")
+
+
+def _lead_field(context: Dict[str, Any], *names: str) -> str | None:
+    """First non-blank lead custom field matching any of `names` (case-insensitive)."""
+    fields = context.get("leadFields") or {}
+    wanted = {n.strip().lower() for n in names}
+    for k, v in fields.items():
+        if str(k).strip().lower() in wanted and v is not None and str(v).strip():
+            return str(v).strip()
+    return None
+
+
+def _fill_placeholders(text: str, context: Dict[str, Any]) -> str:
+    """Substitute the author's {{placeholders}} with real call values BEFORE the model
+    sees the prompt. Left literal, `{{institute_name}}` etc. reach the model, which then
+    improvises or fills them wrong (observed: {{institute_name}} became our account's
+    legal name, not the brand). Unknown/empty → a graceful neutral, never a literal
+    '{{...}}'. NOTE: {{institute_name}} is the PROSPECT's institute — deliberately NOT
+    our instituteName (that mash-up is what produced the wrong-company opening)."""
+    if not text or "{{" not in text:
+        return text
+    lead_name = context.get("leadName")
+    values = {
+        "lead_name": lead_name or "aap",
+        "name": lead_name or "aap",
+        "institute_name": _lead_field(context, "institute", "institute name", "company",
+                                      "organisation", "organization") or "aapke institute",
+        "lead_source": _lead_field(context, "source", "lead source", "lead_source",
+                                   "enquiry source") or "apni enquiry",
+        "lead_source_line": "",
+        "booked_slot": _lead_field(context, "slot", "booked slot", "demo slot") or "",
+    }
+
+    def repl(m: "re.Match[str]") -> str:
+        return values.get(m.group(1).strip().lower(), "")
+
+    return _PLACEHOLDER_RE.sub(repl, text)
+
+
+def _clean_opening(text: str) -> str:
+    """Sanitize an authored openingLine for SPEECH. Admins paste whole script blocks
+    into the field (observed live: '# VACADEMY AI – INTRODUCTION SPEECH', blank lines,
+    '(Wait for confirmation)') and TTSSpeakFrame reads every character aloud. Keep only
+    speakable words: drop markdown headings, stage directions (lines fully wrapped in
+    brackets), and markdown emphasis; collapse whitespace."""
+    if not text:
+        return ""
+    lines = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if (line.startswith("(") and line.endswith(")")) or            (line.startswith("[") and line.endswith("]")):
+            continue  # stage direction, not speech
+        lines.append(line)
+    out = " ".join(lines)
+    out = out.replace("**", "").replace("*", "").replace("`", "")
+    out = re.sub(r"\s+", " ", out).strip()
+    return out[:600]
+
+
+def _now_line(context: Dict[str, Any]) -> str:
+    """A prominent 'right now it is ...' line so the model can resolve relative dates
+    ('tomorrow', 'day after', 'next Monday') the caller mentions. Without it the LLM
+    has NO idea what today is and mis-schedules. Timezone: the agent's configured
+    tz if set, else Asia/Kolkata (all current calls are India). Computed fresh per
+    call so it never goes stale."""
+    agent = context.get("agent") or {}
+    tzname = (agent.get("timezone") or context.get("timezone") or "Asia/Kolkata").strip()
+    try:
+        now = datetime.now(ZoneInfo(tzname))
+    except Exception:
+        tzname = "Asia/Kolkata"
+        now = datetime.now(ZoneInfo(tzname))
+    # e.g. "Wednesday, 22 July 2026, 3:45 PM"
+    stamp = now.strftime("%A, %-d %B %Y, %-I:%M %p")
+    return (
+        f"RIGHT NOW it is {stamp} ({tzname}). Use this as the current date and time. "
+        "When the caller mentions a relative day — 'today', 'tomorrow', 'day after tomorrow', "
+        "'this weekend', 'next Monday' — work out the ACTUAL calendar date from this, and when "
+        "you confirm a time say the concrete day and date (e.g. 'tomorrow, Thursday the 23rd, at 3 PM'). "
+        "Never guess the day of week or the date."
+    )
+
+
 def build_system_prompt(context: Dict[str, Any]) -> str:
     agent = context.get("agent") or {}
     lead_name = context.get("leadName")
-    institute = context.get("instituteName") or "our institute"
     extraction = agent.get("extractionQuestions") or []
     dispositions = agent.get("dispositions") or []
     name = agent.get("name") or "the assistant"
+    stt_tag, lang_label = _agent_language(agent)
+    is_english = stt_tag == "en-IN"
     gender = _voice_gender(agent.get("voice"))
     direction = str(context.get("direction") or agent.get("direction") or "OUTBOUND").upper()
+    now_line = _now_line(context)
 
     if gender == "female":
         gender_line = (
@@ -271,7 +493,23 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
     # An explicit leadGender (resolved server-side from the user record, else the name)
     # wins; when it's UNKNOWN, forbid guessing a gendered honorific — use the name + 'ji'.
     lead_gender = str(context.get("leadGender") or "").strip().lower()
-    if lead_gender in ("female", "f", "woman"):
+    if is_english:
+        # English agents: the Hindi second-person grammar rules below would be an
+        # unconditional instruction to speak Hindi ('aap kaise hain', name + 'ji') —
+        # one of the two confirmed pushes that flipped English calls into Hindi.
+        if lead_gender in ("female", "f", "woman"):
+            addressee_line = ((f"{lead_name} is a woman" if lead_name else
+                              "The person on the line is a woman")
+                             + " — if you use an honorific, say 'ma'am', never 'sir'.")
+        elif lead_gender in ("male", "m", "man"):
+            addressee_line = ((f"{lead_name} is a man" if lead_name else
+                              "The person on the line is a man")
+                             + " — if you use an honorific, say 'sir', never 'ma'am'.")
+        else:
+            addressee_line = ("You do NOT know whether this person is a man or a woman "
+                              "— never guess 'sir' or 'ma'am'; address them by "
+                              + (f"name ({lead_name})" if lead_name else "name") + ".")
+    elif lead_gender in ("female", "f", "woman"):
         who = f"{lead_name} is a WOMAN" if lead_name else "The person on the line is a WOMAN"
         addressee_line = (
             f"{who}. Use FEMININE second-person Hindi — 'aap kaisi hain', 'aap kya chahti hain', "
@@ -297,43 +535,268 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
             "aaya'/'karunga' = a man) may you switch to the matching feminine/masculine forms."
         )
 
+    # Company identity comes from the AGENT'S OWN prompt (which names the brand it should
+    # say, e.g. "Vacademy"). Do NOT also inject the institute's legal display name here — a
+    # second, different company name ("Vidyayatan Technologies") makes the model mash the two
+    # ("Vacancy"). Refer to it generically and let the prompt be the single source of the name.
     if direction == "INBOUND":
         intent_line = (
-            f"This person has CALLED {institute}. You are answering their call — greet them "
-            "warmly, quickly find out why they called, and help them."
+            "This person has CALLED your organisation. You are answering their call — greet them "
+            "warmly, quickly find out why they called, and help them. Name your company EXACTLY as "
+            "your instructions specify."
         )
     else:
         intent_line = (
-            f"You are PROACTIVELY CALLING this person on behalf of {institute} — YOU placed "
-            "this call, they did not call you. Never sound like you are answering their call. "
-            "Open with a clear reason for calling, lead the conversation confidently, and keep a "
-            "warm, positive, forward-moving tone that gives them a reason to engage right now."
+            "You are PROACTIVELY CALLING this person — YOU placed this call, they did not call you. "
+            "Never sound like you are answering their call. If they speak first (a 'hello'), your "
+            "FIRST reply is your full opening — never a bare greeting word back. Open with a clear "
+            "reason for calling, "
+            "introduce yourself and your company EXACTLY as your instructions specify (never invent "
+            "or alter the company name), lead the conversation confidently, and keep a warm, "
+            "positive, forward-moving tone that gives them a reason to engage right now."
         )
 
+    # Placed near the TOP (primacy matters under live-call latency) and applied to every
+    # agent — the failure modes seen on real calls (verbatim loops, deflecting instead of
+    # answering, ignoring rising frustration, ploughing on through mis-hears, switching
+    # language unprompted) are conversation-level and no per-agent prompt reliably prevents
+    # them. These are hard rules, phrased as mechanisms not vibes.
+    non_negotiable = (
+        "NON-NEGOTIABLE RULES — these override everything else:\n"
+        "1) NEVER repeat a sentence you have already said. If the caller asks the same thing "
+        "again, your previous answer FAILED — do NOT say it again. Acknowledge briefly ('Sorry, "
+        "main clearly bata deti hoon —') and answer the LITERAL question they asked, even if it is "
+        "outside your script. You may steer toward your goal (demo/next step) at most ONCE per "
+        "topic; if they push again, ANSWER the question instead of steering.\n"
+        "2) ANSWER direct questions directly FIRST, then invite the next step. Never stonewall or "
+        "dodge (never say things like 'their strategy is different' to avoid answering). If you "
+        "genuinely don't have a specific fact, say so honestly and offer to share it another way — "
+        "do not invent, do not evade.\n"
+        "3) FRUSTRATION = STOP. If the caller repeats a question, says 'main ye nahi pooch raha', or "
+        "sounds annoyed: drop the script immediately, apologise briefly, and answer their exact "
+        "question. If you cannot resolve it in one turn, offer a human callback rather than continuing.\n"
+        "4) If the conversation stops making sense, or they seem to answer a different question than "
+        "you asked, assume you MIS-HEARD: say 'Sorry, aapki awaaz thodi clear nahi aayi, ek baar phir "
+        "boliye?' — do NOT plough ahead with your script.\n"
+        f"5) Speak {lang_label} and STAY in it for the whole call. Every reply must be in the "
+        f"same language and script as YOUR OWN previous turns — mirror yourself, not the "
+        f"transcript. A single word from the caller in any other language ('yes', 'achha', "
+        f"'haan') is NEVER a cue to switch; if a transcript looks like another language, treat "
+        f"it as a mis-heard {lang_label} line. Switch only if the caller explicitly asks, or "
+        f"speaks 3+ consecutive full sentences in the other language.\n"
+        "6) End every turn with a question, a quick check-in ('right?') or a clear closing — "
+        "then STOP COMPLETELY and wait for the caller's answer. NEVER answer your own question, "
+        "NEVER say 'thank you' or continue as if they replied when they haven't. The caller's "
+        "silence is NOT consent — wait for them.\n"
+        "7) A neutral SPOKEN acknowledgment to your yes/no question ('okay', 'cool', 'hmm', "
+        "'go ahead', 'haan', 'achha') means YES — move forward. Never re-ask a question you "
+        "already asked, and never repeat any sentence verbatim; if you must clarify, rephrase "
+        "it in under 8 words."
+    )
+
+    prompt = _fill_placeholders(agent.get("systemPrompt") or "", context)
+
+    # Pieces the bot knows that NO agent prompt can — kept in BOTH paths:
+    # the configured voice's grammatical gender, the TTS script rule (romanized Hindi
+    # synthesizes worse than Devanagari — Sarvam docs), the live lead facts, and the
+    # machine end/transfer MARKERS (the agent prompt has no idea these tokens exist).
+    if is_english:
+        script_rule = (
+            "- SCRIPT: Write every reply in English (Latin letters) only. If you must echo an "
+            "Indian-language word the caller used, keep it romanized in Latin letters — never "
+            "switch to Devanagari or any Indic script."
+        )
+    else:
+        script_rule = (
+            "- SCRIPT: Write Hindi words in DEVANAGARI (हिंदी लिपि), and keep common English business "
+            "words in English letters (demo, course, book, WhatsApp, offer, plan, confirm, link). "
+            "So write 'मैं आपको एक demo book कर देती हूँ' — NOT romanized 'main aapko ek demo book kar "
+            "deti hoon'. NEVER write Hindi words in Latin letters."
+        )
+    # The caller HEARS every character — markdown becomes spoken garbage (a live call
+    # read out its own bullet list). And a short first clause reaches the ear sooner
+    # (TTS synthesizes the first chunk while the rest streams).
+    plain_speech_rule = (
+        "- Speak plain text only: NEVER output markdown — no *, #, bullets, numbered lists or "
+        "headings. No stage directions or parentheticals. Only words meant to be heard.\n"
+        "- Write NUMBERS AS WORDS so they are spoken correctly: say 'a ten-minute demo' (not "
+        "'10-minute'), 'two minutes', 'nine thirty', 'twenty five'. Digits like '10' get read "
+        "out as 'one zero'. The ONLY exception is a phone number, which you read digit by digit."
+    )
+    fast_open_rule = (
+        "- Begin every reply with a short natural clause (a few words) before any longer "
+        "sentence — it reaches the caller faster and sounds more human."
+    )
+    # Live call went out in the evening but opened 'Good morning' — the authored script
+    # hard-codes a greeting and nothing tied it to the clock. The RIGHT-NOW line above
+    # gives the time; this makes the model USE it for the greeting, overriding a fixed one.
+    greeting_rule = (
+        "- GREET FOR THE CURRENT TIME shown above: say 'good morning' before 12 noon, "
+        "'good afternoon' from 12 noon to 5 PM, and 'good evening' after 5 PM. If your "
+        "scripted opening contains a fixed greeting, ADAPT it to the current time — never "
+        "say 'good morning' in the afternoon or evening."
+    )
+    # Live call: the lead's real name was missing, so the model addressed the caller by the
+    # AUDIENCE-LIST name ('Am I speaking with Mr. or Ms. Robotics STEM Programs for Schools?').
+    name_sanity_rule = (
+        "- NEVER say 'Mr.' or 'Ms.' with nothing (or a non-name) after it, and never invent a "
+        "surname. If you do NOT have the person's real name — it is blank, a placeholder, the "
+        "word 'hello', or looks like a company/program/list ('Robotics Programs for Schools', "
+        "'AI and Machine Learning') — do NOT attempt 'Am I speaking with Mr./Ms. ___'. That "
+        "produces a broken 'Mr. Hello' or a dangling 'Mr.'. Instead ask warmly 'May I know who "
+        "I'm speaking with?' or confirm the organisation ('Am I speaking with someone from "
+        "<org>?'). Only use 'Mr./Ms. <surname>' when you actually have a real surname."
+    )
+    # Live calls: the caller asked 'who are you?' / said 'we already spoke' and the agent
+    # ignored it and ploughed the next scripted line. This forces a response FIRST.
+    listen_rule = (
+        "- LISTEN AND RESPOND to what the caller just said BEFORE moving to your next scripted "
+        "line. If they ask 'who are you?', 'which company?', 'why are you calling?', 'where are "
+        "you calling from?' — answer it plainly and immediately (your name, your company, one "
+        "short reason), THEN continue. If they say you have ALREADY SPOKEN, 'we discussed this', "
+        "or 'I explained already' — acknowledge it and do NOT repeat your introduction or pitch; "
+        "pick up from there and ask what they'd like to do next. NEVER deliver the next script "
+        "line as if the caller said nothing when they have just spoken."
+    )
+    # Live calls showed the model compressing several script steps into one turn
+    # ("How are you? That's wonderful to hear." — answering its OWN question), and
+    # closing on a vague "okay, thanks" with no day, no time, no contact captured.
+    one_step_rule = (
+        "- ONE STEP AT A TIME: if your instructions contain questions or steps, deliver "
+        "exactly ONE question and then STOP — never answer your own question, never "
+        "continue past a question mark in the same turn, never act out both sides. "
+        "Break any long scripted passage into short turns (2-3 sentences), pausing for "
+        "the caller between them."
+    )
+    goal_drive_rule = (
+        "- SELL WITH INTENT — you are a sharp, warm salesperson working toward a goal "
+        "(usually a short demo or meeting), NOT a passive form-filler. Tie your pitch to "
+        "something the caller actually said (a pain, a tool they already use, their size) "
+        "and lead with ONE crisp benefit, never a feature list.\n"
+        "- DON'T ACCEPT THE FIRST BRUSH-OFF. Common deflections — 'just email me' / 'send a "
+        "proposal' / 'we handle it ourselves' / 'we work directly' / 'not right now' / 'we're "
+        "busy' — are not a no; they're a reflex. Acknowledge briefly, then redirect ONCE to "
+        "value + a concrete small next step: a ten-minute demo at a specific time. Example — if "
+        "they say 'email me the details', reply: 'Happy to — honestly it lands better as a "
+        "quick 10-minute look so I show only what fits you. Would tomorrow evening or Thursday "
+        "morning work?' Make ONE genuine, specific attempt like this. Only if they still "
+        "decline do you take the email or a callback time gracefully and thank them.\n"
+        "- CLOSE CONCRETELY: a vague acknowledgment ('okay', 'thanks', 'theek hai') is NOT a "
+        "confirmation — when booking, propose two specific slots, get ONE explicitly confirmed "
+        "(exact day + time), and confirm the contact channel (read a number back digit by "
+        "digit). Never announce a meeting/demo as scheduled unless the caller named or accepted "
+        "a specific day and time."
+    )
+    language_stability_rule = (
+        "LANGUAGE STABILITY: every reply must be in the SAME language and script as YOUR OWN "
+        "previous turns. One word from the caller in another language ('yes', 'achha', 'haan'), "
+        "or one odd/garbled transcript line, is NEVER a cue to switch — treat it as a mis-hear. "
+        "Switch languages only if the caller explicitly asks, or speaks 3+ consecutive full "
+        "sentences in the other language. If your instructions define their own language "
+        "rules, those take precedence."
+    )
+    lead_name_line = f"The caller's name is {lead_name}." if lead_name else ""
+    fields_line = _lead_fields_line(context)
+    end_line = (f"- When the conversation has reached a natural end, say a short goodbye and "
+                f"append {END_MARKER}.")
+    human_line = (
+        f"- If the caller asks for a human, is upset, or you cannot help, say you are connecting "
+        f"them and append {TRANSFER_MARKER}."
+        if (context.get("handoff") or {}).get("enabled")
+        else f"- If the caller asks for a human, say a counsellor will call them right back, "
+             f"then append {END_MARKER}."
+    )
+    disposition_line = (("At the end you must be able to judge the caller's interest as one of: "
+                         + ", ".join(dispositions)) if dispositions else "")
+
+    # An agent whose author wrote a real prompt (opening choreography, identity rules,
+    # language + conversation rules) is AUTHORITATIVE. Piling the generic scaffolding on
+    # top DUPLICATES it and — via intent_line's "introduce yourself" vs a "confirm
+    # identity first" prompt — CONTRADICTS it, which is what produced the double/triple
+    # greeting on live calls. So defer: add ONLY the bot-only knowledge above, plus one
+    # line telling the model its own instructions own the opening.
+    if len(prompt.strip()) >= 600:
+        lines = [
+            prompt,
+            "Your instructions above are AUTHORITATIVE for the opening, identity, language, "
+            "pacing and conversation rules — follow them exactly. Greet and introduce yourself "
+            "ONCE as they specify; never add a second greeting or re-introduce yourself. If the "
+            "caller speaks first (a 'hello' or anything else), your FIRST reply IS your scripted "
+            "opening — never reply with just a bare greeting word.",
+            now_line,
+            greeting_rule,
+            name_sanity_rule,
+            listen_rule,
+            "End every turn with a question, a quick check-in (\u2018right?\u2019) or a clear closing — "
+            "then STOP and wait for the caller\u2019s answer. Never answer your own question or "
+            "continue as if they replied when they haven\u2019t; their silence is NOT consent.",
+            "A neutral SPOKEN acknowledgment to your yes/no question (\u2018okay\u2019, \u2018cool\u2019, \u2018hmm\u2019, "
+            "\u2018go ahead\u2019) means YES — move forward. Never re-ask a question you already asked, "
+            "and never repeat any sentence verbatim; to clarify, rephrase in under 8 words.",
+            language_stability_rule,
+            f"{gender_line} {addressee_line}",
+            script_rule,
+            plain_speech_rule,
+            fast_open_rule,
+            one_step_rule,
+            goal_drive_rule,
+            lead_name_line,
+            fields_line,
+            end_line,
+            human_line,
+            disposition_line,
+        ]
+        return "\n".join(l for l in lines if l)
+
+    # Thin / blank prompt → the full scaffolding it needs to behave at all.
     lines = [
-        agent.get("systemPrompt") or "You are a friendly, concise phone assistant.",
+        prompt or "You are a friendly, concise phone assistant.",
+        non_negotiable,
+        now_line,
+        greeting_rule,
+        name_sanity_rule,
+        listen_rule,
         f"You are {name}. {gender_line}",
         addressee_line,
         intent_line,
-        f"The caller's name is {lead_name}." if lead_name else "",
+        lead_name_line,
+        fields_line,
         ("During the conversation, naturally find out: " + "; ".join(extraction))
         if extraction else "",
         "Rules:",
         "- 1-2 short sentences per reply. ONE question per turn. Never monologue.",
-        # Numbers/times are the #1 audio break on Hinglish calls: the model mixes
-        # languages ('five baje') or spells digits ('two zero zero').
-        "- Clock times: ALWAYS the English 12-hour format — 'five PM', 'ten thirty AM', 'twelve "
-        "noon', 'quarter past six'. NEVER the Hindi 'baje' form and NEVER a mix — 'five baje' and "
-        "'paanch baje' are both WRONG; say 'five PM'.",
+        script_rule,
+        plain_speech_rule,
+        fast_open_rule,
+        one_step_rule,
+        goal_drive_rule,
+        ("- Never repeat the same acknowledgment twice in a row. Rotate naturally — right / "
+         "got it / sure / absolutely — don't open every turn the same way."
+         if is_english else
+         "- Never repeat the same acknowledgment twice in a row. Rotate naturally — हाँ / अच्छा / "
+         "ठीक है / जी बिल्कुल / समझ गई — don't say 'ji' every single turn."),
+        ("- Briefly reflect back the caller's specific point before you answer so they feel "
+         "heard — not a generic 'I understand'."
+         if is_english else
+         "- Briefly reflect back the caller's specific point before you answer (e.g. 'अच्छा, आप "
+         "timing को लेकर puchh rahe hain —') so they feel heard. Not a generic 'मैं समझती हूँ'."),
+        "- Match the caller's energy: a brief, businesslike caller gets crisp efficiency; a "
+        "chatty, warm caller gets a little more warmth. Don't be relentlessly peppy.",
+        ("- Say clock times naturally in the 12-hour format — 'five PM', 'ten thirty AM'."
+         if is_english else
+         "- Clock times: ALWAYS the English 12-hour format — 'five PM', 'ten thirty AM', 'twelve "
+         "noon', 'quarter past six'. NEVER the Hindi 'baje' form and NEVER a mix — 'five baje' and "
+         "'paanch baje' are both WRONG; say 'five PM'."),
         "- Other numbers and money: whole spoken words in the sentence's one language, never spelled "
         "out digit-by-digit — 'do sau rupaye' / 'two hundred rupees' (NEVER 'two zero zero' or 'do "
         "zero zero'), 'pandrah tarikh'. Exception: a 10-digit phone number is read digit by digit.",
-        f"- When the conversation has reached a natural end, say a short goodbye and append {END_MARKER}.",
-        f"- If the caller asks for a human, is upset, or you cannot help, say you are connecting them and append {TRANSFER_MARKER}."
-        if (context.get("handoff") or {}).get("enabled")
-        else f"- If the caller asks for a human, say a counsellor will call them right back, then append {END_MARKER}.",
-        ("At the end you must be able to judge the caller's interest as one of: "
-         + ", ".join(dispositions)) if dispositions else "",
+        end_line,
+        human_line,
+        disposition_line,
+        f"IDENTITY LOCK (most important): your name is EXACTLY \"{name}\" — say it identically "
+        f"every single time, and NEVER introduce yourself with any other name, spelling or "
+        f"variation. Use the SAME company name you introduce yourself with for the whole call; "
+        f"never change, translate or invent a different company name.",
     ]
     return "\n".join(l for l in lines if l)
 
@@ -349,7 +812,21 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # clock only escalates while the bot is NOT speaking (TTS playout is real-time
     # and much slower than token generation), and only USER activity re-arms the
     # nudge — otherwise the nudge's own audio resets it and hangup never escalates.
-    flags = {"t": time.time(), "nudged": False, "bot_speaking": False, "stopping_since": None}
+    flags = {"t": time.time(), "nudged": False, "bot_speaking": False,
+             "user_speaking": False, "stopping_since": None,
+             # REAL WORDS only (final transcripts) — the greet's callee-spoke-first
+             # check keys on this, NOT on flags["t"]: since the idle clock re-arms on
+             # bare VAD activity, pickup noise/breath was making the greet think the
+             # callee had spoken → scripted opening skipped → the model improvised
+             # bare "Hello."s (observed live).
+             "transcript_t": 0.0,
+             # When the caller last STOPPED speaking (VAD) + the last orphan we
+             # handled — Sarvam sometimes swallows a short utterance ENTIRELY (no
+             # data message, not even an empty one), leaving the turn machinery
+             # with nothing to react to. The watchdog compares these to detect
+             # "spoke but no transcript ever came" and continues the conversation.
+             "user_stopped_t": 0.0, "user_started_t": 0.0, "bot_stopped_t": 0.0,
+             "orphan_used": False}
 
     def on_activity(user: bool = True):
         flags["t"] = time.time()
@@ -358,11 +835,56 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     def set_bot_speaking(speaking: bool):
         flags["bot_speaking"] = speaking
+        if not speaking:
+            flags["bot_stopped_t"] = time.time()
 
-    stt = build_stt(settings.sample_rate)
+    def set_user_speaking(speaking: bool):
+        flags["user_speaking"] = speaking
+        if speaking:
+            flags["user_started_t"] = time.time()
+        else:
+            flags["user_stopped_t"] = time.time()
+
+    stt_lang, _ = _agent_language(agent)
+    # Operational utterances (nudge, closings, fillers) in the AGENT's language — an
+    # English call getting a hardcoded Hindi "kya aap sun paa rahe hain?" both jars the
+    # caller and hands the model a Hindi context line to drift onto.
+    eng = stt_lang == "en-IN"
+    nudge_text = ("Hello? Are you still there?" if eng
+                  else "Hello? Kya aap sun paa rahe hain?")
+    cap_farewell = ("I have to end the call now — our team will reach out to you shortly. "
+                    "Thank you!" if eng else
+                    "Mujhe ab call samaapt karni hogi. Hamari team aapse jald sampark karegi. "
+                    "Dhanyavaad!")
+    transfer_closing = ("One moment, connecting you now." if eng
+                        else "Ek moment, main aapko connect kar rahi hoon.")
+    idle_farewell = ("It seems I've lost you — I'll follow up shortly. Thank you, and have a "
+                     "great day!" if eng else
+                     "Lagta hai aapki awaaz nahi aa rahi — main baad mein sampark karti hoon. "
+                     "Dhanyavaad, aapka din shubh ho!")
+    end_closing = ("Alright, thank you. Have a great day!" if eng
+                   else "Theek hai, dhanyavaad. Aapka din shubh ho!")
+    # 'Hmm…' only — 'Right…'/'Okay…' sound like complete replies, and a filler that
+    # reads as an answer right before a stall is worse than no filler (heard live).
+    eng_fillers = ("Hmm…",)
+    # Bias STT toward the agent's own name so a caller repeating it ("aapka naam Aarushi
+    # tha?") isn't transcribed as "Aayushi"/"Aarush" and fed back into the LLM context as
+    # a wrong name — the #1 way the agent "forgets" its name mid-call.
+    stt_bias = (agent.get("name") or "").strip() or None
+    stt = build_stt(settings.sample_rate, language=stt_lang, bias=stt_bias)
+    # Voiced-but-wordless caller turns ("hmm"/"okay" that STT finalizes EMPTY)
+    # become a minimal synthetic backchannel so the conversation continues instead
+    # of dead-airing (see ResilientSarvamSTTService._handle_message). Only while
+    # the bot is quiet, and never in the opening seconds (greet owns those).
+    _call_t0 = time.time()
+    if hasattr(stt, "set_backchannel_gate"):
+        stt.set_backchannel_gate(
+            lambda: not flags["bot_speaking"] and time.time() - _call_t0 > 6.0)
     llm = build_llm()
     tts = build_tts(settings.sample_rate, voice=agent.get("voice"),
-                    aiohttp_session=aiohttp_session)
+                    aiohttp_session=aiohttp_session,
+                    pace=_as_float(agent.get("pace")),
+                    temperature=_as_float(agent.get("temperature")))
 
     llm_context = LLMContext(
         messages=[{"role": "system", "content": build_system_prompt(context)}]
@@ -375,9 +897,18 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         user_params=LLMUserAggregatorParams(aggregation_timeout=settings.agg_timeout_secs),
     )
 
+    def on_transcript():
+        flags["transcript_t"] = time.time()
+        # Real words re-arm the one-shot orphan (see watchdog).
+        flags["orphan_used"] = False
+
     transcript = TranscriptCollector(outcome, on_activity,
-                                     is_bot_speaking=lambda: flags["bot_speaking"])
-    sentinel = SentinelGate(outcome, on_activity, set_bot_speaking)
+                                     is_bot_speaking=lambda: flags["bot_speaking"],
+                                     set_user_speaking=set_user_speaking,
+                                     filler_phrases=eng_fillers if eng else None,
+                                     on_transcript=on_transcript)
+    sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
+                            transfer_closing=transfer_closing, end_closing=end_closing)
 
     pipeline = Pipeline([
         transport.input(),
@@ -397,28 +928,73 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             audio_in_sample_rate=settings.sample_rate,
             audio_out_sample_rate=settings.sample_rate,
             enable_metrics=True,
+            # Barge-in: when the caller starts speaking, cancel the bot's TTS and let their
+            # turn be heard — a real conversation, not the bot talking over an interrupting
+            # caller. Was unset (no interruption), which caused the overlaps on live calls.
+            allow_interruptions=True,
+            # ...but require ≥2 words to interrupt, so a single stray sound, a cough, or a
+            # backchannel ("haan", "hmm", "achha") does NOT cancel the bot mid-sentence and
+            # derail it. A real correction (more words) still barges in immediately.
+            interruption_strategies=[MinWordsInterruptionStrategy(min_words=2)],
         ),
+        observers=[TtfbObserver(corr).observer],
     )
     sentinel.set_task(task)
 
     async def _greet_when_ready():
-        """Don't blast the opening the instant the line connects — a real caller waits
-        for the callee to pick up and say 'hello'. Give them a short beat: if they speak
-        first, the normal STT→LLM turn greets them back (so the bot never talks over their
-        'hello' and never double-greets); if they stay silent past the grace window, WE
-        open. flags['t'] advances on the first transcribed user speech, so t > connect_t
-        means the callee spoke."""
-        opening = agent.get("openingLine")
-        if not opening:
-            return
+        """Open the call like a person would. On OUTBOUND the callee has already said
+        'hello' when they picked up, so we SPEAK FIRST after a short beat — long enough
+        not to clip their 'hello', short enough to avoid the dead-air / 'double hello'
+        that makes an agent feel robotic (the old 2s wait was the culprit). If the callee
+        says something substantive in that beat (e.g. 'kaun?'), their turn drives the
+        LLM's reply and we don't also open. flags['t'] advances on the first transcribed
+        user speech, so t > connect_t means the callee spoke.
+
+        The opening itself: if the agent set an explicit openingLine, speak it verbatim
+        (instant, pre-scripted — good for a fixed compliance line). Otherwise let the LLM
+        generate the opening from the system prompt (warm, in-persona, uses the lead's
+        name) — the SAME path that already runs when a caller speaks first, so it's
+        proven. A bare scripted 'Hello' spoken straight to TTS is what felt robotic."""
+        # Fill {{placeholders}} + strip script artifacts BEFORE speaking: admins paste
+        # whole scripts into the field — a live call read '# VACADEMY AI – INTRODUCTION
+        # SPEECH … (Wait for confirmation) … {{lead_name}}' aloud, verbatim.
+        opening = _clean_opening(_fill_placeholders(
+            (agent.get("openingLine") or "").strip(), context))
         connect_t = time.time()
         while time.time() - connect_t < settings.greet_delay_secs:
-            if flags["t"] > connect_t + 0.05:
-                logger.info("greet: callee spoke first — LLM will reply, skipping scripted opening (corr=%s)", corr)
+            # Skip our open ONLY on real transcribed words — not on VAD noise
+            # (pickup clatter/breath was falsely skipping the scripted opening).
+            if flags["transcript_t"] > connect_t + 0.05:
+                logger.info("greet: callee spoke first — LLM replies, skipping our open (corr=%s)", corr)
                 return
             await asyncio.sleep(0.1)
-        outcome.transcript.append({"role": "assistant", "text": opening})
-        await task.queue_frames([TTSSpeakFrame(opening)])
+        if opening:
+            # Append to the LLM CONTEXT as well as speaking: a TTSSpeakFrame is consumed
+            # by the TTS and its text NEVER reaches the assistant aggregator (verified in
+            # pipecat 0.0.95 source), so the model didn't know it had already greeted and
+            # re-greeted from scratch on the caller's first reply — the observed
+            # double/triple-greeting. run_llm omitted => append only, no generation.
+            logger.info("greet: openingLine spoken (corr=%s)", corr)
+            outcome.transcript.append({"role": "assistant", "text": opening})
+            await task.queue_frames([
+                LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": opening}]),
+                TTSSpeakFrame(opening)])
+        else:
+            # No scripted line → LLM opens. Seed a synthetic caller 'Hello?' into the LLM
+            # context (NOT our saved transcript) and run: this reproduces the exact
+            # proven caller-spoke-first path, so the model reliably emits its persona
+            # opening instead of us hoping it generates from a system-only context.
+            logger.info("greet: LLM-generated opening (corr=%s)", corr)
+            # Bracketed CUE, not a synthetic "Hello?": seeding a fake caller hello
+            # taught the model that hello earns hello back — live calls opened with a
+            # "Hello"/"Ji"/"Hello" ping-pong for two wasted rounds before the real
+            # opening. A stage cue makes it deliver the scripted opening directly.
+            await task.queue_frames([LLMMessagesAppendFrame(
+                messages=[{"role": "user", "content":
+                           "[The call has just connected and the person is on the line. "
+                           "Deliver your opening now, exactly as your instructions "
+                           "specify — do not just say 'hello'.]"}],
+                run_llm=True)])
 
     @transport.event_handler("on_client_connected")
     async def _on_connected(_transport, _client):
@@ -453,24 +1029,67 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             if time.time() - outcome.connected_at >= cap_secs:
                 logger.info("max call duration reached corr=%s (%.0fs)", corr, cap_secs)
                 outcome.end_requested = True
-                await task.queue_frames([TTSSpeakFrame(
-                    "Mujhe ab call samaapt karni hogi. Hamari team aapse jald sampark karegi. Dhanyavaad!")])
+                await task.queue_frames([TTSSpeakFrame(cap_farewell)])
                 await _begin_stop()
                 continue
 
-            # Idle handling — clock paused while the bot is speaking.
-            if flags["bot_speaking"]:
+            # Idle handling — clock paused while the bot is speaking AND while the
+            # CALLER is speaking (VAD-armed): Sarvam STT emits finals only, so during a
+            # long caller utterance no transcript arrives and the clock used to go
+            # stale — the nudge fired at the caller mid-sentence.
+            if flags["bot_speaking"] or flags["user_speaking"]:
                 continue
+
+            # VAD-orphan: the caller audibly spoke but NO transcript arrived for
+            # that utterance ("Yeah, I'm Shreyash" produced no STT data message at
+            # all → dead air). PRECISION MATTERS — the first version armed on
+            # `stopped_t > transcript_t`, but Sarvam's finals land WHILE the caller
+            # is still speaking, so that test was true after every normal utterance
+            # and the bot steamrolled ("Thank you" to a consent question the caller
+            # never answered, 6 mis-fires in one call). Correct discriminator: no
+            # final has arrived SINCE THE UTTERANCE BEGAN. And the reaction is to
+            # ASK, not assume — a human who missed words says "sorry, say that
+            # again?", they don't act as if they heard a yes. One-shot until real
+            # words arrive; only after the bot has been quiet ≥2s (never steal the
+            # caller's turn at bot-stop).
+            now = time.time()
+            ust, usta = flags["user_stopped_t"], flags["user_started_t"]
+            if (ust > 0 and not flags["orphan_used"]
+                    and usta > flags["transcript_t"]          # nothing captured since speech began
+                    and usta > 0 and ust - usta >= 0.4        # a real utterance, not a blip
+                    and 2.5 <= now - ust <= 10.0
+                    and now - flags["bot_stopped_t"] >= 2.0
+                    and now - outcome.connected_at > 6.0):
+                flags["orphan_used"] = True
+                flags["t"] = now
+                logger.info("vad-orphan ask-repeat corr=%s (no transcript %.1fs after speech)",
+                            corr, now - ust)
+                repeat_line = ("Sorry, I missed that — could you say that again?" if eng else
+                               "Maaf kijiye, main sun nahi paayi — ek baar phir boliye?")
+                await task.queue_frames([
+                    LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": repeat_line}]),
+                    TTSSpeakFrame(repeat_line)])
+                continue
+
             idle = time.time() - flags["t"]
             if idle < settings.idle_timeout_secs:
                 continue
             if not flags["nudged"]:
                 flags["nudged"] = True
                 flags["t"] = time.time()
-                await task.queue_frames([TTSSpeakFrame("Hello? Kya aap sun paa rahe hain?")])
+                # Context-append too: TTSSpeakFrame text never reaches the LLM context,
+                # so without this the model doesn't know it asked and can't react to
+                # the caller's "haan sun raha hoon" coherently.
+                await task.queue_frames([
+                    LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": nudge_text}]),
+                    TTSSpeakFrame(nudge_text)])
             else:
+                # Speak a brief closing BEFORE dropping — a silent hangup felt like the
+                # call "disconnected without a proper close" (live feedback). _begin_stop's
+                # graceful-stop deadline lets the farewell play out (same as cap_farewell).
                 logger.info("idle hangup corr=%s", corr)
                 outcome.end_requested = True
+                await task.queue_frames([TTSSpeakFrame(idle_farewell)])
                 await _begin_stop()
 
     watchdog_task = asyncio.create_task(watchdog())

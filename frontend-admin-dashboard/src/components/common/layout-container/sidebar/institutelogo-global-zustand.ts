@@ -4,6 +4,9 @@ export interface BrandingDisplaySettings {
     hideInstituteName: boolean;
     logoWidthPx: number | null;
     logoHeightPx: number | null;
+    // When true, the institute name is stacked below the logo (centered vertical)
+    // instead of beside it. Default false = existing side-by-side layout.
+    stackNameBelowLogo: boolean;
 }
 
 interface InstituteStore {
@@ -18,6 +21,7 @@ const defaultBrandingDisplay: BrandingDisplaySettings = {
     hideInstituteName: false,
     logoWidthPx: null,
     logoHeightPx: null,
+    stackNameBelowLogo: false,
 };
 
 const useInstituteLogoStore = create<InstituteStore>((set) => ({

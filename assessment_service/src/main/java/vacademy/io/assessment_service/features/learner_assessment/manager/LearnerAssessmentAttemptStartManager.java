@@ -56,6 +56,9 @@ public class LearnerAssessmentAttemptStartManager {
     @Autowired
     vacademy.io.assessment_service.features.assessment.service.WorkflowTriggerClient workflowTriggerClient;
 
+    @Autowired
+    vacademy.io.assessment_service.features.translation.service.TranslationService translationService;
+
 
     @Transactional
     public ResponseEntity<LearnerAssessmentStartPreviewResponse> startAssessmentPreview(CustomUserDetails user, String assessmentId, String instituteId, String batchIds, BasicParticipantDTO basicParticipantDTO) {
@@ -68,15 +71,37 @@ public class LearnerAssessmentAttemptStartManager {
         Optional<AssessmentUserRegistration> assessmentUserRegistration = userRegistrationService.findByAssessmentIdAndUserId(assessmentId, user.getUserId());
         AssessmentUserRegistration newAssessmentUserRegistration = verifyAssessmentRegistration(assessment.get(), assessmentUserRegistration, batchIds, basicParticipantDTO);
         verifyAssessmentStart(assessment.get());
-        verifyLastAttemptState(getLastStudentAttempt(newAssessmentUserRegistration));
 
-        StudentAttempt newStudentAttempt = createStudentAttempt(newAssessmentUserRegistration, assessment.get());
+        // Reuse a leftover PREVIEW attempt (learner opened the instructions but
+        // never clicked Start) instead of blocking. Otherwise the dangling
+        // PREVIEW attempt is not ENDED, so verifyLastAttemptState throws
+        // "Assessment already live or in preview" and the learner is stuck for
+        // good: start-preview is blocked here, restart rejects PREVIEW, and the
+        // only endpoint that accepts a PREVIEW attempt (start) can't be reached
+        // without a preview response. A genuinely LIVE attempt still blocks —
+        // that is an in-progress test and must be resumed via restart, not by
+        // spawning a fresh preview. The exam clock is unaffected: startAssessment
+        // stamps a fresh start/end time when Start is actually clicked.
+        Optional<StudentAttempt> lastAttempt = getLastStudentAttempt(newAssessmentUserRegistration);
+        StudentAttempt newStudentAttempt;
+        if (lastAttempt.isPresent()
+                && AssessmentAttemptEnum.PREVIEW.name().equals(lastAttempt.get().getStatus())) {
+            newStudentAttempt = lastAttempt.get();
+        } else {
+            verifyLastAttemptState(lastAttempt);
+            newStudentAttempt = createStudentAttempt(newAssessmentUserRegistration, assessment.get());
+        }
 
         LearnerAssessmentStartPreviewResponse learnerAssessmentStartPreviewResponse = new LearnerAssessmentStartPreviewResponse();
         learnerAssessmentStartPreviewResponse.setAssessmentUserRegistrationId(newAssessmentUserRegistration.getId());
         learnerAssessmentStartPreviewResponse.setAttemptId(newStudentAttempt.getId());
         learnerAssessmentStartPreviewResponse.setPreviewTotalTime(assessment.get().getPreviewTime());
-        learnerAssessmentStartPreviewResponse.setSectionDtos(createSectionDtoList(assessment.get()));
+        // i18n: swap servable (PUBLISHED/STALE) sidecar translations into the
+        // preview DTOs for the request locale. No-op for "en"; per-item
+        // fallback to canonical content; never throws (DTO shape unchanged).
+        List<SectionDto> sectionDtos = createSectionDtoList(assessment.get());
+        translationService.localizeSectionDtos(sectionDtos);
+        learnerAssessmentStartPreviewResponse.setSectionDtos(sectionDtos);
         return ResponseEntity.ok(learnerAssessmentStartPreviewResponse);
     }
 
@@ -221,6 +246,9 @@ public class LearnerAssessmentAttemptStartManager {
         studentAttempt.get().setStartTime(startTime);
         Date endTime = DateUtil.addMinutes(startTime, studentAttempt.get().getMaxTime());
         studentAttempt.get().setStatus(AssessmentAttemptEnum.LIVE.name());
+        // i18n: stamp which content locale this attempt is being served in
+        // (?lang > Accept-Language > JWT claim > "en"). Purely additive.
+        studentAttempt.get().setContentLocale(translationService.resolveRequestLocale());
 
         studentAttemptRepository.save(studentAttempt.get());
 

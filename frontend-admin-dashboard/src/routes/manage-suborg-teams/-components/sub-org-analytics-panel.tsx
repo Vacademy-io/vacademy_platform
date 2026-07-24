@@ -19,39 +19,22 @@ import {
     type SubOrgFinanceDetail,
     type InvoiceSummary,
 } from '@/routes/manage-custom-teams/-services/custom-team-services';
-import { getInvoiceDownloadUrl, fetchInvoiceById, rejectInvoice, type InvoiceDTO } from '@/services/invoice-service';
+import {
+    getInvoiceDownloadUrl,
+    fetchInvoiceById,
+    fetchUserAccountSummary,
+    fetchUserAccountLedger,
+    rejectInvoice,
+    type InvoiceDTO,
+    type UserAccountSummaryDTO,
+    type UserAccountLedgerEntryDTO,
+} from '@/services/invoice-service';
 import { getPaymentOptions } from '@/services/payment-options';
 import type { PaymentOptionApi } from '@/types/payment';
 import { getCurrencySymbol } from '@/routes/settings/-components/Payment/utils/utils';
 import { formatPlanPrice } from '@/utils/finance-utils';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
-
-/**
- * Pick a working URL for an invoice — same pattern manage-students payment-history
- * uses. Direct `pdf_url` first; otherwise the canonical
- * /v1/invoices/{invoiceId}/download endpoint (which now regenerates the PDF on the
- * fly when the persisted Invoice has no fileId). Synthetic SFP rows that have a
- * linked real Invoice expose its id on `inv.id`, so this resolver naturally hits
- * the right endpoint without any SFP-specific path. Rows that are still synthetic
- * (id starts with `sfp:`) have no payment yet → No PDF is correct.
- */
-function resolveInvoiceUrl(inv: InvoiceSummary): string | null {
-    const direct = inv.pdf_url || inv.pdfUrl;
-    if (direct) return direct;
-    const fileId = inv.pdf_file_id || inv.pdfFileId || inv.file_id || inv.fileId;
-    if (fileId) return getInvoiceDownloadUrl(inv.id);
-    // A real Invoice id exists for this synthetic row → call the canonical endpoint,
-    // which regenerates the PDF when missing. Rows whose id is still "sfp:..." have
-    // no payment yet (DUE/UNPAID) → leave as "No PDF".
-    if (typeof inv.id === 'string' && !inv.id.startsWith('sfp:')) {
-        const status = String(inv.status || '').toUpperCase();
-        if (status === 'PAID' || status === 'PARTIAL' || status === 'PARTIAL_PAID') {
-            return getInvoiceDownloadUrl(inv.id);
-        }
-    }
-    return null;
-}
 import {
     AlertDialog,
     AlertDialogAction,
@@ -68,7 +51,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, Copy, CopySimple, Plus, XCircle } from '@phosphor-icons/react';
+import { Bell, Copy, CopySimple, Plus, XCircle, ArrowCircleUp, ArrowCircleDown, ClockCounterClockwise } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { useState } from 'react';
 import { MyButton } from '@/components/design-system/button';
@@ -79,6 +62,7 @@ import {
     sendInvoiceReminder,
 } from '@/routes/manage-custom-teams/-services/custom-team-services';
 import { CreateInvoiceDialog } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-payment-history/create-invoice-dialog';
+
 // Add-admin-user form (CPO installment editor + discount card). Used to be mounted
 // at deep-page level which made it visible on every tab; it now lives inside the
 // Admin Payment tab where the admin enrollment context belongs.
@@ -99,6 +83,25 @@ interface Props {
      * route `/manage-custom-teams/sub-orgs/$slug` stays unaffected.
      */
     restrictedView?: boolean;
+}
+
+/**
+ * Pick a working URL for an invoice. Direct `pdf_url` first; otherwise the canonical
+ * /v1/invoices/{invoiceId}/download endpoint (which regenerates the PDF on the fly).
+ * Synthetic SFP rows with no payment yet return null → "No PDF".
+ */
+function resolveInvoiceUrl(inv: InvoiceSummary): string | null {
+    const direct = inv.pdf_url || inv.pdfUrl;
+    if (direct) return direct;
+    const fileId = inv.pdf_file_id || inv.pdfFileId || inv.file_id || inv.fileId;
+    if (fileId) return getInvoiceDownloadUrl(inv.id);
+    if (typeof inv.id === 'string' && !inv.id.startsWith('sfp:')) {
+        const status = String(inv.status || '').toUpperCase();
+        if (status === 'PAID' || status === 'PARTIAL' || status === 'PARTIAL_PAID') {
+            return getInvoiceDownloadUrl(inv.id);
+        }
+    }
+    return null;
 }
 
 /**
@@ -170,6 +173,15 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
         enabled: !!adminUserId,
     });
 
+    // Ledger summary for the sub-org admin — total accrued / paid / balance / overdue.
+    // Only fetched once we know the admin's userId and the parent instituteId.
+    const { data: adminAccountSummary } = useQuery<UserAccountSummaryDTO>({
+        queryKey: ['sub-org-admin-account-summary', adminUserId, instituteId],
+        queryFn: () => fetchUserAccountSummary(adminUserId!, instituteId!),
+        enabled: !!adminUserId && !!instituteId,
+        staleTime: 60000,
+    });
+
     const admin = finance?.admin_payment;
     const learners = finance?.learners || [];
     const totals = finance?.totals;
@@ -198,6 +210,56 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
         }
         return psId;
     };
+
+    // Effective account summary — ledger data when available, client-side fallback otherwise.
+    // Computed here (component level) so it's accessible both above the tabs and inside them.
+    const effectiveAdminSummary: UserAccountSummaryDTO | null = (() => {
+        const hasLedger =
+            adminAccountSummary
+            && (adminAccountSummary.total_accrued > 0 || adminAccountSummary.total_paid > 0);
+        if (hasLedger) return adminAccountSummary!;
+        // Fallback: derive totals from the invoices list (covers old invoices / pre-migration installs)
+        if (invoices.length === 0) return null;
+        const currency = (invoices[0]?.currency as string | undefined) || 'INR';
+        const totalAccrued = invoices
+            .filter((inv) => String(inv.status || '').toUpperCase() !== 'REJECTED')
+            .reduce((s, inv) => s + ((inv.total_amount ?? inv.totalAmount ?? 0) as number), 0);
+        const totalPaid = invoices
+            .filter((inv) => String(inv.status || '').toUpperCase() === 'PAID')
+            .reduce((s, inv) => s + ((inv.total_amount ?? inv.totalAmount ?? 0) as number), 0);
+        const balance = Math.max(0, totalAccrued - totalPaid);
+        const now = Date.now();
+        const overdue = invoices
+            .filter((inv) => {
+                const st = String(inv.status || '').toUpperCase();
+                const isPending = st === 'PENDING_PAYMENT' || st === 'GENERATED' || st === 'SENT';
+                const pastDue = inv.due_date
+                    ? new Date(String(inv.due_date)).getTime() < now
+                    : false;
+                return isPending && pastDue;
+            })
+            .reduce((s, inv) => s + ((inv.total_amount ?? inv.totalAmount ?? 0) as number), 0);
+        return {
+            user_id: adminUserId || '',
+            institute_id: instituteId || '',
+            total_accrued: totalAccrued,
+            total_paid: totalPaid,
+            balance,
+            overdue,
+            currency,
+        } as UserAccountSummaryDTO;
+    })();
+
+    const [ledgerPage, setLedgerPage] = useState(0);
+    const LEDGER_PAGE_SIZE = 10;
+    const { data: ledgerData } = useQuery({
+        queryKey: ['sub-org-admin-ledger', adminUserId, instituteId, ledgerPage],
+        queryFn: () => fetchUserAccountLedger(adminUserId!, instituteId!, ledgerPage, LEDGER_PAGE_SIZE),
+        enabled: !!adminUserId && !!instituteId,
+        staleTime: 60000,
+    });
+    const ledgerEntries: UserAccountLedgerEntryDTO[] = ledgerData?.content ?? [];
+    const ledgerTotalPages = ledgerData?.totalPages ?? 1;
 
     const [showLedger, setShowLedger] = useState(false);
     const [activeTab, setActiveTab] = useState<'admin' | 'courses' | 'learners' | 'invoices' | 'team'>('admin');
@@ -428,6 +490,106 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                 )}
             </div>
 
+            {/* Account Summary — always visible above tabs so it's reachable from any tab.
+                Ledger data is authoritative; falls back to client-side totals from invoices. */}
+            {effectiveAdminSummary && (
+                <div className="rounded-lg border bg-white p-4">
+                    <h4 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        <Wallet className="h-3.5 w-3.5" />
+                        Account Summary
+                    </h4>
+                    <AccountSummaryGrid summary={effectiveAdminSummary} />
+                </div>
+            )}
+
+            {/* Transaction History — append-only ledger entries, always visible below summary. */}
+            {adminUserId && instituteId && (
+                <div className="rounded-lg border bg-white p-4">
+                    <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        <ClockCounterClockwise className="h-3.5 w-3.5" />
+                        Transaction History
+                    </h4>
+                    {ledgerEntries.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No transactions recorded yet.</p>
+                    ) : (
+                        <div className="space-y-2">
+                            <ul className="divide-y divide-neutral-100 overflow-hidden rounded-lg border border-neutral-200">
+                                {ledgerEntries.map((entry) => {
+                                    const LEDGER_META: Record<string, { label: string; cls: string; isCredit: boolean }> = {
+                                        DEBIT_ACCRUAL:     { label: 'Invoice raised',   cls: 'bg-red-50 text-red-700 border-red-200',         isCredit: false },
+                                        CREDIT_PAYMENT:    { label: 'Payment received',  cls: 'bg-green-50 text-green-700 border-green-200',   isCredit: true  },
+                                        CREDIT_WAIVER:     { label: 'Waiver',            cls: 'bg-blue-50 text-blue-700 border-blue-200',      isCredit: true  },
+                                        CREDIT_ADJUSTMENT: { label: 'Adjustment',        cls: 'bg-amber-50 text-amber-700 border-amber-200',   isCredit: true  },
+                                        DEBIT_PENALTY:     { label: 'Penalty',           cls: 'bg-orange-50 text-orange-700 border-orange-200',isCredit: false },
+                                    };
+                                    const meta = LEDGER_META[entry.event_type] ?? {
+                                        label: entry.event_type,
+                                        cls: 'bg-gray-50 text-gray-600 border-gray-200',
+                                        isCredit: false,
+                                    };
+                                    const sym = entry.currency === 'USD' ? '$' : entry.currency === 'EUR' ? '€' : '₹';
+                                    const amtStr = `${sym}${Number(entry.amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                                    return (
+                                        <li key={entry.id} className="flex items-start gap-2.5 px-3 py-2 text-xs hover:bg-neutral-50">
+                                            <span className="mt-0.5 shrink-0">
+                                                {meta.isCredit
+                                                    ? <ArrowCircleUp className="size-4 text-green-600" weight="duotone" />
+                                                    : <ArrowCircleDown className="size-4 text-red-500" weight="duotone" />
+                                                }
+                                            </span>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex flex-wrap items-center gap-1.5">
+                                                    <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium ${meta.cls}`}>
+                                                        {meta.label}
+                                                    </span>
+                                                    {entry.remarks && (
+                                                        <span className="truncate text-[11px] text-muted-foreground" title={entry.remarks}>
+                                                            {entry.remarks}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                                    {fmtDate(entry.created_at)}
+                                                    {entry.source_type && <> · {entry.source_type.replace(/_/g, ' ')}</>}
+                                                </p>
+                                            </div>
+                                            <span className={`shrink-0 font-semibold tabular-nums ${meta.isCredit ? 'text-green-700' : 'text-red-600'}`}>
+                                                {meta.isCredit ? '+' : '-'}{amtStr}
+                                            </span>
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                            {ledgerTotalPages > 1 && (
+                                <div className="flex items-center justify-between px-1">
+                                    <span className="text-[10px] text-muted-foreground">
+                                        Page {ledgerPage + 1} of {ledgerTotalPages}
+                                    </span>
+                                    <div className="flex gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setLedgerPage((p) => Math.max(0, p - 1))}
+                                            disabled={ledgerPage === 0}
+                                            className="rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-40"
+                                        >
+                                            <ChevronDown className="h-3.5 w-3.5 rotate-90" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setLedgerPage((p) => Math.min(ledgerTotalPages - 1, p + 1))}
+                                            disabled={ledgerPage >= ledgerTotalPages - 1}
+                                            className="rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-40"
+                                        >
+                                            <ChevronDown className="h-3.5 w-3.5 -rotate-90" />
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {/* Horizontal tabs — each tab renders its own dataset lazily on click. */}
             <Tabs
                 value={activeTab}
@@ -612,6 +774,7 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                         )}
                     </section>
 
+
                     {/* Direct "Add admin user" form — CPO installment editor + discount
                         card live in this section. Lets the institute admin enroll the
                         sub-org admin directly (with installment overrides) instead of
@@ -793,173 +956,227 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                                 No invoices generated yet.
                             </p>
                         ) : (
-                            <ul className="space-y-1">
+                            <ul className="space-y-2">
                                 {invoices.map((inv) => {
-                                    const number =
-                                        inv.invoice_number || inv.invoiceNumber || inv.id;
+                                    const number = inv.invoice_number || inv.invoiceNumber || inv.id;
                                     const date = inv.invoice_date || inv.invoiceDate;
                                     const amount = inv.total_amount ?? inv.totalAmount;
                                     const url = resolveInvoiceUrl(inv);
                                     const status = String(inv.status || '').toUpperCase();
-                                    // Synthetic SFP rows carry id "sfp:<sfpId>". The Remind button only fires for those —
-                                    // real Invoice rows are receipts (PAID), not future obligations.
+                                    const source = (inv.source as string | null | undefined) || null;
+
+                                    // ── Row classification ────────────────────────────────────
+                                    // 1. SFP rows (sfp: prefix) = CPO installments from the
+                                    //    user_plan installment schedule. Actions: Remind only.
+                                    // 2. ADMIN_MANUAL = institute admin created via Create Invoice.
+                                    //    Actions: Copy Link · Mark Paid · Remind · Reject · Duplicate.
+                                    // 3. USER_PLAN = auto-generated on plan subscription/renewal.
+                                    //    Actions: Copy Link only (gateway owns the payment flow;
+                                    //    mark-paid would leave the subscription state out of sync).
+                                    // 4. Other real rows (legacy / unknown source) = Copy Link + PDF only.
                                     const isSfpRow = typeof inv.id === 'string' && inv.id.startsWith('sfp:');
                                     const sfpId = isSfpRow ? inv.id.slice('sfp:'.length) : null;
-                                    const isRemindable =
+                                    const isAdminManual = !isSfpRow && (source === 'ADMIN_MANUAL' || source === null);
+                                    const isUserPlan = !isSfpRow && source === 'USER_PLAN';
+                                    const isPending =
+                                        status === 'PENDING_PAYMENT'
+                                        || status === 'GENERATED'
+                                        || status === 'SENT';
+
+                                    const isSfpRemindable =
                                         canEditLedger
                                         && !!sfpId
-                                        && (status === 'PENDING'
-                                            || status === 'UNPAID'
-                                            || status === 'OVERDUE'
-                                            || status === 'PARTIAL'
+                                        && (status === 'PENDING' || status === 'UNPAID'
+                                            || status === 'OVERDUE' || status === 'PARTIAL'
                                             || status === 'PARTIAL_PAID');
-                                    // Real admin invoices in pending payment carry a
-                                    // payment_link and are eligible for Mark Paid; SFP
-                                    // synthetic rows are excluded (they have their own
-                                    // Remind flow).
+                                    const isAdminInvoicePending = isAdminManual && isPending && typeof inv.id === 'string';
+                                    const isUserPlanPending = isUserPlan && isPending && typeof inv.id === 'string';
                                     const paymentLink = inv.payment_link || inv.paymentLink;
-                                    const isPendingAdminInvoice =
-                                        !isSfpRow
-                                        && status === 'PENDING_PAYMENT'
-                                        && typeof inv.id === 'string';
+
+                                    // Source badge colours / labels
+                                    const sourceMeta = isSfpRow
+                                        ? { label: 'CPO Installment', cls: 'bg-amber-50 text-amber-700 border-amber-200' }
+                                        : source === 'ADMIN_MANUAL'
+                                          ? { label: 'Admin Invoice', cls: 'bg-purple-50 text-purple-700 border-purple-200' }
+                                          : source === 'USER_PLAN'
+                                            ? { label: 'Subscription', cls: 'bg-blue-50 text-blue-700 border-blue-200' }
+                                            : source === 'STUDENT_FEE_PAYMENT'
+                                              ? { label: 'Fee Payment', cls: 'bg-teal-50 text-teal-700 border-teal-200' }
+                                              : null;
+
                                     return (
                                         <li
                                             key={inv.id}
-                                            className="flex items-center justify-between gap-2 rounded border px-3 py-2 text-xs"
+                                            className="flex flex-col gap-1.5 rounded border px-3 py-2.5 text-xs"
                                         >
-                                            <div className="min-w-0 flex-1">
-                                                <p className="truncate font-medium">{number}</p>
-                                                <p className="text-[10px] text-muted-foreground">
-                                                    {date ? fmtDate(date) : '—'}
-                                                    {inv.status ? ` · ${inv.status}` : ''}
-                                                </p>
+                                            {/* Row header: number + amount + source badge */}
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                                                        <p className="truncate font-medium">{number}</p>
+                                                        {sourceMeta && (
+                                                            <span className={`inline-flex shrink-0 items-center rounded border px-1.5 py-0.5 text-[10px] font-medium ${sourceMeta.cls}`}>
+                                                                {sourceMeta.label}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                                        {date ? fmtDate(date) : '—'}
+                                                        {inv.status ? ` · ${inv.status}` : ''}
+                                                    </p>
+                                                </div>
+                                                <span className="shrink-0 font-semibold">
+                                                    {fmtMoney(amount)}
+                                                </span>
                                             </div>
-                                            <span className="shrink-0 font-medium">
-                                                {fmtMoney(amount)}
-                                            </span>
-                                            {isRemindable && sfpId && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => remindMutation.mutate(sfpId)}
-                                                    disabled={remindingId === sfpId}
-                                                    className="inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-                                                    title="Send installment-due reminder"
-                                                >
-                                                    <Bell className="size-3" />
-                                                    {remindingId === sfpId ? 'Sending…' : 'Remind'}
-                                                </button>
-                                            )}
-                                            {isPendingAdminInvoice && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        invoiceReminderMutation.mutate(inv.id)
-                                                    }
-                                                    disabled={remindingId === inv.id}
-                                                    className="inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-                                                    title="Re-send the payment-due reminder (email + in-app alert)"
-                                                >
-                                                    <Bell className="size-3" />
-                                                    {remindingId === inv.id ? 'Sending…' : 'Remind'}
-                                                </button>
-                                            )}
-                                            {isPendingAdminInvoice && paymentLink && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleCopyInvoiceLink(inv.id, paymentLink)}
-                                                    className="inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
-                                                    title="Copy learner payment link"
-                                                >
-                                                    {copiedLinkId === inv.id ? (
-                                                        <>
-                                                            <CircleCheck className="size-3" />
-                                                            Copied
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <Copy className="size-3" />
-                                                            Copy Link
-                                                        </>
-                                                    )}
-                                                </button>
-                                            )}
-                                            {isPendingAdminInvoice && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        setMarkPaidTarget({
-                                                            id: inv.id,
-                                                            number:
-                                                                inv.invoice_number
-                                                                || inv.invoiceNumber
-                                                                || inv.id,
-                                                        })
-                                                    }
-                                                    className="inline-flex shrink-0 items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
-                                                    title="Record an offline / manual payment for this invoice"
-                                                >
-                                                    Mark Paid
-                                                </button>
-                                            )}
-                                            {isPendingAdminInvoice && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        setRejectTarget({
-                                                            id: inv.id,
-                                                            number:
-                                                                inv.invoice_number || inv.invoiceNumber || inv.id,
-                                                        })
-                                                    }
-                                                    disabled={rejectingId === inv.id}
-                                                    className="inline-flex shrink-0 items-center gap-1 rounded border border-danger-300 bg-danger-50 px-2 py-1 text-2xs uppercase tracking-wide text-danger-700 hover:bg-danger-100 disabled:opacity-50"
-                                                    title="Void this invoice — created in error, has a mistake, etc."
-                                                >
-                                                    <XCircle className="size-3" />
-                                                    {rejectingId === inv.id ? 'Rejecting…' : 'Reject'}
-                                                </button>
-                                            )}
-                                            {!isSfpRow && typeof inv.id === 'string' && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => void handleDuplicateInvoice(inv.id)}
-                                                    disabled={duplicatingId === inv.id}
-                                                    className="inline-flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-2xs uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
-                                                    title="Create a new invoice pre-filled with this one's items"
-                                                >
-                                                    <CopySimple className="size-3" />
-                                                    {duplicatingId === inv.id ? 'Loading…' : 'Duplicate'}
-                                                </button>
-                                            )}
-                                            {url ? (
-                                                <div className="flex shrink-0 items-center gap-1">
-                                                    <a
-                                                        href={url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
-                                                        title="View PDF in new tab"
+
+                                            {/* Action row — source-specific buttons */}
+                                            <div className="flex flex-wrap items-center gap-1.5">
+
+                                                {/* CPO installment — Remind + Copy Link + Record Offline */}
+                                                {isSfpRemindable && sfpId && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => remindMutation.mutate(sfpId)}
+                                                        disabled={remindingId === sfpId}
+                                                        className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                                                        title="Send installment-due reminder"
                                                     >
-                                                        <ExternalLink className="h-3 w-3" />
-                                                        View
-                                                    </a>
+                                                        <Bell className="size-3" />
+                                                        {remindingId === sfpId ? 'Sending…' : 'Remind'}
+                                                    </button>
+                                                )}
+                                                {isSfpRow && paymentLink && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCopyInvoiceLink(inv.id, paymentLink)}
+                                                        className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                        title="Copy payment link to share with learner"
+                                                    >
+                                                        {copiedLinkId === inv.id ? (
+                                                            <><CircleCheck className="size-3" /> Copied</>
+                                                        ) : (
+                                                            <><Copy className="size-3" /> Copy Link</>
+                                                        )}
+                                                    </button>
+                                                )}
+
+                                                {/* ADMIN_MANUAL pending — full action set */}
+                                                {isAdminInvoicePending && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => invoiceReminderMutation.mutate(inv.id)}
+                                                        disabled={remindingId === inv.id}
+                                                        className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                                                        title="Re-send payment-due reminder"
+                                                    >
+                                                        <Bell className="size-3" />
+                                                        {remindingId === inv.id ? 'Sending…' : 'Remind'}
+                                                    </button>
+                                                )}
+                                                {isAdminInvoicePending && paymentLink && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCopyInvoiceLink(inv.id, paymentLink)}
+                                                        className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                        title="Copy payment link to share with learner"
+                                                    >
+                                                        {copiedLinkId === inv.id ? (
+                                                            <><CircleCheck className="size-3" /> Copied</>
+                                                        ) : (
+                                                            <><Copy className="size-3" /> Copy Link</>
+                                                        )}
+                                                    </button>
+                                                )}
+                                                {isAdminInvoicePending && (
                                                     <button
                                                         type="button"
                                                         onClick={() =>
-                                                            downloadInvoicePdf(url, buildInvoiceFilename(inv))
+                                                            setMarkPaidTarget({
+                                                                id: inv.id,
+                                                                number: inv.invoice_number || inv.invoiceNumber || inv.id,
+                                                            })
                                                         }
-                                                        className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
-                                                        title="Download invoice PDF"
+                                                        className="inline-flex items-center gap-1 rounded border border-primary-300 bg-primary-50 px-2 py-1 text-[10px] uppercase tracking-wide text-primary-700 hover:bg-primary-100"
+                                                        title="Mark this invoice as paid"
                                                     >
-                                                        <Download className="h-3 w-3" />
-                                                        Save
+                                                        Mark Paid
                                                     </button>
-                                                </div>
-                                            ) : (
-                                                <span className="shrink-0 text-[10px] text-muted-foreground">
-                                                    No PDF
-                                                </span>
-                                            )}
+                                                )}
+                                                {isAdminInvoicePending && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setRejectTarget({
+                                                                id: inv.id,
+                                                                number: inv.invoice_number || inv.invoiceNumber || inv.id,
+                                                            })
+                                                        }
+                                                        disabled={rejectingId === inv.id}
+                                                        className="inline-flex items-center gap-1 rounded border border-danger-300 bg-danger-50 px-2 py-1 text-2xs uppercase tracking-wide text-danger-700 hover:bg-danger-100 disabled:opacity-50"
+                                                        title="Void this invoice"
+                                                    >
+                                                        <XCircle className="size-3" />
+                                                        {rejectingId === inv.id ? 'Rejecting…' : 'Reject'}
+                                                    </button>
+                                                )}
+                                                {/* ADMIN_MANUAL — Duplicate (available on any status, not just pending) */}
+                                                {isAdminManual && !isSfpRow && typeof inv.id === 'string' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => void handleDuplicateInvoice(inv.id)}
+                                                        disabled={duplicatingId === inv.id}
+                                                        className="inline-flex items-center gap-1 rounded border px-2 py-1 text-2xs uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                                                        title="Create a new invoice pre-filled with this one's items"
+                                                    >
+                                                        <CopySimple className="size-3" />
+                                                        {duplicatingId === inv.id ? 'Loading…' : 'Duplicate'}
+                                                    </button>
+                                                )}
+
+                                                {/* USER_PLAN pending — payment link only (gateway owns the flow) */}
+                                                {isUserPlanPending && paymentLink && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCopyInvoiceLink(inv.id, paymentLink)}
+                                                        className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                        title="Copy subscription payment link"
+                                                    >
+                                                        {copiedLinkId === inv.id ? (
+                                                            <><CircleCheck className="size-3" /> Copied</>
+                                                        ) : (
+                                                            <><Copy className="size-3" /> Copy Link</>
+                                                        )}
+                                                    </button>
+                                                )}
+
+                                                {/* PDF view / download — all row types when available */}
+                                                {url ? (
+                                                    <>
+                                                        <a
+                                                            href={url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                            title="View PDF in new tab"
+                                                        >
+                                                            <ExternalLink className="h-3 w-3" />
+                                                            View PDF
+                                                        </a>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => downloadInvoicePdf(url, buildInvoiceFilename(inv))}
+                                                            className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground hover:bg-muted hover:text-foreground"
+                                                            title="Download invoice PDF"
+                                                        >
+                                                            <Download className="h-3 w-3" />
+                                                            Save
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <span className="text-[10px] text-muted-foreground">No PDF</span>
+                                                )}
+                                            </div>
                                         </li>
                                     );
                                 })}
@@ -1041,6 +1258,9 @@ export function SubOrgAnalyticsPanel({ subOrgId, subOrgName, restrictedView = fa
                     if (adminUserId) {
                         queryClient.invalidateQueries({
                             queryKey: ['sub-org-admin-invoices', adminUserId],
+                        });
+                        queryClient.invalidateQueries({
+                            queryKey: ['sub-org-admin-account-summary', adminUserId, instituteId],
                         });
                     }
                 }}
@@ -1165,6 +1385,31 @@ function collectPackageSessions(invites: any[]): { id: string; label: string }[]
         }
     }
     return out;
+}
+
+/** 4-cell grid: total accrued / paid / balance / overdue from the ledger. */
+function AccountSummaryGrid({ summary }: { summary: UserAccountSummaryDTO }) {
+    const sym = summary.currency === 'USD' ? '$' : summary.currency === 'EUR' ? '€' : '₹';
+    const fmt = (v: number) =>
+        `${sym}${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+    const cells = [
+        { label: 'Total accrued', value: fmt(summary.total_accrued), danger: false },
+        { label: 'Total paid', value: fmt(summary.total_paid), danger: false, success: true },
+        { label: 'Due', value: fmt(summary.balance), danger: summary.balance > 0 },
+        { label: 'Past Due', value: fmt(summary.overdue), danger: summary.overdue > 0 },
+    ];
+    return (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {cells.map(({ label, value, danger, success }) => (
+                <div key={label} className="rounded border bg-muted/30 p-2">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+                    <p className={`mt-0.5 text-sm font-semibold ${danger ? 'text-danger-600' : success ? 'text-emerald-600' : 'text-gray-900'}`}>
+                        {value}
+                    </p>
+                </div>
+            ))}
+        </div>
+    );
 }
 
 function fmtMoney(v: number | null | undefined): string {

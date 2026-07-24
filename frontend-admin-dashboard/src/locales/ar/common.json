@@ -1,0 +1,128 @@
+{
+    "login": {
+        "heading": "سعداء بعودتك!",
+        "subheading": "سجّل الدخول وتولَّ زمام الأمور - أدوات الإدارة في انتظارك!",
+        "emailPlaceholder": "you@email.com",
+        "passwordPlaceholder": "كلمة المرور",
+        "forgotPasswordLink": "هل نسيت كلمة المرور؟",
+        "loginButton": "تسجيل الدخول",
+        "forgotPasswordHeading": "نسيت كلمة المرور",
+        "forgotPasswordSubheading": "أدخل بريدك الإلكتروني وسنرسل كلمة المرور إلى صندوق بريدك",
+        "forgotPasswordEmailPlaceholder": "you@email.com",
+        "forgotPasswordButton": "إرسال رابط إعادة التعيين",
+        "forgotPasswordBottomText": "هل تذكرت كلمة المرور؟",
+        "setPasswordHeading": "تعيين كلمة مرور جديدة",
+        "setPasswordSubheading": "أمّن حسابك بكلمة مرور جديدة",
+        "setPasswordNewPlaceholder": "كلمة المرور الجديدة",
+        "setPasswordConfirmPlaceholder": "تأكيد كلمة المرور الجديدة",
+        "setPasswordButton": "إعادة تعيين كلمة المرور",
+        "setPasswordBottomText": "العودة إلى تسجيل الدخول؟"
+    },
+    "actions": {
+        "save": "حفظ",
+        "cancel": "إلغاء",
+        "delete": "حذف"
+    },
+    "table": {
+        "noResults": "لا توجد نتائج"
+    },
+    "common": {
+        "loading": "جارٍ التحميل..."
+    },
+    "settings": {
+        "language": {
+            "title": "اللغة",
+            "description": "اختر اللغات التي تتوفر بها بوابة هذه المؤسسة وكيفية توطين المحتوى.",
+            "defaultLabel": "اللغة الافتراضية",
+            "defaultHelp": "اللغة التي يراها المستخدمون قبل أن يختاروا لغتهم بأنفسهم.",
+            "enabledLabel": "اللغات المفعّلة",
+            "enabledHelp": "اللغات التي يمكن للمستخدمين التبديل إليها. اللغة الافتراضية مضمّنة دائمًا.",
+            "enabledPlaceholder": "اختر اللغات",
+            "enabledRequired": "فعّل لغة واحدة على الأقل",
+            "contentSourceLabel": "لغة مصدر المحتوى",
+            "contentSourceHelp": "اللغة الأصلية التي أُلِّف بها المحتوى.",
+            "timezoneLabel": "المنطقة الزمنية للمؤسسة",
+            "timezoneHelp": "تُستخدم لعرض التاريخ والوقت في جميع أنحاء البوابة.",
+            "timezonePlaceholder": "اختر المنطقة الزمنية",
+            "selectPlaceholder": "اختر اللغة",
+            "loading": "جارٍ تحميل إعدادات اللغة…",
+            "save": "حفظ إعدادات اللغة",
+            "saving": "جارٍ الحفظ…",
+            "saved": "تم حفظ إعدادات اللغة",
+            "saveFailed": "تعذّر حفظ إعدادات اللغة"
+        }
+    },
+    "translation": {
+        "translateAction": "ترجمة",
+        "credits": "{{value}} رصيد",
+        "noContent": "لا يوجد محتوى",
+        "state": {
+            "DRAFT": "مسودة",
+            "IN_REVIEW": "قيد المراجعة",
+            "PUBLISHED": "منشور",
+            "STALE": "قديم"
+        },
+        "jobStatus": {
+            "PENDING": "قيد الانتظار",
+            "IN_PROGRESS": "قيد التنفيذ",
+            "AWAITING_INPUT": "بانتظار المراجعة",
+            "COMPLETED": "مكتمل",
+            "FAILED": "فشل"
+        },
+        "jobStage": {
+            "PENDING": "قيد الانتظار",
+            "EXTRACT": "استخراج المحتوى",
+            "TRANSLATE": "جارٍ الترجمة",
+            "REVIEW": "المراجعة",
+            "WRITE_BACK": "جارٍ النشر",
+            "COMPLETED": "مكتمل"
+        },
+        "dialog": {
+            "heading": "ترجمة الدورة",
+            "targetLanguage": "اللغة المستهدفة",
+            "mode": "وضع النشر",
+            "modeDraft": "المراجعة قبل النشر",
+            "modeAutoPublish": "النشر فورًا",
+            "modeDraftHint": "تُحفظ الترجمات كمسودات، ولا يراها المتعلمون إلا بعد اعتمادك لها.",
+            "modeAutoPublishHint": "تصبح الترجمات متاحة للمتعلمين فور إنشائها.",
+            "continue": "متابعة",
+            "confirm": "بدء الترجمة",
+            "topUp": "شحن الرصيد",
+            "estimatedCost": "التكلفة التقديرية",
+            "currentBalance": "الرصيد الحالي",
+            "balanceAfter": "الرصيد بعد العملية",
+            "itemsFound": "سيتم ترجمة {{value}} عنصر.",
+            "insufficientCredits": "رصيدك لا يغطي تكلفة هذه الترجمة. اشحن رصيدك للمتابعة.",
+            "noLanguages": "لا توجد لغات أخرى مفعّلة لهذه المؤسسة. فعّل لغة من الإعدادات > اللغة.",
+            "started": "بدأت الترجمة",
+            "viewProgress": "عرض التقدم",
+            "estimateFailed": "تعذّر تقدير تكلفة الترجمة. يرجى المحاولة مرة أخرى.",
+            "startFailed": "تعذّر بدء الترجمة. يرجى المحاولة مرة أخرى."
+        },
+        "review": {
+            "heading": "مراجعة الترجمة",
+            "subheading": "مراجعة ترجمات {{language}}",
+            "back": "العودة إلى الدورة",
+            "baseContent": "النص الأصلي",
+            "translatedContent": "{{language}}",
+            "state": "الحالة",
+            "actions": "الإجراءات",
+            "approve": "اعتماد",
+            "reject": "رفض",
+            "approved": "تم اعتماد الترجمة",
+            "rejected": "تم رفض الترجمة",
+            "updateFailed": "تعذّر تحديث الترجمة. يرجى المحاولة مرة أخرى.",
+            "approvePage": "اعتماد هذه الصفحة",
+            "bulkApproved": "تم اعتماد {{value}} ترجمة",
+            "approveAndPublishJob": "اعتماد المهمة ونشرها",
+            "jobApproved": "تم اعتماد المهمة، وجارٍ نشر الترجمات.",
+            "jobApproveFailed": "تعذّر اعتماد المهمة. يرجى المحاولة مرة أخرى.",
+            "jobStatus": "حالة المهمة",
+            "jobStage": "المرحلة",
+            "jobProgress": "التقدم",
+            "filterAll": "كل الحالات",
+            "empty": "لا توجد ترجمات للمراجعة بعد.",
+            "missingScope": "اختر دورة ولغة لمراجعة الترجمات."
+        }
+    }
+}

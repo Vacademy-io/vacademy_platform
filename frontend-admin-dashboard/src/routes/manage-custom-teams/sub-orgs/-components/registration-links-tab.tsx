@@ -1,13 +1,17 @@
-import { useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
     CircleNotch,
     Copy,
+    DownloadSimple,
     LinkSimple,
+    MagnifyingGlass,
+    MapPin,
     PencilSimple,
     Plus,
     UsersThree,
+    X,
 } from '@phosphor-icons/react';
 
 import {
@@ -21,20 +25,33 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
+import { MyDropdown } from '@/components/design-system/dropdown';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
+import { MyPagination } from '@/components/design-system/pagination';
+import { Input } from '@/components/ui/input';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import createSubOrgRegistrationLink from '@/routes/manage-students/invite/-utils/createSubOrgRegistrationLink';
 import {
+    fetchAllTemplateRegistrations,
     getRegistrationTemplateDetail,
+    getRegistrationFacets,
     listRegistrationTemplates,
     listTemplateRegistrations,
     updateRegistrationTemplateStatus,
     type RegistrationTemplateListItem,
+    type SubOrgRegistrationRow,
     type TemplateDetail,
 } from '../../-services/sub-org-registration-services';
 import { RegistrationLinkCreateModal } from './registration-link-create-modal';
+import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
+import { humanizeStatus, statusToneClass } from '../../-utils/status-display';
+import { buildCsv, downloadCsv, formatDate } from '../../-utils/list-export';
+
+/** Distinct facet values → MultiSelectFilter options (value === label; searchable by label). */
+const toFilterOptions = (values: string[] | undefined) =>
+    (values ?? []).map((v) => ({ value: v, label: v }));
 
 // The list response only carries `steps`; paid templates include a "PAYMENT" step and
 // templates with DigiLocker identity verification include a "KYC" step.
@@ -44,25 +61,53 @@ const isPaidTemplate = (template: RegistrationTemplateListItem) =>
 const hasKycStep = (template: RegistrationTemplateListItem) =>
     Array.isArray(template.steps) && template.steps.includes('KYC');
 
-// PENDING | VERIFIED | CONSENT_DENIED | EXPIRED | FAILED → tinted outline chip classes.
-const KYC_STATUS_CLASSES: Record<string, string> = {
-    VERIFIED: 'border-success-400 bg-success-50 text-success-600',
-    PENDING: 'border-warning-400 bg-warning-50 text-warning-600',
-    CONSENT_DENIED: 'border-danger-400 bg-danger-50 text-danger-600',
-    EXPIRED: 'border-danger-400 bg-danger-50 text-danger-600',
-    FAILED: 'border-danger-400 bg-danger-50 text-danger-600',
-};
+// The registration statuses the dialog can filter by — mirrors the backend
+// SubOrgRegistrationStatus enum. Labels + colours are DERIVED (humanizeStatus /
+// statusToneClass), so nothing is duplicated per value.
+const REGISTRATION_STATUS_VALUES = ['DRAFT', 'OTP_VERIFIED', 'PENDING_PAYMENT', 'COMPLETED', 'FAILED'];
+const LINK_STATUS_VALUES = ['ACTIVE', 'INACTIVE'];
+const LINK_TYPE_VALUES = ['PAID', 'FREE'];
 
-const formatDate = (value?: string | number | null) => {
-    if (value === null || value === undefined || value === '') return '-';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '-';
-    return date.toLocaleDateString(undefined, {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-    });
-};
+// MyDropdown works on display strings — first option clears the filter.
+const ALL_STATUSES = 'All statuses';
+const ALL_TYPES = 'All types';
+const LINK_STATUS_LABELS = [ALL_STATUSES, ...LINK_STATUS_VALUES.map(humanizeStatus)];
+const LINK_TYPE_LABELS = [ALL_TYPES, ...LINK_TYPE_VALUES.map(humanizeStatus)];
+const DIALOG_STATUS_LABELS = [ALL_STATUSES, ...REGISTRATION_STATUS_VALUES.map(humanizeStatus)];
+
+const REGISTRATIONS_CSV_HEADERS = [
+    'Organization',
+    'Admin',
+    'Email',
+    'Phone',
+    'City',
+    'State',
+    'Pincode',
+    'Seats Used',
+    'Seats Total',
+    'Status',
+    'KYC',
+    'Registered On',
+] as const;
+
+const buildRegistrationsCsv = (rows: SubOrgRegistrationRow[]): string =>
+    buildCsv(
+        REGISTRATIONS_CSV_HEADERS,
+        rows.map((r) => [
+            r.org_name,
+            r.admin_name,
+            r.admin_email,
+            r.admin_phone,
+            r.city,
+            r.state,
+            r.pincode,
+            r.used_seats ?? '',
+            r.total_seats ?? '',
+            humanizeStatus(r.status),
+            humanizeStatus(r.kyc_status),
+            formatDate(r.created_at),
+        ])
+    );
 
 export function RegistrationLinksTab() {
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -70,6 +115,11 @@ export function RegistrationLinksTab() {
     const [editTemplate, setEditTemplate] = useState<TemplateDetail | null>(null);
     const [registrationsTemplate, setRegistrationsTemplate] =
         useState<RegistrationTemplateListItem | null>(null);
+
+    // Client-side filters for the links list (the list is fetched whole).
+    const [linkSearch, setLinkSearch] = useState('');
+    const [linkStatusFilter, setLinkStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+    const [linkTypeFilter, setLinkTypeFilter] = useState<'ALL' | 'PAID' | 'FREE'>('ALL');
 
     const instituteId = getCurrentInstituteId();
     const queryClient = useQueryClient();
@@ -133,6 +183,20 @@ export function RegistrationLinksTab() {
         toast.success('Registration link copied');
     };
 
+    const q = linkSearch.trim().toLowerCase();
+    const filteredTemplates = templates.filter((t) => {
+        if (linkStatusFilter !== 'ALL' && t.status !== linkStatusFilter) return false;
+        if (linkTypeFilter !== 'ALL') {
+            const paid = isPaidTemplate(t);
+            if (linkTypeFilter === 'PAID' && !paid) return false;
+            if (linkTypeFilter === 'FREE' && paid) return false;
+        }
+        if (q && !(t.name || '').toLowerCase().includes(q)) return false;
+        return true;
+    });
+    const hasLinkFilters =
+        !!q || linkStatusFilter !== 'ALL' || linkTypeFilter !== 'ALL';
+
     if (isLoading) {
         return (
             <div className="space-y-4">
@@ -150,7 +214,56 @@ export function RegistrationLinksTab() {
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-end">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-1 flex-wrap items-center gap-2">
+                    <div className="relative min-w-0 flex-1 sm:max-w-xs">
+                        <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                        <Input
+                            value={linkSearch}
+                            onChange={(e) => setLinkSearch(e.target.value)}
+                            placeholder="Search by link name"
+                            className="h-9 pl-8"
+                        />
+                    </div>
+                    <MyDropdown
+                        currentValue={
+                            linkStatusFilter === 'ACTIVE'
+                                ? 'Active'
+                                : linkStatusFilter === 'INACTIVE'
+                                  ? 'Inactive'
+                                  : ALL_STATUSES
+                        }
+                        dropdownList={LINK_STATUS_LABELS}
+                        handleChange={(l) =>
+                            setLinkStatusFilter(
+                                (LINK_STATUS_VALUES.find((v) => humanizeStatus(v) === l) as
+                                    | 'ACTIVE'
+                                    | 'INACTIVE'
+                                    | undefined) ?? 'ALL'
+                            )
+                        }
+                        className="w-36"
+                    />
+                    <MyDropdown
+                        currentValue={
+                            linkTypeFilter === 'PAID'
+                                ? 'Paid'
+                                : linkTypeFilter === 'FREE'
+                                  ? 'Free'
+                                  : ALL_TYPES
+                        }
+                        dropdownList={LINK_TYPE_LABELS}
+                        handleChange={(l) =>
+                            setLinkTypeFilter(
+                                (LINK_TYPE_VALUES.find((v) => humanizeStatus(v) === l) as
+                                    | 'PAID'
+                                    | 'FREE'
+                                    | undefined) ?? 'ALL'
+                            )
+                        }
+                        className="w-32"
+                    />
+                </div>
                 <MyButton
                     onClick={() => {
                         setEditTemplate(null);
@@ -175,21 +288,27 @@ export function RegistrationLinksTab() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {templates.length === 0 ? (
+                        {filteredTemplates.length === 0 ? (
                             <TableRow>
                                 <TableCell colSpan={6} className="h-24 text-center">
                                     <div className="flex flex-col items-center justify-center gap-2 text-neutral-500">
                                         <LinkSimple className="size-8 opacity-50" />
-                                        <p>No registration links yet.</p>
-                                        <p className="text-xs text-neutral-400">
-                                            Create one to let organizations register themselves as
-                                            sub-orgs.
-                                        </p>
+                                        {hasLinkFilters ? (
+                                            <p>No registration links match your filters.</p>
+                                        ) : (
+                                            <>
+                                                <p>No registration links yet.</p>
+                                                <p className="text-xs text-neutral-400">
+                                                    Create one to let organizations register
+                                                    themselves as sub-orgs.
+                                                </p>
+                                            </>
+                                        )}
                                     </div>
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            templates.map((template) => {
+                            filteredTemplates.map((template) => {
                                 const isRowUpdating =
                                     statusMutation.isPending &&
                                     statusMutation.variables?.templateId === template.id;
@@ -329,7 +448,10 @@ export function RegistrationLinksTab() {
     );
 }
 
-/** Read-only list of the registrations made through one template link. */
+/** Rows-per-page for the registrations listing. */
+const REGISTRATIONS_PAGE_SIZE = 10;
+
+/** Read-only, paginated + City/State/Pincode-filterable list of the registrations made through one template link. */
 function RegistrationsDialog({
     template,
     onClose,
@@ -339,11 +461,145 @@ function RegistrationsDialog({
 }) {
     const instituteId = getCurrentInstituteId();
 
-    const { data: registrations = [], isLoading } = useQuery({
-        queryKey: ['sub-org-registrations', template?.id, instituteId],
-        queryFn: () => listTemplateRegistrations(template?.id || '', instituteId || ''),
+    // Free-text search is debounced; the discrete selectors (status + City/State/Pincode
+    // multi-selects) apply immediately.
+    const [searchInput, setSearchInput] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState('');
+    const [cityFilter, setCityFilter] = useState<string[]>([]);
+    const [stateFilter, setStateFilter] = useState<string[]>([]);
+    const [pincodeFilter, setPincodeFilter] = useState<string[]>([]);
+    // Per-custom-field selections, keyed by custom_field id.
+    const [customFieldFilters, setCustomFieldFilters] = useState<Record<string, string[]>>({});
+    const [page, setPage] = useState(0);
+    const [isExporting, setIsExporting] = useState(false);
+
+    // Reset all filter + page state when a different template's dialog opens.
+    useEffect(() => {
+        setSearchInput('');
+        setDebouncedSearch('');
+        setStatusFilter('');
+        setCityFilter([]);
+        setStateFilter([]);
+        setPincodeFilter([]);
+        setCustomFieldFilters({});
+        setPage(0);
+    }, [template?.id]);
+
+    // Debounce the free-text search (300ms).
+    useEffect(() => {
+        const timeout = setTimeout(() => setDebouncedSearch(searchInput.trim()), 300);
+        return () => clearTimeout(timeout);
+    }, [searchInput]);
+
+    const filters = useMemo(
+        () => ({
+            search: debouncedSearch,
+            status: statusFilter,
+            cities: cityFilter,
+            states: stateFilter,
+            pincodes: pincodeFilter,
+            customFieldFilters,
+        }),
+        [debouncedSearch, statusFilter, cityFilter, stateFilter, pincodeFilter, customFieldFilters]
+    );
+
+    // Any filter change jumps back to the first page.
+    useEffect(() => {
+        setPage(0);
+    }, [filters]);
+
+    // Distinct City/State/Pincode values actually present in this link's registrations —
+    // populate the multi-select filters by default (nothing hardcoded).
+    const { data: facets } = useQuery({
+        queryKey: ['sub-org-registration-facets', template?.id, instituteId],
+        queryFn: () => getRegistrationFacets(template?.id || '', instituteId || ''),
         enabled: !!template?.id && !!instituteId,
     });
+    const cityOptions = useMemo(() => toFilterOptions(facets?.cities), [facets?.cities]);
+    const stateOptions = useMemo(() => toFilterOptions(facets?.states), [facets?.states]);
+    const pincodeOptions = useMemo(() => toFilterOptions(facets?.pincodes), [facets?.pincodes]);
+    const customFieldFacets = facets?.customFields ?? [];
+
+    const setCustomFieldSelection = (fieldId: string, values: string[]) =>
+        setCustomFieldFilters((prev) => {
+            const next = { ...prev };
+            if (values.length) next[fieldId] = values;
+            else delete next[fieldId];
+            return next;
+        });
+
+    const { data, isLoading, isFetching } = useQuery({
+        queryKey: ['sub-org-registrations', template?.id, instituteId, page, filters],
+        queryFn: () =>
+            listTemplateRegistrations({
+                templateInviteId: template?.id || '',
+                instituteId: instituteId || '',
+                page,
+                size: REGISTRATIONS_PAGE_SIZE,
+                search: filters.search,
+                status: filters.status,
+                cities: filters.cities,
+                states: filters.states,
+                pincodes: filters.pincodes,
+                customFieldFilters: filters.customFieldFilters,
+            }),
+        enabled: !!template?.id && !!instituteId,
+        placeholderData: keepPreviousData,
+    });
+
+    const registrations = data?.content ?? [];
+    const totalPages = data?.total_pages ?? 1;
+    const totalElements = data?.total_elements ?? 0;
+    const activeCustomFieldCount = Object.values(filters.customFieldFilters).filter(
+        (v) => v.length
+    ).length;
+    const hasActiveFilters = !!(
+        filters.search ||
+        filters.status ||
+        filters.cities.length ||
+        filters.states.length ||
+        filters.pincodes.length ||
+        activeCustomFieldCount
+    );
+
+    const clearFilters = () => {
+        setSearchInput('');
+        setStatusFilter('');
+        setCityFilter([]);
+        setStateFilter([]);
+        setPincodeFilter([]);
+        setCustomFieldFilters({});
+    };
+
+    // Export ALL rows matching the current filters (not just the visible page).
+    const handleExport = async () => {
+        if (!template?.id || !instituteId) return;
+        setIsExporting(true);
+        try {
+            const rows = await fetchAllTemplateRegistrations({
+                templateInviteId: template.id,
+                instituteId,
+                search: filters.search,
+                status: filters.status,
+                cities: filters.cities,
+                states: filters.states,
+                pincodes: filters.pincodes,
+                customFieldFilters: filters.customFieldFilters,
+            });
+            if (rows.length === 0) {
+                toast.info('No registrations to export.');
+                return;
+            }
+            const safeName = (template.name || 'registrations').replace(/[^\w.-]+/g, '_');
+            downloadCsv(buildRegistrationsCsv(rows), `${safeName}_registrations.csv`);
+            toast.success(`Exported ${rows.length} registration${rows.length === 1 ? '' : 's'}.`);
+        } catch {
+            toast.error('Failed to export registrations.');
+        } finally {
+            setIsExporting(false);
+        }
+    };
 
     return (
         <MyDialog
@@ -352,73 +608,201 @@ function RegistrationsDialog({
             onOpenChange={(open) => {
                 if (!open) onClose();
             }}
-            dialogWidth="max-w-3xl"
+            dialogWidth="max-w-5xl"
         >
-            {isLoading ? (
-                <div className="space-y-2">
-                    <Skeleton className="h-8 w-full" />
-                    <Skeleton className="h-8 w-full" />
-                    <Skeleton className="h-8 w-full" />
+            <div className="space-y-3">
+                {/* Filters: search + status + the fixed City/State/Pincode address columns +
+                    one searchable multi-select per form-collected custom field. Every option
+                    list is pulled live from submitted data (facets) — nothing hardcoded. A
+                    filter only appears when there is data to filter on. */}
+                <div className="rounded-lg border bg-neutral-50 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="relative min-w-0 flex-1 sm:max-w-xs">
+                            <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-neutral-400" />
+                            <Input
+                                value={searchInput}
+                                onChange={(e) => setSearchInput(e.target.value)}
+                                placeholder="Search org, admin or email"
+                                className="h-9 pl-8"
+                            />
+                        </div>
+                        <MyDropdown
+                            currentValue={statusFilter ? humanizeStatus(statusFilter) : ALL_STATUSES}
+                            dropdownList={DIALOG_STATUS_LABELS}
+                            handleChange={(l) => {
+                                const val = REGISTRATION_STATUS_VALUES.find(
+                                    (v) => humanizeStatus(v) === l
+                                );
+                                setStatusFilter(val ?? '');
+                            }}
+                            className="w-44"
+                        />
+                        {cityOptions.length > 0 && (
+                            <MultiSelectFilter
+                                label="City"
+                                icon={<MapPin className="size-4 text-neutral-400" />}
+                                options={cityOptions}
+                                selected={cityFilter}
+                                onChange={setCityFilter}
+                                placeholder="Search city…"
+                                widthClass="w-36"
+                            />
+                        )}
+                        {stateOptions.length > 0 && (
+                            <MultiSelectFilter
+                                label="State"
+                                options={stateOptions}
+                                selected={stateFilter}
+                                onChange={setStateFilter}
+                                placeholder="Search state…"
+                                widthClass="w-36"
+                            />
+                        )}
+                        {pincodeOptions.length > 0 && (
+                            <MultiSelectFilter
+                                label="Pincode"
+                                options={pincodeOptions}
+                                selected={pincodeFilter}
+                                onChange={setPincodeFilter}
+                                placeholder="Search pincode…"
+                                widthClass="w-36"
+                            />
+                        )}
+                        {customFieldFacets.map((field) => (
+                            <MultiSelectFilter
+                                key={field.id}
+                                label={field.label}
+                                options={toFilterOptions(field.values)}
+                                selected={customFieldFilters[field.id] ?? []}
+                                onChange={(values) => setCustomFieldSelection(field.id, values)}
+                                placeholder={`Search ${field.label.toLowerCase()}…`}
+                                widthClass="w-40"
+                            />
+                        ))}
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground">
+                            {totalElements} registration{totalElements === 1 ? '' : 's'}
+                            {hasActiveFilters ? ' · filtered' : ''}
+                        </p>
+                        <div className="flex items-center gap-2">
+                            {hasActiveFilters && (
+                                <MyButton buttonType="secondary" scale="small" onClick={clearFilters}>
+                                    <X className="mr-1 size-3.5" />
+                                    Clear
+                                </MyButton>
+                            )}
+                            <MyButton
+                                buttonType="secondary"
+                                scale="small"
+                                onClick={handleExport}
+                                disable={isExporting || totalElements === 0}
+                            >
+                                {isExporting ? (
+                                    <CircleNotch className="mr-1 size-3.5 animate-spin" />
+                                ) : (
+                                    <DownloadSimple className="mr-1 size-3.5" />
+                                )}
+                                Export CSV
+                            </MyButton>
+                        </div>
+                    </div>
                 </div>
-            ) : registrations.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-2 py-8 text-neutral-500">
-                    <UsersThree className="size-8 opacity-50" />
-                    <p className="text-sm">No registrations through this link yet.</p>
-                </div>
-            ) : (
-                <div className="rounded-md border">
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Organization</TableHead>
-                                <TableHead>Admin</TableHead>
-                                <TableHead>Email</TableHead>
-                                <TableHead>Phone</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead>KYC</TableHead>
-                                <TableHead>Date</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {registrations.map((row) => (
-                                <TableRow key={row.id}>
-                                    <TableCell className="font-medium">
-                                        {row.org_name || '-'}
-                                    </TableCell>
-                                    <TableCell>{row.admin_name || '-'}</TableCell>
-                                    <TableCell>{row.admin_email || '-'}</TableCell>
-                                    <TableCell>{row.admin_phone || '-'}</TableCell>
-                                    <TableCell>
-                                        <Badge
-                                            variant={
-                                                row.status === 'COMPLETED' ? 'default' : 'secondary'
-                                            }
-                                        >
-                                            {row.status}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                        {row.kyc_status ? (
-                                            <Badge
-                                                variant="outline"
-                                                className={
-                                                    KYC_STATUS_CLASSES[row.kyc_status] ||
-                                                    'text-muted-foreground'
-                                                }
-                                            >
-                                                {row.kyc_status.replace(/_/g, ' ')}
-                                            </Badge>
-                                        ) : (
-                                            <span className="text-sm text-muted-foreground">—</span>
-                                        )}
-                                    </TableCell>
-                                    <TableCell>{formatDate(row.created_at)}</TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </div>
-            )}
+
+                {isLoading ? (
+                    <div className="space-y-2">
+                        <Skeleton className="h-8 w-full" />
+                        <Skeleton className="h-8 w-full" />
+                        <Skeleton className="h-8 w-full" />
+                    </div>
+                ) : registrations.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center gap-2 py-8 text-neutral-500">
+                        <UsersThree className="size-8 opacity-50" />
+                        <p className="text-sm">
+                            {hasActiveFilters
+                                ? 'No registrations match these filters.'
+                                : 'No registrations through this link yet.'}
+                        </p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="rounded-md border">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Organization</TableHead>
+                                        <TableHead>Admin</TableHead>
+                                        <TableHead>Email</TableHead>
+                                        <TableHead>Phone</TableHead>
+                                        <TableHead>City</TableHead>
+                                        <TableHead>State</TableHead>
+                                        <TableHead>Pincode</TableHead>
+                                        <TableHead>Seats</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead>KYC</TableHead>
+                                        <TableHead>Date</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {registrations.map((row) => (
+                                        <TableRow key={row.id} className="hover:bg-muted/50">
+                                            <TableCell className="font-medium">
+                                                {row.org_name || '-'}
+                                            </TableCell>
+                                            <TableCell>{row.admin_name || '-'}</TableCell>
+                                            <TableCell>{row.admin_email || '-'}</TableCell>
+                                            <TableCell>{row.admin_phone || '-'}</TableCell>
+                                            <TableCell>{row.city || '-'}</TableCell>
+                                            <TableCell>{row.state || '-'}</TableCell>
+                                            <TableCell>{row.pincode || '-'}</TableCell>
+                                            <TableCell>
+                                                {row.used_seats == null
+                                                    ? '-'
+                                                    : row.total_seats != null
+                                                      ? `${row.used_seats}/${row.total_seats}`
+                                                      : String(row.used_seats)}
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge
+                                                    variant="outline"
+                                                    className={statusToneClass(row.status)}
+                                                >
+                                                    {humanizeStatus(row.status)}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                {row.kyc_status ? (
+                                                    <Badge
+                                                        variant="outline"
+                                                        className={statusToneClass(row.kyc_status)}
+                                                    >
+                                                        {humanizeStatus(row.kyc_status)}
+                                                    </Badge>
+                                                ) : (
+                                                    <span className="text-sm text-muted-foreground">
+                                                        —
+                                                    </span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell>{formatDate(row.created_at)}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+
+                        {totalPages > 1 && (
+                            <div className={isFetching ? 'opacity-60' : ''}>
+                                <MyPagination
+                                    currentPage={page}
+                                    totalPages={totalPages}
+                                    onPageChange={setPage}
+                                />
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
         </MyDialog>
     );
 }

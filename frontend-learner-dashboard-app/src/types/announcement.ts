@@ -1,5 +1,13 @@
 // Mode types for different announcement categories
-export type ModeType = 'SYSTEM_ALERT' | 'DASHBOARD_PIN' | 'DM' | 'STREAM' | 'RESOURCES' | 'COMMUNITY' | 'TASKS';
+export type ModeType =
+  | 'SYSTEM_ALERT'
+  | 'DASHBOARD_PIN'
+  | 'DM'
+  | 'STREAM'
+  | 'RESOURCES'
+  | 'COMMUNITY'
+  | 'TASKS'
+  | 'APP_OVERLAY';
 
 // Interaction types aligned with backend enum
 export type InteractionType = 'READ' | 'DISMISSED' | 'CLICKED' | 'LIKED' | 'SHARED';

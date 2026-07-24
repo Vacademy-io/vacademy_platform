@@ -24,11 +24,13 @@ import vacademy.io.admin_core_service.features.audience.repository.FormWebhookCo
 import vacademy.io.admin_core_service.features.audience.repository.OAuthConnectStateRepository;
 import vacademy.io.admin_core_service.features.audience.service.AdPlatformWebhookService;
 import vacademy.io.admin_core_service.features.audience.service.MetaConnectorHealthService;
+import vacademy.io.admin_core_service.features.audience.service.OAuthRedirectResolver;
 import vacademy.io.admin_core_service.features.audience.service.TokenEncryptionService;
 import vacademy.io.admin_core_service.features.audience.strategy.MetaLeadAdsStrategy;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -76,6 +78,7 @@ public class MetaOAuthController {
     private final OAuthConnectStateRepository stateRepository;
     private final FormWebhookConnectorRepository connectorRepository;
     private final TokenEncryptionService tokenEncryptionService;
+    private final OAuthRedirectResolver redirectResolver;
     private final ObjectMapper objectMapper;
 
     @Value("${meta.oauth.redirect.uri:}")
@@ -83,9 +86,6 @@ public class MetaOAuthController {
 
     @Value("${meta.webhook.verify.token:}")
     private String metaWebhookVerifyToken;
-
-    @Value("${meta.oauth.frontend.callback.url:}")
-    private String frontendCallbackUrl;
 
     // ── Step 1: Initiate ─────────────────────────────────────────────────────
 
@@ -98,13 +98,24 @@ public class MetaOAuthController {
     public ResponseEntity<Map<String, String>> initiateOAuth(
             @RequestParam String instituteId,
             @RequestParam(required = false) String audienceId,
-            @RequestParam(required = false) String initiatedBy) {
+            @RequestParam(required = false) String initiatedBy,
+            @RequestParam(required = false) String frontendOrigin,
+            @RequestHeader(value = "Origin", required = false) String originHeader,
+            @RequestHeader(value = "Referer", required = false) String refererHeader) {
+
+        // Remember which frontend origin started the flow so /callback can send the
+        // browser back to the SAME (white-label) domain. Explicit param wins; else
+        // fall back to the Origin/Referer of this authenticated request.
+        String requestedOrigin = redirectResolver.normalizeOrigin(
+                frontendOrigin != null && !frontendOrigin.isBlank() ? frontendOrigin
+                        : (originHeader != null && !originHeader.isBlank() ? originHeader : refererHeader));
 
         OAuthConnectState state = OAuthConnectState.builder()
                 .instituteId(instituteId)
                 .vendor("META_LEAD_ADS")
                 .audienceId(audienceId)
                 .initiatedBy(initiatedBy)
+                .frontendOrigin(requestedOrigin)
                 .expiresAt(LocalDateTime.now().plusMinutes(10))
                 .sessionStatus("PENDING")
                 .build();
@@ -133,15 +144,19 @@ public class MetaOAuthController {
             @RequestParam(required = false) String state,
             @RequestParam(value = "error", required = false) String error) {
 
+        // Resolve where to send the browser back to FIRST, so even error redirects
+        // land on the origin the client started from (the state row carries it).
+        String redirectBase = resolveRedirectBaseForState(state);
+
         // Meta sends error param if user denied access
         if (error != null) {
             log.warn("Meta OAuth denied by user: {}", error);
-            return redirectToFrontend("error=" + error, null);
+            return redirectToFrontend(redirectBase, "error=" + error);
         }
 
         if (state == null) {
             log.error("Meta OAuth callback received without state param");
-            return redirectToFrontend("error=missing_state", null);
+            return redirectToFrontend(redirectBase, "error=missing_state");
         }
 
         // Validate the state record (prevents CSRF)
@@ -151,7 +166,7 @@ public class MetaOAuthController {
 
         if (stateRecord == null) {
             log.error("Meta OAuth callback: state={} not found or expired", state);
-            return redirectToFrontend("error=invalid_state", null);
+            return redirectToFrontend(redirectBase, "error=invalid_state");
         }
 
         try {
@@ -202,14 +217,29 @@ public class MetaOAuthController {
             log.info("Meta OAuth authorized for state={}, {} pages found",
                     state, rawPages.size());
 
-            return redirectToFrontend("session_key=" + state, null);
+            return redirectToFrontend(redirectBase, "session_key=" + state);
 
         } catch (Exception e) {
             log.error("Meta OAuth callback processing failed for state={}", state, e);
             stateRecord.setSessionStatus("EXPIRED");
             stateRepository.save(stateRecord);
-            return redirectToFrontend("error=server_error", null);
+            return redirectToFrontend(redirectBase, "error=server_error");
         }
+    }
+
+    /**
+     * Resolve the validated frontend base URL for a callback, from the (possibly
+     * expired) state row's stored origin + institute. Tolerant: any miss falls
+     * back to the configured default inside {@link OAuthRedirectResolver}.
+     */
+    private String resolveRedirectBaseForState(String stateId) {
+        if (stateId == null) {
+            return redirectResolver.resolveRedirectBase(null, null);
+        }
+        OAuthConnectState s = stateRepository.findById(stateId).orElse(null);
+        return redirectResolver.resolveRedirectBase(
+                s != null ? s.getInstituteId() : null,
+                s != null ? s.getFrontendOrigin() : null);
     }
 
     // ── Step 3: Pages list (safe — no tokens) ────────────────────────────────
@@ -584,6 +614,73 @@ public class MetaOAuthController {
         return ResponseEntity.ok(body);
     }
 
+    // ── Manual lead poll (PULL) ──────────────────────────────────────────────
+
+    /**
+     * Pull leads for a Meta connector on demand via GET /{form_id}/leads, for the
+     * last {@code sinceMinutes} minutes, and ingest them through the same pipeline
+     * as the webhook. Use this when realtime push is blocked (Meta CRM access
+     * revoked) to sync leads immediately, or to backfill history that arrived
+     * before the connector/poller existed (pass a large sinceMinutes — Meta retains
+     * ~90 days). Already-delivered leads dedup, so it's safe to run repeatedly.
+     *
+     * Advances the recurring poller's cursor to now on success so the scheduled job
+     * continues seamlessly from here.
+     *
+     * Deliberately NOT @Transactional: each lead is submitted in its own
+     * transaction (via AudienceService), exactly like the webhook path, so one bad
+     * lead can't roll back the whole batch — and the blocking Graph API calls never
+     * hold a DB connection.
+     */
+    @PostMapping("/connectors/{connectorId}/poll")
+    public ResponseEntity<Map<String, Object>> pollConnectorNow(
+            @PathVariable String connectorId,
+            @RequestParam(required = false, defaultValue = "1440") int sinceMinutes) {
+        FormWebhookConnector connector = connectorRepository.findById(connectorId)
+                .orElseThrow(() -> new VacademyException("Connector not found"));
+        if (!"META_LEAD_ADS".equals(connector.getVendor())) {
+            throw new VacademyException("Polling is only supported for Meta connectors");
+        }
+        if (connector.getOauthAccessTokenEnc() == null) {
+            throw new VacademyException("No stored token for this connector — reconnect the Page first.");
+        }
+
+        LocalDateTime pollStart = LocalDateTime.now();
+        long sinceEpoch = pollStart.minusMinutes(Math.max(1, sinceMinutes)).toEpochSecond(ZoneOffset.UTC);
+
+        AdPlatformWebhookService.PollResult result;
+        try {
+            // Generous page cap for manual backfill — a deep history pull can span many
+            // pages (500 * 100 = up to 50k leads in one go).
+            result = adPlatformWebhookService.pollMetaConnector(connector, sinceEpoch, 500);
+        } catch (Exception e) {
+            throw new VacademyException("Meta lead poll failed: " + e.getMessage());
+        }
+
+        // Advance the recurring cursor only if we fully drained; otherwise leave it so
+        // the scheduled poller keeps retrying the older, un-fetched leads. Targeted
+        // update (not a full-entity save) so we don't clobber a concurrent token/status
+        // write to this row.
+        if (!result.truncated()) {
+            connectorRepository.updatePollCursor(connector.getId(), pollStart, result.newestLeadId());
+        }
+
+        log.info("Manual poll for connector {} (last {} min): fetched {} lead(s), truncated={}",
+                connectorId, sinceMinutes, result.fetched(), result.truncated());
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("connector_id", connectorId);
+        body.put("fetched", result.fetched());
+        body.put("since_minutes", sinceMinutes);
+        body.put("truncated", result.truncated());
+        body.put("message", result.truncated()
+                ? "Pulled the most recent " + result.fetched() + " lead(s); the selected window "
+                        + "holds more than a single sync returns. Contact support for a deeper backfill."
+                : "Pulled " + result.fetched() + " lead(s) from Meta. New leads were ingested; "
+                        + "any already delivered were deduped.");
+        return ResponseEntity.ok(body);
+    }
+
     // ── One-time backfill: platform_form_name on legacy connectors ───────────
 
     /**
@@ -715,11 +812,11 @@ public class MetaOAuthController {
 
     /**
      * Build a redirect response to the admin frontend.
+     * @param base        resolved frontend base URL (client's own origin when
+     *                    allowlisted, else the configured default)
      * @param queryString appended as ?queryString (e.g. "session_key=uuid" or "error=denied")
-     * @param fragment    optional URL fragment (may be null)
      */
-    private ResponseEntity<Void> redirectToFrontend(String queryString, String fragment) {
-        String base = frontendCallbackUrl;
+    private ResponseEntity<Void> redirectToFrontend(String base, String queryString) {
         if (base == null || base.isBlank()) {
             log.warn("meta.oauth.frontend.callback.url not set; cannot redirect browser");
             return ResponseEntity.status(HttpStatus.BAD_GATEWAY).build();
@@ -727,7 +824,6 @@ public class MetaOAuthController {
         // Use & if base already contains ?, otherwise use ?
         String separator = base.contains("?") ? "&" : "?";
         String url = base + separator + queryString;
-        if (fragment != null) url += "#" + fragment;
         return ResponseEntity.status(HttpStatus.FOUND)
                 .header(HttpHeaders.LOCATION, url)
                 .build();

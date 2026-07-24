@@ -9,8 +9,8 @@ import {
     ClipboardText,
     ListChecks,
 } from '@phosphor-icons/react';
-import { Video, Sparkles } from 'lucide-react';
-import { ReactNode, useEffect, useMemo } from 'react';
+import { Video, Sparkle } from '@phosphor-icons/react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import {
     Slide,
     slideOrderPayloadType,
@@ -29,6 +29,7 @@ import {
     Package,
     Question,
 } from '@phosphor-icons/react';
+import { getDraftUserId, useSlideDrafts } from '../../-hooks/use-slide-drafts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useLearnerViewStore } from '../../-stores/learner-view-store';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
@@ -48,11 +49,14 @@ const getSlideTypeDisplay = (slide: Slide): string => {
         return 'AI Content';
     }
 
-    // For DOCUMENT slides with specific sub-types (not DOC), show just the sub-type
+    // For DOCUMENT slides with specific sub-types, show just the sub-type.
+    // DOC and HTML are both plain documents to the user (the editor behind
+    // them is an implementation detail), so they fall through to "document".
     if (
         sourceType === 'DOCUMENT' &&
         slide.document_slide?.type &&
-        slide.document_slide.type !== 'DOC'
+        slide.document_slide.type !== 'DOC' &&
+        slide.document_slide.type !== 'HTML'
     ) {
         return (slide.document_slide.type ?? '').toLowerCase().replace('_', ' ');
     }
@@ -102,7 +106,7 @@ export const getIcon = (
         return (
             <div className="relative inline-block">
                 <Video className={`${iconClass} text-blue-500`} />
-                <Sparkles className={`absolute -right-0.5 -top-0.5 ${sparkleSize} text-blue-400`} />
+                <Sparkle className={`absolute -right-0.5 -top-0.5 ${sparkleSize} text-blue-400`} />
             </div>
         );
     }
@@ -125,6 +129,7 @@ export const getIcon = (
             return <PlayCircle className={`${iconClass} text-green-500`} />;
         case 'DOC':
         case 'DOCX':
+        case 'HTML':
             return <FileDoc className={`${iconClass} text-blue-600`} />;
         case 'QUESTION':
             return <Question className={`${iconClass} text-purple-500`} />;
@@ -150,6 +155,7 @@ const SlideItem = ({
     slide,
     index,
     isActive,
+    isDirty = false,
     onClick,
     assessmentOrdinal,
     showNumbering = true,
@@ -157,6 +163,8 @@ const SlideItem = ({
     slide: Slide;
     index: number;
     isActive: boolean;
+    /** Slide has a local (browser-only) unsaved draft — show the amber badge. */
+    isDirty?: boolean;
     onClick: () => void;
     /**
      * 1-indexed position of this slide among ASSESSMENT slides in the
@@ -237,23 +245,25 @@ const SlideItem = ({
             >
                 <div
                     className={`
-                        flex w-full items-center gap-2.5 rounded-lg border px-3
-                        py-2 backdrop-blur-sm transition-all
+                        flex w-full items-center gap-2 overflow-hidden rounded-lg border
+                        px-2 py-2 backdrop-blur-sm transition-all
                         duration-300 ease-in-out
                         ${
                             slide.status === 'DELETED'
                                 ? 'cursor-not-allowed border-red-200 bg-red-50/30 text-red-600 opacity-50'
                                 : isActive
                                   ? 'border-primary-300 bg-primary-50/80 text-primary-600 shadow-md shadow-primary-100/50'
-                                  : 'hover:bg-primary-25 border-neutral-100 bg-white/60 text-neutral-600 hover:border-primary-200 hover:text-primary-500 hover:shadow-sm'
+                                  : isDirty
+                                    ? 'border-warning-300 bg-warning-50/60 text-neutral-600 hover:border-warning-400 hover:shadow-sm'
+                                    : 'hover:bg-primary-25 border-neutral-100 bg-white/60 text-neutral-600 hover:border-primary-200 hover:text-primary-500 hover:shadow-sm'
                         }
                         ${slide.status !== 'DELETED' ? 'group-hover:shadow-md' : ''}
                     `}
                 >
                     <TooltipProvider>
                         <Tooltip>
-                            <TooltipTrigger className="w-full">
-                                <div className="flex flex-1 items-center gap-2.5">
+                            <TooltipTrigger className="w-full min-w-0">
+                                <div className="flex min-w-0 flex-1 items-center gap-2">
                                     {/* Slide Number with enhanced styling — hidden
                                         when the admin turns off content numbering */}
                                     {showNumbering && (
@@ -284,18 +294,35 @@ const SlideItem = ({
                                         )}
                                     </div>
 
-                                    {/* Content area */}
-                                    <div className="min-w-0 flex-1">
+                                    {/* Content area. Hard char cap is the reliable
+                                        containment: an unbroken runaway string (no spaces)
+                                        escapes the flex/overflow chain and widens the whole
+                                        sidebar, so cap the length here. 25 shows real names
+                                        in full ("Portfolio Instructions", "SamplePPTX-Dummy-
+                                        Text") while a 200-char string can never break the
+                                        layout. `truncate` stays as the width-level ellipsis. */}
+                                    <div className="min-w-0 flex-1 text-left">
                                         <p className="truncate text-sm font-medium leading-tight">
-                                            {truncateString(getSlideTitle(), 18)}
+                                            {truncateString(getSlideTitle(), 25)}
                                         </p>
                                         <p className="mt-0.5 text-xs capitalize leading-tight text-neutral-400">
                                             {getSlideTypeDisplay(slide)}
                                         </p>
                                     </div>
 
-                                    {/* Status indicator */}
-                                    <div className="shrink-0">{getStatusBadge()}</div>
+                                    {/* Status indicator (+ amber dot while the slide has
+                                        unsaved local edits — shown alongside, never replacing,
+                                        the ✓/D/U badge; also readable on the ACTIVE row, whose
+                                        primary border overrides the amber dirty border) */}
+                                    <div className="flex shrink-0 items-center gap-1.5">
+                                        {isDirty && (
+                                            <span
+                                                title="Unsaved changes"
+                                                className="size-2 rounded-full bg-warning-500 ring-2 ring-warning-100"
+                                            />
+                                        )}
+                                        {getStatusBadge()}
+                                    </div>
                                 </div>
                             </TooltipTrigger>
                             <TooltipContent
@@ -353,6 +380,13 @@ export const ChapterSidebarSlides = ({
     const { chapterId, slideId, courseId, levelId, moduleId, subjectId, sessionId } = searchParams;
 
     const { slides, isLoading, refetch } = useSlidesQuery(chapterId || '');
+
+    // Local unsaved drafts (course-scoped) → amber border on dirty rows. The
+    // course-level rollup lives in CourseUnsavedBanner (sidebar top), and the
+    // DB status badge (✓/D/U) is deliberately left untouched — dirty is a
+    // separate fact from saved-status.
+    const [draftUserId] = useState<string>(() => getDraftUserId());
+    const { dirtySlideIds } = useSlideDrafts(draftUserId, courseId || '');
 
     // Memoize filtered slides to prevent infinite loops
     const filteredSlides = useMemo(() => {
@@ -520,6 +554,7 @@ export const ChapterSidebarSlides = ({
                                     slide={slide}
                                     index={index}
                                     isActive={slide.id === activeItem?.id}
+                                    isDirty={dirtySlideIds.has(slide.id)}
                                     onClick={() => handleSlideClick(slide)}
                                     assessmentOrdinal={assessmentOrdinal}
                                     showNumbering={showNumbering}

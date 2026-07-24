@@ -11,8 +11,19 @@ export { LeadCounsellor } from './lead-counsellor';
 export { LeadActionsMenu } from './lead-actions-menu';
 export { LeadEmptyState } from './lead-empty-state';
 export { LeadSourcePill } from './lead-source-pill';
-export { LeadTable, type LeadTableExtraColumn } from './lead-table';
+export {
+    LeadTable,
+    type LeadTableExtraColumn,
+    type LeadSortKey,
+    type LeadSortDirection,
+} from './lead-table';
 export { LeadPagination } from './lead-pagination';
+export { ManageColumnsPopover } from './manage-columns-popover';
+export {
+    useLeadColumnPrefs,
+    buildLeadColumnToggles,
+    type LeadColumnToggle,
+} from './use-lead-column-prefs';
 export {
     LeadInlineSelect,
     LEAD_STATUS_OPTIONS,
@@ -20,6 +31,7 @@ export {
     type LeadInlineOption,
 } from './lead-inline-select';
 export { LeadRowActions } from './lead-row-actions';
+export { AiCallDialog, type AiCallDialogTarget } from './ai-call-dialog';
 export { useLeadKpiCounts, LEAD_KPI_METRICS, type LeadKpiMetric } from './use-lead-kpi-counts';
 export { LeadStatTabs, type LeadStatTab } from './lead-stat-tabs';
 export { LeadCard } from './lead-card';

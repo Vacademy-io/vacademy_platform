@@ -51,6 +51,10 @@ public class VoiceBotInternalController {
     @Autowired private UserMobileResolver userMobileResolver;
     @Autowired private InstituteRepository instituteRepository;
     @Autowired private vacademy.io.admin_core_service.features.telephony.core.AiAgentService aiAgentService;
+    // @Lazy: AudienceService is a large service; avoid an eager bean cycle. Used only to
+    // read the lead's custom/form fields so the agent can personalise the call.
+    @Autowired @org.springframework.context.annotation.Lazy
+    private vacademy.io.admin_core_service.features.audience.service.AudienceService audienceService;
 
     private final ObjectMapper mapper = new ObjectMapper();
 
@@ -115,6 +119,11 @@ public class VoiceBotInternalController {
                 : (row.getToNumber() != null ? row.getToNumber() : row.getFromNumber()));
         out.put("leadName", leadName);
         if (leadGender != null) out.put("leadGender", leadGender);
+        // The lead's captured form/custom fields (company, role, …) so the agent can
+        // reference what it already knows instead of re-asking. Empty for unknown callers.
+        Map<String, String> leadFields = row.getResponseId() == null
+                ? Map.of() : audienceService.getLeadCustomFields(row.getResponseId());
+        if (leadFields != null && !leadFields.isEmpty()) out.put("leadFields", leadFields);
         out.put("responseId", row.getResponseId());
         out.put("userId", row.getUserId());
         out.put("agent", agent);
@@ -190,6 +199,10 @@ public class VoiceBotInternalController {
         if (a.getMaxCallMinutes() != null && a.getMaxCallMinutes() > 0) {
             base.put("maxCallMinutes", a.getMaxCallMinutes());
         }
+        // Voice tuning (V379): consumed by the bot's build_tts. Absent = the bot's
+        // global TTS_PACE / Sarvam model default.
+        if (a.getPace() != null) base.put("pace", a.getPace());
+        if (a.getTemperature() != null) base.put("temperature", a.getTemperature());
         return base;
     }
 

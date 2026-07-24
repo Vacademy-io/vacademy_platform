@@ -656,7 +656,7 @@ export function ChatScreen({
       {/* ── Conversation list pane ── */}
       <aside
         className={cn(
-          "flex w-full flex-col border-r border-border bg-background sm:w-80 sm:shrink-0",
+          "flex w-full flex-col border-e border-border bg-background sm:w-80 sm:shrink-0",
           selectedId && "hidden sm:flex",
         )}
       >
@@ -712,7 +712,7 @@ export function ChatScreen({
               start a new direct message.
             </p>
             <Button type="button" onClick={() => setNewChatOpen(true)}>
-              <PencilSimpleLine size={18} className="mr-1.5" />
+              <PencilSimpleLine size={18} className="me-1.5" />
               New message
             </Button>
           </div>

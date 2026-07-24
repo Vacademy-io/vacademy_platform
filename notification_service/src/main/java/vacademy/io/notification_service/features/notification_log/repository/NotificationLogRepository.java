@@ -705,6 +705,28 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
                         @Param("since") String since);
 
     /**
+     * Paginated list behind {@link #countEmailEvent} — the hub drill-down ("show me the emails
+     * that bounced/opened/clicked"). Same scoping: event joined to its parent EMAIL log, parent
+     * filtered by the institute's configured from-addresses, event within window. Newest first.
+     */
+    @Query(value = """
+            SELECT ev.* FROM notification_log ev
+            INNER JOIN notification_log orig ON orig.id = ev.source
+            WHERE ev.notification_type = 'EMAIL_EVENT'
+              AND ev.body LIKE CONCAT('Email Event: ', :eventName, '%')
+              AND orig.notification_type = 'EMAIL'
+              AND orig.sender_business_channel_id IN (:fromAddresses)
+              AND ev.notification_date >= CAST(:since AS TIMESTAMP)
+            ORDER BY ev.notification_date DESC
+            LIMIT :limit OFFSET :offset
+            """, nativeQuery = true)
+    List<NotificationLog> findEmailEventsForInstitute(@Param("fromAddresses") List<String> fromAddresses,
+                                                      @Param("eventName") String eventName,
+                                                      @Param("since") String since,
+                                                      @Param("limit") int limit,
+                                                      @Param("offset") int offset);
+
+    /**
      * Count INBOUND_EMAILs (learner replies) in window for an institute.
      */
     @Query(value = """
@@ -845,4 +867,129 @@ public interface NotificationLogRepository extends JpaRepository<NotificationLog
             @Param("query") String query,
             @Param("limit") int limit,
             @Param("offset") int offset);
+
+    // ==================== ENGAGEMENT LEDGER (batched per-subject rollups) ====================
+    // One aggregate query per identifier type per cohort — never per subject. Rides
+    // idx_notification_log_institute_channel (institute_id, channel_id, notification_type).
+    // notification_date is TIMESTAMP WITHOUT TIME ZONE holding naive UTC (see V26) — Instant
+    // params bind correctly because writers use Instant.now() under the container's UTC TZ pin;
+    // do not add casts here (V26's header explains why).
+
+    interface WhatsAppLedgerRow {
+        String getChannelId();
+        java.sql.Timestamp getLastSentAt();
+        java.sql.Timestamp getLastDeliveredAt();
+        java.sql.Timestamp getLastReadAt();
+        java.sql.Timestamp getLastReplyAt();
+        Long getRecentSends();
+        Long getRecentReads();
+        Long getRecentFailures();
+    }
+
+    @Query(value = """
+            SELECT channel_id AS "channelId",
+                   MAX(notification_date) FILTER (WHERE notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
+                       AND body NOT LIKE '%| Status: FAILED |%') AS "lastSentAt",
+                   MAX(notification_date) FILTER (WHERE notification_type = 'WHATSAPP_MESSAGE_DELIVERED') AS "lastDeliveredAt",
+                   MAX(notification_date) FILTER (WHERE notification_type = 'WHATSAPP_MESSAGE_READ') AS "lastReadAt",
+                   MAX(notification_date) FILTER (WHERE notification_type = 'WHATSAPP_MESSAGE_INCOMING') AS "lastReplyAt",
+                   COUNT(*) FILTER (WHERE notification_type = 'WHATSAPP_MESSAGE_OUTGOING'
+                       AND body NOT LIKE '%| Status: FAILED |%'
+                       AND notification_date >= :recentSince) AS "recentSends",
+                   COUNT(*) FILTER (WHERE notification_type = 'WHATSAPP_MESSAGE_READ' AND notification_date >= :recentSince) AS "recentReads",
+                   COUNT(DISTINCT source_id) FILTER (WHERE notification_type = 'WHATSAPP_MESSAGE_FAILED' AND notification_date >= :recentSince) AS "recentFailures"
+            FROM notification_log
+            WHERE institute_id = :instituteId
+              AND channel_id IN (:phones)
+              AND notification_type IN ('WHATSAPP_MESSAGE_OUTGOING', 'WHATSAPP_MESSAGE_DELIVERED',
+                                        'WHATSAPP_MESSAGE_READ', 'WHATSAPP_MESSAGE_INCOMING',
+                                        'WHATSAPP_MESSAGE_FAILED')
+            GROUP BY channel_id
+            """, nativeQuery = true)
+    // recentSends/lastSentAt: provider-rejected attempts still write OUTGOING rows — success is
+    // only encoded in the body ("... | Status: FAILED | ..."), a stable format written by
+    // WhatsAppService.logWhatsAppMessages. Chatbot/inbox rows carry free-text bodies which
+    // realistically never contain that exact template marker.
+    // recentFailures: DISTINCT source_id (the wamid) because a Meta 'failed' status currently
+    // writes TWO WHATSAPP_MESSAGE_FAILED rows (generic status writer + dedicated failure writer)
+    // sharing the same wamid.
+    List<WhatsAppLedgerRow> aggregateWhatsAppLedger(
+            @Param("instituteId") String instituteId,
+            @Param("phones") List<String> phones,
+            @Param("recentSince") Instant recentSince);
+
+    interface LatestBodyRow {
+        String getChannelId();
+        String getBody();
+        java.sql.Timestamp getEventAt();
+    }
+
+    @Query(value = """
+            SELECT DISTINCT ON (channel_id)
+                   channel_id AS "channelId", body AS "body", notification_date AS "eventAt"
+            FROM notification_log
+            WHERE institute_id = :instituteId
+              AND channel_id IN (:channelIds)
+              AND notification_type = :notificationType
+            ORDER BY channel_id, notification_date DESC
+            """, nativeQuery = true)
+    List<LatestBodyRow> findLatestBodyPerChannel(
+            @Param("instituteId") String instituteId,
+            @Param("channelIds") List<String> channelIds,
+            @Param("notificationType") String notificationType);
+
+    interface EmailLedgerRow {
+        String getChannelId();
+        java.sql.Timestamp getLastSentAt();
+        java.sql.Timestamp getLastReplyAt();
+        Long getRecentSends();
+    }
+
+    interface InboundReplyRow {
+        String getChannelId();
+        String getBody();
+        java.sql.Timestamp getReceivedAt();
+        String getWamid();
+    }
+
+    /**
+     * Recent inbound WhatsApp replies for an institute since a cursor — drives the Engagement
+     * Engine's reply-ingestion sweep (promote the member to tier 0, open the 24h window) and its
+     * auto-reply. DISTINCT ON keeps only the latest reply per sender so the caller does a single
+     * pass; wamid (source_id) is the stable per-message id the auto-reply dedups on.
+     */
+    @Query(value = """
+            SELECT DISTINCT ON (channel_id) channel_id AS "channelId", body AS "body",
+                   notification_date AS "receivedAt", source_id AS "wamid"
+            FROM notification_log
+            WHERE institute_id = :instituteId
+              AND notification_type = 'WHATSAPP_MESSAGE_INCOMING'
+              AND notification_date >= :since
+            ORDER BY channel_id, notification_date DESC
+            """, nativeQuery = true)
+    List<InboundReplyRow> findInboundRepliesSince(@Param("instituteId") String instituteId,
+                                                  @Param("since") Instant since);
+
+    @Query(value = """
+            SELECT LOWER(channel_id) AS "channelId",
+                   MAX(notification_date) FILTER (WHERE notification_type = 'EMAIL') AS "lastSentAt",
+                   MAX(notification_date) FILTER (WHERE notification_type = 'INBOUND_EMAIL') AS "lastReplyAt",
+                   COUNT(*) FILTER (WHERE notification_type = 'EMAIL' AND notification_date >= :recentSince) AS "recentSends"
+            FROM notification_log
+            WHERE institute_id = :instituteId
+              AND LOWER(channel_id) IN (:emails)
+              AND notification_type IN ('EMAIL', 'INBOUND_EMAIL')
+              AND (source IS NULL OR source <> 'announcement-service')
+            GROUP BY LOWER(channel_id)
+            """, nativeQuery = true)
+    // LOWER on both sides: outbound EMAIL rows store the recipient as the caller passed it,
+    // INBOUND_EMAIL stores the parsed From address lowercased — callers pass lowercased emails.
+    // source <> 'announcement-service': announcements write a SECOND EMAIL row per recipient
+    // (AnnouncementDeliveryService.createEmailNotificationLog) on top of the EmailService row
+    // from the unified send, and also log failed attempts as EMAIL rows under that source —
+    // counting them would double the engine's fatigue signal and count bounces as contact.
+    List<EmailLedgerRow> aggregateEmailLedger(
+            @Param("instituteId") String instituteId,
+            @Param("emails") List<String> emails,
+            @Param("recentSince") Instant recentSince);
 }

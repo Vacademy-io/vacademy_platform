@@ -1,6 +1,7 @@
 import { H1 } from "@/components/design-system/typography";
 import { cn } from "@/lib/utils";
 import { BookOpen, Play } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { MyButton } from "@/components/design-system/button";
@@ -35,6 +36,7 @@ const HeroSection = ({
 }: {
     allowLeanersToCreateCourses: boolean;
 }) => {
+    const { t } = useTranslation("study");
     // useQuery (NOT useSuspenseQuery): a failed fetch here must not throw to
     // the router error boundary and replace the whole courses page — the hero
     // only loses its optional "Create Course" button.
@@ -131,9 +133,9 @@ const HeroSection = ({
         )}>
             {/* Animated background elements */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute top-1/4 left-1/4 w-12 h-12 sm:w-16 sm:h-4 md:w-32 md:h-8 bg-primary-100/20 rounded-full blur-3xl animate-gentle-pulse"></div>
+                <div className="absolute top-1/4 start-1/4 w-12 h-12 sm:w-16 sm:h-4 md:w-32 md:h-8 bg-primary-100/20 rounded-full blur-3xl animate-gentle-pulse"></div>
                 <div
-                    className="absolute bottom-1/3 right-1/3 w-16 h-16 sm:w-20 sm:h-20 md:w-40 md:h-40 bg-primary-50/30 rounded-full blur-3xl animate-gentle-pulse"
+                    className="absolute bottom-1/3 end-1/3 w-16 h-16 sm:w-20 sm:h-20 md:w-40 md:h-40 bg-primary-50/30 rounded-full blur-3xl animate-gentle-pulse"
                     style={{ animationDelay: "2s" }}
                 ></div>
             </div>
@@ -142,14 +144,14 @@ const HeroSection = ({
                 {/* Content Section — leads with the resume thread when one exists */}
                 {resume ? (
                     <div className="w-full lg:w-2/3 flex items-center justify-center lg:justify-start">
-                        <div className="animate-fade-in-up w-full max-w-2xl min-w-0 text-center lg:text-left">
+                        <div className="animate-fade-in-up w-full max-w-2xl min-w-0 text-center lg:text-start">
                             <p
                                 className={cn(
                                     "mb-1 text-caption font-semibold uppercase tracking-wider text-muted-foreground",
                                     "[.ui-vibrant_&]:text-primary"
                                 )}
                             >
-                                Jump back in
+                                {t("hero.resume.eyebrow")}
                             </p>
                             <h1 className="line-clamp-2 break-words text-display-sm text-foreground">
                                 {resume.slideTitle}
@@ -165,14 +167,14 @@ const HeroSection = ({
                                     className="w-full gap-2 sm:w-auto"
                                 >
                                     <Play size={16} weight="fill" />
-                                    Continue
+                                    {t("hero.resume.continue")}
                                 </MyButton>
                             </div>
                         </div>
                     </div>
                 ) : (
                 <div className="w-full lg:w-2/3 flex items-center justify-center lg:justify-start">
-                    <div className="animate-fade-in-up max-w-2xl text-center lg:text-left">
+                    <div className="animate-fade-in-up max-w-2xl text-center lg:text-start">
                         {/* Header with Icon */}
                         <div className="flex items-center justify-center lg:justify-start space-x-1.0 mb-1 sm:mb-2">
                             <div className={cn(
@@ -194,23 +196,23 @@ const HeroSection = ({
                                     "text-xs font-semibold text-primary-600 uppercase tracking-wider",
                                     "[.ui-vibrant_&]:text-primary"
                                 )}>
-                                    {getTerminology(
-                                        ContentTerms.Course,
-                                        SystemTerms.Course
-                                    )}{" "}
-                                    Catalog
+                                    {t("hero.catalogEyebrow", {
+                                        course: getTerminology(
+                                            ContentTerms.Course,
+                                            SystemTerms.Course
+                                        ),
+                                    })}
                                 </span>
                             </div>
                         </div>
 
                         {/* Main Heading */}
-                        <H1 className="mb-1 sm:mb-1">Explore & Discover</H1>
+                        <H1 className="mb-1 sm:mb-1">{t("hero.title")}</H1>
 
                         {/* Single Description */}
                         <div className="mb-0.5 sm:mb-1">
                             <p className="text-sm sm:text-base text-gray-600 font-medium leading-relaxed">
-                                Effortlessly organize, upload, and track
-                                educational resources in one place.
+                                {t("hero.description")}
                             </p>
                         </div>
                     </div>
@@ -219,7 +221,7 @@ const HeroSection = ({
 
                 {/* Actions Section (image removed) */}
                 <div
-                    className={`w-full lg:w-1/3 flex items-right justify-end lg:items-end lg:ml-auto p-0.5 sm:p-1 animate-fade-in-up ${allowLeanersToCreateCourses
+                    className={`w-full lg:w-1/3 flex items-right justify-end lg:items-end lg:ms-auto p-0.5 sm:p-1 animate-fade-in-up ${allowLeanersToCreateCourses
                         ? "gap-2 sm:gap-3 flex-col"
                         : ""
                         }`}
@@ -231,7 +233,12 @@ const HeroSection = ({
                                 onClick={handleNavigate}
                                 className="w-full sm:w-auto"
                             >
-                                Create Course
+                                {t("hero.createCourse", {
+                                    course: getTerminology(
+                                        ContentTerms.Course,
+                                        SystemTerms.Course
+                                    ),
+                                })}
                             </MyButton>
                         </>
                     )}

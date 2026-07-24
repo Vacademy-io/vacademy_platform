@@ -67,6 +67,8 @@ import type { PagedResponse, SystemAlertItem } from '@/services/notifications/sy
 import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/admin-defaults';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import { MyButton } from '@/components/design-system/button';
+import { ClearAllAlertsButton } from '@/components/common/notifications/ClearAllAlertsButton';
+import { DismissAlertButton } from '@/components/common/notifications/DismissAlertButton';
 import AccountDetailsEdit from '@/routes/dashboard/-components/AccountDetailsEdit';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
@@ -81,6 +83,11 @@ import {
     getSelectedSubOrgLinkageType,
 } from '@/lib/auth/facultyAccessUtils';
 import { getSubOrgInstituteQuery } from '@/services/student-list-section/getInstituteDetails';
+import { LanguageDropdown } from '@/components/common/localization/language-dropdown';
+import { useLanguageStore } from '@/stores/localization/useLanguageStore';
+import { getEnabledLocales } from '@/services/language-settings';
+import { dueLabel, useDueFollowupReminders } from '@/components/shared/leads/followup-reminders';
+import { Alarm } from '@phosphor-icons/react';
 
 export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolean }) {
     const roleColors: Record<string, string> = {
@@ -146,10 +153,20 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
     const showAiCredits = effectiveDS.ui?.showAiCredits !== false;
     const { data: aiCredits, isError: isCreditsError } = useAiCreditsQuery(showAiCredits);
 
+    // Language switcher: only when the institute offers more than one locale
+    // (single-language institutes — all existing ones — see no change).
+    const currentLocale = useLanguageStore((state) => state.locale);
+    const showLanguageSwitcher = getEnabledLocales(currentLocale).length > 1;
+
     const [showAllDialog, setShowAllDialog] = useState(false);
     const unreadCount = useMemo(() => {
         return alertsList?.content?.reduce((acc, item) => acc + (item.isRead ? 0 : 1), 0) || 0;
     }, [alertsList]);
+
+    // Due/overdue follow-ups (own only) — surfaced above the alerts and
+    // counted in the bell badge so a due follow-up is impossible to miss.
+    const { due: dueFollowups } = useDueFollowupReminders();
+    const bellCount = unreadCount + dueFollowups.length;
 
     const markVisibleAlertsAsRead = async () => {
         if (!userId) return;
@@ -431,6 +448,8 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
             </div>
 
             <div className="flex shrink-0 items-center gap-2 text-neutral-600 md:gap-6">
+                {/* Language switcher (multi-language institutes only) */}
+                {showLanguageSwitcher && <LanguageDropdown className="relative" />}
                 {/* AI Credits */}
                 {showAiCredits && aiCredits && !isCreditsError && <AiCreditsPanel />}
                 {/* Apps Menu */}
@@ -583,9 +602,9 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                     isCompact ? 'size-4' : 'size-4 md:size-5'
                                 )}
                             />
-                            {!!unreadCount && (
+                            {!!bellCount && (
                                 <span className="absolute -right-0.5 -top-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white">
-                                    {unreadCount}
+                                    {bellCount}
                                 </span>
                             )}
                         </div>
@@ -596,21 +615,74 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                             isMobile ? 'w-[calc(100vw-2rem)] max-w-[320px]' : 'w-80'
                         )}
                     >
+                        {/* Due follow-up reminders — pinned above the alerts. */}
+                        {dueFollowups.length > 0 && (
+                            <>
+                                <div className="flex items-center justify-between bg-warning-50 px-3 py-2">
+                                    <span className="flex items-center gap-1.5 text-sm font-medium text-warning-700">
+                                        <Alarm size={15} weight="bold" />
+                                        Follow-ups due ({dueFollowups.length})
+                                    </span>
+                                    <button
+                                        className="text-xs text-primary-500 hover:underline"
+                                        onClick={() =>
+                                            navigate({ to: '/audience-manager/follow-ups' })
+                                        }
+                                    >
+                                        View all
+                                    </button>
+                                </div>
+                                <div className="max-h-40 overflow-y-auto p-2">
+                                    {dueFollowups.slice(0, 4).map((f) => {
+                                        const due = dueLabel(f.schedule_time);
+                                        return (
+                                            <button
+                                                key={f.id}
+                                                className="flex w-full items-center justify-between gap-2 rounded-md p-2 text-left hover:bg-neutral-100"
+                                                onClick={() =>
+                                                    navigate({ to: '/audience-manager/follow-ups' })
+                                                }
+                                            >
+                                                <span className="min-w-0">
+                                                    <span className="block truncate text-xs font-medium text-neutral-800">
+                                                        {f.lead_name ?? 'Lead'}
+                                                    </span>
+                                                    {f.lead_mobile && (
+                                                        <span className="block text-caption text-neutral-500">
+                                                            {f.lead_mobile}
+                                                        </span>
+                                                    )}
+                                                </span>
+                                                <span
+                                                    className={cn(
+                                                        'shrink-0 rounded px-1.5 py-0.5 text-caption font-medium',
+                                                        due.tone === 'overdue'
+                                                            ? 'bg-danger-100 text-danger-700'
+                                                            : 'bg-warning-100 text-warning-700'
+                                                    )}
+                                                >
+                                                    {due.text}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                    {dueFollowups.length > 4 && (
+                                        <p className="p-1 text-center text-caption text-neutral-500">
+                                            +{dueFollowups.length - 4} more due
+                                        </p>
+                                    )}
+                                </div>
+                                <Separator />
+                            </>
+                        )}
                         <div className="flex items-center justify-between px-3 py-2">
                             <span className="text-sm font-medium">System Alerts</span>
-                            <div className="flex items-center gap-3">
-                                {!!unreadCount && (
-                                    <button
-                                        className="text-xs text-neutral-500 hover:underline"
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            void markVisibleAlertsAsRead();
-                                        }}
-                                    >
-                                        Clear
-                                    </button>
-                                )}
+                            <div className="flex items-center gap-2">
+                                <ClearAllAlertsButton
+                                    userId={userId}
+                                    hasAlerts={!!alertsList?.content?.length}
+                                    className="!min-w-0 !px-1"
+                                />
                                 <button
                                     className="text-xs text-primary-500 hover:underline"
                                     onClick={() => setShowAllDialog(true)}
@@ -645,19 +717,25 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                 <div className="text-[13px] font-medium text-neutral-800">
                                                     {item.title}
                                                 </div>
-                                                {!!status && (
-                                                    <span
-                                                        className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                                                            isDelivered
-                                                                ? 'bg-green-100 text-green-700'
-                                                                : isFailed
-                                                                  ? 'bg-red-100 text-red-700'
-                                                                  : 'bg-neutral-100 text-neutral-700'
-                                                        }`}
-                                                    >
-                                                        {status}
-                                                    </span>
-                                                )}
+                                                <div className="flex shrink-0 items-center gap-1">
+                                                    {!!status && (
+                                                        <span
+                                                            className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                                                isDelivered
+                                                                    ? 'bg-green-100 text-green-700'
+                                                                    : isFailed
+                                                                      ? 'bg-red-100 text-red-700'
+                                                                      : 'bg-neutral-100 text-neutral-700'
+                                                            }`}
+                                                        >
+                                                            {status}
+                                                        </span>
+                                                    )}
+                                                    <DismissAlertButton
+                                                        userId={userId}
+                                                        messageId={item.messageId}
+                                                    />
+                                                </div>
                                             </div>
                                             <div className="line-clamp-2 text-[12px] text-neutral-600">
                                                 {item.content?.type === 'html'
@@ -700,7 +778,17 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                             isMobile ? 'w-[calc(100vw-2rem)] max-w-lg' : 'max-w-2xl'
                         )}
                     >
-                        <DialogTitle className="px-5 py-4 text-base">System Alerts</DialogTitle>
+                        <div className="flex items-center justify-between gap-2 px-5 py-4">
+                            <DialogTitle className="text-base">System Alerts</DialogTitle>
+                            <ClearAllAlertsButton
+                                userId={userId}
+                                hasAlerts={
+                                    !!infiniteAlerts.data?.pages?.flatMap((p) => p.content).length
+                                }
+                                className="!min-w-0 !px-1"
+                                onCleared={() => setShowAllDialog(false)}
+                            />
+                        </div>
                         <Separator />
                         <ScrollArea className="max-h-[70vh]">
                             <div className="p-4">
@@ -736,19 +824,25 @@ export function Navbar({ showMobileBackButton }: { showMobileBackButton?: boolea
                                                                     </span>
                                                                 </div>
                                                             </div>
-                                                            {!!status && (
-                                                                <span
-                                                                    className={`shrink-0 rounded px-2 py-0.5 text-[11px] font-medium ${
-                                                                        isDelivered
-                                                                            ? 'bg-green-100 text-green-700'
-                                                                            : isFailed
-                                                                              ? 'bg-red-100 text-red-700'
-                                                                              : 'bg-neutral-100 text-neutral-700'
-                                                                    }`}
-                                                                >
-                                                                    {status}
-                                                                </span>
-                                                            )}
+                                                            <div className="flex shrink-0 items-center gap-1.5">
+                                                                {!!status && (
+                                                                    <span
+                                                                        className={`rounded px-2 py-0.5 text-[11px] font-medium ${
+                                                                            isDelivered
+                                                                                ? 'bg-green-100 text-green-700'
+                                                                                : isFailed
+                                                                                  ? 'bg-red-100 text-red-700'
+                                                                                  : 'bg-neutral-100 text-neutral-700'
+                                                                        }`}
+                                                                    >
+                                                                        {status}
+                                                                    </span>
+                                                                )}
+                                                                <DismissAlertButton
+                                                                    userId={userId}
+                                                                    messageId={item.messageId}
+                                                                />
+                                                            </div>
                                                         </div>
                                                         <div className="mt-3 text-[13px] leading-relaxed text-neutral-800">
                                                             {item.content?.type === 'html' ? (

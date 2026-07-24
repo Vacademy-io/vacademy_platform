@@ -78,6 +78,21 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
     // Check if Settings should be shown (it exists in finalSidebarItems only for admins)
     const hasSettings = sidebarItems.some((item) => item.id === 'settings');
 
+    // The pinned Status link defaults visible for every role; an explicit
+    // `false` hides it.
+    const showStatusLink = roleDisplay?.ui?.showStatus !== false;
+    // Settings gear visibility. `hasSettings` is true only for admins — the
+    // 'settings' item is stripped for every non-admin role by
+    // filterSidebarByRole. So:
+    //   - Admins: shown unless explicitly hidden (showSettings !== false).
+    //   - Non-admin roles (teacher/custom): the gear is NOT available by
+    //     default; it appears only when the role is explicitly opted in
+    //     (showSettings === true). Opting in also gives that role a doorway
+    //     into the full settings page, so it stays deliberate/opt-in.
+    const showSettingsButton = hasSettings
+        ? roleDisplay?.ui?.showSettings !== false
+        : roleDisplay?.ui?.showSettings === true;
+
     // Sort categories by display settings order
     const sortedCategories = [...BASE_CATEGORIES].sort((a, b) => {
         const cfgA = roleDisplay?.sidebarCategories?.find((c) => c.id === a.id);
@@ -202,7 +217,7 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
     };
 
     return (
-        <div className="flex h-full w-16 flex-shrink-0 flex-col items-center border-r border-primary-600 bg-primary-500 py-3">
+        <div className="flex h-full w-16 flex-shrink-0 flex-col items-center border-r border-primary-600 bg-nav-surface py-3">
             {/* Search Icon */}
             <Tooltip delayDuration={0}>
                 <TooltipTrigger asChild>
@@ -281,30 +296,32 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
             </div>
 
             {/* ─── Service health / status page (external, pinned above Settings) ──── */}
-            <a
-                href="https://status.vacademy.io"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={cn(
-                    'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
-                    'hover:bg-white/10'
-                )}
-                aria-label="Service status"
-                title="Service status"
-            >
-                <span className="relative z-10">
-                    <Heartbeat
-                        size={22}
-                        className="text-white/70 transition-colors duration-200"
-                    />
-                </span>
-                <span className="relative z-10 text-[10px] font-medium leading-tight text-white/70 transition-colors duration-200">
-                    Status
-                </span>
-            </a>
+            {showStatusLink && (
+                <a
+                    href="https://status.vacademy.io"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn(
+                        'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
+                        'hover:bg-white/10'
+                    )}
+                    aria-label="Service status"
+                    title="Service status"
+                >
+                    <span className="relative z-10">
+                        <Heartbeat
+                            size={22}
+                            className="text-white/70 transition-colors duration-200"
+                        />
+                    </span>
+                    <span className="relative z-10 text-[10px] font-medium leading-tight text-white/70 transition-colors duration-200">
+                        Status
+                    </span>
+                </a>
+            )}
 
             {/* ─── Settings (admin-only, pinned to bottom) ──── */}
-            {hasSettings && (
+            {showSettingsButton && (
                 <>
                     <div className="my-1 h-px w-8 bg-primary-400/50" />
                     <button

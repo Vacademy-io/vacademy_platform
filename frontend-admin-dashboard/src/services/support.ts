@@ -58,6 +58,10 @@ export interface SupportTicketDto {
     priority: TicketPriority;
     status: TicketStatus;
     planAtCreation: string | null;
+    /** PORTAL | EMAIL | WHATSAPP | PHONE | MANUAL | OTHER. */
+    source: string | null;
+    /** Support-committed expected-resolution time (ISO), shown to the institute. */
+    eta: string | null;
     firstResponseDueAt: string | null;
     firstRespondedAt: string | null;
     resolvedAt: string | null;

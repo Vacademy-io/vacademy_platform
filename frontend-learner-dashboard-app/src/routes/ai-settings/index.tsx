@@ -214,13 +214,13 @@ function APIKeyManagement() {
                 onChange={(e) =>
                   setFormData({ ...formData, openai_key: e.target.value })
                 }
-                className="pr-10"
+                className="pe-10"
               />
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="absolute right-0 top-0 h-full px-3"
+                className="absolute end-0 top-0 h-full px-3"
                 onClick={() => setShowOpenAIKey(!showOpenAIKey)}
               >
                 {showOpenAIKey ? (
@@ -256,13 +256,13 @@ function APIKeyManagement() {
                 onChange={(e) =>
                   setFormData({ ...formData, gemini_key: e.target.value })
                 }
-                className="pr-10"
+                className="pe-10"
               />
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="absolute right-0 top-0 h-full px-3"
+                className="absolute end-0 top-0 h-full px-3"
                 onClick={() => setShowGeminiKey(!showGeminiKey)}
               >
                 {showGeminiKey ? (
@@ -323,7 +323,7 @@ function APIKeyManagement() {
             disabled={saveApiKeys.isPending}
             className="flex-1"
           >
-            <FloppyDisk className="h-4 w-4 mr-2" />
+            <FloppyDisk className="h-4 w-4 me-2" />
             {saveApiKeys.isPending ? "Saving..." : "Save Keys"}
           </Button>
           {apiKeyData &&
@@ -333,7 +333,7 @@ function APIKeyManagement() {
                 onClick={handleDelete}
                 disabled={deleteApiKeys.isPending}
               >
-                <Trash className="h-4 w-4 mr-2" />
+                <Trash className="h-4 w-4 me-2" />
                 Delete All Keys
               </Button>
             )}
@@ -442,11 +442,11 @@ function TokenUsage() {
                 <table className="w-full text-sm">
                   <thead className="bg-muted sticky top-0">
                     <tr>
-                      <th className="text-left p-3 font-medium">Date</th>
-                      <th className="text-left p-3 font-medium">Provider</th>
-                      <th className="text-left p-3 font-medium">Model</th>
-                      <th className="text-right p-3 font-medium">Tokens</th>
-                      <th className="text-right p-3 font-medium">Cost</th>
+                      <th className="text-start p-3 font-medium">Date</th>
+                      <th className="text-start p-3 font-medium">Provider</th>
+                      <th className="text-start p-3 font-medium">Model</th>
+                      <th className="text-end p-3 font-medium">Tokens</th>
+                      <th className="text-end p-3 font-medium">Cost</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -462,10 +462,10 @@ function TokenUsage() {
                           {record.api_provider}
                         </td>
                         <td className="p-3">{record.model}</td>
-                        <td className="p-3 text-right">
+                        <td className="p-3 text-end">
                           {record.total_tokens.toLocaleString()}
                         </td>
-                        <td className="p-3 text-right">
+                        <td className="p-3 text-end">
                           ${record.total_price.toFixed(4)}
                         </td>
                       </tr>

@@ -143,7 +143,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                         <img
                             src={instructorImage}
                             alt={instructorName}
-                            className="w-6 h-6 sm:w-8 sm:h-8 rounded-full mr-2 object-cover"
+                            className="w-6 h-6 sm:w-8 sm:h-8 rounded-full me-2 object-cover"
                         />
                         <div className="min-w-0 flex-1">
                             <p className="text-xs text-gray-500 font-medium uppercase tracking-wider mb-1">
@@ -202,12 +202,12 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                 }`}
                             />
                         ))}
-                        <span className="ml-1 font-medium">
+                        <span className="ms-1 font-medium">
                             {ratingValue.toFixed(1)}
                         </span>
                     </div>
                     {studentCount !== undefined && (
-                        <span className="ml-2 text-gray-500 text-xs sm:text-sm">
+                        <span className="ms-2 text-gray-500 text-xs sm:text-sm">
                             ({studentCount}{" "}
                             {getTerminology(
                                 RoleTerms.Learner,

@@ -442,7 +442,7 @@ export function CourseDetailsRatingsComponent({
             "[.ui-vibrant_&]:border-primary/20 [.ui-vibrant_&]:shadow-md",
             // Play Styles — quiet white rail card (one rail language)
             "[.ui-play_&]:bg-white [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface",
-            "[.ui-play_&]:rounded-play-card [.ui-play_&]:text-play-ink",
+            "[.ui-play_&]:rounded-play-card-sm [.ui-play_&]:text-play-ink",
             "[.ui-play_&]:shadow-none [.ui-play_&]:hover:shadow-none"
         )}>
             {/* Background gradient overlay */}
@@ -453,11 +453,11 @@ export function CourseDetailsRatingsComponent({
 
             {/* Floating orb effects */}
             <div className={cn(
-                "absolute top-0 right-0 w-16 h-16 bg-primary-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 -translate-y-3 translate-x-6",
+                "absolute top-0 end-0 w-16 h-16 bg-primary-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 -translate-y-3 translate-x-6",
                 "[.ui-play_&]:hidden"
             )}></div>
             <div className={cn(
-                "absolute bottom-0 left-0 w-20 h-20 bg-yellow-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 translate-y-3 -translate-x-6",
+                "absolute bottom-0 start-0 w-20 h-20 bg-yellow-100/20 rounded-md opacity-0 group-hover:opacity-100 transition-opacity duration-500 translate-y-3 -translate-x-6",
                 "[.ui-play_&]:hidden"
             )}></div>
 
@@ -467,7 +467,7 @@ export function CourseDetailsRatingsComponent({
                     <div className={cn(
                         "p-1 bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-md shadow-sm",
                         // Play Styles
-                        "[.ui-play_&]:bg-play-gold [.ui-play_&]:rounded-xl [.ui-play_&]:shadow-play-2d-gold"
+                        "[.ui-play_&]:bg-play-gold-soft [.ui-play_&]:rounded-xl"
                     )}>
                         <Star
                             size={14}
@@ -550,7 +550,7 @@ export function CourseDetailsRatingsComponent({
                             </button>
                         ))}
                         <span className={cn(
-                            "ml-1 text-caption text-neutral-500",
+                            "ms-1 text-caption text-neutral-500",
                             "[.ui-play_&]:text-play-muted-deep [.ui-play_&]:font-bold"
                         )}>
                             {selectedRating
@@ -594,8 +594,8 @@ export function CourseDetailsRatingsComponent({
                             "[.ui-vibrant_&]:bg-none [.ui-vibrant_&]:bg-primary-50/50 dark:[.ui-vibrant_&]:bg-primary-500/10",
                             "[.ui-vibrant_&]:border-primary-100 dark:[.ui-vibrant_&]:border-primary-500/30",
                             // Play Styles — solid, bold, Duolingo-style
-                            "[.ui-play_&]:bg-play-gold [.ui-play_&]:border-play-gold-deep [.ui-play_&]:rounded-2xl [.ui-play_&]:text-play-ink [.ui-play_&]:font-bold",
-                            "[.ui-play_&]:shadow-play-3d-gold"
+                            "[.ui-play_&]:bg-play-gold-soft [.ui-play_&]:border-border [.ui-play_&]:rounded-play-card-sm [.ui-play_&]:text-play-ink [.ui-play_&]:font-bold",
+                            "[.ui-play_&]:shadow-play-soft-card"
                         )}>
                             {/* Background pattern */}
                             <div className={cn(
@@ -606,7 +606,7 @@ export function CourseDetailsRatingsComponent({
 
                             <div className="relative grid grid-cols-1 lg:grid-cols-5 gap-3">
                                 {/* Rating Score */}
-                                <div className="lg:col-span-2 text-center lg:text-left space-y-1.5">
+                                <div className="lg:col-span-2 text-center lg:text-start space-y-1.5">
                                     <div className="inline-flex flex-col items-center lg:items-start space-y-1">
                                         <div className="text-2xl sm:text-3xl font-bold text-gray-900 leading-none">
                                             {overallRatingData?.average_rating !==
@@ -699,7 +699,7 @@ export function CourseDetailsRatingsComponent({
                                                         )}
                                                     />
                                                 </div>
-                                                <span className="text-xs font-bold text-gray-900 min-w-10 text-right">
+                                                <span className="text-xs font-bold text-gray-900 min-w-10 text-end">
                                                     {percent}%
                                                 </span>
                                             </div>

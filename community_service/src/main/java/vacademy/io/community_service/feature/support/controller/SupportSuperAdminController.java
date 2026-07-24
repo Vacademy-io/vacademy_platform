@@ -13,6 +13,7 @@ import vacademy.io.community_service.feature.support.service.SupportConfigServic
 import vacademy.io.community_service.feature.support.service.SupportEngineerService;
 import vacademy.io.community_service.feature.support.service.SupportTicketService;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -44,18 +45,36 @@ public class SupportSuperAdminController {
 
     // ---- inbox -------------------------------------------------------------------
 
+    /**
+     * @param instituteId  single-institute filter (kept for existing callers/deep links)
+     * @param instituteIds multi-institute filter (repeated or comma-separated); unioned with
+     *                     {@code instituteId}. Empty/absent means all institutes.
+     * @param unassigned   only tickets with no engineer assigned (takes precedence over engineerId)
+     * @param search       case-insensitive substring match on the ticket subject
+     */
     @GetMapping("/tickets")
     public ResponseEntity<PageResponseDto<SupportTicketDto>> tickets(
             @RequestAttribute("user") CustomUserDetails user,
             @RequestParam(value = "instituteId", required = false) String instituteId,
+            @RequestParam(value = "instituteIds", required = false) List<String> instituteIds,
             @RequestParam(value = "status", required = false) String status,
             @RequestParam(value = "engineerId", required = false) String engineerId,
+            @RequestParam(value = "unassigned", defaultValue = "false") boolean unassigned,
+            @RequestParam(value = "search", required = false) String search,
             @RequestParam(value = "overdue", defaultValue = "false") boolean overdue,
             @RequestParam(value = "page", defaultValue = "0") int page,
             @RequestParam(value = "size", defaultValue = "20") int size) {
         SuperAdminAuthUtil.requireSuperAdmin(user);
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(Math.max(1, size), 100));
-        return ResponseEntity.ok(ticketService.search(instituteId, status, engineerId, overdue, pageable));
+        List<String> institutes = new ArrayList<>();
+        if (instituteIds != null) {
+            institutes.addAll(instituteIds);
+        }
+        if (instituteId != null) {
+            institutes.add(instituteId);
+        }
+        return ResponseEntity.ok(ticketService.search(
+                institutes, status, engineerId, unassigned, search, overdue, pageable));
     }
 
     @GetMapping("/tickets/counts")
@@ -69,6 +88,32 @@ public class SupportSuperAdminController {
                                                    @PathVariable String id) {
         SuperAdminAuthUtil.requireSuperAdmin(user);
         return ResponseEntity.ok(ticketService.getByIdForSupport(id));
+    }
+
+    /** Log a ticket on an institute's behalf (issue reported over email / WhatsApp, etc.). */
+    @PostMapping("/tickets")
+    public ResponseEntity<SupportTicketDto> createTicket(@RequestAttribute("user") CustomUserDetails user,
+                                                         @RequestBody CreateSupportTicketRequest request) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(ticketService.createBySupport(request, user));
+    }
+
+    /** Edit an existing ticket (fields, internal-only flag, and its opening message/attachments). */
+    @PutMapping("/tickets/{id}")
+    public ResponseEntity<SupportTicketDto> updateTicket(@RequestAttribute("user") CustomUserDetails user,
+                                                         @PathVariable String id,
+                                                         @RequestBody UpdateTicketRequest request) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(ticketService.updateTicket(id, request));
+    }
+
+    /** Set or clear (null eta) the expected-resolution ETA shown to the institute. */
+    @PostMapping("/tickets/{id}/eta")
+    public ResponseEntity<SupportTicketDto> setEta(@RequestAttribute("user") CustomUserDetails user,
+                                                   @PathVariable String id,
+                                                   @RequestBody UpdateEtaRequest request) {
+        SuperAdminAuthUtil.requireSuperAdmin(user);
+        return ResponseEntity.ok(ticketService.setEta(id, request != null ? request.getEta() : null));
     }
 
     @PostMapping("/tickets/{id}/messages")

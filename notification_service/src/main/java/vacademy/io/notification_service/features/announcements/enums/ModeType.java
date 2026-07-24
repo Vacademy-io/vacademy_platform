@@ -8,5 +8,6 @@ public enum ModeType {
     RESOURCES,
     COMMUNITY,
     TASKS,
-    CHAT
+    CHAT,
+    APP_OVERLAY
 }

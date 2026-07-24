@@ -4,12 +4,25 @@ import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingS
 import { InstituteDetailsType } from '@/schemas/student/student-list/institute-schema';
 import { removeDefaultPrefix } from '@/utils/helpers/removeDefaultPrefix';
 import { ALL_SESSIONS_ID } from '@/routes/manage-students/students-list/-hooks/useStudentFilters';
+import { CustomFieldSetupItem } from '@/routes/audience-manager/list/-services/get-custom-field-setup';
 
 export const GetFilterData = (
     instituteDetails: InstituteDetailsType,
     _currentSession: string,
     campaigns?: { id?: string; campaign_name: string }[],
-    subOrgs?: { id: string; name: string }[]
+    subOrgs?: { id: string; name: string }[],
+    // Free-text (non-DROPDOWN) custom fields, e.g. VetEducation's "Practice Type" —
+    // rendered as a searchable multi-select instead of a static option list, since
+    // they have no fixed `config` to draw options from.
+    textCustomFields?: CustomFieldSetupItem[],
+    // Institute-wide gate from Settings → Display Settings → "List Filters &
+    // Sorting — Custom Fields" (STUDENTS surface). null/undefined = surface not
+    // configured yet → legacy behavior (every dropdown + text field exposed).
+    allowedCustomFieldIds?: Set<string> | null,
+    // DATE/NUMBER custom fields to expose as range popovers. Already gated by
+    // the caller (only enabled fields are passed) — range fields have no legacy
+    // auto-expose, so an empty/absent list simply renders none.
+    rangeCustomFields?: CustomFieldSetupItem[]
 ) => {
     const statuses = instituteDetails?.student_statuses.map((status, index) => ({
         id: index.toString(),
@@ -132,7 +145,9 @@ export const GetFilterData = (
 
     // Add custom field filters
     if (instituteDetails?.dropdown_custom_fields) {
-        instituteDetails.dropdown_custom_fields.forEach((customField) => {
+        instituteDetails.dropdown_custom_fields
+            .filter((customField) => !allowedCustomFieldIds || allowedCustomFieldIds.has(customField.id))
+            .forEach((customField) => {
             try {
                 const config = JSON.parse(customField.config);
                 const options = config.map((option: any) => ({
@@ -148,6 +163,40 @@ export const GetFilterData = (
             } catch (error) {
                 console.error(`Error parsing custom field config for ${customField.fieldName}:`, error);
             }
+        });
+    }
+
+    // Add free-text custom field filters — searchable multi-select over the
+    // distinct values actually stored, since there's no fixed option list.
+    if (textCustomFields && textCustomFields.length > 0) {
+        textCustomFields
+            .filter(
+                (customField) =>
+                    !allowedCustomFieldIds || allowedCustomFieldIds.has(customField.custom_field_id)
+            )
+            .forEach((customField) => {
+                filterData.push({
+                    id: customField.field_key,
+                    title: customField.field_name,
+                    filterList: [],
+                    kind: 'CUSTOM_FIELD_SEARCH',
+                    customFieldId: customField.custom_field_id,
+                });
+            });
+    }
+
+    // DATE/NUMBER custom fields — range popover (typed operators) instead of a
+    // value multi-select.
+    if (rangeCustomFields && rangeCustomFields.length > 0) {
+        rangeCustomFields.forEach((customField) => {
+            filterData.push({
+                id: customField.field_key,
+                title: customField.field_name,
+                filterList: [],
+                kind: 'CUSTOM_FIELD_RANGE',
+                customFieldId: customField.custom_field_id,
+                fieldType: customField.field_type,
+            });
         });
     }
 

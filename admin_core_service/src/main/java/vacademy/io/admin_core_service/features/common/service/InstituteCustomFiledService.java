@@ -1,6 +1,9 @@
 package vacademy.io.admin_core_service.features.common.service;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
@@ -420,6 +423,24 @@ public class InstituteCustomFiledService {
         List<Object[]> results = instituteCustomFieldRepository
                 .findUniqueActiveCustomFieldsByInstituteId(instituteId, StatusEnum.ACTIVE.name());
         return results.stream().map(this::convertToInstituteCustomFieldSetupDto).collect(Collectors.toList());
+    }
+
+    /**
+     * Searchable, paginated list of the distinct values a custom field holds
+     * across an institute's learners — feeds the Manage Students filter bar's
+     * multi-select dropdown for free-text custom fields (e.g. VetEducation's
+     * "Practice Type") that have no fixed DROPDOWN option list to draw from.
+     */
+    public Page<String> getStudentCustomFieldValues(String instituteId, String customFieldId,
+            String search, int pageNo, int pageSize) {
+        Pageable pageable = PageRequest.of(Math.max(pageNo, 0), pageSize > 0 ? pageSize : 20);
+        if (instituteId == null || instituteId.isBlank()
+                || customFieldId == null || customFieldId.isBlank()) {
+            return Page.empty(pageable);
+        }
+        String normalizedSearch = (search != null && !search.isBlank()) ? search.trim() : null;
+        return customFieldValuesRepository.findDistinctStudentCustomFieldValues(
+                instituteId, customFieldId, normalizedSearch, pageable);
     }
 
     /**

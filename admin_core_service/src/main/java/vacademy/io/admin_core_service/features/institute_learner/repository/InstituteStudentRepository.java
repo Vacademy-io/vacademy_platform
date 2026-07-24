@@ -2,10 +2,12 @@ package vacademy.io.admin_core_service.features.institute_learner.repository;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.institute_learner.dto.projection.StudentListV2Projection;
 import vacademy.io.admin_core_service.features.institute_learner.entity.Student;
 
@@ -25,6 +27,30 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
   List<String> findDistinctUserIdsByInstituteId(@Param("instituteId") String instituteId);
 
   List<Student> findByUserIdIn(List<String> userIds);
+
+  /** Guardian-linking backfill preview: students in this set with no guardian linked yet. */
+  List<Student> findByUserIdInAndGuardianUserIdIsNull(List<String> userIds);
+
+  /**
+   * Guardian-linking eligibility pre-filter: candidates in this set PROVEN to
+   * already have a guardian locally — i.e. an exclude-list, never an
+   * allow-list. Candidates with no local {@code student} row at all (leads
+   * that were never enrolled have none) must NOT be inferred as "already
+   * linked" just because they're absent here; only use this to subtract
+   * known-linked ids from a candidate set, never to replace it.
+   */
+  List<Student> findByUserIdInAndGuardianUserIdIsNotNull(List<String> userIds);
+
+  /**
+   * Stamps the denormalized guardian pointer once a link succeeds (assignment-time
+   * link, link-new-guardian, or backfill). Bulk-by-userId since a user can have more
+   * than one student row (findByUserId returns a List, not Optional) — every row for
+   * this user gets the same guardian.
+   */
+  @Modifying
+  @Transactional
+  @Query("UPDATE Student s SET s.guardianUserId = :guardianUserId WHERE s.userId = :userId")
+  void updateGuardianUserId(@Param("userId") String userId, @Param("guardianUserId") String guardianUserId);
 
   @Query(value = "SELECT DISTINCT s.* FROM student s LEFT JOIN student_session_institute_group_mapping ssigm ON s.user_id = ssigm.user_id "
       +
@@ -1256,6 +1282,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 WHERE ar.user_id = s.user_id
                   AND ar.audience_id IN (:audienceIds)
                   AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                  AND ar.audience_status = 'ACTIVE'
               )
             )
           GROUP BY ssigm.user_id
@@ -1297,6 +1324,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             WHERE ar.user_id = s.user_id
               AND ar.audience_id IN (:audienceIds)
               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+              AND ar.audience_status = 'ACTIVE'
           )
         )
       """)
@@ -1356,6 +1384,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 WHERE ar.user_id = s.user_id
                   AND ar.audience_id IN (:audienceIds)
                   AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                  AND ar.audience_status = 'ACTIVE'
               )
             )
             AND (
@@ -1409,6 +1438,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             WHERE ar.user_id = s.user_id
               AND ar.audience_id IN (:audienceIds)
               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+              AND ar.audience_status = 'ACTIVE'
           )
         )
         AND (
@@ -1486,6 +1516,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 WHERE ar.user_id = s.user_id
                   AND ar.audience_id IN (:audienceIds)
                   AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                  AND ar.audience_status = 'ACTIVE'
               )
             )
             AND (
@@ -1512,6 +1543,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             AND a.institute_id IN (:instituteIds)
             AND ar.user_id IS NOT NULL
             AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+            AND ar.audience_status = 'ACTIVE'
             AND (:#{#audienceIds == null || #audienceIds.isEmpty()} = true OR ar.audience_id IN (:audienceIds))
             AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
             AND (
@@ -1572,6 +1604,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
                 WHERE ar.user_id = s.user_id
                   AND ar.audience_id IN (:audienceIds)
                   AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                  AND ar.audience_status = 'ACTIVE'
               )
             )
             AND (
@@ -1597,6 +1630,7 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             AND a.institute_id IN (:instituteIds)
             AND ar.user_id IS NOT NULL
             AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+            AND ar.audience_status = 'ACTIVE'
             AND (:#{#audienceIds == null || #audienceIds.isEmpty()} = true OR ar.audience_id IN (:audienceIds))
             AND (:#{#gender == null || #gender.isEmpty()} = true OR s.gender IN (:gender))
             AND (
@@ -1662,6 +1696,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
             AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
             AND (:#{#genders == null || #genders.isEmpty()} = true OR s.gender IN (:genders))
+            AND (COALESCE(:cfMatchedUserIdsCsv, '') = ''
+                 OR ssigm.user_id = ANY(STRING_TO_ARRAY(:cfMatchedUserIdsCsv, ',')))
+            AND (COALESCE(:cfExcludedUserIdsCsv, '') = ''
+                 OR NOT (ssigm.user_id = ANY(STRING_TO_ARRAY(:cfExcludedUserIdsCsv, ','))))
             AND (
               :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true
               OR (
@@ -1693,8 +1731,13 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           WHERE a.institute_id = :instituteId
             AND ar.user_id IS NOT NULL
             AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+            AND ar.audience_status = 'ACTIVE'
             AND (:#{#audienceIds == null || #audienceIds.isEmpty()} = true OR ar.audience_id IN (:audienceIds))
             AND (:#{#genders == null || #genders.isEmpty()} = true OR sg.gender IN (:genders))
+            AND (COALESCE(:cfMatchedUserIdsCsv, '') = ''
+                 OR ar.user_id = ANY(STRING_TO_ARRAY(:cfMatchedUserIdsCsv, ',')))
+            AND (COALESCE(:cfExcludedUserIdsCsv, '') = ''
+                 OR NOT (ar.user_id = ANY(STRING_TO_ARRAY(:cfExcludedUserIdsCsv, ','))))
             AND (
               CAST(:nameSearch AS TEXT) IS NULL
               OR sg.full_name ILIKE '%' || :nameSearch || '%'
@@ -1707,7 +1750,16 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           GROUP BY ar.user_id
       ) all_sources
       GROUP BY user_id
-      ORDER BY MIN(sort_date) DESC NULLS LAST
+      ORDER BY
+        CASE WHEN CAST(:sortCustomFieldId AS TEXT) IS NOT NULL AND :cfSortDirection = 'ASC'
+             THEN CASE WHEN COALESCE((SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'USER' AND scf.source_id = all_sources.user_id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1), (SELECT scf.value FROM custom_field_values scf JOIN audience_response sar ON sar.id = scf.source_id WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND sar.user_id = all_sources.user_id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1)) ~ '^-?[0-9]+([.][0-9]+)?$' THEN CAST(COALESCE((SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'USER' AND scf.source_id = all_sources.user_id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1), (SELECT scf.value FROM custom_field_values scf JOIN audience_response sar ON sar.id = scf.source_id WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND sar.user_id = all_sources.user_id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1)) AS numeric) END END ASC NULLS LAST,
+        CASE WHEN CAST(:sortCustomFieldId AS TEXT) IS NOT NULL AND (CAST(:cfSortDirection AS TEXT) IS NULL OR :cfSortDirection = 'DESC')
+             THEN CASE WHEN COALESCE((SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'USER' AND scf.source_id = all_sources.user_id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1), (SELECT scf.value FROM custom_field_values scf JOIN audience_response sar ON sar.id = scf.source_id WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND sar.user_id = all_sources.user_id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1)) ~ '^-?[0-9]+([.][0-9]+)?$' THEN CAST(COALESCE((SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'USER' AND scf.source_id = all_sources.user_id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1), (SELECT scf.value FROM custom_field_values scf JOIN audience_response sar ON sar.id = scf.source_id WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND sar.user_id = all_sources.user_id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1)) AS numeric) END END DESC NULLS LAST,
+        CASE WHEN CAST(:sortCustomFieldId AS TEXT) IS NOT NULL AND :cfSortDirection = 'ASC'
+             THEN COALESCE((SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'USER' AND scf.source_id = all_sources.user_id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1), (SELECT scf.value FROM custom_field_values scf JOIN audience_response sar ON sar.id = scf.source_id WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND sar.user_id = all_sources.user_id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1)) END ASC NULLS LAST,
+        CASE WHEN CAST(:sortCustomFieldId AS TEXT) IS NOT NULL AND (CAST(:cfSortDirection AS TEXT) IS NULL OR :cfSortDirection = 'DESC')
+             THEN COALESCE((SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'USER' AND scf.source_id = all_sources.user_id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1), (SELECT scf.value FROM custom_field_values scf JOIN audience_response sar ON sar.id = scf.source_id WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND sar.user_id = all_sources.user_id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1)) END DESC NULLS LAST,
+        MIN(sort_date) DESC NULLS LAST
       """,
       countQuery = """
       SELECT COUNT(*) FROM (
@@ -1731,6 +1783,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
             AND (:#{#packageSessionIds == null || #packageSessionIds.isEmpty()} = true OR ssigm.package_session_id IN (:packageSessionIds))
             AND (:#{#paymentStatuses == null || #paymentStatuses.isEmpty()} = true OR last_pl.payment_status IN (:paymentStatuses))
             AND (:#{#genders == null || #genders.isEmpty()} = true OR s.gender IN (:genders))
+            AND (COALESCE(:cfMatchedUserIdsCsv, '') = ''
+                 OR ssigm.user_id = ANY(STRING_TO_ARRAY(:cfMatchedUserIdsCsv, ',')))
+            AND (COALESCE(:cfExcludedUserIdsCsv, '') = ''
+                 OR NOT (ssigm.user_id = ANY(STRING_TO_ARRAY(:cfExcludedUserIdsCsv, ','))))
             AND (
               :#{#subOrgUserTypes == null || #subOrgUserTypes.isEmpty()} = true
               OR (
@@ -1760,8 +1816,13 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
           WHERE a.institute_id = :instituteId
             AND ar.user_id IS NOT NULL
             AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+            AND ar.audience_status = 'ACTIVE'
             AND (:#{#audienceIds == null || #audienceIds.isEmpty()} = true OR ar.audience_id IN (:audienceIds))
             AND (:#{#genders == null || #genders.isEmpty()} = true OR sg.gender IN (:genders))
+            AND (COALESCE(:cfMatchedUserIdsCsv, '') = ''
+                 OR ar.user_id = ANY(STRING_TO_ARRAY(:cfMatchedUserIdsCsv, ',')))
+            AND (COALESCE(:cfExcludedUserIdsCsv, '') = ''
+                 OR NOT (ar.user_id = ANY(STRING_TO_ARRAY(:cfExcludedUserIdsCsv, ','))))
             AND (
               CAST(:nameSearch AS TEXT) IS NULL
               OR sg.full_name ILIKE '%' || :nameSearch || '%'
@@ -1782,6 +1843,10 @@ public interface InstituteStudentRepository extends CrudRepository<Student, Stri
       @Param("nameSearch") String nameSearch,
       @Param("genders") List<String> genders,
       @Param("audienceIds") List<String> audienceIds,
+      @Param("cfMatchedUserIdsCsv") String cfMatchedUserIdsCsv,
+      @Param("cfExcludedUserIdsCsv") String cfExcludedUserIdsCsv,
+      @Param("sortCustomFieldId") String sortCustomFieldId,
+      @Param("cfSortDirection") String cfSortDirection,
       Pageable pageable);
 
   // ── V2 enrichment for a specific set of user IDs (used after pagination) ──

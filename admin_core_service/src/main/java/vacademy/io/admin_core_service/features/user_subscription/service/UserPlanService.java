@@ -122,6 +122,9 @@ public class UserPlanService {
     @Autowired
     private vacademy.io.admin_core_service.features.user_subscription.service.coupon.CouponRedemptionService couponRedemptionService;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
+
     public UserPlan createUserPlan(String userId,
             PaymentPlan paymentPlan,
             AppliedCouponDiscount appliedCouponDiscount,
@@ -131,6 +134,79 @@ public class UserPlanService {
             String status) {
         return createUserPlan(userId, paymentPlan, appliedCouponDiscount, enrollInvite,
                 paymentOption, paymentInitiationRequestDTO, status, null, null, null);
+    }
+
+    /**
+     * Overlays autopay / free-trial state onto a freshly created subscription
+     * UserPlan (P3). Call this right after createUserPlan for paid subscription
+     * enrollments when autopay is enabled. Safe no-op when autopay is off, so it
+     * can be called unconditionally.
+     *
+     * <ul>
+     *   <li>Marks the plan for the auto-charge scheduler (auto_renewal_enabled).</li>
+     *   <li>Trial (trialDays &gt; 0): access now, NO first charge; end_date and
+     *       next_charge_at = now + trialDays. The FIRST real debit happens on
+     *       the trial-end date via RenewalChargeService.</li>
+     *   <li>No trial: next_charge_at = end_date (already set to start+validity by
+     *       createUserPlan), so the first renewal fires at the end of cycle 1.</li>
+     * </ul>
+     *
+     * The mandate itself is registered by the payment step (initiateMandatePayment
+     * / the gateway checkout) and persisted from the webhook — this method only
+     * sets the plan's scheduler state.
+     */
+    /**
+     * Reads the invite's AUTOPAY_SETTING (setting_json.setting.AUTOPAY_SETTING)
+     * and, for a SUBSCRIPTION plan, applies autopay + trial. Central hook so
+     * every enrollment entry point (school, direct, product page, applicant,
+     * bulk, learner-request) gets consistent autopay behaviour via createUserPlan.
+     */
+    private void applyAutopayFromInvite(UserPlan userPlan, EnrollInvite enrollInvite, PaymentOption paymentOption) {
+        if (userPlan == null || enrollInvite == null || paymentOption == null) {
+            return;
+        }
+        if (!vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType.SUBSCRIPTION
+                .name().equalsIgnoreCase(paymentOption.getType())) {
+            return;
+        }
+        String settingJson = enrollInvite.getSettingJson();
+        if (settingJson == null || settingJson.isBlank()) {
+            return;
+        }
+        try {
+            com.fasterxml.jackson.databind.JsonNode ap = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readTree(settingJson).path("setting").path("AUTOPAY_SETTING");
+            if (ap.path("ENABLED").asBoolean(false)) {
+                Integer trialDays = ap.has("TRIAL_DAYS") ? ap.get("TRIAL_DAYS").asInt(0) : null;
+                applyAutopaySetup(userPlan, true, trialDays);
+            }
+        } catch (Exception e) {
+            logger.warn("Could not apply autopay for plan {}: {}", userPlan.getId(), e.getMessage());
+        }
+    }
+
+    @Transactional
+    public void applyAutopaySetup(UserPlan userPlan, boolean autopayEnabled, Integer trialDays) {
+        if (userPlan == null || !autopayEnabled) {
+            return;
+        }
+        userPlan.setAutoRenewalEnabled(true);
+
+        if (trialDays != null && trialDays > 0) {
+            java.util.Calendar c = java.util.Calendar.getInstance();
+            c.add(java.util.Calendar.DAY_OF_MONTH, trialDays);
+            java.util.Date trialEnd = new java.sql.Timestamp(c.getTimeInMillis());
+            userPlan.setIsTrial(true);
+            userPlan.setEndDate(trialEnd);
+            userPlan.setNextChargeAt(trialEnd);
+        } else {
+            userPlan.setIsTrial(false);
+            userPlan.setNextChargeAt(userPlan.getEndDate());
+        }
+        userPlan.setRenewalAttemptCount(0);
+        userPlanRepository.save(userPlan);
+        logger.info("Autopay set on UserPlan {} (trialDays={}, nextChargeAt={})",
+                userPlan.getId(), trialDays, userPlan.getNextChargeAt());
     }
 
     @Transactional
@@ -270,6 +346,23 @@ public class UserPlanService {
         logger.debug("Saving UserPlan with details: {}", userPlan);
         UserPlan saved = userPlanRepository.save(userPlan);
         logger.info("UserPlan created with ID={}", saved.getId());
+
+        // Ledger: record obligation when payment is required
+        if (UserPlanStatusEnum.PENDING_FOR_PAYMENT.name().equals(saved.getStatus())
+                && paymentPlan != null && paymentPlan.getActualPrice() > 0
+                && enrollInvite != null && enrollInvite.getInstituteId() != null) {
+            userAccountLedgerService.recordDebitAccrual(
+                    userId, enrollInvite.getInstituteId(),
+                    java.math.BigDecimal.valueOf(paymentPlan.getActualPrice()),
+                    paymentPlan.getCurrency() != null ? paymentPlan.getCurrency() : "INR",
+                    null,
+                    "USER_PLAN", saved.getId(),
+                    null, "Plan enrollment payment required");
+        }
+
+        // Autopay (centralized for ALL enrollment entry points): SUBSCRIPTION plans
+        // whose invite enabled AUTOPAY_SETTING opt into auto-renewal + free trial.
+        applyAutopayFromInvite(saved, enrollInvite, paymentOption);
 
         // If a prior plan was detected and we stacked onto it, this is a
         // re-enrolment — fire the LEARNER_RE_ENROLLMENT trigger so the admin
@@ -444,6 +537,39 @@ public class UserPlanService {
 
             logger.info("UserPlan status updated to ACTIVE and saved. ID={}", userPlan.getId());
 
+            // Reconcile abandoned duplicate checkout attempts: earlier retries for the same
+            // (user, enroll_invite) leave PENDING_FOR_PAYMENT plans whose course mappings still
+            // point at them. Now that THIS attempt is the paid/active plan, move that access onto
+            // it and cancel the abandoned siblings — otherwise finance/roster views (and the
+            // learner's access) resolve to an unpaid plan. Scoped to SUB_ORG, the only path that
+            // exhibits this retry pattern, to keep the blast radius tight.
+            try {
+                supersedeAbandonedSubOrgSiblings(userPlan, enrollInvite);
+            } catch (Exception e) {
+                logger.warn("Failed to reconcile abandoned sub-org sibling plans for paid plan {}: {}",
+                        userPlan.getId(), e.getMessage());
+            }
+
+            // Ledger: credit payment for gateway-confirmed enrollment
+            try {
+                paymentLogRepository.findByUserPlanIdOrderByCreatedAtDesc(userPlan.getId())
+                        .stream()
+                        .filter(pl -> "SUCCESS".equalsIgnoreCase(pl.getStatus()))
+                        .findFirst()
+                        .ifPresent(pl -> {
+                            if (pl.getPaymentAmount() != null && pl.getPaymentAmount() > 0) {
+                                userAccountLedgerService.recordCreditPayment(
+                                        userPlan.getUserId(), enrollInvite.getInstituteId(),
+                                        java.math.BigDecimal.valueOf(pl.getPaymentAmount()),
+                                        pl.getCurrency() != null ? pl.getCurrency() : "INR",
+                                        "USER_PLAN", userPlan.getId(),
+                                        pl.getId(), null, "Gateway payment confirmed");
+                            }
+                        });
+            } catch (Exception e) {
+                logger.warn("Failed to record ledger credit for userPlan={}: {}", userPlan.getId(), e.getMessage());
+            }
+
             // Process pending referral benefits after payment confirmation
             // This sends referrer reward emails that were deferred during enrollment
             referralMappingService.processReferralBenefitsIfApplicable(userPlan);
@@ -481,6 +607,70 @@ public class UserPlanService {
 
         }
         sendEnrollmentNotificationsAfterPayment(userPlan, enrollInvite, packageSessionIds);
+    }
+
+    /**
+     * A sub-org admin who abandons a gateway checkout and retries accumulates duplicate
+     * PENDING_FOR_PAYMENT UserPlans for the same (user, enroll_invite); the course mappings
+     * created on the first attempt stay pinned to that (now abandoned) plan. When a later
+     * attempt is finally paid, this moves those ACTIVE mappings onto the paid plan and cancels
+     * the abandoned siblings, so the finance panel, roster, and learner access all resolve to
+     * the plan that actually holds the payment. Dedupes by package session so a course already
+     * covered by the paid plan never gets a duplicate mapping. Best-effort; never blocks payment.
+     */
+    private void supersedeAbandonedSubOrgSiblings(UserPlan paidPlan, EnrollInvite enrollInvite) {
+        if (paidPlan == null || enrollInvite == null
+                || !UserPlanSourceEnum.SUB_ORG.name().equals(paidPlan.getSource())
+                || !StringUtils.hasText(paidPlan.getUserId())) {
+            return;
+        }
+
+        List<UserPlan> siblings = userPlanRepository
+                .findAllByUserIdAndEnrollInviteIdAndStatusIn(
+                        paidPlan.getUserId(), enrollInvite.getId(),
+                        List.of(UserPlanStatusEnum.PENDING_FOR_PAYMENT.name(),
+                                UserPlanStatusEnum.PAYMENT_FAILED.name()))
+                .stream()
+                .filter(s -> !s.getId().equals(paidPlan.getId()))
+                // Only supersede other SUB_ORG plans — never touch a plan of a different
+                // source that happens to share this (user, enroll_invite).
+                .filter(s -> UserPlanSourceEnum.SUB_ORG.name().equals(s.getSource()))
+                .collect(Collectors.toList());
+        if (siblings.isEmpty()) return;
+
+        // Package sessions the paid plan already covers with an ACTIVE mapping — never dup these.
+        Set<String> coveredPs = studentSessionRepository
+                .findAllByUserPlanIdAndStatusIn(paidPlan.getId(),
+                        List.of(LearnerSessionStatusEnum.ACTIVE.name()))
+                .stream()
+                .map(m -> m.getPackageSession() != null ? m.getPackageSession().getId() : null)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toCollection(HashSet::new));
+
+        for (UserPlan sibling : siblings) {
+            List<StudentSessionInstituteGroupMapping> sibMaps = studentSessionRepository
+                    .findAllByUserPlanIdAndStatusIn(sibling.getId(),
+                            List.of(LearnerSessionStatusEnum.ACTIVE.name()));
+            int moved = 0, deduped = 0;
+            for (StudentSessionInstituteGroupMapping m : sibMaps) {
+                String psId = m.getPackageSession() != null ? m.getPackageSession().getId() : null;
+                if (psId != null && coveredPs.contains(psId)) {
+                    // Paid plan already grants this course — retire the abandoned-plan duplicate.
+                    m.setStatus(LearnerSessionStatusEnum.DELETED.name());
+                    deduped++;
+                } else {
+                    // Move the access onto the plan that was actually paid.
+                    m.setUserPlanId(paidPlan.getId());
+                    if (psId != null) coveredPs.add(psId);
+                    moved++;
+                }
+            }
+            if (!sibMaps.isEmpty()) studentSessionRepository.saveAll(sibMaps);
+            sibling.setStatus(UserPlanStatusEnum.CANCELED.name());
+            userPlanRepository.save(sibling);
+            logger.info("Superseded abandoned SUB_ORG sibling plan {} after payment on {} "
+                    + "(mappings moved={}, deduped={})", sibling.getId(), paidPlan.getId(), moved, deduped);
+        }
     }
 
     private void sendEnrollmentNotificationsAfterPayment(UserPlan userPlan, EnrollInvite enrollInvite,

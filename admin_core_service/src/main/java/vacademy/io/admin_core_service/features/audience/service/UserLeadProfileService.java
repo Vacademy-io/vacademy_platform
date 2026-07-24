@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -501,10 +502,10 @@ public class UserLeadProfileService {
     }
 
     /**
-     * Rebuild the profile for a user given only their userId.
-     * Looks up the institute from the existing profile (user_id is unique on user_lead_profile,
-     * so there is at most one). Used by event-driven triggers like timeline event inserts
-     * where the caller doesn't have the institute in hand.
+     * Rebuild the profile for a user at a specific institute. A user_id can now have a
+     * profile per institute, so the caller must supply which one — see class-level
+     * uniqueConstraints on UserLeadProfile. Used by event-driven triggers like timeline
+     * event inserts.
      *
      * For every audience response the user owns, re-runs the full scoring formula so
      * that newly-added timeline events flow into the engagement component. Without
@@ -514,12 +515,10 @@ public class UserLeadProfileService {
      * Best-effort — no-op if no profile exists yet (the user has never been scored).
      */
     @Transactional
-    public void recomputeForUser(String userId) {
-        if (userId == null) return;
-        UserLeadProfile profile = userLeadProfileRepository.findByUserId(userId).orElse(null);
+    public void recomputeForUser(String userId, String instituteId) {
+        if (userId == null || instituteId == null) return;
+        UserLeadProfile profile = userLeadProfileRepository.findByUserIdAndInstituteId(userId, instituteId).orElse(null);
         if (profile == null) return;
-
-        String instituteId = profile.getInstituteId();
 
         List<AudienceResponse> responses =
                 audienceResponseRepository.findByUserIdOrStudentUserId(userId, userId);
@@ -554,11 +553,26 @@ public class UserLeadProfileService {
     }
 
     /**
-     * Batch fetch profiles for a list of user IDs (used by manage-students and manage-contacts).
+     * Resolve the profile's own id for use as a timeline_event.type_id (which has no
+     * institute_id column of its own, so correlating on the raw userId would be ambiguous
+     * once a user can have a profile per institute). Falls back to userId if no profile
+     * exists yet, matching pre-existing behavior for callers that log events before any
+     * profile has been built.
      */
-    public Map<String, UserLeadProfileDTO> getProfilesForUsers(List<String> userIds) {
-        if (userIds == null || userIds.isEmpty()) return Collections.emptyMap();
-        return userLeadProfileRepository.findByUserIdIn(userIds).stream()
+    public String resolveProfileId(String userId, String instituteId) {
+        return userLeadProfileRepository.findByUserIdAndInstituteId(userId, instituteId)
+                .map(UserLeadProfile::getId)
+                .orElse(userId);
+    }
+
+    /**
+     * Batch fetch profiles for a list of user IDs, scoped to one institute (used by
+     * manage-students and manage-contacts). A user_id alone no longer identifies a single
+     * profile — see class-level uniqueConstraints on UserLeadProfile.
+     */
+    public Map<String, UserLeadProfileDTO> getProfilesForUsers(List<String> userIds, String instituteId) {
+        if (userIds == null || userIds.isEmpty() || instituteId == null) return Collections.emptyMap();
+        return userLeadProfileRepository.findByUserIdInAndInstituteId(userIds, instituteId).stream()
                 .collect(Collectors.toMap(
                         UserLeadProfile::getUserId,
                         this::toDTO
@@ -595,6 +609,7 @@ public class UserLeadProfileService {
                     .campaignStatus(aud != null ? aud.getStatus() : null)
                     .responseId(r.getId())
                     .overallStatus(r.getOverallStatus())
+                    .audienceStatus(r.getAudienceStatus())
                     .sourceType(r.getSourceType())
                     .submittedAt(r.getSubmittedAt())
                     .leadScore(score != null ? score.getRawScore() : null)
@@ -611,6 +626,7 @@ public class UserLeadProfileService {
      * Catches up with any changes missed by real-time updates (e.g. percentile recalcs).
      */
     @Scheduled(fixedRate = 30 * 60 * 1000)
+    @SchedulerLock(name = "UserLeadProfileService_batchRebuildProfiles", lockAtMostFor = "PT29M", lockAtLeastFor = "PT1M")
     public void batchRebuildProfiles() {
         log.info("Starting batch user_lead_profile rebuild...");
 

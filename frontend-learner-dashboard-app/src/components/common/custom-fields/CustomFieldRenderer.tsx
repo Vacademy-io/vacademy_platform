@@ -22,6 +22,7 @@ import {
   FieldRenderType,
   parseFieldConfig,
   parseDropdownOptions,
+  isUnrestrictedFileTypes,
   type CustomFieldFullConfig,
 } from "@/components/common/enroll-by-invite/-utils/custom-field-helpers";
 
@@ -94,10 +95,10 @@ export const CustomFieldRenderer = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (allowedFileTypes && allowedFileTypes.length > 0) {
+    if (!isUnrestrictedFileTypes(allowedFileTypes)) {
       const ext = file.name.split(".").pop()?.toLowerCase() || "";
-      if (!allowedFileTypes.some((t) => t.toLowerCase() === ext)) {
-        alert(`File type .${ext} is not allowed. Allowed: ${allowedFileTypes.join(", ")}`);
+      if (!allowedFileTypes!.some((t) => t.toLowerCase() === ext)) {
+        alert(`File type .${ext} is not allowed. Allowed: ${allowedFileTypes!.join(", ")}`);
         e.target.value = "";
         return;
       }
@@ -268,19 +269,38 @@ export const CustomFieldRenderer = ({
         />
       );
 
-    case FieldRenderType.CHECKBOX:
+    case FieldRenderType.CHECKBOX: {
+      // Optional section heading + long body (e.g. Terms & Conditions) shown
+      // above the checkbox. The heading stays pinned above; the body scrolls.
+      // `whitespace-pre-line` preserves the admin's line breaks.
+      const heading = parsedConfig?.heading;
+      const description = parsedConfig?.description;
       return (
-        <div className="flex items-center gap-2">
-          <Checkbox
-            checked={value === "true"}
-            onCheckedChange={(checked) =>
-              handleChange(checked === true ? "true" : "false")
-            }
-            disabled={disabled}
-          />
-          <Label className="text-sm">{name}</Label>
+        <div className="flex flex-col gap-2">
+          {heading && (
+            <h3 className="text-base font-semibold text-neutral-800">{heading}</h3>
+          )}
+          {description && (
+            <div className="max-h-72 overflow-y-auto whitespace-pre-line rounded-md border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-700">
+              {description}
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <Checkbox
+              checked={value === "true"}
+              onCheckedChange={(checked) =>
+                handleChange(checked === true ? "true" : "false")
+              }
+              disabled={disabled}
+            />
+            <Label className="text-sm">
+              {name}
+              {required && <span className="text-danger-600"> *</span>}
+            </Label>
+          </div>
         </div>
       );
+    }
 
     case FieldRenderType.DROPDOWN:
       return (
@@ -356,9 +376,9 @@ export const CustomFieldRenderer = ({
     }
 
     case FieldRenderType.FILE: {
-      const acceptAttr = allowedFileTypes?.length
-        ? allowedFileTypes.map((t) => `.${t}`).join(",")
-        : undefined;
+      const acceptAttr = isUnrestrictedFileTypes(allowedFileTypes)
+        ? undefined
+        : allowedFileTypes!.map((t) => `.${t}`).join(",");
       const isValidUrl =
         value && (value.startsWith("http://") || value.startsWith("https://"));
       return (
@@ -368,7 +388,7 @@ export const CustomFieldRenderer = ({
             accept={acceptAttr}
             disabled={disabled || isUploading}
             onChange={handleFileChange}
-            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm file:mr-4 file:rounded file:border-0 file:bg-primary-50 file:px-4 file:py-1 file:text-sm file:font-medium file:text-primary-700 hover:file:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm file:me-4 file:rounded file:border-0 file:bg-primary-50 file:px-4 file:py-1 file:text-sm file:font-medium file:text-primary-700 hover:file:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50"
           />
           {isUploading && (
             <div className="flex items-center gap-2 text-sm text-neutral-600">
@@ -389,9 +409,9 @@ export const CustomFieldRenderer = ({
               View current file
             </a>
           )}
-          {allowedFileTypes && allowedFileTypes.length > 0 && (
+          {!isUnrestrictedFileTypes(allowedFileTypes) && (
             <p className="text-xs text-neutral-500">
-              Allowed: {allowedFileTypes.join(", ")}
+              Allowed: {allowedFileTypes!.join(", ")}
               {maxSizeMB && ` · Max ${maxSizeMB}MB`}
             </p>
           )}

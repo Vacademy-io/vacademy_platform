@@ -75,6 +75,7 @@ import {
     getNotificationSettings,
     upsertNotificationSettings,
     mergeChatSettings,
+    mergeAppOverlaySettings,
 } from '@/services/notification-settings';
 import {
     getTerminology,
@@ -89,6 +90,14 @@ import {
     type EmailConfiguration,
     type CreateEmailConfigurationRequest,
 } from '@/services/email-configuration-service';
+import {
+    getVerificationEnabled,
+    verifySender,
+    getVerificationStatus,
+    type SenderVerificationResponse,
+    type VerificationStatus,
+    type DnsRecord,
+} from '@/services/email-verification-service';
 import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
 import { Textarea } from '@/components/ui/textarea';
@@ -106,12 +115,22 @@ import { HelpCircle } from 'lucide-react';
 
 type Props = { isTab?: boolean };
 
+// Sub-tabs that group the notification cards, mirroring the Display Settings tab pattern.
+type NotificationSubTab = 'general' | 'chat' | 'push' | 'email';
+const SUB_TABS: { key: NotificationSubTab; label: string }[] = [
+    { key: 'general', label: 'General' },
+    { key: 'chat', label: 'Chat & Community' },
+    { key: 'push', label: 'Push Notifications' },
+    { key: 'email', label: 'Email' },
+];
+
 export default function NotificationSettings({ isTab = false }: Props) {
     const [settings, setSettings] = useState<NotificationSettings | null>(null);
     const [loading, setLoading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [hasChanges, setHasChanges] = useState(false);
+    const [subTab, setSubTab] = useState<NotificationSubTab>('general');
     
     // Email configurations state
     const [emailConfigurations, setEmailConfigurations] = useState<EmailConfiguration[]>([]);
@@ -246,6 +265,36 @@ export default function NotificationSettings({ isTab = false }: Props) {
                 </Alert>
             )}
 
+            {/* Sub-tab navigation */}
+            <div
+                role="tablist"
+                aria-label="Notification settings sections"
+                className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-border bg-muted p-1"
+            >
+                {SUB_TABS.map((t) => {
+                    const active = subTab === t.key;
+                    return (
+                        <button
+                            key={t.key}
+                            type="button"
+                            role="tab"
+                            aria-selected={active}
+                            onClick={() => setSubTab(t.key)}
+                            className={
+                                'cursor-pointer rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ' +
+                                (active
+                                    ? 'bg-white text-neutral-900 shadow-sm'
+                                    : 'text-neutral-600 hover:text-neutral-800')
+                            }
+                        >
+                            {t.label}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {subTab === 'general' && (
+            <>
             {/* General */}
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
@@ -381,6 +430,11 @@ export default function NotificationSettings({ isTab = false }: Props) {
                 }
             />
 
+            </>
+            )}
+
+            {subTab === 'chat' && (
+            <>
             {/* System Alerts */}
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
@@ -418,6 +472,49 @@ export default function NotificationSettings({ isTab = false }: Props) {
                             }
                         />
                     </div>
+                </CardContent>
+            </Card>
+
+            {/* App Overlays */}
+            <Card className="rounded-lg border-gray-200">
+                <CardHeader className="py-3">
+                    <CardTitle className="text-base">App Overlays</CardTitle>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                        Full-screen announcements {chatRoleLabelPlural('student').toLowerCase()}{' '}
+                        see when they open the app
+                    </div>
+                </CardHeader>
+                <CardContent className="grid gap-4 md:grid-cols-3">
+                    <ToggleRow
+                        label={`${chatRoleLabelPlural('student')} can send`}
+                        checked={mergeAppOverlaySettings(settings.appOverlays).students_can_send}
+                        onChange={(checked) =>
+                            update('appOverlays', (a) => ({
+                                ...mergeAppOverlaySettings(a),
+                                students_can_send: checked,
+                            }))
+                        }
+                    />
+                    <ToggleRow
+                        label={`${chatRoleLabelPlural('teacher')} can send`}
+                        checked={mergeAppOverlaySettings(settings.appOverlays).teachers_can_send}
+                        onChange={(checked) =>
+                            update('appOverlays', (a) => ({
+                                ...mergeAppOverlaySettings(a),
+                                teachers_can_send: checked,
+                            }))
+                        }
+                    />
+                    <ToggleRow
+                        label={`${chatRoleLabelPlural('admin')} can send`}
+                        checked={mergeAppOverlaySettings(settings.appOverlays).admins_can_send}
+                        onChange={(checked) =>
+                            update('appOverlays', (a) => ({
+                                ...mergeAppOverlaySettings(a),
+                                admins_can_send: checked,
+                            }))
+                        }
+                    />
                 </CardContent>
             </Card>
 
@@ -522,6 +619,11 @@ export default function NotificationSettings({ isTab = false }: Props) {
                 </CardContent>
             </Card>
 
+            </>
+            )}
+
+            {subTab === 'push' && (
+            <>
             {/* Push Notifications (Firebase) */}
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
@@ -639,6 +741,11 @@ export default function NotificationSettings({ isTab = false }: Props) {
                 </CardContent>
             </Card>
 
+            </>
+            )}
+
+            {subTab === 'chat' && (
+            <>
             {/* Streams */}
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
@@ -713,6 +820,11 @@ export default function NotificationSettings({ isTab = false }: Props) {
                 </CardContent>
             </Card>
 
+            </>
+            )}
+
+            {subTab === 'email' && (
+            <>
             {/* Email Settings */}
             <Card className="rounded-lg border-gray-200">
                 <CardHeader className="py-3">
@@ -760,6 +872,8 @@ export default function NotificationSettings({ isTab = false }: Props) {
                     />
                 </CardContent>
             </Card>
+            </>
+            )}
 
             {!isTab && (
                 <div className="flex items-center justify-end gap-2">
@@ -1380,6 +1494,24 @@ function EmailListEditor({
     const [newCustomPurpose, setNewCustomPurpose] = useState('');
     const [newDescription, setNewDescription] = useState('');
 
+    // Whether this deployment supports self-serve SES sender verification. When true,
+    // we replace the manual "contact support" flow with an in-app "Verify" action.
+    const [verificationEnabled, setVerificationEnabled] = useState(false);
+
+    useEffect(() => {
+        let active = true;
+        getVerificationEnabled()
+            .then((enabled) => {
+                if (active) setVerificationEnabled(enabled);
+            })
+            .catch(() => {
+                /* getVerificationEnabled already swallows errors and returns false */
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
+
     const resolvedNewPurposeCode =
         newPurposeCode === CUSTOM_PURPOSE_OPTION
             ? newCustomPurpose.trim().toUpperCase().replace(/\s+/g, '_')
@@ -1406,19 +1538,48 @@ function EmailListEditor({
             return;
         }
 
+        const addedEmail = newEmail.trim();
+        const addedName = newName.trim();
+        const addedType = resolvedNewPurposeCode;
+
         try {
             await onAdd({
-                email: newEmail.trim(),
-                name: newName.trim(),
-                type: resolvedNewPurposeCode,
+                email: addedEmail,
+                name: addedName,
+                type: addedType,
                 description: newDescription.trim() || undefined,
             });
 
-            toast.success('Email address added.', {
-                description:
-                    "Before this address can send emails, our team needs to verify it. Please contact support to get it verified — emails sent before verification won't reach recipients.",
-                duration: 10000,
-            });
+            if (verificationEnabled) {
+                // Kick off SES verification immediately so a confirmation email is on its
+                // way before the admin even scrolls to the new row.
+                try {
+                    const result = await verifySender({
+                        email: addedEmail,
+                        name: addedName,
+                        type: addedType,
+                        mode: 'EMAIL',
+                    });
+                    toast.success('Email address added — verification started.', {
+                        description:
+                            result.message ||
+                            `AWS sent a confirmation email to ${addedEmail}. Open it and click the link, then refresh the address below.`,
+                        duration: 10000,
+                    });
+                } catch {
+                    toast.success('Email address added.', {
+                        description:
+                            "Couldn't start verification automatically. Use the “Verify sender” button on the address below.",
+                        duration: 10000,
+                    });
+                }
+            } else {
+                toast.success('Email address added.', {
+                    description:
+                        "Before this address can send emails, our team needs to verify it. Please contact support to get it verified — emails sent before verification won't reach recipients.",
+                    duration: 10000,
+                });
+            }
 
             setNewEmail('');
             setNewName('');
@@ -1430,7 +1591,17 @@ function EmailListEditor({
         }
     };
 
-    const verificationNotice = (
+    const verificationNotice = verificationEnabled ? (
+        <Alert className="border-info-300 bg-info-50 text-info-700">
+            <Info className="size-4 text-info-600" />
+            <AlertDescription className="text-xs leading-relaxed">
+                Each address must be <strong>verified with the email service</strong> before it
+                can send. Adding an address emails a confirmation link to it — click that link,
+                then press <strong>Refresh status</strong>. Until an address is verified, its
+                messages are sent from the platform's default address.
+            </AlertDescription>
+        </Alert>
+    ) : (
         <Alert className="border-amber-300 bg-amber-50 text-amber-900">
             <Info className="size-4 text-amber-700" />
             <AlertDescription className="text-xs leading-relaxed">
@@ -1572,6 +1743,7 @@ function EmailListEditor({
                         <EmailConfigurationRow
                             key={config.type}
                             config={config}
+                            verificationEnabled={verificationEnabled}
                             onUpdate={onUpdate}
                             onDelete={onDelete}
                         />
@@ -1582,12 +1754,80 @@ function EmailListEditor({
     );
 }
 
+// Small status pill for a sender's SES verification state.
+function VerificationBadge({ status }: { status: VerificationStatus | null }) {
+    const map: Record<VerificationStatus, { label: string; className: string }> = {
+        VERIFIED: { label: 'Verified', className: 'border-success-200 bg-success-50 text-success-700' },
+        PENDING: { label: 'Pending verification', className: 'border-info-200 bg-info-50 text-info-700' },
+        FAILED: { label: 'Verification failed', className: 'border-danger-200 bg-danger-50 text-danger-600' },
+        NOT_STARTED: { label: 'Not verified', className: 'border-neutral-200 bg-neutral-50 text-neutral-500' },
+    };
+    const s = status ?? 'NOT_STARTED';
+    const { label, className } = map[s];
+    return (
+        <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${className}`}>
+            {label}
+        </span>
+    );
+}
+
+// DNS records the institute must publish for DOMAIN-mode (DKIM) verification.
+function DnsRecordsTable({ records }: { records: DnsRecord[] }) {
+    const copy = (value: string) => {
+        navigator.clipboard?.writeText(value).then(
+            () => toast.success('Copied'),
+            () => toast.error('Could not copy')
+        );
+    };
+    return (
+        <div className="space-y-2 rounded-md border border-info-200 bg-info-50 p-2">
+            <div className="text-xs font-medium text-info-700">
+                Add these DNS records to your domain, then press Refresh status:
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                    <thead className="text-muted-foreground">
+                        <tr>
+                            <th className="pr-2 font-medium">Type</th>
+                            <th className="pr-2 font-medium">Name / Host</th>
+                            <th className="pr-2 font-medium">Value</th>
+                            <th />
+                        </tr>
+                    </thead>
+                    <tbody className="font-mono">
+                        {records.map((r, i) => (
+                            <tr key={`${r.name}-${i}`} className="align-top">
+                                <td className="pr-2 py-1">{r.type}</td>
+                                <td className="pr-2 py-1 break-all">{r.name}</td>
+                                <td className="pr-2 py-1 break-all">{r.value}</td>
+                                <td className="py-1">
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-6 px-2"
+                                        onClick={() => copy(`${r.name}\t${r.value}`)}
+                                    >
+                                        Copy
+                                    </Button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
 function EmailConfigurationRow({
     config,
+    verificationEnabled,
     onUpdate,
     onDelete,
 }: {
     config: EmailConfiguration;
+    verificationEnabled: boolean;
     onUpdate: (emailType: string, config: Partial<CreateEmailConfigurationRequest>) => Promise<void>;
     onDelete: (emailType: string) => Promise<void>;
 }) {
@@ -1597,11 +1837,82 @@ function EmailConfigurationRow({
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
 
+    // SES verification state for this sender.
+    const [vStatus, setVStatus] = useState<VerificationStatus | null>(null);
+    const [vMessage, setVMessage] = useState('');
+    const [vDns, setVDns] = useState<DnsRecord[] | null>(null);
+    const [verifying, setVerifying] = useState(false);
+    const [checking, setChecking] = useState(false);
+
+    const applyVerification = (r: SenderVerificationResponse) => {
+        setVStatus(r.status);
+        setVMessage(r.message || '');
+        setVDns(r.dnsRecords && r.dnsRecords.length > 0 ? r.dnsRecords : null);
+    };
+
+    const errorText = (e: unknown) => {
+        const err = e as { response?: { data?: { error?: string } } };
+        return err?.response?.data?.error || 'Please try again.';
+    };
+
     useEffect(() => {
         setEmail(config.email);
         setName(config.name);
         setDescription(config.description || '');
     }, [config.email, config.name, config.type, config.description]);
+
+    // Load current verification status when the feature is available.
+    useEffect(() => {
+        if (!verificationEnabled) return;
+        let active = true;
+        setChecking(true);
+        getVerificationStatus(config.type)
+            .then((r) => {
+                if (active) applyVerification(r);
+            })
+            .catch(() => {
+                /* leave status null → shows "Not verified" */
+            })
+            .finally(() => {
+                if (active) setChecking(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, [verificationEnabled, config.type]);
+
+    const runVerify = async (mode: 'EMAIL' | 'DOMAIN') => {
+        setVerifying(true);
+        try {
+            const r = await verifySender({
+                email: config.email,
+                name: config.name,
+                type: config.type,
+                mode,
+            });
+            applyVerification(r);
+            toast.success(
+                mode === 'DOMAIN' ? 'Domain verification started' : 'Verification email sent',
+                { description: r.message, duration: 8000 }
+            );
+        } catch (e) {
+            toast.error('Could not start verification', { description: errorText(e) });
+        } finally {
+            setVerifying(false);
+        }
+    };
+
+    const refreshStatus = async () => {
+        setChecking(true);
+        try {
+            const r = await getVerificationStatus(config.type);
+            applyVerification(r);
+        } catch (e) {
+            toast.error('Could not refresh status', { description: errorText(e) });
+        } finally {
+            setChecking(false);
+        }
+    };
 
     const isDirty =
         email !== config.email ||
@@ -1662,6 +1973,56 @@ function EmailConfigurationRow({
                     Purpose can't be changed
                 </span>
             </div>
+
+            {verificationEnabled && (
+                <div className="space-y-2 rounded-md border bg-muted/30 p-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium">Sending status:</span>
+                            <VerificationBadge status={vStatus} />
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {vStatus !== 'VERIFIED' && (
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => runVerify('EMAIL')}
+                                    disabled={verifying}
+                                >
+                                    {verifying ? 'Working…' : 'Verify sender'}
+                                </Button>
+                            )}
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={refreshStatus}
+                                disabled={checking}
+                            >
+                                {checking ? 'Checking…' : 'Refresh status'}
+                            </Button>
+                        </div>
+                    </div>
+                    {vMessage && (
+                        <div className="text-xs text-muted-foreground leading-relaxed">
+                            {vMessage}
+                        </div>
+                    )}
+                    {vDns && vDns.length > 0 && <DnsRecordsTable records={vDns} />}
+                    {vStatus !== 'VERIFIED' && (!vDns || vDns.length === 0) && (
+                        <button
+                            type="button"
+                            className="text-xs text-info-600 underline underline-offset-2 disabled:opacity-50"
+                            onClick={() => runVerify('DOMAIN')}
+                            disabled={verifying}
+                        >
+                            Verify your whole domain instead (better deliverability)
+                        </button>
+                    )}
+                </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 <div>
                     <Label className="text-xs">Email address</Label>

@@ -89,7 +89,7 @@ export const NotificationsBell: React.FC<{ className?: string }> = ({
             'hover:text-primary-700 dark:hover:text-primary-300 transition-colors duration-200',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1',
             // Play: slightly chunkier rounded-full button
-            '[.ui-play_&]:rounded-full [.ui-play_&]:bg-primary/10 [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20',
+            '[.ui-play_&]:rounded-full [.ui-play_&]:bg-primary/10 [.ui-play_&]:border [.ui-play_&]:border-border',
             className,
           )}
         >
@@ -100,7 +100,7 @@ export const NotificationsBell: React.FC<{ className?: string }> = ({
           {unseenCount > 0 && (
             <span
               aria-hidden="true"
-              className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary-500 px-1 text-caption font-semibold leading-none text-white tabular-nums"
+              className="absolute -top-0.5 -end-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary-500 px-1 text-caption font-semibold leading-none text-white tabular-nums"
             >
               {unseenCount > 9 ? '9+' : unseenCount}
             </span>
@@ -111,7 +111,7 @@ export const NotificationsBell: React.FC<{ className?: string }> = ({
       <PopoverContent
         align="end"
         sideOffset={8}
-        className="w-80 p-0 [.ui-play_&]:rounded-2xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
+        className="w-80 p-0 [.ui-play_&]:rounded-2xl [.ui-play_&]:border [.ui-play_&]:border-border"
       >
         <div className="border-b border-border px-4 py-3">
           <h3 className="text-sm font-semibold text-foreground">
@@ -151,7 +151,7 @@ export const NotificationsBell: React.FC<{ className?: string }> = ({
                 <button
                   type="button"
                   onClick={goToInbox}
-                  className="flex w-full items-start gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                  className="flex w-full items-start gap-2.5 px-4 py-2.5 text-start transition-colors hover:bg-muted/60 focus-visible:outline-none focus-visible:bg-muted/60 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 >
                   <span
                     className={cn(

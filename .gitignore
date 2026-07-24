@@ -156,3 +156,6 @@ vacademy_devops/hetzner/topology.env
 
 # Hetzner migration: operator-filled prod values overlay (real secrets)
 vacademy_devops/hetzner/values-prod-hetzner.yaml
+
+# Local dev config per service (hardcoded secrets for terminal runs) — never commit
+**/src/main/resources/application-local.properties

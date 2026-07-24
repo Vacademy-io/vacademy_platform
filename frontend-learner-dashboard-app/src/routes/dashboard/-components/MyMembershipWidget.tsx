@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getInstituteId } from "@/constants/helper";
@@ -6,6 +7,8 @@ import { GET_BATCH_LIST, urlPublicCourseDetails, urlInstituteDetails } from "@/c
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { cn } from "@/lib/utils";
 import { Crown, BookOpen } from "@phosphor-icons/react";
+import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
+import iconShop from "@/assets/cleaner-play/icon-shop.webp";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 interface MyMembershipWidgetProps {
@@ -36,6 +39,8 @@ interface MembershipPackage {
 }
 
 export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ className }) => {
+    const { t } = useTranslation("dashboard");
+    const isCleanerPlay = useCleanerPlayTheme();
     const [loading, setLoading] = useState(true);
     const [memberships, setMemberships] = useState<MembershipPackage[]>([]);
 
@@ -165,7 +170,7 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
 
     if (loading) {
         return (
-            <Card className={cn("border border-border shadow-sm bg-card", className)}>
+            <Card className={cn("border border-border shadow-sm bg-card", "cp-card", className)}>
                 <CardHeader className="pb-2">
                     <Skeleton className="h-5 w-32" />
                 </CardHeader>
@@ -182,11 +187,18 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
     }
 
     return (
-        <Card className={cn("border border-border shadow-sm bg-card", className)}>
+        <Card className={cn("border border-border shadow-sm bg-card", "cp-card", className)}>
             <CardHeader className="p-4 pb-2">
-                <CardTitle className="text-sm font-bold flex items-center gap-2 text-primary uppercase">
-                    <Crown className="w-5 h-5" />
-                    My Membership
+                <CardTitle className={cn(
+                    "text-sm font-bold flex items-center gap-2 text-primary uppercase",
+                    "cp-heading [.ui-cleaner-play_&]:normal-case"
+                )}>
+                    {isCleanerPlay ? (
+                        <img src={iconShop} alt="" aria-hidden="true" className="h-9 w-9 object-contain" />
+                    ) : (
+                        <Crown className="w-5 h-5" />
+                    )}
+                    {t("membership.title")}
                 </CardTitle>
             </CardHeader>
             <CardContent className="p-4 pt-0 space-y-3">
@@ -194,17 +206,21 @@ export const MyMembershipWidget: React.FC<MyMembershipWidgetProps> = ({ classNam
                         <div key={membership.id || idx} className="space-y-3">
                             {/* Membership Item */}
                             <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-card shadow-sm">
-                                <div className="flex-1 min-w-0 pr-2">
+                                <div className="flex-1 min-w-0 pe-2">
                                     <h3 className="font-bold text-base text-foreground truncate">
                                         {membership.package_name}
                                     </h3>
-                                    <span className="text-caption text-primary/70 font-bold uppercase tracking-widest mt-0.5 inline-block">Plan Active</span>
+                                    <span className="text-caption text-primary/70 font-bold uppercase tracking-widest mt-0.5 inline-block">
+                                        {t("membership.planActive")}
+                                    </span>
                                 </div>
                                 <div className="flex flex-col items-center justify-center min-w-12 p-1.5 rounded-md bg-primary/5 border border-primary/10">
                                     <span className="text-lg font-bold text-primary leading-none">
                                         {membership.validity_in_days || 0}
                                     </span>
-                                    <span className="text-caption font-bold text-primary/70 uppercase">Days Remaining</span>
+                                    <span className="text-caption font-bold text-primary/70 uppercase">
+                                        {t("membership.daysRemaining")}
+                                    </span>
                                 </div>
                             </div>
 

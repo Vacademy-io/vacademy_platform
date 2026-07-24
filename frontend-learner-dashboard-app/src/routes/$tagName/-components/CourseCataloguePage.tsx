@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { withArabicFallback } from "@/utils/branding";
 import { Capacitor } from "@capacitor/core";
 import { useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
@@ -11,6 +12,7 @@ import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { Helmet } from "react-helmet";
 import { CaretUp } from "@phosphor-icons/react";
 import { ensureFontsLoaded, collectConfigFontFamilies } from "../-utils/catalogue-fonts";
+import { shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
 
 interface CourseCataloguePageProps {
   tagName: string;
@@ -155,15 +157,28 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
     const fonts = catalogueData?.globalSettings?.fonts;
     if (!fonts?.enabled || !fonts?.family) {
-      document.body.style.fontFamily =
-        "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      document.body.style.fontFamily = withArabicFallback(
+        "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif"
+      );
+      document.documentElement.style.removeProperty("--catalogue-heading-font");
       return;
     }
 
-    // Apply the global font exactly as specified in JSON
-    const fontFamily = fonts.family.trim();
+    // Apply the global font exactly as specified in JSON, plus the Arabic
+    // fallback the stack would otherwise drop (Latin order is preserved).
+    const fontFamily = withArabicFallback(fonts.family.trim());
     document.body.style.fontFamily = fontFamily;
     document.documentElement.style.setProperty("--app-font-family", fontFamily);
+
+    // Optional separate heading font (serif display over sans body). Set the
+    // var consumed by the catalogue heading rule; clear it when unset so
+    // headings fall back to the body font (byte-identical to before).
+    const headingFamily = (fonts as { headingFamily?: string })?.headingFamily?.trim();
+    if (headingFamily) {
+      document.documentElement.style.setProperty("--catalogue-heading-font", headingFamily);
+    } else {
+      document.documentElement.style.removeProperty("--catalogue-heading-font");
+    }
   }, [catalogueData]);
 
   // Apply institute theme
@@ -486,7 +501,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
 
       {/* Mobile Action Buttons - Fixed at bottom for catalogue page (hidden in preview mode) */}
       {(!showIntroPage || introCompleted) && !isPreviewMode && catalogueData && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-catalogue-bg border-t border-catalogue-border p-4">
+        <div className="md:hidden fixed bottom-0 start-0 end-0 z-50 bg-catalogue-bg border-t border-catalogue-border p-4">
           <div className={`flex flex-col gap-3 ${isAndroid || isIOS ? 'mb-8' : ''}`}>
             {/* Login Button */}
             <div className="flex flex-col gap-1">
@@ -499,8 +514,9 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               <span className="text-xs text-catalogue-text-secondary text-center">If already registered</span>
             </div>
 
-            {/* Get Started Button */}
-            {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && (
+            {/* Get Started Button — mirrors the header's authLinks config, so a
+                catalogue that removed "Get Started" from its header hides it here too */}
+            {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && shouldShowMobileGetStarted(catalogueData, pageSlug) && (
               <div className="flex flex-col gap-1">
                 <button
                   onClick={() => {
@@ -541,7 +557,7 @@ const BackToTopButton = () => {
   return (
     <button
       onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-      className="catalogue-fab fixed bottom-6 right-6 z-50 flex h-11 w-11 items-center justify-center rounded-full backdrop-blur active:scale-95 md:bottom-8 md:right-8"
+      className="catalogue-fab fixed bottom-6 end-6 z-50 flex h-11 w-11 items-center justify-center rounded-full backdrop-blur active:scale-95 md:bottom-8 md:end-8"
       aria-label="Back to top"
     >
       <CaretUp size={20} weight="bold" aria-hidden="true" />

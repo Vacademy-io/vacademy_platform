@@ -66,7 +66,7 @@ export function ErrorState({
       </div>
       {onRetry && (
         <MyButton buttonType="secondary" scale="medium" onClick={onRetry} className="mt-2">
-          <ArrowClockwise size={16} className="mr-1" />
+          <ArrowClockwise size={16} className="me-1" />
           Try again
         </MyButton>
       )}

@@ -113,6 +113,14 @@ public class LiveSession {
     @Column(name = "zoom_config_json", columnDefinition = "text")
     private String zoomConfigJson;
 
+    /**
+     * JSON config for auto-linking newly-synced recordings of this session into
+     * course chapters (enabled, slideStatus, notify, destinations). See
+     * docs/LIVE_SESSION_RECORDING_AUTO_LINK_PLAN.md and RecordingAutoLinkService.
+     */
+    @Column(name = "recording_auto_link_json", columnDefinition = "text")
+    private String recordingAutoLinkJson;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

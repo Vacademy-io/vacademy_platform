@@ -247,7 +247,7 @@ export function DashboardHero({
       {
         icon: BookOpen,
         label: `Browse your ${coursesPlural.toLocaleLowerCase()}`,
-        hint: "Open a topic and start your first lesson",
+        hint: `Open a topic and start your first ${getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase()}`,
         onClick: goToCourses,
         primary: true,
       },
@@ -272,7 +272,7 @@ export function DashboardHero({
         {/* Signature decorative mesh — tenant-primary, tasteful. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -right-16 -top-20 size-52 rounded-full bg-primary/10 blur-3xl"
+          className="pointer-events-none absolute -end-16 -top-20 size-52 rounded-full bg-primary/10 blur-3xl"
         />
         <div className="relative">
           {liveBanner}
@@ -303,7 +303,7 @@ export function DashboardHero({
                     type="button"
                     onClick={step.onClick}
                     className={cn(
-                      "group/step flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-left transition-all duration-base ease-out-soft",
+                      "group/step flex w-full items-center gap-3 rounded-xl border px-3.5 py-3 text-start transition-all duration-base ease-out-soft",
                       "hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md",
                       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
                       step.primary

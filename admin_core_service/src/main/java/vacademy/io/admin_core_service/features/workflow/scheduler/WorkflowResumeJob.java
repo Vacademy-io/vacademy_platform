@@ -16,6 +16,7 @@ import vacademy.io.common.logging.SentryLogger;
 
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowExecutionStatus;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -29,6 +30,13 @@ public class WorkflowResumeJob implements Job {
     private final WorkflowExecutionStateRepository executionStateRepository;
     private final WorkflowExecutionRepository executionRepository;
     private final WorkflowEngineService workflowEngineService;
+
+    /**
+     * An execution PROCESSING for longer than this with no pending WAITING resume-state is a
+     * casualty of a pod restart mid-run (inline sleep, or death between a send and the next
+     * persisted DELAY) — nothing will ever advance it. Generous: real runs finish in minutes.
+     */
+    private static final Duration STUCK_PROCESSING_CUTOFF = Duration.ofHours(6);
 
     @Override
     public void execute(JobExecutionContext context) throws JobExecutionException {
@@ -73,6 +81,8 @@ public class WorkflowResumeJob implements Job {
         } catch (Exception e) {
             log.error("WorkflowResumeJob: unexpected error", e);
         }
+
+        sweepStuckProcessingExecutions();
     }
 
     private void resumeWorkflow(WorkflowExecutionState state) {
@@ -102,6 +112,16 @@ public class WorkflowResumeJob implements Job {
             Map<String, Object> result = workflowEngineService.run(
                     execution.getWorkflow().getId(), resumeContext);
 
+            // A resumed run can pause AGAIN at the next DELAY of a drip chain; DelayNodeHandler
+            // just set the execution PAUSED and wrote a fresh WAITING state row. Overwriting
+            // that with COMPLETED here made the Executions tab report a 14-day drip as done
+            // after its first message.
+            if (result != null && Boolean.TRUE.equals(result.get("__workflow_paused"))) {
+                log.info("Resumed execution {} paused again (next delay in chain) — leaving status PAUSED",
+                        state.getExecutionId());
+                return;
+            }
+
             execution.setStatus(WorkflowExecutionStatus.COMPLETED);
             execution.setCompletedAt(Instant.now());
             executionRepository.save(execution);
@@ -114,6 +134,34 @@ public class WorkflowResumeJob implements Job {
             execution.setErrorMessage("Resume failed: " + e.getMessage());
             execution.setCompletedAt(Instant.now());
             executionRepository.save(execution);
+        }
+    }
+
+    /**
+     * Mark executions abandoned mid-run (pod restart during an inline delay, or between a node
+     * and the next persisted DELAY) as FAILED so they don't sit in PROCESSING forever. Runs on
+     * the resume job's 2-minute tick; executions with a WAITING resume-state are parked on
+     * purpose and are skipped.
+     */
+    private void sweepStuckProcessingExecutions() {
+        try {
+            Instant cutoff = Instant.now().minus(STUCK_PROCESSING_CUTOFF);
+            List<WorkflowExecution> stale = executionRepository
+                    .findStaleExecutions(WorkflowExecutionStatus.PROCESSING, cutoff);
+            for (WorkflowExecution execution : stale) {
+                if (executionStateRepository.existsByExecutionIdAndStatus(execution.getId(), "WAITING")) {
+                    continue; // pending resume — not stuck
+                }
+                execution.setStatus(WorkflowExecutionStatus.FAILED);
+                execution.setErrorMessage("Marked FAILED by stuck-execution sweeper: PROCESSING since "
+                        + execution.getStartedAt() + " with no pending resume state (likely pod restart mid-run)");
+                execution.setCompletedAt(Instant.now());
+                executionRepository.save(execution);
+                log.warn("WorkflowResumeJob: swept stuck PROCESSING execution {} (started {})",
+                        execution.getId(), execution.getStartedAt());
+            }
+        } catch (Exception e) {
+            log.error("WorkflowResumeJob: stuck-execution sweep failed", e);
         }
     }
 }

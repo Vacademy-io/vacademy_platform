@@ -15,6 +15,7 @@ import '@react-pdf-viewer/core/lib/styles/index.css';
 import '@react-pdf-viewer/default-layout/lib/styles/index.css';
 import '@react-pdf-viewer/full-screen/lib/styles/index.css';
 import { PDF_WORKER_URL } from '@/constants/urls';
+import { FilePdf } from '@phosphor-icons/react';
 import { Route } from '..';
 
 interface PDFViewerProps {
@@ -99,6 +100,22 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ pdfUrl }) => {
             }
         }
     }, [pdfPageNumber, clearPdfPageNumber, jumpToPage]);
+
+    // An empty/blank URL makes @react-pdf-viewer hand pdf.js a source with no
+    // .data/.range/.url, which throws "Invalid parameter object: need either
+    // .data, .range or .url". This happens when a PDF slide has no uploaded file
+    // yet (empty document_slide.data → getPublicUrl returns ''). Show a clean
+    // empty state instead of letting the viewer crash.
+    if (!pdfUrl?.trim()) {
+        return (
+            <div className="flex size-full flex-col items-center justify-center gap-2 text-center">
+                <FilePdf size={40} className="text-neutral-300" />
+                <p className="text-sm text-neutral-500">
+                    No PDF has been uploaded for this slide yet.
+                </p>
+            </div>
+        );
+    }
 
     return (
         <Worker workerUrl={PDF_WORKER_URL}>

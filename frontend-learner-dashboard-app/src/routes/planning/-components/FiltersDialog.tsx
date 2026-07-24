@@ -117,10 +117,10 @@ export default function FiltersDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="relative">
-          <Funnel className="mr-2 size-4" />
+          <Funnel className="me-2 size-4" />
           Filters
           {hasActiveFilters && (
-            <span className="ml-2 flex size-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
+            <span className="ms-2 flex size-5 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
               {(filters.interval_types?.length || 0) +
                 (filters.entity_ids?.length || 0)}
             </span>
@@ -165,7 +165,7 @@ export default function FiltersDialog({
                       onClick={() => toggleIntervalType(option.id)}
                     >
                       {option.label}
-                      {isSelected && <X className="ml-1 size-3" />}
+                      {isSelected && <X className="ms-1 size-3" />}
                     </Badge>
                   );
                 })}
@@ -201,7 +201,7 @@ export default function FiltersDialog({
                       onClick={() => toggleBatch(batch.id)}
                     >
                       {getPackageSessionName(batch)}
-                      {isSelected && <X className="ml-1 size-3" />}
+                      {isSelected && <X className="ms-1 size-3" />}
                     </Badge>
                   );
                 })}

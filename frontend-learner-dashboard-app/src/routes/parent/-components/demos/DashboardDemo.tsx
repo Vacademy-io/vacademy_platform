@@ -64,7 +64,7 @@ export function ParentDashboardDemo({ child, overview, onNavigate }: Props) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
       >
-        <Card className="border-l-4 border-l-yellow-500 shadow-sm">
+        <Card className="border-s-4 border-s-yellow-500 shadow-sm">
           <CardContent className="p-4 sm:p-5">
             <div className="flex items-start gap-3">
               <div className="p-2 rounded-lg bg-yellow-100 dark:bg-yellow-900/30 shrink-0 mt-0.5">
@@ -205,7 +205,7 @@ export function ParentDashboardDemo({ child, overview, onNavigate }: Props) {
                 onClick={() => onNavigate("tracker")}
               >
                 View All
-                <ArrowRight size={12} className="ml-1" />
+                <ArrowRight size={12} className="ms-1" />
               </Button>
             </CardHeader>
             <CardContent className="space-y-3">

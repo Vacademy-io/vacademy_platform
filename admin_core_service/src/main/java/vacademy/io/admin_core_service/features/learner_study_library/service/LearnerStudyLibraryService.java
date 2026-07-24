@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
@@ -28,6 +29,7 @@ import vacademy.io.admin_core_service.features.study_library.service.StudyLibrar
 import vacademy.io.admin_core_service.features.subject.enums.SubjectStatusEnum;
 import vacademy.io.admin_core_service.features.subject.repository.SubjectPackageSessionRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.core.i18n.LocaleRegistry;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
@@ -109,13 +111,18 @@ public class LearnerStudyLibraryService {
     }
 
     public List<LearnerSlidesDetailDTO> getLearnerSlides(String chapterId, CustomUserDetails user) {
+        // Resolved request locale (?lang > Accept-Language > JWT claim > en, set by
+        // LocaleResolutionFilter). For 'en' no translation rows match and the
+        // COALESCEs fall back to canonical content — identical to pre-i18n output.
+        String lang = LocaleRegistry.normalize(LocaleContextHolder.getLocale().toLanguageTag());
         // Fetch JSON response from repository
         String jsonSlides = slideRepository.getSlidesByChapterId(
                 chapterId,
                 user.getUserId(),
                 List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                 List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
-                List.of(QuestionStatusEnum.ACTIVE.name()) // Added missing closing parenthesis here
+                List.of(QuestionStatusEnum.ACTIVE.name()), // Added missing closing parenthesis here
+                lang
         );
 
         // Map the JSON to List<SlideDTO>

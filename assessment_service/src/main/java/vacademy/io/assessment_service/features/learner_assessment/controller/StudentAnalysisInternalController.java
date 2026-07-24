@@ -5,9 +5,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import vacademy.io.assessment_service.features.learner_assessment.dto.internal.BatchAssessmentHistoryRequest;
+import vacademy.io.assessment_service.features.learner_assessment.dto.internal.BatchAssessmentHistoryResponse;
 import vacademy.io.assessment_service.features.learner_assessment.dto.internal.StudentAssessmentHistoryResponse;
 import vacademy.io.assessment_service.features.learner_assessment.service.StudentAnalysisInternalService;
 
@@ -64,6 +68,33 @@ public class StudentAnalysisInternalController {
 
         StudentAssessmentHistoryResponse response =
                 studentAnalysisInternalService.fetchAssessmentHistory(userId, instituteId, startDate, endDate);
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * BATCHED sibling of {@link #getAssessmentHistory}: per-user assessment summaries for a
+     * cohort of up to 500 users in ONE call (avoids an N+1 across services).  Consumed by the
+     * Engagement Engine in admin_core_service.
+     *
+     * <p>Request body: {@code {"instituteId": "...", "userIds": ["..."], "sinceDays": 90}} —
+     * instituteId and userIds required (max 500, larger → 400), sinceDays optional (default 90).
+     *
+     * <p>Response: {@code {"byUserId": {"<userId>": {attemptCount, lastAttemptAt, avgPercentage,
+     * lastAssessmentName}}}} — an entry exists ONLY for userIds with at least one ENDED attempt
+     * in the window; absence means "no data".
+     */
+    @PostMapping("/assessment-history/batch")
+    public ResponseEntity<BatchAssessmentHistoryResponse> getAssessmentHistoryBatch(
+            @RequestBody BatchAssessmentHistoryRequest request) {
+
+        log.info("internal/student-analysis/assessment-history/batch: instituteId={} userIds={} sinceDays={}",
+                 request != null ? request.getInstituteId() : null,
+                 request != null && request.getUserIds() != null ? request.getUserIds().size() : 0,
+                 request != null ? request.getSinceDays() : null);
+
+        BatchAssessmentHistoryResponse response =
+                studentAnalysisInternalService.fetchAssessmentHistoryBatch(request);
 
         return ResponseEntity.ok(response);
     }

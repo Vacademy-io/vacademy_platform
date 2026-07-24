@@ -383,7 +383,7 @@ export function EmailOtpSignupProvider({
               whileTap={{ scale: 0.98 }}
               className="inline-flex items-center text-gray-500 hover:text-gray-700 transition-colors duration-200 font-medium"
             >
-              <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-3 h-3 me-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
               Back to email
@@ -472,10 +472,10 @@ export function EmailOtpSignupProvider({
         <button
           type="button"
           onClick={handleBackToEmail}
-          className="absolute left-0 top-0 inline-flex items-center text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 font-medium"
+          className="absolute start-0 top-0 inline-flex items-center text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 font-medium"
           aria-label="Back to email"
         >
-          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 me-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
           </svg>
           Back
@@ -543,12 +543,12 @@ export function EmailOtpSignupProvider({
                   type={showPassword ? "text" : "password"}
                   {...emailOtpForm.register("password")}
                   placeholder="Create a password"
-                  className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 pe-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((p) => !p)}
-                  className="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700 focus:outline-none"
+                  className="absolute inset-y-0 end-0 px-3 text-gray-500 hover:text-gray-700 focus:outline-none"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? (
@@ -581,12 +581,12 @@ export function EmailOtpSignupProvider({
                   type={showConfirmPassword ? "text" : "password"}
                   {...emailOtpForm.register("confirmPassword")}
                   placeholder="Confirm your password"
-                  className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 pe-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword((p) => !p)}
-                  className="absolute inset-y-0 right-0 px-3 text-gray-500 hover:text-gray-700 focus:outline-none"
+                  className="absolute inset-y-0 end-0 px-3 text-gray-500 hover:text-gray-700 focus:outline-none"
                   aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
                 >
                   {showConfirmPassword ? (

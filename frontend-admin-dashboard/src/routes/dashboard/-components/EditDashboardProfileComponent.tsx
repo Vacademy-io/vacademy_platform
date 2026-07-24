@@ -10,6 +10,7 @@ import { OnboardingFrame } from '@/svgs';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
 import { UploadFileInS3Public } from '@/routes/signup/-services/signup-services';
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from '@tanstack/react-router';
 import { getInstituteId } from '@/constants/helper';
 import { MyInput } from '@/components/design-system/input';
 import SelectField from '@/components/design-system/select-field';
@@ -22,31 +23,16 @@ import { toast } from 'sonner';
 import { AxiosError } from 'axios';
 import { handleUpdateInstituteDashboard } from '../-services/dashboard-services';
 import PhoneInputField from '@/components/design-system/phone-input-field';
-import themeData from '@/constants/themes/theme.json';
-import { useTheme } from '@/providers/theme/theme-provider';
 import { cn } from '@/lib/utils';
-
-// Predefined themes with their base colors
-const presetThemes = [
-    { name: 'Orange', code: 'primary' },
-    { name: 'Blue', code: 'blue' },
-    { name: 'Green', code: 'green' },
-    { name: 'Purple', code: 'purple' },
-    { name: 'Red', code: 'red' },
-    { name: 'Pink', code: 'pink' },
-    { name: 'Indigo', code: 'indigo' },
-    { name: 'Yellow', code: 'amber' },
-    { name: 'Cyan', code: 'cyan' },
-];
+import { getThemeShades, isCustomThemeCode } from '@/constants/themes/preset-themes';
+import { rampHexFromHex, SHADES } from '@/lib/theme-ramp';
 
 type FormValues = z.infer<typeof editDashboardProfileSchema>;
 
 const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
     const [open, setOpen] = useState(false);
-    const [openThemeDialog, setThemeDialog] = useState(false);
-    const [selectedTheme, setSelectedTheme] = useState(presetThemes[0]?.code || 'primary');
-    const { setPrimaryColor } = useTheme();
 
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
     const instituteId = getInstituteId();
@@ -154,21 +140,6 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
         };
         resetFormWithUrl();
     }, [instituteDetails]);
-
-    const getThemeShades = (code: string) => {
-        const theme = themeData.themes.find((theme) => theme.code === code);
-        if (theme && theme.colors) {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            return Object.entries(theme.colors).map(([key, color]) => color);
-        }
-        return [];
-    };
-
-    const handleThemeSelect = (code: string) => {
-        setSelectedTheme(code);
-        setPrimaryColor(code);
-        form.setValue('instituteThemeCode', code);
-    };
 
     return (
         <>
@@ -528,16 +499,23 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                     <div className="mb-2 w-36">
                                                         {(() => {
                                                             const currentThemeCode =
-                                                                form.watch('instituteThemeCode');
-                                                            const theme = themeData.themes.find(
-                                                                (t) => t.code === currentThemeCode
-                                                            );
-                                                            const shades = theme?.colors
-                                                                ? Object.entries(theme.colors).map(
-                                                                      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                                                                      ([_, color]) => color
-                                                                  )
-                                                                : [];
+                                                                form.watch('instituteThemeCode') ??
+                                                                '';
+                                                            // A saved code is either a preset or a
+                                                            // custom hex — ramp the latter so the
+                                                            // "Current" strip isn't blank for it.
+                                                            const shades = isCustomThemeCode(
+                                                                currentThemeCode
+                                                            )
+                                                                ? [...SHADES]
+                                                                      .reverse()
+                                                                      .map(
+                                                                          (shade) =>
+                                                                              rampHexFromHex(
+                                                                                  currentThemeCode
+                                                                              )[shade]
+                                                                      )
+                                                                : getThemeShades(currentThemeCode);
 
                                                             return (
                                                                 <div className="overflow-hidden rounded-lg shadow-sm">
@@ -565,7 +543,12 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                                                         buttonType="secondary"
                                                         layoutVariant="default"
                                                         className="text-sm sm:w-1/3"
-                                                        onClick={() => setThemeDialog(true)}
+                                                        onClick={() =>
+                                                            navigate({
+                                                                to: '/settings',
+                                                                search: { selectedTab: 'appearance' },
+                                                            })
+                                                        }
                                                     >
                                                         Change Theme
                                                     </MyButton>
@@ -593,62 +576,6 @@ const EditDashboardProfileComponent = ({ isEdit }: { isEdit: boolean }) => {
                 </DialogContent>
             </Dialog>
 
-            <Dialog open={openThemeDialog} onOpenChange={setThemeDialog}>
-                <DialogContent className="flex h-4/5 max-h-[85vh] w-[calc(100vw-2rem)] flex-col p-0 [&>button>svg]:size-5 [&>button>svg]:text-neutral-600 sm:w-1/3">{/* design-lint-ignore: viewport-relative dialog sizing for mobile */}
-                    <h1 className="rounded-t-lg bg-primary-50 p-4 font-semibold text-primary-500">
-                        Select Theme
-                    </h1>
-                    <div className="flex h-[86%] flex-col">
-                        {/* Scrollable form content */}
-                        <div className="flex-1 overflow-y-auto p-4">
-                            <h1 className="mb-4 text-lg">Set your organization theme</h1>
-                            <div className="mb-2 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-                                {presetThemes.map((theme) => {
-                                    const shades = getThemeShades(theme.code);
-                                    return (
-                                        <div
-                                            key={theme.name}
-                                            role="button"
-                                            onClick={() => handleThemeSelect(theme.code)}
-                                            className={cn(
-                                                'overflow-hidden rounded-lg shadow-sm transition-shadow hover:shadow-md',
-                                                selectedTheme === theme.code
-                                                    ? 'ring-2 ring-primary-500 ring-offset-2'
-                                                    : 'ring-1 ring-gray-200'
-                                            )}
-                                            aria-label={`Select ${theme.name} theme`}
-                                        >
-                                            <div className="flex flex-col">
-                                                {shades?.map((shade, index) => (
-                                                    <div
-                                                        key={index}
-                                                        className="h-5"
-                                                        style={{ backgroundColor: shade }}
-                                                    />
-                                                ))}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
-                        {/* Fixed Save Changes button */}
-                        <div className="flex justify-center bg-white p-4 pb-0">
-                            <MyButton
-                                type="submit"
-                                scale="large"
-                                buttonType="secondary"
-                                layoutVariant="default"
-                                onClick={() => setThemeDialog(false)}
-                                disable={Object.keys(form.formState.errors).length > 0}
-                            >
-                                Save
-                            </MyButton>
-                        </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
         </>
     );
 };

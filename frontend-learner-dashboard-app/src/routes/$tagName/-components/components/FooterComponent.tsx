@@ -125,7 +125,7 @@ export const FooterComponent: React.FC<FooterProps & {
 
   // Link styles - neutral with primary accent on hover
   const linkClasses = "text-sm text-catalogue-text-secondary hover:text-primary-500 transition-colors cursor-pointer";
-  const linkClassesLeft = "text-sm text-catalogue-text-secondary hover:text-primary-500 transition-colors cursor-pointer text-left";
+  const linkClassesLeft = "text-sm text-catalogue-text-secondary hover:text-primary-500 transition-colors cursor-pointer text-start";
 
   return (
     <footer className="catalogue-footer">

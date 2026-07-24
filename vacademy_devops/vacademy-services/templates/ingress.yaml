@@ -26,6 +26,10 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "1800"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "1800"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "1800"
+    # Large uploads (SCORM zips etc.) — without this nginx 413s at the default
+    # 1m, and the bare 413 page has no CORS headers so browsers report it as a
+    # CORS failure. Services still enforce their own multipart limits.
+    nginx.ingress.kubernetes.io/proxy-body-size: "200m"
     {{- if .Values.certManager.enabled }}
     cert-manager.io/cluster-issuer: vacademy-letsencrypt
     {{- end }}
@@ -102,6 +106,10 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "1800"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "1800"
     nginx.ingress.kubernetes.io/proxy-read-timeout: "1800"
+    # Large uploads (SCORM zips etc.) — without this nginx 413s at the default
+    # 1m, and the bare 413 page has no CORS headers so browsers report it as a
+    # CORS failure. Services still enforce their own multipart limits.
+    nginx.ingress.kubernetes.io/proxy-body-size: "200m"
     cert-manager.io/cluster-issuer: vacademy-stage-letsencrypt-prod-cert-issuer
     certmanager.k8s.io/acme-challenge-type: http01
 spec:
@@ -112,6 +120,7 @@ spec:
         - u.vacademy.io
         - u.aanandham.uk
         - u.readonrent.com
+        - u.elevateeducation.in
       secretName: vacademy-tls-secret
   rules:
     - host: backend-stage.vacademy.io
@@ -206,6 +215,16 @@ spec:
                 port:
                   number: {{ .Values.services.media_service.port }}
     - host: u.readonrent.com
+      http:
+        paths:
+          - path: /s
+            pathType: Prefix
+            backend:
+              service:
+                name: media-service
+                port:
+                  number: {{ .Values.services.media_service.port }}
+    - host: u.elevateeducation.in
       http:
         paths:
           - path: /s

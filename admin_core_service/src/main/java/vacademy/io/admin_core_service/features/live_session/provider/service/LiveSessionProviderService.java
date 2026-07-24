@@ -9,6 +9,7 @@ import org.springframework.web.reactive.function.client.WebClientRequestExceptio
 import com.fasterxml.jackson.databind.ObjectMapper;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
 import vacademy.io.admin_core_service.features.live_session.provider.LiveSessionProviderFactory;
+import vacademy.io.admin_core_service.features.live_session.service.RecordingAutoLinkService;
 import vacademy.io.admin_core_service.features.live_session.provider.LiveSessionProviderStrategy;
 import vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderMeetingCreateRequestDTO;
 import vacademy.io.admin_core_service.features.live_session.provider.dto.ProviderConnectRequestDTO;
@@ -63,6 +64,7 @@ public class LiveSessionProviderService {
     private final MediaService mediaService;
     private final WebClient.Builder webClientBuilder;
     private final BbbServerRouter bbbServerRouter;
+    private final RecordingAutoLinkService recordingAutoLinkService;
     private final vacademy.io.admin_core_service.features.live_session.provider.service.zoom.ZoomRecordingS3Service zoomRecordingS3Service;
 
     private static final List<String> ACTIVE = List.of("ACTIVE");
@@ -492,6 +494,9 @@ public class LiveSessionProviderService {
                 schedule.setProviderRecordingsJson(objectMapper.writeValueAsString(updated));
                 schedule.setLastRecordingSyncAt(new Date());
                 scheduleRepository.save(schedule);
+                // Auto-link newly synced recordings to chapter slides when an
+                // auto-upload destination is configured (never throws).
+                recordingAutoLinkService.processSchedule(schedule);
             } catch (Exception e) {
                 // BC-12: DB write failure — return in-memory results, log error
                 log.error("[Sync] Failed to persist synced recordings for scheduleId={}: {}",

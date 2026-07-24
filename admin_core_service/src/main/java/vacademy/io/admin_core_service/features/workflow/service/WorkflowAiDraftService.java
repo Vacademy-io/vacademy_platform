@@ -15,11 +15,14 @@ import vacademy.io.admin_core_service.features.workflow.dto.WorkflowBuilderDTO;
 import vacademy.io.admin_core_service.features.workflow.dto.WorkflowDecisionDTO;
 import vacademy.io.admin_core_service.features.workflow.dto.WorkflowPlanDTO;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Template-first hybrid AI workflow drafter. Turns a natural-language goal into a
@@ -47,20 +50,55 @@ public class WorkflowAiDraftService {
     @Value("${workflow.ai.draft.model:anthropic/claude-sonnet-4.5}")
     private String draftModel;
 
+    // Multi-step drafts (e.g. a 14-day drip = ~15 nodes + rationale) do not fit in the
+    // LLMService default of 4096 completion tokens and would loop on finish_reason=length.
+    @Value("${workflow.ai.draft.max-tokens:16000}")
+    private int draftMaxTokens;
+
     /** Generate + validate attempts total (1 initial + N repairs). */
     private static final int MAX_ATTEMPTS = 3;
+
+    // Per-institute drafting cap (sliding hour, per pod). Each draft is up to 3 large paid
+    // completions; the membership check bounds WHO can call this but not HOW OFTEN.
+    @Value("${workflow.ai.draft.rate-limit-per-hour:30}")
+    private int rateLimitPerHour;
+
+    private final ConcurrentHashMap<String, Deque<Long>> draftTimestampsByInstitute = new ConcurrentHashMap<>();
+
+    private boolean rateLimitExceeded(String instituteId) {
+        long now = System.currentTimeMillis();
+        long windowStart = now - 3_600_000L;
+        Deque<Long> stamps = draftTimestampsByInstitute.computeIfAbsent(instituteId, k -> new ArrayDeque<>());
+        synchronized (stamps) {
+            while (!stamps.isEmpty() && stamps.peekFirst() < windowStart) {
+                stamps.pollFirst();
+            }
+            if (stamps.size() >= rateLimitPerHour) {
+                return true;
+            }
+            stamps.addLast(now);
+            return false;
+        }
+    }
 
     public WorkflowAiDraftResponse draft(WorkflowAiDraftRequest request, String userId) {
         if (request == null || request.getInstituteId() == null || request.getInstituteId().isBlank()) {
             return WorkflowAiDraftResponse.builder().error("'instituteId' is required.").build();
         }
         String mode = request.getMode();
-        // BUILD: deterministic assembly from the confirmed skeleton + answers — no LLM, no goal needed.
+        // BUILD: deterministic assembly from the confirmed skeleton + answers — no LLM call,
+        // no goal needed, and exempt from the LLM rate limit.
         if ("BUILD".equalsIgnoreCase(mode)) {
             return buildFromDecisions(request);
         }
         if (request.getGoal() == null || request.getGoal().isBlank()) {
             return WorkflowAiDraftResponse.builder().error("A non-empty 'goal' is required.").build();
+        }
+        // Rate-limit the LLM-backed paths (PLAN + legacy single-shot).
+        if (rateLimitExceeded(request.getInstituteId())) {
+            return WorkflowAiDraftResponse.builder()
+                    .error("Too many AI drafts for this institute in the last hour — please try again later.")
+                    .build();
         }
         // PLAN: propose a skeleton + the decisions the admin must make (assistive path).
         if ("PLAN".equalsIgnoreCase(mode)) {
@@ -92,6 +130,7 @@ public class WorkflowAiDraftService {
                         .userId(userId)
                         .instituteId(request.getInstituteId())
                         .model(draftModel)
+                        .maxTokens(draftMaxTokens)
                         .history(new ArrayList<>(history))
                         .build();
                 LLMService.LLMResponse resp = llmService.generateChatCompletion(session);
@@ -225,6 +264,7 @@ public class WorkflowAiDraftService {
                         .userId(userId)
                         .instituteId(request.getInstituteId())
                         .model(draftModel)
+                        .maxTokens(draftMaxTokens)
                         .history(new ArrayList<>(history))
                         .build();
                 LLMService.LLMResponse resp = llmService.generateChatCompletion(session);
@@ -527,8 +567,23 @@ public class WorkflowAiDraftService {
 
             APPROACH (template-first hybrid): if the goal maps cleanly onto a common pattern \
             (lead follow-up, welcome email, attendance report, session reminder, abandoned-cart \
-            nudge, fee reminder), build that pattern with the right trigger + query + send nodes. \
-            Only compose novel node graphs when no common pattern fits.
+            nudge, fee reminder, drip/trial nurture sequence), build that pattern with the right \
+            trigger + query + send nodes. Only compose novel node graphs when no common pattern fits.
+
+            DRIP / TRIAL SEQUENCES: a multi-day message sequence is ONE event-driven workflow — \
+            a chain of DELAY -> SEND_WHATSAPP (or SEND_EMAIL) pairs, never one workflow per day \
+            and never a LOOP node. Long DELAYs persist and survive restarts. If the sequence must \
+            start on a fixed weekday regardless of signup day (e.g. "trial starts next Monday"), \
+            make the FIRST node after the trigger a DELAY with \
+            {"delay":{"until":"NEXT_DAY_OF_WEEK","dayOfWeek":"MONDAY","time":"09:00","timezone":"Asia/Kolkata"}} \
+            and use fixed {"delay":{"value":N,"unit":"DAYS"}} between the subsequent sends. For a \
+            single enrolled learner from the trigger context, send with on = "{#ctx['user']}" and \
+            recipient fields from the UserDTO (email, mobileNumber, fullName). Dedup: set \
+            trigger.idempotency_generation_setting to a CUSTOM_EXPRESSION that includes the PERSON, \
+            e.g. {"strategy":"CUSTOM_EXPRESSION","customExpression":"'wf_' + #ctx['triggerId'] + '_' + #ctx['eventId'] + '_' + #ctx['user']['id']"} \
+            so a duplicate/retried enrollment event cannot start a second drip for the same learner. \
+            NEVER use EVENT_BASED for enrollment events — its key has no learner in it, so it would \
+            let only the FIRST learner of the batch ever enter the workflow.
 
             You are given a CATALOG (below) of node types, read queries with their exact output \
             field names, common triggers, and a set of GENERATION RULES. Obey every rule in \

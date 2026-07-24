@@ -6,6 +6,9 @@ import { Slide } from '../-hooks/use-slides';
 export const SLIDE_TYPE_NAMES = {
     // Document types
     DOC: 'Document',
+    // Tiptap-based document (document_slide.type 'HTML') — same user-facing
+    // name as DOC; the editor is an implementation detail.
+    HTML: 'Document',
     PRESENTATION: 'Presentation',
     JUPYTER: 'Jupyter Notebook',
     SCRATCH: 'Scratch Project',
@@ -37,6 +40,8 @@ export function getSlideTypeForNaming(slide: Partial<Slide>): string {
         switch (docType) {
             case 'DOC':
                 return SLIDE_TYPE_NAMES.DOC;
+            case 'HTML':
+                return SLIDE_TYPE_NAMES.HTML;
             case 'PRESENTATION':
                 return SLIDE_TYPE_NAMES.PRESENTATION;
             case 'JUPYTER':
@@ -115,6 +120,9 @@ export function generateUniqueDocumentSlideTitle(allSlides: Slide[], documentTyp
     switch (documentType) {
         case 'DOC':
             slideTypeName = SLIDE_TYPE_NAMES.DOC;
+            break;
+        case 'HTML':
+            slideTypeName = SLIDE_TYPE_NAMES.HTML;
             break;
         case 'PRESENTATION':
             slideTypeName = SLIDE_TYPE_NAMES.PRESENTATION;

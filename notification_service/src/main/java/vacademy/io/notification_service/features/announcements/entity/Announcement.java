@@ -82,7 +82,10 @@ public class Announcement {
     
     @OneToMany(mappedBy = "announcement", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<AnnouncementTask> tasks;
-    
+
+    @OneToMany(mappedBy = "announcement", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<AnnouncementAppOverlay> appOverlays;
+
     @OneToMany(mappedBy = "announcement", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<AnnouncementMedium> mediums;
     

@@ -46,7 +46,6 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import Editor from '@monaco-editor/react';
-import { YooptaEditorWrapperSafe as YooptaEditorWrapper } from '../../../shared/components';
 import {
     DndContext,
     closestCenter,

@@ -32,6 +32,7 @@ import { CreativeConceptDecision } from './gates/CreativeConceptDecision';
 import { ContactSheetDecision } from './gates/ContactSheetDecision';
 import { AssetRequestDecision } from './gates/AssetRequestDecision';
 import { CastDecision } from './gates/CastDecision';
+import { DailiesDecision } from './gates/DailiesDecision';
 import { StyleframeDecision } from './gates/StyleframeDecision';
 
 interface AssistChatProps {
@@ -301,6 +302,14 @@ function DecisionCard({
         case 'cast':
             return (
                 <CastDecision
+                    decision={decision}
+                    isSubmitting={isSubmitting}
+                    onSubmit={onSubmit}
+                />
+            );
+        case 'dailies':
+            return (
+                <DailiesDecision
                     decision={decision}
                     isSubmitting={isSubmitting}
                     onSubmit={onSubmit}

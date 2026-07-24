@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,13 +23,21 @@ import { loginUser } from "@/components/common/auth/login/hooks/login-button";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { navigateAfterLogin } from "@/lib/auth/post-login-redirect";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 
-const loginSchema = z.object({
-    username: z.string().min(1, "Username is required"),
-    password: z.string().min(1, "Password is required"),
-});
+/**
+ * Built per-render (not a module constant) so validation messages follow the
+ * active language instead of freezing at import time.
+ */
+const makeLoginSchema = () =>
+    z.object({
+        username: z.string().min(1, i18n.t("auth:validation.usernameRequired")),
+        password: z.string().min(1, i18n.t("auth:validation.passwordRequired")),
+    });
 
-type FormValues = z.infer<typeof loginSchema>;
+type FormValues = z.infer<ReturnType<typeof makeLoginSchema>>;
 
 interface ModalUsernameLoginProps {
     onSwitchToEmail: () => void;
@@ -54,6 +62,12 @@ export function ModalUsernameLogin({
     showEmailSwitch?: boolean;
     signupAvailable?: boolean;
 }) {
+    const { t, i18n: i18nInstance } = useTranslation("auth");
+    const loginSchema = useMemo(
+        () => makeLoginSchema(),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [i18nInstance.language]
+    );
     // Extract instituteId from current URL
     const urlParams = new URLSearchParams(window.location.search);
     const instituteId = urlParams.get("instituteId");
@@ -112,11 +126,9 @@ export function ModalUsernameLogin({
                             if (type === "courseDetailsPage" || (type && type !== "mainLogin")) {
                                 window.open(redirectUrl, '_blank');
                             }
-                            // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                            // Only navigate away if this is NOT a modal login (i.e., main login page)
                             if (!type || type === "mainLogin") {
-                                navigate({
-                                    to: "/dashboard",
-                                });
+                                await navigateAfterLogin(navigate);
                             } else {
                                 // Call onLoginSuccess callback for modal login
                                 if (onLoginSuccess) {
@@ -125,11 +137,11 @@ export function ModalUsernameLogin({
                             }
                         } catch (error) {
                             console.error("Error fetching details:", error);
-                            toast.error("Failed to fetch details");
+                            toast.error(i18n.t("auth:toasts.failedToFetchDetails"));
                         }
                     } else if (instituteId && !authorityKeys.includes(instituteId)) {
                         // User is not enrolled in the specified institute
-                        toast.error("You are not enrolled in this institute.");
+                        toast.error(i18n.t("auth:toasts.notEnrolledInstitute"));
                         if (onLoginSuccess) {
                             onLoginSuccess(); // Close modal
                         }
@@ -169,11 +181,9 @@ export function ModalUsernameLogin({
                                     }
                                 }
                             } else {
-                                // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                                // Only navigate away if this is NOT a modal login (i.e., main login page)
                                 if (!type || type === "mainLogin") {
-                                    navigate({
-                                        to: "/dashboard",
-                                    });
+                                    await navigateAfterLogin(navigate);
                                 } else {
                                     // Call onLoginSuccess callback for modal login
                                     if (onLoginSuccess) {
@@ -183,7 +193,7 @@ export function ModalUsernameLogin({
                             }
                         } catch (error) {
                             console.error("Error fetching details:", error);
-                            toast.error("Failed to fetch details");
+                            toast.error(i18n.t("auth:toasts.failedToFetchDetails"));
                         }
                     } else if (authorityKeys.length === 1) {
                         // Single institute case
@@ -221,11 +231,9 @@ export function ModalUsernameLogin({
                                     }
                                 }
                             } else {
-                                // Only navigate to dashboard if this is NOT a modal login (i.e., main login page)
+                                // Only navigate away if this is NOT a modal login (i.e., main login page)
                                 if (!type || type === "mainLogin") {
-                                    navigate({
-                                        to: "/dashboard",
-                                    });
+                                    await navigateAfterLogin(navigate);
                                 } else {
                                     // Call onLoginSuccess callback for modal login
                                     if (onLoginSuccess) {
@@ -235,7 +243,7 @@ export function ModalUsernameLogin({
                             }
                         } catch (error) {
                             console.error("Error fetching details:", error);
-                            toast.error("Failed to fetch details");
+                            toast.error(i18n.t("auth:toasts.failedToFetchDetails"));
                         }
                     }
                 } catch (error) {
@@ -247,9 +255,7 @@ export function ModalUsernameLogin({
         },
         onError: () => {
             setIsLoading(false);
-            toast.error(
-                "Login failed. Please check your username and password and try again."
-            );
+            toast.error(i18n.t("auth:toasts.loginFailed"));
         },
     });
 
@@ -282,7 +288,7 @@ export function ModalUsernameLogin({
                                         <div className="relative">
                                             <MyInput
                                                 inputType="text"
-                                                inputPlaceholder="Enter your username or email"
+                                                inputPlaceholder={t("common.enterUsernameOrEmail")}
                                                 input={value}
                                                 onChangeFunction={onChange}
                                                 error={
@@ -291,14 +297,14 @@ export function ModalUsernameLogin({
                                                 }
                                                 required
                                                 size="large"
-                                                label="Username or email"
+                                                label={t("common.usernameOrEmailLabel")}
                                                 autoCapitalize="none"
                                                 autoCorrect="off"
                                                 spellCheck={false}
                                                 {...field}
-                                                className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-10"
+                                                className="w-full transition-all duration-200 border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pe-10"
                                             />
-                                            <User className="absolute right-3 bottom-3 w-4 h-4 text-gray-400" />
+                                            <User className="absolute end-3 bottom-3 w-4 h-4 text-gray-400" />
                                         </div>
                                     </FormControl>
                                 </FormItem>
@@ -326,7 +332,7 @@ export function ModalUsernameLogin({
                                                 {/* Custom input wrapper to override MyInput's password behavior */}
                                                 <div className="flex flex-col gap-1">
                                                     <Label className="text-subtitle font-regular">
-                                                        Password
+                                                        {t("common.passwordLabel")}
                                                         <span className="text-subtitle text-danger-600">
                                                             *
                                                         </span>
@@ -338,15 +344,15 @@ export function ModalUsernameLogin({
                                                                     ? "text"
                                                                     : "password"
                                                             }
-                                                            placeholder="Enter your password"
-                                                            className="h-10 py-2 px-3 text-subtitle w-full border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pr-20 text-neutral-600 shadow-none placeholder:text-body placeholder:font-regular hover:border-primary-200 focus:border-primary-500"
+                                                            placeholder={t("common.enterPassword")}
+                                                            className="h-10 py-2 px-3 text-subtitle w-full border-gray-200 focus:border-gray-300 focus:ring-0 focus-visible:ring-0 rounded-lg bg-gray-50/50 focus:bg-white hover:bg-white font-normal pe-20 text-neutral-600 shadow-none placeholder:text-body placeholder:font-regular hover:border-primary-200 focus:border-primary-500"
                                                             value={value}
                                                             onChange={onChange}
                                                             required
                                                             {...field}
                                                         />
                                                         {/* Custom password toggle and lock icon */}
-                                                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center space-x-2">
+                                                        <div className="absolute end-3 top-1/2 -translate-y-1/2 flex items-center space-x-2">
                                                             <motion.button
                                                                 type="button"
                                                                 whileHover={{
@@ -373,7 +379,7 @@ export function ModalUsernameLogin({
                                                     </div>
                                                     {form.formState.errors
                                                         .password?.message && (
-                                                        <div className="flex items-center gap-1 pl-1 text-body font-regular text-danger-600">
+                                                        <div className="flex items-center gap-1 ps-1 text-body font-regular text-danger-600">
                                                             <XCircle />
                                                             <span className="mt-0.5">
                                                                 {
@@ -400,7 +406,7 @@ export function ModalUsernameLogin({
                                 className="text-xs text-gray-500 hover:text-gray-700 transition-colors duration-200 font-medium"
                                 onClick={onSwitchToForgotPassword}
                             >
-                                Forgot password?
+                                {t("common.forgotPasswordQuestion")}
                             </motion.button>
                         </div>
                     </motion.div>
@@ -434,13 +440,13 @@ export function ModalUsernameLogin({
                                         <ArrowsClockwise className="w-4 h-4" />
                                     </motion.div>
                                     <span className="text-sm">
-                                        Signing in...
+                                        {t("common.signingIn")}
                                     </span>
                                 </div>
                             ) : (
                                 <div className="flex items-center justify-center space-x-2">
                                     <Shield className="w-4 h-4" />
-                                    <span className="text-sm">Sign In</span>
+                                    <span className="text-sm">{t("common.signIn")}</span>
                                 </div>
                             )}
                         </motion.button>
@@ -463,8 +469,8 @@ export function ModalUsernameLogin({
                         className="text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200 relative group font-medium"
                         onClick={onSwitchToEmail}
                     >
-                        Prefer emailotp login?
-                        <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
+                        {t("login.preferEmailOtpLogin")}
+                        <span className="absolute -bottom-1 start-0 w-0 h-0.5 bg-gray-700 transition-all duration-200 group-hover:w-full"></span>
                     </motion.button>
                 )}
                 

@@ -8,6 +8,7 @@ import { useSignupFlow } from "@/components/common/auth/signup/hooks/use-signup-
 import { useModularLoginFlow } from "@/components/common/auth/login/hooks/modular/use-modular-login-flow";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { resolveInstituteIdFromLocalOrSubdomain } from "@/services/institute-resolver";
+import { useTranslation } from "react-i18next";
 
 interface AuthModalProps {
     type?: string;
@@ -32,6 +33,7 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
     onSignupSuccess,
     initialMode = 'login'
 }, ref) => {
+    const { t } = useTranslation("auth");
     const [internalIsOpen, setInternalIsOpen] = useState(false);
     const isOpen = internalIsOpen;
     const [currentMode, setCurrentMode] = useState<'login' | 'signup' | 'forgot-password'>(initialMode);
@@ -460,15 +462,18 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
             >
                 {/* Screen reader title */}
                 <h1 id="auth-title" className="sr-only">
-                    {currentMode === 'login' ? 'Login Dialog' : currentMode === 'signup' ? 'Signup Dialog' : 'Forgot Password Dialog'}
+                    {currentMode === 'login'
+                        ? t('modal.loginDialog')
+                        : currentMode === 'signup'
+                        ? t('modal.signupDialog')
+                        : t('modal.forgotPasswordDialog')}
                 </h1>
                 <p id="auth-description" className="sr-only">
-                    {currentMode === 'login' 
-                        ? 'Sign in to your account using social login or email and password'
+                    {currentMode === 'login'
+                        ? t('modal.loginDesc')
                         : currentMode === 'signup'
-                        ? 'Create your account by providing your email, full name, and username'
-                        : 'Reset your password by entering your email address'
-                    }
+                        ? t('modal.signupDesc')
+                        : t('modal.forgotDesc')}
                 </p>
 
                 {/* Close Button */}
@@ -476,7 +481,7 @@ export const AuthModal = forwardRef<AuthModalRef, AuthModalProps>(({
                     onClick={handleClose}
                     className="absolute text-gray-400 hover:text-gray-600 text-3xl font-light focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-full transition-colors"
                     style={{ top: '6px', right: '16px' }}
-                    aria-label={`Close ${currentMode} dialog`}
+                    aria-label={t('modal.closeDialog')}
                     type="button"
                 >
                     ×

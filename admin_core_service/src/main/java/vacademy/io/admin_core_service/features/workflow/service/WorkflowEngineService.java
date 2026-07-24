@@ -193,25 +193,23 @@ public class WorkflowEngineService {
 
                 // Prevent duplicate notification sends in diamond DAG patterns:
                 // If multiple paths converge on the same SEND_EMAIL or SEND_WHATSAPP node,
-                // only execute it once per workflow run.
-                if ("SEND_EMAIL".equalsIgnoreCase(nodeType) || "SEND_WHATSAPP".equalsIgnoreCase(nodeType)) {
-                    if (!executedNotificationNodes.add(currentNodeId)) {
-                        log.info("Skipping duplicate notification node {} (type: {}) - already executed in this workflow run",
-                                currentNodeId, nodeType);
+                // only execute it once per workflow run. Membership is recorded AFTER a
+                // successful handler run (below) — recording it up-front meant a crashed or
+                // rate-limited send was permanently counted as "sent" and never retriable.
+                boolean isNotificationNode =
+                        "SEND_EMAIL".equalsIgnoreCase(nodeType) || "SEND_WHATSAPP".equalsIgnoreCase(nodeType);
+                if (isNotificationNode && executedNotificationNodes.contains(currentNodeId)) {
+                    log.info("Skipping duplicate notification node {} (type: {}) - already executed in this workflow run",
+                            currentNodeId, nodeType);
 
-                        SentryLogger.logWarning("Duplicate notification node skipped in workflow", Map.of(
-                                "workflow.id", workflowId,
-                                "node.id", currentNodeId,
-                                "node.type", nodeType,
-                                "institute.id", String.valueOf(ctx.get("instituteId")),
-                                "operation", "WorkflowEngine.duplicateNodeSkipped"
-                        ));
-                        continue;
-                    }
-                    // Mirror the freshly-recorded notification node into ctx so that if a later
-                    // DELAY node pauses the workflow, the persisted context remembers this send
-                    // and the resume pass will not re-fire it.
-                    ctx.put(EXECUTED_NOTIFICATION_NODES_KEY, new ArrayList<>(executedNotificationNodes));
+                    SentryLogger.logWarning("Duplicate notification node skipped in workflow", Map.of(
+                            "workflow.id", workflowId,
+                            "node.id", currentNodeId,
+                            "node.type", nodeType,
+                            "institute.id", String.valueOf(ctx.get("instituteId")),
+                            "operation", "WorkflowEngine.duplicateNodeSkipped"
+                    ));
+                    continue;
                 }
 
                 // Use registry for O(1) lookup
@@ -237,6 +235,7 @@ public class WorkflowEngineService {
 
                     // Execute with retry
                     Exception lastError = null;
+                    Map<String, Object> lastChanges = null;
                     for (int attempt = 0; attempt <= maxRetries; attempt++) {
                         try {
                             if (attempt > 0) {
@@ -254,6 +253,7 @@ public class WorkflowEngineService {
                                 ctx.put("__skip_delay_once", true);
                             }
                             Map<String, Object> changes = handler.handle(ctx, effectiveConfig, templateById, guard);
+                            lastChanges = changes;
                             if (skipDelayThisNode) {
                                 ctx.remove("__skip_delay_once");
                             }
@@ -280,6 +280,18 @@ public class WorkflowEngineService {
                                 Map.of("workflow.id", workflowId, "node.id", current.getId(),
                                         "node.type", nodeType, "retries", String.valueOf(maxRetries),
                                         "layer", "2-workflow-engine"));
+                    }
+
+                    // Record the notification node as executed only when it actually dispatched:
+                    // handler completed without throwing AND did not report an error / rate-limit
+                    // drop. Mirrored into ctx so a later DELAY pause persists it and the resume
+                    // pass will not re-fire sends that already went out.
+                    if (isNotificationNode && lastError == null
+                            && (lastChanges == null
+                                    || (!lastChanges.containsKey("error")
+                                            && !"rate_limited".equals(lastChanges.get("status"))))) {
+                        executedNotificationNodes.add(currentNodeId);
+                        ctx.put(EXECUTED_NOTIFICATION_NODES_KEY, new ArrayList<>(executedNotificationNodes));
                     }
                 } else {
                     log.warn("No handler found for node type: {}", nodeType);

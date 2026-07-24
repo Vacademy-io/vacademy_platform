@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { MagnifyingGlass, ArrowsDownUp, SlidersHorizontal } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { Input } from "@/components/ui/input";
 import {
     Select,
@@ -35,7 +36,15 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
     onFilterToggle,
     activeFiltersCount = 0,
 }) => {
+    const { t } = useTranslation("study");
     const [inputValue, setInputValue] = useState(searchTerm);
+    // Lower-cased at the call site (not in the catalog) so the composed
+    // terminology reads naturally mid-sentence in English; a no-op for
+    // scripts without case, such as Arabic and Hindi.
+    const coursesLower = getTerminologyPlural(
+        ContentTerms.Course,
+        SystemTerms.Course
+    ).toLocaleLowerCase();
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === "Enter") {
@@ -68,9 +77,9 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
                         )}
                     >
                         <SlidersHorizontal size={15} />
-                        <span className="text-sm">Filters</span>
+                        <span className="text-sm">{t("filters.title")}</span>
                         {activeFiltersCount > 0 && (
-                            <Badge variant="secondary" className="h-4 px-1 text-caption leading-none ml-0.5">
+                            <Badge variant="secondary" className="h-4 px-1 text-caption leading-none ms-0.5">
                                 {activeFiltersCount}
                             </Badge>
                         )}
@@ -81,15 +90,14 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
                     <div className="relative">
                         <MagnifyingGlass
                             size={18}
-                            className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none"
+                            className="absolute start-3 top-1/2 transform -translate-y-1/2 text-muted-foreground pointer-events-none"
                         />
                         <Input
                             type="text"
-                            placeholder={`Search ${getTerminology(
-                                ContentTerms.Course,
-                                SystemTerms.Course
-                            ).toLocaleLowerCase()}s...`}
-                            className={cn("pl-10 w-full", "[.ui-play_&]:rounded-full [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:bg-primary-50 [.ui-play_&]:font-bold")}
+                            placeholder={t("catalog.search.placeholder", {
+                                courses: coursesLower,
+                            })}
+                            className={cn("ps-10 w-full", "[.ui-play_&]:rounded-full [.ui-play_&]:border-2 [.ui-play_&]:border-primary-200 [.ui-play_&]:bg-primary-50 [.ui-play_&]:font-bold")}
                             value={inputValue}
                             onChange={(e) => setInputValue(e.target.value)}
                             onKeyDown={handleKeyDown}
@@ -101,7 +109,7 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
                 {/* Sort Section */}
                 <div className="flex items-center gap-2 sm:gap-3 min-w-0 shrink-0">
                     <label className="text-sm font-medium whitespace-nowrap hidden sm:block">
-                        Sort by:
+                        {t("catalog.sort.label")}
                     </label>
                     <ArrowsDownUp
                         size={16}
@@ -110,14 +118,18 @@ const SearchAndSortBar: React.FC<SearchAndSortBarProps> = ({
                     />
                     <div className="flex-1 sm:w-44 sm:flex-none">
                         <Select value={sortOption} onValueChange={onSortChange}>
-                            <SelectTrigger aria-label="Sort courses">
-                                <SelectValue placeholder="Sort order" />
+                            <SelectTrigger
+                                aria-label={t("catalog.sort.ariaLabel", {
+                                    courses: coursesLower,
+                                })}
+                            >
+                                <SelectValue placeholder={t("catalog.sort.placeholder")} />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="Newest">Newest First</SelectItem>
-                                <SelectItem value="Oldest">Oldest First</SelectItem>
-                                <SelectItem value="HighestRated">Highest Rated</SelectItem>
-                                <SelectItem value="Shortest">Shortest First</SelectItem>
+                                <SelectItem value="Newest">{t("catalog.sort.newest")}</SelectItem>
+                                <SelectItem value="Oldest">{t("catalog.sort.oldest")}</SelectItem>
+                                <SelectItem value="HighestRated">{t("catalog.sort.highestRated")}</SelectItem>
+                                <SelectItem value="Shortest">{t("catalog.sort.shortest")}</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>

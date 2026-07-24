@@ -36,7 +36,11 @@ export interface GlobalSettings {
     };
     fonts?: {
         enabled: boolean;
+        /** Body font (CSS stack). */
         family?: string;
+        /** Optional heading font (CSS stack) — a serif/display face over the
+         *  sans body. Unset ⇒ headings use the body font. */
+        headingFamily?: string;
     };
     compactness: 'small' | 'medium' | 'large';
     audience: 'children' | 'adults' | 'all';

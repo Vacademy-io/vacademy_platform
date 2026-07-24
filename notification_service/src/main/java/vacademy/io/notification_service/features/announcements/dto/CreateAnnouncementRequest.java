@@ -152,9 +152,9 @@ public class CreateAnnouncementRequest {
     public static class ModeRequest {
         
         @NotBlank(message = "Mode type is required")
-        @Pattern(regexp = "^(SYSTEM_ALERT|DASHBOARD_PIN|DM|STREAM|RESOURCES|COMMUNITY|TASKS)$", 
-                 message = "Mode type must be one of: SYSTEM_ALERT, DASHBOARD_PIN, DM, STREAM, RESOURCES, COMMUNITY, TASKS")
-        private String modeType; // SYSTEM_ALERT, DASHBOARD_PIN, DM, STREAM, RESOURCES, COMMUNITY, TASKS
+        @Pattern(regexp = "^(SYSTEM_ALERT|DASHBOARD_PIN|DM|STREAM|RESOURCES|COMMUNITY|TASKS|APP_OVERLAY)$",
+                 message = "Mode type must be one of: SYSTEM_ALERT, DASHBOARD_PIN, DM, STREAM, RESOURCES, COMMUNITY, TASKS, APP_OVERLAY")
+        private String modeType; // SYSTEM_ALERT, DASHBOARD_PIN, DM, STREAM, RESOURCES, COMMUNITY, TASKS, APP_OVERLAY
         
         private Map<String, Object> settings;
     }

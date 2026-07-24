@@ -163,7 +163,7 @@ function V2AttendanceCard({ att }: { att: NonNullable<V2ReportData["attendance"]
                     style={{ width: `${w.percentage}%` }} /* design-lint-ignore: dynamic bar width */
                   />
                 </div>
-                <span className="text-xs text-neutral-500 text-right">{w.percentage}%</span>
+                <span className="text-xs text-neutral-500 text-end">{w.percentage}%</span>
               </div>
             ))}
           </div>
@@ -199,11 +199,11 @@ function V2AcademicsCard({ acs }: { acs: NonNullable<V2ReportData["academics"]> 
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-neutral-500">
-                <th className="pb-2 text-left text-xs font-semibold uppercase tracking-wide">Assessment</th>
-                <th className="pb-2 text-left text-xs font-semibold uppercase tracking-wide">Subject</th>
-                <th className="pb-2 text-right text-xs font-semibold uppercase tracking-wide">Score</th>
-                <th className="pb-2 text-right text-xs font-semibold uppercase tracking-wide">Rank</th>
-                <th className="pb-2 text-left text-xs font-semibold uppercase tracking-wide">Status</th>
+                <th className="pb-2 text-start text-xs font-semibold uppercase tracking-wide">Assessment</th>
+                <th className="pb-2 text-start text-xs font-semibold uppercase tracking-wide">Subject</th>
+                <th className="pb-2 text-end text-xs font-semibold uppercase tracking-wide">Score</th>
+                <th className="pb-2 text-end text-xs font-semibold uppercase tracking-wide">Rank</th>
+                <th className="pb-2 text-start text-xs font-semibold uppercase tracking-wide">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -214,10 +214,10 @@ function V2AcademicsCard({ acs }: { acs: NonNullable<V2ReportData["academics"]> 
                     <p className="text-xs text-neutral-500">{formatDate(a.date)}</p>
                   </td>
                   <td className="py-2.5 text-neutral-600">{isRealSubject(a.subject) ? a.subject : "—"}</td>
-                  <td className="py-2.5 text-right font-mono text-neutral-800">
+                  <td className="py-2.5 text-end font-mono text-neutral-800">
                     {a.marks}/{a.total_marks} · {a.percentage}%
                   </td>
-                  <td className="py-2.5 text-right text-neutral-500">
+                  <td className="py-2.5 text-end text-neutral-500">
                     {a.rank != null ? a.rank : "-"}
                   </td>
                   <td className="py-2.5">
@@ -252,7 +252,7 @@ function V2AcademicsCard({ acs }: { acs: NonNullable<V2ReportData["academics"]> 
                     style={{ width: `${sp.score_percentage}%` }} /* design-lint-ignore: dynamic bar width */
                   />
                 </div>
-                <span className="text-xs text-neutral-500 text-right">
+                <span className="text-xs text-neutral-500 text-end">
                   {sp.score_percentage}% · cls {sp.class_average}%
                 </span>
               </div>
@@ -341,7 +341,7 @@ function V2StrengthsCard({
                     style={{ width: `${s.confidence}%` }} /* design-lint-ignore: dynamic bar width */
                   />
                 </div>
-                <span className="text-sm font-bold text-success-600 w-8 text-right">{s.confidence}</span>
+                <span className="text-sm font-bold text-success-600 w-8 text-end">{s.confidence}</span>
               </div>
             ))}
           </div>
@@ -364,7 +364,7 @@ function V2StrengthsCard({
                   />
                 </div>
                 <span className={cn(
-                  "text-sm font-bold w-8 text-right",
+                  "text-sm font-bold w-8 text-end",
                   s.confidence < 50 ? "text-danger-600" : "text-warning-600",
                 )}>
                   {s.confidence}
@@ -426,7 +426,7 @@ function V2StudyHabitsCard({ sh }: { sh: NonNullable<V2ReportData["study_habits"
                 <div key={i} className="flex-1 bg-primary-50 rounded-t-sm relative" style={{ height: "100%" }} /* design-lint-ignore: 100% fill needed for bar chart container, no Tailwind equivalent */>
                   {/* design-lint-ignore: dynamic bar height */}
                   <div
-                    className="absolute bottom-0 left-0 right-0 bg-primary-400 rounded-t-sm"
+                    className="absolute bottom-0 start-0 end-0 bg-primary-400 rounded-t-sm"
                     style={{ height: `${pct}%` }} /* design-lint-ignore: dynamic bar height */
                   />
                 </div>
@@ -469,7 +469,7 @@ function V2CourseProgressCard({ cp }: { cp: NonNullable<V2ReportData["course_pro
                 style={{ width: `${s.completion_percentage}%` }} /* design-lint-ignore: dynamic bar width */
               />
             </div>
-            <span className="text-xs text-neutral-500 text-right">
+            <span className="text-xs text-neutral-500 text-end">
               {s.completion_percentage}% · {s.time_hours}h
             </span>
           </div>
@@ -545,7 +545,7 @@ function V2AchievementsCard({ achievements }: { achievements: V2Achievement[] })
             <Trophy size={16} className="text-success-600 shrink-0" />
             {a.title}
             {a.issued_at && (
-              <span className="text-xs font-normal text-success-600 ml-1">
+              <span className="text-xs font-normal text-success-600 ms-1">
                 ({formatDate(a.issued_at)})
               </span>
             )}
@@ -562,7 +562,7 @@ function V2WhatWeNoticed({ insights }: { insights: string[] }) {
   return (
     <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm mb-4">
       <V2SectionHeading>What we noticed</V2SectionHeading>
-      <ul className="space-y-2 pl-1">
+      <ul className="space-y-2 ps-1">
         {insights.map((item, i) => (
           <li key={i} className="flex items-start gap-2 text-sm text-neutral-700">
             <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-primary-400 shrink-0" />
@@ -716,7 +716,7 @@ export function ComprehensiveReportCard({ data, processId }: ComprehensiveReport
 
         {/* ── 3. PARENT SUMMARY ── */}
         {data.parent_summary && (
-          <div className="rounded-xl border border-primary-200 border-l-4 border-l-primary-500 bg-primary-50 p-5 mb-5">
+          <div className="rounded-xl border border-primary-200 border-s-4 border-s-primary-500 bg-primary-50 p-5 mb-5">
             <p className="font-semibold text-neutral-800 mb-2 flex items-center gap-2">
               <Info size={16} className="text-primary-500 shrink-0" />
               Summary for Parents

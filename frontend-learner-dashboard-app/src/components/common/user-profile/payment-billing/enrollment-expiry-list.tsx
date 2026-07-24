@@ -107,7 +107,7 @@ export const EnrollmentExpiryList = ({
                 </p>
               )}
             </div>
-            <div className="flex shrink-0 items-center gap-2 text-right">
+            <div className="flex shrink-0 items-center gap-2 text-end">
               <CalendarBlank className="size-4 text-gray-400" />
               {row.expiryDate ? (
                 <div>

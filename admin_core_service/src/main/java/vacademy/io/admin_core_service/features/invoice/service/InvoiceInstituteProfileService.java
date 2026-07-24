@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.institute.dto.settings.GenericSettingRequest;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.common.institute.entity.Institute;
 
@@ -86,7 +87,16 @@ public class InvoiceInstituteProfileService {
         if (edits.containsKey("institute_contact")) setOrRemove(mutated, KEY_CONTACT, edits.get("institute_contact"));
         if (edits.containsKey("notes")) setOrRemove(mutated, KEY_NOTES, edits.get("notes"));
 
-        instituteSettingService.saveGenericSetting(institute, "INVOICE_SETTING", mutated);
+        // MUST be wrapped in GenericSettingRequest: GenericSettingStrategy casts the payload
+        // to that type ((GenericSettingRequest) settingRequest). Passing the raw map compiles
+        // (the param is Object) but throws ClassCastException at runtime — which the caller's
+        // best-effort catch swallows, so the save silently never happens. settingName matches
+        // the convention createDefaultInvoiceSetting / the Settings page use.
+        instituteSettingService.saveGenericSetting(institute, "INVOICE_SETTING",
+                GenericSettingRequest.builder()
+                        .settingName("Invoice Setting")
+                        .settingData(mutated)
+                        .build());
     }
 
     private void putIfText(Map<String, String> map, String key, Object value) {

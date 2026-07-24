@@ -51,7 +51,12 @@ public class UnifiedSendService implements SendChannelRouter {
 
         int recipientCount = request.getRecipients().size();
 
-        if (recipientCount <= SYNC_THRESHOLD) {
+        // forceAsync: bulk callers opt into the durable batch queue even under the
+        // threshold — a sync multi-recipient loop can exceed the caller's HTTP read
+        // timeout while delivery keeps running here (caller sees a spurious failure).
+        boolean forceAsync = Boolean.TRUE.equals(request.getForceAsync()) && recipientCount > 1;
+
+        if (recipientCount <= SYNC_THRESHOLD && !forceAsync) {
             return routeSync(request);
         }
 
@@ -74,6 +79,22 @@ public class UnifiedSendService implements SendChannelRouter {
             default:
                 throw new IllegalArgumentException("Unsupported channel: " + channel);
         }
+    }
+
+    // ==================== Attribution gating ====================
+
+    /**
+     * The correlation/attribution contract (options.source → notification_log.source,
+     * options.sourceId → correlation_id, per-recipient userId on email rows) is live for
+     * Engagement Engine sends only. Other callers (announcements, campaigns) already write
+     * their own per-recipient log rows keyed on the legacy source values — threading their
+     * options through would change those rows' values and double-attribute per-user views.
+     */
+    public static final String ENGAGEMENT_ENGINE_SOURCE = "ENGAGEMENT_ENGINE";
+
+    private boolean isEngagementEngineSend(UnifiedSendRequest request) {
+        return request.getOptions() != null
+                && ENGAGEMENT_ENGINE_SOURCE.equals(request.getOptions().getSource());
     }
 
     // ==================== WhatsApp ====================
@@ -218,7 +239,14 @@ public class UnifiedSendService implements SendChannelRouter {
                     buttonIndexParams.isEmpty() ? null : buttonIndexParams,
                     langCode,
                     headerType,
-                    request.getInstituteId());
+                    request.getInstituteId(),
+                    // Attribution (→ notification_log.source / correlation_id) is threaded for
+                    // ENGAGEMENT_ENGINE sends ONLY: the engine stamps sourceId=action_id so its
+                    // ledger joins reads/replies back to the exact decision. Every other caller
+                    // (announcements, campaigns) keeps its legacy row values byte-identical —
+                    // announcement stats/timeline consumers key on the old source strings.
+                    isEngagementEngineSend(request) ? request.getOptions().getSource() : null,
+                    isEngagementEngineSend(request) ? request.getOptions().getSourceId() : null);
 
             if (waResults != null) {
                 for (Map<String, Boolean> resultMap : waResults) {
@@ -419,6 +447,15 @@ public class UnifiedSendService implements SendChannelRouter {
                     }
                     emailService.sendAttachmentEmail(email, subject, "unified-send", body,
                             attachmentMap, request.getInstituteId(), emailType);
+                } else if (isEngagementEngineSend(request)) {
+                    // Engine sends carry attribution: source → notification_log.source,
+                    // sourceId → correlation_id (action id), userId → user attribution
+                    // (guard against callers that pass an email address as userId).
+                    emailService.sendHtmlEmail(email, subject,
+                            ENGAGEMENT_ENGINE_SOURCE, body,
+                            request.getInstituteId(), opts.getFromEmail(), opts.getFromName(), emailType,
+                            opts.getSourceId(),
+                            userId != null && !userId.contains("@") ? userId : null);
                 } else {
                     emailService.sendHtmlEmail(email, subject, "unified-send", body,
                             request.getInstituteId(), opts.getFromEmail(), opts.getFromName(), emailType);

@@ -10,6 +10,7 @@ import {
 import { useRouter, Link } from "@tanstack/react-router";
 import type { ChildProfile } from "@/types/parent-portal";
 import { type TabId, NAV_TABS } from "./navigation-config";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 interface ParentPortalSidebarProps {
   child: ChildProfile;
@@ -37,7 +38,7 @@ export function ParentPortalSidebar({
 
   return (
     <Sidebar side="left" collapsible="icon">
-      <SidebarContent className="flex flex-col bg-white dark:bg-neutral-900 border-r border-gray-200 dark:border-neutral-800 py-2 transition-all duration-200 ease-in-out max-w-full w-full overflow-x-hidden">
+      <SidebarContent className="flex flex-col bg-white dark:bg-neutral-900 border-e border-gray-200 dark:border-neutral-800 py-2 transition-all duration-200 ease-in-out max-w-full w-full overflow-x-hidden">
         {/* Header — institute logo or child initials */}
         <SidebarHeader>
           <SidebarMenu className="px-2">
@@ -61,7 +62,7 @@ export function ParentPortalSidebar({
                     </div>
                   )}
                 </div>
-                <div className="grid flex-1 text-left text-sm leading-tight">
+                <div className="grid flex-1 text-start text-sm leading-tight">
                   <span className="truncate font-semibold">
                     {instituteName || child.full_name}
                   </span>
@@ -80,7 +81,12 @@ export function ParentPortalSidebar({
             isExpanded ? "items-stretch" : "items-center"
           }`}
         >
-          {NAV_TABS.map((tab, index) => {
+          {NAV_TABS.filter(
+            // Reader mode (native iOS): the "Payment" tab embeds an external
+            // Razorpay checkout — hide it (Apple 3.1.1). The route is also
+            // blocked in __root, so this just removes the now-dead tab.
+            (tab) => !(shouldHidePaidPurchaseUI() && tab.id === "payments"),
+          ).map((tab, index) => {
             const currentPath = router.state.location.pathname;
             const isActive =
               tab.id === activeTab ||

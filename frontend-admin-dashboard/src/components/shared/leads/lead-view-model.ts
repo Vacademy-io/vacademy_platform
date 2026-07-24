@@ -65,16 +65,19 @@ export const formatSubmitted = (iso: string | undefined | null): string => {
 
 // ── Display helpers (mirror the originals from both pages) ────────────────────
 
+// A lead's OWN identity lives on its auth user. The `parent_*` columns are the
+// parent/guardian's contact — a separate person — and are editable as such from the
+// CRM, so they must never stand in for the lead's own name/email/phone: doing so
+// would print the guardian's number in the lead's Phone column. Every path that
+// populates `parent_mobile` (enquiry, walk-in, inbound call) also puts that same
+// number on the auth user, so nothing is lost by reading the auth user alone.
 export const recentLeadName = (lead: RecentLeadDetail) =>
-    lead.user?.full_name ||
-    lead.parent_name ||
-    lead.user?.email ||
-    lead.parent_email ||
-    lead.user?.mobile_number ||
-    lead.parent_mobile ||
-    'Unknown lead';
-export const recentLeadEmail = (lead: RecentLeadDetail) =>
-    lead.user?.email || lead.parent_email || '-';
+    lead.user?.full_name || lead.user?.email || lead.user?.mobile_number || 'Unknown lead';
+export const recentLeadEmail = (lead: RecentLeadDetail) => lead.user?.email || '-';
+// Prefer the linked user's number, else the phone the lead submitted (parent_mobile).
+// Many imported/ad leads have only parent_mobile populated — without this fallback the
+// phone shows '-', which hides the whole phone cell AND the row's Call / AI-call buttons
+// (both live behind `showPhone` in lead-table).
 export const recentLeadPhone = (lead: RecentLeadDetail) =>
     lead.user?.mobile_number || lead.parent_mobile || '-';
 export const recentLeadAudience = (lead: RecentLeadDetail) =>
@@ -117,10 +120,12 @@ export const mapRecentLeadToStudent = (lead: RecentLeadDetail): StudentTable => 
     const result: StudentTable = {
         id: userId,
         user_id: userId,
-        full_name: u.full_name || lead.parent_name || '',
-        email: u.email || lead.parent_email || '',
+        // The lead's own identity — auth user only. See recentLeadName above: the
+        // parent_* columns belong to the guardian and are surfaced separately below.
+        full_name: u.full_name || '',
+        email: u.email || '',
         username: null,
-        mobile_number: u.mobile_number || lead.parent_mobile || '',
+        mobile_number: u.mobile_number || '',
         gender: '',
         region: null,
         city: '',
@@ -130,10 +135,12 @@ export const mapRecentLeadToStudent = (lead: RecentLeadDetail): StudentTable => 
         attendance_percent: 0,
         referral_count: 0,
         pin_code: '',
-        fathers_name: '',
+        // Guardian rows — a lead's guardian lives on audience_response.parent_*.
+        // Surfaced here so the Overview shows them and EditLeadDetails round-trips.
+        fathers_name: lead.parent_name || '',
         mothers_name: '',
-        father_mobile_number: '',
-        father_email: '',
+        father_mobile_number: lead.parent_mobile || '',
+        father_email: lead.parent_email || '',
         mother_mobile_number: '',
         mother_email: '',
         linked_institute_name: null,

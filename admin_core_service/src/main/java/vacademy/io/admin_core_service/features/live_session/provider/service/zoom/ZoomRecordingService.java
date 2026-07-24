@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedu
 import vacademy.io.admin_core_service.features.live_session.provider.dto.zoom.ZoomAccount;
 import vacademy.io.admin_core_service.features.live_session.provider.manager.ZoomMeetingManager;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
+import vacademy.io.admin_core_service.features.live_session.service.RecordingAutoLinkService;
 import vacademy.io.common.meeting.dto.MeetingRecordingDTO;
 
 import java.time.Instant;
@@ -37,6 +38,7 @@ public class ZoomRecordingService {
     private final ZoomAccountStore zoomAccountStore;
     private final SessionScheduleRepository scheduleRepository;
     private final ObjectMapper objectMapper;
+    private final RecordingAutoLinkService recordingAutoLinkService;
 
     /**
      * Pulls recordings from the Zoom API for a schedule and merges them into the
@@ -62,6 +64,7 @@ public class ZoomRecordingService {
         int added = persist(schedule, fetched);
         schedule.setLastRecordingSyncAt(new Date());
         scheduleRepository.save(schedule);
+        recordingAutoLinkService.processSchedule(schedule);
         return added;
     }
 
@@ -126,6 +129,7 @@ public class ZoomRecordingService {
         try {
             schedule.setProviderRecordingsJson(objectMapper.writeValueAsString(recordings));
             scheduleRepository.save(schedule);
+            recordingAutoLinkService.processSchedule(schedule);
         } catch (Exception e) {
             log.error("zoom.recording.replace serialize failed for schedule {}: {}",
                     schedule.getId(), e.getMessage());

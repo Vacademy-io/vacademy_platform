@@ -13,9 +13,13 @@ import { SessionStreamingServiceType, LinkType } from "@/routes/register/live-cl
 import { useMarkAttendance } from "../-hooks/useMarkAttendance";
 import { openBbbJoinForLearner } from "@/lib/live-class/bbb-join";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { useServerTime, getServerTime } from "@/hooks/use-server-time";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
+import {
+  getTerminology,
+  getTerminologyPlural,
+} from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
 export const Route = createFileRoute("/study-library/live-class/waiting-room/")(
@@ -28,6 +32,7 @@ export const Route = createFileRoute("/study-library/live-class/waiting-room/")(
 );
 
 function WaitingRoomComponent() {
+  const { t } = useTranslation("studyContent");
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const { sessionId } = Route.useSearch();
   const { setNavHeading } = useNavHeadingStore();
@@ -48,11 +53,11 @@ function WaitingRoomComponent() {
   }, [sessionDetails?.thumbnailFileId]);
 
   useEffect(() => {
-    setNavHeading("Waiting Room");
+    setNavHeading(t("liveClass.waitingRoom"));
     if (sessionDetails?.thumbnailFileId) {
       fetchThumbnail();
     }
-  }, [sessionDetails?.thumbnailFileId, setNavHeading, fetchThumbnail]);
+  }, [sessionDetails?.thumbnailFileId, setNavHeading, fetchThumbnail, t]);
 
   const checkSessionStart = useCallback(async () => {
     if (!sessionDetails || !serverTimeData) return;
@@ -76,7 +81,7 @@ function WaitingRoomComponent() {
 
     // Check if class has ended
     if (now > sessionEndInUserTimezone) {
-      toast.error("This class has ended");
+      toast.error(t("liveClass.classHasEnded"));
       navigate({ to: "/study-library/live-class" });
       return;
     }
@@ -114,7 +119,7 @@ function WaitingRoomComponent() {
         }
       } catch (error) {
         console.error("Failed to mark attendance:", error);
-        toast.error("Failed to mark attendance");
+        toast.error(t("liveClass.failedToMarkAttendance"));
         if (isBbb) {
           // BBB: open the personalized join URL (real name + userId) directly.
           // Do NOT route to the embed page — its session data can resolve linkType
@@ -156,7 +161,7 @@ function WaitingRoomComponent() {
     return (
       <LayoutContainer>
         <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">
-          Error loading session details: {(error as Error).message}
+          {t("liveClass.errorLoadingSession", { message: (error as Error).message })}
         </div>
       </LayoutContainer>
     );
@@ -166,7 +171,7 @@ function WaitingRoomComponent() {
     return (
       <LayoutContainer>
         <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">
-          Session details not found.
+          {t("liveClass.sessionNotFound")}
         </div>
       </LayoutContainer>
     );
@@ -175,15 +180,15 @@ function WaitingRoomComponent() {
   return (
     <LayoutContainer>
       <Helmet>
-        <title>{document?.title || "Live Classes"}</title>
-        <meta name="description" content="Live and upcoming class sessions" />
+        <title>{document?.title || getTerminologyPlural(ContentTerms.LiveSession, SystemTerms.LiveSession)}</title>
+        <meta name="description" content={t("liveClass.metaDescription")} />
       </Helmet>
 
       <div className="flex flex-col items-center w-full justify-center p-1 gap-4">
         <h1 className="text-2xl font-bold text-center mb-6">
           {sessionDetails?.title || getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)}
         </h1>
-        <div>Get ready to flow! The session will begin in:</div>
+        <div>{t("liveClass.getReady")}</div>
         <div className="space-y-6">
           {sessionDetails && (
             <CountdownTimer
@@ -196,7 +201,7 @@ function WaitingRoomComponent() {
         {thumbnail && (
           <img
             src={thumbnail}
-            alt="Session Thumbnail"
+            alt={t("liveClass.sessionThumbnailAlt")}
             className="w-full max-h-72 rounded-lg object-contain bg-gray-50"
           />
         )}

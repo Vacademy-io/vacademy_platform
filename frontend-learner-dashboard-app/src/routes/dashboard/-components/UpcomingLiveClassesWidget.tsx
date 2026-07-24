@@ -1,3 +1,5 @@
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +13,8 @@ import {
   formatSessionTimeInUserTimezone,
 } from "@/utils/timezone";
 import { cn } from "@/lib/utils";
+import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
+import iconLiveSessions from "@/assets/cleaner-play/icon-live-sessions.webp";
 import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 
@@ -55,7 +59,8 @@ function getSessionsWithin24Hours(
 function formatRelativeTime(
   meetingDate: string,
   startTime: string,
-  timezone: string
+  timezone: string,
+  t: TFunction<"dashboard">
 ): string {
   try {
     const sessionTime = timezone
@@ -64,12 +69,16 @@ function formatRelativeTime(
     const now = new Date();
     const diffMs = sessionTime.getTime() - now.getTime();
 
-    if (diffMs < 0) return "Now";
+    if (diffMs < 0) return t("liveClasses.relativeNow");
     const diffMins = Math.floor(diffMs / 60000);
-    if (diffMins < 60) return `in ${diffMins}m`;
+    if (diffMins < 60) return t("liveClasses.relativeInMinutes", { minutes: diffMins });
     const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `in ${diffHours}h ${diffMins % 60}m`;
-    return `in ${diffHours}h`;
+    if (diffHours < 24)
+      return t("liveClasses.relativeInHoursMinutes", {
+        hours: diffHours,
+        minutes: diffMins % 60,
+      });
+    return t("liveClasses.relativeInHours", { hours: diffHours });
   } catch {
     return "";
   }
@@ -81,7 +90,9 @@ export function UpcomingLiveClassesWidget({
   isLoading,
   onJoinSession,
 }: UpcomingLiveClassesWidgetProps) {
+  const { t } = useTranslation("dashboard");
   const navigate = useNavigate();
+  const isCleanerPlay = useCleanerPlayTheme();
 
   if (isLoading) {
     return (
@@ -130,49 +141,64 @@ export function UpcomingLiveClassesWidget({
         // Vibrant: white card with a tenant-primary top rail (no fixed hues)
         "[.ui-vibrant_&]:border-primary-100",
         "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
-        // Play: premium solid navy card with press shadow
-        "[.ui-play_&]:bg-play-navy [.ui-play_&]:rounded-play-card [.ui-play_&]:border-0",
-        "[.ui-play_&]:shadow-play-4d-navy [.ui-play_&]:hover:shadow-play-4d-navy",
-        "[.ui-play_&]:text-white [.ui-play_&]:font-bold",
-        "[.ui-play_&]:flex [.ui-play_&]:flex-row [.ui-play_&]:items-stretch"
+        // Play: pastel navy-soft card, quiet chrome (matches the reskin)
+        "[.ui-play_&]:bg-play-navy-soft [.ui-play_&]:rounded-play-card-sm",
+        "[.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:shadow-play-soft-card",
+        "[.ui-play_&]:hover:shadow-play-soft-card",
+        "[.ui-play_&]:flex [.ui-play_&]:flex-row [.ui-play_&]:items-stretch",
+        // Cleaner Play: the shared cp-card shell (rule is scoped to
+        // .ui-cleaner-play, so this class is inert on other skins)
+        "cp-card"
       )}
     >
       <div className="[.ui-play_&]:flex-1 [.ui-play_&]:min-w-0">
       <CardHeader className="pb-3 flex flex-row items-center justify-between space-y-0">
         <div className="flex items-center gap-2">
-          <div
-            className={cn(
-              "p-2 bg-violet-100 dark:bg-violet-900/30 rounded-lg text-violet-600 dark:text-violet-400",
-              // Vibrant: primary icon chip (dark-prefixed too so the default
-              // dark: violet classes can't out-rank it in dark mode)
-              "[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500",
-              "dark:[.ui-vibrant_&]:bg-primary-100 dark:[.ui-vibrant_&]:text-primary-500",
-              // Play icon
-              "[.ui-play_&]:bg-white/20 [.ui-play_&]:text-white [.ui-play_&]:rounded-xl"
-            )}
-          >
-            <VideoCamera size={18} />
-          </div>
+          {isCleanerPlay ? (
+            <img
+              src={iconLiveSessions}
+              alt=""
+              aria-hidden="true"
+              className="h-11 w-11 object-contain"
+            />
+          ) : (
+            <div
+              className={cn(
+                "p-2 bg-secondary-100 dark:bg-secondary-100 rounded-lg text-secondary-500 dark:text-secondary-500",
+                // Vibrant: primary icon chip (dark-prefixed too so the default
+                // dark: secondary classes can't out-rank it in dark mode)
+                "[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500",
+                "dark:[.ui-vibrant_&]:bg-primary-100 dark:[.ui-vibrant_&]:text-primary-500",
+                // Play icon: white chip with navy ink on the pastel surface
+                "[.ui-play_&]:bg-white/70 [.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:rounded-xl"
+              )}
+            >
+              <VideoCamera size={18} />
+            </div>
+          )}
           <div>
             <CardTitle
               className={cn(
                 "text-base font-semibold",
-                "[.ui-play_&]:text-white [.ui-play_&]:font-bold"
+                "[.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:font-black",
+                "cp-heading"
               )}
             >
-              Upcoming{" "}
-              {getTerminologyPlural(
-                ContentTerms.LiveSession,
-                SystemTerms.LiveSession
-              )}
+              {t("liveClasses.title", {
+                liveClasses: getTerminologyPlural(
+                  ContentTerms.LiveSession,
+                  SystemTerms.LiveSession
+                ),
+              })}
             </CardTitle>
             <p
               className={cn(
                 "text-xs text-muted-foreground mt-0.5",
-                "[.ui-play_&]:text-white/80 [.ui-play_&]:font-medium"
+                "[.ui-play_&]:text-play-ink/60 [.ui-play_&]:font-bold",
+                "cp-muted"
               )}
             >
-              {totalCount} {totalCount === 1 ? "class" : "classes"} in next 24h
+              {t("liveClasses.countInNext24h", { count: totalCount })}
             </p>
           </div>
         </div>
@@ -181,13 +207,13 @@ export function UpcomingLiveClassesWidget({
           size="sm"
           className={cn(
             "text-xs",
-            "[.ui-play_&]:text-white/90 [.ui-play_&]:hover:text-white",
-            "[.ui-play_&]:hover:bg-white/10",
-            "[.ui-play_&]:focus-visible:ring-2 [.ui-play_&]:focus-visible:ring-white/70"
+            "[.ui-play_&]:text-play-ink/60 [.ui-play_&]:hover:text-play-ink",
+            "[.ui-play_&]:hover:bg-white/60",
+            "[.ui-play_&]:focus-visible:ring-2 [.ui-play_&]:focus-visible:ring-play-ink/30"
           )}
           onClick={() => navigate({ to: "/study-library/live-class" })}
         >
-          View All <CaretRight size={14} className="ml-1" />
+          {t("liveClasses.viewAll")} <CaretRight size={14} className="ms-1" />
         </Button>
       </CardHeader>
 
@@ -198,14 +224,15 @@ export function UpcomingLiveClassesWidget({
             key={`live-${session.session_id}-${index}`}
             className={cn(
               "flex flex-col items-start gap-2 p-3 border rounded-lg bg-green-50/60 dark:bg-green-900/10 border-green-200 dark:border-green-900/50",
-              "[.ui-play_&]:bg-white/10 [.ui-play_&]:border-white/20 [.ui-play_&]:rounded-xl"
+              "[.ui-play_&]:bg-white/60 [.ui-play_&]:border-transparent [.ui-play_&]:rounded-xl",
+              "[.ui-cleaner-play_&]:border-cp-border"
             )}
           >
             <div className="flex w-full items-center gap-3 min-w-0">
               <div
                 className={cn(
                   "p-2 bg-green-100 dark:bg-green-900/30 rounded-lg text-green-700 dark:text-green-400 shrink-0",
-                  "[.ui-play_&]:bg-white/15 [.ui-play_&]:text-white/80 [.ui-play_&]:rounded-xl"
+                  "[.ui-play_&]:bg-white [.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:rounded-xl"
                 )}
               >
                 <VideoCamera size={16} />
@@ -214,7 +241,7 @@ export function UpcomingLiveClassesWidget({
                 <h4
                   className={cn(
                     "font-medium text-sm truncate",
-                    "[.ui-play_&]:text-white [.ui-play_&]:font-bold"
+                    "[.ui-play_&]:text-play-ink [.ui-play_&]:font-bold"
                   )}
                 >
                   {session.title}
@@ -222,7 +249,7 @@ export function UpcomingLiveClassesWidget({
                 <p
                   className={cn(
                     "text-xs text-muted-foreground",
-                    "[.ui-play_&]:text-white/90"
+                    "[.ui-play_&]:text-play-ink/60"
                   )}
                 >
                   {formatSessionTimeInUserTimezone(
@@ -245,22 +272,22 @@ export function UpcomingLiveClassesWidget({
               >
                 <span
                   aria-hidden="true"
-                  className="hidden [.ui-play_&]:inline-block h-1.5 w-1.5 rounded-full bg-white animate-pulse mr-1"
+                  className="hidden [.ui-play_&]:inline-block h-1.5 w-1.5 rounded-full bg-white animate-pulse me-1"
                 />
-                Live Now
+                {t("liveClasses.liveNowBadge")}
               </Badge>
               <Button
                 size="sm"
                 onClick={() => onJoinSession(session)}
                 className={cn(
-                  "[.ui-play_&]:bg-white [.ui-play_&]:text-play-navy-deep",
-                  "[.ui-play_&]:hover:bg-white/90 [.ui-play_&]:font-bold",
+                  "[.ui-play_&]:bg-play-navy [.ui-play_&]:text-white",
+                  "[.ui-play_&]:hover:bg-play-navy [.ui-play_&]:font-black",
                   "[.ui-play_&]:rounded-xl [.ui-play_&]:shadow-play-2d-navy",
                   "[.ui-play_&]:active:translate-y-0.5 [.ui-play_&]:active:shadow-none",
-                  "[.ui-play_&]:focus-visible:ring-2 [.ui-play_&]:focus-visible:ring-white/70"
+                  "[.ui-play_&]:focus-visible:ring-2 [.ui-play_&]:focus-visible:ring-play-ink/30"
                 )}
               >
-                Join
+                {t("liveClasses.join")}
               </Button>
             </div>
           </div>
@@ -271,7 +298,8 @@ export function UpcomingLiveClassesWidget({
           const relTime = formatRelativeTime(
             session.meeting_date,
             session.start_time,
-            session.timezone
+            session.timezone,
+            t
           );
 
           return (
@@ -279,14 +307,15 @@ export function UpcomingLiveClassesWidget({
               key={`upcoming-${session.session_id}-${index}`}
               className={cn(
                 "flex flex-col items-start gap-2 p-3 border rounded-lg",
-                "[.ui-play_&]:bg-white/10 [.ui-play_&]:border-white/20 [.ui-play_&]:rounded-xl"
+                "[.ui-play_&]:bg-white/60 [.ui-play_&]:border-transparent [.ui-play_&]:rounded-xl",
+                "[.ui-cleaner-play_&]:border-cp-border"
               )}
             >
               <div className="flex w-full items-center gap-3 min-w-0">
                 <div
                   className={cn(
-                    "p-2 bg-violet-100 dark:bg-violet-900/30 rounded-lg text-violet-600 dark:text-violet-400 shrink-0",
-                    "[.ui-play_&]:bg-white/15 [.ui-play_&]:text-white/80 [.ui-play_&]:rounded-xl"
+                    "p-2 bg-secondary-100 dark:bg-secondary-100 rounded-lg text-secondary-500 dark:text-secondary-500 shrink-0",
+                    "[.ui-play_&]:bg-white [.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:rounded-xl"
                   )}
                 >
                   <Calendar weight="duotone" size={16} />
@@ -295,7 +324,7 @@ export function UpcomingLiveClassesWidget({
                   <h4
                     className={cn(
                       "font-medium text-sm truncate",
-                      "[.ui-play_&]:text-white [.ui-play_&]:font-bold"
+                      "[.ui-play_&]:text-play-ink [.ui-play_&]:font-bold"
                     )}
                   >
                     {session.title}
@@ -303,7 +332,7 @@ export function UpcomingLiveClassesWidget({
                   <div
                     className={cn(
                       "flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground min-w-0",
-                      "[.ui-play_&]:text-white/90"
+                      "[.ui-play_&]:text-play-ink/60"
                     )}
                   >
                     <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
@@ -319,8 +348,8 @@ export function UpcomingLiveClassesWidget({
                     {relTime && (
                       <span
                         className={cn(
-                          "whitespace-nowrap text-violet-600 dark:text-violet-400 font-medium",
-                          "[.ui-play_&]:text-white [.ui-play_&]:font-bold"
+                          "whitespace-nowrap text-secondary-500 dark:text-secondary-500 font-medium",
+                          "[.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:font-bold"
                         )}
                       >
                         ({relTime})
@@ -332,11 +361,11 @@ export function UpcomingLiveClassesWidget({
               <Badge
                 variant="secondary"
                 className={cn(
-                  "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-900/30 dark:text-violet-400 dark:border-violet-800 text-xs shrink-0",
-                  "[.ui-play_&]:bg-white/20 [.ui-play_&]:text-white [.ui-play_&]:border-white/20"
+                  "bg-secondary-100 text-secondary-500 border-secondary-200 dark:bg-secondary-100 dark:text-secondary-500 dark:border-secondary-200 text-xs shrink-0",
+                  "[.ui-play_&]:bg-white [.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:border-transparent"
                 )}
               >
-                Upcoming
+                {t("liveClasses.upcomingBadge")}
               </Badge>
             </div>
           );

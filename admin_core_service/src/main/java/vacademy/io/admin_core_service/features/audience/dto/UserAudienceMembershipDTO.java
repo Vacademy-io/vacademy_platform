@@ -29,6 +29,14 @@ public class UserAudienceMembershipDTO {
     @JsonProperty("overall_status")
     private String overallStatus;
 
+    /**
+     * ACTIVE | INACTIVE. Surfaced so the delete dialog's campaign picker can show which of the
+     * person's leads are already deleted (and offer Restore) instead of silently omitting them —
+     * the backing query intentionally returns deleted rows too.
+     */
+    @JsonProperty("audience_status")
+    private String audienceStatus;
+
     @JsonProperty("source_type")
     private String sourceType;
 

@@ -659,10 +659,13 @@ class CreditService:
 
         - `quality_tier`: one of free/standard/premium/ultra/super_ultra.
           Unknown tier falls back to the "standard" floor (defensive).
-        - `ai_video_enabled`: when True, adds the worst-case Veo cap
-          (currently 225 credits at $1.50 cap × 150-credit ratio) so a user
-          with marginal balance can't enable Veo and then circuit-break
-          mid-run. Subsumes the previous standalone Veo-aware pre-flight.
+        - `ai_video_enabled`: when True, adds a Veo hold — the per-video cap
+          × AI_VIDEO_PREFLIGHT_HOLD_FRACTION × the USD→credit ratio — so a
+          user with marginal balance can't enable Veo and then circuit-break
+          mid-run. The hold is a FRACTION of the cap, not the whole cap: the
+          cap is sized for an all-AI film, and exhausting it mid-run demotes
+          shots to stock rather than failing. Subsumes the previous
+          standalone Veo-aware pre-flight.
         - `partial_run_factor`: 1.0 for fresh generation; 0.5 for resume/retry
           where most shots are already cached. Lets the same gate apply at
           all three router entry points without over-rejecting partial runs.
@@ -690,10 +693,21 @@ class CreditService:
         veo_cap_credits = Decimal("0")
         if ai_video_enabled:
             try:
-                from .ai_video_constants import AI_VIDEO_PER_VIDEO_COST_CAP_USD
+                from .ai_video_constants import (
+                    AI_VIDEO_PER_VIDEO_COST_CAP_USD,
+                    AI_VIDEO_PREFLIGHT_HOLD_FRACTION,
+                )
                 ratio = self._effective_usd_to_credit_ratio()
+                # Hold a REALISTIC fraction of the cap, not the whole cap.
+                # The cap is a per-video blast radius sized for an all-AI
+                # film; requiring it in full turned a cap raise into an
+                # access regression (institutes that could run yesterday
+                # got 402s). Running out mid-video is handled gracefully —
+                # the shot demotes to stock — so over-reserving buys little.
                 veo_cap_credits = (
-                    Decimal(str(AI_VIDEO_PER_VIDEO_COST_CAP_USD)) * ratio
+                    Decimal(str(AI_VIDEO_PER_VIDEO_COST_CAP_USD))
+                    * Decimal(str(AI_VIDEO_PREFLIGHT_HOLD_FRACTION))
+                    * ratio
                 ).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
                 estimated_cost = (estimated_cost + veo_cap_credits).quantize(
                     Decimal("0.0001"), rounding=ROUND_HALF_UP

@@ -22,6 +22,10 @@ export interface PlayBadge {
   isAdminAwarded?: boolean;
   /** The admin's reason/note for a manual award. */
   awardReason?: string | null;
+  /** Unlock trigger + progress toward it (for the achievements popup). Absent on awarded-only badges. */
+  trigger?: string;
+  threshold?: number;
+  progressCurrent?: number;
 }
 
 export interface PlayGamificationData {
@@ -242,6 +246,30 @@ export interface BadgeEvalContext {
   liveSessionStreak: number;
 }
 
+/** The learner's current value for a badge's trigger — drives the progress bar in the popup. */
+function badgeProgressCurrent(trigger: string, ctx: BadgeEvalContext): number {
+  switch (trigger) {
+    case "course_count":
+      return ctx.courses;
+    case "slide_count":
+      return ctx.slides;
+    case "streak":
+      return ctx.streak;
+    case "xp_total":
+      return ctx.totalXp;
+    case "course_completion":
+      return ctx.maxCourseCompletionPct;
+    case "assessment_score":
+      return ctx.bestAssessmentScorePct ?? 0;
+    case "live_session_count":
+      return ctx.liveSessionCount;
+    case "live_session_streak":
+      return ctx.liveSessionStreak;
+    default:
+      return 0;
+  }
+}
+
 /** Evaluate a single badge definition against the learner's stats. */
 function isBadgeUnlocked(badge: BadgeDefinitionConfig, ctx: BadgeEvalContext): boolean {
   const t = badge.threshold;
@@ -296,6 +324,9 @@ function computeBadges(
       unlockedAt: award?.awardedAt ?? (unlocked ? now : null),
       isAdminAwarded: Boolean(award),
       awardReason: award?.reason ?? null,
+      trigger: def.trigger,
+      threshold: def.threshold,
+      progressCurrent: badgeProgressCurrent(def.trigger, ctx),
     };
   });
 

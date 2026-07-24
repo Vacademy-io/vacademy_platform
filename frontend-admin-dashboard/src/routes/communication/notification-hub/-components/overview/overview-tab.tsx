@@ -3,9 +3,11 @@ import { ArrowClockwise } from '@phosphor-icons/react';
 import { getInstituteId } from '@/constants/helper';
 import { StatsCards } from './stats-cards';
 import { RecentActivity } from './recent-activity';
+import { EmailEventsDialog } from './email-events-dialog';
 import {
     getHubOverview,
     getHubRecent,
+    type HubEmailEventType,
     type HubOverview,
     type HubRecentItem,
 } from '../../-services/hub-api';
@@ -28,6 +30,7 @@ export function OverviewTab() {
     const [loadingOverview, setLoadingOverview] = useState(false);
     const [loadingRecent, setLoadingRecent] = useState(false);
     const [loadingMoreRecent, setLoadingMoreRecent] = useState(false);
+    const [drilldownEvent, setDrilldownEvent] = useState<HubEmailEventType | null>(null);
 
     const load = useCallback(async () => {
         if (!instituteId) return;
@@ -108,7 +111,18 @@ export function OverviewTab() {
             </div>
 
             {/* Stats */}
-            <StatsCards overview={overview} loading={loadingOverview} />
+            <StatsCards
+                overview={overview}
+                loading={loadingOverview}
+                onEmailStatClick={setDrilldownEvent}
+            />
+
+            {/* Drill-down: emails behind a clicked stat card */}
+            <EmailEventsDialog
+                eventType={drilldownEvent}
+                windowDays={windowDays}
+                onClose={() => setDrilldownEvent(null)}
+            />
 
             {/* Recent activity */}
             <RecentActivity

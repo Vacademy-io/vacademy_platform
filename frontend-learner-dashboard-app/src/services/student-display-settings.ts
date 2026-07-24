@@ -170,6 +170,9 @@ function mergeWithDefaults(
       hideAuthorName:
         incoming?.courseDetails?.hideAuthorName ??
         d.courseDetails.hideAuthorName,
+      showInstructors:
+        incoming?.courseDetails?.showInstructors ??
+        d.courseDetails.showInstructors,
       // New flags with defaults
       showCourseConfiguration:
         incoming?.courseDetails?.showCourseConfiguration ??
@@ -228,6 +231,16 @@ function mergeWithDefaults(
       allowBatchStream:
         incoming?.notifications?.allowBatchStream ??
         d.notifications.allowBatchStream,
+      allowAppOverlays:
+        incoming?.notifications?.allowAppOverlays ??
+        d.notifications.allowAppOverlays,
+    },
+    tutorials: {
+      enabled: incoming?.tutorials?.enabled ?? d.tutorials.enabled,
+      enabledTours:
+        incoming?.tutorials?.enabledTours ?? [...d.tutorials.enabledTours],
+      pdfGuideEnabled:
+        incoming?.tutorials?.pdfGuideEnabled ?? d.tutorials.pdfGuideEnabled,
     },
     certificates: {
       enabled: incoming?.certificates?.enabled ?? d.certificates.enabled,
@@ -321,6 +334,38 @@ async function writeCacheForInstitute(
   }
 }
 
+/**
+ * Re-apply the UI-skin class on <html> from a settings object. Mirrors
+ * __root.tsx's applyUiType (which handles initial page load); this exported
+ * variant exists so post-login forced refreshes can swap the skin without a
+ * hard reload — otherwise an in-SPA logout → login into a different
+ * institute keeps the previous institute's skin class until F5.
+ * Honors the DEBUG_UI_TYPE localStorage override used for QA.
+ */
+export function applyUiSkinFromSettings(
+  settings: StudentDisplaySettingsData | null | undefined
+): void {
+  try {
+    const override = localStorage.getItem("DEBUG_UI_TYPE");
+    if (
+      override === "default" ||
+      override === "vibrant" ||
+      override === "play" ||
+      override === "cleanerPlay"
+    ) {
+      return; // QA override wins; __root's debug helpers manage it
+    }
+    const t = settings?.ui?.type || "default";
+    const root = document.documentElement;
+    root.classList.remove("ui-vibrant", "ui-play", "ui-cleaner-play");
+    if (t === "vibrant") root.classList.add("ui-vibrant");
+    else if (t === "play") root.classList.add("ui-play");
+    else if (t === "cleanerPlay") root.classList.add("ui-cleaner-play");
+  } catch {
+    // noop — never let skin application break a login flow
+  }
+}
+
 export async function getStudentDisplaySettings(
   forceRefresh = false,
   instituteId?: string
@@ -357,10 +402,14 @@ export async function getStudentDisplaySettings(
         : DEFAULT_STUDENT_DISPLAY_SETTINGS
     );
     await writeCacheForInstitute(instituteId, merged);
+    // Forced refreshes are the post-login path (all 8 call sites) — swap the
+    // skin class right away so a new institute's skin applies without F5.
+    if (forceRefresh) applyUiSkinFromSettings(merged);
     return merged;
   } catch {
     const defaults = DEFAULT_STUDENT_DISPLAY_SETTINGS;
     await writeCacheForInstitute(instituteId, defaults);
+    if (forceRefresh) applyUiSkinFromSettings(defaults);
     return defaults;
   }
 }

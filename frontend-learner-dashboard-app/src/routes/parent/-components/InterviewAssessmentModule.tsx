@@ -216,11 +216,11 @@ function ScheduleCard({
       ? "bg-violet-50 dark:bg-violet-950/20"
       : "bg-blue-50 dark:bg-blue-950/20";
   const accentBorder =
-    accentColor === "violet" ? "border-l-violet-500" : "border-l-blue-500";
+    accentColor === "violet" ? "border-s-violet-500" : "border-s-blue-500";
 
   return (
     <Card
-      className={`shadow-sm border-l-4 ${accentBorder} ${isCancelled ? "opacity-60" : ""}`}
+      className={`shadow-sm border-s-4 ${accentBorder} ${isCancelled ? "opacity-60" : ""}`}
     >
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
@@ -279,7 +279,7 @@ function ScheduleCard({
                 ? "Hybrid"
                 : location || "On campus"}
           </span>
-          <Badge variant="outline" className="text-caption ml-auto">
+          <Badge variant="outline" className="text-caption ms-auto">
             {mode}
           </Badge>
         </div>

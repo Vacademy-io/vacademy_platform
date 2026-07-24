@@ -1,5 +1,11 @@
 // Types for Student Display Settings (Learner Portal)
 
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+
 export const STUDENT_DISPLAY_SETTINGS_KEY = 'STUDENT_DISPLAY_SETTINGS' as const;
 
 // Sidebar
@@ -78,7 +84,7 @@ export interface StudentSignupSettings {
 }
 
 // UI
-export type StudentUiType = 'default' | 'vibrant' | 'play';
+export type StudentUiType = 'default' | 'vibrant' | 'play' | 'cleanerPlay';
 export interface StudentUiSettings {
     type: StudentUiType;
 }
@@ -114,6 +120,8 @@ export interface StudentCourseDetailsSettings {
     ratingsAndReviewsVisible: boolean;
     /** Hide the "Author" row in the course-details Course Overview panel. Default false (author shown). */
     hideAuthorName?: boolean;
+    /** Show the Teachers/Instructors section on the course-details page. Default false (hidden). */
+    showInstructors?: boolean;
     // New toggles
     showCourseConfiguration: boolean;
     showCourseContentPrefixes: boolean;
@@ -177,6 +185,91 @@ export interface StudentCertificateSettings {
     generationThresholdPercent: number;
 }
 
+// Guided in-app tutorials (learner Help menu). The learner app reads exactly
+// these keys from STUDENT_DISPLAY_SETTINGS — do not rename.
+export interface StudentTutorialSettings {
+    // Master toggle. Default false (tutorials hidden).
+    enabled: boolean;
+    // Which tours are offered. Default: all LEARNER_TOUR_KEYS.
+    enabledTours: string[];
+    // Offer a downloadable, institute-branded how-to PDF (chapters follow
+    // enabledTours) in the learner Help menu. Default false.
+    pdfGuideEnabled: boolean;
+}
+
+// Fixed tour registry keys — the learner app matches on these exact strings.
+export const LEARNER_TOUR_KEYS = [
+    'dashboard-overview',
+    'browse-courses',
+    'watch-content',
+    'take-assessment',
+    'join-live-class',
+    'view-progress',
+] as const;
+
+export type LearnerTourKey = (typeof LEARNER_TOUR_KEYS)[number];
+
+export interface LearnerTourOption {
+    key: LearnerTourKey;
+    label: string;
+    description: string;
+}
+
+// Labels/descriptions read the institute's Naming Settings at call time, so this
+// is a function rather than a module-scope const (terminology loads after boot).
+export function getLearnerTourOptions(): LearnerTourOption[] {
+    const courses = getTerminologyPlural(ContentTerms.Course, SystemTerms.Course).toLowerCase();
+    const course = getTerminology(ContentTerms.Course, SystemTerms.Course).toLowerCase();
+    const slides = getTerminologyPlural(ContentTerms.Slide, SystemTerms.Slide).toLowerCase();
+    const liveSession = getTerminology(
+        ContentTerms.LiveSession,
+        SystemTerms.LiveSession
+    ).toLowerCase();
+    const learners = getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner).toLowerCase();
+    return [
+        {
+            key: 'dashboard-overview',
+            label: 'Getting around the app',
+            description: `A quick orientation of the dashboard and sidebar for new ${learners}.`,
+        },
+        {
+            key: 'browse-courses',
+            label: `Browse & open ${courses}`,
+            description: `How to find ${courses} and open one from the library.`,
+        },
+        {
+            key: 'watch-content',
+            label: `Watch videos & study ${slides}`,
+            description: `How to play videos and move through ${course} ${slides}.`,
+        },
+        {
+            key: 'take-assessment',
+            label: 'Take an assessment',
+            description: 'How to start, answer and submit an assessment.',
+        },
+        {
+            key: 'join-live-class',
+            label: `Join a ${liveSession}`,
+            description: `How to find the schedule and join a ${liveSession}.`,
+        },
+        {
+            key: 'view-progress',
+            label: 'Track learning progress',
+            description: 'Where to see completion, scores and learning analytics.',
+        },
+    ];
+}
+
+// Live classes — what learners may see about PAST live sessions. All default
+// false; enforced server-side by the learner past-sessions endpoint.
+export interface StudentLiveClassesSettings {
+    showPastSessions: boolean;
+    showRecordings: boolean;
+    showAttendance: boolean;
+    showActivityStats: boolean;
+    showClassMaterials: boolean;
+}
+
 // Root schema
 export interface StudentDisplaySettingsData {
     sidebar: {
@@ -197,7 +290,11 @@ export interface StudentDisplaySettingsData {
         allowSystemAlerts: boolean;
         allowDashboardPins: boolean;
         allowBatchStream: boolean;
+        // Full-screen APP_OVERLAY announcements on app open. Default true.
+        allowAppOverlays: boolean;
     };
     certificates: StudentCertificateSettings;
+    liveClasses: StudentLiveClassesSettings;
+    tutorials: StudentTutorialSettings;
     postLoginRedirectRoute: string;
 }

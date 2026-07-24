@@ -33,6 +33,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ModernCard } from "@/components/design-system/modern-card";
 import {
   BookOpen,
   Users,
@@ -70,6 +71,7 @@ import { StatCard } from "./-components/DashboardStatCard";
 import { ContinueLearningCard } from "./-components/DashboardContinueLearningCard";
 import { DashboardHero } from "./-components/DashboardHero";
 import { PlayDashboardHero } from "./-components/play/PlayDashboardHero";
+import { CleanerPlayDashboardHero } from "./-components/play/CleanerPlayDashboardHero";
 import { cn } from "@/lib/utils";
 import { getChatbotSettings } from "@/services/chatbot-settings";
 import { MyMembershipWidget } from "./-components/MyMembershipWidget";
@@ -79,10 +81,14 @@ import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { UpcomingLiveClassesWidget } from "./-components/UpcomingLiveClassesWidget";
 import { Preferences } from "@capacitor/preferences";
 import { AttendanceWidget } from "./-components/AttendanceWidget";
-import { playIllustrations } from "@/assets/play-illustrations";
+import cleanerIconCourses from "@/assets/cleaner-play/icon-courses.webp";
+import cleanerIconAssessments from "@/assets/cleaner-play/icon-assessments.webp";
+import cleanerIconLive from "@/assets/cleaner-play/icon-live-sessions.webp";
 import { usePlayTheme } from "@/hooks/use-play-theme";
+import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import { computeGamificationData } from "@/services/play-gamification";
+import { syncBadgeUnlocks } from "@/services/badge-sync";
 import {
   getBadgeConfig,
   configNeedsAssessmentScore,
@@ -99,16 +105,130 @@ import { AchievementBadgesWidget } from "./-components/play/AchievementBadgesWid
 import { DashboardGamificationPanel } from "./-components/DashboardGamificationPanel";
 import { TncModal } from "@/components/Dashboards/LearnerDashboard/TncModal";
 import type { BatchForSessionType } from "@/stores/study-library/institute-schema";
+import {
+  ONBOARDING_INSTANCES_QUERY_KEY,
+  OnboardingStepForm,
+} from "../profile/onboarding/-components/onboarding-step-form";
+import { OnboardingProgressList } from "../profile/onboarding/-components/onboarding-progress-list";
+import {
+  getCurrentStepInfo,
+  getMyOnboardingInstances,
+  type OnboardingInstanceDTO,
+} from "../profile/onboarding/-services/onboarding-services";
+import { getInstituteId } from "@/constants/helper";
 
 export const Route = createFileRoute("/dashboard/")({
   component: () => {
     return (
       <LayoutContainer>
-        <DashboardComponent />
+        <DashboardOnboardingGate />
       </LayoutContainer>
     );
   },
 });
+
+/**
+ * Gates the dashboard on any pending onboarding step the caller can actually
+ * act on: while one exists, the learner sees that step's form here instead of
+ * the full dashboard. Once it's submitted (or there simply isn't one — no
+ * onboarding started, already completed, or the only pending step needs an
+ * admin), this frees up and mounts the real dashboard. The dashboard's own
+ * (expensive) data fetches only start once this resolves, so a blocked
+ * learner doesn't pay for dashboard queries they can't see yet.
+ */
+function DashboardOnboardingGate() {
+  // Resolved the same way as the standalone /onboarding page (getInstituteId(), not the
+  // domain-routing store): that store only gets populated once useDomainRouting's async
+  // resolution completes, which can still be in flight on a fresh page load, and starts
+  // `null` either way -- there is no way to tell "not yet known" from "genuinely absent"
+  // from the store alone. Without an explicit resolving flag, the gate below would fall
+  // through to <DashboardComponent /> during that window (its query stays disabled while
+  // instituteId is null) and flash the real dashboard before the onboarding check can run.
+  const [instituteId, setInstituteId] = useState<string | null>(null);
+  const [isResolvingInstitute, setIsResolvingInstitute] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const id = await getInstituteId();
+      if (!cancelled) {
+        setInstituteId(id ?? null);
+        setIsResolvingInstitute(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const { data: instances, isLoading } = useQuery({
+    queryKey: [ONBOARDING_INSTANCES_QUERY_KEY, instituteId],
+    queryFn: () => getMyOnboardingInstances(instituteId as string),
+    enabled: Boolean(instituteId),
+    staleTime: 30 * 1000,
+  });
+
+  const withCurrentStep = (instances ?? [])
+    .map((instance) => ({ instance, current: getCurrentStepInfo(instance) }))
+    .filter(
+      (entry): entry is { instance: OnboardingInstanceDTO; current: NonNullable<ReturnType<typeof getCurrentStepInfo>> } =>
+        entry.current !== null
+    );
+  const pending = withCurrentStep.find((entry) => entry.current.isActionable);
+  // Nothing the learner can act on right now, but there IS a step in progress that needs
+  // their admin -- surface that instead of just silently freeing straight into the full
+  // dashboard, so it's clear WHY onboarding "disappeared" rather than looking abandoned.
+  const waitingOnAdmin = !pending
+    ? withCurrentStep.find((entry) => !entry.current.isActionable)
+    : undefined;
+
+  if (isResolvingInstitute || (Boolean(instituteId) && isLoading)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Skeleton className="h-8 w-48" />
+      </div>
+    );
+  }
+
+  if (pending) {
+    return (
+      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-1 py-6">
+        <div>
+          <h1 className="text-h3 font-semibold text-neutral-700">
+            {pending.instance.subject_full_name
+              ? `Finish setting up ${pending.instance.subject_full_name}'s account`
+              : "Finish setting up your account"}
+          </h1>
+          <p className="mt-1 text-sm text-neutral-500">
+            Complete the steps below to continue to your dashboard.
+          </p>
+        </div>
+        <OnboardingStepForm stepInstance={pending.current.step} onSubmitted={() => {}} />
+        <ModernCard variant="outlined" padding="md" rounded="lg">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+            Progress
+          </p>
+          <OnboardingProgressList stepInstances={pending.instance.step_instances} />
+        </ModernCard>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {waitingOnAdmin && (
+        <div className="flex items-center justify-center gap-2 border-b border-warning-200 bg-warning-50 px-4 py-2.5 text-center text-sm text-warning-700">
+          <Hourglass size={16} weight="fill" />
+          <span>
+            <strong>&ldquo;{waitingOnAdmin.current.step.step_name}&rdquo;</strong> is being
+            handled by your school admin — you don&apos;t need to do anything here.
+          </span>
+        </div>
+      )}
+      <DashboardComponent />
+    </>
+  );
+}
 
 export function DashboardComponent() {
   const [username, setUsername] = useState<string | null>(null);
@@ -127,6 +247,7 @@ export function DashboardComponent() {
   const { setActiveItem } = useContentStore();
   const { getUserTimezone } = useServerTime();
   const isPlayTheme = usePlayTheme();
+  const isCleanerPlayTheme = useCleanerPlayTheme();
   const { setData: setGamificationData } = usePlayGamificationStore();
   const { instituteId } = useInstituteFeatureStore();
 
@@ -225,24 +346,6 @@ export function DashboardComponent() {
     const period = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
     return `Good ${period}, ${firstName.charAt(0).toUpperCase()}${firstName.slice(1)}`;
   }, [username]);
-
-  // If settings specify a different post-login route, redirect away from dashboard
-  useEffect(() => {
-    getStudentDisplaySettings(false)
-      .then((s) => {
-        const route = s?.postLoginRedirectRoute || "/dashboard";
-        if (
-          route !== "/dashboard" &&
-          !/^https?:\/\//.test(route) &&
-          route !== window.location.pathname
-        ) {
-          // prevent redirect loop and ignore external URLs
-          navigate({ to: route as never, replace: true });
-        }
-      })
-      .catch(() => { });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Update Zustand store when React Query data changes
   useEffect(() => {
@@ -451,6 +554,20 @@ export function DashboardComponent() {
         });
 
         setGamificationData(gamificationData);
+
+        // Persist auto-unlocked badges server-side so they show on the leaderboards
+        // (best-effort, throttled per institute inside the service).
+        if (instituteId) {
+          const toSync = gamificationData.badges
+            .filter((b) => b.unlocked && !b.isAdminAwarded)
+            .map((b) => ({
+              badgeId: b.id,
+              badgeName: b.name,
+              badgeIcon: b.icon,
+              badgeDescription: b.description,
+            }));
+          void syncBadgeUnlocks(instituteId, toSync);
+        }
       } catch (error) {
         console.error("Failed to compute gamification data:", error);
       }
@@ -633,9 +750,9 @@ export function DashboardComponent() {
             ContentTerms.Course,
             SystemTerms.Course
           )}`}
-          className="stat-card-courses [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-play_&]:text-white"
-          iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
-          illustration={playIllustrations.Course}
+          className="stat-card-courses [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300"
+          iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/70 [.ui-play_&]:text-play-info-soft-ink [.ui-play_&]:ring-0"
+          cleanerIllustrationSrc={cleanerIconCourses}
         />
       ),
     },
@@ -655,9 +772,9 @@ export function DashboardComponent() {
             ContentTerms.LiveSession,
             SystemTerms.LiveSession
           )}`}
-          className="stat-card-live [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-play_&]:text-white"
-          iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
-          illustration={playIllustrations.LiveClass}
+          className="stat-card-live [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300"
+          iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/70 [.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:ring-0"
+          cleanerIllustrationSrc={cleanerIconLive}
         />
       ),
     },
@@ -677,9 +794,9 @@ export function DashboardComponent() {
           }}
           isLoading={isLoading}
           emptyActionLabel="View Assessments"
-          className="stat-card-assessments [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-play_&]:text-white"
-          iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/25 [.ui-play_&]:text-white [.ui-play_&]:ring-0"
-          illustration={playIllustrations.Certificate}
+          className="stat-card-assessments [.ui-vibrant_&]:bg-primary-50 [.ui-vibrant_&]:border-primary-100 [.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300"
+          iconClassName="[.ui-vibrant_&]:bg-primary-100 [.ui-vibrant_&]:text-primary-500 [.ui-play_&]:bg-white/70 [.ui-play_&]:text-play-accent-soft-ink [.ui-play_&]:ring-0"
+          cleanerIllustrationSrc={cleanerIconAssessments}
         />
       ),
     },
@@ -711,7 +828,7 @@ export function DashboardComponent() {
         : Number.MAX_SAFE_INTEGER,
       visible: statCards.length > 0,
       render: (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 max-sm:[.ui-cleaner-play_&]:grid-cols-2 max-sm:[.ui-play_&]:grid-cols-2 max-sm:[.ui-cleaner-play_&]:[&>*:last-child:nth-child(odd)]:col-span-2 max-sm:[.ui-play_&]:[&>*:last-child:nth-child(odd)]:col-span-2">
           {statCards.map((w) => (
             <div key={w.id}>{w.render}</div>
           ))}
@@ -844,8 +961,8 @@ export function DashboardComponent() {
       )}
 
       <div className="relative z-10 space-y-4 p-3 sm:p-4 lg:p-6 mx-auto w-full max-w-7xl animate-in fade-in duration-500">
-        {/* Header — default/vibrant only; the play hero carries its own greeting */}
-        {!isPlayTheme && (
+        {/* Header — default/vibrant only; the play / cleaner-play hero carries its own greeting */}
+        {!isPlayTheme && !isCleanerPlayTheme && (
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center space-x-3">
               <Avatar className="h-10 w-10 sm:h-12 sm:w-12 border-2 border-background shadow-sm">
@@ -887,7 +1004,9 @@ export function DashboardComponent() {
         {!showForInstitutes([HOLISTIC_INSTITUTE_ID]) && (
           <>
             {/* Hero — owns the live-class banner and resume / first-run band */}
-            {isPlayTheme ? (
+            {isCleanerPlayTheme ? (
+              <CleanerPlayDashboardHero {...heroProps} />
+            ) : isPlayTheme ? (
               <PlayDashboardHero {...heroProps} />
             ) : (
               <DashboardHero {...heroProps} />
@@ -914,7 +1033,7 @@ export function DashboardComponent() {
                 Play theme keeps its vibrant play-token widgets; every other theme
                 gets the standard design-token panel. */}
             {isPlayTheme ? (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 [&>*:last-child:nth-child(odd)]:col-span-2 sm:[&>*:last-child:nth-child(odd)]:col-span-1">
                 <StreakCounterWidget />
                 <XpDisplayWidget />
                 <AchievementBadgesWidget />
@@ -1129,7 +1248,7 @@ export function DashboardComponent() {
                   size="sm"
                   onClick={() => navigate({ to: "/study-library/live-class" })}
                 >
-                  View All <CaretRight size={14} className="ml-1" />
+                  View All <CaretRight size={14} className="ms-1" />
                 </Button>
               </CardHeader>
               <CardContent>

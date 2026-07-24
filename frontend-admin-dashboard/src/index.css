@@ -297,6 +297,16 @@ html {
         --primary-500: 24 85% 54%;
         --primary-600: 24 85% 48%;
 
+        /* Nav role fallbacks (overridden by theme-provider at runtime).
+           Matches the CategoryRail's current hardcoded look — solid
+           primary-500 rail, white active pill, neutral-900 icon on it.
+           See applyNavRoles. */
+        --nav-surface: 24 85% 54%; /* == --primary-500 */
+        --nav-surface-hover: 24 85% 48%; /* == --primary-600 */
+        --nav-active: 0 0% 100%; /* white */
+        --nav-active-text: 0 0% 9%; /* neutral-900 */
+        --nav-text: 0 0% 100%; /* white */
+
         --danger-50: 0 100% 99%;
         --danger-100: 0 86% 97%;
         --danger-200: 351 100% 96%;

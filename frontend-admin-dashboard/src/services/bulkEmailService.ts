@@ -14,7 +14,11 @@ import { mapTemplateVariables } from '@/utils/template-variable-mapper';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
-import { sendNotification, type UnifiedSendResponse } from './unified-send-service';
+import {
+    sendNotification,
+    waitForBatchCompletion,
+    type UnifiedSendResponse,
+} from './unified-send-service';
 import { validateTemplateVariables, type ValidationResult } from '@/utils/template-validation';
 import { VariableContext } from './template-variables/types';
 import type { PageContext } from './page-context-resolver';
@@ -176,8 +180,12 @@ export class BulkEmailService {
      * Add common placeholders
      */
     private addCommonPlaceholders(placeholders: Record<string, string>, student: any): void {
-        placeholders.name = student.full_name || '';
-        placeholders.student_name = student.full_name || '';
+        const fullName = student.full_name || '';
+        placeholders.name = fullName;
+        placeholders.student_name = fullName;
+        const [firstName, ...rest] = fullName.split(' ');
+        placeholders.first_name = firstName || '';
+        placeholders.last_name = rest.join(' ');
         placeholders.email = student.email || '';
         placeholders.student_email = student.email || '';
         placeholders.mobile_number = student.mobile_number || '';
@@ -290,7 +298,7 @@ export class BulkEmailService {
      * Add support placeholders
      */
     private addSupportPlaceholders(placeholders: Record<string, string>, student: any): void {
-        placeholders.custom_message_text = '';
+        placeholders.custom_message_text = student.custom_message_text || '';
         placeholders.custom_field_1 = student.custom_field_1 || '';
         placeholders.custom_field_2 = student.custom_field_2 || '';
         // Use institute email and website for support
@@ -487,10 +495,14 @@ export class BulkEmailService {
                 variables: u.placeholders,
             }));
 
-            const unifiedResponse: UnifiedSendResponse = await sendNotification({
+            // Multi-recipient sends go through the durable batch queue (forceAsync):
+            // the sync path sends each email inside the HTTP request and times out
+            // on larger selections even though delivery continues server-side.
+            let unifiedResponse: UnifiedSendResponse = await sendNotification({
                 instituteId: instituteId || '',
                 channel: 'EMAIL',
                 recipients,
+                forceAsync: recipients.length > 1,
                 options: {
                     emailSubject: subject,
                     emailBody: template,
@@ -499,6 +511,16 @@ export class BulkEmailService {
                     sourceId: sourceId,
                 },
             });
+
+            // Async batch: poll until it finishes so the caller gets real counts.
+            if (unifiedResponse.batchId && unifiedResponse.status === 'PROCESSING') {
+                try {
+                    unifiedResponse = await waitForBatchCompletion(unifiedResponse.batchId);
+                } catch {
+                    // Polling timed out — the batch is still running server-side.
+                    // Report what we know instead of failing the whole send.
+                }
+            }
 
             const result: BulkEmailResult = {
                 success: unifiedResponse.status !== 'FAILED',
@@ -549,7 +571,11 @@ export class BulkEmailService {
                             });
 
                             // Add specific mappings for common variables
-                            placeholders.name = student.full_name || '';
+                            const fallbackFullName = student.full_name || '';
+                            const [fallbackFirstName, ...fallbackRest] = fallbackFullName.split(' ');
+                            placeholders.name = fallbackFullName;
+                            placeholders.first_name = fallbackFirstName || '';
+                            placeholders.last_name = fallbackRest.join(' ');
                             placeholders.email = student.email || '';
                             placeholders.mobile_number = student.mobile_number || '';
                             placeholders.current_date = new Date().toLocaleDateString();

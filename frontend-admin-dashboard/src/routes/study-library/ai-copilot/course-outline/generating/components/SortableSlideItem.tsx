@@ -24,7 +24,8 @@ import {
 import { Editor } from '@monaco-editor/react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { YooptaEditorWrapperSafe as YooptaEditorWrapper } from '../../../shared/components';
+import { HtmlDocField } from '@/components/html-slide/html-doc-field';
+import { Textarea } from '@/components/ui/textarea';
 import { CircularProgress } from './CircularProgress';
 import { AIVideoPlayer } from '@/components/ai-video-player/AIVideoPlayer';
 import { MermaidDiagram } from '../../../shared/components/MermaidDiagram';
@@ -1567,10 +1568,11 @@ export const SortableSlideItem = React.memo(
                                                 </button>
                                             )}
                                         </div>
-                                        <YooptaEditorWrapper
+                                        <Textarea
                                             value={displayScript}
-                                            onChange={handleVideoScriptChange}
-                                            minHeight={300}
+                                            onChange={(e) => handleVideoScriptChange(e.target.value)}
+                                            className="resize-y font-mono text-caption"
+                                            style={{ minHeight: 300 }}
                                         />
                                     </div>
                                 )}
@@ -1687,10 +1689,11 @@ export const SortableSlideItem = React.memo(
                                         </button>
                                     )}
                                 </div>
-                                <YooptaEditorWrapper
+                                <Textarea
                                     value={videoScriptContent || ''}
-                                    onChange={handleVideoScriptChange}
-                                    minHeight={300}
+                                    onChange={(e) => handleVideoScriptChange(e.target.value)}
+                                    className="resize-y font-mono text-caption"
+                                    style={{ minHeight: 300 }}
                                 />
                             </div>
                             <div className="rounded-md border border-neutral-200 bg-neutral-50 p-4">
@@ -1777,10 +1780,11 @@ export const SortableSlideItem = React.memo(
                                             </button>
                                         )}
                                     </div>
-                                    <YooptaEditorWrapper
+                                    <Textarea
                                         value={videoScriptContent || ''}
-                                        onChange={handleVideoScriptChange}
-                                        minHeight={300}
+                                        onChange={(e) => handleVideoScriptChange(e.target.value)}
+                                        className="resize-y font-mono text-caption"
+                                        style={{ minHeight: 300 }}
                                     />
                                 </div>
                                 {hasRegularCode && (
@@ -2876,11 +2880,10 @@ export const SortableSlideItem = React.memo(
                                     className="rounded-lg border border-neutral-200 bg-white p-4"
                                     style={{ maxWidth: '100%', overflow: 'hidden' }}
                                 >
-                                    <YooptaEditorWrapper
+                                    <HtmlDocField
                                         value={content}
                                         onChange={handleContentChange}
                                         minHeight={400}
-                                        editable={true}
                                     />
                                 </div>
                             </div>
@@ -2911,10 +2914,11 @@ export const SortableSlideItem = React.memo(
                                 )}
                             </div>
                             <div className="rounded-lg border border-neutral-200 bg-white p-4">
-                                <YooptaEditorWrapper
+                                <Textarea
                                     value={quizHTML}
-                                    onChange={handleQuizContentChange}
-                                    minHeight={400}
+                                    onChange={(e) => handleQuizContentChange(e.target.value)}
+                                    className="resize-y font-mono text-caption"
+                                    style={{ minHeight: 400 }}
                                 />
                                 <p className="mt-2 text-xs text-neutral-500">
                                     <strong>Note:</strong> Format questions as "Question 1",
@@ -2949,7 +2953,7 @@ export const SortableSlideItem = React.memo(
                                     </button>
                                 )}
                             </div>
-                            <YooptaEditorWrapper
+                            <HtmlDocField
                                 value={slide.content || ''}
                                 onChange={handleContentChange}
                                 minHeight={300}
@@ -3135,11 +3139,11 @@ export const SortableSlideItem = React.memo(
                                 </Label>
                             </div>
                             <div className="rounded-lg border border-purple-200 bg-white p-4">
-                                <YooptaEditorWrapper
+                                <Textarea
                                     value={slide.prompt}
-                                    onChange={() => {}} // Read-only in outline mode
-                                    minHeight={200}
-                                    editable={false}
+                                    readOnly
+                                    className="resize-y bg-neutral-50 font-mono text-caption"
+                                    style={{ minHeight: 200 }}
                                 />
                             </div>
                         </div>

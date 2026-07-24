@@ -5,6 +5,7 @@ import {
     addParticipantsSchema,
 } from '../schedule/-schema/schema';
 import { RecurringType } from '../-constants/enums';
+import type { RecordingAutoLinkConfig } from '../-services/content-link-service';
 
 export const timeOptions = Array.from({ length: 96 }, (_, i) => {
     const hours = Math.floor(i / 4)
@@ -107,6 +108,12 @@ export interface LiveSessionStep2RequestDTO {
 
     join_link: string;
 
+    // Wall-clock schedule held before this edit, for the {{OLD_TIME}} placeholder in
+    // the reschedule mail. Step 1 has already overwritten it server-side by the time
+    // step 2 sends, so the backend cannot look it up itself.
+    old_meeting_date?: string | null;
+    old_start_time?: string | null;
+
     added_notification_actions: NotificationActionDTO[];
     updated_notification_actions: NotificationActionDTO[];
     deleted_notification_action_ids: string[];
@@ -114,6 +121,14 @@ export interface LiveSessionStep2RequestDTO {
     added_fields: CustomFieldDTO[];
     updated_fields: CustomFieldDTO[];
     deleted_field_ids: string[];
+
+    /**
+     * "Auto-add recordings to course" config. Omitted entirely (not even
+     * `undefined`-serialized) when the admin never touched the section in
+     * edit mode, so an update request leaves the stored config unchanged —
+     * see docs/LIVE_SESSION_RECORDING_AUTO_LINK_PLAN.md.
+     */
+    recording_auto_link_config?: RecordingAutoLinkConfig;
 }
 
 export interface NotificationActionDTO {
@@ -388,10 +403,46 @@ export function transformFormToDTOStep1(
 
 type FormData = z.infer<typeof addParticipantsSchema>;
 
+/** The two fields of a saved schedule the reschedule mail needs. */
+export interface PreviousScheduleInput {
+    start_time?: string | null;
+    meeting_date?: string | null;
+}
+
+/**
+ * Splits a saved schedule into the wall-clock date/time that fills {{OLD_TIME}}.
+ *
+ * Reads `start_time` exactly as step 1 does — slice the leading YYYY-MM-DDTHH:mm
+ * rather than parsing to a Date — so the value is never shifted by the admin's
+ * browser timezone on its way back to the backend.
+ */
+function toOldScheduleFields(previous?: PreviousScheduleInput | null): {
+    old_meeting_date: string | null;
+    old_start_time: string | null;
+} {
+    const empty = { old_meeting_date: null, old_start_time: null };
+    const startTime = previous?.start_time;
+    if (!startTime) return empty;
+
+    if (startTime.includes('T')) {
+        const [datePart, timePart] = startTime.substring(0, 16).split('T');
+        if (!datePart || !timePart) return empty;
+        return { old_meeting_date: datePart, old_start_time: normalizeStartTime(timePart) };
+    }
+    if (previous?.meeting_date) {
+        return {
+            old_meeting_date: previous.meeting_date.substring(0, 10),
+            old_start_time: normalizeStartTime(startTime),
+        };
+    }
+    return empty;
+}
+
 export function transformFormToDTOStep2(
     formData: FormData,
     sessionId: string,
-    packageSessionIds: string[]
+    packageSessionIds: string[],
+    previousSchedule?: PreviousScheduleInput | null
 ): LiveSessionStep2RequestDTO {
     const {
         accessType,
@@ -401,6 +452,7 @@ export function transformFormToDTOStep2(
         fields,
         selectedLearners,
         batchSelectionType,
+        recordingAutoLink,
     } = formData;
 
     const addedNotificationActions: NotificationActionDTO[] = [];
@@ -489,12 +541,16 @@ export function transformFormToDTOStep2(
         }
     );
 
+    const { old_meeting_date, old_start_time } = toOldScheduleFields(previousSchedule);
+
     const result: LiveSessionStep2RequestDTO = {
         session_id: sessionId,
         access_type: accessType,
         package_session_ids: batchSelectionType === 'batch' ? packageSessionIds : [],
         deleted_package_session_ids: [],
         join_link: joinLink,
+        old_meeting_date,
+        old_start_time,
         added_notification_actions: addedNotificationActions,
         updated_notification_actions: [],
         deleted_notification_action_ids: [],
@@ -506,6 +562,27 @@ export function transformFormToDTOStep2(
     // Add individual user IDs if individual selection is used
     if (batchSelectionType === 'individual' && selectedLearners) {
         result.individual_user_ids = selectedLearners;
+    }
+
+    // "Auto-add recordings to course": only meaningful for batch mode, and
+    // only sent when the admin actually opened/edited the section — omitting
+    // it on update leaves the stored config untouched (per the contract).
+    if (recordingAutoLink?.touched && batchSelectionType === 'batch') {
+        const selectedPackageSessionIds = new Set(packageSessionIds);
+        result.recording_auto_link_config = {
+            enabled: recordingAutoLink.enabled,
+            slide_status: recordingAutoLink.slideStatus,
+            notify: recordingAutoLink.notify,
+            // Drop destinations for batches the admin has since deselected.
+            destinations: recordingAutoLink.destinations
+                .filter((d) => selectedPackageSessionIds.has(d.package_session_id))
+                .map((d) => ({
+                    package_session_id: d.package_session_id,
+                    subject_id: d.subject_id ?? '',
+                    module_id: d.module_id ?? '',
+                    chapter_id: d.chapter_id,
+                })),
+        };
     }
 
     return result;

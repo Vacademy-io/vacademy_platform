@@ -81,6 +81,16 @@ public class AudienceResponse {
     @Column(name = "overall_status", length = 50)
     private String overallStatus;
 
+    /**
+     * Soft-delete lifecycle — {@link vacademy.io.admin_core_service.features.audience.enums.AudienceStatusEnum}
+     * as a bare String, matching how the other status columns on this row are stored.
+     * NOT NULL DEFAULT 'ACTIVE' in the DB (V359), so existing rows and any insert path that
+     * doesn't set it explicitly are ACTIVE.
+     */
+    @Column(name = "audience_status", length = 50, nullable = false)
+    @Builder.Default
+    private String audienceStatus = "ACTIVE";
+
     // ── Deduplication fields ──────────────────────────────────
 
     /** SHA-256 hash of normalized email+phone for dedup within campaign */

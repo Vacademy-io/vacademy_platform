@@ -20,6 +20,7 @@ import { useOtaUpdate } from "@/stores/useOtaUpdate";
 import {
   checkForOtaUpdate,
   downloadAndApplyUpdate,
+  getOtaUpdateMode,
   notifyUpdateSuccess,
 } from "@/services/ota-update";
 import { Preferences } from "@capacitor/preferences";
@@ -32,6 +33,7 @@ import { TokenKey } from "@/constants/auth/tokens";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { getSubdomain } from "@/helpers/helper";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import { resolvePostLoginRoute } from "@/lib/auth/post-login-redirect";
 import type { StudentUIType } from "@/types/student-display-settings";
 import {
   resolveDomainRouting,
@@ -43,6 +45,8 @@ import { ChatbotProvider } from "@/components/chatbot/ChatbotContext";
 import { getChatbotSettings } from "@/services/chatbot-settings";
 import { ChatbotFloatingButton } from "@/components/chatbot/ChatbotFloatingButton";
 import { OtaUpdateBanner } from "@/components/ota-update/OtaUpdateBanner";
+import { ChildViewBanner } from "@/components/parent/ChildViewBanner";
+import { AppOverlayHost } from "@/components/announcements/AppOverlayHost";
 
 // Define public routes that don't require authentication
 const PUBLIC_ROUTES = [
@@ -62,6 +66,8 @@ const PUBLIC_ROUTES = [
   "/learner-invitation-response",
   "/payment-result",
   "/audience-response",
+  "/booking-response", // Public Calendly-style booking page
+  "/booking-manage", // Public manage-booking page (token link)
   "/sub-org-registration", // Public sub-org self-registration wizard
   "/kyc-complete", // DigiLocker redirect landing (sub-org registration KYC)
   "/institute-selection",
@@ -91,6 +97,12 @@ const READER_BLOCKED_PATH_PREFIXES = [
   "/admission/payment",
   "/pay",
   "/payment-result",
+  // Sub-org self-registration ends in a Razorpay/Cashfree checkout wizard
+  // (and /sub-org-registration/payment-result) — an external-gateway purchase.
+  "/sub-org-registration",
+  // Parent portal "Payment" tab embeds Razorpay for admission/fee payment.
+  // Only the payment sub-route is blocked; the rest of /parent stays reachable.
+  "/parent/payment",
 ];
 
 const isReaderBlockedPath = (pathname: string): boolean =>
@@ -232,10 +244,22 @@ const isPublicRoute = (pathname: string): boolean => {
 
 const RootComponent = () => {
   const { setUpdateAvailable } = useUpdate();
-  const { setOtaUpdate, setOtaDownloading } = useOtaUpdate();
+  const { setOtaUpdate, setOtaDownloading, setOtaAutoUpdating } =
+    useOtaUpdate();
   const { setPrimaryColor } = useTheme();
   const { setInstituteId } = useInstituteFeatureStore();
   const [isChatbotEnabled, setIsChatbotEnabled] = useState(false);
+
+  // Dismiss the index.html boot splash once the app has actually mounted.
+  // (It lives OUTSIDE #root — main.tsx refuses to mount into a non-empty root —
+  // so the app must remove it explicitly.)
+  useEffect(() => {
+    const splash = document.getElementById("boot-splash");
+    if (!splash) return;
+    splash.style.opacity = "0";
+    const t = window.setTimeout(() => splash.remove(), 250);
+    return () => window.clearTimeout(t);
+  }, []);
 
   const setPrimaryColorFromStorage = async () => {
     const details = await Preferences.get({ key: "InstituteDetails" });
@@ -291,6 +315,31 @@ const RootComponent = () => {
       try {
         const result = await checkForOtaUpdate();
         if (result.update_available && result.bundle_download_url) {
+          const mode = await getOtaUpdateMode();
+
+          // AUTO mode (fleet default): show a non-dismissible "Updating app…"
+          // loader dialog, then download + apply the bundle in place. This runs
+          // at launch ONLY, so the set() reload can never wipe a learner's
+          // in-progress exam attempt (the reason the old silent path existed).
+          // Applies for both optional and force updates.
+          if (mode === "auto") {
+            try {
+              setOtaAutoUpdating(true, result.version ?? null);
+              await downloadAndApplyUpdate(
+                result.bundle_download_url,
+                result.version!,
+                result.checksum!,
+              );
+              // set() reloads the WebView — the line below only runs if it fails.
+              setOtaAutoUpdating(false);
+            } catch (autoErr) {
+              console.error("OTA auto update failed:", autoErr);
+              setOtaAutoUpdating(false);
+            }
+            return;
+          }
+
+          // BANNER mode: dismissible banner (optional) or blocking overlay (force).
           setOtaUpdate({
             otaUpdateAvailable: true,
             otaVersion: result.version ?? null,
@@ -333,15 +382,21 @@ const RootComponent = () => {
     // Apply global ui-vibrant class based on override/settings and expose debug helpers
     const applyUiType = (t: StudentUIType) => {
       const root = document.documentElement;
-      root.classList.remove("ui-vibrant", "ui-play");
+      root.classList.remove("ui-vibrant", "ui-play", "ui-cleaner-play");
       if (t === "vibrant") root.classList.add("ui-vibrant");
       else if (t === "play") root.classList.add("ui-play");
+      else if (t === "cleanerPlay") root.classList.add("ui-cleaner-play");
     };
 
     const DEBUG_KEY = "DEBUG_UI_TYPE";
     try {
       const override = (localStorage.getItem(DEBUG_KEY) || "") as StudentUIType;
-      if (override === "vibrant" || override === "default" || override === "play") {
+      if (
+        override === "vibrant" ||
+        override === "default" ||
+        override === "play" ||
+        override === "cleanerPlay"
+      ) {
         applyUiType(override);
       } else {
         getStudentDisplaySettings(false)
@@ -409,10 +464,30 @@ const RootComponent = () => {
       "/",
     ];
 
-    const isRootRoute = (path: string) =>
-      ROOT_ROUTES.some(
+    // The institute may configure a custom post-login landing route
+    // (STUDENT_DISPLAY_SETTINGS.postLoginRedirectRoute) that isn't one of the
+    // built-in root routes above. Treat that landing route as an exit route
+    // too, so hardware back on the learner's home screen minimizes the app
+    // instead of walking history back toward /login. Read from cache (already
+    // populated at login); a missing/failed lookup just leaves ROOT_ROUTES.
+    let landingRoute: string | null = null;
+    getStudentDisplaySettings()
+      .then((s) => {
+        const r = s?.postLoginRedirectRoute?.trim();
+        if (r && !/^https?:\/\//.test(r)) {
+          landingRoute = r.split("?")[0].split("#")[0];
+        }
+      })
+      .catch(() => {});
+
+    const isRootRoute = (path: string) => {
+      const routes = landingRoute
+        ? [...ROOT_ROUTES, landingRoute]
+        : ROOT_ROUTES;
+      return routes.some(
         (r) => path === r || path === `${r}/` || path.startsWith(`${r}?`),
       );
+    };
 
     let handle: { remove: () => void } | null = null;
 
@@ -681,8 +756,11 @@ const RootComponent = () => {
 
   return (
     <ChatbotProvider>
+      <ChildViewBanner />
       <OtaUpdateBanner />
       <Outlet />
+      {/* Full-screen APP_OVERLAY announcements — authenticated app surfaces only */}
+      {!isPublicRoute(pathname) && <AppOverlayHost />}
       {!hideChatbot && <ChatbotPanel />}
       {!hideChatbot && isChatbotEnabled && <ChatbotFloatingButton />}
     </ChatbotProvider>
@@ -726,13 +804,20 @@ export const Route = createRootRouteWithContext<{
             instituteId,
           );
 
-          // Honor redirect param (e.g. ?redirect=%2Fdashboard -> /dashboard); default to /dashboard
-          const targetPath =
-            redirectPath &&
+          // Honor redirect param (e.g. ?redirect=%2Fdashboard -> /dashboard);
+          // otherwise land on the institute's configured post-login route.
+          const isSafeRedirectParam =
+            !!redirectPath &&
             redirectPath.startsWith("/") &&
-            !redirectPath.startsWith("//")
-              ? redirectPath
-              : "/dashboard";
+            !redirectPath.startsWith("//");
+          const resolvedPath = await resolvePostLoginRoute({
+            explicitRedirect: isSafeRedirectParam ? redirectPath : null,
+          });
+          // Can't external-redirect from beforeLoad (same rule as the '/' handler
+          // below), so an absolute landing URL falls back to the internal default.
+          const targetPath = /^https?:\/\//.test(resolvedPath)
+            ? "/dashboard"
+            : resolvedPath;
 
           console.log(
             "[__root] Auto-login complete, redirecting to:",
@@ -845,23 +930,10 @@ export const Route = createRootRouteWithContext<{
       throw redirect({ to: "/login" });
     }
 
-    // If authenticated and directly on /dashboard, honor settings route
-    try {
-      const authenticated = await isAuthenticated();
-      if (authenticated && location.pathname === "/dashboard") {
-        const settings = await getStudentDisplaySettings(false);
-        await getChatbotSettings(true);
-        const route = settings?.postLoginRedirectRoute || "/dashboard";
-        // On '/dashboard'. Settings route: ${route}
-        if (route !== "/dashboard" && !/^https?:\/\//.test(route)) {
-          throw redirect({ to: route as never });
-        }
-      }
-    } catch (error) {
-      // Re-throw redirects so the router can handle them
-      if (error instanceof Response) throw error;
-      // ignore other errors
-    }
+    // NOTE: postLoginRedirectRoute is a *landing* route, applied when a learner
+    // logs in (see the login forms and the '/' redirect above). It must not be
+    // enforced as a standing guard on /dashboard — that made the Dashboard nav
+    // item permanently unreachable for any institute that changed the setting.
 
     // Check authentication for all other routes
     const authenticated = await isAuthenticated();

@@ -150,3 +150,81 @@ export interface FeedbackSubmitRequest {
     responses: Record<string, string | number>;
 }
 
+// Past sessions (Track A) — learner past-sessions view types
+
+/** Attendance status for a past session; UNMARKED covers sessions before attendance tracking existed. */
+export type PastAttendanceStatus = "PRESENT" | "ABSENT" | "UNMARKED";
+
+/** Sanitized recording exposure — never carries provider host/download URLs. */
+export interface LearnerRecording {
+    recording_id: string;
+    playback_type: "S3" | "YOUTUBE" | "ZOOM_CLOUD" | "BBB";
+    url?: string;
+    file_id?: string;
+    passcode?: string;
+    expires_at?: string;
+    expired?: boolean;
+    duration_seconds?: number;
+    part_label?: string;
+}
+
+/** Raw engagement metrics for a past session; fields are nullable — never fabricate a composite score. */
+export interface PastSessionActivity {
+    duration_minutes?: number | null;
+    chats?: number | null;
+    talks?: number | null;
+    talk_time?: number | null;
+    raise_hand?: number | null;
+    emojis?: number | null;
+    poll_votes?: number | null;
+}
+
+/** The admin-governed learner-display flags, echoed on every /learner/past response. */
+export interface PastDisplayFlags {
+    show_past_sessions: boolean;
+    show_recordings: boolean;
+    show_attendance: boolean;
+    show_activity_stats: boolean;
+    show_class_materials: boolean;
+}
+
+/** A class material (PDF / uploaded video / YouTube) the teacher linked from this session. */
+export interface PastSessionMaterial {
+    slide_id: string;
+    title: string;
+    kind: "PDF" | "VIDEO" | "YOUTUBE";
+    file_id?: string;
+    url?: string;
+}
+
+export interface PastSessionDetails {
+    session_id: string;
+    schedule_id: string;
+    title: string;
+    subject: string;
+    meeting_date: string;
+    start_time: string;
+    last_entry_time: string;
+    timezone: string;
+    link_type?: string;
+    thumbnail_file_id?: string | null;
+    /** Omitted entirely by the backend when show_recordings=false. */
+    recordings?: LearnerRecording[];
+    /** Omitted entirely by the backend when show_attendance=false. */
+    attendance_status?: PastAttendanceStatus;
+    /** Omitted entirely by the backend when show_activity_stats=false. */
+    activity?: PastSessionActivity;
+    /** Omitted entirely by the backend when show_class_materials=false. */
+    materials?: PastSessionMaterial[];
+}
+
+export interface PastSessionsPageResponse {
+    display_flags: PastDisplayFlags;
+    content: PastSessionDetails[];
+    page: number;
+    size: number;
+    total_pages: number;
+    total_elements: number;
+    last: boolean;
+}
+

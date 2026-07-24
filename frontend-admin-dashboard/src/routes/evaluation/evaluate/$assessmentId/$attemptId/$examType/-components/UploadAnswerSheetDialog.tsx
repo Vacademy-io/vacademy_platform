@@ -7,12 +7,13 @@ import { MyButton } from '@/components/design-system/button';
 import { FileUploadComponent } from '@/components/design-system/file-upload';
 import { Form } from '@/components/ui/form';
 import { useFileUpload } from '@/hooks/use-file-upload';
+import { ensureFileHasExtension } from '@/lib/file-download';
 import { handleUpdateAttempt } from '@/routes/assessment/assessment-list/assessment-details/$assessmentId/$examType/$assesssmentType/$assessmentTab/-services/assessment-details-services';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { FileType } from '@/types/common/file-upload';
 
-const ACCEPTED_FILE_TYPES: FileType[] = ['application/pdf', 'image/jpeg', 'image/png'];
+const ACCEPTED_FILE_TYPES: FileType[] = ['application/pdf'];
 
 interface UploadAnswerSheetDialogProps {
     attemptId: string;
@@ -20,7 +21,11 @@ interface UploadAnswerSheetDialogProps {
     // Called once the file is uploaded and attached to the attempt, with the new
     // file id so the caller can immediately load the answer sheet.
     onUploaded: (fileId: string) => void;
-    trigger: React.ReactNode;
+    trigger?: React.ReactNode;
+    // Controlled mode — for callers that open the dialog from a menu item
+    // instead of a trigger node (a trigger inside a dropdown unmounts with it).
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
 }
 
 interface UploadForm {
@@ -34,8 +39,16 @@ export const UploadAnswerSheetDialog = ({
     instituteId,
     onUploaded,
     trigger,
+    open: controlledOpen,
+    onOpenChange,
 }: UploadAnswerSheetDialogProps) => {
-    const [open, setOpen] = useState(false);
+    const [internalOpen, setInternalOpen] = useState(false);
+    const isControlled = controlledOpen !== undefined;
+    const open = isControlled ? controlledOpen : internalOpen;
+    const setOpen = (next: boolean) => {
+        if (isControlled) onOpenChange?.(next);
+        else setInternalOpen(next);
+    };
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -61,7 +74,9 @@ export const UploadAnswerSheetDialog = ({
         setIsProcessing(true);
         try {
             const newFileId = await uploadFile({
-                file: selectedFile,
+                // Ensure the answer sheet carries a correct extension so it later
+                // downloads/opens as e.g. `.pdf` rather than an extension-less file.
+                file: ensureFileHasExtension(selectedFile),
                 setIsUploading: setIsProcessing,
                 userId,
                 source: instituteId,
@@ -148,7 +163,7 @@ export const UploadAnswerSheetDialog = ({
                                 <p className="text-sm font-medium text-neutral-700">
                                     Click to upload or drag &amp; drop
                                 </p>
-                                <p className="text-xs text-neutral-400">PDF, JPG or PNG</p>
+                                <p className="text-xs text-neutral-400">PDF only</p>
                             </div>
                         )}
                     </FileUploadComponent>

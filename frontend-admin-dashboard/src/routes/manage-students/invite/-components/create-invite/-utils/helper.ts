@@ -420,6 +420,30 @@ export function convertInviteData(
                 const { SUB_ORG_SETTING: _removed, ...restSetting } = next.setting;
                 next.setting = restSetting;
             }
+            // Autopay / free-trial → setting.AUTOPAY_SETTING (read at enrollment).
+            // Only written when enabled; removed on toggle-off. Spreads next.setting
+            // so a co-enabled SUB_ORG_SETTING above is preserved.
+            const autopay = data.autopaySettings;
+            if (autopay?.enabled) {
+                next.setting = {
+                    ...(next.setting || existing.setting || {}),
+                    AUTOPAY_SETTING: {
+                        ENABLED: true,
+                        TRIAL_DAYS: autopay.trialDays ?? 0,
+                        ...(autopay.maxAmount != null
+                            ? { MAX_AMOUNT: autopay.maxAmount }
+                            : {}),
+                        AUTH_ENABLED: autopay.authEnabled !== false,
+                        AUTH_REFUNDABLE: autopay.authRefundable === true,
+                        ...(autopay.authAmount != null
+                            ? { AUTH_AMOUNT: autopay.authAmount }
+                            : {}),
+                    },
+                };
+            } else if (next.setting?.AUTOPAY_SETTING) {
+                const { AUTOPAY_SETTING: _removedAutopay, ...restSetting } = next.setting;
+                next.setting = restSetting;
+            }
             return JSON.stringify(next);
         })(),
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment

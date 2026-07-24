@@ -1,0 +1,128 @@
+{
+    "login": {
+        "heading": "आपका वापस आना हमारे लिए खुशी की बात है!",
+        "subheading": "लॉगिन करें और जिम्मेदारी संभालें - आपके प्रशासनिक उपकरण आपकी प्रतीक्षा कर रहे हैं!",
+        "emailPlaceholder": "you@email.com",
+        "passwordPlaceholder": "पासवर्ड",
+        "forgotPasswordLink": "पासवर्ड भूल गए?",
+        "loginButton": "लॉगिन करें",
+        "forgotPasswordHeading": "पासवर्ड भूल गए",
+        "forgotPasswordSubheading": "अपना ईमेल दर्ज करें, हम आपका पासवर्ड आपके इनबॉक्स में भेज देंगे",
+        "forgotPasswordEmailPlaceholder": "you@email.com",
+        "forgotPasswordButton": "रीसेट लिंक भेजें",
+        "forgotPasswordBottomText": "पासवर्ड याद आ गया?",
+        "setPasswordHeading": "नया पासवर्ड सेट करें",
+        "setPasswordSubheading": "नए पासवर्ड से अपना खाता सुरक्षित करें",
+        "setPasswordNewPlaceholder": "नया पासवर्ड",
+        "setPasswordConfirmPlaceholder": "नए पासवर्ड की पुष्टि करें",
+        "setPasswordButton": "पासवर्ड रीसेट करें",
+        "setPasswordBottomText": "लॉगिन पर वापस जाएँ?"
+    },
+    "actions": {
+        "save": "सहेजें",
+        "cancel": "रद्द करें",
+        "delete": "हटाएँ"
+    },
+    "table": {
+        "noResults": "कोई परिणाम नहीं मिला"
+    },
+    "common": {
+        "loading": "लोड हो रहा है..."
+    },
+    "settings": {
+        "language": {
+            "title": "भाषा",
+            "description": "चुनें कि इस संस्थान का पोर्टल कौन-सी भाषाएँ प्रदान करता है और सामग्री का स्थानीयकरण कैसे होता है।",
+            "defaultLabel": "डिफ़ॉल्ट भाषा",
+            "defaultHelp": "वह भाषा जो उपयोगकर्ताओं को स्वयं भाषा चुनने से पहले दिखाई देती है।",
+            "enabledLabel": "सक्षम भाषाएँ",
+            "enabledHelp": "वे भाषाएँ जिनमें उपयोगकर्ता स्विच कर सकते हैं। डिफ़ॉल्ट भाषा हमेशा शामिल रहती है।",
+            "enabledPlaceholder": "भाषाएँ चुनें",
+            "enabledRequired": "कम से कम एक भाषा सक्षम करें",
+            "contentSourceLabel": "सामग्री की स्रोत भाषा",
+            "contentSourceHelp": "वह भाषा जिसमें आपकी सामग्री मूल रूप से लिखी गई है।",
+            "timezoneLabel": "संस्थान का समय क्षेत्र",
+            "timezoneHelp": "पोर्टल में दिनांक और समय दिखाने के लिए उपयोग होता है।",
+            "timezonePlaceholder": "समय क्षेत्र चुनें",
+            "selectPlaceholder": "भाषा चुनें",
+            "loading": "भाषा सेटिंग्स लोड हो रही हैं…",
+            "save": "भाषा सेटिंग्स सहेजें",
+            "saving": "सहेजा जा रहा है…",
+            "saved": "भाषा सेटिंग्स सहेज ली गईं",
+            "saveFailed": "भाषा सेटिंग्स सहेजने में विफल"
+        }
+    },
+    "translation": {
+        "translateAction": "अनुवाद करें",
+        "credits": "{{value}} क्रेडिट",
+        "noContent": "कोई सामग्री नहीं",
+        "state": {
+            "DRAFT": "ड्राफ़्ट",
+            "IN_REVIEW": "समीक्षा में",
+            "PUBLISHED": "प्रकाशित",
+            "STALE": "पुराना"
+        },
+        "jobStatus": {
+            "PENDING": "लंबित",
+            "IN_PROGRESS": "प्रगति में",
+            "AWAITING_INPUT": "समीक्षा की प्रतीक्षा में",
+            "COMPLETED": "पूर्ण",
+            "FAILED": "विफल"
+        },
+        "jobStage": {
+            "PENDING": "लंबित",
+            "EXTRACT": "सामग्री निकाली जा रही है",
+            "TRANSLATE": "अनुवाद हो रहा है",
+            "REVIEW": "समीक्षा",
+            "WRITE_BACK": "प्रकाशित हो रहा है",
+            "COMPLETED": "पूर्ण"
+        },
+        "dialog": {
+            "heading": "कोर्स का अनुवाद करें",
+            "targetLanguage": "लक्ष्य भाषा",
+            "mode": "प्रकाशन मोड",
+            "modeDraft": "प्रकाशन से पहले समीक्षा करें",
+            "modeAutoPublish": "तुरंत प्रकाशित करें",
+            "modeDraftHint": "अनुवाद ड्राफ़्ट के रूप में सहेजे जाते हैं। आपकी स्वीकृति के बाद ही शिक्षार्थियों को दिखते हैं।",
+            "modeAutoPublishHint": "अनुवाद बनते ही शिक्षार्थियों के लिए लाइव हो जाते हैं।",
+            "continue": "आगे बढ़ें",
+            "confirm": "अनुवाद शुरू करें",
+            "topUp": "क्रेडिट टॉप-अप करें",
+            "estimatedCost": "अनुमानित लागत",
+            "currentBalance": "वर्तमान शेष",
+            "balanceAfter": "बाद में शेष",
+            "itemsFound": "{{value}} आइटम का अनुवाद किया जाएगा।",
+            "insufficientCredits": "आपका क्रेडिट शेष इस अनुवाद के लिए पर्याप्त नहीं है। जारी रखने के लिए टॉप-अप करें।",
+            "noLanguages": "इस संस्थान के लिए कोई अन्य भाषा सक्षम नहीं है। सेटिंग्स > भाषा में जाकर सक्षम करें।",
+            "started": "अनुवाद शुरू हो गया",
+            "viewProgress": "प्रगति देखें",
+            "estimateFailed": "अनुवाद लागत का अनुमान नहीं लगाया जा सका। कृपया पुनः प्रयास करें।",
+            "startFailed": "अनुवाद शुरू नहीं किया जा सका। कृपया पुनः प्रयास करें।"
+        },
+        "review": {
+            "heading": "अनुवाद समीक्षा",
+            "subheading": "{{language}} अनुवादों की समीक्षा",
+            "back": "कोर्स पर वापस जाएँ",
+            "baseContent": "मूल",
+            "translatedContent": "{{language}}",
+            "state": "स्थिति",
+            "actions": "कार्रवाइयाँ",
+            "approve": "स्वीकृत करें",
+            "reject": "अस्वीकार करें",
+            "approved": "अनुवाद स्वीकृत हुआ",
+            "rejected": "अनुवाद अस्वीकृत हुआ",
+            "updateFailed": "अनुवाद अपडेट नहीं हो सका। कृपया पुनः प्रयास करें।",
+            "approvePage": "इस पृष्ठ को स्वीकृत करें",
+            "bulkApproved": "{{value}} अनुवाद स्वीकृत हुए",
+            "approveAndPublishJob": "जॉब स्वीकृत करें और प्रकाशित करें",
+            "jobApproved": "जॉब स्वीकृत हुआ। अनुवाद प्रकाशित हो रहे हैं।",
+            "jobApproveFailed": "जॉब स्वीकृत नहीं हो सका। कृपया पुनः प्रयास करें।",
+            "jobStatus": "जॉब स्थिति",
+            "jobStage": "चरण",
+            "jobProgress": "प्रगति",
+            "filterAll": "सभी स्थितियाँ",
+            "empty": "समीक्षा के लिए अभी कोई अनुवाद नहीं है।",
+            "missingScope": "अनुवाद समीक्षा के लिए कोर्स और भाषा चुनें।"
+        }
+    }
+}

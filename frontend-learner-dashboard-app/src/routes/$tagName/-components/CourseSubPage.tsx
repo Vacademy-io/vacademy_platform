@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { withArabicFallback } from "@/utils/branding";
 import { useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
@@ -10,6 +11,7 @@ import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { Preferences } from "@capacitor/preferences";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
+import { shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
 
 interface CourseSubPageProps {
   tagName: string;
@@ -123,9 +125,11 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
       document.head.appendChild(link);
     }
 
-    // Apply font exactly as specified in JSON
-    document.body.style.fontFamily = fontFamily;
-    document.documentElement.style.setProperty("--app-font-family", fontFamily);
+    // Apply font exactly as specified in JSON, plus the Arabic fallback the
+    // stack would otherwise drop (withArabicFallback preserves Latin order).
+    const resolvedFontFamily = withArabicFallback(fontFamily);
+    document.body.style.fontFamily = resolvedFontFamily;
+    document.documentElement.style.setProperty("--app-font-family", resolvedFontFamily);
 
     console.log("[CourseSubPage] Applied font:", fontFamily, "Primary font:", primaryFont);
   }, [catalogueData]);
@@ -369,7 +373,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
 
       {/* Mobile Action Buttons - Fixed at bottom for catalogue page */}
       {(!showIntroPage || introCompleted) && catalogueData && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4">
+        <div className="md:hidden fixed bottom-0 start-0 end-0 z-50 bg-white border-t border-gray-200 p-4">
           <div className="flex flex-col gap-3">
             {/* Login Button */}
             <div className="flex flex-col gap-1">
@@ -386,8 +390,9 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
               <span className="text-xs text-gray-500 text-center">If already registered</span>
             </div>
 
-            {/* Get Started Button */}
-            {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && (
+            {/* Get Started Button — mirrors the header's authLinks config, so a
+                catalogue that removed "Get Started" from its header hides it here too */}
+            {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && shouldShowMobileGetStarted(catalogueData, page) && (
               <div className="flex flex-col gap-1">
                 <button
                   onClick={() => {

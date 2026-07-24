@@ -67,19 +67,34 @@ export const SlideHistoryDialog = ({
     activeItem,
     chapterId,
     onRestored,
+    open: controlledOpen,
+    onOpenChange,
+    hideTrigger = false,
 }: {
     activeItem: Slide;
     chapterId: string;
     onRestored: (restoredValue: string, slideStatus: string) => void;
+    /** Controlled mode (e.g. opened from the ⋯ menu): pass open + onOpenChange and hideTrigger. */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+    hideTrigger?: boolean;
 }) => {
-    const [open, setOpen] = useState(false);
+    const [internalOpen, setInternalOpen] = useState(false);
+    const isControlled = controlledOpen !== undefined;
+    const open = isControlled ? controlledOpen : internalOpen;
+    const setOpen = (o: boolean) => {
+        if (isControlled) onOpenChange?.(o);
+        else setInternalOpen(o);
+    };
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const [previewSource, setPreviewSource] = useState<SnapshotSource>('DRAFT');
     const [confirmingRestore, setConfirmingRestore] = useState(false);
     const queryClient = useQueryClient();
 
     const slideId = activeItem.id;
-    const isDocEditor = activeItem.document_slide?.type === 'DOC';
+    // DOC (Yoopta) and HTML (Tiptap) both store HTML — preview in an iframe.
+    const isDocEditor =
+        activeItem.document_slide?.type === 'DOC' || activeItem.document_slide?.type === 'HTML';
 
     const historyQuery = useQuery({
         queryKey: ['slide-content-history', slideId],
@@ -152,20 +167,22 @@ export const SlideHistoryDialog = ({
 
     return (
         <>
-            <MyButton
-                buttonType="secondary"
-                scale="medium"
-                layoutVariant="default"
-                title="View and restore previous versions"
-                onClick={() => {
-                    setSelectedId(null);
-                    setConfirmingRestore(false);
-                    setOpen(true);
-                }}
-            >
-                <ClockCounterClockwise size={18} />
-                <span className="hidden md:inline">History</span>
-            </MyButton>
+            {!hideTrigger && (
+                <MyButton
+                    buttonType="secondary"
+                    scale="medium"
+                    layoutVariant="default"
+                    title="View and restore previous versions"
+                    onClick={() => {
+                        setSelectedId(null);
+                        setConfirmingRestore(false);
+                        setOpen(true);
+                    }}
+                >
+                    <ClockCounterClockwise size={18} />
+                    <span className="hidden md:inline">History</span>
+                </MyButton>
+            )}
             <MyDialog
                 heading="Version history"
                 open={open}

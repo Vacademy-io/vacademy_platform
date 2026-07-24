@@ -336,10 +336,11 @@ public class AdminManualEvaluationManager {
             // Convert JSON string to Map
             Map<String, Object> jsonMap = objectMapper.readValue(jsonString, Map.class);
 
-            // Update the specified key
-            if (jsonMap.containsKey(node)) {
-                jsonMap.put(node, newValue);
-            }
+            // Update (or insert) the specified key. Must always put — a re-attempt's
+            // attempt_data has no "fileId" key at all, and the old containsKey guard
+            // silently dropped the write, leaving the answer file on evaluated_file_id
+            // but invisible to the evaluator loader ("Couldn't load the answer sheet").
+            jsonMap.put(node, newValue);
 
             // Convert Map back to JSON string
             return objectMapper.writeValueAsString(jsonMap);
@@ -364,7 +365,12 @@ public class AdminManualEvaluationManager {
             String updatedAttemptJson = updateJson(attemptOptional.get().getAttemptData(), "fileId", fileId);
 
             attemptOptional.get().setAttemptData(updatedAttemptJson);
-            attemptOptional.get().setEvaluatedFileId(fileId);
+            // Deliberately NOT set evaluated_file_id here: this endpoint uploads the
+            // student's RAW answer sheet, while evaluated_file_id is reserved for the
+            // annotated copy written by submitManualEvaluatedMarks. Writing it here
+            // overwrote real evaluated copies on re-upload and made unevaluated
+            // attempts look like they had one. (updateJson now always persists the
+            // "fileId" key, so the old evaluator-loader fallback is no longer needed.)
             studentAttemptService.updateStudentAttempt(attemptOptional.get());
 
             return ResponseEntity.ok("Done");
@@ -373,7 +379,33 @@ public class AdminManualEvaluationManager {
         }
     }
 
-    public ResponseEntity<String> getAttemptData(CustomUserDetails userDetails, String attemptId) {
+    // Batch answer-sheet lookup for the admin submissions table. Mirrors the
+    // getAttemptData resolution order (attempt_data JSON "fileId" -> evaluated_file_id
+    // fallback) but never mutates result status. Attempts without a file are omitted.
+    public ResponseEntity<Map<String, String>> getAttemptsFileStatus(CustomUserDetails userDetails, List<String> attemptIds) {
+        if (Objects.isNull(attemptIds) || attemptIds.isEmpty()) return ResponseEntity.ok(Map.of());
+
+        Map<String, String> attemptIdToFileId = new HashMap<>();
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        for (StudentAttempt attempt : studentAttemptService.getStudentAttemptsByIds(attemptIds)) {
+            String fileId = null;
+            try {
+                if (!Objects.isNull(attempt.getAttemptData())) {
+                    Map<String, Object> jsonMap = objectMapper.readValue(attempt.getAttemptData(), Map.class);
+                    fileId = (String) jsonMap.get("fileId");
+                }
+            } catch (Exception e) {
+                // Malformed attempt_data on one attempt must not fail the whole batch
+            }
+            if (fileId == null || fileId.isBlank()) fileId = attempt.getEvaluatedFileId();
+            if (fileId != null && !fileId.isBlank()) attemptIdToFileId.put(attempt.getId(), fileId);
+        }
+
+        return ResponseEntity.ok(attemptIdToFileId);
+    }
+
+    public ResponseEntity<String> getAttemptData(CustomUserDetails userDetails, String attemptId, boolean markEvaluating) {
         try {
             Optional<StudentAttempt> attemptOptional = studentAttemptService.getStudentAttemptById(attemptId);
             if (attemptOptional.isEmpty()) throw new VacademyException("Attempt Not Found");
@@ -390,13 +422,33 @@ public class AdminManualEvaluationManager {
             Map<String, Object> jsonMap = objectMapper.readValue(attemptOptional.get().getAttemptData(), Map.class);
             String fileId = (String) jsonMap.get("fileId");
 
-            attemptOptional.get().setResultStatus(AttemptResultStatusEnum.EVALUATING.name());
-            studentAttemptService.updateStudentAttempt(attemptOptional.get());
+            // Fall back to the persisted evaluated_file_id column when the answer file
+            // was attached (Upload Answer Sheet / re-attempt) but never made it into the
+            // attempt_data JSON — otherwise the evaluator screen shows "Couldn't load the
+            // answer sheet" even though the uploaded file exists on the attempt.
+            if (fileId == null || fileId.isBlank()) {
+                fileId = attemptOptional.get().getEvaluatedFileId();
+            }
+
+            // This endpoint is also used by view-only screens (submissions tab,
+            // activity log) just to fetch the answer file id, so the EVALUATING
+            // transition must be opted into by the evaluator flow — and it never
+            // downgrades an attempt that has already been evaluated.
+            if (markEvaluating && isAwaitingEvaluation(attemptOptional.get().getResultStatus())) {
+                attemptOptional.get().setResultStatus(AttemptResultStatusEnum.EVALUATING.name());
+                studentAttemptService.updateStudentAttempt(attemptOptional.get());
+            }
 
             return ResponseEntity.ok(fileId);
         } catch (Exception e) {
             throw new VacademyException("Failed to get Attempt: " + e.getMessage());
         }
+    }
+
+    private boolean isAwaitingEvaluation(String resultStatus) {
+        return Objects.isNull(resultStatus)
+                || AttemptResultStatusEnum.PENDING.name().equals(resultStatus)
+                || AttemptResultStatusEnum.EVALUATING.name().equals(resultStatus);
     }
 
     public ResponseEntity<ManualAttemptResponse> getAssignedAttempt(CustomUserDetails userDetails, ManualAttemptFilter filter, String assessmentId, String instituteId, int pageNo, int pageSize) {

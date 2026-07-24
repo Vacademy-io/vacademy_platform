@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { CaretDown, Check, CircleNotch } from '@phosphor-icons/react';
+import { CaretDown, Check, CircleNotch, PlusCircle } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -11,28 +11,72 @@ import {
     CommandItem,
     CommandList,
 } from '@/components/ui/command';
+import { Separator } from '@/components/ui/separator';
+import { ChipsWrapper } from '@/components/design-system/chips';
+import { useCompactMode } from '@/hooks/use-compact-mode';
 import { cn } from '@/lib/utils';
 import { fetchLeadCustomFieldValues } from '@/routes/audience-manager/list/-services/get-lead-custom-field-values';
+import {
+    EMPTY_SENTINEL,
+    NOT_EMPTY_SENTINEL,
+    encodeContains,
+    isSentinelValue,
+    sentinelLabel,
+} from './custom-field-filter-encoding';
 
 const PAGE_SIZE = 20;
 
+/** One page of distinct values for a custom field (Spring Page<String>). */
+interface CustomFieldValuesPage {
+    content: string[];
+    number: number;
+    last: boolean;
+}
+
+interface FetchCustomFieldValuesParams {
+    instituteId: string;
+    customFieldId: string;
+    search?: string;
+    pageNo: number;
+    pageSize: number;
+}
+
 interface CustomFieldMultiSelectFilterProps {
     instituteId: string;
-    /** custom_field_id (uuid) — matches how lead rows key their values. */
+    /** custom_field_id (uuid) — matches how source rows key their values. */
     fieldId: string;
     /** Display label, e.g. "City". */
     fieldName: string;
     /** Currently selected values. */
     selected: string[];
     onChange: (values: string[]) => void;
+    /** Distinct-values lookup. Defaults to the leads endpoint; pass a
+     *  different fetcher (e.g. the Manage Students learner-scoped one) to
+     *  reuse this same combobox for other USER-scoped custom fields. */
+    fetchValues?: (params: FetchCustomFieldValuesParams) => Promise<CustomFieldValuesPage>;
+    /** Trigger look. 'button' (default) matches the leads filter bar's other
+     *  outline-button chips. 'pill' matches Manage Students' rounded
+     *  FilterChips pill (see design-system/chips.tsx) so this combobox blends
+     *  in next to that page's other filter chips. Styling only — no behavior
+     *  differs between variants. */
+    variant?: 'button' | 'pill';
+    /** Cache namespace for the distinct-values query. Surfaces with different
+     *  fetchers (leads vs students vs contacts) return DIFFERENT value lists
+     *  for the same field — without this segment they'd share a React Query
+     *  cache entry and show each other's values. Defaults to 'leads' (the
+     *  default fetcher). */
+    cacheScope?: string;
 }
 
 /**
- * Searchable, paginated multi-select for a single custom field, used in the
- * leads filter bar. Distinct values are loaded lazily from the backend only
- * once the dropdown is opened (and re-fetched as the admin types), so a field
- * the admin hasn't interacted with never hits the API. Selecting values OR's
- * them within this field; the leads request AND's across fields.
+ * Searchable, paginated multi-select for a single free-text custom field.
+ * Originally built for the leads filter bar; `fetchValues` makes it reusable
+ * wherever a filter needs distinct values for a custom field with no fixed
+ * DROPDOWN option list (e.g. Manage Students' learner-scoped fields). Distinct
+ * values are loaded lazily from the backend only once the dropdown is opened
+ * (and re-fetched as the admin types), so a field the admin hasn't interacted
+ * with never hits the API. Selecting values OR's them within this field; the
+ * request AND's across fields.
  */
 export function CustomFieldMultiSelectFilter({
     instituteId,
@@ -40,6 +84,9 @@ export function CustomFieldMultiSelectFilter({
     fieldName,
     selected,
     onChange,
+    fetchValues = fetchLeadCustomFieldValues,
+    variant = 'button',
+    cacheScope = 'leads',
 }: CustomFieldMultiSelectFilterProps) {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -61,9 +108,9 @@ export function CustomFieldMultiSelectFilter({
 
     const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError } =
         useInfiniteQuery({
-            queryKey: ['leadCustomFieldValues', instituteId, fieldId, debouncedSearch],
+            queryKey: ['customFieldValues', cacheScope, instituteId, fieldId, debouncedSearch],
             queryFn: ({ pageParam }) =>
-                fetchLeadCustomFieldValues({
+                fetchValues({
                     instituteId,
                     customFieldId: fieldId,
                     search: debouncedSearch || undefined,
@@ -78,17 +125,36 @@ export function CustomFieldMultiSelectFilter({
             staleTime: 60 * 1000,
         });
 
-    const fetchedValues = useMemo(
-        () => data?.pages.flatMap((p) => p.content ?? []) ?? [],
-        [data]
-    );
+    const fetchedValues = useMemo(() => data?.pages.flatMap((p) => p.content ?? []) ?? [], [data]);
 
     // Surface already-selected values that aren't in the current (search-filtered)
-    // page first, so they can always be unchecked.
+    // page first, so they can always be unchecked. Sentinel selections (empty /
+    // contains) are rendered separately with friendly labels, not as raw values.
     const orderedValues = useMemo(() => {
-        const selectedNotShown = selected.filter((v) => !fetchedValues.includes(v));
+        const selectedNotShown = selected.filter(
+            (v) => !fetchedValues.includes(v) && !isSentinelValue(v)
+        );
         return [...selectedNotShown, ...fetchedValues];
     }, [selected, fetchedValues]);
+
+    // Pinned typed-operator rows: "contains <search>" while the admin is
+    // typing, plus Empty / Not-empty. Selecting one adds a sentinel-encoded
+    // value; the payload builders decode sentinels into operator entries.
+    const containsSentinel = debouncedSearch ? encodeContains(debouncedSearch) : null;
+    const pinnedOptions = useMemo(() => {
+        const pinned: Array<{ value: string; label: string }> = [];
+        if (containsSentinel && !selected.includes(containsSentinel)) {
+            pinned.push({
+                value: containsSentinel,
+                label: `Contains "${debouncedSearch}"`,
+            });
+        }
+        pinned.push({ value: EMPTY_SENTINEL, label: 'Empty (no value)' });
+        pinned.push({ value: NOT_EMPTY_SENTINEL, label: 'Has any value' });
+        return pinned;
+    }, [containsSentinel, debouncedSearch, selected]);
+
+    const selectedSentinels = useMemo(() => selected.filter((v) => isSentinelValue(v)), [selected]);
 
     const toggle = (value: string) => {
         if (selected.includes(value)) {
@@ -100,25 +166,72 @@ export function CustomFieldMultiSelectFilter({
 
     const count = selected.length;
     const triggerLabel = count > 0 ? `${fieldName} · ${count}` : fieldName;
+    const { isCompact } = useCompactMode();
 
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-                <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    role="combobox"
-                    aria-expanded={open}
-                    aria-label={`Filter by ${fieldName}`}
-                    className={cn(
-                        'h-10 max-w-56 justify-between',
-                        count > 0 && 'border-primary-300 bg-primary-50'
-                    )}
-                >
-                    <span className="truncate text-sm font-normal">{triggerLabel}</span>
-                    <CaretDown className="size-4 shrink-0 text-neutral-400" />
-                </Button>
+                {variant === 'pill' ? (
+                    <button
+                        type="button"
+                        role="combobox"
+                        aria-expanded={open}
+                        aria-label={`Filter by ${fieldName}`}
+                    >
+                        <ChipsWrapper
+                            className={cn(
+                                count > 0
+                                    ? 'border-primary-500 bg-primary-100'
+                                    : 'hover:border-primary-500 hover:bg-primary-50'
+                            )}
+                        >
+                            <div className="flex items-center gap-2">
+                                <PlusCircle
+                                    className={cn(
+                                        isCompact ? 'size-3.5' : 'size-4',
+                                        'text-neutral-600'
+                                    )}
+                                />
+                                <div
+                                    className={cn(
+                                        'flex items-center',
+                                        isCompact ? 'text-xs' : 'text-body',
+                                        'text-neutral-600'
+                                    )}
+                                >
+                                    {fieldName}
+                                </div>
+                                {count > 0 && (
+                                    <div className="flex items-center gap-2">
+                                        <Separator
+                                            orientation="vertical"
+                                            className="mx-2 h-4 bg-neutral-500"
+                                        />
+                                        <div className="inline-flex items-center rounded-md bg-primary-200 px-2.5 py-0.5 text-caption font-normal">
+                                            {count} selected
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </ChipsWrapper>
+                    </button>
+                ) : (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        role="combobox"
+                        aria-expanded={open}
+                        aria-label={`Filter by ${fieldName}`}
+                        className={cn(
+                            'h-10 max-w-56 justify-between',
+                            count > 0 && 'border-primary-300 bg-primary-50'
+                        )}
+                    >
+                        <span className="truncate text-sm font-normal">{triggerLabel}</span>
+                        <CaretDown className="size-4 shrink-0 text-neutral-400" />
+                    </Button>
+                )}
             </PopoverTrigger>
             <PopoverContent align="start" className="w-64 p-0">
                 <Command shouldFilter={false}>
@@ -150,6 +263,36 @@ export function CustomFieldMultiSelectFilter({
                                         Clear selection
                                     </CommandItem>
                                 )}
+                                <CommandGroup>
+                                    {selectedSentinels.map((value) => (
+                                        <CommandItem
+                                            key={value}
+                                            value={value}
+                                            onSelect={() => toggle(value)}
+                                            className="cursor-pointer"
+                                        >
+                                            <Check className="mr-2 size-4 opacity-100" />
+                                            <span className="truncate italic text-neutral-600">
+                                                {sentinelLabel(value)}
+                                            </span>
+                                        </CommandItem>
+                                    ))}
+                                    {pinnedOptions
+                                        .filter((opt) => !selected.includes(opt.value))
+                                        .map((opt) => (
+                                            <CommandItem
+                                                key={opt.value}
+                                                value={opt.value}
+                                                onSelect={() => toggle(opt.value)}
+                                                className="cursor-pointer"
+                                            >
+                                                <Check className="mr-2 size-4 opacity-0" />
+                                                <span className="truncate italic text-neutral-600">
+                                                    {opt.label}
+                                                </span>
+                                            </CommandItem>
+                                        ))}
+                                </CommandGroup>
                                 <CommandGroup>
                                     {orderedValues.map((value) => (
                                         <CommandItem

@@ -667,21 +667,25 @@ export const handleGetIndividualStudentList = ({
     };
 };
 
-export const getAttemptData = async (attemptId: string) => {
+// Pure read by default. Pass markEvaluating=true ONLY from the manual
+// evaluator flow — it transitions the attempt's result_status to EVALUATING
+// (the backend never downgrades an already-COMPLETED attempt).
+export const getAttemptData = async (attemptId: string, markEvaluating = false) => {
     const response = await authenticatedAxiosInstance({
         method: 'GET',
         url: `${GET_ATTEMPT_DATA}`,
         params: {
             attemptId,
+            markEvaluating,
         },
     });
     return response?.data;
 };
 
-export const getAttemptDetails = (attemptId: string) => {
+export const getAttemptDetails = (attemptId: string, markEvaluating = false) => {
     return {
-        queryKey: ['GET_ASSESSMENT_DETAILS', attemptId],
-        queryFn: () => getAttemptData(attemptId),
+        queryKey: ['GET_ASSESSMENT_DETAILS', attemptId, markEvaluating],
+        queryFn: () => getAttemptData(attemptId, markEvaluating),
         staleTime: 60 * 60 * 1000,
         enabled: !!attemptId,
     };

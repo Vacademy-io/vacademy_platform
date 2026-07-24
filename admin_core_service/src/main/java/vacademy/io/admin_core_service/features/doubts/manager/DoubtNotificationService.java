@@ -119,7 +119,11 @@ public class DoubtNotificationService {
         if (prefs == null) return;
 
         boolean pushOn = prefs.getPushEnabled() == null || Boolean.TRUE.equals(prefs.getPushEnabled());
-        boolean emailOn = Boolean.TRUE.equals(prefs.getEmailEnabled());
+        // Match push/system-alert: a null (unconfigured) channel flag defaults to ON, per the
+        // documented DoubtNotificationChannelPrefs default and resolvePrefs' all-true fallback.
+        // Only an explicit `false` silences email. (Previously null was treated as OFF, which
+        // silently suppressed doubt emails for any partial/legacy notification prefs object.)
+        boolean emailOn = !Boolean.FALSE.equals(prefs.getEmailEnabled());
         boolean systemAlertOn = prefs.getSystemAlertEnabled() == null
                 || Boolean.TRUE.equals(prefs.getSystemAlertEnabled());
 
@@ -165,7 +169,11 @@ public class DoubtNotificationService {
         if (prefs == null) return;
 
         boolean pushOn = prefs.getPushEnabled() == null || Boolean.TRUE.equals(prefs.getPushEnabled());
-        boolean emailOn = Boolean.TRUE.equals(prefs.getEmailEnabled());
+        // Match push/system-alert: a null (unconfigured) channel flag defaults to ON, per the
+        // documented DoubtNotificationChannelPrefs default and resolvePrefs' all-true fallback.
+        // Only an explicit `false` silences email. (Previously null was treated as OFF, which
+        // silently suppressed doubt emails for any partial/legacy notification prefs object.)
+        boolean emailOn = !Boolean.FALSE.equals(prefs.getEmailEnabled());
         boolean systemAlertOn = prefs.getSystemAlertEnabled() == null
                 || Boolean.TRUE.equals(prefs.getSystemAlertEnabled());
 
@@ -197,7 +205,7 @@ public class DoubtNotificationService {
     private void notifyGuestResolved(Doubts doubt, String instituteId) {
         if (doubt.getGuestEmail() == null || doubt.getGuestEmail().isBlank()) return;
         DoubtNotificationChannelPrefs prefs = resolvePrefs(instituteId, /*raised*/ false);
-        if (prefs == null || !Boolean.TRUE.equals(prefs.getEmailEnabled())) return;
+        if (prefs == null || Boolean.FALSE.equals(prefs.getEmailEnabled())) return;
 
         InstituteContext ctx = loadInstituteContext(instituteId);
         String templateId = resolveTemplateId(prefs.getEmailTemplateId(), instituteId,
@@ -220,7 +228,7 @@ public class DoubtNotificationService {
         // Reuse the resolved-event channel prefs as the gate — a per-event guest-reply pref isn't
         // worth a settings schema bump; institutes silencing learner emails silence these too.
         DoubtNotificationChannelPrefs prefs = resolvePrefs(instituteId, /*raised*/ false);
-        if (prefs == null || !Boolean.TRUE.equals(prefs.getEmailEnabled())) return;
+        if (prefs == null || Boolean.FALSE.equals(prefs.getEmailEnabled())) return;
 
         InstituteContext ctx = loadInstituteContext(instituteId);
         String templateId = resolveTemplateId(null, instituteId,
@@ -487,7 +495,11 @@ public class DoubtNotificationService {
     }
 
     /** Assembles {@code https://subdomain.domain/path?doubtId=id}. Trims trailing slashes from
-     *  the domain so we don't end up with double slashes when the routing row has them. */
+     *  the domain so we don't end up with double slashes when the routing row has them. Returns
+     *  {@code "#"} (no navigation) for hosts that can't be reached from a recipient's inbox —
+     *  {@code localhost}, loopback IPs, or a bare hostname with no dot — so a stray/dev
+     *  {@code institute_domain_routing} row can never produce a dead {@code https://student.localhost/...}
+     *  CTA in a real email. */
     private String formatDoubtUrl(String subdomain, String domain, String path, String doubtId) {
         if (domain == null || domain.isBlank()) return "#";
         String cleanDomain = domain.trim().replaceAll("^https?://", "").replaceAll("/$", "");
@@ -495,7 +507,27 @@ public class DoubtNotificationService {
         String host = cleanSubdomain.isEmpty() || "*".equals(cleanSubdomain)
                 ? cleanDomain
                 : cleanSubdomain + "." + cleanDomain;
+        if (isUnreachableHost(host)) {
+            log.warn("Skipping doubt CTA link — routing resolved to a non-routable host '{}' "
+                    + "(check institute_domain_routing for a localhost/dev row). doubt={}", host, doubtId);
+            return "#";
+        }
         return "https://" + host + path + "?doubtId=" + doubtId;
+    }
+
+    /**
+     * A host is unreachable from an emailed link when it points at the local machine or isn't a
+     * real public hostname: {@code localhost}/{@code *.localhost}, loopback IPs, or a bare label
+     * with no dot (e.g. {@code student}). Public FQDNs and IPv4 addresses pass.
+     */
+    private boolean isUnreachableHost(String host) {
+        if (host == null || host.isBlank()) return true;
+        String h = host.toLowerCase().trim();
+        if (h.equals("localhost") || h.endsWith(".localhost")) return true;
+        if (h.equals("127.0.0.1") || h.equals("0.0.0.0") || h.equals("::1")) return true;
+        // No dot at all → single-label host like "student"/"admin" that won't resolve publicly.
+        // (IPv4 addresses contain dots and are left alone.)
+        return !h.contains(".");
     }
 
     /**

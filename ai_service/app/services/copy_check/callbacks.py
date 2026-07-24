@@ -82,6 +82,10 @@ async def question_done(
         "annotations": verdict.get("annotations", []),
         "confidence": verdict.get("confidence", 0),
         "rubric_version": rubric_version,
+        # COMPLETED (graded) or FAILED (grading failed after retry). Java uses
+        # this to keep failed questions out of the released total and flag them
+        # for teacher review instead of silently recording a 0.
+        "status": verdict.get("status", "COMPLETED"),
     }
     await _post(f"{base_url.rstrip('/')}/copy-check/callback/question", payload)
 

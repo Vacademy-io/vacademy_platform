@@ -41,6 +41,8 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.user_subscription.entity.UserPlan;
 
 @Slf4j
 @Service
@@ -60,6 +62,9 @@ public class RazorpayWebHookService {
 
     @Autowired
     private UserInstitutePaymentGatewayMappingService userInstitutePaymentGatewayMappingService;
+
+    @Autowired
+    private vacademy.io.admin_core_service.features.payments.manager.RazorpayPaymentManager razorpayPaymentManager;
 
     @Autowired
     private PaymentLogRepository paymentLogRepository;
@@ -720,6 +725,18 @@ public class RazorpayWebHookService {
             log.info("Successfully saved Razorpay payment method for user: {} " +
                     "with token: {}", userId, tokenId);
 
+            // Step 6: Record a per-plan recurring mandate so RenewalChargeService
+            // can charge this token off-session (keyed by userPlanId). Only the
+            // plan flagged auto_renewal_enabled is ever charged, so persisting the
+            // mandate here is safe for any token capture.
+            persistRazorpayMandate(orderId, userId, instituteId, tokenId, customerId);
+
+            // Step 7: The mandate is registered, so the authorization charge has done its
+            // job. Give it back if the invite asks us to — otherwise the learner paid for
+            // a "free" trial.
+            refundTrialAuthorizationIfConfigured(orderId, instituteId,
+                    paymentEntity.has("id") ? paymentEntity.get("id").asText() : null);
+
         } catch (Exception e) {
             // Don't fail the webhook if token save fails
             // Payment is already successful, token storage is just for future use
@@ -742,6 +759,97 @@ public class RazorpayWebHookService {
      * @param orderId Payment log order ID
      * @return User ID or null if not found
      */
+    /**
+     * Persist a per-plan recurring mandate from a captured Razorpay token so the
+     * auto-charge scheduler can debit it off-session. Keyed by the plan behind
+     * this payment log. Best-effort — never fails the webhook.
+     */
+    /**
+     * Refunds the mandate authorization charge when the invite has
+     * AUTOPAY_SETTING.AUTH_REFUNDABLE set. Only applies to trial signups — a
+     * non-trial enrollment's first payment IS the plan price, not an authorization.
+     */
+    private void refundTrialAuthorizationIfConfigured(String orderId, String instituteId,
+            String razorpayPaymentId) {
+        try {
+            if (!StringUtils.hasText(razorpayPaymentId)) {
+                return;
+            }
+            Optional<PaymentLog> plOpt = paymentLogRepository.findById(orderId);
+            if (plOpt.isEmpty() || plOpt.get().getUserPlan() == null) {
+                return;
+            }
+            UserPlan userPlan = plOpt.get().getUserPlan();
+            if (!Boolean.TRUE.equals(userPlan.getIsTrial()) || userPlan.getEnrollInvite() == null) {
+                return;
+            }
+            String settingJson = userPlan.getEnrollInvite().getSettingJson();
+            if (!StringUtils.hasText(settingJson)) {
+                return;
+            }
+            JsonNode autopay = objectMapper.readTree(settingJson).path("setting").path("AUTOPAY_SETTING");
+            if (!autopay.path("AUTH_REFUNDABLE").asBoolean(false)) {
+                return;
+            }
+
+            Map<String, Object> gatewayData = institutePaymentGatewayMappingService
+                    .findInstitutePaymentGatewaySpecifData(PaymentGateway.RAZORPAY.name(), instituteId);
+            razorpayPaymentManager.refundPayment(razorpayPaymentId, gatewayData);
+            log.info("Refunded mandate authorization {} for trial plan {}",
+                    razorpayPaymentId, userPlan.getId());
+        } catch (Exception e) {
+            // The mandate is registered and the learner is enrolled — a failed refund must
+            // not undo that. Surface it loudly instead; it is money owed back.
+            log.error("Failed to refund mandate authorization for orderId {} (payment {}): {}",
+                    orderId, razorpayPaymentId, e.getMessage(), e);
+        }
+    }
+
+    private void persistRazorpayMandate(String orderId, String userId, String instituteId,
+            String tokenId, String customerId) {
+        try {
+            Optional<PaymentLog> plOpt = paymentLogRepository.findById(orderId);
+            if (plOpt.isEmpty() || plOpt.get().getUserPlan() == null) {
+                log.debug("No user plan for orderId {} — skipping mandate persist", orderId);
+                return;
+            }
+            PaymentLog paymentLog = plOpt.get();
+            String userPlanId = paymentLog.getUserPlan().getId();
+            // The cap and currency the mandate was registered with live on the originating
+            // request. Without them the renewal charge has no local ceiling to enforce.
+            Double maxAmount = null;
+            String currency = null;
+            try {
+                JsonNode original = objectMapper.readTree(paymentLog.getPaymentSpecificData())
+                        .path("originalRequest");
+                JsonNode cap = original.path("razorpay_request").path("mandate_max_amount");
+                if (cap.isNumber()) {
+                    maxAmount = cap.asDouble();
+                }
+                if (original.hasNonNull("currency")) {
+                    currency = original.get("currency").asText();
+                }
+            } catch (Exception e) {
+                log.debug("Could not read mandate cap from payment log {}: {}", orderId, e.getMessage());
+            }
+            vacademy.io.admin_core_service.features.user_subscription.dto.MandateInfo mandate =
+                    vacademy.io.admin_core_service.features.user_subscription.dto.MandateInfo.builder()
+                            .vendor(PaymentGateway.RAZORPAY.name())
+                            .customerId(customerId)
+                            .providerRef(tokenId)
+                            .maxAmount(maxAmount)
+                            .currency(currency)
+                            .frequency("as_presented")
+                            .status(vacademy.io.admin_core_service.features.user_subscription.dto.MandateInfo.STATUS_ACTIVE)
+                            .build();
+            userInstitutePaymentGatewayMappingService.upsertMandate(
+                    userId, instituteId, PaymentGateway.RAZORPAY.name(), userPlanId, mandate);
+            log.info("Persisted Razorpay mandate for plan {} (token {})", userPlanId, tokenId);
+        } catch (Exception e) {
+            log.error("Failed to persist Razorpay mandate for orderId {}: {}", orderId, e.getMessage());
+        }
+    }
+
     private String getUserIdFromPaymentLog(String orderId) {
         try {
             Optional<PaymentLog> paymentLogOptional = paymentLogRepository.findById(orderId);

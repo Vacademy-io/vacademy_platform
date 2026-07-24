@@ -159,6 +159,9 @@ function mergeWithDefaults(
             hideAuthorName:
                 incoming?.courseDetails?.hideAuthorName ??
                 d.courseDetails.hideAuthorName,
+            showInstructors:
+                incoming?.courseDetails?.showInstructors ??
+                d.courseDetails.showInstructors,
             showCourseConfiguration:
                 incoming?.courseDetails?.showCourseConfiguration ??
                 d.courseDetails.showCourseConfiguration,
@@ -220,12 +223,32 @@ function mergeWithDefaults(
                 incoming?.notifications?.allowDashboardPins ?? d.notifications.allowDashboardPins,
             allowBatchStream:
                 incoming?.notifications?.allowBatchStream ?? d.notifications.allowBatchStream,
+            allowAppOverlays:
+                incoming?.notifications?.allowAppOverlays ?? d.notifications.allowAppOverlays,
         },
         certificates: {
             enabled: incoming?.certificates?.enabled ?? d.certificates.enabled,
             generationThresholdPercent:
                 incoming?.certificates?.generationThresholdPercent ??
                 d.certificates.generationThresholdPercent,
+        },
+        liveClasses: {
+            showPastSessions:
+                incoming?.liveClasses?.showPastSessions ?? d.liveClasses.showPastSessions,
+            showRecordings:
+                incoming?.liveClasses?.showRecordings ?? d.liveClasses.showRecordings,
+            showAttendance:
+                incoming?.liveClasses?.showAttendance ?? d.liveClasses.showAttendance,
+            showActivityStats:
+                incoming?.liveClasses?.showActivityStats ?? d.liveClasses.showActivityStats,
+            showClassMaterials:
+                incoming?.liveClasses?.showClassMaterials ?? d.liveClasses.showClassMaterials,
+        },
+        tutorials: {
+            enabled: incoming?.tutorials?.enabled ?? d.tutorials.enabled,
+            enabledTours: incoming?.tutorials?.enabledTours ?? d.tutorials.enabledTours,
+            pdfGuideEnabled:
+                incoming?.tutorials?.pdfGuideEnabled ?? d.tutorials.pdfGuideEnabled,
         },
         postLoginRedirectRoute: incoming?.postLoginRedirectRoute ?? d.postLoginRedirectRoute,
     };

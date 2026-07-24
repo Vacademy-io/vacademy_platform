@@ -238,12 +238,18 @@ export function sanitizeHtml(dirtyHtml: string): string {
 
   const allowedTags = new Set([
     "b", "i", "em", "strong", "u", "br", "p", "span", "div", "ul", "ol", "li",
-    "blockquote", "code", "pre", "a", "img", "h1", "h2", "h3", "h4", "h5", "h6"
+    "blockquote", "code", "pre", "a", "img", "h1", "h2", "h3", "h4", "h5", "h6",
+    // Tables — authored in the admin rich-text editor and styled by .richtext-content.
+    "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "colgroup", "col"
   ]);
 
   const allowedAttrsByTag: Record<string, Set<string>> = {
     a: new Set(["href", "title", "target", "rel"]),
     img: new Set(["src", "alt", "title"]),
+    th: new Set(["colspan", "rowspan", "scope"]),
+    td: new Set(["colspan", "rowspan"]),
+    col: new Set(["span"]),
+    colgroup: new Set(["span"]),
     '*': new Set(["style", "class"]),
   };
 
@@ -374,7 +380,14 @@ export const processHtmlString = (htmlString: string) => {
 };
 
 /**
- * Converts a string to title case
+ * Converts a string to title case.
+ *
+ * Words that are already all-uppercase are treated as acronyms and left
+ * untouched, so admin-entered names keep their intended casing:
+ *   "PDF Notes"  -> "PDF Notes"   (not "Pdf Notes")
+ *   "class 9"    -> "Class 9"
+ *   "IIT jee"    -> "IIT Jee"
+ *
  * @param text - The string to convert to title case
  * @returns The string in title case format
  */
@@ -382,7 +395,13 @@ export function toTitleCase(text: string): string {
   if (!text) return "";
   return text
     .split(/[\s_-]+/)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .map((word) => {
+      // Preserve acronyms already typed in all caps (e.g. "PDF", "IIT").
+      if (word.length > 1 && word === word.toUpperCase() && word !== word.toLowerCase()) {
+        return word;
+      }
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
     .join(" ");
 }
 
@@ -406,4 +425,21 @@ export function formatTagForDisplay(tag: string): string {
     .split(/\s+/)
     .map((word) => word.split("-").map(cap).join("-"))
     .join(" ");
+}
+
+/**
+ * Case-insensitive natural comparator for lists of `{ name }` objects, so
+ * numbered items order the way people expect: "Class 9" before "Class 10"
+ * (not after "Class 1"), then non-numeric names alphabetically. Use it to
+ * sort filter option lists (e.g. levels) that would otherwise inherit an
+ * arbitrary API/insertion order.
+ */
+export function compareByNameNatural<T extends { name: string }>(
+  a: T,
+  b: T,
+): number {
+  return a.name.localeCompare(b.name, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
 }

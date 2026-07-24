@@ -18,6 +18,7 @@ import {
     PresentationChart,
     FileText,
     VideoCamera,
+    Translate,
 } from '@phosphor-icons/react';
 import {
     DropdownMenu,
@@ -42,6 +43,8 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import { TranslateCourseDialog } from './translate-course-dialog';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { CourseDetailsFormValues, courseDetailsSchema } from './course-details-schema';
@@ -82,7 +85,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { type DisplaySettingsData } from '@/types/display-settings';
 import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
-import { extractTextFromHTML } from '@/constants/helper';
+import { htmlHasRenderableContent } from '@/constants/helper';
 import type { PackageSessionDTO } from '@/routes/admin-package-management/-types/package-types';
 import { fetchCourseBatches } from '@/routes/admin-package-management/-services/package-service';
 import { EnrollmentWorkflowStatus } from '@/components/shared/workflow/enrollment-workflow-status';
@@ -274,9 +277,12 @@ const AdvancedIdsMenu = ({ items }: { items: AdvancedIdItem[] }) => {
 
 export const CourseDetailsPage = () => {
     const router = useRouter();
+    const { t } = useTranslation();
     const searchParams = router.state.location.search;
     const queryClient = useQueryClient();
     const courseId = searchParams.courseId ?? '';
+    // "Translate course" action (Phase 1 i18n) — scoped to the selected batch.
+    const [isTranslateDialogOpen, setIsTranslateDialogOpen] = useState(false);
 
     const { studyLibraryData, isInitLoading, setStudyLibraryData } = useStudyLibraryStore();
 
@@ -676,21 +682,20 @@ export const CourseDetailsPage = () => {
             });
     }, [batches, selectedSession, selectedLevel]);
 
-    // If dropdown is hidden (no real subgroups), clear any previously selected batch
-    // so session+level fallback mapping is used consistently.
-    useEffect(() => {
-        if (!shouldShowBatchDropdown && selectedBatchId) {
-            setSelectedBatchId('');
-        }
-    }, [shouldShowBatchDropdown, selectedBatchId]);
-
     const handleBatchChange = (batchId: string) => {
         setSelectedBatchId(batchId);
     };
 
-    // Initial/default batch selection and when session/level changes
+    // Keep the Batch/Subgroup selection in sync with the options that are actually
+    // offered. When the dropdown is hidden (no real subgroups) there is nothing to
+    // pick, so the selection stays empty and the session+level fallback mapping is
+    // used instead.
+    //
+    // This must remain a single effect: splitting "clear when hidden" and "default
+    // when empty" into two effects makes them overwrite each other's writes on every
+    // render, which re-renders the page forever.
     useEffect(() => {
-        if (!batchOptions.length) {
+        if (!shouldShowBatchDropdown || !batchOptions.length) {
             setSelectedBatchId('');
             return;
         }
@@ -708,7 +713,7 @@ export const CourseDetailsPage = () => {
         });
 
         setSelectedBatchId(preferredParent?.id ?? batchOptions[0]?.id ?? '');
-    }, [batchOptions, batches, selectedBatchId]);
+    }, [shouldShowBatchDropdown, batchOptions, batches, selectedBatchId]);
 
     // Load drip conditions and permissions from course settings
     useEffect(() => {
@@ -1347,6 +1352,25 @@ export const CourseDetailsPage = () => {
                                                 }
                                             />
                                         )}
+                                        {canEdit && packageSessionIds && (
+                                            <>
+                                                <MyButton
+                                                    type="button"
+                                                    buttonType="secondary"
+                                                    scale="small"
+                                                    onClick={() => setIsTranslateDialogOpen(true)}
+                                                >
+                                                    <Translate size={16} />
+                                                    {t('translation.translateAction')}
+                                                </MyButton>
+                                                <TranslateCourseDialog
+                                                    open={isTranslateDialogOpen}
+                                                    onOpenChange={setIsTranslateDialogOpen}
+                                                    packageSessionId={packageSessionIds}
+                                                    courseId={effectiveCourseId}
+                                                />
+                                            </>
+                                        )}
                                         {coursePage?.showAdvancedCourseIds === true && (
                                             <AdvancedIdsMenu
                                                 items={[
@@ -1610,9 +1634,9 @@ export const CourseDetailsPage = () => {
                             selectedBatchId={effectiveSelectedBatchId}
                         />
 
-                        {(extractTextFromHTML(form.getValues('courseData').whatYoullLearn) ||
-                            extractTextFromHTML(form.getValues('courseData').aboutTheCourse) ||
-                            extractTextFromHTML(form.getValues('courseData').whoShouldLearn) ||
+                        {(htmlHasRenderableContent(form.getValues('courseData').whatYoullLearn) ||
+                            htmlHasRenderableContent(form.getValues('courseData').aboutTheCourse) ||
+                            htmlHasRenderableContent(form.getValues('courseData').whoShouldLearn) ||
                             (instructors && instructors.length > 0 && isAdminOrTeacher)) && (
                             <Accordion
                                 type="single"
@@ -1630,7 +1654,7 @@ export const CourseDetailsPage = () => {
                                     <AccordionContent className="px-3 pb-3 lg:px-4 lg:pb-4">
                                         <div className="space-y-3 lg:space-y-4">
                                             {/* What You'll Learn Section */}
-                                            {extractTextFromHTML(
+                                            {htmlHasRenderableContent(
                                                 form.getValues('courseData').whatYoullLearn
                                             ) && (
                                                 <div className="rounded-md border-l-4 border-emerald-400 bg-white p-3 shadow-sm">
@@ -1651,7 +1675,7 @@ export const CourseDetailsPage = () => {
                                             )}
 
                                             {/* About Content Section */}
-                                            {extractTextFromHTML(
+                                            {htmlHasRenderableContent(
                                                 form.getValues('courseData').aboutTheCourse
                                             ) && (
                                                 <div className="rounded-md border-l-4 border-blue-400 bg-white p-3 shadow-sm">
@@ -1676,7 +1700,7 @@ export const CourseDetailsPage = () => {
                                             )}
 
                                             {/* Who Should Join Section */}
-                                            {extractTextFromHTML(
+                                            {htmlHasRenderableContent(
                                                 form.getValues('courseData').whoShouldLearn
                                             ) && (
                                                 <div className="rounded-md border-l-4 border-purple-400 bg-white p-3 shadow-sm">

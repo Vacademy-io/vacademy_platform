@@ -46,6 +46,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class LiveSessionNotificationProcessor {
 
+    private static final java.time.format.DateTimeFormatter OLD_TIME_FORMATTER =
+            java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy 'at' h:mm a", Locale.ENGLISH);
+
     private final ScheduleNotificationRepository scheduleNotificationRepository;
     private final LiveSessionRepository liveSessionRepository;
     private final StudentSessionInstituteGroupMappingRepository mappingRepository;
@@ -386,6 +389,8 @@ public class LiveSessionNotificationProcessor {
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
+            placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
+            placeholders.put("YEAR", getCurrentYear());
 
             // Add schedule details if available
             if (schedule != null) {
@@ -453,6 +458,8 @@ public class LiveSessionNotificationProcessor {
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
+            placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
+            placeholders.put("YEAR", getCurrentYear());
 
             // Add schedule details if available
             if (schedule != null) {
@@ -602,6 +609,8 @@ public class LiveSessionNotificationProcessor {
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
+            placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
+            placeholders.put("YEAR", getCurrentYear());
 
             // Add schedule details if available
             if (schedule != null) {
@@ -628,7 +637,8 @@ public class LiveSessionNotificationProcessor {
         return dto;
     }
 
-    public void sendOnEditNotification(String sessionId, List<SessionSchedule> schedules) {
+    public void sendOnEditNotification(String sessionId, List<SessionSchedule> schedules,
+                                       String oldMeetingDate, String oldStartTime) {
         try {
             LiveSession session = liveSessionRepository.findById(sessionId)
                     .orElseThrow(() -> new RuntimeException("Session not found: " + sessionId));
@@ -651,7 +661,8 @@ public class LiveSessionNotificationProcessor {
                 return;
             }
 
-            NotificationDTO notification = buildOnEditEmailNotification(session, selectedSchedule, rows);
+            NotificationDTO notification = buildOnEditEmailNotification(session, selectedSchedule, rows,
+                    oldMeetingDate, oldStartTime);
             notificationService.sendEmailViaUnified(notification, session.getInstituteId());
 
             System.out.println("ON_EDIT notification sent for session: " + sessionId + " to " + rows.size() + " participants");
@@ -660,8 +671,10 @@ public class LiveSessionNotificationProcessor {
         }
     }
 
-    private NotificationDTO buildOnEditEmailNotification(LiveSession session, SessionSchedule schedule, List<Object[]> rows) {
+    private NotificationDTO buildOnEditEmailNotification(LiveSession session, SessionSchedule schedule, List<Object[]> rows,
+                                                         String oldMeetingDate, String oldStartTime) {
         ResolvedTemplate template = liveClassTemplateService.resolveTemplate(session.getInstituteId(), NotificationEventType.LIVE_CLASS_ON_EDIT);
+        String oldTime = formatOldTime(oldMeetingDate, oldStartTime);
         NotificationDTO dto = new NotificationDTO();
         dto.setBody(template.body());
         dto.setSubject(template.subject());
@@ -688,6 +701,9 @@ public class LiveSessionNotificationProcessor {
             placeholders.put("SESSION_TITLE", session.getTitle() != null ? session.getTitle() : "Live Class");
             placeholders.put("ACTION", LiveClassAction.RESCHEDULED.getDisplayName());
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
+            placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
+            placeholders.put("YEAR", getCurrentYear());
+            placeholders.put("OLD_TIME", oldTime);
 
             String liveClassUrl = buildLiveClassUrl(session, session.getId(), userId);
             placeholders.put("LINK", liveClassUrl);
@@ -749,6 +765,34 @@ public class LiveSessionNotificationProcessor {
         } catch (Exception ex) {
             System.out.println("Error sending ON_CREATE notification for session " + sessionId + ": " + ex.getMessage());
             // Don't rethrow - we don't want to prevent session creation if notification fails
+        }
+    }
+
+    /**
+     * Renders the pre-edit schedule for the {{OLD_TIME}} placeholder, e.g.
+     * "Monday, July 20, 2026 at 2:30 PM".
+     *
+     * The date and time arrive from the client as plain wall-clock strings and are
+     * formatted verbatim — matching {{DATE}} and {{TIME}}, which also render the
+     * stored wall-clock value without timezone conversion.
+     *
+     * Falls back to "TBD" (the same placeholder the other schedule fields use when
+     * unknown) rather than returning null: the caller always puts the result in the
+     * map, and a missing key would ship the literal "{{OLD_TIME}}" text to learners.
+     */
+    private String formatOldTime(String oldMeetingDate, String oldStartTime) {
+        if (oldMeetingDate == null || oldMeetingDate.isBlank()
+                || oldStartTime == null || oldStartTime.isBlank()) {
+            return "TBD";
+        }
+        try {
+            java.time.LocalDate date = java.time.LocalDate.parse(oldMeetingDate.trim());
+            java.time.LocalTime time = java.time.LocalTime.parse(oldStartTime.trim());
+            return OLD_TIME_FORMATTER.format(LocalDateTime.of(date, time));
+        } catch (Exception ex) {
+            System.out.println("Could not parse old schedule for OLD_TIME (date=" + oldMeetingDate
+                    + ", time=" + oldStartTime + "): " + ex.getMessage());
+            return "TBD";
         }
     }
 
@@ -847,6 +891,8 @@ public class LiveSessionNotificationProcessor {
 
             // Add theme color
             placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
+            placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
+            placeholders.put("YEAR", getCurrentYear());
 
             // Add schedule details if available
             if (schedule != null) {
@@ -982,6 +1028,8 @@ public class LiveSessionNotificationProcessor {
                     placeholders.put("SESSION_TITLE", sessionTitle);
                     placeholders.put("ACTION", "Attendance: " + status);
                     placeholders.put("THEME_COLOR", getThemeColor(session.getInstituteId()));
+                    placeholders.put("INSTITUTE_NAME", getInstituteName(session.getInstituteId()));
+                    placeholders.put("YEAR", getCurrentYear());
                     placeholders.put("LINK", "#");
                     placeholders.put("ALL_TIMEZONE_TIMES", "");
                     placeholders.put("DATE", "");
@@ -1015,7 +1063,24 @@ public class LiveSessionNotificationProcessor {
         return "#ff6f3c";
     }
 
+    private String getInstituteName(String instituteId) {
+        try {
+            if (instituteId != null && !instituteId.trim().isEmpty()) {
+                var institute = instituteService.findById(instituteId);
+                String name = institute.getInstituteName();
+                if (name != null && !name.trim().isEmpty()) {
+                    return name;
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Failed to fetch institute name for institute " + instituteId + ": " + e.getMessage());
+        }
+        return "Your Organization";
+    }
 
+    private String getCurrentYear() {
+        return String.valueOf(java.time.Year.now().getValue());
+    }
 
 }
 

@@ -55,6 +55,7 @@ import {
     Plus,
     type LucideIcon,
 } from 'lucide-react';
+import { DeviceMobile, type Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { MultiSelect, type OptionType } from '@/components/design-system/multi-select';
 import { SearchableSelect } from '@/components/design-system/searchable-select';
 import { TIMEZONE_OPTIONS } from '@/routes/study-library/live-session/schedule/-constants/options';
@@ -76,8 +77,11 @@ import {
 } from '@/services/custom-field-settings';
 import { useCampaignsList } from '@/routes/audience-manager/list/-hooks/useCampaignsList';
 import type { CampaignItem } from '@/routes/audience-manager/list/-services/get-campaigns-list';
-import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
-import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import {
+    getTerminology,
+    getTerminologyPlural,
+} from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export const Route = createLazyFileRoute('/announcement/create/')({
     component: () => (
@@ -522,6 +526,7 @@ function CreateAnnouncementPage() {
         const allModes: ModeType[] = [
             'SYSTEM_ALERT',
             'DASHBOARD_PIN',
+            'APP_OVERLAY',
             'DM',
             'STREAM',
             'RESOURCES',
@@ -3003,6 +3008,37 @@ function CreateAnnouncementPage() {
                                                 'End time must be after start';
                                         }
                                     }
+                                    if (m === 'APP_OVERLAY') {
+                                        const showUntil = (s.showUntil as string) || '';
+                                        if (showUntil) {
+                                            const parsed = new Date(showUntil);
+                                            if (Number.isNaN(parsed.getTime())) {
+                                                validationErrors.push(
+                                                    'APP_OVERLAY: show until must be a valid date/time'
+                                                );
+                                                fieldErrors['modes.APP_OVERLAY.showUntil'] =
+                                                    'Enter a valid date and time';
+                                            } else if (parsed.getTime() <= Date.now()) {
+                                                validationErrors.push(
+                                                    'APP_OVERLAY: show until must be in the future'
+                                                );
+                                                fieldErrors['modes.APP_OVERLAY.showUntil'] =
+                                                    'Show until must be in the future';
+                                            }
+                                        }
+                                        const overlayPriority = Number(s.priority ?? 1);
+                                        if (
+                                            !Number.isInteger(overlayPriority) ||
+                                            overlayPriority < 1 ||
+                                            overlayPriority > 10
+                                        ) {
+                                            validationErrors.push(
+                                                'APP_OVERLAY: priority must be between 1 and 10'
+                                            );
+                                            fieldErrors['modes.APP_OVERLAY.priority'] =
+                                                'Priority must be between 1 and 10';
+                                        }
+                                    }
                                     if (m === 'RESOURCES') {
                                         const folder = (s.folderName as string) || '';
                                         if (!folder) {
@@ -3283,10 +3319,17 @@ function CreateAnnouncementPage() {
                                     recipients: expandedRecipients,
                                     // Global exclusions are currently not processed, but kept for backward compatibility
                                     exclusions: undefined,
-                                    modes: selectedModes.map((m) => ({
-                                        modeType: m,
-                                        settings: modeSettings[m] ?? {},
-                                    })),
+                                    modes: selectedModes.map((m) => {
+                                        const settings: Record<string, unknown> = {
+                                            ...(modeSettings[m] ?? {}),
+                                        };
+                                        // Backend rejects malformed LocalDateTime strings —
+                                        // drop an empty showUntil instead of sending ''.
+                                        if (m === 'APP_OVERLAY' && !settings.showUntil) {
+                                            delete settings.showUntil;
+                                        }
+                                        return { modeType: m, settings };
+                                    }),
                                     mediums: selectedMediums.map((med) => {
                                         if (med === 'EMAIL') {
                                             const selectedConfig = emailConfigurations.find(
@@ -3432,6 +3475,8 @@ function defaultModeSettings(mode: ModeType): Record<string, unknown> {
             return { priority: 'HIGH', expiresAt: '' };
         case 'DASHBOARD_PIN':
             return { priority: 10, pinStartTime: '', pinEndTime: '', position: 'TOP' };
+        case 'APP_OVERLAY':
+            return { priority: 1, showUntil: '', isDismissible: true };
         case 'DM':
             return { messagePriority: 5, allowReplies: true };
         case 'STREAM':
@@ -3597,6 +3642,48 @@ function renderModeSettingsForm(
                             {errors[`${errorPrefix}.position`]}
                         </p>
                     )}
+                </div>
+            );
+
+        case 'APP_OVERLAY':
+            return (
+                <div className="grid gap-3 md:grid-cols-2">
+                    <div>
+                        <Label>Show until</Label>
+                        <Input
+                            type="datetime-local"
+                            value={(settings.showUntil as string) || ''}
+                            onChange={(e) => set('showUntil', e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            The overlay stops appearing after this time even if not dismissed.
+                            Leave empty for no expiry.
+                        </p>
+                        {errors && errorPrefix && errors[`${errorPrefix}.showUntil`] && (
+                            <p className="text-xs text-danger-600">
+                                {errors[`${errorPrefix}.showUntil`]}
+                            </p>
+                        )}
+                    </div>
+                    <div>
+                        <Label>Priority</Label>
+                        <Input
+                            type="number"
+                            min={1}
+                            max={10}
+                            placeholder="Priority (1-10)"
+                            value={Number(settings.priority ?? 1)}
+                            onChange={(e) => set('priority', Number(e.target.value))}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            1-10 — higher priority shows first when multiple overlays are active.
+                        </p>
+                        {errors && errorPrefix && errors[`${errorPrefix}.priority`] && (
+                            <p className="text-xs text-danger-600">
+                                {errors[`${errorPrefix}.priority`]}
+                            </p>
+                        )}
+                    </div>
                 </div>
             );
 
@@ -3824,7 +3911,7 @@ function renderModeSettingsForm(
 type ModeCardProps = {
     label: string;
     description: string;
-    Icon: LucideIcon;
+    Icon: LucideIcon | PhosphorIcon;
     selected: boolean;
     disabled?: boolean;
     onToggle: () => void;
@@ -3889,7 +3976,7 @@ type ModeMeta = {
     type: ModeType;
     label: string;
     description: string;
-    Icon: LucideIcon;
+    Icon: LucideIcon | PhosphorIcon;
     renderPreview: () => JSX.Element | null;
 };
 
@@ -3932,6 +4019,29 @@ function getModeMeta(ctx: { title: string; contentText: string }): ModeMeta[] {
                         <div className="font-semibold">{title || 'Pinned announcement'}</div>
                         <div className="text-neutral-700">
                             {snippet || 'Your pinned message will be shown here.'}
+                        </div>
+                    </div>
+                </div>
+            ),
+        },
+        {
+            type: 'APP_OVERLAY',
+            label: 'App Overlay',
+            description: `Full-screen announcement ${getTerminologyPlural(
+                RoleTerms.Learner,
+                SystemTerms.Learner
+            ).toLowerCase()} see when they next open the app.`,
+            Icon: DeviceMobile,
+            renderPreview: () => (
+                <div className="rounded border bg-neutral-50 p-2">
+                    <div className="flex items-center gap-2 text-xs">
+                        <DeviceMobile className="size-3.5" />
+                        <span className="font-medium">On app open</span>
+                    </div>
+                    <div className="mt-1 rounded border bg-white p-2 text-xs">
+                        <div className="font-semibold">{title || 'App overlay'}</div>
+                        <div className="text-neutral-700">
+                            {snippet || 'Your full-screen announcement will appear here.'}
                         </div>
                     </div>
                 </div>

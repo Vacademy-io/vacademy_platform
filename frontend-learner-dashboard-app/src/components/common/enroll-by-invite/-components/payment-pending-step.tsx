@@ -177,7 +177,7 @@ const PaymentPendingStep = ({
             className="w-full sm:w-auto bg-primary-500 text-white font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
           >
             Complete Payment
-            <ArrowRight className="w-5 h-5 ml-2" />
+            <ArrowRight className="w-5 h-5 ms-2" />
           </MyButton>
         )}
         <MyButton
@@ -194,7 +194,7 @@ const PaymentPendingStep = ({
           className="w-full sm:w-auto bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-lg transition-all duration-200 shadow-lg hover:shadow-xl"
         >
           View Invoice
-          <ArrowSquareOut className="w-5 h-5 ml-2" />
+          <ArrowSquareOut className="w-5 h-5 ms-2" />
         </MyButton>
       </div>
 
@@ -202,9 +202,9 @@ const PaymentPendingStep = ({
       {!shouldHidePaidPurchaseUI() && (
         <div className="text-center space-y-2">
           <p className="text-gray-600 text-sm">
-            You will be redirected to Stripe's secure payment page
+            You will be redirected to a secure payment page
           </p>
-          <p className="text-gray-500 text-xs">Powered by Stripe</p>
+          <p className="text-gray-500 text-xs">Payments are processed securely</p>
         </div>
       )}
     </div>

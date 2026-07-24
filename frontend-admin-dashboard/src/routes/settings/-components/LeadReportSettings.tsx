@@ -51,9 +51,10 @@ const SAVE_URL = GET_INSITITUTE_SETTINGS.replace('/get', '/save-setting');
 /**
  * Curated IANA timezones — default (Asia/Kolkata) first. Extend the list if an
  * institute outside these regions onboards; the value is a free-form IANA id
- * on the backend, only this picker is curated.
+ * on the backend, only this picker is curated. Exported so other timezone
+ * pickers (Settings > Language Settings) share one curated list.
  */
-const REPORT_TIMEZONES = [
+export const REPORT_TIMEZONES = [
     'Asia/Kolkata',
     'Asia/Dubai',
     'Asia/Singapore',

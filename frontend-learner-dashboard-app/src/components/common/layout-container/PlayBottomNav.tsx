@@ -5,13 +5,16 @@ import { cn } from "@/lib/utils";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import type { SidebarItemsType } from "@/types/layout-container-types";
 import type { StudentSidebarTabConfig } from "@/types/student-display-settings";
+import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
 import {
-  House,
-  BookOpen,
-  NotePencil,
-  Scroll,
-  Users,
-} from "@phosphor-icons/react";
+  NavHouseIcon,
+  NavBookIcon,
+  NavNotepadIcon,
+  NavClipboardCheckIcon,
+  NavUsersIcon,
+  NavGiftIcon,
+  NavCalendarCheckIcon,
+} from "./sidebar/nav-icons";
 import {
   Sheet,
   SheetContent,
@@ -20,13 +23,15 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 
-// Same icon map as mySidebar.tsx
+// Same hand-drawn icon set as mySidebar.tsx
 const ICON_MAP: Record<string, React.FC<IconProps>> = {
-  dashboard: House,
-  "learning-center": BookOpen,
-  homework: NotePencil,
-  "assessment-center": Scroll,
-  "sub-org-learners": Users,
+  dashboard: NavHouseIcon,
+  "learning-center": NavBookIcon,
+  homework: NavNotepadIcon,
+  "assessment-center": NavClipboardCheckIcon,
+  "sub-org-learners": NavUsersIcon,
+  referral: NavGiftIcon,
+  attendance: NavCalendarCheckIcon,
 };
 
 const LABEL_MAP: Record<string, string> = {
@@ -114,6 +119,7 @@ function shortLabelFor(title: string): string {
 export const PlayBottomNav: React.FC = () => {
   const items = usePlayNavItems();
   const router = useRouter();
+  const isCleanerPlay = useCleanerPlayTheme();
   const currentRoute = router.state.location.pathname;
 
   if (items.length === 0) return null;
@@ -124,10 +130,10 @@ export const PlayBottomNav: React.FC = () => {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-white border-t-[3px] border-primary/20"
-      style={{
+      className="fixed bottom-0 start-0 end-0 z-50 md:hidden bg-white border-t border-border"
+      style={{ // design-lint-ignore: dynamic safe-area inset padding
         paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 4px)",
-        boxShadow: "0 -4px 16px rgba(0,0,0,0.08)",
+        boxShadow: "0 -2px 8px rgba(0,0,0,0.04)",
       }}
     >
       <div className="flex items-stretch justify-around px-1 pt-1">
@@ -144,10 +150,12 @@ export const PlayBottomNav: React.FC = () => {
             >
               <div
                 className={cn(
-                  "flex h-10 w-12 items-center justify-center rounded-play-card transition-all duration-150",
+                  "flex h-10 w-12 items-center justify-center rounded-xl transition-all duration-150",
                   isActive
-                    ? "bg-play-success text-white shadow-play-2d-success group-active:translate-y-0.5 group-active:shadow-none"
-                    : "text-play-muted"
+                    ? isCleanerPlay
+                      ? "bg-primary/10 text-primary"
+                      : "bg-play-success-soft text-play-success-soft-ink group-active:translate-y-0.5"
+                    : "text-muted-foreground"
                 )}
               >
                 {Icon &&
@@ -158,8 +166,12 @@ export const PlayBottomNav: React.FC = () => {
               </div>
               <span
                 className={cn(
-                  "text-2xs font-bold uppercase leading-none tracking-wide",
-                  isActive ? "text-play-success-deep" : "text-play-muted"
+                  "text-2xs font-bold leading-none",
+                  isActive
+                    ? isCleanerPlay
+                      ? "text-primary"
+                      : "text-play-success-soft-ink"
+                    : "text-muted-foreground"
                 )}
               >
                 {shortLabel}
@@ -173,19 +185,17 @@ export const PlayBottomNav: React.FC = () => {
           <Sheet>
             <SheetTrigger asChild>
               <button className="flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 py-1.5">
-                <div className="flex h-10 w-12 items-center justify-center rounded-play-card text-play-muted">
+                <div className="flex h-10 w-12 items-center justify-center rounded-xl text-muted-foreground">
                   <DotsThree size={24} weight="bold" />
                 </div>
-                <span className="text-2xs font-bold uppercase leading-none tracking-wide text-play-muted">
+                <span className="text-2xs font-bold leading-none text-muted-foreground">
                   More
                 </span>
               </button>
             </SheetTrigger>
             <SheetContent side="bottom" className="rounded-t-3xl pb-safe">
               <SheetHeader>
-                <SheetTitle className="font-black uppercase tracking-wide text-sm">
-                  More
-                </SheetTitle>
+                <SheetTitle className="text-sm font-bold">More</SheetTitle>
               </SheetHeader>
               <div className="grid grid-cols-3 gap-3 py-4">
                 {overflowItems.map((item, i) => {
@@ -198,16 +208,22 @@ export const PlayBottomNav: React.FC = () => {
                       key={i}
                       to={item.to || "/"}
                       className={cn(
-                        "group flex min-h-12 flex-col items-center gap-2 rounded-play-card p-4 transition-all",
-                        isActive ? "bg-play-highlight" : "hover:bg-muted"
+                        "group flex min-h-12 flex-col items-center gap-2 rounded-xl p-4 transition-all",
+                        isActive
+                          ? isCleanerPlay
+                            ? "bg-primary/5"
+                            : "bg-play-gold-soft"
+                          : "hover:bg-muted"
                       )}
                     >
                       <div
                         className={cn(
-                          "flex size-12 items-center justify-center rounded-play-card",
+                          "flex size-12 items-center justify-center rounded-xl",
                           isActive
-                            ? "bg-play-success text-white shadow-play-2d-success group-active:translate-y-0.5 group-active:shadow-none"
-                            : "bg-muted text-play-muted"
+                            ? isCleanerPlay
+                              ? "bg-primary/10 text-primary"
+                              : "bg-play-success-soft text-play-success-soft-ink"
+                            : "bg-muted text-muted-foreground"
                         )}
                       >
                         {Icon &&
@@ -219,7 +235,11 @@ export const PlayBottomNav: React.FC = () => {
                       <span
                         className={cn(
                           "text-center text-xs font-bold",
-                          isActive ? "text-play-ink" : "text-play-muted"
+                          isActive
+                            ? isCleanerPlay
+                              ? "text-primary"
+                              : "text-play-ink"
+                            : "text-muted-foreground"
                         )}
                       >
                         {item.title}
@@ -247,6 +267,7 @@ export const PlayBottomNav: React.FC = () => {
 export const PlayNavRail: React.FC = () => {
   const items = usePlayNavItems();
   const router = useRouter();
+  const isCleanerPlay = useCleanerPlayTheme();
   const currentRoute = router.state.location.pathname;
 
   if (items.length === 0) return null;
@@ -254,7 +275,7 @@ export const PlayNavRail: React.FC = () => {
   return (
     <nav
       aria-label="Main navigation"
-      className="sticky top-0 z-30 hidden h-svh w-20 shrink-0 flex-col items-center gap-1 overflow-y-auto border-r-[3px] border-primary/20 bg-white px-2 py-4 lg:flex"
+      className="sticky top-0 z-30 hidden h-svh w-20 shrink-0 flex-col items-center gap-1 overflow-y-auto border-e border-border bg-white px-2 py-4 lg:flex"
     >
       {items.map((item, i) => {
         const isActive = item.to ? currentRoute.includes(item.to) : false;
@@ -268,10 +289,12 @@ export const PlayNavRail: React.FC = () => {
           >
             <div
               className={cn(
-                "flex h-11 w-12 items-center justify-center rounded-play-card transition-all duration-150",
+                "flex h-11 w-12 items-center justify-center rounded-xl transition-all duration-150",
                 isActive
-                  ? "bg-play-success text-white shadow-play-2d-success group-active:translate-y-0.5 group-active:shadow-none"
-                  : "text-play-muted group-hover:bg-muted"
+                  ? isCleanerPlay
+                    ? "bg-primary/10 text-primary"
+                    : "bg-play-success-soft text-play-success-soft-ink group-active:translate-y-0.5"
+                  : "text-muted-foreground group-hover:bg-muted"
               )}
             >
               {Icon &&
@@ -282,8 +305,12 @@ export const PlayNavRail: React.FC = () => {
             </div>
             <span
               className={cn(
-                "text-2xs font-bold uppercase leading-none tracking-wide",
-                isActive ? "text-play-success-deep" : "text-play-muted"
+                "text-2xs font-bold leading-none",
+                isActive
+                  ? isCleanerPlay
+                    ? "text-primary"
+                    : "text-play-success-soft-ink"
+                  : "text-muted-foreground"
               )}
             >
               {shortLabelFor(item.title)}

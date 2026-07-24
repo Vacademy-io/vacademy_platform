@@ -1022,11 +1022,14 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                 SELECT COALESCE(AVG(slide_completion_percentage), 0)
                 FROM slide_completion;
             """, nativeQuery = true)
+    // startDate/endDate are java.util.Date (not java.sql.Date) so callers can bind an end-of-day
+    // Timestamp. activity_log.created_at is a TIMESTAMP; binding a bare DATE made the upper bound
+    // `endDate 00:00:00`, which dropped every activity logged during the final day of the window.
     Double getLearnerCourseCompletionPercentage(
             @Param("sessionId") String sessionId,
             @Param("userId") String userId,
-            @Param("startDate") Date startDate,
-            @Param("endDate") Date endDate,
+            @Param("startDate") java.util.Date startDate,
+            @Param("endDate") java.util.Date endDate,
             @Param("subjectStatusList") List<String> subjectStatusList,
             @Param("moduleStatusList") List<String> moduleStatusList,
             @Param("chapterStatusList") List<String> chapterStatusList,

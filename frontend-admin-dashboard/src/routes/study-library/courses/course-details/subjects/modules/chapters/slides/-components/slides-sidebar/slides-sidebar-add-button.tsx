@@ -193,6 +193,11 @@ export const ChapterSidebarAddButton = () => {
                         description: 'Start with blank document',
                     },
                     {
+                        label: 'AI document',
+                        value: 'create-html-doc',
+                        description: 'Rich interactive page authored by AI',
+                    },
+                    {
                         label: 'Create document (Legacy editor)',
                         value: 'create-doc',
                         description: 'Deprecated — old document editor',
@@ -466,6 +471,43 @@ export const ChapterSidebarAddButton = () => {
                     }
                 } catch (err) {
                     console.error('Error creating new doc:', err);
+                    toast.error('Failed to create new document');
+                }
+                break;
+            }
+            case 'create-html-doc': {
+                // The Tiptap-based document type: data is plain HTML (no Yoopta
+                // wrapper), edited with the new editor. Coexists with 'DOC'.
+                try {
+                    const slideId = crypto.randomUUID();
+                    const uniqueTitle = generateUniqueDocumentSlideTitle(items || [], 'HTML');
+                    const slideStatus = getSlideStatusForUser();
+                    const response = await addUpdateDocumentSlide({
+                        id: slideId,
+                        title: uniqueTitle,
+                        image_file_id: '',
+                        description: '',
+                        slide_order: getNextSlideOrder(items || []),
+                        document_slide: {
+                            id: crypto.randomUUID(),
+                            type: 'HTML',
+                            data: '',
+                            title: uniqueTitle,
+                            cover_file_id: '',
+                            total_pages: 1,
+                            published_data: null,
+                            published_document_total_pages: 1,
+                        },
+                        status: slideStatus,
+                        new_slide: true,
+                        notify: false,
+                    });
+
+                    if (response) {
+                        await reorderSlidesAfterNewSlide(slideId);
+                    }
+                } catch (err) {
+                    console.error('Error creating new HTML doc:', err);
                     toast.error('Failed to create new document');
                 }
                 break;

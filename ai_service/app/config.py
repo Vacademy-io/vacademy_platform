@@ -185,6 +185,11 @@ class Settings(BaseSettings):
     # metadata/{assessmentId}. Authenticated with client_name + client_secret
     # (clientName / Signature headers), same scheme media_service used.
     assessment_service_base_url: str = os.getenv("ASSESSMENT_SERVICE_BASE_URL", "http://assessment-service:8074")
+    # notification_service base URL — used by the Vacademy Assistant's
+    # announcement tools (send via confirm-card, list planned/past).
+    notification_service_base_url: str = os.getenv(
+        "NOTIFICATION_SERVICE_BASE_URL", "http://notification-service:8076"
+    )
 
     # JWT Configuration (Shared with Java services)
     # Default value works for dev/stage if matching common_service

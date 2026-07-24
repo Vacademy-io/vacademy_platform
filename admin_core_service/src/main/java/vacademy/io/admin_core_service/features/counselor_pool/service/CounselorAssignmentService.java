@@ -36,17 +36,24 @@ import java.util.stream.Collectors;
  * request thread so the assigned counselor is visible immediately when the
  * lead-submit response returns.
  *
- * Implements the algorithm from .samar/documentation/counselor_pool_design.md
- * section 8:
  *   1. Resolve pool from audience
  *   2. Switch on mode (MANUAL leaves it unassigned)
- *   3. Build candidate counselor set
- *      - ROUND_ROBIN: ordered pool members for the audience
- *      - TIME_BASED:  shift members covering now, intersected with pool members
+ *   3. Build the eligible candidate set — ACTIVE pool members only
+ *      (TIME_BASED / shift_aware ROUND_ROBIN additionally requires being on
+ *      shift right now)
  *   4. Acquire pessimistic lock on counselor_pool_audience
- *   5. Pick next via last_assigned_counselor_id + display_order
- *   6. Apply backup if picked is INACTIVE
- *   7. Persist pointer update
+ *   5. Pick next via last_assigned_counselor_id + display_order, resuming
+ *      from the last-assigned member's true order even if they've since gone
+ *      INACTIVE or off-shift, so a status flip never re-biases the rotation
+ *   6. Persist pointer update
+ *
+ * New leads always go to a currently-ACTIVE member chosen by fair rotation —
+ * there is no "redirect an inactive member's new leads to their backup" step
+ * here (an earlier version had one; it let a single backup silently absorb
+ * several inactive counsellors' shares, defeating equal distribution). The
+ * backup field is still used elsewhere, for one-time bulk reassignment of a
+ * counsellor's EXISTING open leads at the moment they're marked inactive
+ * (see {@code CounselorPoolService.reassignOpenLeadsToBackup}).
  *
  * The resolved counselor user_id is returned to the caller, who is
  * responsible for writing it onto user_lead_profile.assigned_counselor_id.
@@ -71,10 +78,10 @@ public class CounselorAssignmentService {
     /**
      * Pick a counselor for a lead that just arrived on the given audience.
      *
-     * @return the resolved counselor user_id (after backup redirection if any),
-     *         or Optional.empty() if the audience has no pool, the pool is
-     *         MANUAL, no eligible counselor was found, or any other reason
-     *         routing should be skipped.
+     * @return the resolved counselor user_id, or Optional.empty() if the
+     *         audience has no pool, the pool is MANUAL, no eligible
+     *         (ACTIVE, on-shift-if-applicable) counselor was found, or any
+     *         other reason routing should be skipped.
      */
     @Transactional
     public Optional<String> assignCounselorForLead(String audienceId) {
@@ -103,10 +110,19 @@ public class CounselorAssignmentService {
             return Optional.empty();
         }
 
-        // Step 3: build candidate set (ordered)
-        List<CounselorPoolMember> orderedMembers = buildCandidateMembers(pool, audienceId, mode);
-        if (orderedMembers.isEmpty()) {
-            log.info("No candidate counselors for audience={} in pool={}", audienceId, poolId);
+        // Step 3: fetch every member row (all statuses) — needed so the rotation pointer can
+        // still be resolved to its true display_order even after that member goes INACTIVE or
+        // off-shift, then narrow to who's actually eligible to receive a NEW lead right now.
+        List<CounselorPoolMember> allMembers = poolMemberRepository
+                .findByPoolIdAndAudienceIdOrderByDisplayOrderAsc(pool.getId(), audienceId);
+        if (allMembers.isEmpty()) {
+            log.info("Pool {} has no members configured for audience={}", poolId, audienceId);
+            sendUnassignedAlertToPoolAdmin(pool, audienceId);
+            return Optional.empty();
+        }
+        List<CounselorPoolMember> candidates = filterEligibleCandidates(pool, allMembers, mode);
+        if (candidates.isEmpty()) {
+            log.info("No ACTIVE (eligible) counselors for audience={} in pool={}", audienceId, poolId);
             sendUnassignedAlertToPoolAdmin(pool, audienceId);
             return Optional.empty();
         }
@@ -119,29 +135,20 @@ public class CounselorAssignmentService {
             return Optional.empty();
         }
 
-        // Step 5: pick the next member by rotation
-        CounselorPoolMember picked = pickNext(orderedMembers, locked.getLastAssignedCounselorId());
+        // Step 5: pick the next ACTIVE member by rotation. picked is always eligible — no backup
+        // redirection needed for routing a new lead.
+        CounselorPoolMember picked = pickNext(candidates, allMembers, locked.getLastAssignedCounselorId());
 
-        // Step 6: resolve backup if picked is INACTIVE.
-        // Backup chain is NOT followed in v1: if the backup is also inactive, we fall through to the next eligible.
-        ResolvedAssignment resolved = resolveWithBackup(picked, orderedMembers, locked.getLastAssignedCounselorId());
-        if (resolved == null) {
-            log.info("All candidates inactive (no usable backup) for audience={} pool={}", audienceId, poolId);
-            sendUnassignedAlertToPoolAdmin(pool, audienceId);
-            return Optional.empty();
-        }
-
-        // Step 7: persist pointer. Track the ORIGINAL picked user (not the backup) so rotation continues
-        // normally when the original becomes active again.
+        // Step 6: persist pointer as the actual recipient.
         poolAudienceRepository.updateLastAssigned(
                 locked.getId(),
-                resolved.pickedOriginalUserId,
+                picked.getCounselorUserId(),
                 new Timestamp(System.currentTimeMillis()));
 
-        // Step 8: bell-icon notification to the assigned counselor.
-        sendNewLeadNotificationToCounsellor(pool, audienceId, resolved.resolvedUserId);
+        // Step 7: bell-icon notification to the assigned counselor.
+        sendNewLeadNotificationToCounsellor(pool, audienceId, picked.getCounselorUserId());
 
-        return Optional.of(resolved.resolvedUserId);
+        return Optional.of(picked.getCounselorUserId());
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -208,17 +215,25 @@ public class CounselorAssignmentService {
     // Candidate set construction
     // ────────────────────────────────────────────────────────────────
 
-    private List<CounselorPoolMember> buildCandidateMembers(CounselorPool pool, String audienceId, AssignmentMode mode) {
-        List<CounselorPoolMember> allMembers = poolMemberRepository
-                .findByPoolIdAndAudienceIdOrderByDisplayOrderAsc(pool.getId(), audienceId);
+    /**
+     * Narrow {@code allMembers} down to who can actually receive a NEW lead right now:
+     * always ACTIVE, and — for TIME_BASED or a shift_aware ROUND_ROBIN pool — also on
+     * shift at this moment. Order is preserved (still ascending by display_order).
+     */
+    private List<CounselorPoolMember> filterEligibleCandidates(CounselorPool pool,
+                                                                List<CounselorPoolMember> allMembers,
+                                                                AssignmentMode mode) {
+        List<CounselorPoolMember> activeMembers = allMembers.stream()
+                .filter(m -> PoolStatus.ACTIVE.name().equals(m.getStatus()))
+                .toList();
 
         // Shift-gating applies to TIME_BASED always, and to ROUND_ROBIN only when
         // the pool opted in via shift_aware. A plain ROUND_ROBIN pool
-        // (shift_aware = false) keeps every member as a candidate.
+        // (shift_aware = false) treats every ACTIVE member as a candidate.
         boolean shiftGated = mode == AssignmentMode.TIME_BASED
                 || (mode == AssignmentMode.ROUND_ROBIN && Boolean.TRUE.equals(pool.getShiftAware()));
         if (!shiftGated) {
-            return allMembers;
+            return activeMembers;
         }
 
         // Filter to counselors currently on shift. When nobody is on shift the
@@ -239,7 +254,7 @@ public class CounselorAssignmentService {
                 .map(CounselorPoolShiftMember::getCounselorUserId)
                 .collect(Collectors.toSet());
 
-        return allMembers.stream()
+        return activeMembers.stream()
                 .filter(m -> onShiftUserIds.contains(m.getCounselorUserId()))
                 .toList();
     }
@@ -250,77 +265,37 @@ public class CounselorAssignmentService {
 
     /**
      * Pick the next counselor based on display_order and the last-assigned pointer.
-     * Returns the first member whose display_order is strictly greater than the
-     * last-assigned member's order. Wraps to the first (lowest order) if no
-     * such member exists, or if the pointer is unknown or no longer in the list.
+     * Returns the first {@code candidates} member whose display_order is strictly
+     * greater than the last-assigned member's order, wrapping to the first
+     * candidate if none is found (or if there's no pointer yet).
+     *
+     * The last-assigned member's order is looked up in {@code allMembers} (every
+     * status), not {@code candidates} — so if they've since gone INACTIVE or
+     * dropped off shift, the rotation still resumes exactly where it left off
+     * instead of restarting at the front of the list every time someone's status
+     * changes. Only a truly-removed member (row deleted, order gone for good)
+     * falls back to wrapping.
      */
-    private CounselorPoolMember pickNext(List<CounselorPoolMember> orderedMembers, String lastAssignedUserId) {
+    private CounselorPoolMember pickNext(List<CounselorPoolMember> candidates,
+                                         List<CounselorPoolMember> allMembers,
+                                         String lastAssignedUserId) {
         if (lastAssignedUserId == null) {
-            return orderedMembers.get(0);
+            return candidates.get(0);
         }
-        Integer lastOrder = orderedMembers.stream()
+        Integer lastOrder = allMembers.stream()
                 .filter(m -> lastAssignedUserId.equals(m.getCounselorUserId()))
                 .map(CounselorPoolMember::getDisplayOrder)
                 .findFirst()
                 .orElse(null);
         if (lastOrder == null) {
-            // Pointer points to someone no longer in the candidate set (removed or not on shift). Restart.
-            return orderedMembers.get(0);
+            // Truly removed from the pool — no fair resume point exists. Restart.
+            return candidates.get(0);
         }
-        for (CounselorPoolMember m : orderedMembers) {
+        for (CounselorPoolMember m : candidates) {
             if (m.getDisplayOrder() > lastOrder) {
                 return m;
             }
         }
-        return orderedMembers.get(0); // wrap
+        return candidates.get(0); // wrap
     }
-
-    // ────────────────────────────────────────────────────────────────
-    // Backup resolution
-    // ────────────────────────────────────────────────────────────────
-
-    private ResolvedAssignment resolveWithBackup(CounselorPoolMember firstPick,
-                                                 List<CounselorPoolMember> orderedMembers,
-                                                 String lastAssignedUserId) {
-        CounselorPoolMember cursor = firstPick;
-        Set<String> visited = new HashSet<>();
-        while (cursor != null && !visited.contains(cursor.getCounselorUserId())) {
-            visited.add(cursor.getCounselorUserId());
-
-            if (PoolStatus.ACTIVE.name().equals(cursor.getStatus())) {
-                return new ResolvedAssignment(firstPick.getCounselorUserId(), cursor.getCounselorUserId());
-            }
-
-            // INACTIVE — check backup (one level only, per design v1).
-            // Backups can be ANY institute counsellor, not necessarily a member of
-            // this pool. If the backup is also a pool member, only redirect when
-            // they're active; otherwise (non-pool-member backup) we trust the id
-            // and route to them directly — the frontend dropdown only offered
-            // valid candidates at the moment the admin saved.
-            String backupId = cursor.getBackupCounselorUserId();
-            if (backupId != null && !backupId.isBlank()) {
-                CounselorPoolMember backupMember = orderedMembers.stream()
-                        .filter(m -> backupId.equals(m.getCounselorUserId()))
-                        .findFirst()
-                        .orElse(null);
-                boolean backupUsable = backupMember == null
-                        || PoolStatus.ACTIVE.name().equals(backupMember.getStatus());
-                if (backupUsable) {
-                    return new ResolvedAssignment(firstPick.getCounselorUserId(), backupId);
-                }
-                // Backup is in pool but inactive → fall through to next eligible.
-            }
-
-            // Advance to the next member in rotation (skip the inactive one and look for someone active).
-            cursor = pickNext(orderedMembers, cursor.getCounselorUserId());
-            // Stop if we've wrapped back to the original first pick.
-            if (cursor.getCounselorUserId().equals(firstPick.getCounselorUserId())) {
-                break;
-            }
-        }
-        return null; // Everyone in scope is inactive without usable backups.
-    }
-
-    /** Internal carrier for the pair (who-we-picked-in-rotation, who-actually-gets-it). */
-    private record ResolvedAssignment(String pickedOriginalUserId, String resolvedUserId) {}
 }

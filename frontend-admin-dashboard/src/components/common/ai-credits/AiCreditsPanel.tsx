@@ -7,6 +7,7 @@ import {
     useUserAiUsageQuery,
 } from '@/services/ai-credits/get-ai-credits';
 import { getUserId } from '@/utils/userDetails';
+import { parseUtcDate } from '@/utils/dateUtils';
 import { isIOS } from '@/native';
 import { TopUpModal } from './TopUpModal';
 import type {
@@ -331,7 +332,7 @@ function TransactionsTab() {
                                     </span>
                                 )}
                                 <span>
-                                    {new Date(tx.created_at).toLocaleDateString('en-US', {
+                                    {parseUtcDate(tx.created_at).toLocaleString('en-US', {
                                         month: 'short',
                                         day: 'numeric',
                                         hour: '2-digit',
@@ -529,6 +530,7 @@ function DailyUsageChart({ data }: { data: { date: string; total_credits: number
                         <span className="mt-1 text-[8px] text-neutral-400">
                             {new Date(day.date).toLocaleDateString('en-US', {
                                 weekday: 'narrow',
+                                timeZone: 'UTC',
                             })}
                         </span>
                         {/* Tooltip */}
@@ -710,7 +712,7 @@ export function AiCreditsPanel({
                         <span className="text-[10px] text-neutral-400">
                             Updated{' '}
                             {credits.updated_at
-                                ? new Date(credits.updated_at).toLocaleString('en-US', {
+                                ? parseUtcDate(credits.updated_at).toLocaleString('en-US', {
                                       month: 'short',
                                       day: 'numeric',
                                       hour: '2-digit',

@@ -5,6 +5,20 @@ import {
   useImperativeHandle,
   forwardRef,
 } from "react";
+import { parseHtmlToString } from "@/lib/utils";
+
+// Razorpay rejects payment creation when `description` exceeds 255 characters
+// (BAD_REQUEST_ERROR: "The description may not be greater than 255 characters").
+// Course descriptions arrive as rich-text HTML, so strip markup and truncate.
+const RAZORPAY_DESCRIPTION_MAX = 255;
+
+function toRazorpayDescription(raw: string): string {
+  const text = parseHtmlToString(raw).replace(/\s+/g, " ").trim();
+  if (!text) return "Payment for course enrollment";
+  return text.length > RAZORPAY_DESCRIPTION_MAX
+    ? `${text.slice(0, RAZORPAY_DESCRIPTION_MAX - 1)}…`
+    : text;
+}
 
 export interface RazorpayCheckoutFormRef {
   openPayment: (orderDetails: {
@@ -14,6 +28,10 @@ export interface RazorpayCheckoutFormRef {
     currency: string;
     contact: string;
     email: string;
+    // Autopay/mandate: when the backend registered a recurring mandate, these
+    // make Razorpay Checkout open in mandate mode (UPI Autopay / card e-mandate).
+    recurring?: number;
+    customerId?: string;
   }) => void;
 }
 
@@ -104,6 +122,8 @@ export const RazorpayCheckoutForm = forwardRef<
         currency: string;
         contact: string;
         email: string;
+        recurring?: number;
+        customerId?: string;
       }) => {
         if (!isScriptLoaded) {
           console.error("Razorpay script not loaded");
@@ -126,8 +146,17 @@ export const RazorpayCheckoutForm = forwardRef<
           amount: orderDetails.amount,
           currency: orderDetails.currency,
           order_id: orderDetails.razorpayOrderId,
+          // Autopay: run Checkout in recurring/mandate mode so the learner
+          // authorizes UPI Autopay / a card e-mandate (needs a customer_id + an
+          // order created with a token block, both from the backend).
+          ...(orderDetails.recurring
+            ? {
+                recurring: orderDetails.recurring,
+                customer_id: orderDetails.customerId,
+              }
+            : {}),
           name: courseName,
-          description: courseDescription,
+          description: toRazorpayDescription(courseDescription),
           handler: function (response: {
             razorpay_payment_id: string;
             razorpay_order_id: string;

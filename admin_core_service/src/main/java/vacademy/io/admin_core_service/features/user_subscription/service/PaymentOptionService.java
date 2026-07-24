@@ -224,6 +224,25 @@ public class PaymentOptionService {
         return syncMirrorForCpo(cpo, existing.get());
     }
 
+    /**
+     * Sets the admin-approval flag on a CPO's mirror PaymentOption. syncMirrorForCpo
+     * intentionally never touches require_approval, so this is the single place that
+     * writes it for CPO-backed options (driven by the CPO create/update payload).
+     */
+    public void updateMirrorRequireApproval(String cpoId, boolean requireApproval) {
+        paymentOptionRepository.findByComplexPaymentOptionId(cpoId).ifPresent(mirror -> {
+            mirror.setRequireApproval(requireApproval);
+            paymentOptionRepository.save(mirror);
+        });
+    }
+
+    /** Reads the require_approval flag off a CPO's mirror PaymentOption (false if no mirror). */
+    public boolean getMirrorRequireApproval(String cpoId) {
+        return paymentOptionRepository.findByComplexPaymentOptionId(cpoId)
+                .map(PaymentOption::isRequireApproval)
+                .orElse(false);
+    }
+
     private PaymentOption syncMirrorForCpo(ComplexPaymentOption cpo, PaymentOption mirror) {
         mirror.setName(cpo.getName());
         mirror.setStatus(mapCpoStatusToPaymentOptionStatus(cpo.getStatus()));

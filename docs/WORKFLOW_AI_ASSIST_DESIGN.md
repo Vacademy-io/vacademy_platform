@@ -18,6 +18,25 @@
 
 **Deploy prerequisites:** (1) add `OPENROUTER_API_KEY` to the admin_core pod env (same value ai-service uses); (2) optionally set `workflow.ai.draft.model` (default `anthropic/claude-sonnet-4.5`; `anthropic/claude-sonnet-5`/`opus-4.8` also available on the account).
 
+## Drip / weekday-aligned sequences (2026-07-23)
+
+Driven by the SuchBliss 14-day trial requirement ("WhatsApp drip that always starts the Monday after signup"), which the drafter could not previously express:
+
+- **Engine:** `DelayNodeHandler` gained `delay.until = NEXT_DAY_OF_WEEK` (`dayOfWeek`, `time` default 09:00, `timezone` default Asia/Kolkata, `includeSameDay` default false = strictly next occurrence). Reuses the existing persistent pause/resume path, so it survives restarts like any long DELAY.
+- **Completion budget:** `LLMService` hardcoded `max_tokens=4096`, so any ~15-node draft (a 14-day drip) hit `finish_reason=length` on every attempt and failed. `ConversationSession` now carries an optional `maxTokens`; the drafter sets `workflow.ai.draft.max-tokens` (default 16000).
+- **Grounding:** ai-catalog documents both DELAY shapes, plus two new generation rules (delay shapes; "a drip is ONE workflow of DELAY→SEND pairs, never per-day workflows or LOOP"). System prompt teaches the drip/trial pattern incl. `on = "{#ctx['user']}"` for single-learner sends and EVENT_BASED idempotency.
+- **Validation:** `WorkflowValidationService` now checks DELAY configs (nested shape required; weekday/time/timezone parse) so the repair loop catches bad delay configs instead of them executing as 0-delays.
+- **Builder UI:** DELAY node config panel has a "Wait mode" toggle (Fixed duration / Until next weekday) so AI-drafted until-weekday delays are reviewable and hand-editable.
+
+### Hardening pass (2026-07-24) — audit fixes
+
+- **SpEL survives pause/resume:** `SpelEvaluator` registers a `MapAccessor`, so `#ctx['user'].fullName` still resolves after a persisted DELAY JSON-round-trips beans into Maps (previously every dot-access after a multi-day delay threw EL1008 and could kill the rest of a drip).
+- **Trigger idempotency is now authorable:** `WorkflowBuilderDTO.TriggerDTO.idempotency_generation_setting` (validated in `WorkflowValidationService`, persisted by `WorkflowBuilderService`, passed through the FE store/publish payload and AI drafts). Guidance corrected: per-person drips need `CUSTOM_EXPRESSION` including the learner — `EVENT_BASED` on an enrollment event would admit only the first learner per batch.
+- **Statuses tell the truth:** `markAsCompleted` and the resume path no longer clobber PAUSED with COMPLETED when a run parks at the next DELAY; a sweeper (resume job tick) fails executions stuck PROCESSING >6h with no pending resume state.
+- **Sends recorded post-success:** the engine marks notification nodes executed only after a successful dispatch (errors/rate-limits no longer count as "sent").
+- **Drafting ops:** `LLMService` uses its own timeout-bounded RestTemplate (5s connect / 160s read); `/ai-draft` has a per-institute sliding-hour rate limit (`workflow.ai.draft.rate-limit-per-hour`, default 30).
+- **Panel UX:** clarifying questions render real entity pickers (audience/batch/session/invite), drafting is cancellable, empty responses surface a toast, position-less drafts get a layered auto-layout, and `workflow_type` is inferred from trigger/schedule when missing so triggers can't silently drop at publish.
+
 ## Review + hardening (2026-07-07)
 
 Adversarial multi-agent code review (45 agents) + adversarial LLM pseudo-tests (6/6 passed — the model asks instead of guessing, refuses SEND_PUSH/mutating queries, uses correct field casing, and resists a prompt-injection goal). **Fixes applied this pass** (backend BUILD SUCCESS, FE tsc + design-lint clean):

@@ -498,7 +498,7 @@ export const JupyterNotebookSlide: React.FC<JupyterNotebookSlideProps> = ({
     <div className="h-full p-1 relative">
       {/* Verification overlay */}
       {showVerification && (
-        <div className="absolute top-2 left-1/2 transform -translate-x-1/2 w-full max-w-xs z-50 animate-in fade-in slide-in-from-top duration-300">
+        <div className="absolute top-2 start-1/2 transform -translate-x-1/2 w-full max-w-xs z-50 animate-in fade-in slide-in-from-top duration-300">
           <div className="bg-yellow-50 border bg-primary-500 rounded-lg shadow-lg overflow-hidden">
             <div className="p-2">
               <div className="mt-1">
@@ -622,7 +622,7 @@ export const JupyterNotebookSlide: React.FC<JupyterNotebookSlideProps> = ({
           )}
 
           {/* Footer overlay */}
-          <div className="absolute bottom-0 left-0 right-0 border-t border-neutral-200 bg-white/95 backdrop-blur-sm px-4 py-2 flex items-center justify-between text-xs text-neutral-500">
+          <div className="absolute bottom-0 start-0 end-0 border-t border-neutral-200 bg-white/95 backdrop-blur-sm px-4 py-2 flex items-center justify-between text-xs text-neutral-500">
             <div className="flex items-center gap-4">
               <span>Type: Jupyter Notebook</span>
               <span>Active Tab: {notebookData.activeTab}</span>

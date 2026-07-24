@@ -3,13 +3,29 @@ import { Label } from '@/components/ui/label';
 import {
     Select,
     SelectContent,
+    SelectGroup,
     SelectItem,
+    SelectLabel,
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
 import { useAIModelsList } from '@/hooks/useAiModels';
 import { AI_SERVICE_BASE_URL } from '@/constants/urls';
+import { LANGUAGES } from '@/routes/video-api-studio/-services/video-generation';
 import { VideoCamera } from '@phosphor-icons/react';
+
+// Languages grouped for the dropdown, matching the voice endpoint's keys.
+const LANGUAGE_GROUPS: Array<{ group: string; items: Array<{ value: string; label: string }> }> =
+    LANGUAGES.reduce(
+        (acc, lang) => {
+            const existing = acc.find((g) => g.group === lang.group);
+            const item = { value: lang.value, label: lang.label };
+            if (existing) existing.items.push(item);
+            else acc.push({ group: lang.group, items: [item] });
+            return acc;
+        },
+        [] as Array<{ group: string; items: Array<{ value: string; label: string }> }>
+    );
 
 /**
  * Course-level AI-video settings, applied to every AI Video / AI Slides /
@@ -19,6 +35,7 @@ import { VideoCamera } from '@phosphor-icons/react';
  */
 export interface AiVideoSettings {
     model: string; // 'auto' → let the backend registry pick
+    language: string; // video-narration language, e.g. 'English (India)', 'Hindi'
     voiceGender: 'female' | 'male';
     ttsProvider: 'standard' | 'premium';
     voiceId: string; // '' → auto-pick by language + gender
@@ -28,6 +45,7 @@ export interface AiVideoSettings {
 
 export const DEFAULT_AI_VIDEO_SETTINGS: AiVideoSettings = {
     model: 'auto',
+    language: 'English (US)',
     voiceGender: 'female',
     ttsProvider: 'standard',
     voiceId: '',
@@ -41,6 +59,7 @@ export function toVideoSettingsPayload(
 ): Record<string, string> {
     if (!settings) return {};
     const payload: Record<string, string> = {
+        language: settings.language,
         voice_gender: settings.voiceGender,
         tts_provider: settings.ttsProvider,
         quality_tier: settings.qualityTier,
@@ -63,9 +82,9 @@ async function fetchVoices(
     gender: string,
     tier: string
 ): Promise<{ voices: TtsVoice[] }> {
-    // The voices endpoint keys English by region ("English (US)"), while the
-    // wizard's language is plain "English" — without this the premium list
-    // degrades to a single Edge voice that the Google TTS path can't play.
+    // Bare "English" isn't a voice-endpoint key (it wants a region like
+    // "English (US)"); normalize so the premium list doesn't degrade to a
+    // single Edge voice the Google TTS path can't play.
     const normalizedLanguage =
         language.trim().toLowerCase() === 'english' ? 'English (US)' : language;
     const params = new URLSearchParams({ language: normalizedLanguage, gender, tier });
@@ -85,29 +104,51 @@ const QUALITY_TIERS = [
 interface AiVideoSettingsCardProps {
     value: AiVideoSettings;
     onChange: (value: AiVideoSettings) => void;
-    language: string;
 }
 
-export function AiVideoSettingsCard({ value, onChange, language }: AiVideoSettingsCardProps) {
+export function AiVideoSettingsCard({ value, onChange }: AiVideoSettingsCardProps) {
     const { data: modelsList, isLoading: modelsLoading } = useAIModelsList({ use_case: 'video' });
     const { data: voicesData, isLoading: voicesLoading } = useQuery({
-        queryKey: ['tts-voices', language, value.voiceGender, value.ttsProvider],
-        queryFn: () => fetchVoices(language, value.voiceGender, value.ttsProvider),
+        queryKey: ['tts-voices', value.language, value.voiceGender, value.ttsProvider],
+        queryFn: () => fetchVoices(value.language, value.voiceGender, value.ttsProvider),
         staleTime: 1000 * 60 * 10,
     });
 
     const set = (patch: Partial<AiVideoSettings>) => onChange({ ...value, ...patch });
 
     return (
-        <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-            <div className="mb-3 flex items-center gap-2">
-                <VideoCamera className="size-4 text-neutral-500" />
+        <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 sm:p-4">
+            <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <VideoCamera className="size-4 shrink-0 text-neutral-500" />
                 <span className="text-sm font-semibold text-neutral-900">AI Video Settings</span>
                 <span className="text-xs text-neutral-500">
                     applies to AI Video, AI Slides &amp; Storybook pages
                 </span>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div>
+                    <Label className="mb-1 block text-xs text-neutral-600">Language</Label>
+                    <Select
+                        value={value.language}
+                        onValueChange={(v) => set({ language: v, voiceId: '' })}
+                    >
+                        <SelectTrigger className="h-9 bg-white text-xs">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-72">
+                            {LANGUAGE_GROUPS.map((grp) => (
+                                <SelectGroup key={grp.group}>
+                                    <SelectLabel>{grp.group}</SelectLabel>
+                                    {grp.items.map((lang) => (
+                                        <SelectItem key={lang.value} value={lang.value}>
+                                            {lang.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectGroup>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
                 <div>
                     <Label className="mb-1 block text-xs text-neutral-600">Video model</Label>
                     <Select value={value.model} onValueChange={(v) => set({ model: v })}>

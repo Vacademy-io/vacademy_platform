@@ -11,11 +11,15 @@ import {
     Check,
     CaretDown,
     CaretRight,
+    CircleNotch,
+    FilePdf,
     SquaresFour,
     SignIn,
     GraduationCap,
     BellSimple,
 } from '@phosphor-icons/react';
+import { toast } from 'sonner';
+import { downloadTutorialGuidePdf } from '@/routes/settings/-utils/tutorial-guide';
 import {
     SettingsPageShell,
     SettingsSectionsLayout,
@@ -28,19 +32,24 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
-import type {
-    StudentDisplaySettingsData,
-    StudentCourseDetailsTabId,
-    StudentAllCoursesTabId,
-    OutlineMode,
-    StudentDefaultProvider,
-    UsernameStrategy,
-    PasswordStrategy,
-    PasswordDelivery,
-    StudentAuthPresentation,
-    StudentUiType,
-    SlidesSidebarNavigation,
+import {
+    getLearnerTourOptions,
+    LEARNER_TOUR_KEYS,
+    type StudentDisplaySettingsData,
+    type StudentCourseDetailsTabId,
+    type StudentAllCoursesTabId,
+    type OutlineMode,
+    type StudentDefaultProvider,
+    type UsernameStrategy,
+    type PasswordStrategy,
+    type PasswordDelivery,
+    type StudentAuthPresentation,
+    type StudentUiType,
+    type SlidesSidebarNavigation,
 } from '@/types/student-display-settings';
+import { Checkbox } from '@/components/ui/checkbox';
+import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import {
     getStudentDisplaySettings,
     saveStudentDisplaySettings,
@@ -66,6 +75,7 @@ export default function StudentDisplaySettings(): JSX.Element {
     const [settings, setSettings] = useState<StudentDisplaySettingsData | null>(null);
     const [saving, setSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
+    const [downloadingGuide, setDownloadingGuide] = useState(false);
 
     // Snapshot of the last loaded/saved state for the Discard button in the
     // sticky unsaved-changes bar.
@@ -437,6 +447,7 @@ export default function StudentDisplaySettings(): JSX.Element {
                                 <SelectItem value="default">default</SelectItem>
                                 <SelectItem value="vibrant">vibrant</SelectItem>
                                 <SelectItem value="play">play</SelectItem>
+                                <SelectItem value="cleanerPlay">Cleaner Play</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -884,6 +895,20 @@ export default function StudentDisplaySettings(): JSX.Element {
                         <Label className="text-xs">Hide Author Name (Course Details Page)</Label>
                     </div>
 
+                    {/* Show Teachers/Instructors section on the course-details page (default off = hidden) */}
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.courseDetails.showInstructors ?? false}
+                            onCheckedChange={(v) =>
+                                update('courseDetails', {
+                                    ...settings.courseDetails,
+                                    showInstructors: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Show Teachers (Course Details Page)</Label>
+                    </div>
+
                     {/* General visibility toggles */}
                     <div className="flex items-center gap-2">
                         <Switch
@@ -1123,6 +1148,208 @@ export default function StudentDisplaySettings(): JSX.Element {
                     </div>
                 </div>
             </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Live Classes</CardTitle>
+                    <CardDescription>
+                        What learners can see about past live sessions
+                    </CardDescription>
+                </CardHeader>
+                <div className="space-y-2 p-4 pt-0">
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.liveClasses.showPastSessions}
+                            onCheckedChange={(v) =>
+                                update('liveClasses', {
+                                    ...settings.liveClasses,
+                                    showPastSessions: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Show Past Sessions</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.liveClasses.showRecordings}
+                            disabled={!settings.liveClasses.showPastSessions}
+                            onCheckedChange={(v) =>
+                                update('liveClasses', {
+                                    ...settings.liveClasses,
+                                    showRecordings: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Show Recordings</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.liveClasses.showAttendance}
+                            disabled={!settings.liveClasses.showPastSessions}
+                            onCheckedChange={(v) =>
+                                update('liveClasses', {
+                                    ...settings.liveClasses,
+                                    showAttendance: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Show Attendance</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.liveClasses.showActivityStats}
+                            disabled={!settings.liveClasses.showPastSessions}
+                            onCheckedChange={(v) =>
+                                update('liveClasses', {
+                                    ...settings.liveClasses,
+                                    showActivityStats: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Show Activity Stats</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.liveClasses.showClassMaterials}
+                            disabled={!settings.liveClasses.showPastSessions}
+                            onCheckedChange={(v) =>
+                                update('liveClasses', {
+                                    ...settings.liveClasses,
+                                    showClassMaterials: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Show Class Materials</Label>
+                    </div>
+                </div>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>App Tutorials</CardTitle>
+                    <CardDescription>
+                        Guided step-by-step tours{' '}
+                        {getTerminologyPlural(RoleTerms.Learner, SystemTerms.Learner).toLowerCase()}{' '}
+                        can replay from their Help menu
+                    </CardDescription>
+                </CardHeader>
+                <div className="space-y-2 p-4 pt-0">
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.tutorials.enabled}
+                            onCheckedChange={(v) =>
+                                update('tutorials', {
+                                    ...settings.tutorials,
+                                    enabled: v,
+                                })
+                            }
+                        />
+                        <Label className="text-xs">Enable guided tutorials</Label>
+                    </div>
+                    {settings.tutorials.enabled && (
+                        <div className="space-y-2 border-t pt-3">
+                            <div className="text-xs font-medium text-muted-foreground">
+                                Available tours
+                            </div>
+                            {getLearnerTourOptions().map((tour) => (
+                                <div key={tour.key} className="flex items-start gap-2">
+                                    <Checkbox
+                                        id={`tour-${tour.key}`}
+                                        checked={settings.tutorials.enabledTours.includes(tour.key)}
+                                        onCheckedChange={(checked) => {
+                                            const next = new Set(settings.tutorials.enabledTours);
+                                            if (checked) next.add(tour.key);
+                                            else next.delete(tour.key);
+                                            update('tutorials', {
+                                                ...settings.tutorials,
+                                                // Keep canonical registry order regardless of click order
+                                                enabledTours: LEARNER_TOUR_KEYS.filter((k) =>
+                                                    next.has(k)
+                                                ),
+                                            });
+                                        }}
+                                    />
+                                    <div className="grid gap-0.5">
+                                        <Label
+                                            htmlFor={`tour-${tour.key}`}
+                                            className="text-xs font-medium"
+                                        >
+                                            {tour.label}
+                                        </Label>
+                                        <p className="text-xs text-muted-foreground">
+                                            {tour.description}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {settings.tutorials.enabled && (
+                        <div className="space-y-3 border-t pt-3">
+                            <div className="flex items-center gap-2">
+                                <Switch
+                                    checked={settings.tutorials.pdfGuideEnabled}
+                                    onCheckedChange={(v) =>
+                                        update('tutorials', {
+                                            ...settings.tutorials,
+                                            pdfGuideEnabled: v,
+                                        })
+                                    }
+                                />
+                                <div className="grid gap-0.5">
+                                    <Label className="text-xs">How-to guide (PDF)</Label>
+                                    <p className="text-xs text-muted-foreground">
+                                        Let{' '}
+                                        {getTerminologyPlural(
+                                            RoleTerms.Learner,
+                                            SystemTerms.Learner
+                                        ).toLowerCase()}{' '}
+                                        download a branded step-by-step PDF from their Help
+                                        menu. Chapters follow the tours checked above.
+                                    </p>
+                                </div>
+                            </div>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={
+                                    downloadingGuide ||
+                                    settings.tutorials.enabledTours.length === 0
+                                }
+                                onClick={async () => {
+                                    setDownloadingGuide(true);
+                                    try {
+                                        await downloadTutorialGuidePdf(
+                                            settings.tutorials.enabledTours
+                                        );
+                                    } catch (error) {
+                                        console.error(
+                                            'Error downloading tutorial guide PDF:',
+                                            error
+                                        );
+                                        toast.error(
+                                            'Could not generate the guide PDF. Please try again.'
+                                        );
+                                    } finally {
+                                        setDownloadingGuide(false);
+                                    }
+                                }}
+                                className="gap-2"
+                            >
+                                {downloadingGuide ? (
+                                    <CircleNotch className="size-4 animate-spin" />
+                                ) : (
+                                    <FilePdf className="size-4" />
+                                )}
+                                {downloadingGuide
+                                    ? 'Generating...'
+                                    : 'Download guide (PDF)'}
+                            </Button>
+                        </div>
+                    )}
+                </div>
+            </Card>
             </section>
 
             <section id="grp-notifications" className="space-y-6">
@@ -1167,6 +1394,23 @@ export default function StudentDisplaySettings(): JSX.Element {
                             }
                         />
                         <Label className="text-xs">Allow Batch Stream</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Switch
+                            checked={settings.notifications.allowAppOverlays}
+                            onCheckedChange={(v) =>
+                                update('notifications', {
+                                    ...settings.notifications,
+                                    allowAppOverlays: v,
+                                })
+                            }
+                        />
+                        <div>
+                            <Label className="text-xs">Allow App Overlays</Label>
+                            <p className="text-xs text-muted-foreground">
+                                Full-screen announcements on app open
+                            </p>
+                        </div>
                     </div>
                 </div>
             </Card>

@@ -235,6 +235,74 @@ public final class SubOrgRegistrationFlowDTOs {
         private PaymentResponseDTO paymentResponse;
     }
 
+    /** Resume an in-flight registration by proving control of its email (sends OTP). */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class ResumeRegistrationRequestDTO {
+        private String instituteId;
+        private String code;
+        private String adminEmail;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class ResumeVerifyRequestDTO {
+        private String registrationId;
+        private String otp;
+    }
+
+    /**
+     * Returned only after resume-verify proves the OTP — powers wizard prefill.
+     * (Never returned from the idempotent verify-otp short-circuit: it carries
+     * personal data, so it demands a real verification.)
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class ResumeVerifyResponseDTO {
+        private String registrationId;
+        private String status;
+        private String kycStatus;
+        private ResumeDetailsDTO details;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class ResumeDetailsDTO {
+        private String orgName;
+        private String orgLogoFileId;
+        private String adminName;
+        private String adminEmail;
+        private String adminPhone;
+        private String addressLine1;
+        private String addressLine2;
+        private String city;
+        private String state;
+        private String pincode;
+    }
+
+    /** Fresh gateway session for a PENDING_PAYMENT registration (payment retry). */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class RetryPaymentRequestDTO {
+        private String registrationId;
+        private PaymentInitiationRequestDTO paymentInitiationRequest;
+    }
+
     /** Admin list row for a template. */
     @Data
     @Builder
@@ -266,9 +334,55 @@ public final class SubOrgRegistrationFlowDTOs {
         private String adminName;
         private String adminEmail;
         private String adminPhone;
+        /** Collected only when the template has COLLECT_ADDRESS on; null otherwise. */
+        private String city;
+        private String state;
+        private String pincode;
+        /** Seats of the spawned sub-org — null until the registration spawns one.
+         *  used = active learner members; total = the template's member_count cap. */
+        private Long usedSeats;
+        private Integer totalSeats;
         private String spawnedSubOrgId;
         private Timestamp createdAt;
         /** Null = KYC not started / not required. */
         private String kycStatus;
+    }
+
+    /**
+     * Distinct values actually present in a template's registrations — used to
+     * populate the admin listing's multi-select filters with real, searchable
+     * options (nothing hardcoded).
+     *
+     * `cities`/`states`/`pincodes` are the fixed address columns (present only
+     * when the template collects address); `customFields` is one entry per
+     * form-collected custom field that is worth filtering on (its distinct
+     * submitted values), so the filter set adapts to whatever each form asks.
+     * All lists are empty when nothing was collected yet.
+     */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class RegistrationFacetsDTO {
+        private List<String> cities;
+        private List<String> states;
+        private List<String> pincodes;
+        private List<CustomFieldFacetDTO> customFields;
+    }
+
+    /** One filterable custom field + the distinct values its registrants submitted. */
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class CustomFieldFacetDTO {
+        /** The custom_field id (matches CustomFieldValues.customFieldId). */
+        private String id;
+        /** Human label shown on the filter (the field name). */
+        private String label;
+        /** Distinct, non-blank, sorted values submitted for this field. */
+        private List<String> values;
     }
 }

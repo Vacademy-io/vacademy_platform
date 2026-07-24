@@ -62,17 +62,23 @@ def _claim_batch() -> List[Dict[str, Any]]:
         """), {"batch": BATCH_SIZE}).mappings().all()
         claimed = [dict(r) for r in rows]
 
-        # Enrich with the recording storage key (kept on the call log, not denormalized).
+        # Enrich with the recording storage key (kept on the call log, not denormalized)
+        # AND which bucket it lives in. Recordings are split across the PUBLIC and the
+        # PRIVATE media bucket (recording_private), and each has its own resolver route —
+        # handing a private file to the public resolver 404s, which fails the whole
+        # transcription job ("transcription failed: HTTP Error 404: Not Found").
         if claimed:
             ids = [c["call_log_id"] for c in claimed]
             recs = db.execute(text("""
-                SELECT id, recording_storage_key
+                SELECT id, recording_storage_key, recording_private
                 FROM telephony_call_log
                 WHERE id = ANY(:ids)
             """), {"ids": ids}).mappings().all()
             keys = {r["id"]: r["recording_storage_key"] for r in recs}
+            private = {r["id"]: r["recording_private"] for r in recs}
             for c in claimed:
                 c["recording_storage_key"] = keys.get(c["call_log_id"])
+                c["recording_private"] = bool(private.get(c["call_log_id"]))
     return claimed
 
 

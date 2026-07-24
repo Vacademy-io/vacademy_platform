@@ -321,9 +321,9 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
                         size="sm"
                     >
                         {running ? (
-                            <SpinnerGap className="mr-1 h-4 w-4 animate-spin" />
+                            <SpinnerGap className="me-1 h-4 w-4 animate-spin" />
                         ) : (
-                            <Play className="mr-1 h-4 w-4" />
+                            <Play className="me-1 h-4 w-4" />
                         )}
                         Run
                     </Button>
@@ -336,7 +336,7 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
                     {verdict && (
                         <Badge
                             variant={verdict === "ACCEPTED" ? "default" : "destructive"}
-                            className="ml-auto"
+                            className="ms-auto"
                         >
                             {verdict}
                         </Badge>

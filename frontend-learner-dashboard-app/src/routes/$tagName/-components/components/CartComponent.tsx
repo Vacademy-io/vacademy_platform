@@ -129,7 +129,7 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
 
           {/* Price - Always visible on top right */}
           {showPrice && (
-            <div className="text-right flex-shrink-0">
+            <div className="text-end flex-shrink-0">
               <PriceWithMrp
                 actual={item.price}
                 elevated={item.elevatedPrice}
@@ -148,7 +148,7 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 sm:h-8 sm:w-8 hover:bg-white active:bg-gray-200 rounded-l-lg transition-all duration-150"
+                className="h-7 w-7 sm:h-8 sm:w-8 hover:bg-white active:bg-gray-200 rounded-s-lg transition-all duration-150"
                 onClick={() => item.enrollInviteId && onQuantityChange(item.enrollInviteId, item.quantity - 1)}
                 disabled={item.quantity <= quantityMin || !item.enrollInviteId}
               >
@@ -158,7 +158,7 @@ const CartItemCard: React.FC<CartItemCardProps> = ({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 sm:h-8 sm:w-8 hover:bg-white active:bg-gray-200 rounded-r-lg transition-all duration-150"
+                className="h-7 w-7 sm:h-8 sm:w-8 hover:bg-white active:bg-gray-200 rounded-e-lg transition-all duration-150"
                 onClick={() => item.enrollInviteId && onQuantityChange(item.enrollInviteId, item.quantity + 1)}
                 disabled={!item.enrollInviteId}
               >
@@ -703,7 +703,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
           {/* Cart Items Section */}
           <div>
             <h2 className="text-base sm:text-lg font-semibold text-gray-800 mb-3">Your Books</h2>
-            <div className="flex overflow-x-auto gap-3 pb-4 snap-x pr-4 scrollbar-hide">
+            <div className="flex overflow-x-auto gap-3 pb-4 snap-x pe-4 scrollbar-hide">
               {items.map((item) => (
                 <div
                   key={item.enrollInviteId || item.id}
@@ -712,7 +712,7 @@ export const CartComponent: React.FC<CartComponentProps> = ({
                   {/* Delete Button - Overlay Top Right */}
                   {showRemoveButton && (
                     <button
-                      className="absolute top-1.5 right-1.5 z-10 p-1.5 bg-white/95 rounded-full shadow-md text-red-500 hover:text-red-700 hover:bg-red-50 transition-all duration-200 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 active:scale-90"
+                      className="absolute top-1.5 end-1.5 z-10 p-1.5 bg-white/95 rounded-full shadow-md text-red-500 hover:text-red-700 hover:bg-red-50 transition-all duration-200 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 active:scale-90"
                       onClick={(e) => {
                         e.stopPropagation();
                         if (item.enrollInviteId) handleRemove(item.enrollInviteId);

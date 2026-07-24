@@ -79,4 +79,16 @@ public interface NotificationEventConfigRepository extends JpaRepository<Notific
             String sourceId,
             NotificationTemplateType templateType
     );
+
+    /**
+     * Regardless of {@code isActive} — used by upsert flows that need to find
+     * (and reactivate/update) an existing row rather than always inserting a
+     * new one for the same event+source+type key.
+     */
+    Optional<NotificationEventConfig> findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeOrderByUpdatedAtDesc(
+            NotificationEventType eventName,
+            NotificationSourceType sourceType,
+            String sourceId,
+            NotificationTemplateType templateType
+    );
 }

@@ -53,6 +53,18 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "questions",
         "params": {"image_unit_credits": "0.5"},
     },
+    # AI evaluation of one uploaded answer copy (copy-check): OCR + per-question
+    # rubric-grounded grading. Priced per graded question for a predictable
+    # preview ("8 questions = 8 credits"); the actual charge is
+    # max(this, real token cost), so premium models (Opus/GPT) add overage on
+    # long answers while flash-lite copies stay at the flat per-question rate.
+    "copy_check_evaluation": {
+        "request_type": "evaluation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("1"),
+        "unit_field": "questions",
+        "params": {},
+    },
     "coding_question": {
         # One AI-authored coding question (problem + test cases + starter code
         # per language + a reference solution). A single LLM call — priced flat
@@ -117,6 +129,101 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "flat_base_credits": Decimal("1"),
         "per_unit_credits": Decimal("0"),
         "unit_field": "flat",
+        "params": {},
+    },
+    # HTML Document slide AI authoring — one large creative-HTML LLM call
+    # (claude-sonnet-5, up to ~32k output tokens), flat per call, charged as
+    # max(flat, actual). A full CREATE costs more than a conversational EDIT
+    # (which reuses the existing page), so they are priced separately.
+    "html_document": {          # first generation (create)
+        "request_type": "content",
+        "flat_base_credits": Decimal("15"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    "html_document_edit": {     # conversational edit of an existing page
+        "request_type": "content",
+        "flat_base_credits": Decimal("3"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # Per-page surcharge for grounding an HTML doc in an uploaded PDF (MathPix
+    # conversion cost). Charged as num_pages × per_unit, on top of the
+    # generation charge — deters dumping very large PDFs.
+    "html_document_pdf": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("0.5"),
+        "unit_field": "pages",
+        "params": {},
+    },
+    # AI Page Builder — one wizard run composes a full catalogue page as
+    # schema-bound JSON (one large LLM call + validation/repair round-trips).
+    # Charged as max(flat, actual token cost).
+    "page_generate": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("10"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # AI Page Builder copilot — one conversational edit returns a small op list
+    # (insert/update/remove/move) against the current page. Cheaper than a full
+    # generate (reuses the existing page as context, smaller output).
+    "page_edit": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("3"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # AI Page Builder brand kit — one small LLM call proposing 2-3 ThemePacks
+    # (color/atmosphere/fonts) from the institute's brand. Cheap.
+    "page_brand_kit": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("2"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    # ---- Content translation (i18n Phase 1, V384) --------------------------
+    # Ops-tunable placeholders — MUST agree with the V384 ai_tool_pricing seeds.
+    # TM (translation_memory) hits are free; only LLM-translated items bill.
+    "translate_rich_text": {   # per rich-text / entity-field item (per 100 chars)
+        "request_type": "translation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("0.02"),
+        "unit_field": "chars",
+        "params": {"chars_per_unit": "100"},
+    },
+    "translate_question": {    # per question (future per-question endpoint)
+        "request_type": "translation",
+        "flat_base_credits": Decimal("0.3"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    "translate_course": {      # whole-course job base (backs the 402 preflight)
+        "request_type": "translation",
+        "flat_base_credits": Decimal("25"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
+    "translate_strings": {     # synchronous UI/notification batch (per 100 chars of misses)
+        "request_type": "translation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("0.01"),
+        "unit_field": "chars",
+        "params": {"chars_per_unit": "100"},
+    },
+    "dub_video": {             # audio dubbing per minute (no code path yet — later wave)
+        "request_type": "translation",
+        "flat_base_credits": Decimal("0"),
+        "per_unit_credits": Decimal("3.0"),
+        "unit_field": "audio_minutes",
         "params": {},
     },
 }
@@ -271,6 +378,16 @@ class ToolCostEstimator:
                 "component": "length",
                 "detail": f"{chars} chars → {units} unit(s) × {per_unit}",
                 "credits": float(char_credits),
+            })
+
+        elif unit_field == "pages":
+            pages = max(0, int(params.get("num_pages") or 0))
+            page_credits = Decimal(pages) * per_unit
+            total += page_credits
+            breakdown.append({
+                "component": "pdf_pages",
+                "detail": f"{pages} page(s) × {per_unit}",
+                "credits": float(page_credits),
             })
 
         elif unit_field == "flat":

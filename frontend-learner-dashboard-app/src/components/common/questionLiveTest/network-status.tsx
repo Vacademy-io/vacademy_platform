@@ -112,7 +112,7 @@ const NetworkStatus = ({ onRetrySave }: NetworkStatusProps) => {
               type="button"
               onClick={handleRetry}
               disabled={isRetrying}
-              className="ml-2 flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-xs font-medium hover:bg-white/20 disabled:opacity-60"
+              className="ms-2 flex items-center gap-1 rounded bg-white/10 px-2 py-1 text-xs font-medium hover:bg-white/20 disabled:opacity-60"
             >
               {isRetrying ? (
                 <SpinnerGap className="h-3 w-3 animate-spin" />

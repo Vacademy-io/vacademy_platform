@@ -81,8 +81,13 @@ def charge_tool(
     subject_user_id: Optional[str] = None,
     request_id: Optional[str] = None,
     idempotency_key: Optional[str] = None,
+    usage_markup: Decimal = Decimal("1"),
 ) -> Decimal:
-    """Deduct max(parametric, actual) for a metered tool on the given session.
+    """Deduct max(parametric, actual × usage_markup) for a metered tool.
+
+    usage_markup (default 1×) marks up ONLY the actual token cost — used to
+    make heavy-usage tools (e.g. HTML document generation with big PDFs / large
+    pages) charge above raw cost. The parametric floor is unchanged.
 
     Records an ai_token_usage row + a credit_transactions deduction. Returns the
     amount charged. Raises on hard DB errors (callers wrap as best-effort).
@@ -99,7 +104,7 @@ def charge_tool(
             model=model,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
-        )
+        ) * usage_markup
 
     parametric = Decimal(str(ToolCostEstimator(db).estimate(tool_key, tool_params)["estimated_credits"]))
     charge = max(parametric, actual)
@@ -139,6 +144,7 @@ def record_tool_billing(
     subject_user_id: Optional[str] = None,
     request_id: Optional[str] = None,
     idempotency_key: Optional[str] = None,
+    usage_markup: Decimal = Decimal("1"),
 ) -> None:
     """Best-effort tool charge on a fresh session. Swallows all errors — the
     work has already happened, so a billing failure must not fail the response."""
@@ -160,6 +166,7 @@ def record_tool_billing(
                 subject_user_id=subject_user_id,
                 request_id=request_id,
                 idempotency_key=idempotency_key,
+                usage_markup=usage_markup,
             )
     except Exception as exc:  # noqa: BLE001
         logger.warning("Tool billing failed (tool=%s, request_id=%s): %s", tool_key, request_id, exc)

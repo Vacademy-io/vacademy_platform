@@ -239,7 +239,7 @@ function getAdmissionStatusInfo(status: string) {
     ENQUIRY: {
       label: "Enquiry Submitted",
       badge: "bg-blue-100 text-blue-700 hover:bg-blue-200",
-      borderColor: "border-l-blue-500",
+      borderColor: "border-s-blue-500",
       iconBg: "bg-blue-100 dark:bg-blue-900/30",
       bannerIcon: <Info size={20} className="text-blue-600" />,
       bannerTitle: "Inquiry Under Review",
@@ -250,7 +250,7 @@ function getAdmissionStatusInfo(status: string) {
       label: "Application Open",
       badge:
         "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-      borderColor: "border-l-amber-500",
+      borderColor: "border-s-amber-500",
       iconBg: "bg-amber-100 dark:bg-amber-900/30",
       bannerIcon: <Warning size={20} className="text-amber-600" />,
       bannerTitle: "Registration Required",
@@ -263,7 +263,7 @@ function getAdmissionStatusInfo(status: string) {
       label: "Application In Progress",
       badge:
         "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300",
-      borderColor: "border-l-yellow-500",
+      borderColor: "border-s-yellow-500",
       iconBg: "bg-yellow-100 dark:bg-yellow-900/30",
       bannerIcon: <ClipboardText size={20} className="text-yellow-600" />,
       bannerTitle: "Continue Application",
@@ -276,7 +276,7 @@ function getAdmissionStatusInfo(status: string) {
       label: "Payment Required",
       badge:
         "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
-      borderColor: "border-l-orange-500",
+      borderColor: "border-s-orange-500",
       iconBg: "bg-orange-100 dark:bg-orange-900/30",
       bannerIcon: <CurrencyDollar size={20} className="text-orange-600" />,
       bannerTitle: "Payment Pending",
@@ -289,7 +289,7 @@ function getAdmissionStatusInfo(status: string) {
       label: "Enrolled",
       badge:
         "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
-      borderColor: "border-l-emerald-500",
+      borderColor: "border-s-emerald-500",
       iconBg: "bg-emerald-100 dark:bg-emerald-900/30",
       bannerIcon: <Confetti size={20} className="text-emerald-600" />,
       bannerTitle: "Admission Complete!",
@@ -302,7 +302,7 @@ function getAdmissionStatusInfo(status: string) {
     map[status] || {
       label: status.replace(/_/g, " "),
       badge: "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300",
-      borderColor: "border-l-gray-400",
+      borderColor: "border-s-gray-400",
       iconBg: "bg-gray-100 dark:bg-gray-900/30",
       bannerIcon: <Info size={20} className="text-gray-600" />,
       bannerTitle: "In Progress",

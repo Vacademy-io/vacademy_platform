@@ -47,14 +47,29 @@ export const useStudentList = (
             type: filters.type || '',
             enroll_invite_ids: filters.enroll_invite_ids?.sort() || [],
             audience_ids: filters.audience_ids?.sort() || [],
-            // Include dynamic custom fields if present - sorting keys to be safe
-            ...Object.keys(filters)
-                .filter(key => key.startsWith('customField'))
-                .sort()
-                .reduce((obj, key) => {
-                    obj[key] = filters[key];
-                    return obj;
-                }, {} as Record<string, any>)
+            // Dropdown custom-field filters — sort both the field-id keys and each
+            // field's selected values so the cache key is stable regardless of
+            // selection order.
+            custom_field_filters: filters.custom_field_filters
+                ? Object.keys(filters.custom_field_filters)
+                      .sort()
+                      .reduce(
+                          (obj, key) => {
+                              obj[key] = [...(filters.custom_field_filters?.[key] ?? [])].sort();
+                              return obj;
+                          },
+                          {} as Record<string, string[]>
+                      )
+                : {},
+            // Typed (operator-aware) custom-field filters — stable ordering by
+            // field, operator, then values.
+            custom_field_typed_filters: (filters.custom_field_typed_filters ?? [])
+                .map((f) => ({ ...f, values: [...f.values].sort() }))
+                .sort((a, b) =>
+                    `${a.field_id}:${a.operator ?? 'IN'}`.localeCompare(
+                        `${b.field_id}:${b.operator ?? 'IN'}`
+                    )
+                ),
         });
     }, [filters]);
 

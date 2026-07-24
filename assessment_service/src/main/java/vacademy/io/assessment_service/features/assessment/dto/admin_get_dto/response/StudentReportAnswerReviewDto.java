@@ -33,5 +33,12 @@ public class StudentReportAnswerReviewDto {
     private String answerStatus;
     // Remark left by the evaluator during manual evaluation, shown to the learner.
     private String evaluatorFeedback;
+    // AI-evaluation output shown to the learner (copy-check). aiFeedback is the
+    // AI's per-question feedback; aiCriteriaBreakdown is the raw JSON array of
+    // {criteria_name, marks, reason}; evaluationSource is AI / AI_REVIEWED /
+    // MANUAL / AUTO (from question_wise_marks.marks_source) for disclosure.
+    private String aiFeedback;
+    private String aiCriteriaBreakdown;
+    private String evaluationSource;
 
 }

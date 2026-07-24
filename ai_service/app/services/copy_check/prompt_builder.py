@@ -127,13 +127,35 @@ def _type_instructions(question_type: str) -> str:
             "the rubric. Spelling/OCR errors do NOT reduce marks."
         )
     if t == "CODING":
+        # This pipeline grades a scanned/handwritten copy: no sandbox execution
+        # results (verdict, pass counts, runtime, memory) are available. Do NOT
+        # ask the model to use data it cannot see — that invites hallucinated
+        # verdicts. Grade the written logic only.
         return (
-            "CODING: Use the verdict (ACCEPTED/PARTIAL/REJECTED), passedCount/totalCount, "
-            "and the source code itself. Infer Big-O from algorithm structure. Compare "
-            "totalTimeMs/peakMemoryKb against cpuSeconds*1000 and memoryKb limits. Award "
-            "proportional to pass rate, weighted by code quality and inferred complexity."
+            "CODING: No execution results (test verdicts, pass counts, runtime, or "
+            "memory) are available for this answer. Grade the written code's logic and "
+            "approach against the rubric: algorithm correctness, handling of the cases "
+            "described, and clarity. Infer complexity from the algorithm's structure. "
+            "Do NOT invent test outcomes, pass/fail counts, or runtime figures."
         )
     return ""
+
+
+def _model_answer_block(question: dict[str, Any]) -> str:
+    """Teacher-authored reference answer, if provided. Used as a grading guide —
+    NOT a required verbatim match — so a teacher who writes a model answer
+    actually influences the grade (previously it was stored but never read)."""
+    model_answer = question.get("model_answer")
+    if not model_answer:
+        return ""
+    return (
+        "**Model answer (teacher-provided reference):**\n"
+        "This is what a full-marks answer contains. Use it as your guide to award "
+        "marks per the rubric — reward answers that reach the same understanding, "
+        "even in different words or order. Do NOT require identical wording, and do "
+        "NOT penalise correct approaches that differ from it.\n"
+        f"{model_answer}\n"
+    )
 
 
 def build_grading_prompt(
@@ -152,6 +174,7 @@ def build_grading_prompt(
 
 {_question_context(question)}
 
+{_model_answer_block(question)}
 **Evaluation rubric (JSON):**
 {rubric_json}
 
@@ -166,6 +189,7 @@ def build_grading_prompt(
 - Reference line_ids (e.g. "L1_32") in `annotations[].target`. NEVER output pixel coordinates.
 - Each annotation needs a `page_id` matching the line_id's page.
 - If the student didn't attempt this question, set `marks_awarded = 0`, `extracted_answer = ""`, and `annotations = []`.
+- `extracted_answer` must be a VERBATIM transcription of what the student actually wrote (preserve their errors) — do not correct, rephrase, or complete it. Judge intent/meaning when grading, but never rewrite the student's words here.
 - **Justify every cross/circle**: `text` MUST state what is wrong and why marks were lost. No null/empty text on cross or circle annotations.
 - **No silent mark cuts**: if `marks_awarded < {max_marks:.1f}`, add at least one annotation (cross/circle/margin_note) whose text explicitly states the deduction reason.
 - **No tick spam**: at most 3 ticks. For long correct chains, use a single `region_note` 'All steps correct' instead.
@@ -174,7 +198,7 @@ def build_grading_prompt(
 **Output: STRICT JSON only.**
 {{
   "marks_awarded": <float>,
-  "extracted_answer": "<verbatim or paraphrased student answer>",
+  "extracted_answer": "<verbatim transcription of the student's answer, errors and all>",
   "feedback": "<short feedback grounded in the rubric>",
   "confidence": <0..1 — how sure are you of this verdict>,
   "criteria_breakdown": [

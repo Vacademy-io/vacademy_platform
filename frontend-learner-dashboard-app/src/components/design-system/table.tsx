@@ -17,7 +17,7 @@ import {
 } from '@tanstack/react-table';
 import { DashboardLoader } from '../core/dashboard-loader';
 
-const headerTextCss = 'p-3 border-r border-neutral-300';
+const headerTextCss = 'p-3 border-e border-neutral-300';
 const cellCommonCss = 'p-3';
 
 export type ColumnWidthConfig = Record<string, string>;

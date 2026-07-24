@@ -468,6 +468,40 @@ export function IvrMenuEditor({
                                         onChange={(ids) => patchNode(node.id, { dialUserIds: ids })}
                                         placeholder="Pick team members to ring"
                                     />
+
+                                    <Label className="text-subtitle font-regular">
+                                        Ring for (seconds)
+                                    </Label>
+                                    <MyInput
+                                        inputType="text"
+                                        input={
+                                            node.timeoutSeconds != null ? String(node.timeoutSeconds) : ''
+                                        }
+                                        inputPlaceholder="30"
+                                        onChangeFunction={(e) => {
+                                            const digits = e.target.value.replace(/[^0-9]/g, '');
+                                            patchNode(node.id, {
+                                                timeoutSeconds: digits ? parseInt(digits, 10) : null,
+                                            });
+                                        }}
+                                        className="w-32"
+                                    />
+
+                                    <Label className="text-subtitle font-regular">
+                                        If no one answers, go to
+                                    </Label>
+                                    <MyDropdown
+                                        placeholder="Next step (another number, or voicemail)"
+                                        currentValue={displayFor(node.nextNodeId)}
+                                        dropdownList={refOptions.filter((o) => o.value !== node.id)}
+                                        handleChange={(v) => patchNode(node.id, { nextNodeId: v })}
+                                        className="w-64"
+                                    />
+                                    <p className="text-caption text-neutral-500">
+                                        The numbers above ring together. If nobody picks up within the
+                                        ring time, the call goes to this step — point it at another Dial
+                                        step to try the next person, or a Voicemail step to take a message.
+                                    </p>
                                 </div>
                             )}
 

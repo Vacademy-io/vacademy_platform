@@ -82,6 +82,11 @@ public class AiAgentService {
         agent.setDispositions(writeJson(dto.getDispositions()));
         agent.setHandoffNumbers(writeJson(dto.getHandoffNumbers()));
         agent.setMaxCallMinutes(dto.getMaxCallMinutes());
+        // Voice tuning — clamp to Bulbul v3's documented ranges so a typo can't send
+        // an out-of-range value to the TTS (pace 0.5–2.0, temperature 0.01–2.0).
+        agent.setPace(clamp(dto.getPace(), 0.5, 2.0));
+        agent.setTemperature(clamp(dto.getTemperature(), 0.01, 2.0));
+        agent.setBookingPageId(blankToNull(dto.getBookingPageId()));
         AiAgent saved = repo.save(agent);
 
         bridgeIntoSettings(saved, /* remove= */ !Boolean.TRUE.equals(saved.getEnabled()));
@@ -172,6 +177,9 @@ public class AiAgentService {
                 .dispositions(parseList(a.getDispositions()))
                 .handoffNumbers(parseList(a.getHandoffNumbers()))
                 .maxCallMinutes(a.getMaxCallMinutes())
+                .pace(a.getPace())
+                .temperature(a.getTemperature())
+                .bookingPageId(a.getBookingPageId())
                 .build();
     }
 
@@ -196,6 +204,12 @@ public class AiAgentService {
             case "INBOUND", "BOTH" -> up;
             default -> "OUTBOUND";
         };
+    }
+
+    /** Null passes through (= "use default"); non-null is clamped into [lo, hi]. */
+    private static Double clamp(Double v, double lo, double hi) {
+        if (v == null) return null;
+        return Math.max(lo, Math.min(hi, v));
     }
 
     private static String blankToNull(String s) {

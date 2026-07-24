@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.audience.dto.reports.calling.CallsByLeadResponseDTO;
 import vacademy.io.admin_core_service.features.audience.dto.reports.calling.CallsDailyResponseDTO;
 import vacademy.io.admin_core_service.features.audience.dto.reports.calling.CallsHeatmapResponseDTO;
 import vacademy.io.admin_core_service.features.audience.dto.reports.calling.FollowupAgingResponseDTO;
@@ -117,6 +118,146 @@ public class CallingReportService {
             GROUP BY 1, 2
             ORDER BY 1, 2
             """;
+
+    /**
+     * Shared lead-ownership scope arm for both calls-by-lead views. This report
+     * is LEAD-centric, so the counsellor/team filter means "this counsellor's
+     * leads" (COALESCE(linked_users, ulp.assigned_counselor_id) — same rule the
+     * leads list applies), NOT "calls this counsellor dialled": attempts always
+     * count every dial on the lead, whoever made it, so the numbers don't shrink
+     * when a colleague or admin worked a lead. When the scope comes from caller
+     * RBAC rather than an explicit picker, the unassigned pool stays visible
+     * (:includeUnassigned) — mirroring AudienceResponseRepository's list rule.
+     */
+    private static final String LEAD_OWNER_SCOPE = """
+              AND (:scopeCsv IS NULL
+                   OR COALESCE(lu.user_id, ulp.assigned_counselor_id) = ANY(STRING_TO_ARRAY(:scopeCsv, ','))
+                   OR (:includeUnassigned AND lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
+            """;
+
+    /**
+     * Lead-wise base: every in-window dial joined to its lead. Calls are matched
+     * by response_id with the user_id fallback for legacy rows (same rule as
+     * SOURCE_PERFORMANCE_SQL); the audience join pins the fallback to THIS
+     * institute's leads. subject_type guard keeps student/live-session calls out.
+     */
+    private static final String CALLS_BY_LEAD_BASE = """
+            FROM telephony_call_log tcl
+            JOIN audience_response ar
+              ON (tcl.response_id = ar.id
+                  OR (tcl.response_id IS NULL AND ar.user_id IS NOT NULL AND tcl.user_id = ar.user_id))
+            JOIN audience a ON a.id = ar.audience_id AND a.institute_id = :instituteId
+            LEFT JOIN LATERAL (
+                SELECT lu.user_id FROM linked_users lu
+                WHERE lu.source = 'ENQUIRY' AND lu.source_id = ar.enquiry_id
+                ORDER BY lu.created_at DESC LIMIT 1
+            ) lu ON true
+            LEFT JOIN user_lead_profile ulp
+                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+            LEFT JOIN lead_status ls ON ls.id = ar.lead_status_id
+            LEFT JOIN call_disposition_catalog cdc
+              ON cdc.institute_id = tcl.institute_id AND cdc.disposition_key = tcl.disposition_key
+            WHERE tcl.institute_id = :instituteId
+              AND (tcl.subject_type IS NULL OR tcl.subject_type = 'LEAD')
+              AND COALESCE(tcl.start_time, tcl.created_at) >= :fromUtc
+              AND COALESCE(tcl.start_time, tcl.created_at) < :toUtc
+              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+            """ + LEAD_OWNER_SCOPE + """
+              AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
+              AND (:search IS NULL OR ar.parent_name ILIKE '%' || :search || '%'
+                   OR ar.parent_mobile ILIKE '%' || :search || '%')
+            """;
+
+    /** Timestamps rendered in SQL: columns hold UTC wall-clock, so append Z verbatim. */
+    private static final String ISO_UTC = "'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'";
+
+    private static final String CALLS_BY_LEAD_ROWS_SQL = """
+            SELECT ar.id AS response_id,
+                   MAX(ar.user_id) AS user_id,
+                   MAX(ar.parent_name) AS lead_name,
+                   MAX(ar.parent_mobile) AS lead_phone,
+                   MAX(ls.label) AS lead_status_label,
+                   MAX(ls.color) AS lead_status_color,
+                   COUNT(DISTINCT tcl.id) AS attempts,
+                   COUNT(DISTINCT tcl.id) FILTER (WHERE tcl.status = ANY(STRING_TO_ARRAY(:connectedCsv, ','))) AS connected,
+                   COUNT(DISTINCT tcl.id) FILTER (WHERE cdc.category = 'CALLBACK' OR tcl.callback_at IS NOT NULL) AS callbacks,
+                   COUNT(DISTINCT tcl.id) FILTER (WHERE tcl.status IN ('NO_ANSWER', 'BUSY') OR cdc.category = 'NOT_CONNECTED') AS not_picked,
+                   COUNT(DISTINCT tcl.id) FILTER (WHERE tcl.status IN ('FAILED', 'CANCELLED')) AS failed,
+                   TO_CHAR(MAX(COALESCE(tcl.start_time, tcl.created_at)), """ + ISO_UTC + """
+            ) AS last_call_at,
+                   (ARRAY_AGG(tcl.status ORDER BY COALESCE(tcl.start_time, tcl.created_at) DESC))[1] AS last_call_status,
+                   (ARRAY_AGG(tcl.disposition_key ORDER BY COALESCE(tcl.start_time, tcl.created_at) DESC)
+                        FILTER (WHERE tcl.disposition_key IS NOT NULL))[1] AS last_disposition_key,
+                   COALESCE(MAX(COALESCE(lu.user_id, ulp.assigned_counselor_id)),
+                            (ARRAY_AGG(tcl.counsellor_user_id ORDER BY COALESCE(tcl.start_time, tcl.created_at) DESC)
+                                 FILTER (WHERE tcl.counsellor_user_id IS NOT NULL))[1]) AS counsellor_user_id,
+                   TO_CHAR(MIN(tcl.callback_at) FILTER (WHERE tcl.callback_at > NOW() AT TIME ZONE 'UTC'), """ + ISO_UTC + """
+            ) AS next_callback_at
+            """ + CALLS_BY_LEAD_BASE + """
+            GROUP BY ar.id
+            ORDER BY attempts DESC, MAX(COALESCE(tcl.start_time, tcl.created_at)) DESC
+            LIMIT :limit OFFSET :offset
+            """;
+
+    private static final String CALLS_BY_LEAD_COUNT_SQL =
+            "SELECT COUNT(DISTINCT ar.id) AS n " + CALLS_BY_LEAD_BASE;
+
+    private static final String CALLS_BY_LEAD_SUMMARY_SQL = """
+            SELECT COUNT(DISTINCT ar.id) AS leads_called,
+                   COUNT(DISTINCT tcl.id) AS total_dials,
+                   COUNT(DISTINCT ar.id) FILTER (WHERE tcl.status = ANY(STRING_TO_ARRAY(:connectedCsv, ','))) AS leads_connected,
+                   COUNT(DISTINCT ar.id) FILTER (WHERE cdc.category = 'CALLBACK' OR tcl.callback_at IS NOT NULL) AS leads_callback
+            """ + CALLS_BY_LEAD_BASE;
+
+    /**
+     * In-window new leads (submitted_at) with ZERO call attempts ever — the
+     * never-called check is intentionally not date-bounded: one old dial means
+     * the lead was worked. Same lead-ownership scope as the CALLED view.
+     */
+    private static final String UNCALLED_LEADS_BASE = """
+            FROM audience_response ar
+            JOIN audience a ON a.id = ar.audience_id AND a.institute_id = :instituteId
+            LEFT JOIN lead_status ls ON ls.id = ar.lead_status_id
+            LEFT JOIN LATERAL (
+                SELECT lu.user_id FROM linked_users lu
+                WHERE lu.source = 'ENQUIRY' AND lu.source_id = ar.enquiry_id
+                ORDER BY lu.created_at DESC LIMIT 1
+            ) lu ON true
+            LEFT JOIN user_lead_profile ulp
+                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+            WHERE ar.submitted_at >= :fromUtc
+              AND ar.submitted_at < :toUtc
+              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+            """ + LEAD_OWNER_SCOPE + """
+              AND (:audienceId IS NULL OR ar.audience_id = :audienceId)
+              AND (:search IS NULL OR ar.parent_name ILIKE '%' || :search || '%'
+                   OR ar.parent_mobile ILIKE '%' || :search || '%')
+              AND NOT EXISTS (
+                  SELECT 1 FROM telephony_call_log t2
+                  WHERE t2.institute_id = :instituteId
+                    AND (t2.response_id = ar.id
+                         OR (t2.response_id IS NULL AND ar.user_id IS NOT NULL AND t2.user_id = ar.user_id))
+              )
+            """;
+
+    private static final String UNCALLED_LEADS_ROWS_SQL = """
+            SELECT ar.id AS response_id,
+                   ar.user_id,
+                   ar.parent_name AS lead_name,
+                   ar.parent_mobile AS lead_phone,
+                   COALESCE(ar.source_type, 'UNKNOWN') AS source_type,
+                   TO_CHAR(ar.submitted_at, """ + ISO_UTC + """
+            ) AS submitted_at,
+                   ls.label AS lead_status_label,
+                   ls.color AS lead_status_color,
+                   COALESCE(lu.user_id, ulp.assigned_counselor_id) AS counsellor_user_id
+            """ + UNCALLED_LEADS_BASE + """
+            ORDER BY ar.submitted_at DESC
+            LIMIT :limit OFFSET :offset
+            """;
+
+    private static final String UNCALLED_LEADS_COUNT_SQL =
+            "SELECT COUNT(*) AS n " + UNCALLED_LEADS_BASE;
 
     /**
      * Aging over OPEN follow-ups, point-in-time (no date window). d = calendar
@@ -246,6 +387,134 @@ public class CallingReportService {
                         .build());
 
         return CallsHeatmapResponseDTO.builder().cells(cells).build();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // calls-by-lead
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Per-lead call-attempt roll-up (view=CALLED, most-tried first) or the
+     * in-window new leads never dialled (view=UNCALLED, newest first), plus a
+     * summary spanning both populations. Paginated; search matches lead
+     * name/mobile substring.
+     */
+    public CallsByLeadResponseDTO callsByLead(String instituteId, String fromDate, String toDate,
+                                              String teamId, String counsellorUserId, String audienceId,
+                                              String search, String view, int page, int size,
+                                              String callerUserId) {
+        LeadReportSettingService.ReportSettings settings = leadReportSettingService.get(instituteId);
+        ZoneId tz = safeZone(settings);
+        String scopeCsv = reportScopeResolver.resolveScopeUsersCsv(
+                instituteId, callerUserId, trimToNull(teamId), trimToNull(counsellorUserId));
+
+        int safeSize = Math.max(1, Math.min(size, 100));
+        int safePage = Math.max(0, page);
+        boolean uncalledView = "UNCALLED".equalsIgnoreCase(trimToNull(view) == null ? "" : view.trim());
+        // Explicit counsellor/team pick narrows to exactly those books; a scope
+        // that only comes from caller RBAC keeps the unassigned pool visible
+        // (leads-list rule — unassigned leads are everyone's to pick up).
+        boolean includeUnassigned = trimToNull(counsellorUserId) == null && trimToNull(teamId) == null;
+
+        MapSqlParameterSource params = callParams(instituteId, fromDate, toDate, tz, settings, scopeCsv)
+                .addValue("audienceId", trimToNull(audienceId), Types.VARCHAR)
+                .addValue("search", trimToNull(search), Types.VARCHAR)
+                .addValue("includeUnassigned", includeUnassigned)
+                .addValue("limit", safeSize)
+                .addValue("offset", safePage * safeSize);
+
+        CallsByLeadResponseDTO.Summary summary = jdbc.query(CALLS_BY_LEAD_SUMMARY_SQL, params, rs -> {
+            if (!rs.next()) return CallsByLeadResponseDTO.Summary.builder().build();
+            long leadsCalled = rs.getLong("leads_called");
+            long leadsConnected = rs.getLong("leads_connected");
+            return CallsByLeadResponseDTO.Summary.builder()
+                    .leadsCalled(leadsCalled)
+                    .totalDials(rs.getLong("total_dials"))
+                    .leadsConnected(leadsConnected)
+                    .leadsCallback(rs.getLong("leads_callback"))
+                    .leadsNeverConnected(Math.max(0, leadsCalled - leadsConnected))
+                    .build();
+        });
+        Long uncalledCount = jdbc.queryForObject(UNCALLED_LEADS_COUNT_SQL, params, Long.class);
+        summary.setUncalledNewLeads(uncalledCount == null ? 0 : uncalledCount);
+
+        CallsByLeadResponseDTO.CallsByLeadResponseDTOBuilder out = CallsByLeadResponseDTO.builder()
+                .summary(summary)
+                .page(safePage)
+                .size(safeSize);
+
+        if (uncalledView) {
+            List<CallsByLeadResponseDTO.UncalledLeadRow> rows =
+                    jdbc.query(UNCALLED_LEADS_ROWS_SQL, params, (rs, i) ->
+                            CallsByLeadResponseDTO.UncalledLeadRow.builder()
+                                    .responseId(rs.getString("response_id"))
+                                    .userId(rs.getString("user_id"))
+                                    .leadName(rs.getString("lead_name"))
+                                    .leadPhone(rs.getString("lead_phone"))
+                                    .sourceType(rs.getString("source_type"))
+                                    .submittedAt(rs.getString("submitted_at"))
+                                    .leadStatusLabel(rs.getString("lead_status_label"))
+                                    .leadStatusColor(rs.getString("lead_status_color"))
+                                    .counsellorUserId(rs.getString("counsellor_user_id"))
+                                    .build());
+            // One auth batch resolves counsellor names AND the lead identity for
+            // user-linked leads (their name/mobile live on the auth user, not on
+            // audience_response — parent_name is null for them).
+            Map<String, UserDTO> users = fetchUsers(rows.stream()
+                    .flatMap(r -> java.util.stream.Stream.of(
+                            r.getCounsellorUserId(),
+                            isBlank(r.getLeadName()) || isBlank(r.getLeadPhone()) ? r.getUserId() : null))
+                    .toList());
+            rows.forEach(r -> {
+                UserDTO c = users.get(r.getCounsellorUserId());
+                if (c != null) r.setCounsellorName(c.getFullName());
+                UserDTO u = users.get(r.getUserId());
+                if (u != null) {
+                    if (isBlank(r.getLeadName())) r.setLeadName(u.getFullName());
+                    if (isBlank(r.getLeadPhone())) r.setLeadPhone(u.getMobileNumber());
+                }
+            });
+            out.uncalledRows(rows).totalRows(summary.getUncalledNewLeads());
+        } else {
+            List<CallsByLeadResponseDTO.CalledLeadRow> rows =
+                    jdbc.query(CALLS_BY_LEAD_ROWS_SQL, params, (rs, i) ->
+                            CallsByLeadResponseDTO.CalledLeadRow.builder()
+                                    .responseId(rs.getString("response_id"))
+                                    .userId(rs.getString("user_id"))
+                                    .leadName(rs.getString("lead_name"))
+                                    .leadPhone(rs.getString("lead_phone"))
+                                    .leadStatusLabel(rs.getString("lead_status_label"))
+                                    .leadStatusColor(rs.getString("lead_status_color"))
+                                    .counsellorUserId(rs.getString("counsellor_user_id"))
+                                    .attempts(rs.getLong("attempts"))
+                                    .connected(rs.getLong("connected"))
+                                    .callbacks(rs.getLong("callbacks"))
+                                    .notPicked(rs.getLong("not_picked"))
+                                    .failed(rs.getLong("failed"))
+                                    .lastCallAt(rs.getString("last_call_at"))
+                                    .lastCallStatus(rs.getString("last_call_status"))
+                                    .lastDispositionKey(rs.getString("last_disposition_key"))
+                                    .nextCallbackAt(rs.getString("next_callback_at"))
+                                    .build());
+            // Same dual-purpose auth batch as the UNCALLED view (see above).
+            Map<String, UserDTO> users = fetchUsers(rows.stream()
+                    .flatMap(r -> java.util.stream.Stream.of(
+                            r.getCounsellorUserId(),
+                            isBlank(r.getLeadName()) || isBlank(r.getLeadPhone()) ? r.getUserId() : null))
+                    .toList());
+            rows.forEach(r -> {
+                UserDTO c = users.get(r.getCounsellorUserId());
+                if (c != null) r.setCounsellorName(c.getFullName());
+                UserDTO u = users.get(r.getUserId());
+                if (u != null) {
+                    if (isBlank(r.getLeadName())) r.setLeadName(u.getFullName());
+                    if (isBlank(r.getLeadPhone())) r.setLeadPhone(u.getMobileNumber());
+                }
+            });
+            Long total = jdbc.queryForObject(CALLS_BY_LEAD_COUNT_SQL, params, Long.class);
+            out.rows(rows).totalRows(total == null ? 0 : total);
+        }
+        return out.build();
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -390,22 +659,33 @@ public class CallingReportService {
     }
 
     /**
-     * Batch display-name hydration via auth-service (cross-DB — never JOIN
-     * users in admin_core SQL). One HTTP call; failure leaves names null
-     * instead of failing the report.
+     * Batch user hydration via auth-service (cross-DB — never JOIN users in
+     * admin_core SQL). One HTTP call; failure leaves the map empty (names/
+     * phones stay null) instead of failing the report.
      */
-    private Map<String, String> fetchNames(Collection<String> userIds) {
+    private Map<String, UserDTO> fetchUsers(Collection<String> userIds) {
         List<String> ids = userIds.stream().filter(id -> id != null && !id.isBlank()).distinct().toList();
         if (ids.isEmpty()) return Map.of();
-        Map<String, String> out = new HashMap<>();
+        Map<String, UserDTO> out = new HashMap<>();
         try {
             for (UserDTO u : authService.getUsersFromAuthServiceByUserIds(new ArrayList<>(ids))) {
-                if (u != null && u.getId() != null) out.put(u.getId(), u.getFullName());
+                if (u != null && u.getId() != null) out.put(u.getId(), u);
             }
         } catch (Exception e) {
-            log.warn("[CallingReport] counsellor name hydration failed: {}", e.getMessage());
+            log.warn("[CallingReport] auth user hydration failed: {}", e.getMessage());
         }
         return out;
+    }
+
+    /** Display-name view over {@link #fetchUsers}. */
+    private Map<String, String> fetchNames(Collection<String> userIds) {
+        Map<String, String> out = new HashMap<>();
+        fetchUsers(userIds).forEach((id, u) -> out.put(id, u.getFullName()));
+        return out;
+    }
+
+    private static boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 
     private static LocalDate parseOr(String iso, LocalDate fallback) {

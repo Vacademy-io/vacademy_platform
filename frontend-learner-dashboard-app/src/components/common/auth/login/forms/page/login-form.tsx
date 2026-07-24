@@ -13,6 +13,7 @@ import { EmailLogin } from "./EmailOtpForm";
 import { UsernameLogin } from "./UsernamePasswordForm";
 import { PhoneLoginForm } from "./PhoneLoginForm";
 import { Preferences } from "@capacitor/preferences";
+import { resolveFontStack } from "@/utils/branding";
 import { FcGoogle } from "react-icons/fc"; // design-lint-ignore: brand logo, no phosphor equivalent
 import { GitHubLogoIcon } from "@radix-ui/react-icons";
 import {
@@ -23,6 +24,7 @@ import { toast } from "sonner";
 import { useTheme } from "@/providers/theme/theme-provider";
 import { fetchAndStoreInstituteDetails } from "@/services/fetchAndStoreInstituteDetails";
 import { fetchAndStoreStudentDetails } from "@/services/studentDetails";
+import { hydrateParentSession } from "@/lib/auth/detect-user-role";
 import ClipLoader from "react-spinners/ClipLoader";
 import { motion, AnimatePresence } from "framer-motion";
 import { useInstituteFeatureStore } from "@/stores/insititute-feature-store";
@@ -31,6 +33,7 @@ import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { usePublicDoubtConfig } from "@/services/public-doubt-config";
 import { GuestQueryDialog } from "@/components/common/queries/GuestQueryDialog";
 import { AuthPageBranding } from "@/components/common/institute-branding";
+import { LanguageDropdown } from "@/components/common/localization/language-dropdown";
 import { identifyUser } from "@/lib/analytics";
 import { useEffect as useEffectTheme } from "react";
 import {
@@ -52,6 +55,8 @@ import {
   AppleSignInCancelledError,
 } from "@/lib/auth/appleNativeAuth";
 import { AppleSignInButton } from "@/components/common/auth/AppleSignInButton";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import {
   getTerminology,
   getTerminologyPlural,
@@ -80,6 +85,7 @@ export function LoginForm({
   courseId?: string;
   onSwitchToSignup?: () => void;
 }) {
+  const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const { setPrimaryColor } = useTheme();
   const urlParams = new URLSearchParams(window.location.search);
@@ -159,21 +165,7 @@ export function LoginForm({
           setAuthMethod("PHONE");
         }
         if (parsed?.fontFamily) {
-          const mapFamily = (f: string) => {
-            const key = String(f).toUpperCase();
-            if (key === "INTER")
-              return 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "CAIRO")
-              return 'Cairo, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "PLAYPEN SANS")
-              return 'Playpen Sans, cursive, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "WORK SANS")
-              return 'Work Sans, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            if (key === "LEXEND")
-              return 'Lexend, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
-            return f;
-          };
-          const family = mapFamily(parsed.fontFamily);
+          const family = resolveFontStack(parsed.fontFamily);
           document.documentElement.style.setProperty(
             "--app-font-family",
             family,
@@ -447,8 +439,7 @@ export function LoginForm({
           }
         } else {
           // No signupData - genuine error
-          const errorMessage =
-            "We could not find a user for the credentials used. Please sign up to create a new account or contact the administrator.";
+          const errorMessage = i18n.t("auth:toasts.userNotFoundCredentials");
 
           // Send error via multiple channels (same as modal-learner.tsx)
           try {
@@ -605,7 +596,7 @@ export function LoginForm({
         await setTokenInStorage(TokenKey.refreshToken, refreshToken);
         await handleSuccessfulLogin(accessToken, redirect);
       } catch {
-        toast.error("Failed to complete login. Please try again.");
+        toast.error(i18n.t("auth:toasts.failedCompleteLogin"));
         setIsSSOLoading(false);
       }
     };
@@ -748,10 +739,22 @@ export function LoginForm({
 
       const upperRoles = allRoles.map((r) => r.toUpperCase());
       isParent = upperRoles.includes("PARENT");
+      const isStudentToo = upperRoles.includes("STUDENT");
 
-      if (isParent) {
+      // PARENT-only guardians route to the monitoring portal. They have no student
+      // row, so we must hydrate a minimal session (StudentDetails + InstituteDetails)
+      // or isAuthenticated() rejects them. Dual-role users (STUDENT+PARENT) are NOT
+      // force-routed — they fall through to their own learner dashboard.
+      if (isParent && !isStudentToo) {
+        const parentInstituteId = authorities ? Object.keys(authorities)[0] : undefined;
+        if (parentInstituteId && userId) {
+          await hydrateParentSession(userId, parentInstituteId, {
+            user: userId,
+            authorities,
+          });
+        }
         setIsSSOLoading(false);
-        navigate({ to: "/parent" });
+        navigate({ to: "/parent/child" });
         return;
       }
 
@@ -793,14 +796,16 @@ export function LoginForm({
             await fetchAndStoreStudentDetails(instituteId, userId);
           } catch {
             toast.error(
-              `Failed to fetch ${getTerminology(
-                RoleTerms.Learner,
-                SystemTerms.Learner
-              ).toLowerCase()} details`
+              i18n.t("auth:toasts.failedFetchLearnerDetails", {
+                learner: getTerminology(
+                  RoleTerms.Learner,
+                  SystemTerms.Learner
+                ).toLowerCase(),
+              })
             );
           }
         } else {
-          toast.error("Invalid user data received");
+          toast.error(i18n.t("auth:toasts.invalidUserData"));
         }
 
         // Refresh and use Student Display Settings post-login route
@@ -830,7 +835,7 @@ export function LoginForm({
         }
       }
     } catch {
-      toast.error("Failed to process user data");
+      toast.error(i18n.t("auth:toasts.failedProcessUserData"));
     }
   };
 
@@ -848,14 +853,12 @@ export function LoginForm({
           return; // user dismissed the sheet — no error UI
         }
         if (e instanceof AppleSessionLimitError) {
-          toast.error(
-            "You've reached the active session limit. Please log out from another device and try again.",
-          );
+          toast.error(i18n.t("auth:toasts.sessionLimitReached"));
         } else {
           toast.error(
             e instanceof Error
               ? e.message
-              : "Failed to sign in with Apple. Please try again.",
+              : i18n.t("auth:toasts.appleSignInFailed"),
           );
         }
       }
@@ -895,7 +898,7 @@ export function LoginForm({
         window.location.href = loginUrl;
       }
     } catch {
-      toast.error("Failed to initiate login. Please try again.");
+      toast.error(i18n.t("auth:toasts.failedInitiateLogin"));
     }
   };
 
@@ -918,7 +921,7 @@ export function LoginForm({
             repeat: Infinity,
             ease: "easeInOut",
           }}
-          className="absolute top-20 left-20 w-24 h-24 bg-muted/20 rounded-full blur-xl"
+          className="absolute top-20 start-20 w-24 h-24 bg-muted/20 rounded-full blur-xl"
         />
         <motion.div
           animate={{
@@ -931,7 +934,7 @@ export function LoginForm({
             ease: "easeInOut",
             delay: 1,
           }}
-          className="absolute bottom-20 right-20 w-32 h-32 bg-muted/20 rounded-full blur-xl"
+          className="absolute bottom-20 end-20 w-32 h-32 bg-muted/20 rounded-full blur-xl"
         />
 
         <motion.div
@@ -959,7 +962,7 @@ export function LoginForm({
             transition={{ delay: 0.2 }}
             className="text-xl font-semibold text-gray-900 mb-2"
           >
-            Preparing Your Experience
+            {t("sso.preparingExperience")}
           </motion.h2>
           <motion.p
             initial={{ y: 20, opacity: 0 }}
@@ -967,7 +970,7 @@ export function LoginForm({
             transition={{ delay: 0.4 }}
             className="text-gray-600 text-sm"
           >
-            Getting your details and personalizing your dashboard...
+            {t("sso.personalizing")}
           </motion.p>
         </motion.div>
       </motion.div>
@@ -982,6 +985,11 @@ export function LoginForm({
     >
       {/* Subtle Background Pattern (gradients removed) */}
       <div className="absolute inset-0 -z-10" />
+
+      {/* Language switcher — full-page login only (not the embedded variant).
+          Options come from the institute's enabled locales; defaults to just
+          English until an institute enables more. */}
+      {!type && <LanguageDropdown />}
 
       {/* Centered container */}
       <div className="w-full min-h-screen-60 flex items-center justify-center p-4">
@@ -1019,10 +1027,10 @@ export function LoginForm({
             >
               <CardHeader className="space-y-1 pb-6 text-center">
                 <CardTitle className="text-2xl font-bold tracking-tight text-primary-700">
-                  Welcome
+                  {t("common.welcome")}
                 </CardTitle>
                 <CardDescription>
-                  Sign in to continue your journey
+                  {t("common.signInToContinue")}
                 </CardDescription>
               </CardHeader>
               <CardContent className="grid gap-6">
@@ -1045,8 +1053,8 @@ export function LoginForm({
                       onClick={() => handleOAuthLogin("google")}
                       type="button"
                     >
-                      <FcGoogle className="mr-2 h-4 w-4" />
-                      Continue with Google
+                      <FcGoogle className="me-2 h-4 w-4" />
+                      {t("common.continueWithGoogle")}
                     </Button>
                   )}
                   {authProviders?.github && (
@@ -1056,8 +1064,8 @@ export function LoginForm({
                       onClick={() => handleOAuthLogin("github")}
                       type="button"
                     >
-                      <GitHubLogoIcon className="mr-2 h-4 w-4" />
-                      Continue with GitHub
+                      <GitHubLogoIcon className="me-2 h-4 w-4" />
+                      {t("common.continueWithGitHub")}
                     </Button>
                   )}
                   {/* Sign in with Apple — native iOS only (the plugin has no
@@ -1079,7 +1087,7 @@ export function LoginForm({
                     </div>
                     <div className="relative flex justify-center text-xs uppercase">
                       <span className="bg-background px-2 text-muted-foreground">
-                        Or continue with
+                        {t("common.orContinueWith")}
                       </span>
                     </div>
                   </div>
@@ -1196,11 +1204,12 @@ export function LoginForm({
                         navigate({ to: domainRouting.redirectPath as never })
                       }
                     >
-                      Explore{" "}
-                      {getTerminologyPlural(
-                        ContentTerms.Course,
-                        SystemTerms.Course
-                      )}
+                      {t("login.exploreCourses", {
+                        courses: getTerminologyPlural(
+                          ContentTerms.Course,
+                          SystemTerms.Course
+                        ),
+                      })}
                     </Button>
                   </motion.div>
                 ) : null}
@@ -1216,7 +1225,7 @@ export function LoginForm({
             className="mt-6 text-center text-xs text-gray-600"
           >
             <p>
-              I agree to{" "}
+              {t("common.iAgreeTo")}{" "}
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 onClick={async () => {
@@ -1243,9 +1252,9 @@ export function LoginForm({
                 }}
                 className="text-primary-700 hover:text-primary-800 font-medium underline cursor-pointer"
               >
-                terms and conditions
+                {t("common.termsAndConditions")}
               </motion.button>{" "}
-              and{" "}
+              {t("common.and")}{" "}
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 onClick={async () => {
@@ -1272,19 +1281,19 @@ export function LoginForm({
                 }}
                 className="text-primary-700 hover:text-primary-800 font-medium underline cursor-pointer"
               >
-                Privacy Policy
+                {t("common.privacyPolicy")}
               </motion.button>
             </p>
 
             {guestQueriesEnabled && domainRouting.instituteId && (
               <p className="mt-3">
-                Having trouble?{" "}
+                {t("common.havingTrouble")}{" "}
                 <button
                   type="button"
                   onClick={() => setGuestDialogOpen(true)}
                   className="text-primary-700 hover:text-primary-800 font-medium underline cursor-pointer"
                 >
-                  Need help?
+                  {t("common.needHelp")}
                 </button>
               </p>
             )}

@@ -610,6 +610,22 @@ public class PaymentLogService {
                 successCtx.put("amount", paymentLog.getPaymentAmount());
                 successCtx.put("vendor", paymentLog.getVendor());
                 successCtx.put("enrollInviteId", paidPlan.getEnrollInviteId());
+                // Enrich for SEND_WHATSAPP workflows: PAYMENT_SUCCESS carries neither the
+                // learner's phone/name nor a computed date, and no prebuilt QUERY fetches a
+                // single learner by userId. Resolving them here keeps the workflow pure config.
+                try {
+                    List<UserDTO> paidUsers = authService.getUsersFromAuthServiceByUserIds(
+                            List.of(paymentLog.getUserId()));
+                    if (paidUsers != null && !paidUsers.isEmpty()) {
+                        UserDTO paidUser = paidUsers.get(0);
+                        successCtx.put("name", paidUser.getFullName());
+                        successCtx.put("phone", paidUser.getMobileNumber());
+                    }
+                } catch (Exception ue) {
+                    log.warn("Could not enrich PAYMENT_SUCCESS context with user details: {}", ue.getMessage());
+                }
+                // Trial-start label ("20th July") for welcome templates that announce a start day.
+                successCtx.put("nextMonday", nextMondayLabel());
                 String successEventId = paidPlan.getEnrollInviteId() != null
                         ? paidPlan.getEnrollInviteId()
                         : instituteId;
@@ -1396,5 +1412,30 @@ public class PaymentLogService {
                     e);
             // Don't throw - allow the rest of the payment success flow to continue
         }
+    }
+
+    /**
+     * The next Monday on/after today ("20th July"), for welcome templates that announce
+     * a trial start day. If today is Monday, today is used.
+     */
+    private String nextMondayLabel() {
+        java.time.LocalDate today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"));
+        java.time.LocalDate monday = today.with(
+                java.time.temporal.TemporalAdjusters.nextOrSame(java.time.DayOfWeek.MONDAY));
+        int day = monday.getDayOfMonth();
+        String suffix;
+        if (day >= 11 && day <= 13) {
+            suffix = "th";
+        } else {
+            switch (day % 10) {
+                case 1: suffix = "st"; break;
+                case 2: suffix = "nd"; break;
+                case 3: suffix = "rd"; break;
+                default: suffix = "th";
+            }
+        }
+        String month = monday.getMonth().getDisplayName(
+                java.time.format.TextStyle.FULL, java.util.Locale.ENGLISH);
+        return day + suffix + " " + month;
     }
 }

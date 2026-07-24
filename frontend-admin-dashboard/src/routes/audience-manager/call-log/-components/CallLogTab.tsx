@@ -18,14 +18,16 @@
  *      playback, and a per-row quick-disposition that syncs lead status.
  *   4. Export — CSV / XLSX of the current filtered view (server-rendered).
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     ArrowsClockwise,
     DownloadSimple,
+    Info,
     PhoneIncoming,
     PhoneOutgoing,
     Robot,
+    Sparkle,
     User,
     WarningCircle,
     Waveform,
@@ -37,6 +39,7 @@ import { MyDialog } from '@/components/design-system/dialog';
 import { MyPagination } from '@/components/design-system/pagination';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
     Select,
     SelectContent,
@@ -44,13 +47,22 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { SidebarProvider } from '@/components/ui/sidebar';
+import { CallIntelligencePanel, useCallIntelligenceEnabled } from '@/components/shared/leads';
+import { ToolCostConfirmDialog } from '@/components/common/ai-credits/ToolCostConfirmDialog';
+import { fetchCreditEstimate } from '@/services/ai-credits/get-ai-credits';
+import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
+import { StudentSidebar } from '@/routes/manage-students/students-list/-components/students-list/student-side-view/student-side-view';
+import type { StudentTable } from '@/types/student-table-types';
 import { TELEPHONY_CALL_STATUSES, humanizeCallStatus } from '@/hooks/use-lead-report-settings';
 import {
     applyDisposition,
+    callDetailKey,
     callLogMetricsKey,
     callLogSearchKey,
     dispositionCatalogKey,
     exportCallLog,
+    fetchCallDetail,
     fetchCallLog,
     fetchCallMetrics,
     fetchDispositionCatalog,
@@ -126,6 +138,31 @@ const STATUS_TONE: Record<string, string> = {
     INITIATED: 'bg-neutral-100 text-neutral-600',
 };
 
+/**
+ * Statuses where a "why did it end this way" popover earns its place — the call
+ * didn't simply connect and complete. COMPLETED never shows it.
+ */
+const DETAILABLE_STATUSES = new Set(['FAILED', 'BUSY', 'NO_ANSWER', 'CANCELLED']);
+
+/**
+ * Build the minimal {@link StudentTable} the shared lead side-sheet needs from a
+ * call row. The sheet keys everything off `user_id` and hydrates the rest itself;
+ * `_response_id` marks the selection as a lead so the Lead Profile tab opens. Cast
+ * through unknown because the full StudentTable has ~90 fields the sheet lazy-loads.
+ */
+function callRowToLeadStudent(r: CallRow): StudentTable {
+    const student: Record<string, unknown> = {
+        id: r.user_id,
+        user_id: r.user_id,
+        full_name: r.lead_name || '',
+        email: '',
+        mobile_number: r.lead_number || '',
+        status: 'INACTIVE',
+        _response_id: r.response_id ?? null,
+    };
+    return student as unknown as StudentTable;
+}
+
 // ── Main component (contract-fixed export + props) ─────────────────────────
 
 export default function CallLogTab({
@@ -137,6 +174,22 @@ export default function CallLogTab({
 }: CallLogTabProps) {
     const queryClient = useQueryClient();
     const scope: CallLogScope = { instituteId, fromDate, toDate, teamId, counsellorUserId };
+
+    // Shared lead side-sheet (same one Recent Leads / Follow-ups use). The
+    // StudentSidebarProvider is mounted app-wide by the layout; we only own the
+    // open/close state, via a local SidebarProvider around the sheet.
+    const { setSelectedStudent } = useStudentSidebar();
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    const openLead = (r: CallRow) => {
+        if (!r.user_id) return;
+        setSelectedStudent(callRowToLeadStudent(r), { openOverlay: false });
+        setIsSidebarOpen(true);
+    };
+
+    // Per-call transcript + AI intelligence — hosted in a dialog, gated by a
+    // credits-cost confirmation. Column only shows when the feature is enabled.
+    const intelEnabled = useCallIntelligenceEnabled();
+    const [intelTarget, setIntelTarget] = useState<CallRow | null>(null);
 
     // Tab-local filters.
     const [direction, setDirection] = useState<string>(ALL);
@@ -215,7 +268,13 @@ export default function CallLogTab({
     const rows = data?.content ?? [];
 
     return (
-        <div className="flex flex-col gap-6">
+        <SidebarProvider
+            style={{ ['--sidebar-width' as string]: '565px' }}
+            defaultOpen={false}
+            open={isSidebarOpen}
+            onOpenChange={setIsSidebarOpen}
+        >
+            <div className="flex w-full min-w-0 flex-col gap-6">
             {/* 1 — KPI strip */}
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
                 <KpiStat label="Total calls" value={fmtNumber(metrics?.total_calls)} tone="primary" loading={metricsQuery.isLoading} />
@@ -310,6 +369,7 @@ export default function CallLogTab({
                                         <th className="py-2 pr-3">Counsellor</th>
                                         <th className="py-2 pr-3">Disposition</th>
                                         <th className="py-2 pr-3">Recording</th>
+                                        {intelEnabled && <th className="py-2 pr-3">AI</th>}
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -323,12 +383,31 @@ export default function CallLogTab({
                                             </td>
                                             <td className="py-2.5 pr-3">
                                                 <div className="flex flex-col">
-                                                    <span className="font-medium text-neutral-900">
-                                                        {r.lead_name || '—'}
-                                                    </span>
+                                                    {r.user_id ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openLead(r)}
+                                                            className="w-fit text-left font-medium text-primary-600 hover:underline"
+                                                            title="Open lead profile"
+                                                        >
+                                                            {r.lead_name || 'View lead'}
+                                                        </button>
+                                                    ) : (
+                                                        <span className="font-medium text-neutral-900">
+                                                            {r.lead_name || '—'}
+                                                        </span>
+                                                    )}
                                                     <span className="text-xs text-neutral-500">
                                                         {r.lead_number || '—'}
                                                     </span>
+                                                    {r.ivr_selection && (
+                                                        <span
+                                                            className="mt-1 inline-flex w-fit items-center rounded-sm bg-primary-50 px-2 py-0.5 text-caption font-medium text-primary-700"
+                                                            title="IVR option chosen"
+                                                        >
+                                                            {r.ivr_selection}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="py-2.5 pr-3">
@@ -338,7 +417,7 @@ export default function CallLogTab({
                                                 <TypeBadge callType={r.call_type} />
                                             </td>
                                             <td className="py-2.5 pr-3">
-                                                <CallStatusPill status={r.status} />
+                                                <StatusCell instituteId={instituteId} row={r} />
                                             </td>
                                             <td className="py-2.5 pr-3 text-right text-neutral-700">
                                                 {fmtDuration(r.duration_seconds)}
@@ -352,6 +431,19 @@ export default function CallLogTab({
                                             <td className="py-2.5 pr-3">
                                                 <RecordingCell instituteId={instituteId} row={r} />
                                             </td>
+                                            {intelEnabled && (
+                                                <td className="py-2.5 pr-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIntelTarget(r)}
+                                                        className="inline-flex items-center gap-1 rounded-md border border-primary-100 bg-primary-50 px-2 py-1 text-xs font-medium text-primary-700 hover:bg-primary-100"
+                                                        title="Transcript & AI intelligence"
+                                                    >
+                                                        <Sparkle size={14} weight="fill" />
+                                                        AI
+                                                    </button>
+                                                </td>
+                                            )}
                                         </tr>
                                     ))}
                                 </tbody>
@@ -379,7 +471,14 @@ export default function CallLogTab({
                     refreshLists();
                 }}
             />
-        </div>
+
+            {/* Transcript + AI intelligence dialog (credits-gated) */}
+            <CallIntelligenceDialog call={intelTarget} onClose={() => setIntelTarget(null)} />
+            </div>
+
+            {/* Shared lead side-sheet — opens to the Lead Profile tab. */}
+            <StudentSidebar defaultLeadProfile />
+        </SidebarProvider>
     );
 }
 
@@ -524,6 +623,105 @@ function CallStatusPill({ status }: { status: string }) {
         >
             {humanizeCallStatus(status)}
         </span>
+    );
+}
+
+function humanizeProvider(p: string | null | undefined): string {
+    if (!p) return '—';
+    return PROVIDER_OPTIONS.find((o) => o.value === p)?.label ?? p;
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="flex items-start justify-between gap-3 text-xs">
+            <span className="shrink-0 text-neutral-500">{label}</span>
+            <span className="text-right font-medium text-neutral-700">{value}</span>
+        </div>
+    );
+}
+
+/**
+ * Status pill that, for calls that didn't simply complete (FAILED / BUSY /
+ * NO_ANSWER / CANCELLED), doubles as a "why" affordance: clicking opens a popover
+ * that lazily loads the deep detail (provider hangup/cause/error, price, timing).
+ */
+function StatusCell({ instituteId, row }: { instituteId: string; row: CallRow }) {
+    const [open, setOpen] = useState(false);
+    const detailable = DETAILABLE_STATUSES.has(row.status);
+
+    const detailQuery = useQuery({
+        queryKey: callDetailKey(instituteId, row.id),
+        queryFn: () => fetchCallDetail(instituteId, row.id),
+        enabled: open && detailable,
+        staleTime: 60_000,
+        retry: false,
+    });
+
+    if (!detailable) return <CallStatusPill status={row.status} />;
+
+    const d = detailQuery.data;
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-full hover:opacity-80"
+                    title="Why did this call end this way?"
+                >
+                    <CallStatusPill status={row.status} />
+                    <Info size={14} className="text-neutral-400" />
+                </button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-80">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                    <CallStatusPill status={row.status} />
+                    <span className="text-xs text-neutral-500">
+                        {fmtDateTime(row.start_time ?? row.created_at)}
+                    </span>
+                </div>
+                {detailQuery.isLoading ? (
+                    <p className="text-xs text-neutral-500">Loading details…</p>
+                ) : detailQuery.isError ? (
+                    <p className="text-xs text-neutral-500">
+                        {row.termination_reason
+                            ? `Reason: ${row.termination_reason}`
+                            : 'No further detail available.'}
+                    </p>
+                ) : d ? (
+                    <div className="flex flex-col gap-1.5">
+                        <DetailRow
+                            label="Reason"
+                            value={d.termination_reason || row.termination_reason || '—'}
+                        />
+                        <DetailRow label="Provider" value={humanizeProvider(d.provider_type)} />
+                        {d.provider_details.map((kv, i) => (
+                            <DetailRow key={i} label={kv.label} value={kv.value} />
+                        ))}
+                        <DetailRow label="Attempted" value={fmtDateTime(d.start_time)} />
+                        <DetailRow
+                            label="Answered"
+                            value={d.answer_time ? fmtDateTime(d.answer_time) : '—'}
+                        />
+                        <DetailRow label="Duration" value={fmtDuration(d.duration_seconds)} />
+                        {d.price != null && (
+                            <DetailRow label="Cost" value={String(d.price)} />
+                        )}
+                        {d.raw_provider_response && (
+                            <details className="mt-1">
+                                <summary className="cursor-pointer text-xs text-primary-600">
+                                    View raw provider response
+                                </summary>
+                                <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-neutral-50 p-2 text-caption text-neutral-600">
+                                    {d.raw_provider_response}
+                                </pre>
+                            </details>
+                        )}
+                    </div>
+                ) : (
+                    <p className="text-xs text-neutral-500">No further detail available.</p>
+                )}
+            </PopoverContent>
+        </Popover>
     );
 }
 
@@ -734,6 +932,98 @@ function DispositionDialog({
                 </div>
             </div>
         </MyDialog>
+    );
+}
+
+// ── Transcript + AI intelligence dialog (credits-gated) ─────────────────────
+
+/**
+ * Hosts the shared {@link CallIntelligencePanel} in a dialog and gates every
+ * analyze/re-analyze behind a credits-cost confirmation. Call Intelligence is
+ * billed per analyzed call (re-analyzing the same call is idempotent — never
+ * charged twice), so we fetch a live estimate + the institute balance and show
+ * {@link ToolCostConfirmDialog} before the pipeline is triggered.
+ */
+function CallIntelligenceDialog({ call, onClose }: { call: CallRow | null; onClose: () => void }) {
+    const [confirmData, setConfirmData] = useState<{
+        credits: number | null;
+        currentBalance: number | null;
+        balanceAfter: number | null;
+        sufficient: boolean | null;
+    } | null>(null);
+    const resolverRef = useRef<((v: boolean) => void) | null>(null);
+
+    const settle = (v: boolean) => {
+        const resolve = resolverRef.current;
+        resolverRef.current = null;
+        setConfirmData(null);
+        resolve?.(v);
+    };
+
+    const confirmBeforeAnalyze = () =>
+        new Promise<boolean>((resolve) => {
+            resolverRef.current = resolve;
+            void (async () => {
+                try {
+                    const est = await fetchCreditEstimate('call_intelligence');
+                    setConfirmData({
+                        credits: est.estimated_cost ?? null,
+                        currentBalance: est.current_balance ?? null,
+                        balanceAfter: est.balance_after ?? null,
+                        sufficient: est.has_sufficient_credits ?? null,
+                    });
+                } catch {
+                    // Estimate endpoint unavailable — still ask for explicit confirmation,
+                    // just without the exact number.
+                    setConfirmData({
+                        credits: null,
+                        currentBalance: null,
+                        balanceAfter: null,
+                        sufficient: null,
+                    });
+                }
+            })();
+        });
+
+    return (
+        <>
+            <MyDialog
+                heading="Transcript & AI intelligence"
+                open={!!call}
+                onOpenChange={(o) => {
+                    if (!o) onClose();
+                }}
+                dialogWidth="max-w-lg"
+            >
+                {call && (
+                    <div className="flex flex-col gap-3">
+                        <p className="text-sm text-neutral-600">
+                            {call.lead_name || 'Lead'} · {fmtDuration(call.duration_seconds)} ·{' '}
+                            {humanizeCallStatus(call.status)}
+                        </p>
+                        <CallIntelligencePanel
+                            callLogId={call.id}
+                            defaultExpanded
+                            confirmBeforeAnalyze={confirmBeforeAnalyze}
+                        />
+                    </div>
+                )}
+            </MyDialog>
+
+            <ToolCostConfirmDialog
+                open={!!confirmData}
+                onOpenChange={(o) => {
+                    if (!o) settle(false);
+                }}
+                credits={confirmData?.credits ?? null}
+                currentBalance={confirmData?.currentBalance ?? null}
+                balanceAfter={confirmData?.balanceAfter ?? null}
+                sufficient={confirmData?.sufficient ?? null}
+                onConfirm={() => settle(true)}
+                heading="Analyze this call?"
+                confirmLabel="Analyze"
+            />
+        </>
     );
 }
 

@@ -31,4 +31,9 @@ public class AiAgentDTO {
     /** Blank = telephony voicemail/fallback number. */
     private List<String> handoffNumbers;
     private Integer maxCallMinutes;
+    /** Speaking rate 0.5–2.0; null = global default (bot TTS_PACE). */
+    private Double pace;
+    /** Expressiveness 0.01–2.0; null = Sarvam model default (~0.6). */
+    private Double temperature;
+    private String bookingPageId;
 }

@@ -1,8 +1,10 @@
 import { forwardRef, memo, useImperativeHandle, useRef, useEffect, useState, useMemo, useCallback } from "react";
 import { renderAsync } from "docx-preview";
+import { HtmlSlideIframe } from "./html-slide-iframe";
 import TurndownService from "turndown";
 import ReactMarkdown from "react-markdown";
 import { DocumentWithMermaid } from "./DocumentWithMermaid";
+import { useTranslation } from "react-i18next";
 
 // Helper to strip expired query params from public AWS S3 URLs
 // Example: https://...amazonaws.com/.../image.jpg?X-Amz-Algorithm=... -> https://...amazonaws.com/.../image.jpg
@@ -43,15 +45,25 @@ type DocViewerComponentProps = {
   handlePageChange: (page: number) => void;
   initialPage?: number;
   isHtml?: boolean;
+  // Creative HTML document (type 'HTML'): render the raw HTML in a sandboxed
+  // iframe so its CSS/JS animations run and it stays isolated from the app.
+  creativeHtml?: boolean;
+  // Interactive-result reporting from a creative HTML slide (quiz/game).
+  onSlideProgress?: (percent: number) => void;
+  onSlideComplete?: (result: import("./html-slide-iframe").SlideResult) => void;
 };
 
-const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerComponentProps>(({ 
+const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerComponentProps>(({
   docUrl,
   handleDocumentLoad,
   handlePageChange,
   //initialPage = 0,
-  isHtml = false
+  isHtml = false,
+  creativeHtml = false,
+  onSlideProgress,
+  onSlideComplete
 }, ref) => {
+  const { t } = useTranslation("studyContent");
   const containerRef = useRef<HTMLDivElement>(null);
   const totalPagesRef = useRef<number>(0);
   const [markdownContent, setMarkdownContent] = useState<string>("");
@@ -291,8 +303,8 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
           </div>
-          <h3 className="text-lg font-semibold text-red-900 mb-2">Document Load Error</h3>
-          <p className="text-red-700 text-sm leading-relaxed mb-4">Unable to load the document. Please try refreshing or contact support if the issue persists.</p>
+          <h3 className="text-lg font-semibold text-red-900 mb-2">{t("docViewer.loadErrorTitle")}</h3>
+          <p className="text-red-700 text-sm leading-relaxed mb-4">{t("docViewer.loadErrorBody")}</p>
           <div className="bg-red-50 border border-red-200 rounded-lg p-3">
             <p className="text-xs text-red-600 font-mono break-words">{error}</p>
           </div>
@@ -314,8 +326,8 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
               </svg>
             </div>
           </div>
-          <h3 className="text-xl font-semibold text-blue-900 mb-2">Processing Document</h3>
-          <p className="text-blue-700">Converting content for optimal viewing...</p>
+          <h3 className="text-xl font-semibold text-blue-900 mb-2">{t("docViewer.processingTitle")}</h3>
+          <p className="text-blue-700">{t("docViewer.processingBody")}</p>
           <div className="mt-4 w-32 h-1 bg-blue-200 rounded-full mx-auto overflow-hidden">
             <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full animate-pulse"></div>
           </div>
@@ -326,7 +338,14 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
 
   return (
     <div ref={containerRef} className="min-h-screen-40 sm:min-h-screen-50 lg:min-h-screen-60 max-h-[calc(100vh-120px)] sm:max-h-[calc(100vh-140px)] lg:max-h-[calc(100vh-170px)] overflow-auto bg-white rounded-lg sm:rounded-xl lg:rounded-2xl border border-gray-200 shadow-lg hover:shadow-xl transition-shadow duration-300"> {/* design-lint-ignore: viewport math */}
-      {isHtml ? (
+      {creativeHtml ? (
+        <HtmlSlideIframe
+          html={stableDocUrl}
+          onLoad={() => handleDocumentLoadRef.current?.()}
+          onProgress={onSlideProgress}
+          onComplete={onSlideComplete}
+        />
+      ) : isHtml ? (
         <div className="p-4 sm:p-6 lg:p-8 xl:p-12 markdown-content">
           {/* Always use htmlContent if it exists (even if markdownContent also exists) for mermaid support */}
           {/* Text documents read at a centered, generous measure (max-w-5xl,
@@ -395,12 +414,12 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
                   
                   // Enhanced list styling
                   ul: ({children}) => (
-                    <ul className="list-none pl-0 mb-6 space-y-3">
+                    <ul className="list-none ps-0 mb-6 space-y-3">
                       {children}
                     </ul>
                   ),
                   ol: ({children}) => (
-                    <ol className="list-none pl-0 mb-6 space-y-3 counter-reset-list">
+                    <ol className="list-none ps-0 mb-6 space-y-3 counter-reset-list">
                       {children}
                     </ol>
                   ),
@@ -408,10 +427,10 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
                     const { children } = props as { children?: React.ReactNode };
                     const isOrdered = (props as { ordered?: boolean }).ordered;
                     return (
-                      <li className={`relative pl-8 text-gray-700 text-lg leading-relaxed ${
+                      <li className={`relative ps-8 text-gray-700 text-lg leading-relaxed ${
                         isOrdered ? 'counter-increment-list' : ''
                       }`}>
-                        <span className={`absolute left-0 top-0 flex items-center justify-center w-6 h-6 rounded-full text-sm font-medium ${
+                        <span className={`absolute start-0 top-0 flex items-center justify-center w-6 h-6 rounded-full text-sm font-medium ${
                           isOrdered 
                             ? 'bg-blue-100 text-blue-700 border-2 border-blue-200' 
                             : 'bg-indigo-100 text-indigo-700'
@@ -429,8 +448,8 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
                   
                   // Enhanced blockquote styling
                   blockquote: ({children}) => (
-                    <blockquote className="relative border-l-4 border-blue-400 pl-6 py-4 my-8 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-r-lg shadow-sm">
-                      <div className="absolute top-2 left-2 text-blue-300 opacity-50">
+                    <blockquote className="relative border-s-4 border-blue-400 ps-6 py-4 my-8 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-e-lg shadow-sm">
+                      <div className="absolute top-2 start-2 text-blue-300 opacity-50">
                         <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
                           <path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z"/>
                         </svg>
@@ -453,7 +472,7 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
                     }
                     return (
                       <div className="relative my-6">
-                        <div className="absolute top-0 left-0 right-0 h-8 bg-gray-800 rounded-t-lg flex items-center px-4">
+                        <div className="absolute top-0 start-0 end-0 h-8 bg-gray-800 rounded-t-lg flex items-center px-4">
                           <div className="flex space-x-2">
                             <div className="w-3 h-3 bg-red-500 rounded-full"></div>
                             <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
@@ -477,7 +496,7 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
                       rel="noopener noreferrer"
                     >
                       {children}
-                      <svg className="inline w-3 h-3 ml-1 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="inline w-3 h-3 ms-1 opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                       </svg>
                     </a>
@@ -507,7 +526,7 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
                     </tr>
                   ),
                   th: ({children}) => (
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-900 uppercase tracking-wider border-b-2 border-gray-200">
+                    <th className="px-6 py-4 text-start text-sm font-semibold text-gray-900 uppercase tracking-wider border-b-2 border-gray-200">
                       {children}
                     </th>
                   ),
@@ -547,8 +566,8 @@ const DocViewerComponentInner = forwardRef<DocViewerComponentRef, DocViewerCompo
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </div>
-              <h3 className="text-lg font-medium text-gray-700 mb-2">No Content Available</h3>
-              <p className="text-gray-500">The document appears to be empty or could not be processed.</p>
+              <h3 className="text-lg font-medium text-gray-700 mb-2">{t("docViewer.noContentTitle")}</h3>
+              <p className="text-gray-500">{t("docViewer.noContentBody")}</p>
             </div>
           )}
           

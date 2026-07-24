@@ -39,6 +39,8 @@ public class AiCallRequestDTO {
     private String campaignName;
     /** Raw provider campaign id — explicit override / back-compat. Wins over {@link #campaignName}. */
     private String campaignId;
+    /** Chosen caller-ID number id (telephony_provider_number.id); blank ⇒ provider default. */
+    private String preferredNumberId;
     private String customerName;
     private String customerEmail;
     /** Extra key/values merged into the metadata echoed back on the webhook. */

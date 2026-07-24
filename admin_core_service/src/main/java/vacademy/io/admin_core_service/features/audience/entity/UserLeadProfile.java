@@ -12,7 +12,9 @@ import java.sql.Timestamp;
  * Keyed by (user_id, institute_id) — user_id can be a parent or a student.
  */
 @Entity
-@Table(name = "user_lead_profile")
+@Table(name = "user_lead_profile",
+        uniqueConstraints = @UniqueConstraint(name = "user_lead_profile_user_id_institute_id_key",
+                columnNames = {"user_id", "institute_id"}))
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -24,8 +26,8 @@ public class UserLeadProfile {
     @Column(name = "id", nullable = false, unique = true)
     private String id;
 
-    /** Auth user ID — parent user ID if parent flow, student user ID if direct enrollment. */
-    @Column(name = "user_id", nullable = false, unique = true)
+    /** Auth user ID — parent user ID if parent flow, student user ID if direct enrollment. Unique per institute, not globally — see class-level uniqueConstraints. */
+    @Column(name = "user_id", nullable = false)
     private String userId;
 
     @Column(name = "institute_id", nullable = false)

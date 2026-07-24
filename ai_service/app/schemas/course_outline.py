@@ -60,6 +60,14 @@ class CourseUserPromptRequest(BaseModel):
         default=None,
         description="Optional LLM model to use (overrides database default, falls back to environment if not set)"
     )
+    reference_document_file_ids: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Media fileIds of uploaded reference PDFs. Their extracted text/tables "
+            "ground the generated course in the actual document, and their figures "
+            "can be embedded verbatim into slides/videos."
+        ),
+    )
     # NOTE: openai_key and gemini_key are NOT accepted from frontend for security
     # Keys are automatically resolved from database (user → institute) or environment variables
 
@@ -99,6 +107,10 @@ class CourseOutlineRequest(BaseModel):
     user_id: Optional[str] = Field(
         default=None,
         description="Optional user identifier for user-level API key lookup (waterfall priority)",
+    )
+    reference_document_file_ids: Optional[List[str]] = Field(
+        default=None,
+        description="Media fileIds of uploaded reference PDFs used to ground the outline.",
     )
 
 

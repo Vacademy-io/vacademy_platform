@@ -31,7 +31,7 @@ import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/
 import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/admin-defaults';
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { LearnerListColumnsCard } from './LearnerListColumnsCard';
-import { LeadsFilterCustomFieldsCard } from './LeadsFilterCustomFieldsCard';
+import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { toast } from 'sonner';
 import {
@@ -88,6 +88,8 @@ const STUDENT_SIDE_VIEW_DEFAULTS: StudentSideViewSettings = {
     applicationTab: false,
     leadTab: false,
     fullHistoryTab: false,
+    parentTab: false,
+    onboardingTab: false,
 };
 
 const STUDENT_SIDE_VIEW_OPTIONS: Array<{
@@ -171,6 +173,16 @@ const STUDENT_SIDE_VIEW_OPTIONS: Array<{
         key: 'fullHistoryTab',
         label: 'Full History Tab',
         defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.fullHistoryTab ?? false,
+    },
+    {
+        key: 'parentTab',
+        label: 'Guardian Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.parentTab ?? false,
+    },
+    {
+        key: 'onboardingTab',
+        label: 'Onboarding Tab',
+        defaultValue: STUDENT_SIDE_VIEW_DEFAULTS.onboardingTab ?? false,
     },
 ];
 
@@ -1326,6 +1338,69 @@ export default function AdminDisplaySettings() {
                                 }
                             />
                         </div>
+                        <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                            <div className="text-sm font-medium text-neutral-800">Show Status</div>
+                            <Switch
+                                checked={settings.ui?.showStatus !== false}
+                                onCheckedChange={(checked) =>
+                                    updateSettings((prev) => ({
+                                        ...prev,
+                                        ui: {
+                                            showSupportButton: true,
+                                            ...prev.ui,
+                                            showStatus: checked,
+                                        },
+                                    }))
+                                }
+                            />
+                        </div>
+                        <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                            <div>
+                                <div className="text-sm font-medium text-neutral-800">
+                                    Show Settings
+                                </div>
+                                <div className="text-xs text-neutral-500">
+                                    Hides the Settings gear in the sidebar rail. You can still open
+                                    Settings directly at /settings.
+                                </div>
+                            </div>
+                            <Switch
+                                checked={settings.ui?.showSettings !== false}
+                                onCheckedChange={(checked) =>
+                                    updateSettings((prev) => ({
+                                        ...prev,
+                                        ui: {
+                                            showSupportButton: true,
+                                            ...prev.ui,
+                                            showSettings: checked,
+                                        },
+                                    }))
+                                }
+                            />
+                        </div>
+                        <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                            <div>
+                                <div className="text-sm font-medium text-neutral-800">
+                                    Show Right Side Rail
+                                </div>
+                                <div className="text-xs text-neutral-500">
+                                    Guides, Assist, Issues, What&apos;s new, Explore &amp; Admin App
+                                </div>
+                            </div>
+                            <Switch
+                                checked={settings.ui?.showAssistDock !== false}
+                                onCheckedChange={(checked) =>
+                                    updateSettings((prev) => ({
+                                        ...prev,
+                                        ui: {
+                                            showSupportButton: true,
+                                            ...prev.ui,
+                                            showAssistDock: checked,
+                                        },
+                                    }))
+                                }
+                            />
+                        </div>
                     </div>
                 </CardContent>
             </Card>
@@ -2087,18 +2162,23 @@ export default function AdminDisplaySettings() {
                 }
             />
 
-            {/* Institute-wide (applies to all roles): which custom fields are leads
-                filters on the Lead List / Recent Leads. Persisted with the rest of
-                this blob via the shared unsaved-changes bar. */}
-            <LeadsFilterCustomFieldsCard
-                value={settings.leadsFilterCustomFields ?? []}
-                onChange={(next) =>
-                    updateSettings((prev) => ({
-                        ...prev,
-                        leadsFilterCustomFields: next,
-                    }))
-                }
-            />
+            {/* Institute-wide (applies to all roles): which custom fields are
+                filter/sort controls on the Leads, All Contacts and Students list
+                pages. Replaces the leads-only card; the LEADS surface seeds from
+                the legacy leadsFilterCustomFields key until saved here. Persisted
+                with the rest of this blob via the shared unsaved-changes bar. */}
+            <div id="list-custom-field-controls">
+                <ListCustomFieldControlsCard
+                    value={settings.listCustomFieldControls}
+                    legacyLeadsFields={settings.leadsFilterCustomFields ?? []}
+                    onChange={(next) =>
+                        updateSettings((prev) => ({
+                            ...prev,
+                            listCustomFieldControls: next,
+                        }))
+                    }
+                />
+            </div>
 
             <Card>
                 <CardHeader>
@@ -2287,6 +2367,43 @@ export default function AdminDisplaySettings() {
                                     teamManagement: {
                                         ...(prev.teamManagement ?? { visibleRoles: {} }),
                                         orgChartTabVisible: checked,
+                                    },
+                                }))
+                            }
+                        />
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>Team member passwords</CardTitle>
+                    <CardDescription>
+                        Show a Password column (and a &quot;View Password&quot; row action) for team
+                        members in Manage Institute → Teams. On by default — turn this off to hide
+                        sign-in credentials from everyone with Teams access.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex items-center justify-between rounded-md border border-neutral-200 p-3">
+                        <div>
+                            <div className="text-body font-medium text-neutral-900">
+                                Show passwords
+                            </div>
+                            <div className="text-caption text-neutral-500">
+                                Adds a masked Password column (with reveal + copy) and a &quot;View
+                                Password&quot; option per member. Passwords are sensitive — anyone
+                                with Teams access will be able to see them.
+                            </div>
+                        </div>
+                        <Switch
+                            checked={settings.teamManagement?.allowViewPassword !== false}
+                            onCheckedChange={(checked) =>
+                                updateSettings((prev) => ({
+                                    ...prev,
+                                    teamManagement: {
+                                        ...(prev.teamManagement ?? { visibleRoles: {} }),
+                                        allowViewPassword: checked,
                                     },
                                 }))
                             }

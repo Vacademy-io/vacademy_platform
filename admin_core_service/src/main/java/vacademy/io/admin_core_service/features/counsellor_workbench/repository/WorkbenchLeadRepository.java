@@ -54,11 +54,13 @@ public class WorkbenchLeadRepository {
         // through AuthService.getUsersFromAuthServiceByUserIds, batched once
         // per response. Same fix is applied to every workbench query.
         //
-        // type_id for USER_LEAD_PROFILE timeline events is user_lead_profile
-        // .user_id (TimelineEventService writes the enum NAME as action_type
-        // — 'COUNSELOR_ASSIGNED' — and callers pass user_id as typeId). The
-        // earlier join on `te.type_id = ulp.id` matched nothing, so
-        // assigned_at was always NULL.
+        // type_id for USER_LEAD_PROFILE timeline events is user_lead_profile.id
+        // (TimelineEventService writes the enum NAME as action_type —
+        // 'COUNSELOR_ASSIGNED'). Was user_lead_profile.user_id before user_id
+        // became non-unique per V387 (a user can now have a profile per
+        // institute) — all writers switched to profile id, and existing rows
+        // were backfilled in the same migration, so ulp.id is the only
+        // correlation that stays correct as a person gains more profiles.
         final String sql =
             "SELECT ulp.id AS lead_id, " +
             "       ulp.user_id AS user_id, " +
@@ -81,7 +83,7 @@ public class WorkbenchLeadRepository {
             "    SELECT MAX(te.created_at) AS assigned_at " +
             "    FROM timeline_event te " +
             "    WHERE te.type = 'USER_LEAD_PROFILE' " +
-            "      AND te.type_id = ulp.user_id " +
+            "      AND te.type_id = ulp.id " +
             "      AND te.action_type = 'COUNSELOR_ASSIGNED' " +
             ") ta ON true " +
             "LEFT JOIN LATERAL (" +
@@ -91,6 +93,11 @@ public class WorkbenchLeadRepository {
             "    ORDER BY ar.created_at DESC LIMIT 1" +
             ") latest_ar ON true " +
             "WHERE ulp.institute_id = ? " +
+            // Hide soft-deleted leads: the profile is one row per PERSON while the delete is
+            // per response, so a person stays visible until every lead they hold is deleted.
+            "  AND EXISTS (SELECT 1 FROM audience_response ar_live " +
+            "              WHERE ar_live.user_id = ulp.user_id " +
+            "                AND ar_live.audience_status = 'ACTIVE') " +
             "  AND ulp.assigned_counselor_id IN (" + placeholders + ") " +
             (conversionStatus != null ? "  AND ulp.conversion_status = ? " : "") +
             "ORDER BY ta.assigned_at DESC NULLS LAST " +
@@ -122,6 +129,11 @@ public class WorkbenchLeadRepository {
         String placeholders = counsellorIds.stream().map(c -> "?").collect(Collectors.joining(","));
         String sql = "SELECT COUNT(*) FROM user_lead_profile ulp " +
                      "WHERE ulp.institute_id = ? " +
+                     // Hide soft-deleted leads: the profile is one row per PERSON while the delete is
+                     // per response, so a person stays visible until every lead they hold is deleted.
+                     "  AND EXISTS (SELECT 1 FROM audience_response ar_live " +
+                     "              WHERE ar_live.user_id = ulp.user_id " +
+                     "                AND ar_live.audience_status = 'ACTIVE') " +
                      "  AND ulp.assigned_counselor_id IN (" + placeholders + ") " +
                      (conversionStatus != null ? "  AND ulp.conversion_status = ? " : "");
         Object[] args = buildCountArgs(instituteId, counsellorIds, conversionStatus);
@@ -138,6 +150,11 @@ public class WorkbenchLeadRepository {
         Long n = jdbc.queryForObject(
                 "SELECT COUNT(*) FROM user_lead_profile ulp " +
                         "WHERE ulp.institute_id = ? " +
+                        // Hide soft-deleted leads: the profile is one row per PERSON while the delete is
+                        // per response, so a person stays visible until every lead they hold is deleted.
+                        "  AND EXISTS (SELECT 1 FROM audience_response ar_live " +
+                        "              WHERE ar_live.user_id = ulp.user_id " +
+                        "                AND ar_live.audience_status = 'ACTIVE') " +
                         "  AND ulp.assigned_counselor_id = ? " +
                         "  AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')",
                 Long.class, instituteId, counsellorUserId);
@@ -155,9 +172,9 @@ public class WorkbenchLeadRepository {
                                                              int limit) {
         // Same separate-DB constraint as findLeadsForCounsellors — no JOIN
         // to users. Caller hydrates lead name / email / phone via AuthService.
-        // type_id on USER_LEAD_PROFILE timeline events is user_id, and
-        // action_type stores the enum NAME ('COUNSELOR_ASSIGNED'), not the
-        // human title.
+        // type_id on USER_LEAD_PROFILE timeline events is user_lead_profile.id
+        // (see findLeadsForCounsellors above for why), and action_type stores
+        // the enum NAME ('COUNSELOR_ASSIGNED'), not the human title.
         final String sql =
             "SELECT ulp.id AS lead_id, " +
             "       ulp.user_id AS user_id, " +
@@ -180,10 +197,15 @@ public class WorkbenchLeadRepository {
             "    SELECT MAX(te.created_at) AS assigned_at " +
             "    FROM timeline_event te " +
             "    WHERE te.type = 'USER_LEAD_PROFILE' " +
-            "      AND te.type_id = ulp.user_id " +
+            "      AND te.type_id = ulp.id " +
             "      AND te.action_type = 'COUNSELOR_ASSIGNED' " +
             ") ta ON true " +
             "WHERE ulp.institute_id = ? " +
+            // Hide soft-deleted leads: the profile is one row per PERSON while the delete is
+            // per response, so a person stays visible until every lead they hold is deleted.
+            "  AND EXISTS (SELECT 1 FROM audience_response ar_live " +
+            "              WHERE ar_live.user_id = ulp.user_id " +
+            "                AND ar_live.audience_status = 'ACTIVE') " +
             "  AND ulp.assigned_counselor_id = ? " +
             "  AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED') " +
             "ORDER BY ta.assigned_at DESC NULLS LAST " +
@@ -227,8 +249,11 @@ public class WorkbenchLeadRepository {
      * the trigger tag. Names are NOT joined here — the service layer
      * hydrates them via auth_service (separate Postgres DB on stage/prod).
      */
-    public List<LeadTransferDTO> findTransfersForLead(String leadUserId) {
-        // type_id on USER_LEAD_PROFILE events is the lead's user_id.
+    public List<LeadTransferDTO> findTransfersForLead(String leadUserId, String instituteId) {
+        // type_id on USER_LEAD_PROFILE events is the lead profile's own id, not the raw
+        // user_id — timeline_event has no institute_id column, and a user_id alone can now
+        // resolve to a profile per institute, so correlating by user_id would leak another
+        // institute's assignment history for the same person. Resolve the profile id first.
         // action_type is the enum NAME ('COUNSELOR_ASSIGNED'), see
         // TimelineEventService.logJourneyEvent which calls actionType.name().
         final String sql =
@@ -240,7 +265,7 @@ public class WorkbenchLeadRepository {
             "       te.metadata_json::jsonb ->> 'mode'             AS mode " +
             "FROM timeline_event te " +
             "WHERE te.type = 'USER_LEAD_PROFILE' " +
-            "  AND te.type_id = ? " +
+            "  AND te.type_id = (SELECT id FROM user_lead_profile WHERE user_id = ? AND institute_id = ?) " +
             "  AND te.action_type = 'COUNSELOR_ASSIGNED' " +
             "ORDER BY te.created_at ASC";
 
@@ -256,7 +281,7 @@ public class WorkbenchLeadRepository {
                         .mode(rs.getString("mode"))
                         .at(rs.getTimestamp("created_at"))
                         .build(),
-                leadUserId);
+                leadUserId, instituteId);
     }
 
     private Object[] buildArgs(String instituteId,

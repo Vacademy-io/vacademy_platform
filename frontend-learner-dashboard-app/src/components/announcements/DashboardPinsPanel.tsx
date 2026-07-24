@@ -16,8 +16,11 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { useDashboardPins } from '@/hooks/useDashboardPins';
+import { usePlayTheme } from '@/hooks/use-play-theme';
+import { useCleanerPlayTheme } from '@/hooks/use-cleaner-play-theme';
+import iconAnnouncement from '@/assets/cleaner-play/icon-announcement.webp';
 import { formatLocalDateTime } from '@/helpers/formatISOTime';
-import { sanitizeHtml } from '@/lib/utils';
+import { cn, sanitizeHtml } from '@/lib/utils';
 import type { UserMessage } from '@/types/announcement';
 import { announcementApi } from '@/services/announcementApi';
 
@@ -48,6 +51,8 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
 
   const [selectedPin, setSelectedPin] = useState<UserMessage | null>(null);
   const [showFullContent, setShowFullContent] = useState(false);
+  const isPlay = usePlayTheme();
+  const isCleanerPlay = useCleanerPlayTheme();
 
   const handlePinClick = (pin: UserMessage) => {
     setSelectedPin(pin);
@@ -136,11 +141,34 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
 
   return (
     <div className={className}>
-      <Card>
+      <Card
+        className={cn(
+          // Cleaner Play: shared cp-card shell (rule scoped to .ui-cleaner-play)
+          'cp-card',
+          // Play: pastel gold announcement surface, quiet chrome
+          '[.ui-play_&]:bg-play-gold-soft [.ui-play_&]:rounded-play-card-sm',
+          '[.ui-play_&]:border-border [.ui-play_&]:shadow-play-soft-card'
+        )}
+      >
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <PushPin className="h-5 w-5 text-blue-600" />
+            <CardTitle
+              className={cn(
+                'flex items-center gap-2 text-lg',
+                'cp-heading',
+                '[.ui-play_&]:font-black [.ui-play_&]:text-play-gold-soft-ink'
+              )}
+            >
+              {isPlay || isCleanerPlay ? (
+                <img
+                  src={iconAnnouncement}
+                  alt=""
+                  aria-hidden="true"
+                  className="h-9 w-9 object-contain"
+                />
+              ) : (
+                <PushPin className="h-5 w-5 text-blue-600" />
+              )}
               Important Updates
             </CardTitle>
             <div className="flex items-center gap-2">
@@ -153,7 +181,7 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
                       className="text-red-600 hover:text-red-700 hover:bg-red-50"
                       disabled={loading}
                     >
-                      <Trash className="h-4 w-4 mr-1" />
+                      <Trash className="h-4 w-4 me-1" />
                       Clear All
                     </Button>
                   </AlertDialogTrigger>
@@ -200,7 +228,7 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <SpinnerGap className="h-6 w-6 animate-spin text-gray-400" />
-              <span className="ml-2 text-sm text-gray-500">Loading pins...</span>
+              <span className="ms-2 text-sm text-gray-500">Loading pins...</span>
             </div>
           ) : (
             <div className="space-y-4">
@@ -208,7 +236,7 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
                 <div
                   key={pin.messageId}
                   className={`p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md ${
-                    !pin.isRead ? 'border-l-4 border-l-blue-500 bg-blue-50' : 'border-gray-200'
+                    !pin.isRead ? 'border-s-4 border-s-blue-500 bg-blue-50' : 'border-gray-200'
                   }`}
                   onClick={() => handlePinClick(pin)}
                 >
@@ -232,7 +260,7 @@ export const DashboardPinsPanel: React.FC<DashboardPinsPanelProps> = ({
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="ml-2 h-6 w-6 p-0 hover:bg-gray-100"
+                      className="ms-2 h-6 w-6 p-0 hover:bg-gray-100"
                       onClick={(e) => handleDismissPin(pin.messageId, e)}
                     >
                       <X className="h-3 w-3" />

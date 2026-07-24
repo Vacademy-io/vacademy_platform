@@ -1,0 +1,36 @@
+{
+    "login": {
+        "heading": "आपका वापस आना हमारे लिए खुशी की बात है!",
+        "subheading": "लॉगिन करें और अपनी सीखने की यात्रा जारी रखें!",
+        "emailPlaceholder": "you@email.com",
+        "passwordPlaceholder": "पासवर्ड",
+        "forgotPasswordLink": "पासवर्ड भूल गए?",
+        "loginButton": "लॉगिन करें",
+        "forgotPasswordHeading": "पासवर्ड भूल गए",
+        "forgotPasswordSubheading": "अपना ईमेल दर्ज करें, हम आपका पासवर्ड आपके इनबॉक्स में भेज देंगे",
+        "forgotPasswordEmailPlaceholder": "you@email.com",
+        "forgotPasswordButton": "रीसेट लिंक भेजें",
+        "forgotPasswordBottomText": "पासवर्ड याद आ गया?",
+        "setPasswordHeading": "नया पासवर्ड सेट करें",
+        "setPasswordSubheading": "नए पासवर्ड से अपना खाता सुरक्षित करें",
+        "setPasswordNewPlaceholder": "नया पासवर्ड",
+        "setPasswordConfirmPlaceholder": "नए पासवर्ड की पुष्टि करें",
+        "setPasswordButton": "पासवर्ड रीसेट करें",
+        "setPasswordBottomText": "लॉगिन पर वापस जाएँ?"
+    },
+    "profile": {
+        "language": "भाषा",
+        "languageHint": "मेनू और बटनों की भाषा चुनें।"
+    },
+    "actions": {
+        "save": "सहेजें",
+        "cancel": "रद्द करें",
+        "delete": "हटाएँ"
+    },
+    "table": {
+        "noResults": "कोई परिणाम नहीं मिला"
+    },
+    "common": {
+        "loading": "लोड हो रहा है..."
+    }
+}

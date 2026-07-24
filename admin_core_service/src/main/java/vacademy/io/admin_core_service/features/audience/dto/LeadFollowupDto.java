@@ -28,6 +28,15 @@ public class LeadFollowupDto {
     private Timestamp createdAt;
     private Timestamp updatedAt;
 
+    /**
+     * Lead display fields, hydrated from audience_response only on the
+     * /my-pending path (the reminder feed needs a name to show) — null on
+     * every other endpoint.
+     */
+    private String leadName;
+    private String leadMobile;
+    private String leadUserId;
+
     public static LeadFollowupDto from(LeadFollowup f) {
         return LeadFollowupDto.builder()
                 .id(f.getId())

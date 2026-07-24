@@ -26,6 +26,7 @@ import {
   getCountryCode,
   findCountryFieldKey,
 } from "@/components/common/enroll-by-invite/-utils/country-code-mapping";
+import { getCachedPreferredCountries } from "@/services/domain-routing";
 import type { AudienceCampaignResponse } from "../-services/audience-campaign-services";
 import {
   submitAudienceLead,
@@ -50,7 +51,14 @@ const convertAudienceCustomFields = (
         id: customField.id,
         field_name: customField.fieldName,
         field_key: customField.fieldKey,
-        field_order: customField.individualOrder || customField.formOrder || 0,
+        // Order by the per-form mapping order (individual_order) so each form controls
+        // its own field sequence. Fall back to the nested/master order only when the
+        // mapping has none. Use ?? (not ||) so a valid 0 (first position) is respected.
+        field_order:
+          field.individual_order ??
+          customField.individualOrder ??
+          customField.formOrder ??
+          0,
         comma_separated_options: customField.config || "",
         config: customField.config || "{}",
         status: field.status || "ACTIVE",
@@ -215,15 +223,19 @@ const AudienceResponseForm = ({
     void syncBranding();
   }, [instituteId, instituteData]);
 
-  // Get phone country code dynamically
+  // Get phone country code dynamically, falling back to the institute's
+  // configured preferred country (commaSeparatedPreferredCountry) instead of
+  // a hardcoded default so the phone input honors institute settings.
   const getPhoneCountryCode = () => {
+    const preferred = getCachedPreferredCountries();
+    const fallback = preferred[0] ?? "in";
     const formValues = form.getValues();
     const countryFieldKey = findCountryFieldKey(formValues);
     if (countryFieldKey) {
       const countryValue = formValues[countryFieldKey]?.value || "";
-      return getCountryCode(countryValue);
+      return getCountryCode(countryValue, fallback);
     }
-    return "us"; // Default
+    return fallback;
   };
 
   const onSubmit = async (values: FormValues) => {
@@ -492,12 +504,18 @@ const AudienceResponseForm = ({
                             render={({ field: formField }) => (
                               <FormItem>
                                 <div className="flex flex-col gap-1">
-                                  <label className="text-subtitle font-regular">
-                                    {capitalise(field.field_name)}
-                                    {field.is_mandatory && (
-                                      <span className="text-danger-600"> *</span>
-                                    )}
-                                  </label>
+                                  {/* Checkbox fields render their own inline
+                                      label (and optional description block)
+                                      inside the renderer — skip the label-above
+                                      to avoid a duplicate. */}
+                                  {fallbackRenderType !== FieldRenderType.CHECKBOX && (
+                                    <label className="text-subtitle font-regular">
+                                      {capitalise(field.field_name)}
+                                      {field.is_mandatory && (
+                                        <span className="text-danger-600"> *</span>
+                                      )}
+                                    </label>
+                                  )}
                                   <FormControl>
                                     <CustomFieldRenderer
                                       type={fallbackRenderType}
@@ -555,12 +573,18 @@ const AudienceResponseForm = ({
                           render={({ field: formField }) => (
                             <FormItem>
                               <div className="flex flex-col gap-1">
-                                <label className="text-subtitle font-regular">
-                                  {capitalise(value.name)}
-                                  {value.is_mandatory && (
-                                    <span className="text-danger-600"> *</span>
-                                  )}
-                                </label>
+                                {/* Checkbox fields render their own inline label
+                                    (and optional description block) inside the
+                                    renderer — skip the label-above to avoid a
+                                    duplicate. */}
+                                {renderType !== FieldRenderType.CHECKBOX && (
+                                  <label className="text-subtitle font-regular">
+                                    {capitalise(value.name)}
+                                    {value.is_mandatory && (
+                                      <span className="text-danger-600"> *</span>
+                                    )}
+                                  </label>
+                                )}
                                 <FormControl>
                                   <CustomFieldRenderer
                                     type={renderType}

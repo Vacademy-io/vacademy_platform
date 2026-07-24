@@ -67,6 +67,19 @@ public class AiAgent {
     @Column(name = "max_call_minutes")
     private Integer maxCallMinutes;
 
+    /** Bulbul speaking rate 0.5–2.0 (1.0 native); null = bot's global TTS_PACE. */
+    @Column(name = "pace")
+    private Double pace;
+
+    /** Bulbul v3 expressiveness 0.01–2.0 (~0.6 default); null = model default. */
+    @Column(name = "temperature")
+    private Double temperature;
+
+    // Optional: a booking_page this agent auto-books on when a call yields a meeting
+    // request (see AiCallOutcomeProcessor). Null = agent never books.
+    @Column(name = "booking_page_id", length = 36)
+    private String bookingPageId;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
 

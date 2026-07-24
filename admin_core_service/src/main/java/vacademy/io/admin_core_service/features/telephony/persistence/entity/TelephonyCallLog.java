@@ -104,6 +104,15 @@ public class TelephonyCallLog implements Persistable<String> {
     @Column(name = "price", precision = 8, scale = 4)
     private BigDecimal price;
 
+    /**
+     * When the per-minute credit meter successfully charged this record (V378).
+     * Stamped by CallBillingService after ai_service acknowledges the deduction;
+     * null = not yet billed (retried by the reconciliation sweep). Makes the charge
+     * attempt at-least-once instead of fire-and-forget.
+     */
+    @Column(name = "credits_billed_at")
+    private java.time.Instant creditsBilledAt;
+
     @Column(name = "recording_url", columnDefinition = "TEXT")
     private String recordingUrl;
 
@@ -136,6 +145,11 @@ public class TelephonyCallLog implements Persistable<String> {
 
     // ── Manual disposition (V346): the human-set outcome for this call. The AI
     // (Aavtaar) disposition stays in ai_call_result; the dashboard surfaces both.
+    /** The IVR menu option the inbound caller chose, e.g. "1 · Shivir Info" — set by
+     *  the /plivo/dtmf handler so the team sees the category on the Call Log. */
+    @Column(name = "ivr_selection", length = 160)
+    private String ivrSelection;
+
     @Column(name = "disposition_key", length = 64)
     private String dispositionKey;
 

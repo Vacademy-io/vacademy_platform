@@ -4,6 +4,12 @@ import {
     CREATE_CATALOGUE,
     UPDATE_CATALOGUE,
     GET_CATALOGUE_BY_TAG,
+    CATALOGUE_REVISION_DRAFT,
+    CATALOGUE_REVISION_SAVE_DRAFT,
+    CATALOGUE_REVISION_PUBLISH,
+    CATALOGUE_REVISION_DISCARD,
+    CATALOGUE_REVISION_HISTORY,
+    CATALOGUE_REVISION_GET,
 } from '@/constants/urls';
 import { CatalogueTag, CreateCatalogueTagRequest } from '../-types/catalogue-types';
 import { CatalogueConfig } from '../-types/editor-types';
@@ -62,6 +68,81 @@ export const getCatalogueConfig = async (
         GET_CATALOGUE_BY_TAG(instituteId, tagName)
     );
     return { catalogue_json: response.data.catalogue_json };
+};
+
+/** Catalogue with its id — the revision endpoints are keyed by catalogueId. */
+export const getCatalogueMeta = async (
+    instituteId: string,
+    tagName: string
+): Promise<{ id: string; catalogue_json: string; status: string }> => {
+    const response = await authenticatedAxiosInstance.get<CatalogueResponse>(
+        GET_CATALOGUE_BY_TAG(instituteId, tagName)
+    );
+    return {
+        id: response.data.id,
+        catalogue_json: response.data.catalogue_json,
+        status: response.data.status,
+    };
+};
+
+/* ─── Draft / publish revisions (AI Page Builder Phase A) ──────────────── */
+
+export interface CatalogueRevision {
+    id: string;
+    revision_no: number;
+    status: 'DRAFT' | 'PUBLISHED' | 'DISCARDED';
+    source?: string;
+    ai_run_id?: string;
+    created_by_user_id?: string;
+    created_at?: string;
+    updated_at?: string;
+    catalogue_json?: string | null;
+}
+
+/** Latest draft revision, or null when none exists (backend returns 204). */
+export const getDraftRevision = async (catalogueId: string): Promise<CatalogueRevision | null> => {
+    const response = await authenticatedAxiosInstance.get<CatalogueRevision>(
+        CATALOGUE_REVISION_DRAFT(catalogueId)
+    );
+    return response.status === 204 ? null : response.data;
+};
+
+export const saveDraftRevision = async (
+    catalogueId: string,
+    config: CatalogueConfig,
+    source: 'MANUAL' | 'AI_WIZARD' | 'AI_COPILOT' = 'MANUAL',
+    aiRunId?: string
+): Promise<CatalogueRevision> => {
+    const response = await authenticatedAxiosInstance.post<CatalogueRevision>(
+        CATALOGUE_REVISION_SAVE_DRAFT(catalogueId),
+        { catalogue_json: JSON.stringify(config), source, ai_run_id: aiRunId }
+    );
+    return response.data;
+};
+
+export const publishDraftRevision = async (catalogueId: string): Promise<CatalogueRevision> => {
+    const response = await authenticatedAxiosInstance.post<CatalogueRevision>(
+        CATALOGUE_REVISION_PUBLISH(catalogueId)
+    );
+    return response.data;
+};
+
+export const discardDraftRevision = async (catalogueId: string): Promise<void> => {
+    await authenticatedAxiosInstance.post(CATALOGUE_REVISION_DISCARD(catalogueId));
+};
+
+export const getRevisionHistory = async (catalogueId: string): Promise<CatalogueRevision[]> => {
+    const response = await authenticatedAxiosInstance.get<CatalogueRevision[]>(
+        CATALOGUE_REVISION_HISTORY(catalogueId)
+    );
+    return response.data || [];
+};
+
+export const getRevision = async (revisionId: string): Promise<CatalogueRevision> => {
+    const response = await authenticatedAxiosInstance.get<CatalogueRevision>(
+        CATALOGUE_REVISION_GET(revisionId)
+    );
+    return response.data;
 };
 
 export const saveCatalogueConfig = async (

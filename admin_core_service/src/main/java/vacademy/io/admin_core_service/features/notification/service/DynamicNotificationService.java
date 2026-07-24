@@ -370,6 +370,27 @@ public class DynamicNotificationService {
         }
     }
 
+    /**
+     * Normalised learner-portal base URL for login links (the Parent Portal is
+     * served under it). Prod values are inconsistent — bare host vs http(s)://
+     * prefix vs trailing slash — so coerce to a clean {@code https://host}
+     * form, mirroring StudentReportNotificationService. Returns null if the
+     * institute has no learner portal configured.
+     */
+    private String resolveLearnerPortalUrl(Institute institute) {
+        if (institute == null || !org.springframework.util.StringUtils.hasText(institute.getLearnerPortalBaseUrl())) {
+            return null;
+        }
+        String base = institute.getLearnerPortalBaseUrl().trim();
+        if (!base.startsWith("http://") && !base.startsWith("https://")) {
+            base = "https://" + base;
+        }
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base;
+    }
+
     private String getThemeColorFromInstitute(Institute institute) {
         if (institute == null || institute.getInstituteThemeCode() == null ||
                 institute.getInstituteThemeCode().trim().isEmpty()) {
@@ -724,6 +745,86 @@ public class DynamicNotificationService {
 
         } catch (Exception e) {
             log.error("Error sending payment notification for applicant: {}", applicationId, e);
+        }
+    }
+
+    /**
+     * Guardian account created (link, link-new-guardian, or backfill) —
+     * notifies whichever party the Guardian Setting is configured to notify
+     * ("STUDENT" or "GUARDIAN") with the newly-created guardian's login
+     * credentials. Resolves the EMAIL template via the same
+     * institute-specific-config -> DEFAULT-config fallback used elsewhere
+     * (see {@link vacademy.io.admin_core_service.features.live_session.service.LiveClassTemplateService});
+     * a seed migration guarantees a DEFAULT config/template always exists, so
+     * this is a silent no-op only if that seed was somehow removed.
+     */
+    public void sendGuardianAccountCreatedNotification(
+            String instituteId,
+            String guardianFullName,
+            String guardianUsername,
+            String guardianEmail,
+            String guardianPassword,
+            String studentFullName,
+            String studentEmail,
+            String recipient) {
+
+        try {
+            NotificationEventConfig config = configRepository
+                    .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
+                            NotificationEventType.GUARDIAN_ACCOUNT_CREATED,
+                            NotificationSourceType.INSTITUTE,
+                            instituteId,
+                            NotificationTemplateType.EMAIL)
+                    .or(() -> configRepository
+                            .findFirstByEventNameAndSourceTypeAndSourceIdAndTemplateTypeAndIsActiveTrueOrderByUpdatedAtDesc(
+                                    NotificationEventType.GUARDIAN_ACCOUNT_CREATED,
+                                    NotificationSourceType.INSTITUTE,
+                                    "DEFAULT",
+                                    NotificationTemplateType.EMAIL))
+                    .orElse(null);
+
+            if (config == null) {
+                log.warn("No GUARDIAN_ACCOUNT_CREATED email config (institute or DEFAULT) found; skipping credential notification");
+                return;
+            }
+
+            boolean toGuardian = "GUARDIAN".equalsIgnoreCase(recipient);
+            String recipientEmail = toGuardian ? guardianEmail : studentEmail;
+            String recipientName = toGuardian ? guardianFullName : studentFullName;
+            if (!org.springframework.util.StringUtils.hasText(recipientEmail)) {
+                log.info("Guardian credential notification skipped: recipient ({}) has no email", recipient);
+                return;
+            }
+
+            Institute institute = getInstituteFromId(instituteId);
+            UserDTO recipientUser = new UserDTO();
+            recipientUser.setFullName(recipientName);
+            recipientUser.setEmail(recipientEmail);
+
+            NotificationTemplateVariables templateVars = NotificationTemplateVariables.builder()
+                    .userName(guardianUsername)
+                    .userEmail(recipientEmail)
+                    .userFullName(recipientName)
+                    .userPassword(guardianPassword)
+                    // Guardians onboard to the Parent Portal, which is served under the
+                    // LEARNER portal base URL (a PARENT-only login auto-routes to
+                    // /parent/child) — NOT the admin portal.
+                    .portalUrl(resolveLearnerPortalUrl(institute))
+                    .instituteName(institute != null ? institute.getInstituteName() : null)
+                    .instituteId(instituteId)
+                    .themeColor(getThemeColorFromInstitute(institute))
+                    .guardianName(guardianFullName)
+                    .guardianUsername(guardianUsername)
+                    .guardianEmail(guardianEmail)
+                    .guardianPassword(guardianPassword)
+                    .studentName(studentFullName)
+                    .studentEmail(studentEmail)
+                    .build();
+
+            sendNotificationViaUnifiedApi(config, instituteId, recipientUser, templateVars);
+        } catch (Exception e) {
+            log.error("Error sending guardian account created notification for institute {}: {}",
+                    instituteId, e.getMessage(), e);
         }
     }
 

@@ -12,7 +12,12 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { CUSTOM_FIELD_TYPES, type CustomFieldType } from '@/services/custom-field-settings';
+import {
+    CUSTOM_FIELD_TYPES,
+    COMMON_FILE_TYPES,
+    ALL_FILES_VALUE,
+    type CustomFieldType,
+} from '@/services/custom-field-settings';
 
 export interface DropdownOption {
     id: number;
@@ -30,6 +35,8 @@ export interface CustomFieldConfig {
     countryCode?: string;
     allowedFileTypes?: string[];
     maxSizeMB?: number;
+    heading?: string;
+    description?: string;
 }
 
 interface AddCustomFieldDialogProps {
@@ -44,24 +51,6 @@ interface AddCustomFieldDialogProps {
     existingFieldNames: string[];
     supportedTypes?: CustomFieldType[];
 }
-
-const COMMON_FILE_TYPES = [
-    { value: 'pdf', label: 'PDF' },
-    { value: 'doc', label: 'DOC' },
-    { value: 'docx', label: 'DOCX' },
-    { value: 'xls', label: 'XLS' },
-    { value: 'xlsx', label: 'XLSX' },
-    { value: 'csv', label: 'CSV' },
-    { value: 'png', label: 'PNG' },
-    { value: 'jpg', label: 'JPG' },
-    { value: 'jpeg', label: 'JPEG' },
-    { value: 'gif', label: 'GIF' },
-    { value: 'svg', label: 'SVG' },
-    { value: 'mp4', label: 'MP4' },
-    { value: 'mp3', label: 'MP3' },
-    { value: 'zip', label: 'ZIP' },
-    { value: 'txt', label: 'TXT' },
-];
 
 const hasOptionsType = (type: CustomFieldType) =>
     type === 'dropdown' || type === 'radio' || type === 'multi_select';
@@ -79,6 +68,8 @@ export const AddCustomFieldDialog = ({
     const [dropdownOptions, setDropdownOptions] = useState<DropdownOption[]>([]);
     const [defaultValue, setDefaultValue] = useState('');
     const [checkboxDefault, setCheckboxDefault] = useState(false);
+    const [checkboxHeading, setCheckboxHeading] = useState('');
+    const [checkboxDescription, setCheckboxDescription] = useState('');
     const [allowedFileTypes, setAllowedFileTypes] = useState<string[]>([]);
     const [maxSizeMB, setMaxSizeMB] = useState<number>(5);
 
@@ -110,11 +101,15 @@ export const AddCustomFieldDialog = ({
     };
 
     const toggleFileType = (fileType: string) => {
-        setAllowedFileTypes((prev) =>
-            prev.includes(fileType)
-                ? prev.filter((t) => t !== fileType)
-                : [...prev, fileType]
-        );
+        setAllowedFileTypes((prev) => {
+            if (fileType === ALL_FILES_VALUE) {
+                return prev.includes(ALL_FILES_VALUE) ? [] : [ALL_FILES_VALUE];
+            }
+            const withoutAll = prev.filter((t) => t !== ALL_FILES_VALUE);
+            return withoutAll.includes(fileType)
+                ? withoutAll.filter((t) => t !== fileType)
+                : [...withoutAll, fileType];
+        });
     };
 
     const resetForm = () => {
@@ -123,6 +118,8 @@ export const AddCustomFieldDialog = ({
         setDropdownOptions([]);
         setDefaultValue('');
         setCheckboxDefault(false);
+        setCheckboxHeading('');
+        setCheckboxDescription('');
         setAllowedFileTypes([]);
         setMaxSizeMB(5);
     };
@@ -132,6 +129,12 @@ export const AddCustomFieldDialog = ({
 
         if (selectedType === 'checkbox') {
             config.defaultValue = checkboxDefault ? 'true' : 'false';
+            if (checkboxHeading.trim()) {
+                config.heading = checkboxHeading.trim();
+            }
+            if (checkboxDescription.trim()) {
+                config.description = checkboxDescription.trim();
+            }
         } else if (selectedType === 'file') {
             if (allowedFileTypes.length > 0) config.allowedFileTypes = allowedFileTypes;
             config.maxSizeMB = maxSizeMB;
@@ -269,7 +272,7 @@ export const AddCustomFieldDialog = ({
                             placeholder="Enter default value"
                             value={defaultValue}
                             onChange={(e) => setDefaultValue(e.target.value)}
-                            className="min-h-[60px] w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
                             rows={3}
                         />
                     </div>
@@ -344,18 +347,53 @@ export const AddCustomFieldDialog = ({
                 );
             case 'checkbox':
                 return (
-                    <div className="mt-2 flex items-center gap-2">
-                        <Label className="text-sm font-medium">Default Value:</Label>
-                        <div className="flex items-center gap-2">
-                            <Checkbox
-                                checked={checkboxDefault}
-                                onCheckedChange={(checked) =>
-                                    setCheckboxDefault(checked === true)
-                                }
+                    <div className="mt-2 flex flex-col gap-3">
+                        <div className="flex flex-col gap-1">
+                            <Label className="text-sm font-medium">
+                                Heading (Optional)
+                            </Label>
+                            <MyInput
+                                inputType="text"
+                                inputPlaceholder="e.g. Terms & Conditions"
+                                input={checkboxHeading}
+                                onChangeFunction={(e) => setCheckboxHeading(e.target.value)}
+                                size="large"
+                                className="w-full"
                             />
-                            <span className="text-sm">
-                                {checkboxDefault ? 'Checked' : 'Unchecked'}
-                            </span>
+                            <p className="text-caption text-neutral-500">
+                                Bold section title shown above the content.
+                            </p>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <Label className="text-sm font-medium">
+                                Description / Consent Text (Optional)
+                            </Label>
+                            <textarea
+                                placeholder="e.g. Terms & Conditions text shown above the checkbox. Line breaks are preserved."
+                                value={checkboxDescription}
+                                onChange={(e) => setCheckboxDescription(e.target.value)}
+                                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                                rows={5}
+                            />
+                            <p className="text-caption text-neutral-500">
+                                Shown as a scrollable block above the checkbox. Use the
+                                Field Name for the short consent label (e.g. &ldquo;Yes, I
+                                agree&rdquo;).
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Label className="text-sm font-medium">Default Value:</Label>
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    checked={checkboxDefault}
+                                    onCheckedChange={(checked) =>
+                                        setCheckboxDefault(checked === true)
+                                    }
+                                />
+                                <span className="text-sm">
+                                    {checkboxDefault ? 'Checked' : 'Unchecked'}
+                                </span>
+                            </div>
                         </div>
                     </div>
                 );
@@ -364,21 +402,27 @@ export const AddCustomFieldDialog = ({
                     <div className="mt-2 flex flex-col gap-3">
                         <div className="flex flex-col gap-1">
                             <Label className="text-sm font-medium">
-                                Allowed File Types (leave empty for all)
+                                Allowed File Types
                             </Label>
                             <div className="flex flex-wrap gap-2">
-                                {COMMON_FILE_TYPES.map((ft) => (
-                                    <label
-                                        key={ft.value}
-                                        className="flex cursor-pointer items-center gap-1"
-                                    >
-                                        <Checkbox
-                                            checked={allowedFileTypes.includes(ft.value)}
-                                            onCheckedChange={() => toggleFileType(ft.value)}
-                                        />
-                                        <span className="text-xs">{ft.label}</span>
-                                    </label>
-                                ))}
+                                {COMMON_FILE_TYPES.map((ft) => {
+                                    const isAll = ft.value === ALL_FILES_VALUE;
+                                    const disabledByAll =
+                                        !isAll && allowedFileTypes.includes(ALL_FILES_VALUE);
+                                    return (
+                                        <label
+                                            key={ft.value}
+                                            className="flex cursor-pointer items-center gap-1"
+                                        >
+                                            <Checkbox
+                                                checked={allowedFileTypes.includes(ft.value)}
+                                                onCheckedChange={() => toggleFileType(ft.value)}
+                                                disabled={disabledByAll}
+                                            />
+                                            <span className="text-xs">{ft.label}</span>
+                                        </label>
+                                    );
+                                })}
                             </div>
                         </div>
                         <div className="flex flex-col gap-1">
@@ -404,7 +448,7 @@ export const AddCustomFieldDialog = ({
     return (
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>{trigger}</DialogTrigger>
-            <DialogContent className="flex max-h-[80vh] flex-col p-0">
+            <DialogContent className="flex max-h-[80vh] flex-col p-0">{/* design-lint-ignore: vh-based dialog height matches MyDialog primitive */}
                 <h1 className="rounded-lg bg-primary-50 p-4 text-primary-500">
                     Add Custom Field
                 </h1>
@@ -418,6 +462,8 @@ export const AddCustomFieldDialog = ({
                                 setDropdownOptions([]);
                                 setDefaultValue('');
                                 setCheckboxDefault(false);
+                                setCheckboxHeading('');
+                                setCheckboxDescription('');
                                 setAllowedFileTypes([]);
                             }}
                         >

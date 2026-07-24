@@ -1835,6 +1835,31 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                         .collect(Collectors.groupingBy(CustomFieldValues::getSourceId));
             }
 
+            // The parent_* columns are null for an ordinary campaign lead, whose contact
+            // details live on the auth user instead. Resolve those users in bulk so a lead
+            // is reached at its CURRENT address — the custom-field answers below preserve
+            // only what was submitted originally, so a lead edited in the CRM would
+            // otherwise keep being mailed at its old address.
+            Map<String, UserDTO> userById = new HashMap<>();
+            List<String> leadUserIds = allResponses.stream()
+                    .map(AudienceResponse::getUserId)
+                    .filter(id -> id != null && !id.isBlank())
+                    .distinct()
+                    .collect(Collectors.toList());
+            if (!leadUserIds.isEmpty()) {
+                try {
+                    List<UserDTO> leadUsers = authService.getUsersFromAuthServiceByUserIds(leadUserIds);
+                    if (leadUsers != null) {
+                        leadUsers.stream()
+                                .filter(u -> u != null && u.getId() != null)
+                                .forEach(u -> userById.put(u.getId(), u));
+                    }
+                } catch (Exception e) {
+                    log.warn("Lead contact enrichment failed for {} users: {}",
+                            leadUserIds.size(), e.getMessage());
+                }
+            }
+
             List<Map<String, Object>> leads = new ArrayList<>();
             for (AudienceResponse resp : allResponses) {
                 Map<String, Object> lead = new LinkedHashMap<>();
@@ -1846,6 +1871,18 @@ public class QueryServiceImpl implements QueryNodeHandler.QueryService {
                 lead.put("parentEmail", resp.getParentEmail());
                 lead.put("parentName", resp.getParentName());
                 lead.put("mobileNumber", resp.getParentMobile());
+
+                // Fall back to the lead's own auth user where parent_* didn't supply a
+                // value. Parent-sourced values still win, so "contact the parent first"
+                // is unchanged; this only fills the gap for leads that have no parent row.
+                UserDTO leadUser = resp.getUserId() == null ? null : userById.get(resp.getUserId());
+                if (leadUser != null) {
+                    if (isBlankString(lead.get("email"))) lead.put("email", leadUser.getEmail());
+                    if (isBlankString(lead.get("mobileNumber")))
+                        lead.put("mobileNumber", leadUser.getMobileNumber());
+                    if (isBlankString(lead.get("parentName")))
+                        lead.put("parentName", leadUser.getFullName());
+                }
 
                 List<CustomFieldValues> cfvs = cfvByResponseId.getOrDefault(resp.getId(), List.of());
                 for (CustomFieldValues cfv : cfvs) {

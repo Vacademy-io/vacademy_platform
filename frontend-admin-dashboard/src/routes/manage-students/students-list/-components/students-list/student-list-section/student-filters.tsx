@@ -2,6 +2,8 @@
 import { MyButton } from '@/components/design-system/button';
 import { Export, Plus, Funnel, X } from '@phosphor-icons/react';
 import { Filters } from './myFilter';
+import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
+import { fetchStudentCustomFieldValues } from '@/routes/manage-students/students-list/-services/get-student-custom-field-values';
 import { StudentSearchBox } from '../../../../../../components/common/student-search-box';
 import { StudentFiltersProps } from '@/routes/manage-students/students-list/-types/students-list-types';
 import { useMemo, useRef, useState } from 'react';
@@ -17,6 +19,9 @@ import { getTerminology } from '@/components/common/layout-container/sidebar/uti
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { useCompactMode } from '@/hooks/use-compact-mode';
 import { cn } from '@/lib/utils';
+import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
+import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
+import { sentinelLabel } from '@/components/shared/leads/custom-field-filter-encoding';
 
 export const StudentFilters = ({
     currentSession,
@@ -235,21 +240,67 @@ export const StudentFilters = ({
                                 className="animate-slideInRight"
                                 style={{ animationDelay: `${index * 0.1}s` }}
                             >
-                                <Filters
-                                    filterDetails={{
-                                        label: filter.title,
-                                        filters: filter.filterList.map((filter) => ({
-                                            id: filter.id,
-                                            label: filter.label,
-                                        })),
-                                    }}
-                                    onFilterChange={(values) => onFilterChange(filter.id, values)}
-                                    clearFilters={clearFilters}
-                                    filterId={filter.id}
-                                    columnFilters={columnFilters}
-                                />
+                                {filter.kind === 'CUSTOM_FIELD_RANGE' && filter.customFieldId ? (
+                                    <CustomFieldRangeFilter
+                                        fieldId={filter.customFieldId}
+                                        fieldName={filter.title}
+                                        fieldType={filter.fieldType ?? 'NUMBER'}
+                                        selected={
+                                            columnFilters
+                                                .find((f) => f.id === filter.id)
+                                                ?.value.map((v) => v.id) || []
+                                        }
+                                        onChange={(values) =>
+                                            onFilterChange(
+                                                filter.id,
+                                                values.map((v) => ({
+                                                    id: v,
+                                                    label: sentinelLabel(v) ?? v,
+                                                }))
+                                            )
+                                        }
+                                    />
+                                ) : filter.kind === 'CUSTOM_FIELD_SEARCH' && filter.customFieldId ? (
+                                    <CustomFieldMultiSelectFilter
+                                        instituteId={instituteDetails?.id || ''}
+                                        fieldId={filter.customFieldId}
+                                        fieldName={filter.title}
+                                        selected={
+                                            columnFilters
+                                                .find((f) => f.id === filter.id)
+                                                ?.value.map((v) => v.id) || []
+                                        }
+                                        onChange={(values) =>
+                                            onFilterChange(
+                                                filter.id,
+                                                values.map((v) => ({
+                                                    id: v,
+                                                    label: sentinelLabel(v) ?? v,
+                                                }))
+                                            )
+                                        }
+                                        fetchValues={fetchStudentCustomFieldValues}
+                                        variant="pill"
+                                        cacheScope="students"
+                                    />
+                                ) : (
+                                    <Filters
+                                        filterDetails={{
+                                            label: filter.title,
+                                            filters: filter.filterList.map((filter) => ({
+                                                id: filter.id,
+                                                label: filter.label,
+                                            })),
+                                        }}
+                                        onFilterChange={(values) => onFilterChange(filter.id, values)}
+                                        clearFilters={clearFilters}
+                                        filterId={filter.id}
+                                        columnFilters={columnFilters}
+                                    />
+                                )}
                             </div>
                         ))}
+                        <ManageListFiltersLink />
                     </div>
 
                     {/* Filter action buttons */}

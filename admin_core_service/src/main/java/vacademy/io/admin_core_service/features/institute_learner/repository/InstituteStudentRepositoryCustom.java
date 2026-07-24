@@ -52,6 +52,10 @@ public interface InstituteStudentRepositoryCustom {
             LocalDate endDate,
             List<String> enrollInviteIds,
             List<String> enrollInvitePackageSessionIds,
+            List<String> cfTypedMatchedUserIds,
+            List<String> cfTypedExcludedUserIds,
+            String sortCustomFieldId,
+            String sortCustomFieldDirection,
             Pageable pageable);
     
     /**
@@ -96,5 +100,9 @@ public interface InstituteStudentRepositoryCustom {
             LocalDate endDate,
             List<String> enrollInviteIds,
             List<String> enrollInvitePackageSessionIds,
+            List<String> cfTypedMatchedUserIds,
+            List<String> cfTypedExcludedUserIds,
+            String sortCustomFieldId,
+            String sortCustomFieldDirection,
             Pageable pageable);
 }

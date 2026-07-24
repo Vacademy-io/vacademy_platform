@@ -66,6 +66,8 @@ export const TEMPLATE_VARIABLES = {
         '{{student_unique_link}}', // Student unique link (e.g., login, profile, personalized action)
         '{{student_referral_code}}', // Student referral code
         '{{referral_count}}', // Number of successful referrals by the student
+        '{{first_name}}', // Student's first name (derived from full name)
+        '{{last_name}}', // Student's last name (derived from full name)
     ],
     course: [
         '{{course_name}}', // Course name
@@ -110,6 +112,10 @@ export const TEMPLATE_VARIABLES = {
         '{{live_class_status}}', // Live class status (upcoming, live, past)
         '{{next_live_class_date}}', // Next live class date
         '{{next_live_class_time}}', // Next live class time
+        // Uppercase to match the name the live-session reschedule mail actually
+        // supplies (substitution is case-sensitive). Resolves only in the ON_EDIT
+        // template; renders "TBD" where the previous schedule isn't known.
+        '{{OLD_TIME}}', // Date and time the class was scheduled for before it was rescheduled
     ],
     referral: [
         '{{referral_count}}', // Number of successful referrals

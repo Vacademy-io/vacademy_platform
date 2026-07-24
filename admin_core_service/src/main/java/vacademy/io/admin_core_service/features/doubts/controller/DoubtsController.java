@@ -33,4 +33,15 @@ public class DoubtsController {
                                                         @RequestParam(value = "pageSize", defaultValue = DEFAULT_PAGE_SIZE, required = false) int pageSize){
         return doubtsManager.getAllDoubts(userDetails,filter,pageNo,pageSize);
     }
+
+    /**
+     * Fetch a single doubt by id, mapped to the same {@link DoubtsDto} shape the inbox list uses.
+     * Powers the email/notification deep link (?doubtId=X): the inbox can open a specific doubt even
+     * when it isn't on the first page of the paginated list. Returns 404 when the id doesn't exist.
+     */
+    @GetMapping("/{doubtId}")
+    ResponseEntity<DoubtsDto> getDoubtById(@RequestAttribute("user") CustomUserDetails userDetails,
+                                           @PathVariable("doubtId") String doubtId){
+        return doubtsManager.getDoubtById(doubtId);
+    }
 }

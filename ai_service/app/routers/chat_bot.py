@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from ..schemas.chat_bot import ChatRequest, ChatResponse
+from ..schemas.chat_bot import ChatRequest, ChatResponse, CompletionRequest, CompletionResponse
 from ..services.ai_chat_service import AiChatService
 from ..dependencies import get_ai_chat_service
 from ..db import db_dependency
@@ -25,6 +25,21 @@ async def ask_ai_tutor(
     to enable credit deduction and usage tracking.
     """
     return await service.generate_chat_response(request, db_session=db)
+
+
+@router.post(
+    "/v1/complete",
+    response_model=CompletionResponse,
+    summary="Generic single-prompt completion (internal service callers)",
+    description="Completes a caller-supplied full prompt. Used by other services "
+    "(e.g. the parent assistant) so the LLM API key stays only in ai_service.",
+)
+async def complete(
+    request: CompletionRequest,
+    service: AiChatService = Depends(get_ai_chat_service),
+    db: Session = Depends(db_dependency),
+) -> CompletionResponse:
+    return await service.generate_completion(request, db_session=db)
 
 __all__ = ["router"]
 

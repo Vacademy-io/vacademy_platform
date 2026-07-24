@@ -1,5 +1,6 @@
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { Sidebar } from "@phosphor-icons/react";
+import { isChildViewActive } from "@/routes/parent/child/-lib/child-view";
 import { useNavHeadingStore } from "@/stores/layout-container/useNavHeadingStore";
 import { useEffect, useMemo, useState } from "react";
 import useStore from "../sidebar/useSidebar";
@@ -16,6 +17,8 @@ import { handleFetchUserRoleDetails } from "@/routes/study-library/courses/-serv
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { TokenKey } from "@/constants/auth/tokens";
 import { NotificationsBell } from "./NotificationsBell";
+import { AchievementsPill } from "@/routes/dashboard/-components/AchievementsPill";
+import { TutorialsHelpButton } from "@/components/tutorials/TutorialsHelpButton";
 import { UserMenu } from "./UserMenu";
 import { handleGetPublicInstituteDetails } from "../services/navbar-services";
 import { useRouter, useRouterState } from "@tanstack/react-router";
@@ -207,7 +210,7 @@ export function Navbar() {
     );
     // Return a simplified navbar without role-dependent features
     return (
-      <div className="navbar sticky top-0 z-50 border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap [.ui-play_&]:border-b-[3px] [.ui-play_&]:border-primary/20 [.ui-play_&]:bg-white [.ui-play_&]:backdrop-blur-none">
+      <div className={`navbar sticky ${isChildViewActive() ? "top-10" : "top-0"} z-50 border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap [.ui-play_&]:border-b [.ui-play_&]:border-border [.ui-play_&]:bg-white [.ui-play_&]:backdrop-blur-none`}>
         {/* Left Section */}
         <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
           {canGoBack && !isDashboard && (
@@ -215,7 +218,7 @@ export function Navbar() {
               <TooltipTrigger asChild>
                 <button
                   onClick={handleGoBack}
-                  className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
+                  className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border [.ui-play_&]:border-border"
                 >
                   <ArrowLeft className="w-4 h-4 text-primary-600 dark:text-primary-400 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors duration-200" />
                 </button>
@@ -233,7 +236,7 @@ export function Navbar() {
               <TooltipTrigger asChild>
                 <button
                   onClick={handleGoHome}
-                  className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
+                  className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border [.ui-play_&]:border-border"
                 >
                   <House className="w-4 h-4 text-primary-600 dark:text-primary-400 group-hover:text-primary-700 dark:group-hover:text-primary-300 transition-colors duration-200" />
                 </button>
@@ -354,13 +357,14 @@ export function Navbar() {
           )}
 
           {/* Always-on page title */}
-          <h1 className="min-w-0 truncate text-sm md:text-base font-semibold text-primary-900 dark:text-primary-100 [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
+          <h1 className="min-w-0 truncate text-sm md:text-base font-semibold text-primary-900 dark:text-primary-100 [.ui-play_&]:font-bold">
             {navHeading || "Dashboard"}
           </h1>
         </div>
 
         {/* Right Section */}
         <div className="flex shrink-0 items-center gap-1">
+          <TutorialsHelpButton className="h-9 w-9" />
           <NotificationsBell className="h-9 w-9" />
           <UserMenu />
         </div>
@@ -370,7 +374,7 @@ export function Navbar() {
 
   return (
     <div
-      className={`navbar sticky top-0 z-50 border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap [.ui-play_&]:border-b-[3px] [.ui-play_&]:border-primary/20 [.ui-play_&]:bg-white [.ui-play_&]:backdrop-blur-none ${isIOS ? "mt-10" : ""}`}
+      className={`navbar sticky ${isChildViewActive() ? "top-10" : "top-0"} z-50 border-b border-primary-200/40 dark:border-neutral-800 flex h-12 md:h-14 items-center justify-between bg-white/80 dark:bg-neutral-900/80 backdrop-blur-sm px-2 md:px-5 py-1.5 md:py-2 transition-all duration-300 w-full overflow-x-auto flex-nowrap [.ui-play_&]:border-b [.ui-play_&]:border-border [.ui-play_&]:bg-white [.ui-play_&]:backdrop-blur-none ${isIOS ? "mt-10" : ""}`}
     >
       {/* Left Section */}
       <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
@@ -378,7 +382,7 @@ export function Navbar() {
           <SidebarTrigger>
             <div
               onClick={() => {}}
-              className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
+              className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border [.ui-play_&]:border-border"
             >
               <Sidebar className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
             </div>
@@ -404,7 +408,7 @@ export function Navbar() {
             <TooltipTrigger asChild>
               <button
                 onClick={handleGoHome}
-                className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20"
+                className="group flex items-center justify-center w-7 h-7 md:w-8 md:h-8 rounded-md border border-primary-200/50 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-primary-50 dark:hover:bg-neutral-700 hover:border-primary-300 dark:hover:border-neutral-600 transition-all duration-200 [.ui-play_&]:rounded-xl [.ui-play_&]:border [.ui-play_&]:border-border"
               >
                 <House className="w-4 h-4 text-primary-600 dark:text-neutral-300 group-hover:text-primary-700 dark:group-hover:text-neutral-200 transition-colors duration-200" />
               </button>
@@ -452,7 +456,7 @@ export function Navbar() {
 
         {/* Always-on page title: identity + location on every viewport */}
         {navHeading ? (
-          <h1 className="min-w-0 truncate text-sm md:text-base font-semibold leading-tight text-neutral-900 dark:text-neutral-100 [.ui-play_&]:font-black [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide">
+          <h1 className="min-w-0 truncate text-sm md:text-base font-semibold leading-tight text-neutral-900 dark:text-neutral-100 [.ui-play_&]:font-bold">
             {navHeading}
           </h1>
         ) : null}
@@ -465,7 +469,7 @@ export function Navbar() {
             <TooltipTrigger asChild>
               <Button
                 variant="outline"
-                className="h-8 md:h-10 rounded-full px-2 md:px-3 py-1.5 md:py-2 flex items-center gap-1.5 md:gap-2 [.ui-play_&]:rounded-xl [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20 [.ui-play_&]:font-bold"
+                className="h-8 md:h-10 rounded-full px-2 md:px-3 py-1.5 md:py-2 flex items-center gap-1.5 md:gap-2 [.ui-play_&]:rounded-xl [.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:font-bold"
                 onClick={handleNavigateToAdmin}
               >
                 <Student className="h-4 w-4 md:h-5 md:w-5" />
@@ -483,6 +487,10 @@ export function Navbar() {
             </TooltipContent>
           </Tooltip>
         )}
+        {/* Achievements — badge count + points, opens the achievements popup */}
+        <AchievementsPill className="hidden xs:flex" />
+        {/* Help & tutorials */}
+        <TutorialsHelpButton className="h-9 w-9" />
         {/* Notifications */}
         <NotificationsBell className="h-9 w-9" />
 
@@ -493,7 +501,7 @@ export function Navbar() {
                 type="button"
                 aria-label="Raise a query"
                 onClick={openQueryDialog}
-                className="flex h-9 w-9 items-center justify-center rounded-md text-primary-600 transition-colors duration-200 hover:bg-primary-50 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 dark:text-primary-400 dark:hover:bg-neutral-700 dark:hover:text-primary-300 [.ui-play_&]:rounded-full [.ui-play_&]:border-2 [.ui-play_&]:border-primary/20 [.ui-play_&]:bg-primary/10"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-primary-600 transition-colors duration-200 hover:bg-primary-50 hover:text-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 dark:text-primary-400 dark:hover:bg-neutral-700 dark:hover:text-primary-300 [.ui-play_&]:rounded-full [.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:bg-primary/10"
               >
                 <Question className="h-4 w-4 md:h-5 md:w-5" />
               </button>

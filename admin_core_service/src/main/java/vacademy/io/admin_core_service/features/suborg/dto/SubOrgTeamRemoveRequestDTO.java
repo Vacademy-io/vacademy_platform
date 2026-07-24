@@ -14,4 +14,17 @@ public class SubOrgTeamRemoveRequestDTO {
     private String subOrgId;
     private String instituteId;
     private String userId;
+
+    /**
+     * SOFT — keep the member ACTIVE until {@link #accessTillDate}, then the nightly
+     * sweep deactivates them. HARD — deactivate immediately (the pre-existing
+     * behaviour). Defaults to HARD when blank so older callers are unaffected.
+     */
+    private String mode;
+
+    /**
+     * SOFT-mode "last access date" (bare {@code yyyy-MM-dd} or full ISO-8601).
+     * Required for a meaningful SOFT removal; ignored for HARD.
+     */
+    private String accessTillDate;
 }

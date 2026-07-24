@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { CaretRight, BookOpen, CheckCircle, Clock, Play } from "@phosphor-icons/react";
 import { IconRocket, IconMoodSmile, IconAdjustments } from "@tabler/icons-react";
 import BoringAvatar from "boring-avatars";
+import { useTranslation } from "react-i18next";
 import { useRouter } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import LocalStorageUtils from "@/utils/localstorage";
@@ -67,13 +68,18 @@ const CourseCard: React.FC<CourseCardProps> = ({
     readTimeInMinutes,
     hideInstructorName = false,
 }) => {
+    const { t } = useTranslation("study");
     const [courseImageUrl, setCourseImageUrl] = useState<string | null>(null);
     const [loadingImage, setLoadingImage] = useState(true);
     const [imageAspectRatio, setImageAspectRatio] = useState<number>(16 / 9);
     const router = useRouter();
 
     const instructor = instructors[0];
-    const instructorName = instructor?.full_name || "Unknown Instructor";
+    const instructorName =
+        instructor?.full_name ||
+        t("card.unknownInstructor", {
+            instructor: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
+        });
     const instructorImage = instructor?.image_url || fallbackInstructorImage;
 
     const ratingValue = rating || 0;
@@ -141,12 +147,14 @@ const CourseCard: React.FC<CourseCardProps> = ({
     };
 
     const ctaLabel = isCompleted
-        ? "Review"
+        ? t("card.cta.review")
         : isInProgress
-          ? "Continue"
+          ? t("card.cta.continue")
           : isEnrolled
-            ? "Start learning"
-            : `View ${getTerminology(ContentTerms.Course, SystemTerms.Course)}`;
+            ? t("card.cta.startLearning")
+            : t("card.cta.view", {
+                  course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+              });
 
     const CtaIcon = isCompleted ? CheckCircle : isInProgress ? Play : BookOpen;
 
@@ -361,14 +369,14 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                 <Badge
                                     key={tag}
                                     variant="secondary"
-                                    className="font-normal text-xs bg-muted/50 text-muted-foreground hover:bg-muted"
+                                    className="font-normal text-xs bg-tertiary-100 text-tertiary-500 hover:bg-tertiary-200"
                                 >
                                     {tag}
                                 </Badge>
                             ))}
                             {tags.length > 3 && (
-                                <span className="text-xs text-muted-foreground pl-1">
-                                    +{tags.length - 3} more
+                                <span className="text-xs text-muted-foreground ps-1">
+                                    {t("card.tagsMore", { count: tags.length - 3 })}
                                 </span>
                             )}
                         </div>
@@ -406,7 +414,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                 className="w-fit gap-1 border-dashed border-neutral-300 text-neutral-500 font-medium text-caption px-2 py-0.5"
                             >
                                 <Clock size={12} />
-                                Not started
+                                {t("card.status.notStarted")}
                             </Badge>
                         ) : isCompleted ? (
                             <div className="flex items-center gap-1.5">
@@ -416,7 +424,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                     className="text-success-600 [.ui-play_&]:text-play-success"
                                 />
                                 <span className="text-caption font-medium text-muted-foreground">
-                                    100% complete
+                                    {t("card.status.percentComplete", { percent: 100 })}
                                 </span>
                             </div>
                         ) : (
@@ -424,7 +432,9 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                 {/* Default / Vibrant: slim linear progress bar */}
                                 <div className="space-y-1 [.ui-play_&]:hidden">
                                     <div className="text-caption font-medium text-muted-foreground">
-                                        {cappedPercentageCompleted.toFixed(0)}% complete
+                                        {t("card.status.percentComplete", {
+                                            percent: cappedPercentageCompleted.toFixed(0),
+                                        })}
                                     </div>
                                     <ProgressBar value={cappedPercentageCompleted} className="h-1.5" />
                                 </div>
@@ -432,8 +442,12 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                 <div className="hidden [.ui-play_&]:flex items-center gap-3">
                                     <ProgressRing value={cappedPercentageCompleted} size={44} strokeWidth={4} />
                                     <div className="flex flex-col">
-                                        <span className="text-xs font-bold">{cappedPercentageCompleted.toFixed(0)}% complete</span>
-                                        <span className="text-caption text-muted-foreground">Keep going!</span>
+                                        <span className="text-xs font-bold">
+                                            {t("card.status.percentComplete", {
+                                                percent: cappedPercentageCompleted.toFixed(0),
+                                            })}
+                                        </span>
+                                        <span className="text-caption text-muted-foreground">{t("card.status.keepGoing")}</span>
                                     </div>
                                 </div>
                                 {resume?.slideTitle && (
@@ -441,7 +455,7 @@ const CourseCard: React.FC<CourseCardProps> = ({
                                         className="truncate text-caption text-muted-foreground"
                                         title={resume.slideTitle}
                                     >
-                                        Next: {resume.slideTitle}
+                                        {t("card.nextSlide", { title: resume.slideTitle })}
                                     </p>
                                 )}
                             </>
@@ -467,12 +481,12 @@ const CourseCard: React.FC<CourseCardProps> = ({
                     <CtaIcon
                         size={16}
                         weight={isCompleted || isInProgress ? "fill" : "regular"}
-                        className="mr-2 transition-transform duration-300 group-hover/btn:scale-110"
+                        className="me-2 transition-transform duration-300 group-hover/btn:scale-110"
                     />
                     <span>{ctaLabel}</span>
                     <CaretRight
                         size={16}
-                        className="ml-1 transition-transform duration-300 group-hover/btn:translate-x-1"
+                        className="ms-1 transition-transform duration-300 group-hover/btn:translate-x-1"
                     />
                 </Button>
                 {/* Continue resumes straight into the viewer, so give learners
@@ -486,10 +500,12 @@ const CourseCard: React.FC<CourseCardProps> = ({
                             "[.ui-play_&]:active:translate-y-0.5"
                         )}
                         onClick={() => handleViewCoureseDetails(courseId)}
-                        aria-label={`View ${getTerminology(ContentTerms.Course, SystemTerms.Course)} overview`}
+                        aria-label={t("card.overviewAriaLabel", {
+                            course: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                        })}
                     >
-                        <BookOpen size={16} className="mr-1.5" />
-                        Overview
+                        <BookOpen size={16} className="me-1.5" />
+                        {t("card.overview")}
                     </Button>
                 )}
             </CardFooter>

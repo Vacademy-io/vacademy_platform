@@ -1,9 +1,14 @@
-import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getActiveRoleDisplaySettingsKey, getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { Sidebar, SidebarContent, SidebarHeader } from '@/components/ui/sidebar';
 import { useSidebar } from '@/components/ui/sidebar';
 import { useCompactMode } from '@/hooks/use-compact-mode';
-import { X, ArrowsOutSimple, CaretLeft, CaretRight } from '@phosphor-icons/react';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { X, ArrowsOutSimple, CaretLeft, CaretRight, Trash, GraduationCap } from '@phosphor-icons/react';
+import { DeleteLeadsDialog } from '@/components/shared/leads/delete-leads-dialog';
+import { isAdminForInstitute } from '@/lib/auth/roleUtils';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useQueryClient, useQuery } from '@tanstack/react-query';
+import { getUserPlans } from '@/services/user-plan';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import DummyProfile from '@/assets/svgs/dummy_profile_photo.svg';
 import { StatusChips } from '@/components/design-system/chips';
 import { StudentOverview } from './student-overview/student-overview';
@@ -24,8 +29,13 @@ import { StudentEnquiry } from './student-enquiry/student-enquiry';
 import { StudentApplication } from './student-application/student-application';
 import { StudentLeadProfile } from './student-lead-profile/student-lead-profile';
 import { StudentFullHistory } from './student-full-history/student-full-history';
+import { StudentParentProfile } from './student-parent/student-parent-profile';
+import { StudentOnboardingProfile } from './student-onboarding/student-onboarding-profile';
 import { LeadFormResponseCard } from '@/routes/audience-manager/list/-components/campaign-users/lead-form-response-card';
+import { LeadMeetingsSection } from '@/components/shared/leads/lead-meetings-section';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
+import { useParentSettings } from '@/hooks/use-parent-settings';
+import { useOnboardingSettings } from '@/hooks/use-onboarding-settings';
 import { getPublicUrl } from '@/services/upload_file';
 import { ErrorBoundary } from '@/components/core/dashboard-loader';
 import { useStudentSidebar } from '../../../-context/selected-student-sidebar-context';
@@ -33,8 +43,9 @@ import {
     getTerminology,
     getTerminologyPlural,
 } from '@/components/common/layout-container/sidebar/utils';
-import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { ContentTerms, OtherTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { cn } from '@/lib/utils';
+import { useAssistDockVisible } from '@/components/assist-dock/visibility';
 import {
     getDisplaySettingsWithFallback,
     getDisplaySettingsFromCache,
@@ -80,6 +91,8 @@ function orderedVisibleTabIds(settings: StudentSideViewSettings): StudentSideVie
         'application',
         'lead',
         'fullHistory',
+        'parent',
+        'onboarding',
     ];
     const orders = settings.tabOrders ?? {};
     return all
@@ -120,6 +133,7 @@ export const StudentSidebar = ({
 }) => {
     const { state, setOpen, setOpenMobile } = useSidebar();
     const { isCompact } = useCompactMode();
+    const assistDockVisible = useAssistDockVisible();
     const [category, setCategory] = useState('overview');
     // Tab-bar scroll affordance: track whether more tabs sit off either edge so
     // we can show clickable chevrons — the plain fade wasn't a clear enough cue
@@ -133,9 +147,58 @@ export const StudentSidebar = ({
         setOpen(false);
         setOpenMobile(false);
     };
+    const [deleteOpen, setDeleteOpen] = useState(false);
     const [imageUrl, setImageUrl] = useState<string | null>(null);
     const [faceLoader, setFaceLoader] = useState(false);
-    const { selectedStudent, openOverlay, isOverlayOpen } = useStudentSidebar();
+    const { selectedStudent, setSelectedStudent, openOverlay, isOverlayOpen } = useStudentSidebar();
+    const queryClient = useQueryClient();
+    // `_response_id` marks a row that came from a lead surface (the lead lists map a lead into
+    // StudentTable shape to reuse this sheet). Contacts never carry it, so it doubles as the
+    // "is this a lead" test — and only a lead can be deleted here.
+    const leadResponseId =
+        ((selectedStudent as unknown as Record<string, unknown>)?._response_id as string | null) ??
+        null;
+    const currentInstituteId = getCurrentInstituteId();
+    const canDeleteLead = isAdminForInstitute(currentInstituteId);
+
+    // A soft-cancel (Remove from product) marks the learner's membership/plan
+    // CANCELED while their enrollment stays ACTIVE (access continues to expiry).
+    // Surface that as a "Cancelled Member" badge next to the status indicator so
+    // the admin can tell an active learner apart from an active-but-cancelled one.
+    const learnerUserId = selectedStudent?.user_id;
+    const { data: learnerPlans } = useQuery({
+        queryKey: ['learner-plans-for-cancel-badge', learnerUserId, currentInstituteId],
+        queryFn: () =>
+            getUserPlans(1, 50, ['CANCELED'], learnerUserId!, currentInstituteId || undefined),
+        enabled: !!learnerUserId && !!currentInstituteId,
+        staleTime: 60000,
+    });
+    // NOTE: the /user-plan/all endpoint ignores the requested status filter and
+    // returns plans of every status, so we must match CANCELED client-side rather
+    // than trust the response to be pre-filtered.
+    const isCancelledMember = (learnerPlans?.content ?? []).some(
+        (p) => (p.status || '').toUpperCase() === 'CANCELED'
+    );
+
+    // Membership courses this learner is enrolled in — resolved from the institute
+    // details store (no extra network call) by matching each of their package
+    // sessions to a package whose type is MEMBERSHIP. Shown as a line under the
+    // status row so an admin sees the membership name at a glance.
+    const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
+    const membershipCourseNames = useMemo(() => {
+        const psIds = selectedStudent?.all_package_session_ids?.length
+            ? selectedStudent.all_package_session_ids
+            : selectedStudent?.package_session_id
+              ? [selectedStudent.package_session_id]
+              : [];
+        const batches = instituteDetails?.batches_for_sessions ?? [];
+        const names = psIds
+            .map((id) => batches.find((b) => b.id === id))
+            .filter((b) => b?.package_dto?.package_type === 'MEMBERSHIP')
+            .map((b) => b?.package_dto?.package_name)
+            .filter((n): n is string => !!n);
+        return Array.from(new Set(names));
+    }, [selectedStudent, instituteDetails]);
     const [tabSettings, setTabSettings] = useState<StudentSideViewSettings | null>(null);
     /**
      * navStyle — selects between the horizontal tab bar (default) and the
@@ -159,6 +222,8 @@ export const StudentSidebar = ({
     const tabContainerRef = useRef<HTMLDivElement>(null);
     const activeTabRef = useRef<HTMLButtonElement>(null);
     const leadSettings = useLeadSettings();
+    const parentSettings = useParentSettings();
+    const onboardingSettings = useOnboardingSettings();
 
     useEffect(() => {
         if (state == 'expanded') {
@@ -295,9 +360,13 @@ export const StudentSidebar = ({
                 className
             )}
         >
-            {/* pr-14 keeps content clear of the fixed Assist Dock rail (w-14) that overlays this panel's right edge. */}
+            {/* pr-14 keeps content clear of the fixed Assist Dock rail (w-14) that overlays this
+                panel's right edge — only when the rail is visible for this role. */}
             <SidebarContent
-                className={`sidebar-content flex flex-col !gap-0 border-l border-t border-neutral-200 bg-white pr-14 font-app text-neutral-700`}
+                className={cn(
+                    'sidebar-content flex flex-col !gap-0 border-l border-t border-neutral-200 bg-white font-app text-neutral-700',
+                    assistDockVisible && 'pr-14'
+                )}
             >
                 <SidebarHeader className="sticky top-0 z-10 !mt-0 !gap-0 !p-0 border-b border-neutral-200 bg-white shadow-sm">
                     <div className="flex flex-col gap-1.5 px-3 pb-2 pt-1.5">
@@ -320,7 +389,7 @@ export const StudentSidebar = ({
                             <div className="flex min-w-0 flex-1 items-center gap-2">
                                 <h2
                                     className={cn(
-                                        'truncate text-base font-semibold leading-tight',
+                                        'min-w-0 truncate text-base font-semibold leading-tight',
                                         selectedStudent?.full_name
                                             ? 'text-neutral-900'
                                             : 'text-neutral-400'
@@ -330,7 +399,17 @@ export const StudentSidebar = ({
                                     {selectedStudent?.full_name || 'Unknown'}
                                 </h2>
                                 {selectedStudent?.status && (
-                                    <StatusChips status={selectedStudent.status} />
+                                    <div className="shrink-0">
+                                        <StatusChips status={selectedStudent.status} />
+                                    </div>
+                                )}
+                                {isCancelledMember && (
+                                    <span
+                                        className="shrink-0 whitespace-nowrap rounded-full bg-danger-50 px-2 py-0.5 text-xs font-medium text-danger-600 ring-1 ring-danger-200"
+                                        title="Membership cancelled — access continues until the plan expires"
+                                    >
+                                        Cancelled Member
+                                    </span>
                                 )}
                             </div>
 
@@ -341,6 +420,19 @@ export const StudentSidebar = ({
                                 evaluation submission tabs — don't supply `openOverlay`,
                                 so we hide the expand affordance there instead of crashing
                                 on click (TypeError: openOverlay is not a function). */}
+                            {/* Delete is offered only for leads (rows carrying a `_response_id`)
+                                and only to admins — a contact's row here is a real enrolled
+                                learner, which this endpoint deliberately can't touch. */}
+                            {leadResponseId && canDeleteLead && (
+                                <button
+                                    onClick={() => setDeleteOpen(true)}
+                                    className="flex size-9 shrink-0 items-center justify-center rounded-md text-neutral-500 transition-colors hover:bg-danger-50 hover:text-danger-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger-400"
+                                    aria-label="Delete lead"
+                                    title="Delete lead"
+                                >
+                                    <Trash className="size-5" />
+                                </button>
+                            )}
                             {typeof openOverlay === 'function' && (
                                 <button
                                     onClick={() => openOverlay()}
@@ -359,6 +451,23 @@ export const StudentSidebar = ({
                                 <X className="size-5" />
                             </button>
                         </div>
+
+                        {/* Membership course name(s) — shown right under the status row
+                            when the learner is enrolled in a MEMBERSHIP-type package. */}
+                        {membershipCourseNames.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                {membershipCourseNames.map((name) => (
+                                    <span
+                                        key={name}
+                                        title={name}
+                                        className="inline-flex max-w-full items-center gap-1 rounded-md bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary-700"
+                                    >
+                                        <GraduationCap className="size-3 shrink-0" />
+                                        <span className="truncate">{name}</span>
+                                    </span>
+                                ))}
+                            </div>
+                        )}
 
                         {/* Quick contact — mailto / tel / wa.me. Renders nothing when no
                             usable contact data exists, so it stays out of the way for
@@ -388,10 +497,19 @@ export const StudentSidebar = ({
                                                     : r === 'LEARNER'
                                                       ? 'Practice Staff'
                                                       : role.trim().toLowerCase().replace(/_/g, ' ');
+                                            // Role badges keep their normal amber look, and only
+                                            // turn red once the member has gone inactive.
+                                            const isInactive =
+                                                selectedStudent?.status === 'INACTIVE';
                                             return (
                                                 <span
                                                     key={index}
-                                                    className="rounded-full bg-warning-50 px-2 py-0.5 text-xs font-medium capitalize text-warning-600"
+                                                    className={cn(
+                                                        'rounded-full px-2 py-0.5 text-xs font-medium capitalize',
+                                                        isInactive
+                                                            ? 'bg-danger-50 text-danger-600 ring-1 ring-danger-200'
+                                                            : 'bg-warning-50 text-warning-600'
+                                                    )}
                                                 >
                                                     {label}
                                                 </span>
@@ -417,6 +535,24 @@ export const StudentSidebar = ({
                                         if (
                                             (tabId === 'lead' || tabId === 'fullHistory') &&
                                             (leadSettings.isLoading || !leadSettings.enabled)
+                                        ) {
+                                            return null;
+                                        }
+                                        // parent (Guardian) requires the guardian-linking
+                                        // feature to be enabled — a distinct toggle from
+                                        // the lead system, gated separately.
+                                        if (
+                                            tabId === 'parent' &&
+                                            (parentSettings.isLoading || !parentSettings.enabled)
+                                        ) {
+                                            return null;
+                                        }
+                                        // onboarding requires the Onboarding
+                                        // Flows feature to be enabled — its
+                                        // own toggle, independent of leads.
+                                        if (
+                                            tabId === 'onboarding' &&
+                                            (onboardingSettings.isLoading || !onboardingSettings.enabled)
                                         ) {
                                             return null;
                                         }
@@ -462,7 +598,7 @@ export const StudentSidebar = ({
                                             )}
                                             onClick={() => setCategory('subOrg')}
                                         >
-                                            SubOrg
+                                            {getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}
                                         </button>
                                     )}
                                 </div>
@@ -528,6 +664,22 @@ export const StudentSidebar = ({
                                             (!leadSettings.enabled || leadSettings.isLoading)
                                         )
                                             return false;
+                                        // Guardian section — gated on its own feature
+                                        // toggle, separate from the lead system.
+                                        const isParentGated = s.id === 'parent';
+                                        if (
+                                            isParentGated &&
+                                            (!parentSettings.enabled || parentSettings.isLoading)
+                                        )
+                                            return false;
+                                        // Onboarding section — gated on its own
+                                        // feature toggle, separate from leads.
+                                        const isOnboardingGated = s.id === 'onboarding';
+                                        if (
+                                            isOnboardingGated &&
+                                            (!onboardingSettings.enabled || onboardingSettings.isLoading)
+                                        )
+                                            return false;
                                         return flag;
                                     }).map((s) => s.id)
                                 )
@@ -549,6 +701,9 @@ export const StudentSidebar = ({
                         row (campaign-users / recent-leads); manage-students
                         rows don't carry the attached metadata. */}
                     {category === 'lead' && <LeadFormResponseCard />}
+                    {/* Meetings linked to this lead (by response id / user id / email) —
+                        renders alongside the form-response card on the Lead tab. */}
+                    {category === 'lead' && <LeadMeetingsSection className="my-3" />}
                     <ErrorBoundary>
                         {category === 'courses' && tabSettings?.coursesTab && (
                             <StudentCourses
@@ -637,10 +792,55 @@ export const StudentSidebar = ({
                             selectedStudent?.user_id && (
                                 <StudentFullHistory studentUserId={selectedStudent.user_id} />
                             )}
+                        {category === 'parent' &&
+                            tabSettings?.parentTab &&
+                            !parentSettings.isLoading &&
+                            parentSettings.enabled &&
+                            !isEnrollRequestStudentList &&
+                            selectedStudent?.user_id && (
+                                <StudentParentProfile userId={selectedStudent.user_id} />
+                            )}
+                        {category === 'onboarding' &&
+                            tabSettings?.onboardingTab &&
+                            !onboardingSettings.isLoading &&
+                            onboardingSettings.enabled &&
+                            !isEnrollRequestStudentList &&
+                            selectedStudent?.user_id && (
+                                <StudentOnboardingProfile
+                                    userId={selectedStudent.user_id}
+                                    subjectFullName={selectedStudent.full_name}
+                                    subjectEmail={selectedStudent.email}
+                                    subjectMobileNumber={selectedStudent.mobile_number}
+                                />
+                            )}
                     </ErrorBoundary>
                 </div>
                 </div>
             </SidebarContent>
+
+            {leadResponseId && currentInstituteId && (
+                <DeleteLeadsDialog
+                    open={deleteOpen}
+                    onOpenChange={setDeleteOpen}
+                    instituteId={currentInstituteId}
+                    responseIds={[leadResponseId]}
+                    userId={selectedStudent?.user_id}
+                    leadName={selectedStudent?.full_name}
+                    onSuccess={() => {
+                        // The lead is gone from every list — close the sheet rather than leave
+                        // it showing a row that no longer exists, and refetch the lists behind it.
+                        // These keys must match the lists' own useQuery keys exactly (prefix
+                        // matching only helps within a key, not across a different first element),
+                        // so they mirror what the tables invalidate after a status change.
+                        queryClient.invalidateQueries({ queryKey: ['recent-leads'] });
+                        queryClient.invalidateQueries({ queryKey: ['campaignUsers'] });
+                        queryClient.invalidateQueries({ queryKey: ['user-lead-profile'] });
+                        queryClient.invalidateQueries({ queryKey: ['lead-profiles-batch'] });
+                        setSelectedStudent(null);
+                        closeSidebar();
+                    }}
+                />
+            )}
         </Sidebar>
     );
 };

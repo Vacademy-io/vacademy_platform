@@ -40,7 +40,7 @@ export const DonationSummary: React.FC<DonationSummaryProps> = ({
         </div>
       )}
       <button
-        className="text-xs font-medium ml-auto block rounded border border-neutral-300 bg-white text-neutral-600 px-3 py-1 focus:outline-none transition-colors duration-200 hover:bg-primary-50/50 hover:border-primary-300"
+        className="text-xs font-medium ms-auto block rounded border border-neutral-300 bg-white text-neutral-600 px-3 py-1 focus:outline-none transition-colors duration-200 hover:bg-primary-50/50 hover:border-primary-300"
         onClick={onEdit}
         style={{ boxShadow: 'none', textDecoration: 'none' }}
       >

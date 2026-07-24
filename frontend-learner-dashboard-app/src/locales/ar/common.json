@@ -1,0 +1,36 @@
+{
+    "login": {
+        "heading": "سعداء بعودتك!",
+        "subheading": "سجّل الدخول وواصل رحلتك التعليمية!",
+        "emailPlaceholder": "you@email.com",
+        "passwordPlaceholder": "كلمة المرور",
+        "forgotPasswordLink": "هل نسيت كلمة المرور؟",
+        "loginButton": "تسجيل الدخول",
+        "forgotPasswordHeading": "نسيت كلمة المرور",
+        "forgotPasswordSubheading": "أدخل بريدك الإلكتروني وسنرسل كلمة المرور إلى صندوق بريدك",
+        "forgotPasswordEmailPlaceholder": "you@email.com",
+        "forgotPasswordButton": "إرسال رابط إعادة التعيين",
+        "forgotPasswordBottomText": "هل تذكرت كلمة المرور؟",
+        "setPasswordHeading": "تعيين كلمة مرور جديدة",
+        "setPasswordSubheading": "أمّن حسابك بكلمة مرور جديدة",
+        "setPasswordNewPlaceholder": "كلمة المرور الجديدة",
+        "setPasswordConfirmPlaceholder": "تأكيد كلمة المرور الجديدة",
+        "setPasswordButton": "إعادة تعيين كلمة المرور",
+        "setPasswordBottomText": "العودة إلى تسجيل الدخول؟"
+    },
+    "profile": {
+        "language": "اللغة",
+        "languageHint": "اختر لغة القوائم والأزرار."
+    },
+    "actions": {
+        "save": "حفظ",
+        "cancel": "إلغاء",
+        "delete": "حذف"
+    },
+    "table": {
+        "noResults": "لا توجد نتائج"
+    },
+    "common": {
+        "loading": "جارٍ التحميل..."
+    }
+}

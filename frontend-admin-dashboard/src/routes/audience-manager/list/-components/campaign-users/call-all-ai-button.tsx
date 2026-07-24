@@ -3,10 +3,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Robot } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { MyButton } from '@/components/design-system/button';
 import { MyDialog } from '@/components/design-system/dialog';
 import { useAiCallButtonEnabled } from '@/components/shared/leads';
+import { AiCallChooserFields } from '@/components/shared/leads/ai-call-chooser';
 import { startAiCallCampaign } from '@/components/shared/leads/services/start-ai-campaign';
+import { CampaignProgressDialog } from './campaign-progress-dialog';
 
 interface CallAllWithAiButtonProps {
     /** Audience/campaign id — the lead list to call. */
@@ -14,6 +25,8 @@ interface CallAllWithAiButtonProps {
     instituteId?: string;
     /** Total leads currently in the list (drives the disabled state before the dry run). */
     totalElements: number;
+    /** The rows the admin has check-selected (responseId → name); enables "only selected". */
+    selectedLeads?: Map<string, { userId: string; responseId: string; name: string }>;
 }
 
 /**
@@ -28,10 +41,27 @@ export function CallAllWithAiButton({
     audienceId,
     instituteId,
     totalElements,
+    selectedLeads,
 }: CallAllWithAiButtonProps) {
     const enabled = useAiCallButtonEnabled();
     const queryClient = useQueryClient();
     const [open, setOpen] = useState(false);
+    // Chooser: '' = default agent / auto number (only shown when >1 exists).
+    const [agentId, setAgentId] = useState('');
+    const [numberId, setNumberId] = useState('');
+    // Scope: when rows are checked, default to calling only those.
+    const selectedCount = selectedLeads?.size ?? 0;
+    const [scope, setScope] = useState<'selected' | 'all'>('selected');
+    const effectiveScope = selectedCount > 0 ? scope : 'all';
+    // Calls in parallel (completion-aware window server-side). 1 = one at a time.
+    const [parallel, setParallel] = useState('1');
+    // Live progress dialog state for the just-started run.
+    const [progress, setProgress] = useState<{
+        startedAtMs: number;
+        expectedTotal: number;
+        leadNames: Map<string, string>;
+        parallel: number;
+    } | null>(null);
 
     // Dry run: count eligible leads for the confirm copy, WITHOUT placing any calls.
     const preview = useQuery({
@@ -44,11 +74,33 @@ export function CallAllWithAiButton({
     });
 
     const start = useMutation({
-        mutationFn: () =>
-            startAiCallCampaign({ audienceId, instituteId: instituteId!, dryRun: false }),
+        mutationFn: () => {
+            return startAiCallCampaign({
+                audienceId,
+                instituteId: instituteId!,
+                dryRun: false,
+                campaignId: agentId || undefined,
+                preferredNumberId: numberId || undefined,
+                responseIds:
+                    effectiveScope === 'selected' && selectedLeads
+                        ? Array.from(selectedLeads.keys())
+                        : undefined,
+                parallel: Number(parallel) || 1,
+            });
+        },
         onSuccess: (res) => {
             toast.success(res.message || `Queued ${res.eligible} AI call(s)`);
             setOpen(false);
+            // Live progress: names for the rows we know (selected scope has them all;
+            // 'all' scope labels rows for leads on the loaded page, others fall back).
+            const names = new Map<string, string>();
+            selectedLeads?.forEach((v, k) => names.set(k, v.name));
+            setProgress({
+                startedAtMs: Date.now() - 30_000, // small skew guard for server clock
+                expectedTotal: res.eligible,
+                leadNames: names,
+                parallel: Number(parallel) || 1,
+            });
             queryClient.invalidateQueries({ queryKey: ['campaignUsers', audienceId] });
         },
         onError: (err) => toast.error(errMsg(err)),
@@ -58,6 +110,9 @@ export function CallAllWithAiButton({
 
     const eligible = preview.data?.eligible ?? 0;
     const totalInList = preview.data?.total ?? totalElements;
+    // The number the button will actually dial under the chosen scope. Selected rows
+    // are re-checked server-side for eligibility, so this is an upper bound there.
+    const callCount = effectiveScope === 'selected' ? Math.min(selectedCount, eligible || selectedCount) : eligible;
     const previewError = preview.isError ? errMsg(preview.error) : null;
 
     const footer = (
@@ -73,8 +128,8 @@ export function CallAllWithAiButton({
             >
                 {start.isPending
                     ? 'Starting…'
-                    : eligible > 0
-                      ? `Call ${eligible} lead${eligible === 1 ? '' : 's'}`
+                    : callCount > 0
+                      ? `Call ${callCount} lead${callCount === 1 ? '' : 's'}`
                       : 'Call leads'}
             </MyButton>
         </div>
@@ -123,10 +178,74 @@ export function CallAllWithAiButton({
                                     No leads in this list have a contact number to call.
                                 </p>
                             )}
+                            {eligible > 0 && selectedCount > 0 && (
+                                <div className="space-y-1.5">
+                                    <Label>Who to call</Label>
+                                    <RadioGroup
+                                        value={effectiveScope}
+                                        onValueChange={(v) => setScope(v as 'selected' | 'all')}
+                                        className="gap-1.5"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <RadioGroupItem value="selected" id="ai-scope-selected" />
+                                            <Label htmlFor="ai-scope-selected" className="font-normal">
+                                                Only the {selectedCount} selected lead
+                                                {selectedCount === 1 ? '' : 's'}
+                                            </Label>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <RadioGroupItem value="all" id="ai-scope-all" />
+                                            <Label htmlFor="ai-scope-all" className="font-normal">
+                                                All {eligible} eligible leads in this list
+                                            </Label>
+                                        </div>
+                                    </RadioGroup>
+                                </div>
+                            )}
+                            {eligible > 0 && (
+                                <div className="space-y-1.5">
+                                    <Label>Calls at a time</Label>
+                                    <Select value={parallel} onValueChange={setParallel}>
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="1">1 — one call at a time</SelectItem>
+                                            <SelectItem value="2">2 in parallel</SelectItem>
+                                            <SelectItem value="3">3 in parallel</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-caption text-neutral-500">
+                                        The next call starts as soon as one ends, keeping at most
+                                        this many live at once.
+                                    </p>
+                                </div>
+                            )}
+                            {eligible > 0 && (
+                                <AiCallChooserFields
+                                    agentId={agentId}
+                                    onAgentChange={setAgentId}
+                                    numberId={numberId}
+                                    onNumberChange={setNumberId}
+                                />
+                            )}
                         </>
                     )}
                 </div>
             </MyDialog>
+
+            {progress && (
+                <CampaignProgressDialog
+                    open={!!progress}
+                    onOpenChange={(o) => !o && setProgress(null)}
+                    audienceId={audienceId}
+                    instituteId={instituteId!}
+                    startedAtMs={progress.startedAtMs}
+                    expectedTotal={progress.expectedTotal}
+                    leadNames={progress.leadNames}
+                    parallel={progress.parallel}
+                />
+            )}
         </>
     );
 }

@@ -86,7 +86,7 @@ export const CertificateCompletionBanner = ({
                 "[.ui-vibrant_&]:bg-success-50 dark:[.ui-vibrant_&]:bg-success-500/10",
                 "[.ui-vibrant_&]:border-success-200 dark:[.ui-vibrant_&]:border-success-500/30 [.ui-vibrant_&]:shadow-sm",
                 // Play Styles — solid green hero with soft layered shadow
-                "[.ui-play_&]:bg-play-success [.ui-play_&]:border-transparent [.ui-play_&]:text-white [.ui-play_&]:rounded-2xl [.ui-play_&]:font-extrabold",
+                "[.ui-play_&]:bg-play-success-soft [.ui-play_&]:border-border [.ui-play_&]:text-play-success-soft-ink [.ui-play_&]:rounded-play-card-sm [.ui-play_&]:font-extrabold",
                 "[.ui-play_&]:shadow-play-glow-success-lg"
             )}>
                 <div className="flex items-center gap-4">
@@ -169,7 +169,7 @@ export const CertificateCompletionBanner = ({
                             className="relative w-vw-95 max-w-5xl h-screen-90 bg-white dark:bg-gray-900 rounded-lg shadow-2xl flex flex-col overflow-hidden"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700 pr-24">
+                            <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700 pe-24">
                                 <GraduationCap size={18} className="text-emerald-600 flex-shrink-0" />
                                 <span className="text-sm font-medium truncate">
                                     {courseTitle} — Certificate Preview
@@ -182,7 +182,7 @@ export const CertificateCompletionBanner = ({
                                     onClick={handleRefresh}
                                     disabled={isRefreshing}
                                     title="Re-issue with the latest template"
-                                    className="absolute right-12 top-3 flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                                    className="absolute end-12 top-3 flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
                                 >
                                     <ArrowsClockwise
                                         size={14}
@@ -195,7 +195,7 @@ export const CertificateCompletionBanner = ({
                                 type="button"
                                 aria-label="Close preview"
                                 onClick={() => setPreviewOpen(false)}
-                                className="absolute right-3 top-3 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300"
+                                className="absolute end-3 top-3 p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300"
                             >
                                 <X size={18} />
                             </button>

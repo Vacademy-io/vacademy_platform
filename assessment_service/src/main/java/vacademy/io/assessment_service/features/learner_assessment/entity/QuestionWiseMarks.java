@@ -72,6 +72,11 @@ public class QuestionWiseMarks {
     @Column(name = "evaluator_feedback", columnDefinition = "TEXT")
     private String evaluatorFeedback;
 
+    // How this mark was produced: AI, AI_REVIEWED (AI graded, teacher edited),
+    // MANUAL, or AUTO. Null on legacy rows written before this column existed.
+    @Column(name = "marks_source")
+    private String marksSource;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Date createdAt;
 

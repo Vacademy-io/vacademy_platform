@@ -22,6 +22,10 @@ public interface RecipientMessageRepository extends JpaRepository<RecipientMessa
     Page<RecipientMessage> findByUserIdAndModeTypeOrderByCreatedAtDesc(String userId, ModeType modeType, Pageable pageable);
     
     List<RecipientMessage> findByAnnouncementId(String announcementId);
+
+    Page<RecipientMessage> findByAnnouncementIdOrderByCreatedAtDesc(String announcementId, Pageable pageable);
+
+    Page<RecipientMessage> findByAnnouncementIdAndModeTypeOrderByCreatedAtDesc(String announcementId, ModeType modeType, Pageable pageable);
     
     List<RecipientMessage> findByAnnouncementIdAndStatus(String announcementId, MessageStatus status);
     
@@ -147,6 +151,23 @@ public interface RecipientMessageRepository extends JpaRepository<RecipientMessa
         ORDER BY adp.priority DESC, rm.createdAt DESC
     """)
     List<RecipientMessage> findActiveDashboardPins(@Param("userId") String userId);
+
+    /**
+     * Get active app overlays (not dismissed, not expired). Dismiss-once semantics:
+     * a DISMISSED interaction permanently hides the overlay for that user.
+     */
+    @Query("""
+        SELECT rm FROM RecipientMessage rm
+        JOIN Announcement a ON rm.announcementId = a.id
+        JOIN AnnouncementAppOverlay aao ON aao.announcement.id = a.id
+        WHERE rm.userId = :userId
+          AND rm.modeType = 'APP_OVERLAY'
+          AND aao.isActive = true
+          AND (aao.showUntil IS NULL OR aao.showUntil > CURRENT_TIMESTAMP)
+          AND NOT EXISTS (SELECT mi FROM MessageInteraction mi WHERE mi.recipientMessageId = rm.id AND mi.userId = :userId AND mi.interactionType = 'DISMISSED')
+        ORDER BY aao.priority DESC, rm.createdAt DESC
+    """)
+    List<RecipientMessage> findActiveAppOverlays(@Param("userId") String userId);
 
     /**
      * Get stream messages with package session and stream type filtering

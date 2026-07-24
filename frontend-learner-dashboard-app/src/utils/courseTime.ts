@@ -39,6 +39,7 @@ const DEFAULT_MINUTES_PER_SLIDE: Record<string, number> = {
   VIDEO: 15,
   DOCUMENT: 30,
   DOC: 30,
+  HTML: 30,
   PDF: 30,
   QUIZ: 30,
 };
@@ -46,6 +47,7 @@ const DEFAULT_MINUTES_PER_SLIDE: Record<string, number> = {
 const normalizeSourceType = (raw: string): string => {
   const upper = (raw || "").toUpperCase();
   if (upper === "DOC") return "DOCUMENT";
+  if (upper === "HTML") return "DOCUMENT";
   if (upper === "JUPYTER") return "JUPYTER_NOTEBOOK";
   if (upper === "SCRATCH") return "SCRATCH_PROJECT";
   return upper;

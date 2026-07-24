@@ -40,6 +40,36 @@ export type CustomFieldType =
     | 'file'
     | 'multi_select';
 
+// Sentinel value for the "All Files" option in a file-field's allowed-types
+// list. Selecting it is equivalent to leaving the list empty (no restriction)
+// but is explicit in the UI and in stored config, so admins don't have to
+// know that "check nothing" means "allow anything."
+export const ALL_FILES_VALUE = 'all';
+
+export const COMMON_FILE_TYPES: Array<{ value: string; label: string }> = [
+    { value: ALL_FILES_VALUE, label: 'All Files' },
+    { value: 'pdf', label: 'PDF' },
+    { value: 'doc', label: 'DOC' },
+    { value: 'docx', label: 'DOCX' },
+    { value: 'xls', label: 'XLS' },
+    { value: 'xlsx', label: 'XLSX' },
+    { value: 'csv', label: 'CSV' },
+    { value: 'png', label: 'PNG' },
+    { value: 'jpg', label: 'JPG' },
+    { value: 'jpeg', label: 'JPEG' },
+    { value: 'gif', label: 'GIF' },
+    { value: 'svg', label: 'SVG' },
+    { value: 'mp4', label: 'MP4' },
+    { value: 'mp3', label: 'MP3' },
+    { value: 'zip', label: 'ZIP' },
+    { value: 'txt', label: 'TXT' },
+];
+
+// True when the allowed-types list places no real restriction on uploads:
+// unset, empty, or explicitly set to "All Files".
+export const isUnrestrictedFileTypes = (allowed?: string[] | null): boolean =>
+    !allowed || allowed.length === 0 || allowed.includes(ALL_FILES_VALUE);
+
 // Config JSON structure for dropdown options
 export interface DropdownOptionConfig {
     id: number;
@@ -61,6 +91,14 @@ export interface CustomFieldFullConfig {
     countryCode?: string;
     allowedFileTypes?: string[];
     maxSizeMB?: number;
+    // Optional bold section heading rendered above the description block
+    // (e.g. a "Terms & Conditions" title). Pairs with `description`.
+    heading?: string;
+    // Long descriptive body rendered above the input (e.g. a Terms & Conditions
+    // block above a "Yes, I agree" checkbox). Lives in config because fieldName
+    // is varchar(255); config is unbounded text. extractConfigExtras forwards
+    // it verbatim through buildConfigJson.
+    description?: string;
 }
 
 // API Response Types (what we get from GET_INSITITUTE_SETTINGS)

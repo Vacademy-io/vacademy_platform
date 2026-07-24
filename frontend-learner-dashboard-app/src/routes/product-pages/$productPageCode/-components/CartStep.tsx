@@ -333,7 +333,7 @@ export const CartStep = ({ pageData, settings, primaryColor = '#2563eb', onBack,
             </div>
 
             {/* ── Bottom navigation — fixed to viewport bottom ────────── */}
-            <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-gray-200 bg-white px-4 py-4">
+            <div className="fixed bottom-0 start-0 end-0 z-10 border-t border-gray-200 bg-white px-4 py-4">
                 <div className="mx-auto flex max-w-xl items-center justify-between gap-3">
                     {!settings.disableBackNavigation ? (
                         <button

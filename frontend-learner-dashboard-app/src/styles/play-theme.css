@@ -18,6 +18,14 @@
   --play-radius-card: 20px;
   --play-radius-btn: 14px;
   --play-radius-badge: 999px;
+  /* Tighter, quieter radius for the Dashboard's hand-built pastel widgets —
+     additive only. The base --play-radius-card (20px) stays untouched since
+     non-Dashboard Play surfaces consume it directly via rounded-play-card
+     classes (course details, assessment cards, profile, PlayBottomNav...);
+     only Dashboard-scoped components opt into this smaller value via
+     rounded-play-card-sm. (Note: the .ui-play .card/.Card rule below does
+     NOT match shadcn Cards — they emit no literal "card" class token.) */
+  --play-radius-card-sm: 12px;
 
   /* Duolingo-style play palette (role -> base + deep "3D" shade). Promoted from
      scattered arbitrary hex; exposed to Tailwind as the `play-*` color + shadow tokens. */
@@ -43,6 +51,25 @@
   /* Deeper press shades for cards whose SURFACE is already the -deep tone. */
   --play-c-info-deeper: #11719f;
   --play-c-accent-deeper: #7d4d99;
+
+  /* Pastel "soft" pair per role: a light tint SURFACE + a saturated INK for
+     icons/text/accents on top of it — same tint+ink grammar as the Cleaner
+     Play skin's --cp-*-tint tokens. Additive only: the bold -deep tokens
+     above are untouched and still used by any non-Dashboard Play surface. */
+  --play-c-success-soft: #eff7e9;
+  --play-c-success-soft-ink: #417915;
+  --play-c-info-soft: #e9f6fb;
+  --play-c-info-soft-ink: #0e78aa;
+  --play-c-danger-soft: #feecec;
+  --play-c-danger-soft-ink: #db2424;
+  --play-c-warn-soft: #fef4e7;
+  --play-c-warn-soft-ink: #c2750a;
+  --play-c-accent-soft: #f6effb;
+  --play-c-accent-soft-ink: #9241c8;
+  --play-c-gold-soft: #fdf8e7;
+  --play-c-gold-soft-ink: #b6910c;
+  --play-c-navy-soft: #edf1f8;
+  --play-c-navy-soft-ink: #224777;
 }
 
 /* ── Animations ───────────────────────────────────────────────────── */
@@ -84,17 +111,30 @@
 .play-float { animation: play-float 3s ease-in-out infinite; }
 .play-xp-pop { animation: play-xp-pop 0.4s ease-out; }
 
+/* Vestibular safety: park every play animation for users who asked the OS
+   for reduced motion (cleaner-play-theme.css guards its float the same way). */
+@media (prefers-reduced-motion: reduce) {
+  .play-wiggle,
+  .play-pulse,
+  .play-bounce-in,
+  .play-float,
+  .play-xp-pop {
+    animation: none;
+  }
+}
+
 /* ── Global Rounding & Solidity ───────────────────────────────────── */
 @layer components {
 
-  /* Cards: rounded, soft layered drop shadow (modern elevation) */
+  /* Cards: quiet chrome — 12px radius, neutral hairline, near-flat shadow
+     (softened 2026-07-16 from 20px + tinted border + heavy lift to match
+     the pastel Dashboard language). Note: matches literal .card class
+     consumers only — shadcn Cards emit no "card" class token. */
   .ui-play .card,
   .ui-play .Card {
-    border-radius: var(--play-radius-card) !important;
-    border: 1px solid hsl(var(--primary-100)) !important;
-    box-shadow:
-      0 1px 2px hsl(var(--primary-300) / 0.06),
-      0 8px 24px -10px hsl(var(--primary-400) / 0.14) !important;
+    border-radius: var(--play-radius-card-sm) !important;
+    border: 1px solid hsl(var(--border)) !important;
+    box-shadow: 0 1px 2px rgba(60, 60, 60, 0.04), 0 4px 12px -8px rgba(60, 60, 60, 0.1) !important;
     transition: transform 200ms cubic-bezier(.2,.8,.2,1), box-shadow 200ms ease;
     background: white !important;
   }
@@ -102,9 +142,6 @@
   .ui-play .card:hover,
   .ui-play .Card:hover {
     transform: translateY(-2px);
-    box-shadow:
-      0 2px 4px hsl(var(--primary-300) / 0.08),
-      0 16px 32px -10px hsl(var(--primary-400) / 0.2) !important;
   }
 
   /* Badges: always pill, solid */
@@ -115,22 +152,23 @@
     border-width: 1px !important;
   }
 
+  /* Course tags: pastel tint + ink (softened from solid legacy hues) */
   .ui-play .course-tag {
-    background-color: hsl(var(--play-blue)) !important;
-    color: white !important;
-    border-color: hsl(var(--play-blue)) !important;
+    background-color: var(--play-c-info-soft) !important;
+    color: var(--play-c-info-soft-ink) !important;
+    border-color: transparent !important;
   }
 
   .ui-play .course-tag--secondary {
-    background-color: hsl(var(--play-purple)) !important;
-    color: white !important;
-    border-color: hsl(var(--play-purple)) !important;
+    background-color: var(--play-c-accent-soft) !important;
+    color: var(--play-c-accent-soft-ink) !important;
+    border-color: transparent !important;
   }
 
   .ui-play .course-tag--tertiary {
-    background-color: hsl(var(--play-green)) !important;
-    color: white !important;
-    border-color: hsl(var(--play-green)) !important;
+    background-color: var(--play-c-success-soft) !important;
+    color: var(--play-c-success-soft-ink) !important;
+    border-color: transparent !important;
   }
 
   /* ── Buttons: 3D press effect (Duolingo style) ──────────────────── */
@@ -139,9 +177,7 @@
   .ui-play .my-button:not([class*="shadow-play"]) {
     border-radius: var(--play-radius-btn) !important;
     font-weight: 700 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.5px !important;
-    box-shadow: 0 4px 0 hsl(var(--primary-400)) !important;
+    box-shadow: 0 2px 0 hsl(var(--primary-400)) !important;
     transition: transform 100ms ease, box-shadow 100ms ease;
   }
 
@@ -149,7 +185,7 @@
   .ui-play .btn:not([class*="shadow-play"]):hover,
   .ui-play .my-button:not([class*="shadow-play"]):hover {
     transform: translateY(-1px);
-    box-shadow: 0 5px 0 hsl(var(--primary-400)) !important;
+    box-shadow: 0 3px 0 hsl(var(--primary-400)) !important;
   }
 
   .ui-play button.bg-primary-500:not([class*="shadow-play"]):active,
@@ -173,56 +209,23 @@
     box-shadow: none !important;
   }
 
-  /* ── Dashboard Stat Cards: SOLID colored backgrounds ──────────────
-     Surfaces use the canonical deep --play-c-* shades (white text from
-     the JSX [.ui-play_&]:text-white classes) and the Duolingo press
-     shadow grammar. The old .stat-card-inner rules were dead CSS — no
-     JSX emits that class; only the category classes below are real.
-     :hover/:active re-assert the press shadow so the generic
-     .ui-play .card:hover glow cannot replace it. */
+  /* ── Dashboard Stat Cards: pastel tint backgrounds ────────────────
+     ONLY the pastel background lives here. Border, radius, shadow, and
+     press behavior are owned by the [.ui-play_&]:! utilities inside
+     DashboardStatCard.tsx — those land in the Tailwind utilities bucket,
+     which is emitted after this components bucket, so any equal-
+     specificity !important declarations added here would silently lose.
+     Do not re-add border/shadow rules to these selectors. */
   .ui-play .stat-card-courses {
-    background-color: var(--play-c-info-deep) !important;
-    border-color: transparent !important;
-    box-shadow: 0 4px 0 var(--play-c-info-deeper) !important;
+    background-color: var(--play-c-info-soft) !important;
   }
 
   .ui-play .stat-card-live {
-    background-color: var(--play-c-navy) !important;
-    border-color: transparent !important;
-    box-shadow: 0 4px 0 var(--play-c-navy-deep) !important;
+    background-color: var(--play-c-navy-soft) !important;
   }
 
   .ui-play .stat-card-assessments {
-    background-color: var(--play-c-accent-deep) !important;
-    border-color: transparent !important;
-    box-shadow: 0 4px 0 var(--play-c-accent-deeper) !important;
-  }
-
-  .ui-play .stat-card-courses:hover {
-    box-shadow: 0 4px 0 var(--play-c-info-deeper) !important;
-  }
-
-  .ui-play .stat-card-live:hover {
-    box-shadow: 0 4px 0 var(--play-c-navy-deep) !important;
-  }
-
-  .ui-play .stat-card-assessments:hover {
-    box-shadow: 0 4px 0 var(--play-c-accent-deeper) !important;
-  }
-
-  .ui-play .stat-card-courses:active {
-    transform: translateY(2px);
-    box-shadow: 0 1px 0 var(--play-c-info-deeper) !important;
-  }
-
-  .ui-play .stat-card-live:active {
-    transform: translateY(2px);
-    box-shadow: 0 1px 0 var(--play-c-navy-deep) !important;
-  }
-
-  .ui-play .stat-card-assessments:active {
-    transform: translateY(2px);
-    box-shadow: 0 1px 0 var(--play-c-accent-deeper) !important;
+    background-color: var(--play-c-accent-soft) !important;
   }
 
   /* (Dead .stat-card-icon / .stat-card-title / .stat-card--* rules removed:
@@ -241,21 +244,17 @@
      ([.ui-play_&]:bg-play-navy + shadow-play-4d-navy in
      UpcomingLiveClassesWidget.tsx); the old pink shell override is gone. */
 
-  /* Notification card (new state): solid blue hero */
+  /* Notification card (new state): info-soft tint + ink (softened from
+     the solid legacy blue hero; the JSX pairs this with an ink text class) */
   .ui-play .notification-card-new {
-    background-color: hsl(var(--play-blue)) !important;
-    border-color: transparent !important;
-    border-radius: var(--play-radius-card) !important;
-    box-shadow:
-      0 1px 2px hsl(var(--play-blue) / 0.18),
-      0 12px 28px -10px hsl(var(--play-blue) / 0.4) !important;
+    background-color: var(--play-c-info-soft) !important;
+    border-color: hsl(var(--border)) !important;
+    border-radius: var(--play-radius-card-sm) !important;
+    box-shadow: 0 1px 2px rgba(60, 60, 60, 0.04), 0 4px 12px -8px rgba(60, 60, 60, 0.1) !important;
   }
 
   .ui-play .notification-card-new:hover {
     transform: translateY(-2px);
-    box-shadow:
-      0 2px 4px hsl(var(--play-blue) / 0.22),
-      0 18px 36px -12px hsl(var(--play-blue) / 0.5) !important;
   }
 
   /* (Continue Learning empty-state shell + text overrides removed
@@ -289,24 +288,22 @@
   }
 
   /* ── Background Surfaces ────────────────────────────────────────── */
+  /* Neutral page-ish blocks: follow the canvas so they don't sit as a cool
+     grey patch on an institute-tinted background. */
   .ui-play .bg-gray-50 {
-    background-color: #f8f9fb !important;
+    background-color: hsl(var(--background)) !important;
   }
 
   .ui-play .bg-white\/80 {
     background-color: white !important;
   }
 
-  /* Dashboard surface: subtle dot pattern over a neutral warm tint —
-     stays out of the way so green/blue/pink hero cards can pop. */
+  /* Dashboard surface: follows --background (white by default) so an
+     institute-authored page tint (THEME_SETTING `background` role) reaches
+     the Play dashboard too, instead of being painted over with hard white. */
   .ui-play .dashboard-container {
-    background-color: hsl(220 14% 97%) !important; /* warm neutral */
-    background-image:
-      radial-gradient(circle at 1px 1px,
-        hsl(220 14% 80% / 0.5) 1px,
-        transparent 0);
-    background-size: 24px 24px;
-    background-position: 0 0;
+    background-color: hsl(var(--background)) !important;
+    background-image: none !important;
   }
 
   /* Looser vertical rhythm — Tailwind space-y-4 (16px) feels cramped

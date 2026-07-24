@@ -376,7 +376,7 @@ function EmbedComponent() {
                 onClick={() => window.open(learnerButtonConfig.url, "_blank")}
               >
                 <span>{learnerButtonConfig.text}</span>
-                <ArrowSquareOut size={14} weight="bold" className="ml-2 opacity-90" />
+                <ArrowSquareOut size={14} weight="bold" className="ms-2 opacity-90" />
               </Button>
             </div>
           )}
@@ -406,7 +406,7 @@ function EmbedComponent() {
                 onClick={() => window.open(learnerButtonConfig.url, "_blank")}
               >
                 <span>{learnerButtonConfig.text}</span>
-                <ArrowSquareOut size={14} weight="bold" className="ml-2 opacity-90" />
+                <ArrowSquareOut size={14} weight="bold" className="ms-2 opacity-90" />
               </Button>
             </div>
           )}
@@ -441,7 +441,7 @@ function EmbedComponent() {
                 onClick={() => window.open(learnerButtonConfig.url, "_blank")}
               >
                 <span>{learnerButtonConfig.text}</span>
-                <ArrowSquareOut size={14} weight="bold" className="ml-2 opacity-90" />
+                <ArrowSquareOut size={14} weight="bold" className="ms-2 opacity-90" />
               </Button>
             </div>
           )}
@@ -585,7 +585,7 @@ function EmbedComponent() {
           <span className="truncate text-xs font-medium text-white/80">
             {sessionDetails.title}
           </span>
-          <span className="ml-auto rounded bg-red-600 px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide text-white">
+          <span className="ms-auto rounded bg-red-600 px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide text-white">
             Live
           </span>
         </div>

@@ -4,7 +4,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import vacademy.io.common.logging.SentryLogger;
 import vacademy.io.community_service.feature.onboarding.dto.QuestionDto;
 import vacademy.io.community_service.feature.onboarding.entity.OnboardingSubmission;
 import vacademy.io.community_service.feature.session.dto.admin.EmailRequestDto;
@@ -18,7 +17,7 @@ import java.util.Map;
 
 /**
  * Notifies the super-admin team when a new onboarding form arrives.
- *   1. Sentry WARNING (forwarded to Slack by the existing integration).
+ *   1. An INFO log line (routine lead — intentionally not a Sentry warning/incident).
  *   2. Email to every active recipient via the notification-service unified-send path.
  * Best-effort and never throws back into the request flow.
  */
@@ -42,12 +41,7 @@ public class OnboardingAlertService {
                     s.getInstituteType() == null ? "?" : s.getInstituteType(),
                     safe(s.getContactEmail(), "no email"));
 
-            Map<String, String> tags = new HashMap<>();
-            tags.put("alert_type", "onboarding_submission");
-            tags.put("institute_type", String.valueOf(s.getInstituteType()));
-            tags.put("link_slug", String.valueOf(s.getLinkSlug()));
-            tags.put("submission_id", String.valueOf(s.getId()));
-            SentryLogger.logWarning(summary, tags);
+            log.info("New onboarding submission {} — {}", s.getId(), summary);
 
             if (recipientEmails == null || recipientEmails.isEmpty()) {
                 return false;

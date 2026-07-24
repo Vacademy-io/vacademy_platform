@@ -51,7 +51,10 @@ export async function generateContent(
     generationRunId: string = crypto.randomUUID(),
     // Course-level AI-video settings (model/voice/tier/duration) applied
     // server-side to AI_VIDEO / AI_SLIDES / AI_STORYBOOK todos.
-    videoSettings?: Record<string, string>
+    videoSettings?: Record<string, string>,
+    // Media fileIds of uploaded reference PDFs — the backend embeds their real
+    // figures into DOCUMENT slides.
+    referenceDocumentFileIds?: string[]
 ): Promise<void> {
     const apiUrl = `${AI_SERVICE_BASE_URL}/course/content/v1/generate`;
     
@@ -92,6 +95,10 @@ export async function generateContent(
                     video_settings:
                         videoSettings && Object.keys(videoSettings).length > 0
                             ? videoSettings
+                            : undefined,
+                    reference_document_file_ids:
+                        referenceDocumentFileIds && referenceDocumentFileIds.length > 0
+                            ? referenceDocumentFileIds
                             : undefined,
                 }),
                 signal: controller.signal,
@@ -389,7 +396,8 @@ export async function generateContent(
                 retryCount + 1,
                 language,
                 generationRunId,
-                videoSettings
+                videoSettings,
+                referenceDocumentFileIds
             );
         }
 

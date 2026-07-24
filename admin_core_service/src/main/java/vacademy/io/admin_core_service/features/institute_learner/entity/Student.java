@@ -72,6 +72,16 @@ public class Student {
     @Column(name = "face_file_id")
     private String faceFileId;
 
+    /**
+     * Denormalized pointer to the linked guardian (auth_service.users.id),
+     * kept in sync by ParentLinkService — see V377 migration comment. Source
+     * of truth remains auth_service.users.linked_parent_id on this student's
+     * own user row; this column exists so admin_core_service can answer
+     * "which students still need a guardian?" without a cross-service call.
+     */
+    @Column(name = "guardian_user_id")
+    private String guardianUserId;
+
     // --- New Fields (V96) ---
     @Column(name = "id_number")
     private String idNumber;

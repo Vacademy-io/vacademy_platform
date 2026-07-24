@@ -1515,7 +1515,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                         <div className="absolute inset-0 z-50 flex items-end justify-center pb-24 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
                             <div className="relative animate-in slide-in-from-bottom-10 fade-in duration-500 w-full max-w-lg px-6">
                                 <div className="bg-zinc-950 border border-zinc-800 text-white rounded-2xl shadow-2xl overflow-hidden relative">
-                                    <div className="absolute bottom-0 left-0 h-1 bg-zinc-800 w-full">
+                                    <div className="absolute bottom-0 start-0 h-1 bg-zinc-800 w-full">
                                         <div
                                             className="h-full bg-emerald-500 transition-all duration-1000 ease-linear"
                                             style={{ width: `${(verificationCountdown / 59) * 100}%` }}
@@ -1523,7 +1523,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                                     </div>
 
                                     <div className="p-5 flex flex-col sm:flex-row items-center gap-6">
-                                        <div className="flex-1 text-center sm:text-left space-y-2">
+                                        <div className="flex-1 text-center sm:text-start space-y-2">
                                             <div className="flex items-center justify-center sm:justify-start gap-2.5">
                                                 <span className="relative flex h-3 w-3">
                                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -1563,7 +1563,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 animate-in fade-in duration-500 pointer-events-auto" />
                             <div className="relative z-50 animate-in slide-in-from-bottom-10 fade-in duration-500 w-full max-w-lg px-6 pointer-events-auto">
                                 <div className="bg-zinc-950 border border-zinc-800 text-white rounded-2xl shadow-2xl overflow-hidden relative">
-                                    <div className="absolute bottom-0 left-0 h-1 bg-zinc-800 w-full">
+                                    <div className="absolute bottom-0 start-0 h-1 bg-zinc-800 w-full">
                                         <div
                                             className="h-full bg-emerald-500 transition-all duration-1000 ease-linear"
                                             style={{ width: `${(verificationCountdown / 59) * 100}%` }}
@@ -1571,7 +1571,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                                     </div>
 
                                     <div className="p-5 flex flex-col sm:flex-row items-center gap-6">
-                                        <div className="flex-1 text-center sm:text-left space-y-2">
+                                        <div className="flex-1 text-center sm:text-start space-y-2">
                                             <div className="flex items-center justify-center sm:justify-start gap-2.5">
                                                 <span className="relative flex h-3 w-3">
                                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -1608,7 +1608,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
 
                     {/* Bottom Controls Overlay - Video controls moved to bottom */}
                     {!isFullscreen && (
-                        <div className="absolute bottom-0 left-0 right-0 z-50 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-8">
+                        <div className="absolute bottom-0 start-0 end-0 z-50 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pt-8">
                             {/* Video Controls */}
                             <div className="flex gap-2 justify-between items-center w-full mb-4">
                                 <div className="w-full flex gap-2 items-center justify-start">

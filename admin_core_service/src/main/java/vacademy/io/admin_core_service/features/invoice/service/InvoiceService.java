@@ -150,6 +150,9 @@ public class InvoiceService {
     @Autowired
     private vacademy.io.admin_core_service.features.user_subscription.service.PaymentLogService paymentLogService;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
+
     @Value("${default.learner.portal.url:https://learner.vacademy.io}")
     private String learnerPortalUrl;
 
@@ -2442,6 +2445,12 @@ public class InvoiceService {
             invoice.setPdfFileId(pdfFileId);
             invoice.setTaxIncluded(invoiceData.getTaxIncluded());
 
+            // Source tracking: point to the UserPlan that triggered this invoice
+            if (firstPaymentLog.getUserPlan() != null) {
+                invoice.setSource("USER_PLAN");
+                invoice.setSourceId(firstPaymentLog.getUserPlan().getId());
+            }
+
             // Save invoice data as JSON
             try {
                 ObjectMapper objectMapper = new ObjectMapper();
@@ -3294,6 +3303,9 @@ public class InvoiceService {
             invoice.setCurrency(request.getCurrency());
             invoice.setStatus(INVOICE_STATUS_PENDING_PAYMENT);
             invoice.setTaxIncluded(taxIncluded);
+            // Source tracking: admin-created invoices point back to the billed user
+            invoice.setSource("ADMIN_MANUAL");
+            invoice.setSourceId(userId);
 
             // Persist notes + overrides so a later PDF regeneration reproduces the admin's edits.
             try {
@@ -3336,6 +3348,14 @@ public class InvoiceService {
                             userId, e.getMessage());
                 }
             }
+
+            // Ledger: debit accrual for new admin invoice obligation
+            userAccountLedgerService.recordDebitAccrual(
+                    userId, request.getInstituteId(),
+                    totalAmount, request.getCurrency(),
+                    request.getDueDate() != null ? request.getDueDate().toLocalDate() : null,
+                    "ADMIN_INVOICE", invoice.getId(),
+                    invoice.getId(), "Admin invoice raised");
 
             // Generate PDF immediately so the admin can share it
             String pdfFileId = null;
@@ -3460,6 +3480,13 @@ public class InvoiceService {
 
         invoice.setStatus("PAID");
         invoice = invoiceRepository.save(invoice);
+
+        // 5. Ledger: credit payment for the manual settlement
+        userAccountLedgerService.recordCreditPayment(
+                invoice.getUserId(), invoice.getInstituteId(),
+                invoice.getTotalAmount(), currency,
+                "ADMIN_INVOICE", invoiceId,
+                paymentLogId, invoiceId, "Admin manual payment recorded");
 
         // 4. Best-effort confirmation email — logged-on-fail per the design doc.
         try {
@@ -3598,6 +3625,15 @@ public class InvoiceService {
         }
         invoice.setInvoiceDataJson(mergeInvoiceDataJson(invoice.getInvoiceDataJson(), rejectAudit));
         invoice = invoiceRepository.save(invoice);
+
+        // Reverse the DEBIT_ACCRUAL that was posted when this invoice was raised
+        userAccountLedgerService.recordCreditAdjustment(
+                invoice.getUserId(), invoice.getInstituteId(),
+                invoice.getTotalAmount(),
+                StringUtils.hasText(invoice.getCurrency()) ? invoice.getCurrency() : "INR",
+                "ADMIN_INVOICE", invoice.getId(),
+                null,
+                "Invoice rejected" + (StringUtils.hasText(reason) ? ": " + reason : ""));
 
         log.info("[InvoiceReject] invoiceId={} invoiceNumber={} rejectedBy={} reason={}",
                 invoiceId, invoice.getInvoiceNumber(),
@@ -3756,6 +3792,14 @@ public class InvoiceService {
         invoice.setStatus(INVOICE_STATUS_PAID);
         invoiceRepository.saveAndFlush(invoice);
         log.info("Admin invoice {} marked as PAID via paymentLogId={}", invoice.getInvoiceNumber(), paymentLogId);
+
+        // Ledger: credit payment for gateway-settled admin invoice
+        userAccountLedgerService.recordCreditPayment(
+                invoice.getUserId(), invoice.getInstituteId(),
+                invoice.getTotalAmount(),
+                StringUtils.hasText(invoice.getCurrency()) ? invoice.getCurrency() : "INR",
+                "ADMIN_INVOICE", invoice.getId(),
+                paymentLogId, invoice.getId(), "Gateway payment received");
 
         try {
             List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(invoice.getUserId()));
@@ -4432,6 +4476,8 @@ public class InvoiceService {
                                                                                                                      // ID
                 .paymentLink(computePaymentLinkForListing(invoice))
                 .taxIncluded(invoice.getTaxIncluded())
+                .source(invoice.getSource())
+                .sourceId(invoice.getSourceId())
                 .notes(readInvoiceDataJsonField(invoice.getInvoiceDataJson(), "notes"))
                 .createdAt(invoice.getCreatedAt())
                 .updatedAt(invoice.getUpdatedAt())

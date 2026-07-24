@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/toast";
 import { WarningCircle } from "@phosphor-icons/react";
 import { toast } from "@/hooks/use-toast";
+import i18n from "@/i18n";
 
 export function CustomToaster() {
     const { toasts } = useToast();
@@ -46,7 +47,9 @@ export function CustomToaster() {
 
 export const showErrorToast = (description: string) => {
     toast({
-        title: "Login Error",
+        // Fired outside React render, so read the catalog off the i18n
+        // singleton rather than a hook.
+        title: i18n.t("auth:toasts.loginError"),
         description: description,
     });
 };

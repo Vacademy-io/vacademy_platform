@@ -48,6 +48,7 @@ import { DeclineRequestDialog } from '@/routes/manage-students/enroll-requests/-
 import { InviteFormProvider } from '@/routes/manage-students/invite/-context/useInviteFormContext';
 import { Users, FileMagnifyingGlass } from '@phosphor-icons/react';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
+import { useListCustomFieldControls } from '@/components/shared/leads/use-list-custom-field-controls';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 export const StudentsListSection = () => {
@@ -130,6 +131,8 @@ export const StudentsListSection = () => {
         setAppliedFilters,
         handleSessionChange,
         setColumnFilters,
+        textCustomFields,
+        rangeCustomFields,
     } = useStudentFilters({ allowAllSessions: true });
 
     // Fetch campaigns once so the audience filter chip can render its options.
@@ -184,6 +187,19 @@ export const StudentsListSection = () => {
         return cached?.learnerListColumns?.showCountBadges !== false;
     }, []);
 
+    // Institute-wide custom-field filter gate (STUDENTS surface of Settings →
+    // Display Settings → "List Filters & Sorting — Custom Fields"). null until
+    // the surface is configured → legacy auto-expose behavior in GetFilterData.
+    const { configured: studentCfGateConfigured, fields: studentCfGateFields } =
+        useListCustomFieldControls('STUDENTS', audienceInstituteId || undefined);
+    const studentCfFilterGate = useMemo(
+        () =>
+            studentCfGateConfigured
+                ? new Set(studentCfGateFields.map((f) => f.customFieldId))
+                : null,
+        [studentCfGateConfigured, studentCfGateFields]
+    );
+
     // Full set of custom field accessors known for this institute (any source).
     // Anything in this set that's NOT in roleEnabledCustomFields gets force-hidden.
     const allCustomFieldAccessors = useMemo(() => {
@@ -214,10 +230,30 @@ export const StudentsListSection = () => {
     const customFieldIdByKey = useMemo(() => {
         const map = new Map<string, string>();
         instituteDetails?.dropdown_custom_fields?.forEach((f) => map.set(f.fieldKey, f.id));
+        textCustomFields.forEach((f) => map.set(f.field_key, f.custom_field_id));
+        rangeCustomFields.forEach((f) => map.set(f.field_key, f.custom_field_id));
         return map;
-    }, [instituteDetails]);
+    }, [instituteDetails, textCustomFields, rangeCustomFields]);
 
-    const allFilters = GetFilterData(instituteDetails, currentSession.id, campaignsData?.content, subOrgsData);
+    // Range (DATE/NUMBER) custom fields have no legacy auto-expose — they only
+    // appear once explicitly enabled in the settings gate.
+    const gatedRangeCustomFields = useMemo(
+        () =>
+            studentCfFilterGate
+                ? rangeCustomFields.filter((f) => studentCfFilterGate.has(f.custom_field_id))
+                : [],
+        [studentCfFilterGate, rangeCustomFields]
+    );
+
+    const allFilters = GetFilterData(
+        instituteDetails,
+        currentSession.id,
+        campaignsData?.content,
+        subOrgsData,
+        textCustomFields,
+        studentCfFilterGate,
+        gatedRangeCustomFields
+    );
     const filters = allFilters.filter((f) => {
         const fixed = FILTER_TO_COLUMNS[f.id];
         if (fixed) return fixed.some((accessor) => !roleHiddenColumns.has(accessor));
@@ -316,6 +352,12 @@ export const StudentsListSection = () => {
         (count, pageSelection) => count + Object.keys(pageSelection).length,
         0
     );
+
+    // Approval actions (row-level Accept/Decline and the bulk Accept action) are shown
+    // whenever the Approval Status filter (Pending for Approval / Invited) is active.
+    const showApprovalActions =
+        appliedFilters.statuses?.some((s) => ['INVITED', 'PENDING_FOR_APPROVAL'].includes(s)) ||
+        false;
 
     if (isLoading) return <DashboardLoader />;
     if (isError) return <SmartErrorPage />;
@@ -434,15 +476,7 @@ export const StudentsListSection = () => {
                                                 last: studentTableData.last,
                                             }}
                                             columns={(() => {
-                                                const cols = getCustomColumns(
-                                                    // Show approval actions if INVITED or PENDING_FOR_APPROVAL is in statuses
-                                                    appliedFilters.statuses?.some((s) =>
-                                                        [
-                                                            'INVITED',
-                                                            'PENDING_FOR_APPROVAL',
-                                                        ].includes(s)
-                                                    ) || false
-                                                );
+                                                const cols = getCustomColumns(showApprovalActions);
                                                 // If lead system is entirely off, return cols unchanged
                                                 if (!leadReady) return cols;
 
@@ -614,6 +648,7 @@ export const StudentsListSection = () => {
                                     selectedStudentIds={getSelectedStudentIds()}
                                     selectedStudents={getSelectedStudents()}
                                     onReset={handleResetSelections}
+                                    showApprovalActions={showApprovalActions}
                                 />
                                 <div className="flex justify-center lg:justify-end">
                                     <MyPagination

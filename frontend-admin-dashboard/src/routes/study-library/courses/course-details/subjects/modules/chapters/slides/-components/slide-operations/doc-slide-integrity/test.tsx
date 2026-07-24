@@ -18,7 +18,12 @@ import { createYooptaEditor } from '@yoopta/editor';
 import { html } from '@yoopta/exports';
 import { plugins } from '@/constants/study-library/yoopta-editor-plugins-tools';
 import { formatHTMLString, stripAwsQueryParamsFromUrls } from '../formatHtmlString';
-import { appReloadPreprocess, detectDeserializeLoss } from './reload';
+import {
+    appReloadPreprocess,
+    detectDeserializeLoss,
+    countSerializedBlocks,
+    normalizeHtmlForDirtyCompare,
+} from './reload';
 
 // Register the app's real plugins onto a bare editor, mirroring
 // slide-material.tsx applyDocContentToEditor() so serialize/deserialize
@@ -571,5 +576,128 @@ describe('DOC slide: load-integrity detector flags a lossy deserialize (Layer 2)
         const r = detectDeserializeLoss(src, value as any);
         expect(r.lossy).toBe(true);
         expect(r.lost.join(' ')).toMatch(/flashcard/);
+    });
+});
+
+/**
+ * Save-side integrity (the "publish wiped my lesson" incident, 2026-07-17).
+ *
+ * Prod forensics: a slide's published_data went 47864B -> 3267B, where 3267B was
+ * exactly ONE block (the quizBlock the author had been editing). The serializer had
+ * dropped every other block; publish had no degraded-guard, so it shipped the
+ * fragment, and the server's "this will remove N blocks" confirm read as a false
+ * alarm to an author who had only ADDED content. They clicked OK; the lesson was gone.
+ *
+ * The invariant: the editor VALUE is the source of truth for author intent — a real
+ * deletion is already reflected there. So serialize emitting materially fewer blocks
+ * than the value holds is ALWAYS a bug, never a deletion.
+ */
+/**
+ * Images inside table cells (prod slide 4f31649f "Lesson 5", 2026-07-17).
+ * Yoopta's table cannot hold an image, so html.deserialize drops it on EVERY load —
+ * the editor cannot even create this shape (it arrives via AI-generated HTML or a
+ * paste). The load gate then refuses to save, which is correct but must be explained
+ * honestly: this is permanent, so "reload and try again" would loop the author forever.
+ */
+describe('detectDeserializeLoss — images inside table cells', () => {
+    it('reports images nested in a table cell', () => {
+        const src =
+            '<table><tbody><tr><td><div><img src="a.jpg"/></div></td><td><img src="b.jpg"/></td></tr></tbody></table>';
+        // The table survived as a block; its images did not.
+        const value = { t: blk(0, 'Table', 'table', '') };
+        const r = detectDeserializeLoss(src, value as any);
+        expect(r.imagesInsideTables).toBe(2);
+        expect(r.lossy).toBe(true);
+        expect(r.lost.join(' ')).toMatch(/image/);
+    });
+
+    it('does NOT count standalone images as in-table', () => {
+        const src = '<p>x</p><img src="a.jpg"/>';
+        const value = { i: blk(0, 'Image', 'image', '') };
+        expect(detectDeserializeLoss(src, value as any).imagesInsideTables).toBe(0);
+    });
+
+    it('reports zero when detection fails rather than blocking a load', () => {
+        const r = detectDeserializeLoss('', {} as any);
+        expect(r.imagesInsideTables).toBe(0);
+        expect(r.lossy).toBe(false);
+    });
+});
+
+describe('countSerializedBlocks — save-side block accounting', () => {
+    // Mirrors the guard predicate in slide-material.tsx getCurrentEditorHTMLContent().
+    const isDegraded = (inBlocks: number, outBlocks: number) =>
+        inBlocks >= 3 && outBlocks > 0 && outBlocks < inBlocks * 0.5;
+
+    const wrap = (inner: string) => `<html><head></head><body><div>${inner}</div></body></html>`;
+
+    it('counts each top-level block, seeing through formatHTMLString wrappers', () => {
+        const h = wrap('<h2>a</h2><p>b</p><table><tr><td>c</td></tr></table>');
+        expect(countSerializedBlocks(h)).toBe(3);
+    });
+
+    it('counts a lone custom block as 1 and does not descend into it', () => {
+        // The exact shape of the 3267B payload that wiped the live slide.
+        const h = wrap('<div data-yoopta-type="quizBlock" data-quiz="eyJ4IjoxfQ=="><p>q</p></div>');
+        expect(countSerializedBlocks(h)).toBe(1);
+    });
+
+    it('FIRES when serialization collapses a full slide to the focused block', () => {
+        // Editor holds 119 blocks; serialize emitted 1. This is the incident.
+        expect(isDegraded(119, 1)).toBe(true);
+    });
+
+    it('does NOT fire on a healthy serialize', () => {
+        expect(isDegraded(119, 119)).toBe(false);
+    });
+
+    it('does NOT fire when the author genuinely deletes almost everything', () => {
+        // The deletion is reflected in the VALUE, so in and out shrink together.
+        expect(isDegraded(1, 1)).toBe(false);
+        expect(isDegraded(2, 2)).toBe(false);
+    });
+
+    it('does NOT fire on a small slide, where ratios are noisy', () => {
+        expect(isDegraded(2, 1)).toBe(false);
+    });
+
+    it('stays silent when counting fails rather than blocking a save', () => {
+        expect(countSerializedBlocks('')).toBe(0);
+        expect(isDegraded(119, 0)).toBe(false); // out=0 disables the comparison
+    });
+});
+
+describe('normalizeHtmlForDirtyCompare: no-op clicks never count as edits', () => {
+    it('ignores an appended empty paragraph (click below content)', () => {
+        const before = '<div><p>Hello world</p></div>';
+        const after = '<div><p>Hello world</p><p></p></div>';
+        expect(normalizeHtmlForDirtyCompare(after)).toBe(normalizeHtmlForDirtyCompare(before));
+    });
+
+    it('ignores nested empty wrapper divs and nbsp-only paragraphs', () => {
+        const before = '<p>Content</p>';
+        const after = '<div><p>Content</p><div><p>&nbsp;</p></div><div></div></div>';
+        expect(normalizeHtmlForDirtyCompare(after)).toBe(normalizeHtmlForDirtyCompare(before));
+    });
+
+    it('still detects a real text edit', () => {
+        expect(normalizeHtmlForDirtyCompare('<p>Hello</p>')).not.toBe(
+            normalizeHtmlForDirtyCompare('<p>Hello!</p>')
+        );
+    });
+
+    it('an added image/table/divider counts as a real edit even with no text', () => {
+        const base = '<p>Text</p>';
+        expect(normalizeHtmlForDirtyCompare(`${base}<div><img src="x.png"/></div>`)).not.toBe(
+            normalizeHtmlForDirtyCompare(base)
+        );
+        expect(normalizeHtmlForDirtyCompare(`${base}<hr/>`)).not.toBe(
+            normalizeHtmlForDirtyCompare(base)
+        );
+    });
+
+    it('never throws on garbage input', () => {
+        expect(normalizeHtmlForDirtyCompare('')).toBe('');
+        expect(() => normalizeHtmlForDirtyCompare('<not <valid <<html')).not.toThrow();
     });
 });

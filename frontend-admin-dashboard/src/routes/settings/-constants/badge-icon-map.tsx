@@ -6,6 +6,7 @@ import type { IconProps, IconWeight } from '@phosphor-icons/react';
 import { type FC, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { getPublicUrl } from '@/services/upload_file';
+import { isLibraryToken, getLibraryUrl } from './badge-library';
 
 /**
  * Shared badge icon map for the admin app. Names line up 1:1 with BADGE_ICON_NAMES
@@ -27,8 +28,10 @@ export function isBuiltInBadgeIcon(name: string | undefined | null): boolean {
 }
 
 /**
- * Renders a badge's visual: a built-in Phosphor icon when `icon` is a known name,
- * or the admin-uploaded image (resolved via getPublicUrl) otherwise.
+ * Renders a badge's visual, in priority order:
+ *  1. a bundled library badge when `icon` is a `lib:` token,
+ *  2. a built-in Phosphor icon when `icon` is a known name,
+ *  3. the admin-uploaded image (resolved via getPublicUrl) otherwise.
  */
 export const BadgeVisual: FC<{
     icon: string;
@@ -38,11 +41,12 @@ export const BadgeVisual: FC<{
     /** When true (use inside a fixed-size circle), a custom image fills the container. */
     fill?: boolean;
 }> = ({ icon, size = 24, className, weight = 'fill', fill = false }) => {
+    const libUrl = isLibraryToken(icon) ? getLibraryUrl(icon) : undefined;
     const builtIn = isBuiltInBadgeIcon(icon);
     const [url, setUrl] = useState('');
 
     useEffect(() => {
-        if (builtIn || !icon) return;
+        if (builtIn || libUrl || !icon) return;
         let active = true;
         getPublicUrl(icon)
             .then((u) => {
@@ -52,7 +56,22 @@ export const BadgeVisual: FC<{
         return () => {
             active = false;
         };
-    }, [icon, builtIn]);
+    }, [icon, builtIn, libUrl]);
+
+    // Library badges are full artwork (their own circular shape) — contain, don't crop.
+    if (libUrl) {
+        return fill ? (
+            <img src={libUrl} alt="" className="h-full w-full object-contain" />
+        ) : (
+            <img
+                src={libUrl}
+                alt=""
+                width={size}
+                height={size}
+                className={cn('object-contain', className)}
+            />
+        );
+    }
 
     if (!builtIn && url) {
         return fill ? (

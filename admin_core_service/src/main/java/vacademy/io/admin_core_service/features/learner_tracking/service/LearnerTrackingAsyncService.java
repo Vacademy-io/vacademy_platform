@@ -205,6 +205,29 @@ public class LearnerTrackingAsyncService {
                 updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
         }
 
+        // ==== Assessment Slide Tracking ====
+        //
+        // ASSESSMENT slides are marked complete as soon as the learner has
+        // attempted and submitted the assessment (mirrors the ASSIGNMENT
+        // pattern: submission itself is the completion signal, not a
+        // percentage derived from marks/evaluation, which stays in
+        // assessment_service). chapterId/moduleId/subjectId/packageSessionId
+        // are optional — older frontend builds that haven't been updated to
+        // send them yet still get the slide-level 100% write (which is what
+        // the drip/prerequisite check reads), just without the chapter/
+        // module/subject/package_session rollup cascade.
+        @Async
+        @Transactional
+        public void updateLearnerOperationsForAssessment(String userId, String slideId, String chapterId,
+                        String moduleId, String subjectId, String packageSessionId) {
+                addOrUpdatePercentageOperation(userId, LearnerOperationSourceEnum.SLIDE.name(), slideId,
+                                LearnerOperationEnum.PERCENTAGE_ASSESSMENT_DONE.name(), 100.0);
+
+                if (chapterId != null) {
+                        updateLearnerOperationsForChapter(userId, chapterId, moduleId, subjectId, packageSessionId);
+                }
+        }
+
         // ==== SCORM Tracking ====
         //
         // SCORM packages POST to /scorm/tracking/v1/{slideId}/commit on every
@@ -445,7 +468,8 @@ public class LearnerTrackingAsyncService {
                                 LearnerOperationEnum.PERCENTAGE_QUESTION_COMPLETED.name(),
                                 LearnerOperationEnum.PERCENTAGE_QUIZ_COMPLETED.name(),
                                 LearnerOperationEnum.PERCENTAGE_AUDIO_LISTENED.name(),
-                                LearnerOperationEnum.PERCENTAGE_SCORM_COMPLETED.name());
+                                LearnerOperationEnum.PERCENTAGE_SCORM_COMPLETED.name(),
+                                LearnerOperationEnum.PERCENTAGE_ASSESSMENT_DONE.name());
                 List<String> slideStatusList = List.of(
                                 SlideStatus.PUBLISHED.name(),
                                 SlideStatus.UNSYNC.name());
@@ -456,7 +480,7 @@ public class LearnerTrackingAsyncService {
                                                 SlideTypeEnum.ASSIGNMENT.name(),
                                                 SlideTypeEnum.QUESTION.name(), SlideTypeEnum.QUIZ.name(),
                                                 SlideTypeEnum.HTML_VIDEO.name(), SlideTypeEnum.AUDIO.name(),
-                                                SlideTypeEnum.SCORM.name()));
+                                                SlideTypeEnum.SCORM.name(), SlideTypeEnum.ASSESSMENT.name()));
 
                 addOrUpdatePercentageOperation(
                                 userId,

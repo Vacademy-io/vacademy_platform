@@ -66,12 +66,21 @@ interface DnsRecordResult {
     action: string;
 }
 
+interface PagesDomainResult {
+    project: string;
+    name: string;
+    status: string;
+    action: string;
+    pages_cname_target: string;
+}
+
 interface WhiteLabelSetupResponse {
     setup_complete: boolean;
     learner_portal_url: string;
     admin_portal_url: string;
     teacher_portal_url: string;
     dns_records_configured: DnsRecordResult[];
+    pages_domains_configured?: PagesDomainResult[];
     warnings: string[];
 }
 
@@ -122,6 +131,12 @@ interface RoutingConfig {
      * preserve existing behavior.
      */
     logo_height_px?: number;
+    /**
+     * When true, the institute name is rendered stacked BELOW the logo (centered
+     * vertical) instead of to its right, in the sidebar header. Default
+     * (undefined / false): name sits beside the logo, as before.
+     */
+    stack_name_below_logo?: boolean;
 }
 
 // UI-enforced caps so operators can't enter values that break the layout.
@@ -136,6 +151,10 @@ interface RoutingEntry extends RoutingConfig {
     role: string;
     domain: string;
     subdomain: string;
+    /** Live Cloudflare Pages custom-domain status: active / pending / initializing / … */
+    pages_status?: string | null;
+    /** CNAME target (<project>.pages.dev) the customer must point an external domain at. */
+    pages_cname_target?: string | null;
 }
 
 interface WhiteLabelStatusResponse {
@@ -332,6 +351,45 @@ const DnsRecordRow = ({ record }: { record: DnsRecordResult }) => (
     </div>
 );
 
+const pagesStatusClass = (status: string): string => {
+    switch (status?.toLowerCase()) {
+        case 'active':
+            return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+        case 'pending':
+        case 'initializing':
+            return 'bg-amber-100 text-amber-700 border-amber-200';
+        default:
+            return 'bg-slate-100 text-slate-600 border-slate-200';
+    }
+};
+
+const PagesDomainRow = ({ record }: { record: PagesDomainResult }) => (
+    <div className="rounded-lg border border-slate-100 bg-slate-50 px-4 py-2.5 text-sm space-y-1.5">
+        <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+                <span className="shrink-0 rounded bg-violet-100 px-1.5 py-0.5 text-xs font-semibold text-violet-700">
+                    PAGES
+                </span>
+                <span className="truncate font-mono text-slate-700">{record.name}</span>
+                <span className="hidden shrink-0 text-slate-400 sm:inline">→</span>
+                <span className="hidden truncate font-mono text-slate-500 sm:inline">{record.project}</span>
+            </div>
+            <Badge variant="outline" className={`ml-3 shrink-0 text-xs ${pagesStatusClass(record.status)}`}>
+                {record.status || record.action}
+            </Badge>
+        </div>
+        {record.status?.toLowerCase() !== 'active' && record.pages_cname_target && (
+            <p className="text-xs text-slate-500">
+                If this is a custom (non-vacademy.io) domain, add a CNAME at your DNS provider:{' '}
+                <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-slate-700">
+                    {record.name} → {record.pages_cname_target}
+                </code>
+                . SSL activates automatically once Cloudflare validates it.
+            </p>
+        )}
+    </div>
+);
+
 const PortalUrlRow = ({ label, url }: { label: string; url: string | null | undefined }) => {
     if (!url) return null;
     return (
@@ -415,6 +473,22 @@ const ConfigFormSection = ({
                         id="switch-hide_institute_name"
                         checked={!!config.hide_institute_name}
                         onCheckedChange={v => onUpdate('hide_institute_name', v)}
+                    />
+                </div>
+                <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                        <Label className="text-xs font-medium text-slate-700 cursor-pointer" htmlFor="switch-stack_name_below_logo">
+                            Stack name below logo
+                        </Label>
+                        <p className="text-xs text-slate-400">
+                            Render the institute name centered underneath the logo instead
+                            of beside it, in the sidebar header.
+                        </p>
+                    </div>
+                    <Switch
+                        id="switch-stack_name_below_logo"
+                        checked={!!config.stack_name_below_logo}
+                        onCheckedChange={v => onUpdate('stack_name_below_logo', v)}
                     />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -685,6 +759,7 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                     hide_institute_name: r.hide_institute_name ?? undefined,
                     logo_width_px: r.logo_width_px ?? undefined,
                     logo_height_px: r.logo_height_px ?? undefined,
+                    stack_name_below_logo: r.stack_name_below_logo ?? undefined,
                 },
             };
         });
@@ -1021,6 +1096,25 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                             <PortalUrlRow label={getTerminology(RoleTerms.Admin, SystemTerms.Admin)} url={lastSetupResult.admin_portal_url} />
                             <PortalUrlRow label={getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)} url={lastSetupResult.teacher_portal_url} />
                         </div>
+                        {(lastSetupResult.pages_domains_configured?.length ?? 0) > 0 && (
+                            <>
+                                <Separator />
+                                <div className="space-y-2">
+                                    <p className="text-sm font-semibold text-slate-700">
+                                        Pages Custom Domains
+                                    </p>
+                                    <p className="text-xs text-slate-500">
+                                        These attach the host to the app so it is actually served. A DNS
+                                        record alone is not enough.
+                                    </p>
+                                    <div className="space-y-1.5">
+                                        {lastSetupResult.pages_domains_configured!.map((r, i) => (
+                                            <PagesDomainRow key={i} record={r} />
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        )}
                         {lastSetupResult.dns_records_configured?.length > 0 && (
                             <>
                                 <Separator />
@@ -1066,7 +1160,8 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
         entry.allow_phone_auth != null || entry.allow_username_password_auth != null ||
         entry.comma_separated_preferred_country ||
         entry.hide_institute_name != null ||
-        entry.logo_width_px != null || entry.logo_height_px != null
+        entry.logo_width_px != null || entry.logo_height_px != null ||
+        entry.stack_name_below_logo != null
     );
 
     const preferredCountryCodes = parsePreferredCountriesString(
@@ -1088,6 +1183,15 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
                     </a>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                    {entry.pages_status && (
+                        <Badge
+                            variant="outline"
+                            className={`text-xs capitalize ${pagesStatusClass(entry.pages_status)}`}
+                            title="Cloudflare custom-domain status"
+                        >
+                            {entry.pages_status}
+                        </Badge>
+                    )}
                     {entry.tab_text && (
                         <span className="text-xs text-slate-500 hidden sm:inline">
                             Tab: {entry.tab_text}
@@ -1107,6 +1211,36 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
                     )}
                 </div>
             </div>
+
+            {/* CNAME record to add — shown for a pending external (non-vacademy.io) domain */}
+            {entry.pages_status &&
+                entry.pages_status.toLowerCase() !== 'active' &&
+                entry.pages_cname_target &&
+                !full.toLowerCase().endsWith('.vacademy.io') && (
+                    <div className="border-t border-amber-100 bg-amber-50 px-4 py-3">
+                        <p className="mb-2 text-xs font-medium text-amber-800">
+                            Add this DNS record at your provider for{' '}
+                            <span className="font-mono">{entry.domain}</span> to activate this domain:
+                        </p>
+                        <div className="space-y-1 text-xs font-mono">
+                            <div className="flex gap-3">
+                                <span className="w-12 text-slate-500">Type</span>
+                                <span className="text-slate-800">CNAME</span>
+                            </div>
+                            <div className="flex gap-3">
+                                <span className="w-12 text-slate-500">Name</span>
+                                <span className="text-slate-800">{entry.subdomain}</span>
+                            </div>
+                            <div className="flex gap-3">
+                                <span className="w-12 text-slate-500">Value</span>
+                                <span className="break-all text-slate-800">{entry.pages_cname_target}</span>
+                            </div>
+                        </div>
+                        <p className="mt-2 text-xs text-amber-700">
+                            SSL activates automatically once Cloudflare validates the record.
+                        </p>
+                    </div>
+                )}
 
             {/* Expanded details */}
             {expanded && (
@@ -1137,6 +1271,7 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
                         <ConfigValue label="Hide Institute Name" value={entry.hide_institute_name} />
                         <ConfigValue label="Logo Width (px)" value={entry.logo_width_px} />
                         <ConfigValue label="Logo Height (px)" value={entry.logo_height_px} />
+                        <ConfigValue label="Stack Name Below Logo" value={entry.stack_name_below_logo} />
                     </div>
                     {preferredCountryCodes.length > 0 && (
                         <div className="mt-3 border-t border-slate-200 pt-3">

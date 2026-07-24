@@ -225,6 +225,31 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
                         enrollInvite,
                         userPlan,
                         extraData);
+            } else if (Boolean.TRUE.equals(userPlan.getAutoRenewalEnabled())) {
+                // Autopay subscription: register a recurring mandate so the learner
+                // authorizes future auto-charges. Routes to initiateMandatePayment,
+                // whose response carries recurring:1 + customerId for the frontend to
+                // open Razorpay Checkout in mandate mode (UPI Autopay / card e-mandate).
+                var mandateRequest = learnerPackageSessionsEnrollDTO.getPaymentInitiationRequest();
+                // Free trial: take only a Rs.1 authorization at signup to register the
+                // mandate (cards require >= Rs.1; UPI accepts it too). The first REAL
+                // plan charge happens at trial-end via RenewalChargeService, since
+                // applyAutopaySetup set next_charge_at = now + trialDays. The mandate
+                // cap (max_amount) still comes from AUTOPAY_SETTING below, so future
+                // renewals of the full plan price are authorized.
+                if (Boolean.TRUE.equals(userPlan.getIsTrial())) {
+                    double authAmount = resolveTrialAuthAmount(enrollInvite);
+                    mandateRequest.setAmount(authAmount);
+                    log.info("Trial enrollment: taking {} mandate authorization for user {} plan {} (first real charge at trial end)",
+                            authAmount, user.getId(), userPlan.getId());
+                }
+                applyMandateMaxAmount(mandateRequest, enrollInvite, paymentPlan);
+                paymentResponseDTO = paymentService.handleMandatePayment(
+                        user,
+                        instituteId,
+                        enrollInvite,
+                        userPlan,
+                        mandateRequest);
             } else {
                 paymentResponseDTO = paymentService.handlePayment(
                         user,
@@ -294,6 +319,74 @@ public class SubscriptionPaymentOptionOperation implements PaymentOptionOperatio
             detailsList.add(detail);
         }
         return detailsList;
+    }
+
+    /**
+     * Sets the Razorpay mandate max_amount (per-charge cap) from the invite's
+     * AUTOPAY_SETTING.MAX_AMOUNT (admin-configured), falling back to the plan
+     * price. No-op for non-Razorpay requests (eWay tokenizes on the first card
+     * payment and has no native cap).
+     */
+    /** Default authorization charge when the invite doesn't configure one. */
+    private static final double DEFAULT_TRIAL_AUTH_AMOUNT = 1.0;
+
+    /**
+     * The token-registration charge taken at trial signup. Gateways won't register a
+     * mandate on a zero-value order, so a nominal amount is debited to prove the
+     * instrument. Configurable per invite via AUTOPAY_SETTING.AUTH_AMOUNT.
+     */
+    private double resolveTrialAuthAmount(EnrollInvite enrollInvite) {
+        try {
+            if (enrollInvite != null && enrollInvite.getSettingJson() != null
+                    && !enrollInvite.getSettingJson().isBlank()) {
+                com.fasterxml.jackson.databind.JsonNode ap = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readTree(enrollInvite.getSettingJson()).path("setting").path("AUTOPAY_SETTING");
+                if (!ap.path("AUTH_ENABLED").asBoolean(true)) {
+                    // The gateway still needs a non-zero order to register a mandate, so we
+                    // cannot honour "no authorization" on a trial — fall back to the minimum
+                    // rather than silently enrolling with no usable mandate.
+                    log.warn("Invite {} disables AUTH_ENABLED but a trial mandate needs a non-zero "
+                            + "charge — falling back to {}",
+                            enrollInvite.getId(), DEFAULT_TRIAL_AUTH_AMOUNT);
+                    return DEFAULT_TRIAL_AUTH_AMOUNT;
+                }
+                if (ap.has("AUTH_AMOUNT") && !ap.get("AUTH_AMOUNT").isNull()) {
+                    double configured = ap.get("AUTH_AMOUNT").asDouble();
+                    if (configured > 0) {
+                        return configured;
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not read AUTOPAY_SETTING.AUTH_AMOUNT for invite {}: {}",
+                    enrollInvite != null ? enrollInvite.getId() : null, e.getMessage());
+        }
+        return DEFAULT_TRIAL_AUTH_AMOUNT;
+    }
+
+    private void applyMandateMaxAmount(PaymentInitiationRequestDTO request,
+                                       EnrollInvite enrollInvite, PaymentPlan paymentPlan) {
+        if (request == null || request.getRazorpayRequest() == null) {
+            return;
+        }
+        Double maxAmount = null;
+        try {
+            if (enrollInvite != null && enrollInvite.getSettingJson() != null
+                    && !enrollInvite.getSettingJson().isBlank()) {
+                com.fasterxml.jackson.databind.JsonNode ap = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readTree(enrollInvite.getSettingJson()).path("setting").path("AUTOPAY_SETTING");
+                if (ap.has("MAX_AMOUNT") && !ap.get("MAX_AMOUNT").isNull()) {
+                    maxAmount = ap.get("MAX_AMOUNT").asDouble();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not read AUTOPAY_SETTING.MAX_AMOUNT for invite {}: {}",
+                    enrollInvite != null ? enrollInvite.getId() : null, e.getMessage());
+        }
+        if (maxAmount == null && paymentPlan != null) {
+            maxAmount = paymentPlan.getActualPrice();
+        }
+        request.getRazorpayRequest().setMandateMaxAmount(maxAmount);
     }
 
 }

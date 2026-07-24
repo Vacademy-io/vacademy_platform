@@ -48,8 +48,11 @@ const EvaluateAttemptComponent = () => {
     const { data: instituteDetails } = useSuspenseQuery(useInstituteQuery());
     const [file, setFile] = useState<File | null>(null);
     const [fetchError, setFetchError] = useState(false);
+    // markEvaluating=true: opening this evaluator workspace is what moves the
+    // attempt's result status to EVALUATING (view-only screens fetch the same
+    // endpoint without the flag and leave the status untouched).
     const { data: attemptDetails, isLoading: isAttemptLoading } = useSuspenseQuery(
-        getAttemptDetails(attemptId)
+        getAttemptDetails(attemptId, true)
     );
     // The student's answer file id. Initialised from the attempt, but can be set
     // by an admin uploading the answer sheet on the student's behalf.

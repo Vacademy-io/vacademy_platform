@@ -14,6 +14,9 @@ import { ModularDynamicSignupContainer } from "../../components/ModularDynamicSi
 // Removed unused imports - using ModularDynamicSignupContainer instead
 import { useModularSignupFlow } from "../../hooks/use-modular-signup-flow";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
+import { useTranslation } from "react-i18next";
+import { ContentTerms, SystemTerms } from "@/types/naming-settings";
+import { getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
 
 export function SignUpForm({
     type,
@@ -22,9 +25,14 @@ export function SignUpForm({
     type?: string;
     courseId?: string;
 }) {
+    const { t } = useTranslation("auth");
     const navigate = useNavigate();
     const search = useSearch({ from: "/signup/" });
     useDomainRouting();
+    const coursesPlural = getTerminologyPlural(
+        ContentTerms.Course,
+        SystemTerms.Course
+    );
     
     // Use search parameters if not provided as props
     const finalType = type || (search as { type?: string; courseId?: string; instituteId?: string }).type;
@@ -108,7 +116,7 @@ export function SignUpForm({
                             transition={{ delay: 0.3, duration: 0.5 }}
                             className="text-3xl font-bold text-gray-900 mb-3"
                         >
-                            Join Our Learning Community
+                            {t("signup.joinCommunity")}
                         </motion.h1>
                         <motion.p
                             initial={{ y: 10, opacity: 0 }}
@@ -116,7 +124,7 @@ export function SignUpForm({
                             transition={{ delay: 0.4, duration: 0.5 }}
                             className="text-gray-600 text-lg leading-relaxed"
                         >
-                            Start your educational journey with personalized learning experiences
+                            {t("signup.startJourney")}
                         </motion.p>
                         </motion.div>
 
@@ -134,21 +142,27 @@ export function SignUpForm({
                             className="flex flex-col items-center text-center p-4 bg-white/50 backdrop-blur-sm rounded-xl border border-gray-200/50"
                         >
                             <BookOpen className="w-6 h-6 text-gray-700 mb-2" />
-                            <span className="text-sm font-medium text-gray-700">Access Courses</span>
+                            <span className="text-sm font-medium text-gray-700">
+                                {t("signup.accessCourses", { courses: coursesPlural })}
+                            </span>
                             </motion.div>
                         <motion.div
                             whileHover={{ scale: 1.05 }}
                             className="flex flex-col items-center text-center p-4 bg-white/50 backdrop-blur-sm rounded-xl border border-gray-200/50"
                         >
                             <Users className="w-6 h-6 text-gray-700 mb-2" />
-                            <span className="text-sm font-medium text-gray-700">Join Community</span>
+                            <span className="text-sm font-medium text-gray-700">
+                                {t("signup.joinCommunityFeature")}
+                            </span>
                         </motion.div>
                         <motion.div
                             whileHover={{ scale: 1.05 }}
                             className="flex flex-col items-center text-center p-4 bg-white/50 backdrop-blur-sm rounded-xl border border-gray-200/50"
                         >
                             <Medal className="w-6 h-6 text-gray-700 mb-2" />
-                            <span className="text-sm font-medium text-gray-700">Earn Certificates</span>
+                            <span className="text-sm font-medium text-gray-700">
+                                {t("signup.earnCertificates")}
+                            </span>
                         </motion.div>
                     </motion.div>
 
@@ -162,18 +176,22 @@ export function SignUpForm({
                         {[
                             {
                                 icon: BookOpen,
-                                title: "Access Courses",
-                                desc: "Browse and enroll in courses from top instructors"
+                                title: t("signup.accessCourses", {
+                                    courses: coursesPlural,
+                                }),
+                                desc: t("signup.featureCoursesDesc", {
+                                    courses: coursesPlural.toLowerCase(),
+                                })
                             },
                             {
                                 icon: Users,
-                                title: "Join Community",
-                                desc: "Connect with fellow learners and mentors"
+                                title: t("signup.joinCommunityFeature"),
+                                desc: t("signup.featureCommunityDesc")
                             },
                             {
                                 icon: Medal,
-                                title: "Earn Certificates",
-                                desc: "Get recognized for your achievements"
+                                title: t("signup.earnCertificates"),
+                                desc: t("signup.featureCertificatesDesc")
                             }
                         ].map((feature, index) => (
                             <motion.div
@@ -217,7 +235,7 @@ export function SignUpForm({
 
                                     <Shield className="w-4 h-4" />
 
-                                    <span>ISO 27001 Certified</span>
+                                    <span>{t("signup.isoCertified")}</span>
 
                                 </div>
 
@@ -225,7 +243,7 @@ export function SignUpForm({
 
                                     <Sparkle className="w-4 h-4" />
 
-                                    <span>99.9% Uptime</span>
+                                    <span>{t("signup.uptime")}</span>
 
                                 </div>
 
@@ -255,11 +273,11 @@ export function SignUpForm({
 
                                 <p className="text-xs text-gray-600">
 
-                                    "Amazing platform! The personalized learning experience is incredible."
+                                    {t("signup.testimonial")}
 
                                 </p>
 
-                                <p className="text-xs text-gray-500 mt-1">- Sarah M., Student</p>
+                                <p className="text-xs text-gray-500 mt-1">{t("signup.testimonialAuthor")}</p>
 
                             </div>
 
@@ -314,13 +332,13 @@ export function SignUpForm({
 
                                     <h2 className="text-xl lg:text-2xl font-bold text-gray-900 mb-2">
 
-                                        Create Your Account
+                                        {t("signup.createAccount")}
 
                                     </h2>
 
                                     <p className="text-gray-600 text-sm">
 
-                                        Join our learning community and start your journey
+                                        {t("signup.joinAndStart")}
 
                                     </p>
 
@@ -349,7 +367,7 @@ export function SignUpForm({
                                 ) : (
                                     <div className="text-center py-8">
                                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                                        <p className="text-gray-600">Loading signup options...</p>
+                                        <p className="text-gray-600">{t("signup.loadingOptions")}</p>
                                     </div>
                                 )}
 
@@ -379,13 +397,13 @@ export function SignUpForm({
 
                                         <p className="text-xs font-medium text-gray-800 mb-1">
 
-                                            Free to Start
+                                            {t("signup.freeToStart")}
 
                                         </p>
 
                                         <p className="text-xs text-gray-600">
 
-                                            Create your account for free and explore our learning platform.
+                                            {t("signup.freeToStartDesc")}
 
                                         </p>
 
@@ -415,7 +433,7 @@ export function SignUpForm({
 
                             <p>
 
-                                By creating an account, you agree to our{" "}
+                                {t("signup.byCreating")}{" "}
 
                                 <motion.button
 
@@ -435,11 +453,11 @@ export function SignUpForm({
 
                                 >
 
-                                    Terms of Service
+                                    {t("signup.termsOfService")}
 
                                 </motion.button>{" "}
 
-                                and{" "}
+                                {t("common.and")}{" "}
 
                                 <motion.button
 
@@ -455,7 +473,7 @@ export function SignUpForm({
 
                                 >
 
-                                    Privacy Policy
+                                    {t("common.privacyPolicy")}
 
                                 </motion.button>
 

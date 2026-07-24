@@ -41,10 +41,50 @@ export interface HubRecentItem {
     timestamp: string;
 }
 
+/** Event types the stat-card drill-down supports (matches backend whitelist). */
+export type HubEmailEventType = 'DELIVERY' | 'OPEN' | 'CLICK' | 'BOUNCE' | 'COMPLAINT';
+
+export interface HubEmailEventItem {
+    id: string;
+    emailLogId: string;
+    recipient: string;
+    subject?: string;
+    timestamp: string;
+    bounceType?: string;
+    bounceSubType?: string;
+    clickedLink?: string;
+    ipAddress?: string;
+    userAgent?: string;
+    complaintType?: string;
+}
+
+export interface HubEmailEventList {
+    eventType: HubEmailEventType;
+    page: number;
+    size: number;
+    totalElements: number;
+    totalPages: number;
+    content: HubEmailEventItem[];
+}
+
 export async function getHubOverview(instituteId: string, windowDays = 7): Promise<HubOverview> {
     const { data } = await authenticatedAxiosInstance.get<HubOverview>(
         `${NOTIFICATION_HUB_BASE}/overview`,
         { params: { instituteId, windowDays } }
+    );
+    return data;
+}
+
+export async function getHubEmailEvents(
+    instituteId: string,
+    eventType: HubEmailEventType,
+    windowDays: number,
+    page = 0,
+    size = 20
+): Promise<HubEmailEventList> {
+    const { data } = await authenticatedAxiosInstance.get<HubEmailEventList>(
+        `${NOTIFICATION_HUB_BASE}/emails`,
+        { params: { instituteId, eventType, windowDays, page, size } }
     );
     return data;
 }

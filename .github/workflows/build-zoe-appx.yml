@@ -1,0 +1,102 @@
+name: Build ZOE Edtech AppX (Microsoft Store)
+
+# Builds the ZOE Edtech Windows Store package (.appx, x64 + ia32) on a Windows
+# runner and uploads it as a downloadable artifact. AppX packaging needs the
+# Windows SDK (makeappx), which only exists on Windows — hence windows-latest.
+#
+# Trigger manually from the Actions tab (Run workflow), or it runs on push when
+# the ZOE electron config changes.
+#
+# BEFORE the artifact is uploadable to Partner Center, make sure
+# electron/electron-builder.zoe-store.json has the REAL identity from
+# Partner Center -> Product management -> Product Identity:
+#   appx.identityName        = the exact "Package/Identity Name"
+#   appx.publisher           = the exact "Publisher" (CN=...)
+#   appx.publisherDisplayName = the "Publisher display name"
+# A mismatch builds fine but Partner Center rejects the upload.
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - feature/zoe-windows-appx
+    paths:
+      - "frontend-learner-dashboard-app/electron/electron-builder.zoe-store.json"
+      - "frontend-learner-dashboard-app/electron/build-windows-zoe.sh"
+      - ".github/workflows/build-zoe-appx.yml"
+
+jobs:
+  build-appx:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: frontend-learner-dashboard-app
+    steps:
+      # Windows MAX_PATH (260 char) workaround — this monorepo has very deep
+      # paths. Enable git long paths BEFORE checkout. (workspace root, since the
+      # job's default working-directory doesn't exist until after checkout.)
+      - name: Enable Git long paths
+        working-directory: ${{ github.workspace }}
+        run: git config --global core.longpaths true
+
+      - name: Checkout (learner app only)
+        uses: actions/checkout@v4
+        with:
+          # Only need the learner app — skip frontend-admin-dashboard, whose
+          # extremely long filenames blow past MAX_PATH on Windows.
+          sparse-checkout: |
+            frontend-learner-dashboard-app
+          sparse-checkout-cone-mode: true
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.17.0 --activate
+
+      - name: Install frontend dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build frontend (ZOE flavor)
+        env:
+          VITE_ELECTRON_APP_ID: com.zoeedtech.app
+        run: pnpm run build
+
+      - name: Copy frontend build into electron/app + write flavor
+        shell: bash
+        run: |
+          rm -rf electron/app
+          cp -r dist electron/app
+          echo '{"flavor":"zoe"}' > electron/electron-flavor.json
+
+      - name: Install electron dependencies
+        working-directory: frontend-learner-dashboard-app/electron
+        run: npm install
+
+      - name: Compile electron main (tsc + electron-rebuild)
+        working-directory: frontend-learner-dashboard-app/electron
+        run: npm run build
+
+      - name: Build AppX packages (x64 + ia32)
+        working-directory: frontend-learner-dashboard-app/electron
+        run: npx electron-builder build --win -c ./electron-builder.zoe-store.json
+
+      - name: List output
+        shell: bash
+        working-directory: frontend-learner-dashboard-app/electron
+        run: ls -lh dist-store || true
+
+      - name: Upload AppX artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: zoe-edtech-appx
+          path: |
+            frontend-learner-dashboard-app/electron/dist-store/*.appx
+            frontend-learner-dashboard-app/electron/dist-store/*.appxbundle
+            frontend-learner-dashboard-app/electron/dist-store/*.appxupload
+          if-no-files-found: error
+          retention-days: 14

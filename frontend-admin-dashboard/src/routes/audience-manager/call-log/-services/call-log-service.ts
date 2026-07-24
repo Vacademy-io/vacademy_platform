@@ -99,6 +99,8 @@ export interface CallRow {
     response_id: string | null;
     user_id: string | null;
     lead_name: string | null;
+    /** IVR option the inbound caller chose, e.g. "1 · Shivir Info". */
+    ivr_selection: string | null;
     disposition_key: string | null;
     disposition_notes: string | null;
     dispositioned_at: number | string | null;
@@ -250,6 +252,45 @@ export async function exportCallLog(
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+}
+
+// ── GET /{id}/detail ───────────────────────────────────────────────────────
+
+/** One curated provider diagnostic field (hangup cause, SIP/cause code, error, …). */
+export interface CallDetailKeyVal {
+    label: string;
+    value: string;
+}
+
+/** Deep per-call detail — richer than the search row, used by the "more details" popover. */
+export interface CallDetail {
+    id: string;
+    provider_type: string | null;
+    direction: 'INBOUND' | 'OUTBOUND' | null;
+    status: string | null;
+    termination_reason: string | null;
+    provider_call_id: string | null;
+    start_time: number | string | null;
+    answer_time: number | string | null;
+    end_time: number | string | null;
+    duration_seconds: number | null;
+    price: number | null;
+    provider_details: CallDetailKeyVal[];
+    /** Verbatim provider webhook body — present only for callers who may unmask numbers. */
+    raw_provider_response: string | null;
+}
+
+export const callDetailKey = (instituteId: string, callLogId: string) =>
+    ['crm-call-log-detail', instituteId, callLogId] as const;
+
+export async function fetchCallDetail(instituteId: string, callLogId: string): Promise<CallDetail> {
+    const { data } = await authenticatedAxiosInstance.get(`${CALLS_BASE}/${callLogId}/detail`, {
+        params: { instituteId },
+    });
+    return {
+        ...data,
+        provider_details: Array.isArray(data?.provider_details) ? data.provider_details : [],
+    };
 }
 
 // ── GET /{id}/recording ────────────────────────────────────────────────────

@@ -25,6 +25,24 @@ import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { FileText } from "@phosphor-icons/react";
 import { playIllustrations } from "@/assets/play-illustrations";
 import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
+import { useQuery } from "@tanstack/react-query";
+import { SubscriptionMandateList } from "./payment-billing/subscription-mandate-list";
+import {
+  SUBSCRIPTION_LIST_QUERY_KEY,
+  fetchSubscriptions,
+} from "./payment-billing/subscription-services";
+import { useTranslation } from "react-i18next";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useLanguageStore } from "@/stores/localization/useLanguageStore";
+import { useSyncLanguage } from "@/hooks/useSyncLanguage";
+import { LOCALE_LABELS } from "@/i18n/locales";
+import { getEnabledLocales } from "@/services/language-settings";
 // import { SessionExpiry } from "./sessionExpiery";
 interface CourseDetails {
   packageName: string;
@@ -72,6 +90,11 @@ const getAvatarToneClass = (name: string): string => {
 
 export default function ProfilePage() {
   const navigate = useNavigate();
+  // Keeps i18next + <html lang/dir> in sync with the persisted locale.
+  useSyncLanguage();
+  const { t } = useTranslation();
+  const locale = useLanguageStore((state) => state.locale);
+  const setLocale = useLanguageStore((state) => state.setLocale);
   const [studentData, setStudentData] = useState<Student | null>(null);
   const [courseDetails, setCourseDetails] = useState<CourseDetails | null>(
     null
@@ -328,6 +351,22 @@ export default function ProfilePage() {
     navigate({ to: "/user-profile/edit" });
   };
 
+  // Same query key as SubscriptionMandateList, so this is a cache hit rather than a
+  // second request — it only decides whether the card is worth rendering at all.
+  // Hooks must run unconditionally on every render, so this has to sit above the
+  // isLoading early return below — it previously came after it, which meant the
+  // loading render called one fewer hook than the loaded render ("Rendered more
+  // hooks than during the previous render").
+  const { data: subscriptions } = useQuery({
+    queryKey: [SUBSCRIPTION_LIST_QUERY_KEY, studentData?.institute_id],
+    queryFn: () => fetchSubscriptions(studentData?.institute_id as string),
+    enabled: Boolean(studentData?.institute_id),
+    staleTime: 60 * 1000,
+  });
+  const hasAutopaySubscription = (subscriptions ?? []).some(
+    (s) => s.has_active_mandate || s.auto_renewal_enabled
+  );
+
   if (isLoading || permissionsLoading) {
     return <DashboardLoader />;
   }
@@ -402,12 +441,12 @@ export default function ProfilePage() {
               <div
                 className={cn(
                   "bg-card rounded-xl border shadow overflow-hidden relative",
-                  "[.ui-play_&]:rounded-play-card [.ui-play_&]:border-2 [.ui-play_&]:border-play-surface [.ui-play_&]:bg-play-highlight",
+                  "[.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border [.ui-play_&]:border-border [.ui-play_&]:bg-play-gold-soft [.ui-play_&]:shadow-play-soft-card",
                   "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300 [.ui-vibrant_&]:bg-primary-50"
                 )}
               >
                 <playIllustrations.FeelingHappy
-                  className="pointer-events-none absolute right-3 top-3 hidden h-16 w-auto text-play-accent [.ui-play_&]:!block"
+                  className="pointer-events-none absolute end-3 top-3 hidden h-16 w-auto text-play-accent [.ui-play_&]:!block"
                   aria-hidden="true"
                 />
                 <div className="p-6 flex flex-col items-center">
@@ -490,6 +529,33 @@ export default function ProfilePage() {
               )}
               {studentData && <ProgressStats userId={studentData.user_id} />}
               <BadgesRankCard />
+
+              {/* Language preference — bound to the persisted locale store.
+                  Options are the institute's enabled locales (English plus
+                  the current selection until an institute enables more). */}
+              <div className="bg-card rounded-xl border shadow p-6">
+                <h3 className="text-sm font-semibold text-foreground mb-1">
+                  {t("profile.language", "Language")}
+                </h3>
+                <p className="text-xs text-muted-foreground mb-4">
+                  {t(
+                    "profile.languageHint",
+                    "Choose the language for menus and buttons."
+                  )}
+                </p>
+                <Select value={locale} onValueChange={setLocale}>
+                  <SelectTrigger aria-label={t("profile.language", "Language")}>
+                    <SelectValue>{LOCALE_LABELS[locale]}</SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {getEnabledLocales(locale).map((option) => (
+                      <SelectItem key={option} value={option}>
+                        <span lang={option}>{LOCALE_LABELS[option]}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Right Column - Details */}
@@ -652,6 +718,24 @@ export default function ProfilePage() {
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* Subscriptions & Autopay — a learner looking to stop a recurring charge
+                  looks at their profile, not at an edit form. Only rendered when the
+                  learner actually has one, so free learners don't get an empty card.
+                  Hidden on native iOS (reader-mode): a recurring-subscription /
+                  autopay surface is exactly the paid-subscription content Apple
+                  flags under Guideline 3.1.1 (App Review 2026-07-19, io.shikshanation.learner). */}
+              {studentData?.institute_id && hasAutopaySubscription && !shouldHidePaidPurchaseUI() && (
+                <div className="bg-card rounded-xl border shadow p-6 md:p-8">
+                  <h3 className="text-lg font-semibold text-foreground mb-6 flex items-center gap-2">
+                    <span className="w-1 h-6 bg-primary-500 rounded-full"></span>
+                    Subscriptions &amp; Autopay
+                  </h3>
+                  <SubscriptionMandateList
+                    instituteId={studentData.institute_id}
+                  />
                 </div>
               )}
 

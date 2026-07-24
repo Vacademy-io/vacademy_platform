@@ -64,6 +64,11 @@ public class OverviewBuilder {
     // ── Status logic ──────────────────────────────────────────────────────────
 
     private String computeStatus(Double attendancePct, Double avgScore) {
+        // Both signals missing → we have no basis for a judgement. Previously this fell through
+        // every threshold and returned "At Risk", so a learner with no collected data (empty window,
+        // batch mismatch, modules excluded) was labelled at risk on the strength of nothing at all.
+        if (attendancePct == null && avgScore == null) return "Insufficient Data";
+
         boolean attendanceOk = attendancePct != null && attendancePct >= 75;
         boolean scoreOk = avgScore != null && avgScore >= 60;
         boolean attendanceLow = attendancePct != null && attendancePct >= 60;

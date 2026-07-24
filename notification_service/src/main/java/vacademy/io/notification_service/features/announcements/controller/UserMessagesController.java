@@ -192,6 +192,24 @@ public class UserMessagesController {
     }
 
     /**
+     * Get active app overlays for user (full-screen announcements shown on app open).
+     * no-store: the app checks this on every open and a stale cache would re-show
+     * an overlay the user already dismissed.
+     */
+    @GetMapping("/user/{userId}/app-overlays")
+    public ResponseEntity<List<UserMessagesResponse>> getAppOverlays(@PathVariable String userId) {
+        try {
+            List<UserMessagesResponse> overlays = userMessageService.getActiveAppOverlays(userId);
+            return ResponseEntity.ok()
+                    .cacheControl(CacheControl.noStore())
+                    .body(overlays);
+        } catch (Exception e) {
+            log.error("Error getting app overlays for user: {}", userId, e);
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    /**
      * Get stream messages for package session
      */
     @GetMapping("/user/{userId}/streams/{packageSessionId}")

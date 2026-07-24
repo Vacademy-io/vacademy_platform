@@ -24,9 +24,28 @@ import java.util.Optional;
 public interface AudienceResponseRepository extends JpaRepository<AudienceResponse, String> {
 
         /**
-         * Find all leads for a specific campaign
+         * Find all leads for a specific campaign, INCLUDING soft-deleted ones.
+         *
+         * <p>Use {@link #findActiveByAudienceId(String)} for anything that contacts a lead or
+         * shows it to a user. This raw variant is for whole-campaign maintenance (e.g. score
+         * recalculation), where a deleted lead's derived data should still be kept correct in
+         * case it is restored.</p>
          */
         List<AudienceResponse> findByAudienceId(String audienceId);
+
+        /**
+         * Live leads for a campaign — soft-deleted rows excluded.
+         *
+         * <p>This is the safe default for send/dial recipient selection. Deliberately has no
+         * "include deleted" parameter: there is no legitimate reason to blast a lead an admin
+         * has deleted, so the option should not exist.</p>
+         */
+        @Query("""
+                            SELECT ar FROM AudienceResponse ar
+                            WHERE ar.audienceId = :audienceId
+                            AND ar.audienceStatus = 'ACTIVE'
+                        """)
+        List<AudienceResponse> findActiveByAudienceId(@Param("audienceId") String audienceId);
 
         /**
          * Lead lookup by phone number for telephony attribution: the most recent
@@ -71,6 +90,45 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("userId") String userId);
 
         /**
+         * Every distinct "student side" user id across this institute's leads
+         * (any campaign, any status) — a lead is "student-shaped" the moment a
+         * real user is attached, whether or not they've ever been enrolled.
+         * Powers the guardian-linking backfill's lead variant, which needs to
+         * reach leads that never got as far as an SSIGM enrollment row.
+         *
+         * <p>{@code audience_response} has two different user columns depending
+         * on how the lead was captured:
+         * <ul>
+         *   <li>Admission/enquiry-form leads (see AdmissionService,
+         *   AudienceService's enquiry-creation path) store the applying
+         *   guardian's own account in {@code user_id} and the child being
+         *   applied for in {@code student_user_id} — here {@code user_id} is
+         *   ALREADY a guardian and must be excluded, {@code student_user_id}
+         *   is the real candidate.</li>
+         *   <li>Every other (the common) lead-capture path only ever sets
+         *   {@code user_id} — the lead's own account IS the prospective
+         *   student, and {@code student_user_id} stays null. Missing this case
+         *   previously made the leads backfill silently see zero eligible
+         *   leads for the common path.</li>
+         * </ul>
+         */
+        @Query(value = """
+                SELECT DISTINCT ar.student_user_id AS candidate_user_id
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE a.institute_id = :instituteId
+                  AND ar.student_user_id IS NOT NULL
+                UNION
+                SELECT DISTINCT ar.user_id AS candidate_user_id
+                FROM audience_response ar
+                JOIN audience a ON a.id = ar.audience_id
+                WHERE a.institute_id = :instituteId
+                  AND ar.user_id IS NOT NULL
+                  AND ar.student_user_id IS NULL
+                """, nativeQuery = true)
+        List<String> findDistinctStudentUserIdsByInstitute(@Param("instituteId") String instituteId);
+
+        /**
          * Find all leads for a campaign with pagination
          */
         Page<AudienceResponse> findByAudienceId(String audienceId, Pageable pageable);
@@ -98,13 +156,13 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         /**
          * Find all converted leads (with user_id)
          */
-        @Query("SELECT ar FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NOT NULL AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')")
+        @Query("SELECT ar FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NOT NULL AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT') AND ar.audienceStatus = 'ACTIVE'")
         List<AudienceResponse> findConvertedLeads(@Param("audienceId") String audienceId);
 
         /**
          * Find all unconverted leads (without user_id)
          */
-        @Query("SELECT ar FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NULL AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')")
+        @Query("SELECT ar FROM AudienceResponse ar WHERE ar.audienceId = :audienceId AND ar.userId IS NULL AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT') AND ar.audienceStatus = 'ACTIVE'")
         List<AudienceResponse> findUnconvertedLeads(@Param("audienceId") String audienceId);
 
         /**
@@ -180,6 +238,25 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                   AND ulp.conversion_status = 'CONVERTED'
                                 )
                               )
+                              -- Soft-delete filter. Mirrors conversionStatusFilter above:
+                              -- EXCLUDE_DELETED (default) / ONLY_DELETED / ALL, so the UI can
+                              -- offer a "show deleted leads" view without a second query.
+                              -- Kept as its OWN unconditional AND rather than folded into the
+                              -- overall_status OR block above: that block disables its own
+                              -- OPTED_OUT guard whenever :overallStatusStr is set, and a
+                              -- soft-deleted lead must stay hidden regardless of what else the
+                              -- caller filters by.
+                              AND (
+                                COALESCE(:audienceStatusFilter, 'EXCLUDE_DELETED') = 'ALL'
+                                OR (
+                                  COALESCE(:audienceStatusFilter, 'EXCLUDE_DELETED') = 'EXCLUDE_DELETED'
+                                  AND ar.audience_status = 'ACTIVE'
+                                )
+                                OR (
+                                  :audienceStatusFilter = 'ONLY_DELETED'
+                                  AND ar.audience_status = 'INACTIVE'
+                                )
+                              )
                               -- SLA-state filter. Aligned with the row-level badges + the new
                               -- column semantics:
                               --   * Reach-out buckets use submitted_at + tatHours AND a NOT EXISTS
@@ -244,15 +321,74 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                  AND lf.schedule_time < NOW()))))
                               AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
+                              AND (COALESCE(:customFieldExcludedIdsCsv, '') = ''
+                                   OR NOT (ar.id = ANY(STRING_TO_ARRAY(:customFieldExcludedIdsCsv, ','))))
+                              AND (COALESCE(:callHistoryFilter, '') = ''
+                                   OR (:callHistoryFilter = 'NOT_CALLED' AND NOT EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'CALLED_ONCE' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) = 1)
+                                   OR (:callHistoryFilter = 'CALLED_TWICE_PLUS' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) >= 2)
+                                   OR (:callHistoryFilter = 'AI_CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE (tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                            AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR')))
+                                   OR (:callHistoryFilter = 'MANUAL_CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE (tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                            AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK'))))
                             ORDER BY
+                              CASE WHEN :sortBy = 'SUBMITTED_AT' AND :sortDirection = 'ASC'
+                                   THEN ar.submitted_at END ASC,
+                              CASE WHEN :sortBy = 'SUBMITTED_AT' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN ar.submitted_at END DESC,
                               CASE WHEN :sortBy = 'LEAD_SCORE' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
                                    THEN COALESCE(ls.raw_score, 0) END DESC,
                               CASE WHEN :sortBy = 'LEAD_SCORE' AND :sortDirection = 'ASC'
                                    THEN COALESCE(ls.raw_score, 0) END ASC,
+                              CASE WHEN :sortBy = 'LEAD_TIER' AND :sortDirection = 'ASC'
+                                   THEN CASE COALESCE(NULLIF(ulp.lead_tier, ''),
+                                            CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                                 WHEN ulp.best_score >= 50 THEN 'WARM'
+                                                 WHEN ulp.best_score IS NOT NULL THEN 'COLD'
+                                                 ELSE NULL END)
+                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END END ASC,
+                              CASE WHEN :sortBy = 'LEAD_TIER' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN CASE COALESCE(NULLIF(ulp.lead_tier, ''),
+                                            CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                                 WHEN ulp.best_score >= 50 THEN 'WARM'
+                                                 WHEN ulp.best_score IS NOT NULL THEN 'COLD'
+                                                 ELSE NULL END)
+                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END END DESC,
+                              CASE WHEN :sortBy = 'STATUS' AND :sortDirection = 'ASC'
+                                   THEN COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) END ASC,
+                              CASE WHEN :sortBy = 'STATUS' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) END DESC,
                               CASE WHEN :sortBy = 'PARENT_NAME' AND (:sortDirection IS NULL OR :sortDirection = 'ASC')
                                    THEN ar.parent_name END ASC,
                               CASE WHEN :sortBy = 'PARENT_NAME' AND :sortDirection = 'DESC'
                                    THEN ar.parent_name END DESC,
+                              CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND :sortDirection = 'ASC'
+                                   THEN CASE WHEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) ~ '^-?[0-9]+([.][0-9]+)?$' THEN CAST((SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) AS numeric) END END ASC NULLS LAST,
+                              CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN CASE WHEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) ~ '^-?[0-9]+([.][0-9]+)?$' THEN CAST((SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) AS numeric) END END DESC NULLS LAST,
+                              CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND :sortDirection = 'ASC'
+                                   THEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) END ASC NULLS LAST,
+                              CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) END DESC NULLS LAST,
                               ar.submitted_at DESC
                         """, countQuery = """
                             SELECT COUNT(*)
@@ -318,6 +454,25 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                   AND ulp.conversion_status = 'CONVERTED'
                                 )
                               )
+                              -- Soft-delete filter. Mirrors conversionStatusFilter above:
+                              -- EXCLUDE_DELETED (default) / ONLY_DELETED / ALL, so the UI can
+                              -- offer a "show deleted leads" view without a second query.
+                              -- Kept as its OWN unconditional AND rather than folded into the
+                              -- overall_status OR block above: that block disables its own
+                              -- OPTED_OUT guard whenever :overallStatusStr is set, and a
+                              -- soft-deleted lead must stay hidden regardless of what else the
+                              -- caller filters by.
+                              AND (
+                                COALESCE(:audienceStatusFilter, 'EXCLUDE_DELETED') = 'ALL'
+                                OR (
+                                  COALESCE(:audienceStatusFilter, 'EXCLUDE_DELETED') = 'EXCLUDE_DELETED'
+                                  AND ar.audience_status = 'ACTIVE'
+                                )
+                                OR (
+                                  :audienceStatusFilter = 'ONLY_DELETED'
+                                  AND ar.audience_status = 'INACTIVE'
+                                )
+                              )
                               -- SLA-state filter. Aligned with the row-level badges + the new
                               -- column semantics:
                               --   * Reach-out buckets use submitted_at + tatHours AND a NOT EXISTS
@@ -382,6 +537,35 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                  AND lf.schedule_time < NOW()))))
                               AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
+                              AND (COALESCE(:customFieldExcludedIdsCsv, '') = ''
+                                   OR NOT (ar.id = ANY(STRING_TO_ARRAY(:customFieldExcludedIdsCsv, ','))))
+                              AND (COALESCE(:callHistoryFilter, '') = ''
+                                   OR (:callHistoryFilter = 'NOT_CALLED' AND NOT EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'CALLED_ONCE' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) = 1)
+                                   OR (:callHistoryFilter = 'CALLED_TWICE_PLUS' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) >= 2)
+                                   OR (:callHistoryFilter = 'AI_CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE (tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                            AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR')))
+                                   OR (:callHistoryFilter = 'MANUAL_CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE (tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                            AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK'))))
                         """, nativeQuery = true)
         Page<AudienceResponse> findLeadsWithFilters(
                         @Param("audienceId") String audienceId,
@@ -402,11 +586,15 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("isUnassigned") Boolean isUnassigned,
                         @Param("overallStatusStr") String overallStatusStr,
                         @Param("customFieldMatchedIdsCsv") String customFieldMatchedIdsCsv,
+                        @Param("customFieldExcludedIdsCsv") String customFieldExcludedIdsCsv,
+                        @Param("callHistoryFilter") String callHistoryFilter,
                         @Param("conversionStatusFilter") String conversionStatusFilter,
+                        @Param("audienceStatusFilter") String audienceStatusFilter,
                         @Param("slaFilter") String slaFilter,
                         @Param("tatHours") Integer tatHours,
                         @Param("sortBy") String sortBy,
                         @Param("sortDirection") String sortDirection,
+                        @Param("sortCustomFieldId") String sortCustomFieldId,
                         Pageable pageable);
 
         /**
@@ -417,6 +605,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             JOIN Audience a ON a.id = ar.audienceId
                             WHERE a.instituteId = :instituteId
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND ar.audienceStatus = 'ACTIVE'
                             ORDER BY ar.submittedAt DESC
                         """)
         Page<AudienceResponse> findAllLeadsForInstitute(
@@ -489,129 +678,23 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                   AND ulp.conversion_status = 'CONVERTED'
                                 )
                               )
-                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
-                              -- SLA-state filter. Aligned with the row-level badges + the new
-                              -- column semantics:
-                              --   * Reach-out buckets use submitted_at + tatHours AND a NOT EXISTS
-                              --     check on timeline_event (category = ACTIVITY) so leads the
-                              --     counsellor already contacted are excluded, matching the badge.
-                              --   * Follow-up buckets read the lead_followup table (open rows
-                              --     only), matching the Follow up at column which is now purely
-                              --     counsellor-scheduled callbacks.
-                              AND (COALESCE(:slaFilter, '') = ''
-                                   OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
-                                       AND :tatHours IS NOT NULL
-                                       AND ar.submitted_at IS NOT NULL
-                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) < NOW()
-                                       AND NOT EXISTS (
-                                           SELECT 1 FROM timeline_event te
-                                           WHERE te.category = 'ACTIVITY'
-                                             AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
-                                                   OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
-                                                   OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
-                                   OR ('TAT_BEFORE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
-                                       AND :tatHours IS NOT NULL
-                                       AND ar.submitted_at IS NOT NULL
-                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) > NOW()
-                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) <= NOW() + INTERVAL '30 minutes'
-                                       AND NOT EXISTS (
-                                           SELECT 1 FROM timeline_event te
-                                           WHERE te.category = 'ACTIVITY'
-                                             AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
-                                                   OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
-                                                   OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
-                                   OR ('FOLLOW_UP_DUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
-                                       AND EXISTS (
-                                           SELECT 1 FROM lead_followup lf
-                                           WHERE lf.audience_response_id = ar.id
-                                             AND lf.is_closed = false
-                                             AND lf.schedule_time IS NOT NULL
-                                             AND lf.schedule_time > NOW()
-                                             AND lf.schedule_time <= NOW() + INTERVAL '30 minutes'))
-                                   OR ('FOLLOW_UP_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
-                                       AND EXISTS (
-                                           SELECT 1 FROM lead_followup lf
-                                           WHERE lf.audience_response_id = ar.id
-                                             AND lf.is_closed = false
-                                             AND lf.schedule_time IS NOT NULL
-                                             AND lf.schedule_time < NOW()))
-                                   OR ('ANY_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
-                                       AND (
-                                           (:tatHours IS NOT NULL
-                                            AND ar.submitted_at IS NOT NULL
-                                            AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) < NOW()
-                                            AND NOT EXISTS (
-                                                SELECT 1 FROM timeline_event te
-                                                WHERE te.category = 'ACTIVITY'
-                                                  AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
-                                                        OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
-                                                        OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
-                                           OR EXISTS (
-                                               SELECT 1 FROM lead_followup lf
-                                               WHERE lf.audience_response_id = ar.id
-                                                 AND lf.is_closed = false
-                                                 AND lf.schedule_time IS NOT NULL
-                                                 AND lf.schedule_time < NOW()))))
-                              AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
-                                   OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
-                            ORDER BY ar.submitted_at DESC
-                        """, countQuery = """
-                            SELECT COUNT(*)
-                            FROM audience_response ar
-                            JOIN audience a ON a.id = ar.audience_id
-                            LEFT JOIN lead_score ls ON ls.audience_response_id = ar.id
-                            LEFT JOIN LATERAL (
-                                SELECT lu.user_id
-                                FROM linked_users lu
-                                WHERE lu.source = 'ENQUIRY' AND lu.source_id = ar.enquiry_id
-                                ORDER BY lu.created_at DESC
-                                LIMIT 1
-                            ) lu ON true
-                            LEFT JOIN user_lead_profile ulp
-                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
-                            WHERE a.institute_id = :instituteId
-                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')))
-                              AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
-                              AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
-                              AND (COALESCE(:searchQuery, '') = '' OR
-                                   LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
-                                   LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
-                                   ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%') OR
-                                   (COALESCE(:searchUserIdsCsv, '') != ''
-                                    AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
-                              AND (COALESCE(:leadTier, '') = '' OR
-                                   (ulp.user_id IS NOT NULL AND COALESCE(NULLIF(ulp.lead_tier, ''),
-                                       CASE WHEN ulp.best_score >= 80 THEN 'HOT'
-                                            WHEN ulp.best_score >= 50 THEN 'WARM'
-                                            ELSE 'COLD' END) = ANY(STRING_TO_ARRAY(:leadTier, ','))))
-                              AND (COALESCE(:assignedCounselorId, '') = ''
-                                   OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorId, ','))
-                                   OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorId, ',')))
-                              -- RBAC scope (CounsellorScopeService.descendantUserIdsForCaller):
-                              -- caller + everyone reporting up to them through parent_user_id
-                              -- chains inside the leads-team subtree. ANDed with the single-id
-                              -- narrow above so a manager can still drill into one report.
-                              -- Unassigned leads (no counsellor on either linked_users or
-                              -- user_lead_profile) stay visible to everyone — anyone in
-                              -- scope can pick them up.
-                              AND (COALESCE(:assignedCounselorIdsCsv, '') = ''
-                                   OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
-                                   OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
-                                   OR ((:includeUnassigned IS NULL OR :includeUnassigned = TRUE) AND lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
-                              -- isUnassigned = TRUE narrows to leads with no owner at all
-                              -- (both the ENQUIRY-linked counsellor and the profile owner are null).
-                              AND (:isUnassigned IS NULL OR :isUnassigned = FALSE
-                                   OR (lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
-                              AND (COALESCE(:allowedAudienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:allowedAudienceIdsCsv, ',')))
+                              -- Soft-delete filter. Mirrors conversionStatusFilter above:
+                              -- EXCLUDE_DELETED (default) / ONLY_DELETED / ALL, so the UI can
+                              -- offer a "show deleted leads" view without a second query.
+                              -- Kept as its OWN unconditional AND rather than folded into the
+                              -- overall_status OR block above: that block disables its own
+                              -- OPTED_OUT guard whenever :overallStatusStr is set, and a
+                              -- soft-deleted lead must stay hidden regardless of what else the
+                              -- caller filters by.
                               AND (
-                                COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
+                                COALESCE(:audienceStatusFilter, 'EXCLUDE_DELETED') = 'ALL'
                                 OR (
-                                  COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'EXCLUDE_CONVERTED'
-                                  AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
+                                  COALESCE(:audienceStatusFilter, 'EXCLUDE_DELETED') = 'EXCLUDE_DELETED'
+                                  AND ar.audience_status = 'ACTIVE'
                                 )
                                 OR (
-                                  :conversionStatusFilter = 'ONLY_CONVERTED'
-                                  AND ulp.conversion_status = 'CONVERTED'
+                                  :audienceStatusFilter = 'ONLY_DELETED'
+                                  AND ar.audience_status = 'INACTIVE'
                                 )
                               )
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
@@ -679,6 +762,247 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                                  AND lf.schedule_time < NOW()))))
                               AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
+                              AND (COALESCE(:customFieldExcludedIdsCsv, '') = ''
+                                   OR NOT (ar.id = ANY(STRING_TO_ARRAY(:customFieldExcludedIdsCsv, ','))))
+                              AND (COALESCE(:callHistoryFilter, '') = ''
+                                   OR (:callHistoryFilter = 'NOT_CALLED' AND NOT EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'CALLED_ONCE' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) = 1)
+                                   OR (:callHistoryFilter = 'CALLED_TWICE_PLUS' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) >= 2)
+                                   OR (:callHistoryFilter = 'AI_CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE (tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                            AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR')))
+                                   OR (:callHistoryFilter = 'MANUAL_CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE (tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                            AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK'))))
+                            ORDER BY
+                              CASE WHEN :sortBy = 'SUBMITTED_AT' AND :sortDirection = 'ASC'
+                                   THEN ar.submitted_at END ASC,
+                              CASE WHEN :sortBy = 'SUBMITTED_AT' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN ar.submitted_at END DESC,
+                              CASE WHEN :sortBy = 'LEAD_SCORE' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN COALESCE(ls.raw_score, 0) END DESC,
+                              CASE WHEN :sortBy = 'LEAD_SCORE' AND :sortDirection = 'ASC'
+                                   THEN COALESCE(ls.raw_score, 0) END ASC,
+                              CASE WHEN :sortBy = 'LEAD_TIER' AND :sortDirection = 'ASC'
+                                   THEN CASE COALESCE(NULLIF(ulp.lead_tier, ''),
+                                            CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                                 WHEN ulp.best_score >= 50 THEN 'WARM'
+                                                 WHEN ulp.best_score IS NOT NULL THEN 'COLD'
+                                                 ELSE NULL END)
+                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END END ASC,
+                              CASE WHEN :sortBy = 'LEAD_TIER' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN CASE COALESCE(NULLIF(ulp.lead_tier, ''),
+                                            CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                                 WHEN ulp.best_score >= 50 THEN 'WARM'
+                                                 WHEN ulp.best_score IS NOT NULL THEN 'COLD'
+                                                 ELSE NULL END)
+                                        WHEN 'HOT' THEN 3 WHEN 'WARM' THEN 2 WHEN 'COLD' THEN 1 ELSE 0 END END DESC,
+                              CASE WHEN :sortBy = 'STATUS' AND :sortDirection = 'ASC'
+                                   THEN COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) END ASC,
+                              CASE WHEN :sortBy = 'STATUS' AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) END DESC,
+                              CASE WHEN :sortBy = 'PARENT_NAME' AND (:sortDirection IS NULL OR :sortDirection = 'ASC')
+                                   THEN ar.parent_name END ASC,
+                              CASE WHEN :sortBy = 'PARENT_NAME' AND :sortDirection = 'DESC'
+                                   THEN ar.parent_name END DESC,
+                              CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND :sortDirection = 'ASC'
+                                   THEN CASE WHEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) ~ '^-?[0-9]+([.][0-9]+)?$' THEN CAST((SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) AS numeric) END END ASC NULLS LAST,
+                              CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN CASE WHEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) ~ '^-?[0-9]+([.][0-9]+)?$' THEN CAST((SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) AS numeric) END END DESC NULLS LAST,
+                              CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND :sortDirection = 'ASC'
+                                   THEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) END ASC NULLS LAST,
+                              CASE WHEN :sortBy = 'CUSTOM_FIELD' AND :sortCustomFieldId IS NOT NULL AND (:sortDirection IS NULL OR :sortDirection = 'DESC')
+                                   THEN (SELECT scf.value FROM custom_field_values scf WHERE scf.source_type = 'AUDIENCE_RESPONSE' AND scf.source_id = ar.id AND scf.custom_field_id = :sortCustomFieldId ORDER BY scf.updated_at DESC NULLS LAST LIMIT 1) END DESC NULLS LAST,
+                              ar.submitted_at DESC
+                        """, countQuery = """
+                            SELECT COUNT(*)
+                            FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            LEFT JOIN lead_score ls ON ls.audience_response_id = ar.id
+                            LEFT JOIN LATERAL (
+                                SELECT lu.user_id
+                                FROM linked_users lu
+                                WHERE lu.source = 'ENQUIRY' AND lu.source_id = ar.enquiry_id
+                                ORDER BY lu.created_at DESC
+                                LIMIT 1
+                            ) lu ON true
+                            LEFT JOIN user_lead_profile ulp
+                                ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
+                            WHERE a.institute_id = :instituteId
+                              AND (COALESCE(:leadStatusId, '') = '' OR COALESCE((SELECT lst.status_key FROM lead_status lst WHERE lst.id = ar.lead_status_id), ulp.conversion_status) = ANY(STRING_TO_ARRAY(:leadStatusId, ',')))
+                              AND (CAST(:submittedFrom AS timestamp) IS NULL OR ar.submitted_at >= CAST(:submittedFrom AS timestamp))
+                              AND (CAST(:submittedTo AS timestamp) IS NULL OR ar.submitted_at <= CAST(:submittedTo AS timestamp))
+                              AND (COALESCE(:searchQuery, '') = '' OR
+                                   LOWER(ar.parent_name) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
+                                   LOWER(ar.parent_email) LIKE LOWER(CONCAT('%', :searchQuery, '%')) OR
+                                   ar.parent_mobile LIKE CONCAT('%', :searchQuery, '%') OR
+                                   (COALESCE(:searchUserIdsCsv, '') != ''
+                                    AND ar.user_id = ANY(STRING_TO_ARRAY(:searchUserIdsCsv, ','))))
+                              AND (COALESCE(:leadTier, '') = '' OR
+                                   (ulp.user_id IS NOT NULL AND COALESCE(NULLIF(ulp.lead_tier, ''),
+                                       CASE WHEN ulp.best_score >= 80 THEN 'HOT'
+                                            WHEN ulp.best_score >= 50 THEN 'WARM'
+                                            ELSE 'COLD' END) = ANY(STRING_TO_ARRAY(:leadTier, ','))))
+                              AND (COALESCE(:assignedCounselorId, '') = ''
+                                   OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorId, ','))
+                                   OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorId, ',')))
+                              -- RBAC scope (CounsellorScopeService.descendantUserIdsForCaller):
+                              -- caller + everyone reporting up to them through parent_user_id
+                              -- chains inside the leads-team subtree. ANDed with the single-id
+                              -- narrow above so a manager can still drill into one report.
+                              -- Unassigned leads (no counsellor on either linked_users or
+                              -- user_lead_profile) stay visible to everyone — anyone in
+                              -- scope can pick them up.
+                              AND (COALESCE(:assignedCounselorIdsCsv, '') = ''
+                                   OR lu.user_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
+                                   OR ulp.assigned_counselor_id = ANY(STRING_TO_ARRAY(:assignedCounselorIdsCsv, ','))
+                                   OR ((:includeUnassigned IS NULL OR :includeUnassigned = TRUE) AND lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
+                              -- isUnassigned = TRUE narrows to leads with no owner at all
+                              -- (both the ENQUIRY-linked counsellor and the profile owner are null).
+                              AND (:isUnassigned IS NULL OR :isUnassigned = FALSE
+                                   OR (lu.user_id IS NULL AND ulp.assigned_counselor_id IS NULL))
+                              AND (COALESCE(:allowedAudienceIdsCsv, '') = '' OR ar.audience_id = ANY(STRING_TO_ARRAY(:allowedAudienceIdsCsv, ',')))
+                              AND (
+                                COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'ALL'
+                                OR (
+                                  COALESCE(:conversionStatusFilter, 'EXCLUDE_CONVERTED') = 'EXCLUDE_CONVERTED'
+                                  AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
+                                )
+                                OR (
+                                  :conversionStatusFilter = 'ONLY_CONVERTED'
+                                  AND ulp.conversion_status = 'CONVERTED'
+                                )
+                              )
+                              -- Soft-delete filter. Mirrors conversionStatusFilter above:
+                              -- EXCLUDE_DELETED (default) / ONLY_DELETED / ALL, so the UI can
+                              -- offer a "show deleted leads" view without a second query.
+                              -- Kept as its OWN unconditional AND rather than folded into the
+                              -- overall_status OR block above: that block disables its own
+                              -- OPTED_OUT guard whenever :overallStatusStr is set, and a
+                              -- soft-deleted lead must stay hidden regardless of what else the
+                              -- caller filters by.
+                              AND (
+                                COALESCE(:audienceStatusFilter, 'EXCLUDE_DELETED') = 'ALL'
+                                OR (
+                                  COALESCE(:audienceStatusFilter, 'EXCLUDE_DELETED') = 'EXCLUDE_DELETED'
+                                  AND ar.audience_status = 'ACTIVE'
+                                )
+                                OR (
+                                  :audienceStatusFilter = 'ONLY_DELETED'
+                                  AND ar.audience_status = 'INACTIVE'
+                                )
+                              )
+                              AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              -- SLA-state filter. Aligned with the row-level badges + the new
+                              -- column semantics:
+                              --   * Reach-out buckets use submitted_at + tatHours AND a NOT EXISTS
+                              --     check on timeline_event (category = ACTIVITY) so leads the
+                              --     counsellor already contacted are excluded, matching the badge.
+                              --   * Follow-up buckets read the lead_followup table (open rows
+                              --     only), matching the Follow up at column which is now purely
+                              --     counsellor-scheduled callbacks.
+                              AND (COALESCE(:slaFilter, '') = ''
+                                   OR ('TAT_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
+                                       AND :tatHours IS NOT NULL
+                                       AND ar.submitted_at IS NOT NULL
+                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) < NOW()
+                                       AND NOT EXISTS (
+                                           SELECT 1 FROM timeline_event te
+                                           WHERE te.category = 'ACTIVITY'
+                                             AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                   OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                   OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
+                                   OR ('TAT_BEFORE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
+                                       AND :tatHours IS NOT NULL
+                                       AND ar.submitted_at IS NOT NULL
+                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) > NOW()
+                                       AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) <= NOW() + INTERVAL '30 minutes'
+                                       AND NOT EXISTS (
+                                           SELECT 1 FROM timeline_event te
+                                           WHERE te.category = 'ACTIVITY'
+                                             AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                   OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                   OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
+                                   OR ('FOLLOW_UP_DUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
+                                       AND EXISTS (
+                                           SELECT 1 FROM lead_followup lf
+                                           WHERE lf.audience_response_id = ar.id
+                                             AND lf.is_closed = false
+                                             AND lf.schedule_time IS NOT NULL
+                                             AND lf.schedule_time > NOW()
+                                             AND lf.schedule_time <= NOW() + INTERVAL '30 minutes'))
+                                   OR ('FOLLOW_UP_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
+                                       AND EXISTS (
+                                           SELECT 1 FROM lead_followup lf
+                                           WHERE lf.audience_response_id = ar.id
+                                             AND lf.is_closed = false
+                                             AND lf.schedule_time IS NOT NULL
+                                             AND lf.schedule_time < NOW()))
+                                   OR ('ANY_OVERDUE' = ANY(STRING_TO_ARRAY(:slaFilter, ','))
+                                       AND (
+                                           (:tatHours IS NOT NULL
+                                            AND ar.submitted_at IS NOT NULL
+                                            AND ar.submitted_at + make_interval(hours => CAST(:tatHours AS integer)) < NOW()
+                                            AND NOT EXISTS (
+                                                SELECT 1 FROM timeline_event te
+                                                WHERE te.category = 'ACTIVITY'
+                                                  AND ( (te.type = 'AUDIENCE_RESPONSE' AND te.type_id = ar.id)
+                                                        OR (ar.user_id IS NOT NULL AND te.student_user_id = ar.user_id)
+                                                        OR (ar.student_user_id IS NOT NULL AND te.student_user_id = ar.student_user_id) )))
+                                           OR EXISTS (
+                                               SELECT 1 FROM lead_followup lf
+                                               WHERE lf.audience_response_id = ar.id
+                                                 AND lf.is_closed = false
+                                                 AND lf.schedule_time IS NOT NULL
+                                                 AND lf.schedule_time < NOW()))))
+                              AND (COALESCE(:customFieldMatchedIdsCsv, '') = ''
+                                   OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
+                              AND (COALESCE(:customFieldExcludedIdsCsv, '') = ''
+                                   OR NOT (ar.id = ANY(STRING_TO_ARRAY(:customFieldExcludedIdsCsv, ','))))
+                              AND (COALESCE(:callHistoryFilter, '') = ''
+                                   OR (:callHistoryFilter = 'NOT_CALLED' AND NOT EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'CALLED_ONCE' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) = 1)
+                                   OR (:callHistoryFilter = 'CALLED_TWICE_PLUS' AND (
+                                         SELECT COUNT(*) FROM telephony_call_log tcl
+                                          WHERE tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) >= 2)
+                                   OR (:callHistoryFilter = 'AI_CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE (tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                            AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR')))
+                                   OR (:callHistoryFilter = 'MANUAL_CALLED' AND EXISTS (
+                                         SELECT 1 FROM telephony_call_log tcl
+                                          WHERE (tcl.response_id = ar.id
+                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                            AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK'))))
                         """, nativeQuery = true)
         Page<AudienceResponse> findInstituteLeadsWithFilters(
                         @Param("instituteId") String instituteId,
@@ -694,9 +1018,15 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                         @Param("isUnassigned") Boolean isUnassigned,
                         @Param("allowedAudienceIdsCsv") String allowedAudienceIdsCsv,
                         @Param("conversionStatusFilter") String conversionStatusFilter,
+                        @Param("audienceStatusFilter") String audienceStatusFilter,
                         @Param("slaFilter") String slaFilter,
                         @Param("tatHours") Integer tatHours,
                         @Param("customFieldMatchedIdsCsv") String customFieldMatchedIdsCsv,
+                        @Param("customFieldExcludedIdsCsv") String customFieldExcludedIdsCsv,
+                        @Param("callHistoryFilter") String callHistoryFilter,
+                        @Param("sortBy") String sortBy,
+                        @Param("sortDirection") String sortDirection,
+                        @Param("sortCustomFieldId") String sortCustomFieldId,
                         Pageable pageable);
 
         /**
@@ -764,6 +1094,15 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
         boolean existsByAudienceIdAndUserId(String audienceId, String userId);
 
         /**
+         * This person's leads in this campaign with the given audience_status. Backs
+         * reactivate-on-resubmit: {@link #existsByAudienceIdAndUserId} above is derived and so
+         * cannot see status, which is exactly why a soft-deleted lead would otherwise trip the
+         * duplicate guard forever and never come back.
+         */
+        List<AudienceResponse> findByAudienceIdAndUserIdAndAudienceStatus(
+                        String audienceId, String userId, String audienceStatus);
+
+        /**
          * Check if a child (student) has already been submitted for this audience campaign.
          * Used for parent+child flows where the same parent can submit for multiple children.
          */
@@ -779,6 +1118,49 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          * Used for fetching all applications related to a parent/child
          */
         List<AudienceResponse> findByUserIdOrStudentUserId(String userId, String studentUserId);
+
+        /**
+         * These specific leads, but ONLY the ones that belong to this institute.
+         *
+         * <p>Security boundary for delete/restore: the caller supplies both the response ids and
+         * the institute the ADMIN check is made against, so those two MUST be reconciled against
+         * the data — otherwise an admin of institute A can pass their own institute_id (clearing
+         * the role check) together with institute B's response ids and mutate another tenant's
+         * leads. Resolving the targets through the institute join makes that impossible by
+         * construction rather than by a follow-up check someone can forget.</p>
+         *
+         * <p>The join is INNER, matching the leads-list queries: a response with no audience
+         * (admission/application rows) can't be attributed to an institute here and isn't listable
+         * either, so it is correctly not deletable through this endpoint.</p>
+         *
+         * <p>Does not filter audience_status — delete needs the ACTIVE rows and restore needs the
+         * INACTIVE ones.</p>
+         */
+        @Query("""
+                            SELECT ar FROM AudienceResponse ar
+                            JOIN Audience a ON a.id = ar.audienceId
+                            WHERE a.instituteId = :instituteId
+                            AND ar.id IN :responseIds
+                        """)
+        List<AudienceResponse> findAllByInstituteAndIds(
+                        @Param("instituteId") String instituteId,
+                        @Param("responseIds") List<String> responseIds);
+
+        /**
+         * Every lead belonging to these users within one institute, whatever its
+         * audience_status. Backs the USER-scoped soft-delete ("remove the person
+         * entirely") and its restore counterpart, so it must NOT filter on
+         * audience_status: delete needs the ACTIVE rows, restore needs the INACTIVE ones.
+         */
+        @Query("""
+                            SELECT ar FROM AudienceResponse ar
+                            JOIN Audience a ON a.id = ar.audienceId
+                            WHERE a.instituteId = :instituteId
+                            AND ar.userId IN :userIds
+                        """)
+        List<AudienceResponse> findAllByInstituteAndUserIds(
+                        @Param("instituteId") String instituteId,
+                        @Param("userIds") List<String> userIds);
 
         /**
          * Find audience response by parent mobile number for pre-fill lookup
@@ -806,7 +1188,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          */
         @Query("SELECT DISTINCT ar.userId FROM AudienceResponse ar " +
                         "WHERE ar.audienceId IN :audienceIds AND ar.userId IS NOT NULL " +
-                        "AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')")
+                        "AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT') AND ar.audienceStatus = 'ACTIVE'")
         List<String> findDistinctUserIdsByAudienceIds(@Param("audienceIds") List<String> audienceIds);
 
         /**
@@ -822,7 +1204,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
          */
         @Query("SELECT DISTINCT ar.userId FROM AudienceResponse ar " +
                         "WHERE ar.audienceId IN :audienceIds AND ar.userId IN :userIds AND ar.userId IS NOT NULL " +
-                        "AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')")
+                        "AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT') AND ar.audienceStatus = 'ACTIVE'")
         List<String> findDistinctUserIdsByAudienceIdsAndUserIds(
                         @Param("audienceIds") List<String> audienceIds,
                         @Param("userIds") List<String> userIds);
@@ -834,6 +1216,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             AND ar.audienceId = :audienceId
                             AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND ar.audienceStatus = 'ACTIVE'
                         """)
         List<AudienceResponse> findLeadsByAudienceAndDateRange(
                         @Param("instituteId") String instituteId,
@@ -855,6 +1238,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
                             AND ar.conversionStatus = :conversionStatus
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND ar.audienceStatus = 'ACTIVE'
                         """)
         List<AudienceResponse> findLeadsByAudienceDateRangeAndConversionStatus(
                         @Param("instituteId") String instituteId,
@@ -874,6 +1258,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             AND ar.userId IS NOT NULL
                             AND ar.parentMobile IS NOT NULL
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND ar.audienceStatus = 'ACTIVE'
                         """)
         List<AudienceResponse> findActiveLeadsByAudienceIds(
                         @Param("audienceIds") List<String> audienceIds);
@@ -889,6 +1274,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             WHERE a.instituteId = :instituteId
                             AND ar.workflowActivateDayAt >= :startDate AND ar.workflowActivateDayAt <= :endDate
                             AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                            AND ar.audienceStatus = 'ACTIVE'
                         """)
         List<AudienceResponse> findLeadsByInstituteAndDateRange(
                         @Param("instituteId") String instituteId,
@@ -972,6 +1358,87 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                 return findFirstByAudienceIdAndDedupeKeyAndIsDuplicateFalse(audienceId, dedupeKey);
         }
 
+        /**
+         * Institute-level lead-uniqueness setting support (LEAD_SETTING.data.dedup).
+         * All four exclude opted-out and already-flagged-duplicate rows so a lead
+         * that opted out can re-enter, and duplicates don't chain-match.
+         */
+        @Query("""
+                            SELECT COUNT(ar) > 0 FROM AudienceResponse ar
+                            WHERE ar.audienceId = :audienceId
+                            AND LOWER(TRIM(ar.parentEmail)) = LOWER(TRIM(:email))
+                            AND (ar.isDuplicate IS NULL OR ar.isDuplicate = false)
+                            AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                        """)
+        boolean existsByAudienceIdAndParentEmailIgnoreCase(
+                        @Param("audienceId") String audienceId,
+                        @Param("email") String email);
+
+        @Query("""
+                            SELECT COUNT(ar) > 0 FROM AudienceResponse ar
+                            JOIN Audience a ON a.id = ar.audienceId
+                            WHERE a.instituteId = :instituteId
+                            AND LOWER(TRIM(ar.parentEmail)) = LOWER(TRIM(:email))
+                            AND (ar.isDuplicate IS NULL OR ar.isDuplicate = false)
+                            AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                        """)
+        boolean existsByInstituteIdAndParentEmailIgnoreCase(
+                        @Param("instituteId") String instituteId,
+                        @Param("email") String email);
+
+        @Query(value = """
+                            SELECT COUNT(*) > 0 FROM audience_response ar
+                            WHERE ar.audience_id = :audienceId
+                            AND ar.parent_mobile IS NOT NULL
+                            AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                        """, nativeQuery = true)
+        boolean existsByAudienceIdAndPhoneLast10(
+                        @Param("audienceId") String audienceId,
+                        @Param("last10") String last10);
+
+        @Query(value = """
+                            SELECT COUNT(*) > 0 FROM audience_response ar
+                            JOIN audience a ON a.id = ar.audience_id
+                            WHERE a.institute_id = :instituteId
+                            AND ar.parent_mobile IS NOT NULL
+                            AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                        """, nativeQuery = true)
+        boolean existsByInstituteIdAndPhoneLast10(
+                        @Param("instituteId") String instituteId,
+                        @Param("last10") String last10);
+
+        /**
+         * SELECTED-scope variant of the two above — dedup checked across an
+         * admin-chosen set of specific lead lists rather than one campaign or the
+         * whole institute.
+         */
+        @Query("""
+                            SELECT COUNT(ar) > 0 FROM AudienceResponse ar
+                            WHERE ar.audienceId IN (:audienceIds)
+                            AND LOWER(TRIM(ar.parentEmail)) = LOWER(TRIM(:email))
+                            AND (ar.isDuplicate IS NULL OR ar.isDuplicate = false)
+                            AND (ar.overallStatus IS NULL OR ar.overallStatus != 'OPTED_OUT')
+                        """)
+        boolean existsByAudienceIdInAndParentEmailIgnoreCase(
+                        @Param("audienceIds") java.util.List<String> audienceIds,
+                        @Param("email") String email);
+
+        @Query(value = """
+                            SELECT COUNT(*) > 0 FROM audience_response ar
+                            WHERE ar.audience_id IN (:audienceIds)
+                            AND ar.parent_mobile IS NOT NULL
+                            AND RIGHT(regexp_replace(ar.parent_mobile, '[^0-9]', '', 'g'), 10) = :last10
+                            AND (ar.is_duplicate IS NULL OR ar.is_duplicate = false)
+                            AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                        """, nativeQuery = true)
+        boolean existsByAudienceIdInAndPhoneLast10(
+                        @Param("audienceIds") java.util.List<String> audienceIds,
+                        @Param("last10") String last10);
+
         // ── TAT / Follow-up SLA scan (emit-only scheduler) ────────────────────────
 
         /**
@@ -984,6 +1451,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                             FROM audience_response ar
                             JOIN audience a ON a.id = ar.audience_id
                             WHERE (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                            AND ar.audience_status = 'ACTIVE'
                         """, nativeQuery = true)
         List<String> findInstituteIdsWithActiveLeads();
 
@@ -1028,6 +1496,7 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                 ON ulp.user_id = ar.user_id AND ulp.institute_id = a.institute_id
                             WHERE a.institute_id = :instituteId
                               AND (ar.overall_status IS NULL OR ar.overall_status != 'OPTED_OUT')
+                              AND ar.audience_status = 'ACTIVE'
                               AND (ulp.conversion_status IS NULL OR ulp.conversion_status != 'CONVERTED')
                               AND COALESCE(lu.user_id, ulp.assigned_counselor_id) IS NOT NULL
                         """, nativeQuery = true)

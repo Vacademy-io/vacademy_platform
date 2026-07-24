@@ -1,7 +1,8 @@
-import type {
-    StudentDisplaySettingsData,
-    StudentSidebarTabConfig,
-    StudentDashboardWidgetConfig,
+import {
+    LEARNER_TOUR_KEYS,
+    type StudentDisplaySettingsData,
+    type StudentSidebarTabConfig,
+    type StudentDashboardWidgetConfig,
 } from '@/types/student-display-settings';
 
 function defaultSidebarTabs(): StudentSidebarTabConfig[] {
@@ -119,6 +120,8 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         outlineMode: 'expanded',
         ratingsAndReviewsVisible: true,
         hideAuthorName: false,
+        // Teachers/Instructors section hidden by default; admins opt-in to show it.
+        showInstructors: false,
         showCourseConfiguration: true,
         showCourseContentPrefixes: true,
         courseOverview: { visible: true, showSlidesData: true },
@@ -153,10 +156,24 @@ export const DEFAULT_STUDENT_DISPLAY_SETTINGS: StudentDisplaySettingsData = {
         allowSystemAlerts: true,
         allowDashboardPins: true,
         allowBatchStream: true,
+        allowAppOverlays: true,
     },
     certificates: {
         enabled: true,
         generationThresholdPercent: 80,
+    },
+    liveClasses: {
+        showPastSessions: false,
+        showRecordings: false,
+        showAttendance: false,
+        showActivityStats: false,
+        showClassMaterials: false,
+    },
+    tutorials: {
+        // Off by default; admins opt in from Student Display settings.
+        enabled: false,
+        enabledTours: [...LEARNER_TOUR_KEYS],
+        pdfGuideEnabled: false,
     },
     postLoginRedirectRoute: '/dashboard',
 };

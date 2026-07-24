@@ -48,7 +48,9 @@ export type DashboardWidgetId =
     | 'unresolvedDoubts'
     | 'liveClasses'
     | 'aiFeaturesCard'
-    | 'instituteOverview';
+    | 'instituteOverview'
+    | 'subOrgOverview'
+    | 'subOrgSelfStats';
 
 export interface DashboardWidgetConfig {
     id: DashboardWidgetId;
@@ -142,7 +144,9 @@ export type StudentSideViewTabId =
     | 'enquiry'
     | 'application'
     | 'lead'
-    | 'fullHistory';
+    | 'fullHistory'
+    | 'parent'
+    | 'onboarding';
 
 export interface StudentSideViewSettings {
     overviewTab: boolean;
@@ -162,6 +166,13 @@ export interface StudentSideViewSettings {
     applicationTab: boolean;
     leadTab: boolean;
     fullHistoryTab?: boolean;
+    // Guardian tab — surfaces the linked guardian/children (parent-link feature).
+    // Optional for backward-compat with settings saved before this tab existed.
+    parentTab?: boolean;
+    // Onboarding tab — surfaces the subject's onboarding flow instance(s)
+    // (ONBOARDING_SETTING feature). Optional for backward-compat with
+    // settings saved before this tab existed.
+    onboardingTab?: boolean;
     // Custom ordering by tab id. Lower numbers render first. Tabs missing
     // from the map fall back to the default order. Optional for
     // backward-compat with settings that pre-date this feature.
@@ -229,7 +240,9 @@ export type StudentSideViewVisibilityKey =
     | 'enquiryTab'
     | 'applicationTab'
     | 'leadTab'
-    | 'fullHistoryTab';
+    | 'fullHistoryTab'
+    | 'parentTab'
+    | 'onboardingTab';
 
 export interface LearnerManagementSettings {
     allowPortalAccess: boolean;
@@ -290,6 +303,10 @@ export interface TeamManagementSettings {
     // confident it works for that institute's users. Admins flip this on
     // from Settings → Admin Display Settings when they're ready to roll it out.
     orgChartTabVisible?: boolean;
+    // Controls the Teams "Password" column + per-member "View Password" action.
+    // Defaults to ON (shown) — treated as enabled unless explicitly set to false,
+    // so an admin can hide staff credentials per institute by turning it off.
+    allowViewPassword?: boolean;
 }
 
 // Opt-in flags for the counsellor workbench + sales dashboard routes. Both
@@ -301,6 +318,20 @@ export interface WorkbenchVisibilitySettings {
     counsellorsPageVisible?: boolean;
     salesDashboardVisible?: boolean;
 }
+
+// Admin list surfaces that support custom-field filter/sort gating.
+export type ListCustomFieldSurface = 'LEADS' | 'CONTACTS' | 'STUDENTS';
+
+export interface ListCustomFieldSurfaceControls {
+    // custom_field_ids exposed as filters in this surface's filter bar.
+    filterFields: string[];
+    // custom_field_ids sortable from this surface's column headers.
+    sortableFields: string[];
+}
+
+export type ListCustomFieldControls = Partial<
+    Record<ListCustomFieldSurface, ListCustomFieldSurfaceControls>
+>;
 
 export interface DisplaySettingsData {
     // 1) Sidebar tabs and sub-tabs configuration and ordering
@@ -337,6 +368,18 @@ export interface DisplaySettingsData {
         // Controls whether the left sidebar is shown for this role
         showSidebar?: boolean;
         showAiCredits?: boolean;
+        // Controls the "Status" (service health) link pinned in the sidebar
+        // rail. Defaults to VISIBLE; set false to hide it for this role.
+        showStatus?: boolean;
+        // Controls the "Settings" gear pinned at the bottom of the sidebar
+        // rail (admin-only surface). Defaults to VISIBLE; set false to hide it
+        // for this role.
+        showSettings?: boolean;
+        // Controls the right-edge Assist Dock rail (Guides / Assist / Issues /
+        // What's new / Explore / Admin App). Defaults to VISIBLE for the admin
+        // role and HIDDEN for teacher/custom roles; admins can opt a specific
+        // role in from that role's Display Settings.
+        showAssistDock?: boolean;
     };
 
     // 7) Course content types (slides) visibility
@@ -424,7 +467,25 @@ export interface DisplaySettingsData {
     //      in the filter bar; empty/absent = no custom-field filters and the
     //      distinct-values API is never called. Saved with the rest of this blob
     //      via the display-settings unsaved-changes bar.
+    //      DEPRECATED in favor of listCustomFieldControls.LEADS.filterFields —
+    //      kept as a read-fallback so institutes that configured leads filters
+    //      before the unified controls existed keep them without a migration.
     leadsFilterCustomFields?: string[];
+
+    // 12d) Unified per-surface custom-field filter/sort gating for the admin
+    //      list pages. Institute-wide (applies to all roles), like
+    //      leadsFilterCustomFields. Per surface:
+    //        - filterFields: custom_field_ids rendered as filter controls in
+    //          that page's filter bar (searchable multi-selects fed by the
+    //          surface's distinct-values endpoint).
+    //        - sortableFields: custom_field_ids whose columns offer sorting
+    //          (consumed once custom-field sorting ships; safe to configure
+    //          ahead of that).
+    //      Absent surface entry falls back:
+    //        LEADS    → leadsFilterCustomFields (legacy key)
+    //        STUDENTS → legacy auto-expose (all TEXT + dropdown fields)
+    //        CONTACTS → none
+    listCustomFieldControls?: ListCustomFieldControls;
 
     // 13) Learner management permissions for admins/teachers
     learnerManagement?: LearnerManagementSettings;

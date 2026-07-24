@@ -1,0 +1,128 @@
+{
+    "login": {
+        "heading": "Glad To Have You Back!",
+        "subheading": "Login and take the reins - your admin tools are waiting!",
+        "emailPlaceholder": "you@email.com",
+        "passwordPlaceholder": "Password",
+        "forgotPasswordLink": "Forgot Password?",
+        "loginButton": "Login",
+        "forgotPasswordHeading": "Forgot Password",
+        "forgotPasswordSubheading": "Enter your email, and we'll send your password to your inbox",
+        "forgotPasswordEmailPlaceholder": "you@email.com",
+        "forgotPasswordButton": "Send Reset Link",
+        "forgotPasswordBottomText": "Remember your password?",
+        "setPasswordHeading": "Set New Password",
+        "setPasswordSubheading": "Secure your account with a new password",
+        "setPasswordNewPlaceholder": "New password",
+        "setPasswordConfirmPlaceholder": "Confirm new password",
+        "setPasswordButton": "Reset Password",
+        "setPasswordBottomText": "Back to Login?"
+    },
+    "actions": {
+        "save": "Save",
+        "cancel": "Cancel",
+        "delete": "Delete"
+    },
+    "table": {
+        "noResults": "No results found"
+    },
+    "common": {
+        "loading": "Loading..."
+    },
+    "settings": {
+        "language": {
+            "title": "Language",
+            "description": "Choose which languages this institute's portal offers and how content is localized.",
+            "defaultLabel": "Default language",
+            "defaultHelp": "The language users see before they pick one themselves.",
+            "enabledLabel": "Enabled languages",
+            "enabledHelp": "Languages users can switch to. The default language is always included.",
+            "enabledPlaceholder": "Select languages",
+            "enabledRequired": "Enable at least one language",
+            "contentSourceLabel": "Content source language",
+            "contentSourceHelp": "The language your content is originally authored in.",
+            "timezoneLabel": "Institute timezone",
+            "timezoneHelp": "Used for date and time display across the portal.",
+            "timezonePlaceholder": "Select timezone",
+            "selectPlaceholder": "Select language",
+            "loading": "Loading language settings…",
+            "save": "Save language settings",
+            "saving": "Saving…",
+            "saved": "Language settings saved",
+            "saveFailed": "Failed to save language settings"
+        }
+    },
+    "translation": {
+        "translateAction": "Translate",
+        "credits": "{{value}} credits",
+        "noContent": "No content",
+        "state": {
+            "DRAFT": "Draft",
+            "IN_REVIEW": "In review",
+            "PUBLISHED": "Published",
+            "STALE": "Stale"
+        },
+        "jobStatus": {
+            "PENDING": "Pending",
+            "IN_PROGRESS": "In progress",
+            "AWAITING_INPUT": "Awaiting review",
+            "COMPLETED": "Completed",
+            "FAILED": "Failed"
+        },
+        "jobStage": {
+            "PENDING": "Pending",
+            "EXTRACT": "Extracting content",
+            "TRANSLATE": "Translating",
+            "REVIEW": "Review",
+            "WRITE_BACK": "Publishing",
+            "COMPLETED": "Completed"
+        },
+        "dialog": {
+            "heading": "Translate course",
+            "targetLanguage": "Target language",
+            "mode": "Publishing mode",
+            "modeDraft": "Review before publishing",
+            "modeAutoPublish": "Publish immediately",
+            "modeDraftHint": "Translations are saved as drafts. Learners see them only after you approve them.",
+            "modeAutoPublishHint": "Translations go live for learners as soon as they are generated.",
+            "continue": "Continue",
+            "confirm": "Start translation",
+            "topUp": "Top up credits",
+            "estimatedCost": "Estimated cost",
+            "currentBalance": "Current balance",
+            "balanceAfter": "Balance after",
+            "itemsFound": "{{value}} item(s) will be translated.",
+            "insufficientCredits": "Your credit balance does not cover this translation. Top up to continue.",
+            "noLanguages": "No other languages are enabled for this institute. Enable one in Settings > Language.",
+            "started": "Translation started",
+            "viewProgress": "View progress",
+            "estimateFailed": "Could not estimate the translation cost. Please try again.",
+            "startFailed": "Could not start the translation. Please try again."
+        },
+        "review": {
+            "heading": "Translation review",
+            "subheading": "Reviewing {{language}} translations",
+            "back": "Back to course",
+            "baseContent": "Original",
+            "translatedContent": "{{language}}",
+            "state": "Status",
+            "actions": "Actions",
+            "approve": "Approve",
+            "reject": "Reject",
+            "approved": "Translation approved",
+            "rejected": "Translation rejected",
+            "updateFailed": "Could not update the translation. Please try again.",
+            "approvePage": "Approve this page",
+            "bulkApproved": "{{value}} translation(s) approved",
+            "approveAndPublishJob": "Approve & publish job",
+            "jobApproved": "Job approved. Publishing translations.",
+            "jobApproveFailed": "Could not approve the job. Please try again.",
+            "jobStatus": "Job status",
+            "jobStage": "Stage",
+            "jobProgress": "Progress",
+            "filterAll": "All statuses",
+            "empty": "No translations to review yet.",
+            "missingScope": "Select a course and language to review translations."
+        }
+    }
+}

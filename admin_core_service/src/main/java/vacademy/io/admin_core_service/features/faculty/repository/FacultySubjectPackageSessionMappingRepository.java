@@ -17,6 +17,19 @@ import java.util.Set;
 public interface FacultySubjectPackageSessionMappingRepository
     extends JpaRepository<FacultySubjectPackageSessionMapping, String> {
 
+  // findByFilters excludes rows carrying a suborg_id: those are sub-org admin/team/learner
+  // access grants, not real teachers of the batch. Sub-org admins get their own view via
+  // findByFiltersScopedToSubOrgs, and the two predicates partition the table cleanly
+  // (suborg_id IS NULL here, suborg_id IN (:suborgIds) there).
+  //
+  // Keyed on suborg_id rather than linkage_type on purpose: linkage_type serves unrelated
+  // use cases and a handful of legacy rows carry a suborg_id under other linkage values, so
+  // suborg_id is the only reliable answer to "does this row belong to a sub-org".
+  //
+  // NOTE: keep prose OUT of the @Query string. Spring Data scans the raw query text for quote
+  // characters and does NOT understand SQL `--` comments, so a single apostrophe inside a
+  // comment (e.g. "the org's name") opens a quoted range that never closes and the repository
+  // bean fails to build at startup ("starts a quoted range at N, but never ends it").
   @Query(value = """
       SELECT DISTINCT ON (fm.user_id) fm.*
       FROM faculty_subject_package_session_mapping fm
@@ -26,6 +39,7 @@ public interface FacultySubjectPackageSessionMappingRepository
           OR (fm.access_type = 'EnrollInvite' AND EXISTS (SELECT 1 FROM enroll_invite ei WHERE ei.id = fm.access_id AND ei.institute_id = :instituteId))
           OR ((fm.access_type IS NULL OR fm.access_type NOT IN ('Package', 'PACKAGE_SESSION', 'EnrollInvite')) AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.package_session_id AND pi.institute_id = :instituteId))
       )
+        AND fm.suborg_id IS NULL
         AND (CAST(:hasSubjectIds AS boolean) = false OR fm.subject_id IN (:subjectIds))
         AND (CAST(:hasBatchesIds AS boolean) = false OR (
             (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id IN (:batchesIds)) OR
@@ -43,6 +57,7 @@ public interface FacultySubjectPackageSessionMappingRepository
           OR (fm.access_type = 'EnrollInvite' AND EXISTS (SELECT 1 FROM enroll_invite ei WHERE ei.id = fm.access_id AND ei.institute_id = :instituteId))
           OR ((fm.access_type IS NULL OR fm.access_type NOT IN ('Package', 'PACKAGE_SESSION', 'EnrollInvite')) AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.package_session_id AND pi.institute_id = :instituteId))
       )
+        AND fm.suborg_id IS NULL
         AND (CAST(:hasSubjectIds AS boolean) = false OR fm.subject_id IN (:subjectIds))
         AND (CAST(:hasBatchesIds AS boolean) = false OR (
             (fm.access_type = 'PACKAGE_SESSION' AND fm.access_id IN (:batchesIds)) OR
@@ -63,9 +78,8 @@ public interface FacultySubjectPackageSessionMappingRepository
       Pageable pageable);
 
   // Sub-org-scoped variant of findByFilters. Restricts results to FSPSSM rows whose
-  // suborg_id is in the supplied set AND whose linkage_type='SUB_ORG'. Used when a sub-org
-  // admin opens a course-details faculty list — they should see only teachers attached to
-  // their own sub-org for that PS.
+  // suborg_id is in the supplied set. Used when a sub-org admin opens a course-details
+  // faculty list — they should see only teachers attached to their own sub-org for that PS.
   @Query(value = """
       SELECT DISTINCT ON (fm.user_id) fm.*
       FROM faculty_subject_package_session_mapping fm
@@ -75,7 +89,6 @@ public interface FacultySubjectPackageSessionMappingRepository
           OR (fm.access_type = 'EnrollInvite' AND EXISTS (SELECT 1 FROM enroll_invite ei WHERE ei.id = fm.access_id AND ei.institute_id = :instituteId))
           OR ((fm.access_type IS NULL OR fm.access_type NOT IN ('Package', 'PACKAGE_SESSION', 'EnrollInvite')) AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.package_session_id AND pi.institute_id = :instituteId))
       )
-        AND fm.linkage_type = 'SUB_ORG'
         AND fm.suborg_id IN (:suborgIds)
         AND (CAST(:hasSubjectIds AS boolean) = false OR fm.subject_id IN (:subjectIds))
         AND (CAST(:hasBatchesIds AS boolean) = false OR (
@@ -94,7 +107,6 @@ public interface FacultySubjectPackageSessionMappingRepository
           OR (fm.access_type = 'EnrollInvite' AND EXISTS (SELECT 1 FROM enroll_invite ei WHERE ei.id = fm.access_id AND ei.institute_id = :instituteId))
           OR ((fm.access_type IS NULL OR fm.access_type NOT IN ('Package', 'PACKAGE_SESSION', 'EnrollInvite')) AND EXISTS (SELECT 1 FROM package_session ps JOIN package_institute pi ON ps.package_id = pi.package_id WHERE ps.id = fm.package_session_id AND pi.institute_id = :instituteId))
       )
-        AND fm.linkage_type = 'SUB_ORG'
         AND fm.suborg_id IN (:suborgIds)
         AND (CAST(:hasSubjectIds AS boolean) = false OR fm.subject_id IN (:subjectIds))
         AND (CAST(:hasBatchesIds AS boolean) = false OR (
@@ -153,6 +165,7 @@ public interface FacultySubjectPackageSessionMappingRepository
             AND ps.packageEntity.id = :packageId
             AND ps.status IN :packageSessionStatuses
             AND fsp.status IN :mappingStatuses
+            AND fsp.suborgId IS NULL
             AND (
                  fsp.subjectId IS NULL
                  OR s.status IN :subjectStatuses
@@ -181,8 +194,16 @@ public interface FacultySubjectPackageSessionMappingRepository
       @Param("packageSessionId") String packageSessionId,
       @Param("mappingStatuses") List<String> mappingStatuses);
 
+  // Returns every row on the package session, sub-org access grants included. Callers that mean
+  // "the teachers of this batch" want findRealTeachersByPackageSessionId instead; this one exists
+  // for callers that must see the rows verbatim (e.g. copying a package session).
   @Query("SELECT fspm FROM FacultySubjectPackageSessionMapping fspm WHERE fspm.packageSessionId = :packageSessionId")
   List<FacultySubjectPackageSessionMapping> findByPackageSessionId(
+      @Param("packageSessionId") String packageSessionId);
+
+  // Real teachers of the batch: excludes sub-org access grants (suborg_id set).
+  @Query("SELECT fspm FROM FacultySubjectPackageSessionMapping fspm WHERE fspm.packageSessionId = :packageSessionId AND fspm.suborgId IS NULL")
+  List<FacultySubjectPackageSessionMapping> findRealTeachersByPackageSessionId(
       @Param("packageSessionId") String packageSessionId);
 
   @Query("SELECT fspm FROM FacultySubjectPackageSessionMapping fspm WHERE fspm.packageSessionId = :packageSessionId AND fspm.subjectId = :subjectId")
@@ -209,7 +230,7 @@ public interface FacultySubjectPackageSessionMappingRepository
    * Get distinct user IDs by package session ID and active statuses - for
    * notification service
    */
-  @Query("SELECT DISTINCT fspm.userId FROM FacultySubjectPackageSessionMapping fspm WHERE fspm.packageSessionId = :packageSessionId AND fspm.status IN :activeStatuses")
+  @Query("SELECT DISTINCT fspm.userId FROM FacultySubjectPackageSessionMapping fspm WHERE fspm.packageSessionId = :packageSessionId AND fspm.status IN :activeStatuses AND fspm.suborgId IS NULL")
   List<String> findUserIdsByPackageSessionId(@Param("packageSessionId") String packageSessionId,
       @Param("activeStatuses") List<String> activeStatuses);
 
@@ -225,6 +246,7 @@ public interface FacultySubjectPackageSessionMappingRepository
             AND ps.status IN :statusList
             AND f.status IN :statusList
             AND ps.packageEntity.status IN :statusList
+            AND f.suborgId IS NULL
       """)
   Set<String> findUserIdsByFilters(
       @Param("instituteId") String instituteId,
@@ -367,4 +389,19 @@ public interface FacultySubjectPackageSessionMappingRepository
   List<UserSubOrgLinkRow> findUserSubOrgLinks(
       @Param("subOrgIds") List<String> subOrgIds,
       @Param("statuses") List<String> statuses);
+
+  /**
+   * Deactivate SOFT-removed sub-org members whose "last access date" has passed.
+   * Only touches ACTIVE rows carrying an access_till_date in the past; returns the
+   * number of rows flipped. Driven by {@code SubOrgTeamAccessExpiryJob}.
+   */
+  @org.springframework.data.jpa.repository.Modifying
+  @Query("""
+          UPDATE FacultySubjectPackageSessionMapping f
+             SET f.status = 'INACTIVE'
+           WHERE f.status = 'ACTIVE'
+             AND f.accessTillDate IS NOT NULL
+             AND f.accessTillDate < :now
+      """)
+  int deactivateExpiredSoftRemovals(@Param("now") java.sql.Timestamp now);
 }

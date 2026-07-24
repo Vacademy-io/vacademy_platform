@@ -14,6 +14,7 @@ import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import LeadStatusesManager from './LeadStatusesManager';
 import LeadSlaSettings from './LeadSlaSettings';
 import LeadReportSettings from './LeadReportSettings';
+import LeadDedupSettings from './LeadDedupSettings';
 import PoolsList from './pools/PoolsList';
 // LOCAL ONLY — these power the Workbench tab where admins pick the leads team
 // and configure the counsellor rating strategy.
@@ -70,7 +71,9 @@ const fetchLeadSettings = async (): Promise<LeadSettingsData> => {
         url: GET_INSITITUTE_SETTINGS,
         params: { instituteId, settingKey: SETTING_KEY },
     });
-    const saved = response.data?.data?.[SETTING_KEY]?.data as Partial<LeadSettingsData> | undefined;
+    // GET returns the SettingDto itself ({key, name, data}) — response.data IS
+    // the SettingDto, so its content is one level down at response.data.data.
+    const saved = response.data?.data as Partial<LeadSettingsData> | undefined;
     if (!saved) return DEFAULT_LEAD_SETTINGS;
     return {
         ...DEFAULT_LEAD_SETTINGS,
@@ -394,6 +397,9 @@ function ConfigSection({
 
                     {/* ── Reports Center config (LEAD_SETTING.data.reports subtree) ── */}
                     <LeadReportSettings />
+
+                    {/* ── Lead uniqueness / deduplication (LEAD_SETTING.data.dedup subtree) ── */}
+                    <LeadDedupSettings />
 
                     {/* ── TAT + Follow-up reminders (table-backed) ── */}
                     <LeadSlaSettings />

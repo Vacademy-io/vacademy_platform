@@ -10,20 +10,23 @@ import {
     DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu';
 import { MyButton } from '@/components/design-system/button';
-import { DotsThree, WarningCircle } from '@phosphor-icons/react';
+import { DotsThree, WarningCircle, Info, Coins } from '@phosphor-icons/react';
+import { useToolCostPreview } from '@/components/common/ai-credits/useToolCostPreview';
 import { AssessmentRevaluateStudentInterface } from '@/types/assessments/assessment-overview';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { StudentRevaluateQuestionWiseComponent } from './student-revaluate-question-wise-component';
-import { useMutation, useSuspenseQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { SelectedFilterRevaluateInterface } from '@/types/assessments/assessment-revaluate-question-wise';
 import {
     getAttemptData,
     getReleaseStudentResult,
     getRevaluateStudentResult,
     handleGetStudentReportExportPDF,
+    provideReattemptToParticipants,
     viewStudentReport,
 } from '../../-services/assessment-details-services';
 import { getPublicUrl } from '@/services/upload_file';
+import { downloadFileFromUrl } from '@/lib/file-download';
 import { Route } from '../..';
 import { getInstituteId } from '@/constants/helper';
 import { toast } from 'sonner';
@@ -42,6 +45,7 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { stashEvalReturnUrl } from '@/routes/evaluation/evaluation-tool/-utils/eval-return';
+import { UploadAnswerSheetDialog } from '@/routes/evaluation/evaluate/$assessmentId/$attemptId/$examType/-components/UploadAnswerSheetDialog';
 
 const ProvideReattemptComponent = ({
     student,
@@ -50,6 +54,32 @@ const ProvideReattemptComponent = ({
     student: AssessmentRevaluateStudentInterface;
     onClose: () => void;
 }) => {
+    const { assessmentId } = Route.useParams();
+    const instituteId = getInstituteId();
+
+    const provideReattemptMutation = useMutation({
+        mutationFn: (registrationId: string) =>
+            provideReattemptToParticipants(assessmentId, instituteId, [registrationId]),
+        onSuccess: () => {
+            toast.success(`Reattempt has been provided to ${student.full_name}.`, {
+                className: 'success-toast',
+                duration: 4000,
+            });
+            onClose();
+        },
+        onError: () => {
+            toast.error('Failed to provide reattempt. Please try again.');
+        },
+    });
+
+    const handleProvideReattempt = () => {
+        if (!student.registration_id) {
+            toast.error('Could not resolve this participant’s registration. Please try again.');
+            return;
+        }
+        provideReattemptMutation.mutate(student.registration_id);
+    };
+
     return (
         <DialogContent className="flex flex-col p-0">
             <h1 className="rounded-md bg-primary-50 p-4 text-primary-500">Provide Reattempt</h1>
@@ -68,9 +98,10 @@ const ProvideReattemptComponent = ({
                         scale="large"
                         buttonType="primary"
                         className="mt-4 font-medium"
-                        onClick={onClose} // Close the dialog when clicked
+                        onClick={handleProvideReattempt}
+                        disabled={provideReattemptMutation.isPending}
                     >
-                        Yes
+                        {provideReattemptMutation.isPending ? 'Providing...' : 'Yes'}
                     </MyButton>
                 </div>
             </div>
@@ -100,13 +131,10 @@ const ReleaseResultComponent = ({
             selectedFilter: SelectedReleaseResultFilterInterface;
         }) => getReleaseStudentResult(assessmentId, instituteId, methodType, selectedFilter),
         onSuccess: () => {
-            toast.success(
-                'Your attempt for this assessment has been revaluated. Please check your email!',
-                {
-                    className: 'success-toast',
-                    duration: 4000,
-                }
-            );
+            toast.success('Result released successfully. The learner has been notified by email.', {
+                className: 'success-toast',
+                duration: 4000,
+            });
             onClose();
         },
         onError: (error: unknown) => {
@@ -219,6 +247,13 @@ const StudentEvaluateWithAIComponent = ({
     const navigate = useNavigate();
     const [selectedModel, setSelectedModel] = useState<string>('google/gemini-3.1-pro-preview');
 
+    // Credit cost preview for this evaluation (per graded question).
+    const numQuestions: number = (assessmentData?.[1]?.saved_data?.sections ?? []).reduce(
+        (sum: number, section: any) => sum + (section?.questions?.length || 0),
+        0
+    );
+    const cost = useToolCostPreview('copy_check_evaluation', { num_questions: numQuestions });
+
     // Trigger AI evaluation mutation
     const triggerEvaluationMutation = useMutation({
         mutationFn: ({
@@ -306,6 +341,45 @@ const StudentEvaluateWithAIComponent = ({
                     </p>
                 </div>
 
+                <div className="flex items-start gap-2 rounded-md bg-primary-50 p-3 text-xs text-primary-700">
+                    <Info size={16} className="mt-0.5 shrink-0" />
+                    <p>
+                        For any question without a rubric, the AI generates grading criteria the
+                        first time and reuses them for every student, so everyone is graded the same
+                        way. Set rubrics on the assessment for full control over how marks are
+                        awarded.
+                    </p>
+                </div>
+
+                {numQuestions > 0 && cost.credits != null && (
+                    <div className="flex items-center justify-between rounded-md border border-neutral-200 bg-neutral-50 p-3">
+                        <div className="flex items-center gap-2 text-sm text-neutral-700">
+                            <Coins size={16} className="text-primary-500" />
+                            <span>
+                                Estimated cost:{' '}
+                                <span className="font-semibold text-neutral-900">
+                                    {cost.credits} credits
+                                </span>
+                            </span>
+                        </div>
+                        {cost.currentBalance != null && (
+                            <span className="text-xs text-neutral-500">
+                                Balance: {cost.currentBalance}
+                            </span>
+                        )}
+                    </div>
+                )}
+
+                {cost.sufficient === false && (
+                    <div className="flex items-start gap-2 rounded-md bg-danger-50 p-3 text-xs text-danger-600">
+                        <WarningCircle size={16} className="mt-0.5 shrink-0" />
+                        <p>
+                            Not enough credits for this evaluation. Add credits to your institute to
+                            continue.
+                        </p>
+                    </div>
+                )}
+
                 <div className="flex justify-end gap-2">
                     <MyButton
                         type="button"
@@ -319,7 +393,7 @@ const StudentEvaluateWithAIComponent = ({
                         type="button"
                         buttonType="primary"
                         onClick={handleEvaluateWithAIStudent}
-                        disabled={triggerEvaluationMutation.isPending}
+                        disabled={triggerEvaluationMutation.isPending || cost.sufficient === false}
                     >
                         {triggerEvaluationMutation.isPending ? 'Starting...' : 'Start'}
                     </MyButton>
@@ -425,9 +499,12 @@ const StudentRevaluateForEntireAssessmentComponent = ({
 const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStudentInterface }) => {
     const [openDialog, setOpenDialog] = useState(false);
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
+    const [menuOpen, setMenuOpen] = useState(false);
+    const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
     const { assessmentId, examType } = Route.useParams();
     const instituteId = getInstituteId();
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
 
     // Open the manual PDF evaluation tool for this attempt (same flow as the
     // assessment-slide "Evaluate" deep-link); return here after submitting.
@@ -470,10 +547,11 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
         },
         onSuccess: (url) => {
             if (url) {
-                const evaluatedTab = window.open(url, '_blank');
-                if (!evaluatedTab) {
-                    toast.error('Please allow pop-ups to view the evaluated copy.');
-                }
+                // Download with a correct, `.pdf`-carrying name. The public URL's
+                // basename is derived from the original upload name, which for
+                // quick-evaluated copies can lack an extension — so we resolve
+                // the real extension from the file itself before saving.
+                void downloadFileFromUrl(url, `Evaluated-Copy-${student.full_name}`);
             } else {
                 toast.error('No evaluated copy found for this attempt.');
             }
@@ -541,9 +619,37 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
     const evaluationStatus = student?.evaluation_status;
     const isEvaluationPending = evaluationStatus === 'PENDING';
 
+    // For manual assessments the menu depends on whether the attempt has a
+    // submitted answer sheet and an evaluated copy. Both live behind detail
+    // endpoints (not on the table row), so fetch them lazily on menu open.
+    const submissionFileQuery = useQuery({
+        queryKey: ['GET_ATTEMPT_SUBMISSION_FILE', student.attempt_id],
+        queryFn: async () => ((await getAttemptData(student.attempt_id)) as string | null) ?? null,
+        enabled: isManualEvaluation && menuOpen,
+        staleTime: 5 * 60 * 1000,
+    });
+    const reportDetailQuery = useQuery({
+        queryKey: ['GET_STUDENT_REPORT_DETAIL', assessmentId, student.attempt_id],
+        queryFn: () => viewStudentReport(assessmentId, student.attempt_id, instituteId),
+        enabled: isManualEvaluation && menuOpen && !isEvaluationPending,
+        staleTime: 5 * 60 * 1000,
+    });
+    const hasSubmissionFile = !!submissionFileQuery.data;
+    const hasEvaluatedCopy = !!(
+        reportDetailQuery.data as { evaluated_file_id?: string | null } | undefined
+    )?.evaluated_file_id;
+
+    // After an admin uploads the answer sheet on the student's behalf, flip the
+    // cached file id (so the menu now shows "View Submission") and open the file.
+    const handleAnswerSheetUploaded = async (fileId: string) => {
+        queryClient.setQueryData(['GET_ATTEMPT_SUBMISSION_FILE', student.attempt_id], fileId);
+        const url = await getPublicUrl(fileId);
+        if (url) window.open(url, '_blank');
+    };
+
     return (
         <>
-            <DropdownMenu>
+            <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                 <DropdownMenuTrigger>
                     <MyButton
                         type="button"
@@ -555,17 +661,44 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                     </MyButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
-                    <DropdownMenuItem
-                        className="cursor-pointer"
-                        onSelect={(e) => {
-                            e.preventDefault();
-                            handleViewSubmission();
-                        }}
-                    >
-                        {viewSubmissionMutation.isPending
-                            ? 'Loading Submission...'
-                            : 'View Submission'}
-                    </DropdownMenuItem>
+                    {/* Manual attempts may have no uploaded answer sheet — offer
+                        the admin an upload instead of a dead "View Submission". */}
+                    {isManualEvaluation ? (
+                        submissionFileQuery.isLoading ? (
+                            <DropdownMenuItem disabled>Checking Submission...</DropdownMenuItem>
+                        ) : hasSubmissionFile ? (
+                            <DropdownMenuItem
+                                className="cursor-pointer"
+                                onSelect={(e) => {
+                                    e.preventDefault();
+                                    handleViewSubmission();
+                                }}
+                            >
+                                {viewSubmissionMutation.isPending
+                                    ? 'Loading Submission...'
+                                    : 'View Submission'}
+                            </DropdownMenuItem>
+                        ) : (
+                            <DropdownMenuItem
+                                className="cursor-pointer"
+                                onClick={() => setUploadDialogOpen(true)}
+                            >
+                                Upload Submission
+                            </DropdownMenuItem>
+                        )
+                    ) : (
+                        <DropdownMenuItem
+                            className="cursor-pointer"
+                            onSelect={(e) => {
+                                e.preventDefault();
+                                handleViewSubmission();
+                            }}
+                        >
+                            {viewSubmissionMutation.isPending
+                                ? 'Loading Submission...'
+                                : 'View Submission'}
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() => handleProvideReattempt('Provide Reattempt')}
@@ -620,19 +753,27 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                             )}
                         </DropdownMenuSubContent>
                     </DropdownMenuSub>
-                    {isManualEvaluation && !isEvaluationPending && (
-                        <DropdownMenuItem
-                            className="cursor-pointer"
-                            onSelect={(e) => {
-                                e.preventDefault();
-                                handleViewEvaluated();
-                            }}
-                        >
-                            {viewEvaluatedMutation.isPending
-                                ? 'Loading Evaluated Copy...'
-                                : 'View Evaluated Copy'}
-                        </DropdownMenuItem>
-                    )}
+                    {isManualEvaluation &&
+                        !isEvaluationPending &&
+                        (reportDetailQuery.isLoading ? (
+                            <DropdownMenuItem disabled>
+                                Checking Evaluated Copy...
+                            </DropdownMenuItem>
+                        ) : (
+                            hasEvaluatedCopy && (
+                                <DropdownMenuItem
+                                    className="cursor-pointer"
+                                    onSelect={(e) => {
+                                        e.preventDefault();
+                                        handleViewEvaluated();
+                                    }}
+                                >
+                                    {viewEvaluatedMutation.isPending
+                                        ? 'Loading Evaluated Copy...'
+                                        : 'View Evaluated Copy'}
+                                </DropdownMenuItem>
+                            )
+                        ))}
                     <DropdownMenuItem
                         className="cursor-pointer"
                         onClick={() => handleProvideReattempt('Release Result')}
@@ -641,6 +782,17 @@ const StudentAttemptDropdown = ({ student }: { student: AssessmentRevaluateStude
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* Admin-side answer sheet upload for manual attempts that have no
+                submission file. Lives outside the dropdown so it survives the
+                menu closing. */}
+            <UploadAnswerSheetDialog
+                attemptId={student.attempt_id}
+                instituteId={instituteId}
+                open={uploadDialogOpen}
+                onOpenChange={setUploadDialogOpen}
+                onUploaded={handleAnswerSheetUploaded}
+            />
 
             {/* Dialog should be controlled by openDialog state */}
             <Dialog open={openDialog} onOpenChange={setOpenDialog}>

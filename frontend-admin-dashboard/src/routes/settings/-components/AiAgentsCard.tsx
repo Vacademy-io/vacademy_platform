@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,10 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 import { MyButton } from '@/components/design-system/button';
-import { PencilSimple, Plus, Robot, Trash } from '@phosphor-icons/react';
+import { PencilSimple, Play, Plus, Robot, SpinnerGap, Stop, Trash } from '@phosphor-icons/react';
+import { fetchBookingPages } from '@/routes/meetings/-services/meetings-services';
+import { AiAgentPromptAssistant } from './AiAgentPromptAssistant';
+import type { AssistDerived } from '../-services/ai-agent-assist';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
@@ -35,6 +38,47 @@ export interface AiAgent {
     dispositions?: string[];
     handoffNumbers?: string[];
     maxCallMinutes?: number;
+    /** Speaking rate 0.5–2.0 (1.0 native); empty = platform default. */
+    pace?: number;
+    /** Expressiveness 0.01–2.0 (~0.6 model default); empty = model default. */
+    temperature?: number;
+    /** Optional booking page this agent auto-books on when a call yields a meeting request. */
+    bookingPageId?: string;
+}
+
+interface VoiceOption {
+    id: string;
+    gender: string;
+    model: string;
+}
+
+/** Fallback when the catalog endpoint is unreachable — Bulbul v3 speakers. */
+const FALLBACK_VOICES: VoiceOption[] = [
+    ...['ritu', 'priya', 'neha', 'pooja', 'simran', 'kavya', 'ishita', 'shreya',
+        'roopa', 'tanya', 'shruti', 'suhani', 'kavitha', 'rupali']
+        .map((id) => ({ id, gender: 'female', model: 'bulbul:v3' })),
+    ...['shubh', 'aditya', 'rahul', 'rohan', 'amit', 'dev', 'ratan', 'varun', 'manan',
+        'sumit', 'kabir', 'aayan', 'ashutosh', 'advait', 'anand', 'tarun', 'sunny',
+        'mani', 'gokul', 'vijay', 'mohit', 'rehan', 'soham']
+        .map((id) => ({ id, gender: 'male', model: 'bulbul:v3' })),
+];
+
+/** Expressiveness presets → Bulbul v3 temperature. */
+const EXPRESSIVENESS_OPTIONS: { label: string; value: string; temperature?: number }[] = [
+    { label: 'Model default', value: 'default' },
+    { label: 'Calm & steady', value: 'calm', temperature: 0.3 },
+    { label: 'Natural', value: 'natural', temperature: 0.6 },
+    { label: 'Expressive', value: 'expressive', temperature: 0.9 },
+];
+
+const DEFAULT_SAMPLE_TEXT =
+    'Namaste! Main Aarushi bol rahi hoon. Kya main aapse do minute baat kar sakti hoon?';
+
+/** The agent's Language field → Sarvam TTS language code for the voice tester. */
+function previewLang(language?: string): string {
+    const l = (language || '').trim().toLowerCase();
+    if (l === 'english' || l === 'en' || l === 'en-in') return 'en-IN';
+    return 'hi-IN';
 }
 
 const AI_AGENTS_URL = `${BASE_URL}/admin-core-service/v1/telephony/ai-agents`;
@@ -96,6 +140,64 @@ export function AiAgentsCard({
     });
 
     const [editing, setEditing] = useState<AiAgent | null>(null);
+
+    // Voice tester: short sample text spoken by the currently-selected voice at the
+    // chosen pace/expressiveness, via the voice-bot's cached /preview.mp3 (same TTS
+    // stack as live calls, so what you hear is what callers get — minus telephony's
+    // 8 kHz narrowband, which always sounds slightly crisper here than on a phone).
+    const [sampleText, setSampleText] = useState(DEFAULT_SAMPLE_TEXT);
+    const [previewState, setPreviewState] = useState<'idle' | 'loading' | 'playing'>('idle');
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+
+    const bookingPagesQuery = useQuery({
+        queryKey: ['ai-agent-booking-pages', instituteId],
+        queryFn: () => fetchBookingPages({ instituteId }),
+        staleTime: 60_000,
+    });
+    const bookingPages = bookingPagesQuery.data ?? [];
+
+    const voicesQuery = useQuery({
+        queryKey: ['ai-agent-voices'],
+        queryFn: async (): Promise<VoiceOption[]> => {
+            const { data } = await authenticatedAxiosInstance.get<VoiceOption[]>(
+                `${AI_AGENTS_URL}/voices`
+            );
+            return data?.length ? data : FALLBACK_VOICES;
+        },
+        staleTime: 24 * 60 * 60 * 1000,
+    });
+    const voices = voicesQuery.data ?? FALLBACK_VOICES;
+
+    const stopPreview = () => {
+        audioRef.current?.pause();
+        audioRef.current = null;
+        setPreviewState('idle');
+    };
+
+    const playPreview = (agent: AiAgent) => {
+        stopPreview();
+        const voice = (agent.voice || 'priya').trim().toLowerCase();
+        const params = new URLSearchParams({
+            text: sampleText.trim() || DEFAULT_SAMPLE_TEXT,
+            voice,
+            lang: previewLang(agent.language),
+            pace: String(agent.pace ?? 1.0),
+        });
+        if (agent.temperature != null) params.set('temperature', String(agent.temperature));
+        const audio = new Audio(`${BASE_URL}/voice-bot-service/preview.mp3?${params.toString()}`);
+        audioRef.current = audio;
+        setPreviewState('loading');
+        audio.onplaying = () => setPreviewState('playing');
+        audio.onended = stopPreview;
+        audio.onerror = () => {
+            stopPreview();
+            toast.error('Could not synthesize the sample — try again in a moment');
+        };
+        void audio.play().catch(() => {
+            stopPreview();
+            toast.error('Could not play the sample');
+        });
+    };
 
     const saveMutation = useMutation({
         mutationFn: saveAgent,
@@ -264,12 +366,119 @@ export function AiAgentsCard({
                             </div>
                             <div className="space-y-1.5">
                                 <Label>Voice</Label>
-                                <Input
+                                <Select
                                     value={editing.voice ?? ''}
-                                    placeholder="Sarvam voice id, e.g. priya"
-                                    onChange={(e) => patch({ voice: e.target.value })}
-                                />
+                                    onValueChange={(v) => patch({ voice: v })}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Pick a voice…" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {voices.map((v) => (
+                                            <SelectItem key={v.id} value={v.id}>
+                                                {v.id.charAt(0).toUpperCase() + v.id.slice(1)} ·{' '}
+                                                {v.gender === 'male' ? 'Male' : 'Female'}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    The bot matches its Hindi grammar (kar rahi/raha hoon) to the
+                                    voice&apos;s gender automatically.
+                                </p>
                             </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            <div className="space-y-1.5">
+                                <Label>Speaking pace</Label>
+                                <Input
+                                    type="number"
+                                    min={0.5}
+                                    max={2}
+                                    step={0.05}
+                                    value={editing.pace ?? ''}
+                                    placeholder="Platform default · 1.0 natural, 1.1 brisk"
+                                    onChange={(e) =>
+                                        patch({
+                                            pace: e.target.value
+                                                ? Number(e.target.value)
+                                                : undefined,
+                                        })
+                                    }
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    0.5–2.0. Sarvam recommends 1.0–1.1 for sales calls; above 1.2
+                                    starts to sound rushed.
+                                </p>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Expressiveness</Label>
+                                <Select
+                                    value={
+                                        EXPRESSIVENESS_OPTIONS.find(
+                                            (o) => o.temperature === editing.temperature
+                                        )?.value ?? 'default'
+                                    }
+                                    onValueChange={(v) =>
+                                        patch({
+                                            temperature: EXPRESSIVENESS_OPTIONS.find(
+                                                (o) => o.value === v
+                                            )?.temperature,
+                                        })
+                                    }
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {EXPRESSIVENESS_OPTIONS.map((o) => (
+                                            <SelectItem key={o.value} value={o.value}>
+                                                {o.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    How much the voice varies its intonation and emotion.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-1.5 rounded-md border p-3">
+                            <Label>Test this voice</Label>
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    value={sampleText}
+                                    maxLength={300}
+                                    placeholder={DEFAULT_SAMPLE_TEXT}
+                                    onChange={(e) => setSampleText(e.target.value)}
+                                />
+                                <MyButton
+                                    buttonType="secondary"
+                                    scale="medium"
+                                    disable={previewState === 'loading'}
+                                    onClick={() =>
+                                        previewState === 'playing'
+                                            ? stopPreview()
+                                            : playPreview(editing)
+                                    }
+                                >
+                                    {previewState === 'loading' ? (
+                                        <SpinnerGap className="size-4 animate-spin" />
+                                    ) : previewState === 'playing' ? (
+                                        <Stop className="size-4" />
+                                    ) : (
+                                        <Play className="size-4" />
+                                    )}
+                                    {previewState === 'playing' ? 'Stop' : 'Play'}
+                                </MyButton>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                                Speaks the sample with the selected voice, pace and expressiveness —
+                                change the voice above and play again to compare. Phone calls sound
+                                slightly warmer/narrower than this (telephony is 8 kHz audio).
+                            </p>
                         </div>
 
                         <div className="space-y-1.5">
@@ -290,6 +499,24 @@ export function AiAgentsCard({
                                 onChange={(e) => patch({ systemPrompt: e.target.value })}
                             />
                         </div>
+                        <AiAgentPromptAssistant
+                            instituteId={instituteId}
+                            agentId={editing.id}
+                            prompt={editing.systemPrompt ?? ''}
+                            language={editing.language}
+                            onPromptChange={(p) => patch({ systemPrompt: p })}
+                            onApplyDerived={(d: AssistDerived) =>
+                                patch({
+                                    ...(d.opening_line ? { openingLine: d.opening_line } : {}),
+                                    ...(d.extraction_questions?.length
+                                        ? { extractionQuestions: d.extraction_questions }
+                                        : {}),
+                                    ...(d.dispositions?.length
+                                        ? { dispositions: d.dispositions }
+                                        : {}),
+                                })
+                            }
+                        />
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                             <div className="space-y-1.5">
                                 <Label>Questions to find out (one per line)</Label>
@@ -327,6 +554,40 @@ export function AiAgentsCard({
                                     Blank = the voicemail/fallback number from Calling settings.
                                 </p>
                             </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <Label>Auto-book meetings on</Label>
+                            <Select
+                                value={editing.bookingPageId || 'NONE'}
+                                onValueChange={(v) =>
+                                    patch({ bookingPageId: v === 'NONE' ? undefined : v })
+                                }
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder="No booking page" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="NONE">
+                                        Don&apos;t auto-book meetings
+                                    </SelectItem>
+                                    {bookingPages.map((bp) => (
+                                        <SelectItem key={bp.id} value={bp.id ?? ''}>
+                                            {bp.title}
+                                            {bp.audience_id
+                                                ? ' · adds lead to its audience list'
+                                                : ' · not linked to a list'}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                                When a call agrees on a demo/visit time, a meeting is booked on
+                                this page (Google Meet link + reminders sent). If the page is
+                                linked to an audience list, the lead is added there too.
+                                {bookingPages.length === 0 &&
+                                    ' Create a booking page first in CRM → Meetings → Share Booking Link.'}
+                            </p>
                         </div>
 
                         <div className="flex justify-end gap-2">

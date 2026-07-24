@@ -167,10 +167,44 @@ public class AudienceController {
                 audienceService.getLeadCustomFieldValues(instituteId, customFieldId, search, pageNo, pageSize));
     }
 
-    @DeleteMapping("/lead/{responseId}")
-    public ResponseEntity<String> deleteLead(@PathVariable String responseId) {
-        audienceService.deleteLead(responseId);
-        return ResponseEntity.ok("Lead deleted successfully");
+    /**
+     * Soft-delete one or more leads. Replaces the previous
+     * {@code DELETE /lead/{responseId}}, which hard-deleted the row with no authorization
+     * check and was never wired to any UI.
+     *
+     * <p>Body-based because a delete needs three things a path param can't carry: the id LIST
+     * (bulk), the {@code scope} (this response vs the whole person), and the
+     * {@code institute_id} the ADMIN check is made against.</p>
+     */
+    @PostMapping("/leads/delete")
+    public ResponseEntity<Map<String, Object>> deleteLeads(
+            @RequestBody LeadDeleteRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        int deleted = audienceService.deleteLeads(request, user);
+        return ResponseEntity.ok(Map.of("deleted", deleted));
+    }
+
+    /** Restore soft-deleted leads — the inverse of {@link #deleteLeads}. ADMIN only. */
+    @PostMapping("/leads/restore")
+    public ResponseEntity<Map<String, Object>> restoreLeads(
+            @RequestBody LeadDeleteRequestDTO request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        int restored = audienceService.restoreLeads(request, user);
+        return ResponseEntity.ok(Map.of("restored", restored));
+    }
+
+    /**
+     * Edit a lead's profile from the CRM. The learner-profile endpoint cannot serve
+     * a lead: it resolves the caller against the {@code student} table, and a lead
+     * that never enrolled has no row there. This writes only where a lead is actually
+     * read from — the auth user, the {@code audience_response} parent/guardian fields,
+     * and the lead's custom field values. It never touches {@code student}.
+     */
+    @PutMapping("/lead/{responseId}/profile")
+    public ResponseEntity<String> updateLeadProfile(@PathVariable String responseId,
+                                                    @RequestBody LeadProfileEditRequestDTO request) {
+        audienceService.updateLeadProfile(responseId, request);
+        return ResponseEntity.ok("Lead profile updated");
     }
 
     /**
@@ -318,7 +352,7 @@ public class AudienceController {
         String oldStatus = userLeadProfileService.getProfileDTO(userId, instituteId)
                 .map(p -> p.getConversionStatus())
                 .orElse(null);
-        userLeadProfileService.updateConversionStatus(userId, instituteId, status,
+        var updatedProfile = userLeadProfileService.updateConversionStatus(userId, instituteId, status,
                 user != null ? user.getUserId() : null);
         try {
             LeadJourneyActionType actionType = "CONVERTED".equals(status) ? LeadJourneyActionType.LEAD_CONVERTED
@@ -332,7 +366,7 @@ public class AudienceController {
             meta.put("new_status", status);
             meta.put("changed_by", user.getUsername() != null ? user.getUsername() : "");
             timelineEventService.logJourneyEvent(
-                    "USER_LEAD_PROFILE", userId,
+                    "USER_LEAD_PROFILE", updatedProfile.getId(),
                     actionType,
                     "ADMIN", user.getUserId(), user.getUsername(),
                     title, null,
@@ -354,10 +388,10 @@ public class AudienceController {
             @RequestParam String instituteId,
             @RequestParam String tier,
             @RequestAttribute("user") CustomUserDetails user) {
-        userLeadProfileService.updateLeadTier(userId, instituteId, tier);
+        var updatedProfile = userLeadProfileService.updateLeadTier(userId, instituteId, tier);
         try {
             timelineEventService.logJourneyEvent(
-                    "USER_LEAD_PROFILE", userId,
+                    "USER_LEAD_PROFILE", updatedProfile.getId(),
                     LeadJourneyActionType.STATUS_CHANGED,
                     "ADMIN", user.getUserId(), user.getUsername(),
                     "Lead tier set to " + tier, null,
@@ -370,15 +404,17 @@ public class AudienceController {
     }
 
     /**
-     * Batch fetch lead profiles for a list of user IDs.
-     * POST /admin-core-service/v1/audience/user-lead-profiles/batch
+     * Batch fetch lead profiles for a list of user IDs, scoped to one institute (a user_id
+     * can now have a profile per institute — see UserLeadProfile's uniqueConstraints).
+     * POST /admin-core-service/v1/audience/user-lead-profiles/batch?instituteId=...
      * Body: ["userId1", "userId2", ...]
      * Returns: { "userId1": { ...profile }, "userId2": { ...profile } }
      */
     @PostMapping("/user-lead-profiles/batch")
     public ResponseEntity<Map<String, UserLeadProfileDTO>> getBatchLeadProfiles(
+            @RequestParam String instituteId,
             @RequestBody List<String> userIds) {
-        return ResponseEntity.ok(userLeadProfileService.getProfilesForUsers(userIds));
+        return ResponseEntity.ok(userLeadProfileService.getProfilesForUsers(userIds, instituteId));
     }
 
     /**
@@ -420,10 +456,10 @@ public class AudienceController {
                 return ResponseEntity.ok(
                         userLeadProfileService.getProfileDTO(userId, instituteId).orElse(null));
             }
-            userLeadProfileService.assignCounselor(userId, instituteId, null, null);
+            var unassignedProfile = userLeadProfileService.assignCounselor(userId, instituteId, null, null);
             try {
                 timelineEventService.logJourneyEvent(
-                        "USER_LEAD_PROFILE", userId,
+                        "USER_LEAD_PROFILE", unassignedProfile.getId(),
                         LeadJourneyActionType.COUNSELOR_UNASSIGNED,
                         "ADMIN", user.getUserId(), user.getUsername(),
                         "Counselor removed",
@@ -438,10 +474,10 @@ public class AudienceController {
                     userLeadProfileService.getProfileDTO(userId, instituteId).orElse(null));
         }
 
-        userLeadProfileService.assignCounselor(userId, instituteId, counselorId, counselorName);
+        var assignedProfile = userLeadProfileService.assignCounselor(userId, instituteId, counselorId, counselorName);
         try {
             timelineEventService.logJourneyEvent(
-                    "USER_LEAD_PROFILE", userId,
+                    "USER_LEAD_PROFILE", assignedProfile.getId(),
                     LeadJourneyActionType.COUNSELOR_ASSIGNED,
                     "ADMIN", user.getUserId(), user.getUsername(),
                     "Counselor assigned",

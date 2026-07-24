@@ -112,6 +112,11 @@ export interface WorkflowBuilderTrigger {
     event_id?: string;
     /** Multiple event IDs — one trigger row created per ID */
     event_ids?: string[];
+    /**
+     * Optional execution-dedup settings (backend IdempotencySettings shape). AI drafts emit
+     * this for per-person flows (e.g. enrollment drips) so duplicate events can't double-fire.
+     */
+    idempotency_generation_setting?: unknown;
 }
 
 export interface WorkflowBuilderDTO {

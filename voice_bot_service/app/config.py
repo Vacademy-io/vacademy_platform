@@ -36,15 +36,44 @@ class Settings:
 
     # Sarvam (STT + LLM + TTS) — see providers.py
     sarvam_api_key: str = field(default_factory=lambda: _env("SARVAM_API_KEY"))
-    sarvam_stt_model: str = field(default_factory=lambda: _env("SARVAM_STT_MODEL", "saaras:v3"))
+    # saarika:v2.5 TRANSCRIBES speech in the language actually spoken (Devanagari for
+    # Hindi), so the LLM gets the caller's real words. saaras:v3 is a speech-TRANSLATION
+    # model (Indian speech → English) — on code-switched Hinglish it garbles into
+    # gibberish ("Myapolicil tme we face"), which the LLM then can't understand, so it
+    # deflects/loops. Transcription, not translation, is what a native-language voice bot
+    # needs. Overridable via SARVAM_STT_MODEL to roll back or try another model.
+    sarvam_stt_model: str = field(default_factory=lambda: _env("SARVAM_STT_MODEL", "saarika:v2.5"))
+    # Pin STT to one language instead of auto-detect. Default "hi-IN": auto-detect
+    # drifts a Hindi/Hinglish caller into a NEIGHBOURING Indic language — Punjabi or
+    # Marathi (Marathi shares Devanagari, Punjabi is phonetically close) — and once one
+    # turn is transcribed as Punjabi/Marathi the "speak the caller's language and stay
+    # in it" rule makes the LLM reply, and the TTS speak, that language for the rest of
+    # the call. Pinning hi-IN still transcribes the English words in a Hinglish sentence
+    # (saarika is code-mixed aware) but never leaves Hindi. Set "" for auto-detect or
+    # another BCP-47 tag (e.g. "en-IN") for an English-first agent. Read in build_stt.
+    sarvam_stt_language: str = field(default_factory=lambda: _env("SARVAM_STT_LANGUAGE", "hi-IN"))
     sarvam_llm_model: str = field(default_factory=lambda: _env("SARVAM_LLM_MODEL", "sarvam-105b"))
     sarvam_llm_base_url: str = field(
         default_factory=lambda: _env("SARVAM_LLM_BASE_URL", "https://api.sarvam.ai/v1")
     )
+    # Sarvam-side fast endpointing: server endpointing (~0.65-0.76s from end of speech)
+    # is the measured binding constraint on reply latency — high VAD sensitivity asks
+    # Sarvam to finalize sooner. Env-off if it starts clipping slow speakers.
+    sarvam_stt_high_vad: bool = field(
+        default_factory=lambda: _env("SARVAM_STT_HIGH_VAD", "true").lower() == "true")
     sarvam_tts_model: str = field(default_factory=lambda: _env("SARVAM_TTS_MODEL", "bulbul:v3"))
     sarvam_tts_voice: str = field(default_factory=lambda: _env("SARVAM_TTS_VOICE", "priya"))
+    # Server-side chars Sarvam buffers before synthesizing the first audio (default 50).
+    # DEFAULT 0 = DON'T SEND (server default 50): at 30 the smaller chunks produced
+    # audible SEAMS — callers reported 'network-like' breaking on some sentences
+    # (2026-07-20). And 20 is outright REJECTED by Sarvam's config validation, which
+    # killed TTS on every call (silent-call outage same day; probe: 20 rejected,
+    # 30/50 accepted). providers.build_tts clamps any override to >= 30. Smoothness
+    # beats the ~0.1s first-audio win — leave at 0 unless re-testing deliberately.
+    sarvam_tts_min_buffer: int = field(
+        default_factory=lambda: int(_env("SARVAM_TTS_MIN_BUFFER", "0")))
 
-    # LLM provider switch: "sarvam" (default) | "google" | "openrouter". Governs
+    # LLM provider switch: "sarvam" (default) | "vertex" | "google" | "openrouter". Governs
     # BOTH the live conversation (providers.build_llm) and the end-of-call
     # analysis (report._llm_target) — they must never diverge.
     # sarvam = India-hosted sarvam-105b with reasoning_effort=null (the literal
@@ -72,6 +101,29 @@ class Settings:
         default_factory=lambda: _env("GOOGLE_LLM_MODEL", "gemini-3.1-flash-lite")
     )
 
+    # Vertex AI (Gemini) served from an IN-INDIA region — LLM_PROVIDER="vertex".
+    # Unlike the "google" path (generativelanguage.googleapis.com, US/global, ~5x
+    # the TTFT from Mumbai), Vertex runs the model in vertex_location, so pinning
+    # asia-south1 (Mumbai) gives ~0.37s TTFT + near-zero network RTT AND better
+    # instruction-following than sarvam-105b. Auth is a Google SERVICE ACCOUNT
+    # (JSON), not an API key: set VERTEX_CREDENTIALS_JSON (the full SA JSON string)
+    # or VERTEX_CREDENTIALS_PATH (path to the file), plus VERTEX_PROJECT_ID. The SA
+    # needs role roles/aiplatform.user and the Vertex AI API enabled in the project.
+    # Gemini "thinking" is auto-disabled by pipecat (thinking_budget=0) → fast path.
+    vertex_project_id: str = field(default_factory=lambda: _env("VERTEX_PROJECT_ID", ""))
+    vertex_location: str = field(default_factory=lambda: _env("VERTEX_LOCATION", "asia-south1"))
+    vertex_credentials_json: str = field(
+        default_factory=lambda: _env("VERTEX_CREDENTIALS_JSON", "")
+    )
+    vertex_credentials_path: str = field(
+        default_factory=lambda: _env("VERTEX_CREDENTIALS_PATH", "")
+    )
+    # gemini-2.5-flash-lite is NOT served in asia-south1 (404 verified 2026-07-14) — only
+    # gemini-2.5-flash is. Default to what the target region actually has; override per region.
+    vertex_model: str = field(
+        default_factory=lambda: _env("VERTEX_MODEL", "gemini-2.5-flash")
+    )
+
     # Telephony audio is 8 kHz mu-law on Plivo <Stream>.
     sample_rate: int = 8000
 
@@ -80,7 +132,10 @@ class Settings:
     # decide the caller finished; too low clips slow speakers mid-sentence.
     # agg_timeout_secs = extra wait for a late-arriving final transcript.
     vad_stop_secs: float = field(default_factory=lambda: float(_env("VAD_STOP_SECS", "0.5")))
-    agg_timeout_secs: float = field(default_factory=lambda: float(_env("AGG_TIMEOUT_SECS", "0.2")))
+    # Measured on live calls (48h, 141 turns): Sarvam's STT final trails local VAD stop in
+    # 85% of turns, so this timeout is PURE additive delay on top of an already-final
+    # transcript. 0.08 keeps a small merge window for split finals; saves ~0.12s/turn.
+    agg_timeout_secs: float = field(default_factory=lambda: float(_env("AGG_TIMEOUT_SECS", "0.08")))
 
     # Bulbul speaking pace: 1.0 = native. Founder feedback on the live calls:
     # 0.95 sounded noticeably slow on the phone; 1.1 is brisk but natural.
@@ -91,24 +146,33 @@ class Settings:
     # is ~1.5s (0.5 VAD + 0.36 STT final + 0.8 Gemini TTFT) and this cuts the
     # PERCEIVED dead air to ~1s, which is what human agents do. Probability 0
     # disables; phrases are comma-separated and spoken verbatim.
+    # 0.25 (was 0.7): with Gemini's ~0.5s TTFT the filler often COLLIDES with the
+    # real reply, and on live calls a reply-shaped filler ('Okay…') played right
+    # before an interrupted response read as the bot answering then going silent.
     filler_probability: float = field(
-        default_factory=lambda: float(_env("FILLER_PROBABILITY", "0.7"))
+        default_factory=lambda: float(_env("FILLER_PROBABILITY", "0.25"))
     )
+    # 'Hmm…' only: clearly a thinking sound. 'Achha…'/'Ji…'/'Okay…' sound like
+    # complete replies, which made stalls read as answers.
     filler_phrases: tuple = field(
         default_factory=lambda: tuple(
-            p.strip() for p in _env("FILLER_PHRASES", "Hmm…,Achha…,Ji…").split(",") if p.strip()
+            p.strip() for p in _env("FILLER_PHRASES", "Hmm…").split(",") if p.strip()
         )
     )
 
-    # Call-open pacing: a real caller doesn't blast audio the instant the line
-    # opens. On connect the bot waits up to this long for the callee to answer /
-    # say "hello" (if they speak first, the normal turn greets them back so the
-    # bot never talks over them); on continued silence, the bot opens itself.
-    greet_delay_secs: float = field(default_factory=lambda: float(_env("GREET_DELAY_SECS", "2.0")))
+    # Call-open pacing: on OUTBOUND the callee already said "hello" on pickup, so the
+    # bot SPEAKS FIRST after this short beat — long enough not to clip their "hello",
+    # short enough to avoid dead air / the "double hello". Was 2.0s (the main cause of
+    # the robotic-feeling start); ~0.8s is the production sweet spot (Vapi/Retell fire
+    # the greeting ~0.3-0.8s after the human is on the line). If they say something
+    # substantive in this window, their turn drives the reply and the bot doesn't open.
+    greet_delay_secs: float = field(default_factory=lambda: float(_env("GREET_DELAY_SECS", "0.8")))
 
     # Idle handling: nudge once after this silence, then hang up on continued
-    # silence. The clock only runs while the BOT is not speaking (see bot.py).
-    idle_timeout_secs: float = 7.0
+    # silence. The clock only runs while the BOT is not speaking AND the caller is not
+    # mid-utterance (VAD-armed — see bot.py). 10s: at 7s the nudge kept firing while a
+    # slow-thinking caller was composing an answer (observed live).
+    idle_timeout_secs: float = field(default_factory=lambda: float(_env("IDLE_TIMEOUT_SECS", "8.0")))
 
     # Hard per-call ceiling when the agent config doesn't set maxCallMinutes —
     # bounds telephony + STT/LLM/TTS spend on a runaway conversation.

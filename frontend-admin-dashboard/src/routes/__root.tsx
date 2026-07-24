@@ -22,6 +22,7 @@ import {
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { VacademyAssistant } from '@/components/vacademy-assistant/VacademyAssistant';
 import { AssistDock } from '@/components/assist-dock/AssistDock';
+import { FollowUpReminderDialog } from '@/components/shared/leads/followup-reminders';
 
 const TanStackRouterDevtools =
     process.env.NODE_ENV === 'production'
@@ -187,6 +188,8 @@ export const Route = createRootRouteWithContext<{
                 <Outlet />
                 <AssistDock />
                 <VacademyAssistant />
+                {/* Global centered follow-up reminder — pops when one is due. */}
+                <FollowUpReminderDialog />
                 <Suspense>
                     <TanStackRouterDevtools />
                 </Suspense>

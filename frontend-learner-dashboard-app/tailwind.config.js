@@ -185,6 +185,13 @@ module.exports = {
           400: "hsl(var(--tertiary-400))",
           500: "hsl(var(--tertiary-500))",
         },
+        nav: {
+          surface: "hsl(var(--nav-surface))",
+          "surface-hover": "hsl(var(--nav-surface-hover))",
+          active: "hsl(var(--nav-active))",
+          "active-text": "hsl(var(--nav-active-text))",
+          text: "hsl(var(--nav-text))",
+        },
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
@@ -290,9 +297,40 @@ module.exports = {
           "gold-deep": "var(--play-c-gold-deep)",
           navy: "var(--play-c-navy)",
           "navy-deep": "var(--play-c-navy-deep)",
+          // Pastel tint + ink pairs (Dashboard-only usage) — see play-theme.css.
+          "success-soft": "var(--play-c-success-soft)",
+          "success-soft-ink": "var(--play-c-success-soft-ink)",
+          "info-soft": "var(--play-c-info-soft)",
+          "info-soft-ink": "var(--play-c-info-soft-ink)",
+          "danger-soft": "var(--play-c-danger-soft)",
+          "danger-soft-ink": "var(--play-c-danger-soft-ink)",
+          "warn-soft": "var(--play-c-warn-soft)",
+          "warn-soft-ink": "var(--play-c-warn-soft-ink)",
+          "accent-soft": "var(--play-c-accent-soft)",
+          "accent-soft-ink": "var(--play-c-accent-soft-ink)",
+          "gold-soft": "var(--play-c-gold-soft)",
+          "gold-soft-ink": "var(--play-c-gold-soft-ink)",
+          "navy-soft": "var(--play-c-navy-soft)",
+          "navy-soft-ink": "var(--play-c-navy-soft-ink)",
           // rgb form so Tailwind alpha modifiers work (text-play-ink/80);
           // plain var() colors silently drop the /N modifier.
           ink: "rgb(60 60 60 / <alpha-value>)",
+        },
+        // Cleaner Play — warm cream/illustrated skin. Decorative-only;
+        // brand actions still use primary-*, see cleaner-play-theme.css.
+        cp: {
+          bg: "hsl(var(--cp-bg))",
+          "bg-deep": "hsl(var(--cp-bg-deep))",
+          surface: "hsl(var(--cp-surface))",
+          border: "hsl(var(--cp-border))",
+          ink: "hsl(var(--cp-ink))",
+          muted: "hsl(var(--cp-muted))",
+          sage: "hsl(var(--cp-sage))",
+          "sage-tint": "hsl(var(--cp-sage-tint))",
+          terracotta: "hsl(var(--cp-terracotta))",
+          "terracotta-tint": "hsl(var(--cp-terracotta-tint))",
+          gold: "hsl(var(--cp-gold))",
+          "gold-tint": "hsl(var(--cp-gold-tint))",
         },
       },
       // Named layout dimensions that can't use the spacing scale (viewport math, fixed art heights).
@@ -380,8 +418,10 @@ module.exports = {
         xl: "calc(var(--radius) + 2px)",
         "2xl": "calc(var(--radius) + 4px)",
         "3xl": "2rem",
-        // Play (gamified) card radius token.
+        // Play (gamified) card + button radius tokens.
         "play-card": "var(--play-radius-card)",
+        "play-card-sm": "var(--play-radius-card-sm)",
+        "play-btn": "var(--play-radius-btn)",
       },
       // Tinted shadow scale (tokens defined in src/index.css :root). Upgrades every
       // existing shadow-* utility to a softer, surface-tinted elevation at once.
@@ -396,6 +436,10 @@ module.exports = {
         "play-press": "0 2px 0 hsl(var(--primary-200))",
         // Play badge inset 3D shadow.
         "play-badge": "0 2px 0 rgba(0,0,0,0.15)",
+        // Play pastel-card lift (Dashboard-only "soft" surfaces) — a quiet,
+        // near-flat elevation; definition comes mainly from the hairline
+        // border, matching the cleaner reference look.
+        "play-soft-card": "0 1px 2px rgba(60,60,60,0.04), 0 4px 12px -8px rgba(60,60,60,0.10)",
         // Play (gamified) 3D drop shadows keyed to the Duolingo deep shades.
         "play-2d-success": "0 2px 0 0 var(--play-c-success-deep)",
         "play-2d-danger": "0 2px 0 0 var(--play-c-danger-deep)",

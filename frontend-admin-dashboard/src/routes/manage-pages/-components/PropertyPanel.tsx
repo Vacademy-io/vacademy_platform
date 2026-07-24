@@ -1,4 +1,5 @@
 import { useEditorStore } from '../-stores/editor-store';
+import { CATALOGUE_FONTS } from '../-utils/catalogue-fonts';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -39,7 +40,6 @@ export const PropertyPanel = () => {
         deleteComponent,
         duplicateComponent,
         reorderComponents,
-        togglePagePublished,
         updatePageSeo,
         updatePageBackgroundColor,
         copyComponent,
@@ -242,24 +242,12 @@ export const PropertyPanel = () => {
                 <div className="flex flex-col gap-5 p-4">
                     <h3 className="text-base font-semibold">Page Settings</h3>
 
-                    {/* Publish status */}
-                    <div className="flex items-center justify-between rounded-lg border bg-gray-50 p-3">
-                        <div>
-                            <div className="flex items-center gap-1.5 font-medium text-sm">
-                                <span className={`size-2 rounded-full ${page.published ? 'bg-green-500' : 'bg-gray-300'}`} />
-                                {page.published ? 'Published' : 'Draft'}
-                            </div>
-                            <div className="text-xs text-gray-500 mt-0.5">
-                                {page.published ? 'Visible to visitors' : 'Hidden from visitors'}
-                            </div>
-                        </div>
-                        <Button
-                            size="sm"
-                            variant={page.published ? 'outline' : 'default'}
-                            onClick={() => togglePagePublished(page.id)}
-                        >
-                            {page.published ? 'Unpublish' : 'Publish'}
-                        </Button>
+                    {/* Per-page publish toggle removed: the flag was never
+                        enforced learner-side ("Hidden from visitors" was
+                        untrue). The site-level Draft/Publish in the editor
+                        header is the single gate. */}
+                    <div className="rounded-lg border bg-gray-50 p-3 text-xs text-gray-500">
+                        Pages go live together when you hit Publish in the top bar.
                     </div>
 
                     {/* Basic info (read-only) */}
@@ -776,18 +764,32 @@ const GlobalSettingsEditor = ({
                 </div>
                 {gs.fonts?.enabled && (
                     <div className="space-y-2">
-                        <Label className="text-xs">Font Family</Label>
+                        <Label className="text-xs">Body Font</Label>
                         <select
                             className="w-full rounded border px-3 py-1.5 text-sm"
                             value={gs.fonts?.family || 'Inter, sans-serif'}
                             onChange={(e) => updateField('fonts.family', e.target.value)}
                         >
-                            <option value="Inter, sans-serif">Inter</option>
-                            <option value="Roboto, sans-serif">Roboto</option>
-                            <option value="Mulish, sans-serif">Mulish</option>
-                            <option value="Outfit, sans-serif">Outfit</option>
-                            <option value="Poppins, sans-serif">Poppins</option>
+                            {CATALOGUE_FONTS.map((f) => (
+                                <option key={f.label} value={f.stack}>{f.label}</option>
+                            ))}
                         </select>
+                        <Label className="text-xs">Heading Font</Label>
+                        <select
+                            className="w-full rounded border px-3 py-1.5 text-sm"
+                            value={gs.fonts?.headingFamily || ''}
+                            onChange={(e) => updateField('fonts.headingFamily', e.target.value || undefined)}
+                        >
+                            <option value="">Same as body</option>
+                            {CATALOGUE_FONTS.map((f) => (
+                                <option key={f.label} value={f.stack}>
+                                    {f.label}{f.serif ? ' (serif)' : ''}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="text-caption text-gray-400">
+                            Pair a serif heading with a sans body for an editorial, premium feel.
+                        </p>
                     </div>
                 )}
             </div>
@@ -885,7 +887,9 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
         const newSlots = Array.from({ length: newCount }, (_, i) => slots[i] ?? []);
         const newWidths = Array.from({ length: newCount }, (_, i) => columnWidths[i] ?? def);
         updateComponent(pageId, component.id, {
-            props: { ...component.props, columns: newCount, slots: newSlots, columnWidths: newWidths },
+            // columnFr is a per-count precise ratio — clear it on count change or a
+            // stale 2-column ratio silently re-activates when switching back to 2.
+            props: { ...component.props, columns: newCount, slots: newSlots, columnWidths: newWidths, columnFr: undefined },
         });
     };
 
@@ -969,7 +973,11 @@ const ColumnLayoutEditor = ({ component, pageId, updateComponent }: any) => {
                                     onChange={(e) => {
                                         const updated = [...columnWidths];
                                         updated[i] = e.target.value;
-                                        updateProp('columnWidths', updated);
+                                        // Last-touched control wins: columnFr overrides these
+                                        // widths on both renderers, so clear it in the SAME update
+                                        updateComponent(pageId, component.id, {
+                                            props: { ...component.props, columnWidths: updated, columnFr: undefined },
+                                        });
                                     }}
                                     className="mt-0.5 w-full rounded border px-1.5 py-1 text-xs"
                                 >
@@ -1207,6 +1215,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
             return <SectionHeadingEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'spacer':
             return <SpacerEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'htmlBlock':
+            return <HtmlBlockEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'tabsAccordion':
             return <TabsAccordionEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'logoCloud':
@@ -3267,7 +3277,7 @@ const ImageGalleryEditor = ({ component, pageId, updateComponent }: any) => {
                             <span className="text-xs font-medium">Image {i + 1}</span>
                             <Button size="sm" variant="ghost" onClick={() => deleteImage(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
                         </div>
-                        <ImageUploadField label="Image" value={img.src || ''} onChange={(url) => updateImage(i, 'src', url)} />
+                        <ImageUploadField label="Image" value={img.src || ''} onChange={(url) => updateImage(i, 'src', url)} aiKind="photo" />
                         <Input placeholder="Alt text" value={img.alt || ''} onChange={(e) => updateImage(i, 'alt', e.target.value)} />
                         {props.showCaptions && <Input placeholder="Caption" value={img.caption || ''} onChange={(e) => updateImage(i, 'caption', e.target.value)} />}
                     </div>
@@ -3278,6 +3288,54 @@ const ImageGalleryEditor = ({ component, pageId, updateComponent }: any) => {
 };
 
 /* ─── Spacer Editor ────────────────────────────────────────────────────── */
+const HtmlBlockEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    return (
+        <div className="space-y-4">
+            <div className="rounded border border-gray-200 bg-gray-50 p-2 text-caption text-gray-500">
+                Custom section — rendered sandboxed (no scripts). Style it with the CSS field
+                below using theme variables like <code>var(--primary-500)</code>,{' '}
+                <code>var(--catalogue-text-primary)</code> and{' '}
+                <code>var(--catalogue-heading-font)</code> so it follows your site theme.
+            </div>
+            {props.prompt && (
+                <div>
+                    <Label className="text-xs">AI section brief</Label>
+                    <p className="mt-1 rounded border border-gray-200 bg-white p-2 text-caption text-gray-600">
+                        {props.prompt}
+                    </p>
+                    <p className="mt-1 text-caption text-gray-400">
+                        Tip: ask the AI copilot to “redesign this section” — it uses this brief.
+                    </p>
+                </div>
+            )}
+            <div>
+                <Label className="text-xs">HTML</Label>
+                <Textarea
+                    value={props.html || ''}
+                    onChange={(e) => updateProp('html', e.target.value)}
+                    rows={10}
+                    className="mt-1 font-mono text-caption"
+                    placeholder="<section class='my-band'>…</section>"
+                />
+            </div>
+            <div>
+                <Label className="text-xs">CSS (scoped to this section)</Label>
+                <Textarea
+                    value={props.css || ''}
+                    onChange={(e) => updateProp('css', e.target.value)}
+                    rows={8}
+                    className="mt-1 font-mono text-caption"
+                    placeholder=".my-band { background: var(--primary-50); }"
+                />
+            </div>
+        </div>
+    );
+};
+
 const SpacerEditor = ({ component, pageId, updateComponent }: any) => {
     const { props } = component;
     const updateProp = (key: string, value: any) =>
@@ -3527,7 +3585,7 @@ const SectionHeadingEditor = ({ component, pageId, updateComponent }: any) => {
                         ))}
                     </div>
                 )}
-                {props.highlight?.text && !(props.title || '').includes(props.highlight.text) && (
+                {props.highlight?.text && !(typeof props.title === 'string' && props.title.includes(props.highlight.text)) && (
                     <p className="text-caption text-warning-600">Not found in the title — the highlight will not show.</p>
                 )}
             </div>
@@ -3653,7 +3711,7 @@ const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
                                 <span className="text-xs font-medium">Logo {i + 1}</span>
                                 <Button variant="ghost" size="sm" onClick={() => deleteLogo(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
                             </div>
-                            <ImageUploadField label="Image" value={logo.image || ''} onChange={(url) => updateLogo(i, 'image', url)} />
+                            <ImageUploadField label="Image" value={logo.image || ''} onChange={(url) => updateLogo(i, 'image', url)} aiKind="logo" />
                             <Input placeholder="Alt text" value={logo.alt || ''} onChange={(e) => updateLogo(i, 'alt', e.target.value)} />
                             <Input placeholder="Label (company name, shown in labeled modes)" value={logo.label || ''} onChange={(e) => updateLogo(i, 'label', e.target.value)} />
                             <Input placeholder="Link URL (optional)" value={logo.url || ''} onChange={(e) => updateLogo(i, 'url', e.target.value)} />
@@ -3933,7 +3991,7 @@ const ImageBlockEditor = ({ component, pageId, updateComponent }: any) => {
 
     return (
         <div className="space-y-4">
-            <ImageUploadField label="Image" value={props.src || ''} onChange={(url) => updateProp('src', url)} />
+            <ImageUploadField label="Image" value={props.src || ''} onChange={(url) => updateProp('src', url)} aiKind="image" />
             <Input value={props.alt || ''} onChange={(e) => updateProp('alt', e.target.value)} placeholder="Alt text" />
             <Input value={props.caption || ''} onChange={(e) => updateProp('caption', e.target.value)} placeholder="Caption (optional)" />
             <LinkPicker

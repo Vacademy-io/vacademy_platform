@@ -73,6 +73,8 @@ function defaultDashboardWidgetsAdmin(): DashboardWidgetConfig[] {
         // 4. Operational health (finance)
         'financeSummary',
         'recentTransactions',
+        'subOrgOverview',
+        'subOrgSelfStats',
         // 5. Engagement signals
         'unresolvedDoubts',
         'recentNotifications',
@@ -149,6 +151,9 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         showSupportButton: true,
         showSidebar: true,
         showAiCredits: true,
+        showAssistDock: true,
+        showStatus: true,
+        showSettings: true,
     },
     contentTypes: {
         pdf: true,
@@ -203,6 +208,8 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         applicationTab: false,
         leadTab: false,
         fullHistoryTab: false,
+        parentTab: false,
+        onboardingTab: false,
         // Default rendering order. Tabs render left-to-right by ascending number.
         // The keys match `StudentSideViewTabId` and the side-view's category strings.
         tabOrders: {
@@ -223,6 +230,7 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
             application: 15,
             lead: 16,
             fullHistory: 17,
+            parent: 18,
         },
         defaultTab: 'overview',
     },

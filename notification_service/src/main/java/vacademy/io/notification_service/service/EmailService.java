@@ -51,6 +51,20 @@ public class EmailService {
     @Value("${app.ses.sender.email}")
     private String from;
 
+    // Dedicated SES SMTP credentials used to send from institute-verified custom senders.
+    // A verified sender stores placeholder SMTP creds (SMTP_USERNAME/SMTP_PASSWORD); rather than
+    // baking real credentials into each institute's settings (which the settings API would expose),
+    // the send is routed through THIS account — the same AWS account/region where custom identities
+    // are verified. Sourced from env only. Empty username => feature off, behaviour unchanged.
+    @Value("${app.ses.sender.smtp.host:${spring.mail.host:}}")
+    private String verifiedSenderSmtpHost;
+    @Value("${app.ses.sender.smtp.port:${spring.mail.port:2587}}")
+    private int verifiedSenderSmtpPort;
+    @Value("${app.ses.sender.smtp.username:}")
+    private String verifiedSenderSmtpUsername;
+    @Value("${app.ses.sender.smtp.password:}")
+    private String verifiedSenderSmtpPassword;
+
     @Value("${ses.configuration.set}")
     private String sesConfigurationSet;
 
@@ -120,6 +134,10 @@ public class EmailService {
     }
 
     private void saveEmailNotificationLog(String to, String subject, String body, String source, String sourceId, String userId, String fromEmail, String instituteId) {
+        saveEmailNotificationLog(to, subject, body, source, sourceId, userId, fromEmail, instituteId, null);
+    }
+
+    private void saveEmailNotificationLog(String to, String subject, String body, String source, String sourceId, String userId, String fromEmail, String instituteId, String correlationId) {
         try {
             NotificationLog notificationLog = new NotificationLog();
             notificationLog.setId(UUID.randomUUID().toString());
@@ -140,6 +158,9 @@ public class EmailService {
             if (instituteId != null && !instituteId.isBlank()) {
                 notificationLog.setInstituteId(instituteId);
             }
+            // Caller correlation key (e.g. Engagement Engine action id). sourceId stays the
+            // JavaMail Message-ID — inbound reply linking joins on it and must not be displaced.
+            notificationLog.setCorrelationId(correlationId);
             notificationLog.setNotificationDate(Instant.now());
 
             notificationLogRepository.save(notificationLog);
@@ -168,6 +189,33 @@ public class EmailService {
             if (!inner.isEmpty()) return inner.toLowerCase();
         }
         return s.toLowerCase();
+    }
+
+    /**
+     * Builds a mail sender from the dedicated verified-sender SES SMTP credentials (env-provided).
+     * Lets an institute send from its SES-verified custom address without storing SMTP credentials
+     * in that institute's settings. Mirrors the TLS/timeout properties of {@link #createCustomMailSender}.
+     */
+    private JavaMailSenderImpl createVerifiedSenderMailSender() {
+        JavaMailSenderImpl mailSender = new JavaMailSenderImpl();
+        mailSender.setHost(verifiedSenderSmtpHost);
+        mailSender.setPort(verifiedSenderSmtpPort);
+        mailSender.setUsername(verifiedSenderSmtpUsername);
+        mailSender.setPassword(verifiedSenderSmtpPassword);
+
+        Properties props = mailSender.getJavaMailProperties();
+        props.put("mail.transport.protocol", "smtp");
+        props.put("mail.smtp.auth", "true");
+        props.put("mail.smtp.starttls.enable", "true");
+        props.put("mail.smtp.starttls.required", "true");
+        props.put("mail.debug", "false");
+        props.put("mail.smtp.connectiontimeout", "10000");
+        props.put("mail.smtp.timeout", "10000");
+        props.put("mail.smtp.writetimeout", "10000");
+        props.put("mail.smtp.ssl.checkserveridentity", "true");
+        props.put("mail.smtp.quitwait", "false");
+        mailSender.setJavaMailProperties(props);
+        return mailSender;
     }
 
     private JavaMailSenderImpl createCustomMailSender(JsonNode emailSettings) {
@@ -230,6 +278,17 @@ public class EmailService {
                         logger.info("Found email configuration for type: {} in institute: {}", emailTypeToUse,
                                 instituteId);
 
+                        // If this sender was set up via the SES self-serve flow but its identity
+                        // is not verified yet, sending from it would be rejected by SES. Fall back
+                        // to the platform default sender so mail still goes out. Backward compatible:
+                        // legacy configs have no "verified" field, so this never triggers for them.
+                        JsonNode verifiedNode = emailConfig.path(NotificationConstants.VERIFIED);
+                        if (verifiedNode.isBoolean() && !verifiedNode.asBoolean()) {
+                            logger.warn("Sender for type {} in institute {} is not SES-verified yet; "
+                                    + "falling back to default sender {}", emailTypeToUse, instituteId, from);
+                            return new AbstractMap.SimpleEntry<>(mailSender, from);
+                        }
+
                         // Check if SMTP credentials are real or dummy placeholders
                         String username = emailConfig.path(NotificationConstants.USERNAME).asText("");
                         String password = emailConfig.path(NotificationConstants.PASSWORD).asText("");
@@ -237,10 +296,21 @@ public class EmailService {
                         boolean isDummyCredentials = isDummySMTPCredentials(username, password);
 
                         if (isDummyCredentials) {
-                            logger.info("Dummy SMTP credentials detected in {}, using default SMTP from environment",
-                                    emailTypeToUse);
-                            // Use default mail sender from Spring but override 'from' address from JSON
-                            mailSenderToUse = mailSender;
+                            boolean isVerifiedSender = verifiedNode.isBoolean() && verifiedNode.asBoolean();
+                            if (isVerifiedSender && StringUtils.hasText(verifiedSenderSmtpUsername)) {
+                                // SES-verified custom sender with placeholder creds: authenticate through
+                                // the dedicated SES account (env-provided) where this identity is verified,
+                                // instead of the platform default sender which may be a different account
+                                // that can't send from the custom address (and would fall back to support@).
+                                logger.info("Routing verified sender for type {} via dedicated SES SMTP account",
+                                        emailTypeToUse);
+                                mailSenderToUse = createVerifiedSenderMailSender();
+                            } else {
+                                logger.info("Dummy SMTP credentials detected in {}, using default SMTP from environment",
+                                        emailTypeToUse);
+                                // Use default mail sender from Spring but override 'from' address from JSON
+                                mailSenderToUse = mailSender;
+                            }
                         } else {
                             logger.info("Real SMTP credentials found in {}, using custom SMTP configuration",
                                     emailTypeToUse);
@@ -595,6 +665,18 @@ public class EmailService {
 
     public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId,
             String customFromEmail, String customFromName, String emailType) {
+        sendHtmlEmail(to, subject, service, body, instituteId, customFromEmail, customFromName, emailType, null, null);
+    }
+
+    /**
+     * Full overload with ledger attribution: {@code correlationId} lands in
+     * notification_log.correlation_id (Engagement Engine action id → exact send/read joins)
+     * and {@code userId} attributes the row to a platform user (the other overloads write
+     * userId=null, which makes per-user ledger queries blind to those sends).
+     */
+    public void sendHtmlEmail(String to, String subject, String service, String body, String instituteId,
+            String customFromEmail, String customFromName, String emailType,
+            String correlationId, String userId) {
         try {
             // Check if email is blocked (domain blocklist or bounced email blocklist)
             if (isEmailBlocked(to)) {
@@ -655,7 +737,7 @@ public class EmailService {
 
                     String messageId = null;
                     try { messageId = message.getMessageID(); } catch (Exception ignored) {}
-                    saveEmailNotificationLog(to, emailSubject, body, service != null ? service : "HTML_EMAIL_SERVICE", messageId, null, finalFromEmail, instituteId);
+                    saveEmailNotificationLog(to, emailSubject, body, service != null ? service : "HTML_EMAIL_SERVICE", messageId, userId, finalFromEmail, instituteId, correlationId);
 
                 } catch (Exception e) {
                     logger.error("Failed to send HTML email to: {}", to, e);

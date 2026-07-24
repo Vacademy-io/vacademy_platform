@@ -733,8 +733,40 @@ public class SlideService {
         }
     }
 
+    /**
+     * Orders chapter→slide links the way the learner/admin outline renders them:
+     * slide_order NULLs first, then slide_order ascending, then the slide's
+     * created_at DESC (newest first) as the tie-break. The copy paths use this to
+     * re-stamp a fresh, unique, sequential slide_order on the clones so a copied
+     * chapter keeps the source's visible order — even when the source slides all
+     * share slide_order=0 and the clones share one batch-insert created_at (which
+     * would otherwise leave the copy in an arbitrary, unstable order).
+     */
+    public static Comparator<ChapterToSlides> renderOrderComparator() {
+        return (a, b) -> {
+            boolean aNull = a.getSlideOrder() == null;
+            boolean bNull = b.getSlideOrder() == null;
+            if (aNull != bNull) return aNull ? -1 : 1;          // NULL slide_order first
+            if (!aNull) {
+                int c = Integer.compare(a.getSlideOrder(), b.getSlideOrder());
+                if (c != 0) return c;                            // slide_order ascending
+            }
+            Timestamp at = a.getSlide() == null ? null : a.getSlide().getCreatedAt();
+            Timestamp bt = b.getSlide() == null ? null : b.getSlide().getCreatedAt();
+            if (at == null && bt == null) return 0;
+            if (at == null) return 1;                            // nulls last
+            if (bt == null) return -1;
+            return bt.compareTo(at);                             // created_at DESC
+        };
+    }
+
     public void copySlidesOfChapter(Chapter oldChapter, Chapter newChapter) {
-        List<ChapterToSlides> chapterToSlides = chapterToSlidesRepository.findByChapterId(oldChapter.getId());
+        // Sort into the rendered order, then stamp a fresh sequential slide_order
+        // (below) so the copy preserves the source's visible slide order
+        // deterministically instead of relying on the (tied) created_at tie-break.
+        List<ChapterToSlides> chapterToSlides = new ArrayList<>(
+                chapterToSlidesRepository.findByChapterId(oldChapter.getId()));
+        chapterToSlides.sort(renderOrderComparator());
         List<Slide> newSlides = new ArrayList<>();
         List<ChapterToSlides> newChapterToSlides = new ArrayList<>();
 
@@ -758,9 +790,9 @@ public class SlideService {
             String newSourceId = copySlideSourceByType(oldSlide);
             newSlide.setSourceId(newSourceId);
 
-            // Create ChapterToSlides mapping
-            newChapterToSlides.add(new ChapterToSlides(newChapter, newSlide,
-                    chapterToSlides.get(i).getSlideOrder(),
+            // Create ChapterToSlides mapping — slide_order = position in the sorted
+            // (rendered) order, so the copy is deterministic and matches the source.
+            newChapterToSlides.add(new ChapterToSlides(newChapter, newSlide, i,
                     chapterToSlides.get(i).getStatus()));
         }
 
@@ -1179,12 +1211,18 @@ public class SlideService {
     }
 
     public List<SlideDTO> getSlides(String chapterId) {
+        // Resolved request locale (?lang > Accept-Language > JWT claim > en, set by
+        // LocaleResolutionFilter). For 'en' no translation rows match and the
+        // COALESCEs fall back to canonical content — identical to pre-i18n output.
+        String lang = vacademy.io.common.core.i18n.LocaleRegistry.normalize(
+                org.springframework.context.i18n.LocaleContextHolder.getLocale().toLanguageTag());
         // Fetch JSON response from repository
         String jsonSlides = slideRepository.getSlidesByChapterId(
                 chapterId,
                 List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name(), SlideStatus.DRAFT.name()),
                 List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name(), SlideStatus.DRAFT.name()),
-                List.of(QuestionStatusEnum.ACTIVE.name()) // Added missing closing parenthesis here
+                List.of(QuestionStatusEnum.ACTIVE.name()), // Added missing closing parenthesis here
+                lang
         );
 
         // Map the JSON to List<SlideDTO>

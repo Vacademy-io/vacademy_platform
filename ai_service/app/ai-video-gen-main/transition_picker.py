@@ -231,7 +231,52 @@ def apply_to_plan(
         if chosen != old:
             shot["transition_in"] = chosen
             changes.append((i, old or "(none)", chosen, reason))
+    _enforce_dialogue_boundaries(shots, changes)
     return changes
+
+
+# Transitions that read cleanly over photoreal footage. Graphic wipes/irises
+# (circle_iris, smash_cut's white flash, diagonal_wipe…) blast a full-screen
+# graphic between a live-action DIALOGUE_SCENE clip and its neighbor —
+# observed in prod as a jarring white frame at the clip boundary.
+_DIALOGUE_SAFE_IN = ("cut", "fade", "dip_to_black", "vignette_fade")
+
+
+def _enforce_dialogue_boundaries(
+    shots: List[Dict[str, Any]], changes: List[Tuple[int, str, str, str]]
+) -> None:
+    """Force simple cuts/fades on every DIALOGUE_SCENE boundary (into a clip,
+    and into the shot right after one). Shared post-pass for both the
+    heuristic picker and the choreographer validator."""
+    for i, shot in enumerate(shots):
+        st = shot.get("shot_type") or ""
+        prev_st = (shots[i - 1].get("shot_type") or "") if i > 0 else ""
+        if st != "DIALOGUE_SCENE" and prev_st != "DIALOGUE_SCENE":
+            continue
+        cur = shot.get("transition_in") or ""
+        # CONTINUOUS scene-to-scene boundary: the next clip's first frame only
+        # APPROXIMATES the previous clip's last frame (reference-conditioned,
+        # not copied), so a hard cut exposes the mismatch as a visible jump.
+        # A short dissolve masks it almost completely — force fade even when
+        # the author picked cut.
+        if (
+            st == "DIALOGUE_SCENE"
+            and prev_st == "DIALOGUE_SCENE"
+            and str(shot.get("scene_continuity") or "").strip().lower() == "continuous"
+        ):
+            if cur != "fade":
+                shot["transition_in"] = "fade"
+                changes.append((
+                    i, cur or "(none)", "fade",
+                    "continuous scene boundary → dissolve (masks frame mismatch)",
+                ))
+            continue
+        if cur not in _DIALOGUE_SAFE_IN:
+            shot["transition_in"] = "fade"
+            changes.append((
+                i, cur or "(none)", "fade",
+                "DIALOGUE_SCENE boundary → fade (no graphic wipes over live footage)",
+            ))
 
 
 def enforce_transitions(director_plan: Dict[str, Any]) -> List[Tuple[int, str, str, str]]:
@@ -268,4 +313,5 @@ def enforce_transitions(director_plan: Dict[str, Any]) -> List[Tuple[int, str, s
         if new != old:
             shot["transition_in"] = new
             changes.append((i, old or "(none)", new, reason))
+    _enforce_dialogue_boundaries(shots, changes)
     return changes

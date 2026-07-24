@@ -1,12 +1,14 @@
 import { savePaymentOption, transformLocalPlanToApiFormatArray } from '@/services/payment-options';
 import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
-import { PaymentPlan } from '@/types/payment';
+import { PaymentPlan, PaymentPlans } from '@/types/payment';
 import { InviteLinkFormValues } from './GenerateInviteLinkSchema';
 import { UseFormReturn } from 'react-hook-form';
 import { useEffect, useState } from 'react';
 import { PaymentPlanCreator } from '@/routes/settings/-components/Payment/PaymentPlanCreator';
 import { useQueryClient } from '@tanstack/react-query';
+import { buildCreateCPOPayload } from '@/routes/financial-management/fee-plans/-components/CreateCPODialog';
+import { useCreateCPO } from '@/routes/financial-management/fee-plans/-services/cpo-service';
 
 interface PaymentPlansDialogProps {
     form: UseFormReturn<InviteLinkFormValues>;
@@ -22,6 +24,7 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
     const [isSaving, setIsSaving] = useState(false);
     const [requireApproval, setRequireApproval] = useState(false);
     const instituteId = getInstituteId();
+    const createCPOMutation = useCreateCPO();
 
     const handleError = (error: unknown, operation: string) => {
         console.error(`Error in ${operation}:`, error);
@@ -37,8 +40,29 @@ const AddPaymentPlanDialog = ({ form }: PaymentPlansDialogProps) => {
 
     const handleSavePaymentPlan = async (plan: PaymentPlan) => {
         setIsSaving(true);
-        console.log('requireApproval value in handleSavePaymentPlan:', requireApproval);
         try {
+            // CPO plans are created via the dedicated CREATE_CPO endpoint (which also mints the
+            // mirror payment_option). Sending them through savePaymentOption would drop the fee
+            // structure. The approval toggle is carried inside cpoForm → require_approval.
+            if (plan.type === PaymentPlans.CPO) {
+                const cpoForm = plan.config?.cpoForm;
+                if (!cpoForm) throw new Error('Missing CPO form data');
+                const payload = buildCreateCPOPayload(
+                    { ...cpoForm, requireApproval: requireApproval || !!cpoForm.requireApproval },
+                    []
+                );
+                await createCPOMutation.mutateAsync(payload);
+                // Refetch the invite's payment-option list so the new CPO mirror appears and
+                // can be selected for this invite.
+                await queryClient.invalidateQueries({ queryKey: ['GET_PAYMENT_DETAILS'] });
+                toast.success('Fee plan created — select it from the plans list');
+                form.setValue('showAddPlanDialog', false);
+                setEditingPlan(null);
+                setShowPaymentPlanCreator(false);
+                setRequireApproval(false);
+                return;
+            }
+
             const apiPlans = transformLocalPlanToApiFormatArray(plan);
             const paymentOptionRequest = {
                 id: plan.id, // Use the plan ID directly (either existing or new)

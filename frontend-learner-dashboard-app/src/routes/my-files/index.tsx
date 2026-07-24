@@ -92,7 +92,7 @@ function RouteComponent() {
             onClick={() => handleFolderClick(folder.name)}
             aria-label={`Open folder ${folder.name}`}
             className={cn(
-              "group flex min-h-11 items-center gap-3 rounded-lg border border-neutral-200 bg-white p-4 text-left transition-colors",
+              "group flex min-h-11 items-center gap-3 rounded-lg border border-neutral-200 bg-white p-4 text-start transition-colors",
               "hover:border-primary-300 hover:bg-primary-50/40",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2",
             )}

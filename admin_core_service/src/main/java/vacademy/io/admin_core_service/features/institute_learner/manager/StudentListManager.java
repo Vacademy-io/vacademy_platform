@@ -64,6 +64,9 @@ public class StudentListManager {
     InstituteStudentRepository instituteStudentRepository;
 
     @Autowired
+    vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver customFieldListFilterResolver;
+
+    @Autowired
     StudentSessionRepository studentSessionRepository;
 
     @Autowired
@@ -255,6 +258,14 @@ public class StudentListManager {
         // Apply faculty access filter (restricts PS and injects invite filter)
         applyFacultyAccessFilter(user, studentListFilter);
 
+        // Strip custom-field sort keys ("cf:<id>") — this V1 path (also used by
+        // the CSV exports) has no custom-field sort support, and letting the
+        // key through createSortObject would produce an invalid ORDER BY
+        // property and 500 the request.
+        if (studentListFilter.getSortColumns() != null) {
+            studentListFilter.getSortColumns().keySet().removeIf(k -> k != null && k.startsWith("cf:"));
+        }
+
         // Create a sorting object based on the provided sort columns
         Sort thisSort = ListService.createSortObject(studentListFilter.getSortColumns());
 
@@ -334,7 +345,47 @@ public class StudentListManager {
                                                                     StudentListFilter studentListFilter, int pageNo, int pageSize) {
         applyFacultyAccessFilter(user, studentListFilter);
 
-        boolean hasCustomFieldFilters = studentListFilter.getCustomFieldFilters() != null && !studentListFilter.getCustomFieldFilters().isEmpty();
+        // Custom-field sort arrives as a sortColumns entry keyed
+        // "cf:<custom_field_id>". Extract it (so createPageable/ListService only
+        // sees real columns) and stash it on the filter — the heavy custom-repo
+        // path orders by the field's latest USER-scoped answer.
+        if (studentListFilter.getSortColumns() != null) {
+            for (Map.Entry<String, String> entry : new HashMap<>(studentListFilter.getSortColumns()).entrySet()) {
+                if (entry.getKey() != null && entry.getKey().startsWith("cf:")) {
+                    studentListFilter.setSortCustomFieldId(entry.getKey().substring(3));
+                    studentListFilter.setSortCustomFieldDirection(entry.getValue());
+                    studentListFilter.getSortColumns().remove(entry.getKey());
+                }
+            }
+        }
+        boolean hasCustomFieldSort = StringUtils.hasText(studentListFilter.getSortCustomFieldId());
+
+        // Pre-resolve typed (operator-aware) custom-field filters into user-id
+        // sets. Positive operators intersect into a matched set (empty → no
+        // results at all); IS_EMPTY entries become an exclusion set. The sets
+        // ride the filter object into the dynamic-SQL repository as IN/NOT IN.
+        if (studentListFilter.getCustomFieldTypedFilters() != null
+                && !studentListFilter.getCustomFieldTypedFilters().isEmpty()) {
+            vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution
+                    typedResolution = customFieldListFilterResolver.resolve(
+                            studentListFilter.getCustomFieldTypedFilters(),
+                            vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Surface.USER);
+            if (typedResolution.shortCircuitsToEmpty()) {
+                return ResponseEntity.ok(AllStudentV2Response.builder()
+                        .content(new ArrayList<>()).pageNo(pageNo).pageSize(pageSize)
+                        .totalElements(0L).totalPages(0).last(true).build());
+            }
+            studentListFilter.setCfTypedMatchedUserIds(
+                    typedResolution.matchedIds == null ? null : new ArrayList<>(typedResolution.matchedIds));
+            studentListFilter.setCfTypedExcludedUserIds(
+                    typedResolution.excludedIds == null ? null : new ArrayList<>(typedResolution.excludedIds));
+        }
+        boolean hasTypedCustomFieldFilters =
+                (studentListFilter.getCfTypedMatchedUserIds() != null && !studentListFilter.getCfTypedMatchedUserIds().isEmpty())
+                        || (studentListFilter.getCfTypedExcludedUserIds() != null && !studentListFilter.getCfTypedExcludedUserIds().isEmpty());
+
+        boolean hasCustomFieldFilters = (studentListFilter.getCustomFieldFilters() != null && !studentListFilter.getCustomFieldFilters().isEmpty())
+                || hasTypedCustomFieldFilters;
         boolean hasEnrollInviteFilter = studentListFilter.getServerEnrollInviteIds() != null && !studentListFilter.getServerEnrollInviteIds().isEmpty();
         boolean hasNameSearch = StringUtils.hasText(studentListFilter.getName());
         boolean hasPaymentStatusFilter = studentListFilter.getPaymentStatuses() != null && !studentListFilter.getPaymentStatuses().isEmpty();
@@ -345,8 +396,9 @@ public class StudentListManager {
         // @Query variants have no sub_org_id clause).
         boolean hasSubOrgFilter = studentListFilter.getSubOrgIds() != null && !studentListFilter.getSubOrgIds().isEmpty();
 
-        // Complex filters (custom fields, payment status, invite filter) require full JOIN query
-        if (hasCustomFieldFilters || hasEnrollInviteFilter || hasPaymentStatusFilter) {
+        // Complex filters (custom fields, payment status, invite filter) and
+        // custom-field sorting require the full JOIN query
+        if (hasCustomFieldFilters || hasEnrollInviteFilter || hasPaymentStatusFilter || hasCustomFieldSort) {
             Pageable pageable = createPageable(studentListFilter, pageNo, pageSize);
             Page<StudentListV2Projection> page = fetchStudentPage(studentListFilter, pageable);
             List<StudentV2DTO> content = page != null ? mapProjectionsToDTOs(page.getContent()) : new ArrayList<>();
@@ -475,12 +527,15 @@ public class StudentListManager {
     }
 
     private Page<StudentListV2Projection> fetchStudentPage(StudentListFilter filter, Pageable pageable) {
-        boolean hasCustomFieldFilters = filter.getCustomFieldFilters() != null && !filter.getCustomFieldFilters().isEmpty();
+        boolean hasCustomFieldFilters = (filter.getCustomFieldFilters() != null && !filter.getCustomFieldFilters().isEmpty())
+                || (filter.getCfTypedMatchedUserIds() != null && !filter.getCfTypedMatchedUserIds().isEmpty())
+                || (filter.getCfTypedExcludedUserIds() != null && !filter.getCfTypedExcludedUserIds().isEmpty());
         boolean hasEnrollInviteFilter = filter.getServerEnrollInviteIds() != null && !filter.getServerEnrollInviteIds().isEmpty();
         boolean hasSubOrgFilter = filter.getSubOrgIds() != null && !filter.getSubOrgIds().isEmpty();
-        // Use custom repo methods when custom field, enroll invite, or sub-org filters are present
+        boolean hasCustomFieldSort = StringUtils.hasText(filter.getSortCustomFieldId());
+        // Use custom repo methods when custom field filters/sort, enroll invite, or sub-org filters are present
         // (the raw @Query variants have no ssigm.sub_org_id clause; the custom impl applies it via addListFilter)
-        boolean useCustomRepo = hasCustomFieldFilters || hasEnrollInviteFilter || hasSubOrgFilter;
+        boolean useCustomRepo = hasCustomFieldFilters || hasEnrollInviteFilter || hasSubOrgFilter || hasCustomFieldSort;
 
         if (StringUtils.hasText(filter.getName())) {
             if (useCustomRepo) {
@@ -502,6 +557,10 @@ public class StudentListManager {
                         filter.getEndDate(),
                         filter.getServerEnrollInviteIds(),
                         filter.getEnrollInvitePackageSessionIds(),
+                        filter.getCfTypedMatchedUserIds(),
+                        filter.getCfTypedExcludedUserIds(),
+                        filter.getSortCustomFieldId(),
+                        filter.getSortCustomFieldDirection(),
                         pageable);
             } else {
                 return instituteStudentRepository.getAllStudentV2WithSearchRaw(
@@ -544,6 +603,10 @@ public class StudentListManager {
                         filter.getEndDate(),
                         filter.getServerEnrollInviteIds(),
                         filter.getEnrollInvitePackageSessionIds(),
+                        filter.getCfTypedMatchedUserIds(),
+                        filter.getCfTypedExcludedUserIds(),
+                        filter.getSortCustomFieldId(),
+                        filter.getSortCustomFieldDirection(),
                         pageable);
             } else {
                 // Use existing @Query method

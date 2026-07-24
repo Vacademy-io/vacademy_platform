@@ -102,6 +102,10 @@ export interface TerminateMemberRequest {
   institute_id: string;
   package_session_id: string;
   user_ids: string[];
+  /** SOFT = keep access until access_till_date; HARD = terminate now. Defaults HARD. */
+  mode?: 'SOFT' | 'HARD';
+  /** SOFT-only last access date (ISO yyyy-MM-dd). Required for SOFT. */
+  access_till_date?: string | null;
 }
 
 export interface TerminateMemberResponse {

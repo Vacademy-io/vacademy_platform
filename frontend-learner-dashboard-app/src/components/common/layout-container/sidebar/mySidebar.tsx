@@ -37,10 +37,6 @@ import { getStudentDisplaySettings } from "@/services/student-display-settings";
 import { getChatEnabled } from "@/services/chat/getChatEnabled";
 import type { StudentSidebarTabConfig } from "@/types/student-display-settings";
 import {
-  House,
-  BookOpen,
-  NotePencil,
-  Scroll,
   SquaresFour,
   Globe,
   GooglePlayLogo,
@@ -48,8 +44,16 @@ import {
   WindowsLogo,
   AppleLogo,
   SignOut,
-  ChatCircle,
 } from "@phosphor-icons/react";
+import {
+  NavHouseIcon,
+  NavBookIcon,
+  NavNotepadIcon,
+  NavClipboardCheckIcon,
+  NavChatIcon,
+  NavGiftIcon,
+  NavCalendarCheckIcon,
+} from "./nav-icons";
 import type {
   SidebarItemsType,
   subItemsType,
@@ -106,6 +110,7 @@ export const MySidebar = ({
     hideInstituteName,
     logoWidthPx,
     logoHeightPx,
+    stackNameBelowLogo,
   } = useStore();
   const handleInstituteLogoClick = () => {
     if (homeIconClickRoute) {
@@ -160,11 +165,13 @@ export const MySidebar = ({
 
   const iconByTabId: Record<string, unknown> = useMemo(
     () => ({
-      dashboard: House,
-      "learning-center": BookOpen,
-      homework: NotePencil,
-      "assessment-center": Scroll,
-      chat: ChatCircle,
+      dashboard: NavHouseIcon,
+      "learning-center": NavBookIcon,
+      homework: NavNotepadIcon,
+      "assessment-center": NavClipboardCheckIcon,
+      chat: NavChatIcon,
+      referral: NavGiftIcon,
+      attendance: NavCalendarCheckIcon,
     }),
     []
   );
@@ -295,6 +302,12 @@ export const MySidebar = ({
 
   const isExpanded = state === "expanded";
 
+  // When the operator enables "stack name below logo", switch the expanded
+  // header to a centered vertical layout (logo on top, name beneath). Only in
+  // expanded, non-sub-org, name-visible mode; the collapsed rail stays icon-only.
+  const stackNameBelowLogoLayout =
+    stackNameBelowLogo && isExpanded && !hideInstituteName && !subOrgName;
+
   // Operator-configured logo dimensions only apply when the sidebar is
   // expanded — in icon-collapsed mode the rail has a fixed narrow width, so
   // a wide custom logo would overflow. Fall back to the default 28px square
@@ -329,14 +342,14 @@ export const MySidebar = ({
           : undefined
       }
     >
-      <SidebarContent className={`sidebar-content flex flex-col bg-white dark:bg-neutral-900 py-1 transition-all  duration-200 ${isIOS ? 'mt-10' : ''} ease-in-out max-w-full w-full overflow-x-hidden`}>
+      <SidebarContent className={`sidebar-content flex flex-col bg-nav-surface dark:bg-neutral-900 py-1 transition-all  duration-200 ${isIOS ? 'mt-10' : ''} ease-in-out max-w-full w-full overflow-x-hidden`}>
         <SidebarHeader className="border-b border-border pb-2">
           {isAndroid && (
             <button
               type="button"
               onClick={toggleSidebar}
               aria-label="Close sidebar"
-              className="absolute top-4 mt-6 right-4 z-10 size-8 flex items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="absolute top-4 mt-6 end-4 z-10 size-8 flex items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <X size={18} />
             </button>
@@ -352,7 +365,9 @@ export const MySidebar = ({
                   // When the institute name is hidden and we're not in
                   // sub-org mode, center the logo in the expanded sidebar
                   // so a wide custom-sized logo fills the sheet area.
-                  hideInstituteName && !subOrgName && isExpanded && "justify-center"
+                  hideInstituteName && !subOrgName && isExpanded && "justify-center",
+                  // "Stack name below logo": centered vertical header.
+                  stackNameBelowLogoLayout && "flex-col items-center gap-2 py-2 text-center"
                 )}
                 onClick={
                   homeIconClickRoute ? handleInstituteLogoClick : undefined
@@ -378,7 +393,7 @@ export const MySidebar = ({
                       )}
                     </div>
                     {isExpanded && (
-                      <div className="flex items-center gap-1.5 pl-11">
+                      <div className="flex items-center gap-1.5 ps-11">
                         <span className="text-caption text-muted-foreground whitespace-nowrap">Powered by</span>
                         {!isNullOrEmptyOrUndefined(instituteLogoFileUrl) ? (
                           <img src={instituteLogoFileUrl} alt={instituteName} className="h-4 w-auto max-w-20 object-contain" />
@@ -424,8 +439,24 @@ export const MySidebar = ({
                       )}
                     </div>
                     {!hideInstituteName && (
-                      <div className="grid h-10 flex-1 content-center text-left leading-tight">
-                        <span className="truncate text-subtitle font-semibold">
+                      <div
+                        className={cn(
+                          "leading-tight",
+                          stackNameBelowLogoLayout
+                            ? "w-full min-w-0 text-center"
+                            : "grid h-10 flex-1 content-center text-start"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "text-subtitle font-semibold",
+                            // Stacked: wrap up to 2 lines (centered), ellipsis
+                            // beyond. Beside the logo: single-line ellipsis.
+                            stackNameBelowLogoLayout
+                              ? "w-full line-clamp-2 break-words"
+                              : "truncate"
+                          )}
+                        >
                           {instituteName}
                         </span>
                       </div>
@@ -486,7 +517,7 @@ export const MySidebar = ({
               learnerPortalUrl) &&
             ((state === "expanded" || isMobile) ? (
               <div className="flex flex-col gap-2 px-2">
-                <span className="text-caption font-semibold uppercase text-muted-foreground tracking-wider pl-1 [.ui-play_&]:font-black [.ui-play_&]:text-primary-500">
+                <span className="text-caption font-semibold uppercase text-muted-foreground tracking-wider ps-1 [.ui-play_&]:font-black [.ui-play_&]:text-primary-500">
                   Apps & Portals
                 </span>
                 <div className="flex flex-wrap gap-1">
@@ -629,7 +660,7 @@ export const MySidebar = ({
                   <button
                     type="button"
                     onClick={() => navigate({ to: "/user-profile" })}
-                    className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-lg px-2 text-left hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [.ui-play_&]:rounded-xl"
+                    className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-lg px-2 text-start hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [.ui-play_&]:rounded-xl"
                   >
                     <span
                       aria-hidden

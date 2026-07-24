@@ -6,6 +6,105 @@ import convert from "color-convert";
 import themeData from "@/constants/themes/theme.json";
 import { HOLISTIC_INSTITUTE_ID } from "@/constants/urls";
 import { getInstituteId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+import {
+  THEME_ROLE_SETTINGS_KEY,
+  type NavRoleColors,
+  type ThemeRoleSettings,
+} from "@/types/theme-role-settings";
+import { rampFromHsl, hslVar, SHADES } from "@/lib/theme-ramp";
+import { applyInstituteBackground, applyInstituteFont } from "@/utils/institute-theme-roles";
+
+// Generates a full 50-500 shade ramp around an arbitrary HSL base — same
+// tint curve for every caller (primary, secondary, tertiary) and identical
+// to the curve baked into the preset palettes. See lib/theme-ramp.ts for
+// why this is a mix-toward-white rather than the older saturation-raising
+// formula (it turned dark/saturated brands neon and greys pink).
+const setShadeRamp = (prefix: string, hue: number, sat: number, light: number) => {
+  const ramp = rampFromHsl(hue, sat, light);
+  document.documentElement.style.setProperty(`--${prefix}`, hslVar(ramp["500"]));
+  SHADES.forEach((shade) => {
+    document.documentElement.style.setProperty(`--${prefix}-${shade}`, hslVar(ramp[shade]));
+  });
+};
+
+// Institute-authored secondary/tertiary override (THEME_SETTING). Runs after
+// whatever default (preset or hue-shift) already set --secondary-*/
+// --tertiary-*, and replaces them with a ramp built directly from the
+// chosen hex — no hue-shift, since the admin explicitly picked this color.
+const applySecondaryTertiaryOverrides = () => {
+  let secondary: string | undefined;
+  let tertiary: string | undefined;
+  try {
+    const raw = localStorage.getItem(THEME_ROLE_SETTINGS_KEY);
+    const parsed: ThemeRoleSettings | null = raw ? JSON.parse(raw) : null;
+    secondary = parsed?.roles?.secondary;
+    tertiary = parsed?.roles?.tertiary;
+  } catch {
+    secondary = undefined;
+    tertiary = undefined;
+  }
+
+  const applyOne = (prefix: "secondary" | "tertiary", hex?: string) => {
+    if (!hex) return;
+    try {
+      const [h, s, l] = convert.hex.hsl(hex.replace("#", ""));
+      setShadeRamp(prefix, h, s, l);
+    } catch {
+      // ignore malformed institute-authored hex
+    }
+  };
+  applyOne("secondary", secondary);
+  applyOne("tertiary", tertiary);
+};
+
+// Applies the `nav` role (sidebar/rail surface, hover, active, active-text,
+// text) from institute settings if one has been saved (THEME_SETTING). With
+// no override, the default REPRODUCES the sidebar's current hardcoded look
+// (white surface, primary-50 tinted active state, primary-500 active text —
+// see non-collapsible-item.tsx / collapsible-item.tsx) so that wiring a
+// component onto --nav-* is a no-op for every institute until they actually
+// opt into a different nav (e.g. a dark rail) via a saved THEME_SETTING.
+const applyNavRoles = (h: number, s: number, l: number) => {
+  const setHSL = (cssVar: string, hue: number, sat: number, light: number) => {
+    const wrap = (deg: number) => ((deg % 360) + 360) % 360;
+    document.documentElement.style.setProperty(cssVar, `${wrap(hue)} ${sat}% ${light}%`);
+  };
+
+  let nav: NavRoleColors | undefined;
+  try {
+    const raw = localStorage.getItem(THEME_ROLE_SETTINGS_KEY);
+    const parsed: ThemeRoleSettings | null = raw ? JSON.parse(raw) : null;
+    nav = parsed?.roles?.nav;
+  } catch {
+    nav = undefined;
+  }
+
+  if (nav) {
+    const setFromHex = (cssVar: string, hex: string) => {
+      try {
+        const [hh, ss, ll] = convert.hex.hsl(hex.replace("#", ""));
+        setHSL(cssVar, hh, ss, ll);
+      } catch {
+        // ignore malformed institute-authored hex
+      }
+    };
+    setFromHex("--nav-surface", nav.surface);
+    setFromHex("--nav-surface-hover", nav.surfaceHover);
+    setFromHex("--nav-active", nav.active);
+    setFromHex("--nav-active-text", nav.activeText);
+    setFromHex("--nav-text", nav.text);
+    return;
+  }
+
+  // Legacy default: white surface, primary-50 tinted active pill,
+  // primary-500 active text — pixel-equivalent to today's hardcoded classes.
+  setHSL("--nav-surface", 0, 0, 100);
+  setHSL("--nav-surface-hover", 210, 40, 96); // matches shadcn --muted, not hue-tinted (today's hover:bg-muted/60)
+  const [a50h, a50s, a50l] = rampFromHsl(h, s, l)["50"];
+  setHSL("--nav-active", a50h, a50s, a50l); // == primary-50
+  setHSL("--nav-active-text", h, s, l); // == primary-500
+  setHSL("--nav-text", 222.2, 84, 4.9); // == --foreground exactly (today's inherited default)
+};
 
 type ThemeContextType = {
   primaryColor: string;
@@ -126,49 +225,46 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         if (hex) setHSLFromHex(`--tertiary-${shade}`, hex);
       });
 
+      // Nav role (sidebar/rail) — explicit institute override or derived default.
+      if (primary500) {
+        const [ph, ps, pl] = convert.hex.hsl(primary500.replace("#", ""));
+        applyNavRoles(ph, ps, pl);
+      }
+      // Institute-authored secondary/tertiary override, if any — replaces
+      // the preset's bundled shades set above.
+      applySecondaryTertiaryOverrides();
+      // Institute-authored page canvas, if any.
+      applyInstituteBackground();
+      applyInstituteFont();
+
       // Store the theme selection
       localStorage.setItem("theme-code", primaryColor);
     } else if (primaryColor.startsWith("#")) {
       // Handle custom hex colors (for color picker)
       const [h, s, l] = convert.hex.hsl(primaryColor.replace("#", ""));
 
-      // Set primary color variable in HSL format
-      document.documentElement.style.setProperty(
-        "--primary",
-        `${h} ${s}% ${l}%`
-      );
-      document.documentElement.style.setProperty(
-        "--primary-500",
-        `${h} ${s}% ${l}%`
-      );
-
-      // Set primary foreground (text on primary background)
+      // Primary: exact chosen hue.
+      setShadeRamp("primary", h, s, l);
       document.documentElement.style.setProperty(
         "--primary-foreground",
         l > 60 ? "222.2 47.4% 11.2%" : "210 40% 98%"
       );
 
-      // Set different shades of the primary color
-      document.documentElement.style.setProperty(
-        "--primary-50",
-        `${h} ${Math.min(s + 40, 100)}% ${Math.min(l + 45, 96)}%`
-      );
-      document.documentElement.style.setProperty(
-        "--primary-100",
-        `${h} ${Math.min(s + 30, 90)}% ${Math.min(l + 38, 92)}%`
-      );
-      document.documentElement.style.setProperty(
-        "--primary-200",
-        `${h} ${Math.min(s + 20, 88)}% ${Math.min(l + 29, 83)}%`
-      );
-      document.documentElement.style.setProperty(
-        "--primary-300",
-        `${h} ${Math.min(s + 10, 87)}% ${Math.min(l + 18, 72)}%`
-      );
-      document.documentElement.style.setProperty(
-        "--primary-400",
-        `${h} ${Math.min(s + 5, 86)}% ${Math.min(l + 7, 61)}%`
-      );
+      // Secondary/tertiary: same relationship the hand-authored presets use
+      // (an analogous, softer supporting hue in each direction) rather than
+      // leaving them pinned to the static blue-gray/cream fallback in
+      // index.css regardless of the institute's chosen brand color.
+      setShadeRamp("secondary", h - 24, Math.max(s - 25, 20), Math.min(l + 15, 80));
+      setShadeRamp("tertiary", h + 48, Math.max(s - 35, 15), Math.min(l + 25, 88));
+
+      // Nav role (sidebar/rail) — explicit institute override or derived default.
+      applyNavRoles(h, s, l);
+      // Institute-authored secondary/tertiary override, if any — replaces
+      // the hue-shifted defaults set above.
+      applySecondaryTertiaryOverrides();
+      // Institute-authored page canvas, if any.
+      applyInstituteBackground();
+      applyInstituteFont();
 
       // Store the custom color
       localStorage.setItem("theme-custom-color", primaryColor);

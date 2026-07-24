@@ -257,6 +257,9 @@ def preview_video_cost(
         host=(payload.host.model_dump() if getattr(payload, "host", None) else None),
         ai_video_enabled=bool(getattr(payload, "ai_video_enabled", False)),
         ai_video_audio_enabled=bool(getattr(payload, "ai_video_audio_enabled", False)),
+        dialogue_scenes_enabled=bool(getattr(payload, "dialogue_scenes_enabled", False)),
+        dialogue_mode=str(getattr(payload, "dialogue_mode", "storybook") or "storybook"),
+        dialogue_clip_model=str(getattr(payload, "dialogue_clip_model", "seedance-2.0") or "seedance-2.0"),
     )
     return VideoCostPreviewResponse(**result)
 
@@ -426,6 +429,7 @@ async def generate_video_external(
                         sub_shots_enabled=p.sub_shots_enabled,
                         dialogue_scenes_enabled=p.dialogue_scenes_enabled,
                         dialogue_mode=p.dialogue_mode,
+                        dialogue_clip_model=p.dialogue_clip_model,
                         cast_id=p.cast_id,
                         routing_overrides=p.routing_overrides,
                         host=p.host,
@@ -439,6 +443,7 @@ async def generate_video_external(
                         # service / pipeline gates tier eligibility internally.
                         ai_video_enabled=bool(getattr(p, "ai_video_enabled", False)),
                         ai_video_audio_enabled=bool(getattr(p, "ai_video_audio_enabled", False)),
+                        ai_video_model=getattr(p, "ai_video_model", None),
                         # Per-stage model overrides (DB-backed routing). When set,
                         # the service resolves a per-stage map via
                         # `AIModelsService.get_stage_model_map(...)`. The legacy
@@ -775,6 +780,7 @@ async def resume_video_external(
                         sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                     dialogue_scenes_enabled=bool(_meta.get("dialogue_scenes_enabled", False)),
                     dialogue_mode=str(_meta.get("dialogue_mode", "storybook")),
+                    dialogue_clip_model=str(_meta.get("dialogue_clip_model", "seedance-2.0")),
                     cast_id=_meta.get("cast_id"),
                         visual_preferences=_meta.get("visual_preferences"),
                         # Brand kit + per-video overrides: rehydrate so a resumed
@@ -788,6 +794,7 @@ async def resume_video_external(
                         # preserved. Resumed runs default OFF when absent.
                         ai_video_enabled=bool(_meta.get("ai_video_enabled", False)),
                         ai_video_audio_enabled=bool(_meta.get("ai_video_audio_enabled", False)),
+                        ai_video_model=_meta.get("ai_video_model"),
                         # Resume parity: rehydrate per-stage overrides from
                         # saved metadata if present; otherwise fall through to
                         # the legacy `model` field (which the service collapses
@@ -1288,12 +1295,14 @@ async def decision_video_external(
                         sub_shots_enabled=bool(m.get("sub_shots_enabled", False)),
                         dialogue_scenes_enabled=bool(m.get("dialogue_scenes_enabled", False)),
                         dialogue_mode=str(m.get("dialogue_mode", "storybook")),
+                        dialogue_clip_model=str(m.get("dialogue_clip_model", "seedance-2.0")),
                         cast_id=m.get("cast_id"),
                         visual_preferences=m.get("visual_preferences"),
                         brand_kit_id=m.get("brand_kit_id"),
                         brand_overrides=m.get("brand_overrides"),
                         ai_video_enabled=bool(m.get("ai_video_enabled", False)),
                         ai_video_audio_enabled=bool(m.get("ai_video_audio_enabled", False)),
+                        ai_video_model=m.get("ai_video_model"),
                         model_overrides=m.get("model_overrides"),
                     ):
                         await q.put(json.dumps(event))
@@ -1481,6 +1490,11 @@ async def save_cast_from_video_external(
             "voice_hint": str(c.get("voice_hint") or "")[:120],
             "voice_gender": _dialogue_voice_gender(c, i),
             "sheet_url": sheet_url,
+            # Voice casting + real-photo authority — persisted so a sequel
+            # video reuses the exact voice and keeps treating the portrait
+            # as an authoritative photo (see _build_dialogue_scene_prompt).
+            "voice_id": str(c.get("voice_id") or "")[:120] or None,
+            "user_photo": bool(c.get("user_photo")),
         })
 
     _default_name = f"Cast of “{(video_record.prompt or 'video')[:40].strip()}”"
@@ -1618,6 +1632,7 @@ async def retry_video_external(
                     sub_shots_enabled=bool(_meta.get("sub_shots_enabled", False)),
                     dialogue_scenes_enabled=bool(_meta.get("dialogue_scenes_enabled", False)),
                     dialogue_mode=str(_meta.get("dialogue_mode", "storybook")),
+                    dialogue_clip_model=str(_meta.get("dialogue_clip_model", "seedance-2.0")),
                     cast_id=_meta.get("cast_id"),
                     visual_preferences=_meta.get("visual_preferences"),
                     # Brand kit + per-video overrides — retry rehydrates from saved
@@ -1627,6 +1642,7 @@ async def retry_video_external(
                     # AI video (Phase 3b) — retry rehydrates from saved meta
                     ai_video_enabled=bool(_meta.get("ai_video_enabled", False)),
                     ai_video_audio_enabled=bool(_meta.get("ai_video_audio_enabled", False)),
+                        ai_video_model=_meta.get("ai_video_model"),
                     # Retry parity: rehydrate per-stage overrides from saved meta
                     model_overrides=_meta.get("model_overrides"),
                 ):
@@ -2851,6 +2867,16 @@ async def insert_shot_external(
     html_model = _resolve_html_model(db, quality_tier)
 
     _ensure_video_access(payload.video_id, institute_id, db)
+
+    # All DB reads are done (api-key check, model resolve, access check —
+    # they share this one cached request session). End its transaction so
+    # the connection goes back to the pool during the minutes-long
+    # generation; otherwise PgBouncer culls the idle-in-transaction
+    # connection and the end-of-request commit 500s a successful insert.
+    # insert_shot re-reads the record on this session and releases it again
+    # itself (see SentenceClipService._release_repository_txn).
+    db.rollback()
+
     try:
         # Off the event loop — runs LLM/HTML generation + S3 I/O.
         result = await asyncio.to_thread(

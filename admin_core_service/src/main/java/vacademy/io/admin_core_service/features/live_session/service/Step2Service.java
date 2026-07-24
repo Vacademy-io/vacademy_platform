@@ -82,6 +82,7 @@ public class Step2Service {
         linkParticipants(request);
         processNotificationActions(request, session.getId(), isEdit);
         processCustomFields(request, session);
+        processRecordingAutoLinkConfig(request, session);
 
         session.setStatus(LiveSessionStatus.LIVE.name());
         sessionRepository.save(session);
@@ -117,7 +118,8 @@ public class Step2Service {
                 // Handle ON_EDIT notification immediately — only fire on edit, never on first publish
                 if (dto.getType() == NotificationTypeEnum.ON_EDIT && dto.getNotify()) {
                     if (isEdit) {
-                        liveSessionNotificationProcessor.sendOnEditNotification(sessionId, schedules);
+                        liveSessionNotificationProcessor.sendOnEditNotification(sessionId, schedules,
+                                request.getOldMeetingDate(), request.getOldStartTime());
                     }
                     continue;
                 }
@@ -406,6 +408,23 @@ public class Step2Service {
                 .build();
 
         instituteCustomFieldRepository.save(mapping);
+    }
+
+    /**
+     * Serializes the optional "auto-add recordings to course" config onto the
+     * session, same JSON-column pattern as bbb_config_json/feedback_config_json
+     * in Step1Service. Omitting the field on the request leaves the stored
+     * config untouched (partial Step2 updates must not silently disable it).
+     */
+    private void processRecordingAutoLinkConfig(LiveSessionStep2RequestDTO request, LiveSession session) {
+        if (request.getRecordingAutoLinkConfig() == null) {
+            return;
+        }
+        try {
+            session.setRecordingAutoLinkJson(objectMapper.writeValueAsString(request.getRecordingAutoLinkConfig()));
+        } catch (JsonProcessingException e) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "Failed to convert recording_auto_link_config to JSON");
+        }
     }
 
     private int extractMinutes(String time) {

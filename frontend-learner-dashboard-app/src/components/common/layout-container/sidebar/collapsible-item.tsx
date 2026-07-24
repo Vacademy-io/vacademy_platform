@@ -26,9 +26,9 @@ export const CollapsibleItem = ({ icon, title, subItems, onClick }: SidebarItemP
                         isActive={isChildActive}
                         size="default"
                         className={cn(
-                            "relative h-10 gap-3 rounded-lg px-3 text-body font-medium [&>svg]:size-5",
-                            "hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring",
-                            "data-[active=true]:bg-primary-50 data-[active=true]:text-primary-500",
+                            "relative h-10 gap-3 rounded-lg px-3 text-body font-medium text-nav-text [&>svg]:size-5",
+                            "hover:bg-nav-surface-hover/60 focus-visible:ring-2 focus-visible:ring-ring",
+                            "data-[active=true]:bg-nav-active data-[active=true]:text-nav-active-text",
                             "group-data-[collapsible=icon]:!size-10 group-data-[collapsible=icon]:!p-2",
                             "[.ui-vibrant_&]:data-[active=true]:bg-primary-100",
                             "[.ui-play_&]:rounded-xl [.ui-play_&]:[&>svg]:size-6",
@@ -38,7 +38,7 @@ export const CollapsibleItem = ({ icon, title, subItems, onClick }: SidebarItemP
                         {isChildActive && (
                             <span
                                 aria-hidden
-                                className="absolute inset-y-2 left-0 w-1 rounded-full bg-primary-500"
+                                className="absolute inset-y-2 start-0 w-1 rounded-full bg-nav-active-text"
                             />
                         )}
                         {icon && React.createElement(icon, {
@@ -46,7 +46,7 @@ export const CollapsibleItem = ({ icon, title, subItems, onClick }: SidebarItemP
                             className: "size-5 shrink-0"
                         })}
                         <span className="flex-1 truncate">{title}</span>
-                        <CaretRight className="ml-auto shrink-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                        <CaretRight className="ms-auto shrink-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
                     </SidebarMenuButton>
                 </CollapsibleTrigger>
                 <CollapsibleContent>
@@ -57,9 +57,9 @@ export const CollapsibleItem = ({ icon, title, subItems, onClick }: SidebarItemP
                                     asChild
                                     isActive={item.subItemLink === currentRoute}
                                     className={cn(
-                                        "h-8 rounded-md text-body",
-                                        "hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring",
-                                        "data-[active=true]:bg-primary-50 data-[active=true]:text-primary-500 data-[active=true]:font-medium",
+                                        "h-8 rounded-md text-body text-nav-text",
+                                        "hover:bg-nav-surface-hover/60 focus-visible:ring-2 focus-visible:ring-ring",
+                                        "data-[active=true]:bg-nav-active data-[active=true]:text-nav-active-text data-[active=true]:font-medium",
                                         "[.ui-vibrant_&]:data-[active=true]:bg-primary-100",
                                         "[.ui-play_&]:rounded-lg [.ui-play_&]:data-[active=true]:bg-play-highlight [.ui-play_&]:data-[active=true]:text-play-ink"
                                     )}

@@ -154,6 +154,17 @@ public class CacheConfiguration {
                                 "superAdminInstituteCourses",
                                 caffeineCache2mBuilder().build());
 
+                // Parent-portal caches. MUST be registered or @Cacheable throws in the proxy.
+                // guardianChildren: the authoritative guardian->children list (auth_service HMAC),
+                // keyed on parentUserId, 60s so an admin re-link takes effect within a minute.
+                CaffeineCache guardianChildren = new CaffeineCache(
+                                "guardianChildren",
+                                caffeineCache1mBuilder().build());
+                // parentPortalSettings: institute PARENT_SETTING.parentPortal blob, 2m.
+                CaffeineCache parentPortalSettings = new CaffeineCache(
+                                "parentPortalSettings",
+                                caffeineCache2mBuilder().build());
+
                 cacheManager.setCaches(java.util.List.of(
                                 studyLibraryInit,
                                 facultyByPackageSessions,
@@ -185,7 +196,9 @@ public class CacheConfiguration {
                                 superAdminInstituteList,
                                 superAdminInstituteDetail,
                                 superAdminPlatformDashboard,
-                                superAdminInstituteCourses));
+                                superAdminInstituteCourses,
+                                guardianChildren,
+                                parentPortalSettings));
 
                 return cacheManager;
         }

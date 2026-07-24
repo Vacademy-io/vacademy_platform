@@ -1,0 +1,173 @@
+{
+    "notifications": {
+        "navHeading": "Notifications",
+        "newBadge": "New",
+        "viewDetails": "View Details",
+        "pageTitle": "Notifications",
+        "pageSubtitle": "Stay updated with your latest activities and announcements",
+        "tabGeneral": "General Notifications",
+        "tabAnnouncements": "Announcements",
+        "defaultTitle": "Notification",
+        "occurrenceCount": "×{{count}}",
+        "errorTitle": "Could not load notifications",
+        "emptyTitle": "No notifications yet",
+        "emptyDescription": "You are all caught up. New notifications will show up here.",
+        "loading": "Loading...",
+        "loadMore": "Load more",
+        "announcementsErrorTitle": "Could not load announcements",
+        "announcementsEmptyTitle": "No announcements yet",
+        "announcementsEmptyDescription": "Announcements from your institute will show up here."
+    },
+    "hero": {
+        "greeting": {
+            "morning": "Good morning",
+            "afternoon": "Good afternoon",
+            "evening": "Good evening",
+            "morningWithName": "Good morning, {{name}}",
+            "afternoonWithName": "Good afternoon, {{name}}",
+            "eveningWithName": "Good evening, {{name}}"
+        },
+        "pickUpWhereLeftOff": "Pick up where you left off",
+        "yourFirstSlide": "your first {{slide}}",
+        "liveNow": "{{liveClass}} live now",
+        "startsInMinutes_one": "{{liveClass}} in {{count}} min",
+        "startsInMinutes_other": "{{liveClass}} in {{count}} min",
+        "join": "Join",
+        "dayStreakChip": "day streak",
+        "dailyGoal": "Daily goal",
+        "continueAria": "Continue {{title}}",
+        "ctaContinue": "Continue",
+        "ctaStartLearning": "Start learning",
+        "ctaContinueUpper": "CONTINUE",
+        "ctaStartUpper": "START",
+        "ctaContinueLearningAria": "CONTINUE learning",
+        "ctaStartLearningAria": "START learning"
+    },
+    "statCard": {
+        "getStarted": "Get started",
+        "ariaAction": "{{title}} - {{action}}",
+        "ariaView_one": "View {{title}} - {{count}} items",
+        "ariaView_other": "View {{title}} - {{count}} items"
+    },
+    "membership": {
+        "title": "My Membership",
+        "planActive": "Plan Active",
+        "daysRemaining": "Days Remaining"
+    },
+    "books": {
+        "title": "BOOKS",
+        "tabPurchased": "Purchased",
+        "tabRented": "Rented",
+        "emptyPurchased": "No purchased books available.",
+        "emptyRented": "No rented books available.",
+        "bookCount_one": "{{count}} book",
+        "bookCount_other": "{{count}} books",
+        "pageIndicator": " · {{page}} / {{total}}"
+    },
+    "liveClasses": {
+        "title": "Upcoming {{liveClasses}}",
+        "countInNext24h_one": "{{count}} class in next 24h",
+        "countInNext24h_other": "{{count}} classes in next 24h",
+        "viewAll": "View All",
+        "liveNowBadge": "Live Now",
+        "upcomingBadge": "Upcoming",
+        "join": "Join",
+        "relativeNow": "Now",
+        "relativeInMinutes": "in {{minutes}}m",
+        "relativeInHoursMinutes": "in {{hours}}h {{minutes}}m",
+        "relativeInHours": "in {{hours}}h"
+    },
+    "orders": {
+        "title": "My Orders",
+        "empty": "No orders found.",
+        "unknownBook": "Unknown",
+        "trackingExpected": "Expected in 5-7 days",
+        "trackingSource": "Tracking Source",
+        "paidAmount": "Paid {{amount}}",
+        "savedWith": "· saved {{amount}} with",
+        "pageIndicator": "{{page}} / {{total}}",
+        "columnBook": "Book",
+        "columnStore": "Store",
+        "columnDate": "Date",
+        "columnPayment": "Payment",
+        "columnOrderStatus": "Order Status",
+        "columnTrackingId": "Tracking ID",
+        "columnSource": "Source",
+        "columnTransactionId": "Transaction ID",
+        "paymentStatus": {
+            "PAID": "PAID",
+            "FAILED": "FAILED",
+            "PAYMENT_PENDING": "PAYMENT PENDING",
+            "NOT_INITIATED": "NOT INITIATED",
+            "PENDING": "PENDING"
+        },
+        "orderStatus": {
+            "ORDERED": "ORDERED",
+            "PREPARING_TO_SHIP": "PREPARING TO SHIP",
+            "SHIPPED": "SHIPPED",
+            "IN_TRANSIT": "IN TRANSIT",
+            "DELIVERED": "DELIVERED"
+        }
+    },
+    "progressTable": {
+        "totalSessions": "Total Sessions",
+        "aboveAverage": "Above Average",
+        "consistency": "Consistency",
+        "columnDate": "Date",
+        "columnYourTime": "Your Time",
+        "columnBatchAvg": "{{batch}} Avg",
+        "columnStatus": "Status",
+        "statusAbove": "Above",
+        "statusBelow": "Below",
+        "statusAverage": "Average",
+        "batchAvgValue": "{{batch}} Avg: {{value}}",
+        "percentOfAvg": "{{percent}}% of avg"
+    },
+    "raiseQuery": {
+        "title": "Need help? Raise a query",
+        "subtitle": "Ask a doubt or report a technical / payment issue.",
+        "openQueries_one": "{{count}} open query · view replies",
+        "openQueries_other": "{{count}} open queries · view replies"
+    },
+    "streak": {
+        "dayStreakLabel": "Day streak",
+        "emptyPrompt": "Attend or learn today to start a streak",
+        "best_one": "Best: {{count}} days",
+        "best_other": "Best: {{count}} days",
+        "dayInitial": {
+            "monday": "M",
+            "tuesday": "T",
+            "wednesday": "W",
+            "thursday": "T",
+            "friday": "F",
+            "saturday": "S",
+            "sunday": "S"
+        }
+    },
+    "xp": {
+        "xpUnit": "XP",
+        "levelShort": "Lvl {{level}}",
+        "levelLong": "Level {{level}}",
+        "xpAmount": "{{amount}} XP",
+        "xpToGo": "{{amount}} XP to go",
+        "xpToday": "+{{amount}} XP today",
+        "howYouEarnPoints": "How you earn points",
+        "emptyPrompt": "Earn your first XP in a {{slide}} today"
+    },
+    "gamification": {
+        "points": "points",
+        "pointsToLevel_one": "{{count}} points to level {{level}}",
+        "pointsToLevel_other": "{{count}} points to level {{level}}",
+        "startLearningPrompt": "Start learning to earn your first points.",
+        "streakEmptyPrompt": "Learn today to start a streak",
+        "badgesEmptyPrompt": "Complete a {{slide}} to unlock a badge"
+    },
+    "badges": {
+        "title": "Badges",
+        "tooltip": "{{name}}: {{description}}",
+        "awardedTooltip": "{{name}} — Awarded by your institute",
+        "awardedTooltipWithReason": "{{name}} — Awarded by your institute: {{reason}}",
+        "unlockedCount": "{{unlocked}}/{{total}} unlocked",
+        "emptyPrompt": "Complete your first {{slide}} to unlock a badge"
+    }
+}

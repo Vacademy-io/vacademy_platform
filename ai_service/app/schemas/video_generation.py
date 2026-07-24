@@ -39,6 +39,12 @@ class VideoCostPreviewRequest(BaseModel):
     # spend. Ultra/super_ultra tiers only — silently ignored otherwise.
     ai_video_enabled: bool = False
     ai_video_audio_enabled: bool = False
+    # Dialogue scenes (storybook/drama) — the dominant cost line when on.
+    # The estimator adds an expected-scenes × per-second-rate row, capped
+    # at the tier's dialogue budget.
+    dialogue_scenes_enabled: bool = False
+    dialogue_mode: str = "storybook"
+    dialogue_clip_model: str = "seedance-2.0"
 
 
 class VideoCostPreviewResponse(BaseModel):
@@ -649,6 +655,18 @@ class VideoGenerationRequest(BaseModel):
             "on camera, lip-synced to per-character TTS lines in consistent voices. "
             "The clip carries its own audio (master narration silent in that window). "
             "Adds generation cost (~$0.30/s of dialogue clip at 720p, capped per video)."
+        )
+    )
+    dialogue_clip_model: Literal["seedance-2.0", "omni-flash"] = Field(
+        default="seedance-2.0",
+        description=(
+            "Only meaningful when dialogue_scenes_enabled=True. Which video model "
+            "films the DIALOGUE_SCENE clips. 'seedance-2.0' (default) = voice-locked: "
+            "characters lip-sync to OUR per-character TTS, so voices stay identical "
+            "across scenes and sequel videos (~$0.30/s at 720p). 'omni-flash' = "
+            "Gemini Omni Flash: the model speaks the lines itself — cheaper "
+            "(~$0.13/s) and strong visuals, but voices are model-invented per clip "
+            "and may drift between scenes; clips cap at 10s (vs 15s)."
         )
     )
     dialogue_mode: Literal["storybook", "drama"] = Field(

@@ -95,7 +95,10 @@ export type ToolKey =
     | 'course_outline'
     | 'course_slide_document'
     | 'course_slide_assessment'
-    | 'course_slide_video';
+    | 'course_slide_video'
+    | 'html_document'
+    | 'html_document_edit'
+    | 'copy_check_evaluation';
 export type ToolUnitField = 'questions' | 'audio_minutes' | 'chars' | 'flat';
 export type ToolParams = Record<string, string | number | boolean | undefined>;
 

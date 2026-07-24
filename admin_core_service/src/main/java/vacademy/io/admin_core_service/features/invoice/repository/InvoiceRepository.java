@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import vacademy.io.admin_core_service.features.invoice.entity.Invoice;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -50,6 +51,32 @@ public interface InvoiceRepository extends JpaRepository<Invoice, String> {
        long countByInvoiceNumberStartingWith(String prefix);
 
        boolean existsByInvoiceNumber(String invoiceNumber);
+
+       @Query("SELECT i FROM Invoice i WHERE i.userId = :userId AND i.instituteId = :instituteId " +
+                     "AND i.status = 'PENDING_PAYMENT' AND i.source = 'ADMIN_MANUAL' " +
+                     "ORDER BY i.createdAt ASC")
+       List<Invoice> findPendingAdminManualInvoices(@Param("userId") String userId,
+                     @Param("instituteId") String instituteId);
+
+       /** Sum of non-REJECTED admin invoices with no DEBIT_ACCRUAL ledger entry (pre-ledger-integration invoices). */
+       @Query(value = "SELECT COALESCE(SUM(i.total_amount), 0) FROM invoice i " +
+                     "WHERE i.user_id = :userId AND i.institute_id = :instituteId " +
+                     "AND i.source = 'ADMIN_MANUAL' AND i.status != 'REJECTED' " +
+                     "AND NOT EXISTS (SELECT 1 FROM user_account_ledger l " +
+                     "WHERE l.source_type = 'ADMIN_INVOICE' AND l.source_id = i.id " +
+                     "AND l.event_type = 'DEBIT_ACCRUAL')", nativeQuery = true)
+       BigDecimal sumUnledgeredAdminInvoiceAccruals(@Param("userId") String userId,
+                     @Param("instituteId") String instituteId);
+
+       /** Sum of PAID admin invoices with no credit ledger entry (pre-ledger-integration payments). */
+       @Query(value = "SELECT COALESCE(SUM(i.total_amount), 0) FROM invoice i " +
+                     "WHERE i.user_id = :userId AND i.institute_id = :instituteId " +
+                     "AND i.source = 'ADMIN_MANUAL' AND i.status = 'PAID' " +
+                     "AND NOT EXISTS (SELECT 1 FROM user_account_ledger l " +
+                     "WHERE l.source_type = 'ADMIN_INVOICE' AND l.source_id = i.id " +
+                     "AND l.event_type IN ('CREDIT_PAYMENT', 'CREDIT_WAIVER', 'CREDIT_ADJUSTMENT'))", nativeQuery = true)
+       BigDecimal sumUnledgeredAdminInvoicePayments(@Param("userId") String userId,
+                     @Param("instituteId") String instituteId);
 
        @Query("SELECT i FROM Invoice i WHERE i.instituteId = :instituteId " +
                      "AND (:userId IS NULL OR i.userId = :userId) " +

@@ -14,6 +14,7 @@ import {
 } from '@phosphor-icons/react';
 import type {
     CastGateCharacter,
+    CastVoiceOption,
     DecisionAnswer,
     DecisionRequest,
 } from '../../../-services/video-generation';
@@ -30,6 +31,26 @@ interface CharState {
     /** Redo-with-note toggle + text. */
     redo?: boolean;
     note?: string;
+    /** Voice the user picked ('' = auto); undefined = untouched. */
+    voiceId?: string;
+}
+
+const voiceSelectCls =
+    'h-7 w-full rounded-md border bg-background px-1.5 text-xs text-foreground outline-none focus:border-violet-500';
+
+/**
+ * Narrow the voice list to the character's likely gender when the voice_hint
+ * makes it inferable ("warm female voice" → female list). Checks female terms
+ * first — 'female' contains 'male'. Falls back to the full list.
+ */
+function voicesForHint(options: CastVoiceOption[], hint?: string): CastVoiceOption[] {
+    const h = (hint ?? '').toLowerCase();
+    let gender: 'male' | 'female' | null = null;
+    if (/female|woman/.test(h)) gender = 'female';
+    else if (/\b(male|man)\b/.test(h)) gender = 'male';
+    if (!gender) return options;
+    const filtered = options.filter((o) => o.gender === gender);
+    return filtered.length > 0 ? filtered : options;
 }
 
 /**
@@ -42,6 +63,12 @@ export function CastDecision({ decision, isSubmitting, onSubmit }: CastDecisionP
     const characters = useMemo<CastGateCharacter[]>(() => {
         const raw = (decision.payload?.characters as CastGateCharacter[]) ?? [];
         return Array.isArray(raw) ? raw.filter((c) => c && c.name) : [];
+    }, [decision.payload]);
+
+    // Selectable dialogue voices — absent on non-dialogue runs (render nothing).
+    const voiceOptions = useMemo<CastVoiceOption[]>(() => {
+        const raw = (decision.payload?.voice_options as CastVoiceOption[]) ?? [];
+        return Array.isArray(raw) ? raw.filter((o) => o && o.voice_id) : [];
     }, [decision.payload]);
 
     const [state, setState] = useState<Record<string, CharState>>({});
@@ -82,9 +109,13 @@ export function CastDecision({ decision, isSubmitting, onSubmit }: CastDecisionP
         }
     };
 
+    /** True when the user picked a voice different from the character's current one. */
+    const voiceChanged = (c: CastGateCharacter, st: CharState): boolean =>
+        !!st.voiceId && st.voiceId !== (c.voice_id ?? '');
+
     const changes = characters.filter((c) => {
         const st = state[c.name] ?? {};
-        return st.url || (st.redo && st.note?.trim());
+        return st.url || (st.redo && st.note?.trim()) || voiceChanged(c, st);
     }).length;
     const hasEmptyRedoNote = characters.some((c) => {
         const st = state[c.name] ?? {};
@@ -96,12 +127,17 @@ export function CastDecision({ decision, isSubmitting, onSubmit }: CastDecisionP
             onSubmit({ kind: 'accept_recommended' });
             return;
         }
-        const edits: Array<{ name: string; url?: string; regen_note?: string }> = [];
+        const edits: Array<{ name: string; url?: string; regen_note?: string; voice_id?: string }> =
+            [];
         for (const c of characters) {
             const st = state[c.name] ?? {};
-            if (st.url) edits.push({ name: c.name, url: st.url });
-            else if (st.redo && st.note?.trim())
-                edits.push({ name: c.name, regen_note: st.note.trim() });
+            const entry: { name: string; url?: string; regen_note?: string; voice_id?: string } = {
+                name: c.name,
+            };
+            if (st.url) entry.url = st.url;
+            else if (st.redo && st.note?.trim()) entry.regen_note = st.note.trim();
+            if (st.voiceId && voiceChanged(c, st)) entry.voice_id = st.voiceId;
+            if (entry.url || entry.regen_note || entry.voice_id) edits.push(entry);
         }
         onSubmit({ kind: 'edit', gate_type: 'cast', characters: edits });
     };
@@ -126,7 +162,16 @@ export function CastDecision({ decision, isSubmitting, onSubmit }: CastDecisionP
                 {characters.map((c) => {
                     const st = state[c.name] ?? {};
                     const shownUrl = st.url ?? c.sheet_url ?? null;
-                    const edited = !!(st.url || (st.redo && st.note?.trim()));
+                    const edited = !!(
+                        st.url ||
+                        (st.redo && st.note?.trim()) ||
+                        voiceChanged(c, st)
+                    );
+                    const charVoices = voicesForHint(voiceOptions, c.voice_hint);
+                    // The assigned voice must stay selectable even when the
+                    // gender filter (or a stale option list) excludes it.
+                    const missingCurrent =
+                        !!c.voice_id && !charVoices.some((o) => o.voice_id === c.voice_id);
                     return (
                         <div
                             key={c.name}
@@ -156,6 +201,31 @@ export function CastDecision({ decision, isSubmitting, onSubmit }: CastDecisionP
                                         </span>
                                     ) : null}
                                 </p>
+                                {voiceOptions.length > 0 && (
+                                    <select
+                                        value={st.voiceId ?? c.voice_id ?? ''}
+                                        disabled={isSubmitting}
+                                        onChange={(e) =>
+                                            patch(c.name, { voiceId: e.target.value })
+                                        }
+                                        className={voiceSelectCls}
+                                        aria-label={`Voice for ${c.name}`}
+                                    >
+                                        {!c.voice_id && <option value="">Auto voice</option>}
+                                        {missingCurrent && (
+                                            <option value={c.voice_id ?? ''}>
+                                                {voiceOptions.find(
+                                                    (o) => o.voice_id === c.voice_id
+                                                )?.label ?? c.voice_id}
+                                            </option>
+                                        )}
+                                        {charVoices.map((o) => (
+                                            <option key={o.voice_id} value={o.voice_id}>
+                                                {o.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                )}
                                 {c.visual_description ? (
                                     <p className="line-clamp-2 text-xs text-muted-foreground">
                                         {c.visual_description}
@@ -207,7 +277,7 @@ export function CastDecision({ decision, isSubmitting, onSubmit }: CastDecisionP
             <div className="flex items-center justify-between gap-2 border-t px-4 py-3">
                 <span className="text-xs text-muted-foreground">
                     {changes > 0
-                        ? `${changes} portrait${changes === 1 ? '' : 's'} will be updated before filming.`
+                        ? `${changes} change${changes === 1 ? '' : 's'} will be applied before filming.`
                         : 'These faces will appear in every scene.'}
                 </span>
                 <Button

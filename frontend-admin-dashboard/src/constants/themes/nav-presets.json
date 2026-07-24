@@ -1,0 +1,48 @@
+{
+  "presets": [
+    {
+      "id": "match-brand",
+      "label": "Light (default)",
+      "description": "Sidebar stays white — today's look, unchanged.",
+      "kind": "match-brand"
+    },
+    {
+      "id": "charcoal",
+      "label": "Charcoal Rail",
+      "description": "Neutral dark sidebar with your brand color on the active item.",
+      "kind": "fixed",
+      "colors": {
+        "surface": "#1C1F24",
+        "surfaceHover": "#262A31",
+        "activeText": "#FFFFFF",
+        "text": "#9AA1AC"
+      }
+    },
+    {
+      "id": "midnight",
+      "label": "Midnight Rail",
+      "description": "Dark sidebar tinted toward your brand color, not neutral gray.",
+      "kind": "brand-tinted",
+      "activeText": "#FFFFFF"
+    },
+    {
+      "id": "soft-tint",
+      "label": "Soft Tint",
+      "description": "A pale, brand-tinted sidebar — a step warmer than plain white.",
+      "kind": "brand-tinted-light",
+      "activeText": "#FFFFFF"
+    },
+    {
+      "id": "deep-navy",
+      "label": "Deep Navy",
+      "description": "A fixed navy sidebar, independent of your brand color — a common corporate-admin look.",
+      "kind": "fixed",
+      "colors": {
+        "surface": "#0F1A2E",
+        "surfaceHover": "#182640",
+        "activeText": "#FFFFFF",
+        "text": "#8A97B0"
+      }
+    }
+  ]
+}

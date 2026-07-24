@@ -76,11 +76,24 @@ export function BulkAssignCounsellorDialog({
     open,
     onOpenChange,
     instituteId,
-    leads,
+    leads: selectedLeads,
     counsellorOptions,
     initialMode = 'ROUND_ROBIN',
     onSuccess,
 }: BulkAssignCounsellorDialogProps) {
+    // Assignment is per PERSON (it writes user_lead_profile.assigned_counselor_id, one row per
+    // user), but the caller's selection is per campaign response — so the same person arrives
+    // once per selected row. Collapse them here rather than at each call site: duplicates would
+    // send the same user_id twice AND, under round-robin, hand one person to two different
+    // counsellors via the index-based rotation below, leaving the winner to chance.
+    const leads = useMemo(() => {
+        const byUser = new Map<string, BulkAssignLead>();
+        selectedLeads.forEach((l) => {
+            if (l.userId && !byUser.has(l.userId)) byUser.set(l.userId, l);
+        });
+        return Array.from(byUser.values());
+    }, [selectedLeads]);
+
     const [mode, setMode] = useState<Mode>(initialMode);
     const [singleTarget, setSingleTarget] = useState<string>('');
     // Round-robin participants — all counsellors pre-checked; admin can deselect.

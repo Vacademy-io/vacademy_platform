@@ -39,10 +39,22 @@ import { convertCapitalToTitleCase } from '@/lib/utils';
 
 export function convertDateFormat(dateStr: string) {
     if (dateStr === '') return '';
-    const date = new Date(dateStr);
 
-    // Format it properly for datetime-local input
-    return date.toISOString().slice(0, 16);
+    // Backend sends timestamps as UTC but sometimes omits the trailing 'Z'.
+    // `new Date("2026-07-11T12:37:00")` without a zone marker is parsed as
+    // *local* time by browsers, silently shifting the instant. Force UTC
+    // interpretation when no zone marker is present.
+    const hasTimezone = /Z$|[+-]\d{2}:?\d{2}$/i.test(dateStr);
+    const normalized = hasTimezone ? dateStr : `${dateStr.replace(' ', 'T')}Z`;
+    const date = new Date(normalized);
+    if (isNaN(date.getTime())) return '';
+
+    // Emit LOCAL wall-clock components for the datetime-local input, which
+    // interprets its value as local time. Using toISOString() here would leak
+    // UTC digits into the form, shifting the shown time by the TZ offset and
+    // corrupting the stored instant on re-save.
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 const SectionCard = ({

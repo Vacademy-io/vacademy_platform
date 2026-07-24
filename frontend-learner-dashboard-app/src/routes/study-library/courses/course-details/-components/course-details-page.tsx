@@ -1,6 +1,7 @@
 import { useRouter } from "@tanstack/react-router";
 import { CaretLeft, CaretDown, Info } from "@phosphor-icons/react";
 import { cn, toTitleCase } from "@/lib/utils";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -58,6 +59,7 @@ import LocalStorageUtils from "@/utils/localstorage";
 
 import { fetchPaymentOptions } from "@/routes/courses/-services/payment-options-api";
 import { CourseHeader } from "./course-header";
+import { CourseSubscriptionCancel } from "./CourseSubscriptionCancel";
 import { CertificateCompletionBanner } from "./certificate-completion-banner.tsx";
 import { CourseEnrollment } from "./course-enrollment";
 import { CourseContentSections } from "./course-content-sections";
@@ -184,7 +186,7 @@ const heading = (
       onClick={() => window.history.back()}
       className="cursor-pointer"
     />
-    <h1 className="text-lg ml-2">
+    <h1 className="text-lg ms-2">
       {getTerminology(ContentTerms.Course, SystemTerms.Course)} Details
     </h1>
   </div>
@@ -1959,6 +1961,8 @@ export const CourseDetailsPage = () => {
     useState<boolean>(true);
   const [overviewVisible, setOverviewVisible] = useState<boolean>(true);
   const [hideAuthorName, setHideAuthorName] = useState<boolean>(false);
+  // Teachers/Instructors section is hidden unless the institute opts in.
+  const [showInstructors, setShowInstructors] = useState<boolean>(false);
 
   useEffect(() => {
     getStudentDisplaySettings(false)
@@ -1971,12 +1975,14 @@ export const CourseDetailsPage = () => {
           setShowCourseConfiguration(resolvedShowCourseConfiguration);
           setOverviewVisible(resolvedOverviewVisible);
           setHideAuthorName(cd.hideAuthorName ?? false);
+          setShowInstructors(cd.showInstructors ?? false);
         }
       })
       .catch(() => {
         setShowCourseConfiguration(true);
         setOverviewVisible(true);
         setHideAuthorName(false);
+        setShowInstructors(false);
       });
   }, []);
 
@@ -2146,6 +2152,7 @@ export const CourseDetailsPage = () => {
                 const highlightsBlock = (
                   <CourseDetailsCollapsible
                     courseData={form.getValues("courseData")}
+                    showInstructors={showInstructors}
                   />
                 );
 
@@ -2218,6 +2225,17 @@ export const CourseDetailsPage = () => {
                   <>
                     {structureBlock}
                     {enrollmentBlock}
+                    {/* Cancel autopay — self-hides unless this course has an active
+                        mandate. Hidden on native iOS (reader mode): it surfaces a
+                        subscription bought on the web; managed there (Apple 3.1.1). */}
+                    {!shouldHidePaidPurchaseUI() && (
+                      <CourseSubscriptionCancel
+                        instituteId={instituteId || ""}
+                        packageSessionId={
+                          packageSessionIdForCurrentLevel || undefined
+                        }
+                      />
+                    )}
                     {highlightsBlock}
                   </>
                 ) : (
@@ -2376,8 +2394,10 @@ type CourseDetailsForSections = {
 // appears as an empty control.
 const CourseDetailsCollapsible = ({
   courseData,
+  showInstructors = false,
 }: {
   courseData: CourseDetailsForSections;
+  showInstructors?: boolean;
 }) => {
   const [open, setOpen] = useState<boolean>(false);
   const hasWhatYoullLearn = !!extractTextFromHTML(courseData?.whatYoullLearn);
@@ -2400,12 +2420,12 @@ const CourseDetailsCollapsible = ({
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={contentId}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-start hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
       >
         <span className="flex items-center gap-2 min-w-0">
           <Info className="w-4 h-4 text-primary flex-shrink-0" weight="bold" />
           <span className="text-sm font-semibold truncate">
-            {getTerminology(ContentTerms.Course, SystemTerms.Course)} highlights
+            {getTerminology(ContentTerms.Course, SystemTerms.Course)} Highlights
           </span>
         </span>
         <CaretDown
@@ -2417,7 +2437,7 @@ const CourseDetailsCollapsible = ({
       </button>
       {open && (
         <div id={contentId} className="px-4 pb-4 pt-1">
-          <CourseContentSections courseData={courseData} />
+          <CourseContentSections courseData={courseData} showInstructors={showInstructors} />
         </div>
       )}
     </section>

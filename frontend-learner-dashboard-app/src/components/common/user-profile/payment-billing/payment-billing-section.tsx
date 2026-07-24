@@ -5,6 +5,7 @@ import {
   CalendarBlank,
   Info,
   SpinnerGap,
+  ArrowsClockwise,
 } from "@phosphor-icons/react";
 import { MyButton } from "@/components/design-system/button";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
@@ -18,6 +19,8 @@ import { StripeCardUpdate } from "./stripe-card-update";
 import { EwayCardUpdate } from "./eway-card-update";
 import { BillingDetailsForm } from "./billing-details-form";
 import { EnrollmentExpiryList } from "./enrollment-expiry-list";
+import { SubscriptionMandateList } from "./subscription-mandate-list";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 interface PaymentBillingSectionProps {
   instituteId: string;
@@ -33,6 +36,12 @@ export const PaymentBillingSection = ({
   instituteId,
   userId,
 }: PaymentBillingSectionProps) => {
+  // Reader-mode (native iOS): saved cards, autopay/subscriptions and access
+  // expiry are paid-subscription surfaces Apple flags under Guideline 3.1.1 —
+  // hide the whole section. The platform check is constant per session, so the
+  // early return never changes hook order between renders.
+  if (shouldHidePaidPurchaseUI()) return null;
+
   const [isEditingCard, setIsEditingCard] = useState(false);
   const queryClient = useQueryClient();
 
@@ -167,6 +176,19 @@ export const PaymentBillingSection = ({
           <h3>Payment &amp; Billing</h3>
         </div>
         {renderCardArea()}
+      </div>
+
+      {/* Auto-renewing subscriptions (cancel autopay per plan) */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 border-b pb-2 text-lg font-semibold text-gray-900">
+          <ArrowsClockwise
+            size={20}
+            className="text-primary-500"
+            weight="bold"
+          />
+          <h3>Subscriptions &amp; Autopay</h3>
+        </div>
+        <SubscriptionMandateList instituteId={instituteId} />
       </div>
 
       {/* Enrollment expiry */}

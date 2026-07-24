@@ -8,3 +8,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+// Injected by Vite `define` from package.json — the embedded JS bundle version.
+declare const __APP_VERSION__: string;

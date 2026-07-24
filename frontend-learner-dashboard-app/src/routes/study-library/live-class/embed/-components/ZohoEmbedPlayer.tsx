@@ -1,5 +1,6 @@
 import React from "react";
 import { ArrowSquareOut } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 
 interface ZohoEmbedPlayerProps {
     /** The statelessStart URL with signature & frameOrigin from the backend (provider_host_url) */
@@ -12,6 +13,7 @@ const ZohoEmbedPlayer: React.FC<ZohoEmbedPlayerProps> = ({
     providerHostUrl,
     meetingUrl = "",
 }) => {
+    const { t } = useTranslation("studyContent");
     // If we have the providerHostUrl (statelessStart with frameOrigin), embed it directly
     if (providerHostUrl) {
         return (
@@ -31,7 +33,7 @@ const ZohoEmbedPlayer: React.FC<ZohoEmbedPlayerProps> = ({
     if (!meetingUrl) {
         return (
             <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">
-                No meeting URL available. Please contact support.
+                {t("liveClass.noMeetingUrl")}
             </div>
         );
     }
@@ -44,13 +46,13 @@ const ZohoEmbedPlayer: React.FC<ZohoEmbedPlayerProps> = ({
                 </div>
                 <h3 className="text-white text-xl font-semibold">Zoho Meeting</h3>
                 <p className="text-neutral-400 text-sm max-w-xs">
-                    Click below to join the live session in a new tab.
+                    {t("liveClass.zohoClickToJoin")}
                 </p>
                 <button
                     className="mt-2 inline-flex items-center gap-2 px-6 py-3 rounded-full bg-primary-500 hover:bg-primary-600 text-white font-medium text-sm transition-colors"
                     onClick={() => window.open(meetingUrl, "_blank", "noopener,noreferrer")}
                 >
-                    Join Meeting
+                    {t("liveClass.joinMeeting")}
                     <ArrowSquareOut size={16} weight="bold" />
                 </button>
             </div>

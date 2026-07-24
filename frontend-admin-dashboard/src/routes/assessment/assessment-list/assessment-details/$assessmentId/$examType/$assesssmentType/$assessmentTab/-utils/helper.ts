@@ -2,6 +2,7 @@ import { SubmissionStudentData } from '@/types/assessments/assessment-overview';
 import {
     assessmentStatusStudentAttemptedColumnsExternal,
     assessmentStatusStudentAttemptedColumnsInternal,
+    assessmentSubmissionFileColumn,
     assessmentStatusStudentOngoingColumnsExternal,
     assessmentStatusStudentOngoingColumnsInternal,
     assessmentStatusStudentPendingColumnsExternal,
@@ -252,55 +253,103 @@ export const getAssessmentStep3ParticipantsListIndividualStudents = (
     });
 };
 
-export const getAllColumnsForTable = (type: string, selectedParticipantsTab: string) => {
+// For MANUAL evaluation assessments, splice the "Submission" file badge column
+// into the Attempted columns, right before the evaluation/result status column.
+const withSubmissionFileColumn = (columns: typeof assessmentStatusStudentAttemptedColumnsInternal) => {
+    const statusIndex = columns.findIndex(
+        (col) =>
+            'accessorKey' in col &&
+            (col.accessorKey === 'evaluation_status' || col.accessorKey === 'result_status')
+    );
+    const insertAt = statusIndex === -1 ? columns.length - 1 : statusIndex;
+    return [
+        ...columns.slice(0, insertAt),
+        assessmentSubmissionFileColumn,
+        ...columns.slice(insertAt),
+    ];
+};
+
+export const getAllColumnsForTable = (
+    type: string,
+    selectedParticipantsTab: string,
+    isManualEvaluation = false
+) => {
     if (type === 'PUBLIC') {
         if (selectedParticipantsTab === 'internal')
             return {
-                Attempted: assessmentStatusStudentAttemptedColumnsInternal,
+                Attempted: isManualEvaluation
+                    ? withSubmissionFileColumn(assessmentStatusStudentAttemptedColumnsInternal)
+                    : assessmentStatusStudentAttemptedColumnsInternal,
                 Pending: assessmentStatusStudentPendingColumnsInternal,
                 Ongoing: assessmentStatusStudentOngoingColumnsInternal,
             };
         return {
-            Attempted: assessmentStatusStudentAttemptedColumnsExternal,
+            Attempted: isManualEvaluation
+                ? withSubmissionFileColumn(assessmentStatusStudentAttemptedColumnsExternal)
+                : assessmentStatusStudentAttemptedColumnsExternal,
             Pending: assessmentStatusStudentPendingColumnsExternal,
             Ongoing: assessmentStatusStudentOngoingColumnsExternal,
         };
     }
     if (selectedParticipantsTab === 'internal')
         return {
-            Attempted: assessmentStatusStudentAttemptedColumnsInternal,
+            Attempted: isManualEvaluation
+                ? withSubmissionFileColumn(assessmentStatusStudentAttemptedColumnsInternal)
+                : assessmentStatusStudentAttemptedColumnsInternal,
             Pending: assessmentStatusStudentPendingColumnsInternal,
             Ongoing: assessmentStatusStudentOngoingColumnsInternal,
         };
     return {
-        Attempted: assessmentStatusStudentAttemptedColumnsExternal,
+        Attempted: isManualEvaluation
+            ? withSubmissionFileColumn(assessmentStatusStudentAttemptedColumnsExternal)
+            : assessmentStatusStudentAttemptedColumnsExternal,
         Pending: assessmentStatusStudentPendingColumnsExternal,
         Ongoing: assessmentStatusStudentOngoingColumnsExternal,
     };
 };
 
-export const getAllColumnsForTableWidth = (type: string, selectedParticipantsTab: string) => {
+// Width for the manual-evaluation "Submission" column ("Not Submitted" chip + Upload button).
+const SUBMISSION_FILE_COLUMN_WIDTH = { submission_file: 'min-w-[240px]' };
+
+export const getAllColumnsForTableWidth = (
+    type: string,
+    selectedParticipantsTab: string,
+    isManualEvaluation = false
+) => {
+    const submissionWidth = isManualEvaluation ? SUBMISSION_FILE_COLUMN_WIDTH : {};
     if (type === 'PUBLIC') {
         if (selectedParticipantsTab === 'internal')
             return {
-                Attempted: ASSESSMENT_STATUS_STUDENT_ATTEMPTED_COLUMNS_INTERNAL_WIDTH,
+                Attempted: {
+                    ...ASSESSMENT_STATUS_STUDENT_ATTEMPTED_COLUMNS_INTERNAL_WIDTH,
+                    ...submissionWidth,
+                },
                 Ongoing: ASSESSMENT_STATUS_STUDENT_ONGOING_COLUMNS_INTERNAL_WIDTH,
                 Pending: ASSESSMENT_STATUS_STUDENT_PENDING_COLUMNS_INTERNAL_WIDTH,
             };
         return {
-            Attempted: ASSESSMENT_STATUS_STUDENT_ATTEMPTED_COLUMNS_EXTERNAL_WIDTH,
+            Attempted: {
+                ...ASSESSMENT_STATUS_STUDENT_ATTEMPTED_COLUMNS_EXTERNAL_WIDTH,
+                ...submissionWidth,
+            },
             Ongoing: ASSESSMENT_STATUS_STUDENT_ONGOING_COLUMNS_EXTERNAL_WIDTH,
             Pending: ASSESSMENT_STATUS_STUDENT_PENDING_COLUMNS_EXTERNAL_WIDTH,
         };
     }
     if (selectedParticipantsTab === 'internal')
         return {
-            Attempted: ASSESSMENT_STATUS_STUDENT_ATTEMPTED_COLUMNS_INTERNAL_WIDTH,
+            Attempted: {
+                ...ASSESSMENT_STATUS_STUDENT_ATTEMPTED_COLUMNS_INTERNAL_WIDTH,
+                ...submissionWidth,
+            },
             Ongoing: ASSESSMENT_STATUS_STUDENT_ONGOING_COLUMNS_INTERNAL_WIDTH,
             Pending: ASSESSMENT_STATUS_STUDENT_PENDING_COLUMNS_INTERNAL_WIDTH,
         };
     return {
-        Attempted: ASSESSMENT_STATUS_STUDENT_ATTEMPTED_COLUMNS_EXTERNAL_WIDTH,
+        Attempted: {
+            ...ASSESSMENT_STATUS_STUDENT_ATTEMPTED_COLUMNS_EXTERNAL_WIDTH,
+            ...submissionWidth,
+        },
         Ongoing: ASSESSMENT_STATUS_STUDENT_ONGOING_COLUMNS_EXTERNAL_WIDTH,
         Pending: ASSESSMENT_STATUS_STUDENT_PENDING_COLUMNS_EXTERNAL_WIDTH,
     };

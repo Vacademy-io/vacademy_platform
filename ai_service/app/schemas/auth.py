@@ -33,6 +33,7 @@ class PinnedPrincipal(BaseModel):
     user_id: str
     institute_id: str
     username: Optional[str] = None
+    full_name: Optional[str] = None
     roles: List[str] = []
     permissions: List[str] = []
     is_root_user: bool = False

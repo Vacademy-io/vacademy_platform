@@ -142,6 +142,13 @@ module.exports = {
                     DEFAULT: 'hsl(var(--secondary))',
                     foreground: 'hsl(var(--secondary-foreground))',
                 },
+                nav: {
+                    surface: 'hsl(var(--nav-surface))',
+                    'surface-hover': 'hsl(var(--nav-surface-hover))',
+                    active: 'hsl(var(--nav-active))',
+                    'active-text': 'hsl(var(--nav-active-text))',
+                    text: 'hsl(var(--nav-text))',
+                },
                 destructive: {
                     DEFAULT: 'hsl(var(--destructive))',
                     foreground: 'hsl(var(--destructive-foreground))',

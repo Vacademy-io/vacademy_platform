@@ -16,31 +16,50 @@ import java.util.Date;
 public interface SupportTicketRepository extends JpaRepository<SupportTicket, String> {
 
     // ---- Institute (admin) facing ------------------------------------------------
+    // NOTE: every institute-facing read MUST exclude internal-only tickets — those are
+    // support-team scratch work the client must never see.
 
-    Page<SupportTicket> findByInstituteIdOrderByLastMessageAtDesc(String instituteId, Pageable pageable);
+    Page<SupportTicket> findByInstituteIdAndInternalOnlyFalseOrderByLastMessageAtDesc(
+            String instituteId, Pageable pageable);
 
-    Page<SupportTicket> findByInstituteIdAndStatusOrderByLastMessageAtDesc(
+    Page<SupportTicket> findByInstituteIdAndStatusAndInternalOnlyFalseOrderByLastMessageAtDesc(
             String instituteId, TicketStatus status, Pageable pageable);
 
+    long countByInstituteIdAndStatusInAndInternalOnlyFalse(String instituteId,
+                                                           Collection<TicketStatus> statuses);
+
+    /** Includes internal-only tickets — super-admin views only, never the institute's own. */
     long countByInstituteIdAndStatusIn(String instituteId, Collection<TicketStatus> statuses);
 
     // ---- Super-admin (console) facing --------------------------------------------
 
     /**
      * Inbox search with optional filters. Each filter is skipped when its parameter is null
-     * (and {@code onlyOverdue} is skipped when false).
+     * (and {@code onlyOverdue} is skipped when false). Internal-only tickets ARE included —
+     * this is the support team's own view.
+     *
+     * <p>The institute filter is gated by {@code hasInstitutes} rather than a null check on the
+     * collection: binding null (or an empty list) to an {@code IN} parameter is not portable and
+     * blows up at bind time. Callers MUST pass a non-empty {@code instituteIds} — use a throwaway
+     * sentinel when {@code hasInstitutes} is false; the OR makes it unreachable.
      */
     @Query("SELECT t FROM SupportTicket t WHERE "
-            + "(:instituteId IS NULL OR t.instituteId = :instituteId) AND "
+            + "(:hasInstitutes = false OR t.instituteId IN :instituteIds) AND "
             + "(:status IS NULL OR t.status = :status) AND "
             + "(:engineerId IS NULL OR t.assignedEngineerId = :engineerId) AND "
+            + "(:unassigned = false OR t.assignedEngineerId IS NULL) AND "
+            + "(:search IS NULL OR LOWER(t.subject) LIKE :search ESCAPE '!') AND "
             + "(:onlyOverdue = false OR (t.firstRespondedAt IS NULL AND t.firstResponseDueAt IS NOT NULL "
             + "    AND t.firstResponseDueAt < :now "
             + "    AND t.status NOT IN (vacademy.io.community_service.feature.support.enums.TicketStatus.RESOLVED, "
             + "    vacademy.io.community_service.feature.support.enums.TicketStatus.CLOSED)))")
-    Page<SupportTicket> searchTickets(@Param("instituteId") String instituteId,
+    Page<SupportTicket> searchTickets(@Param("hasInstitutes") boolean hasInstitutes,
+                                      @Param("instituteIds") Collection<String> instituteIds,
                                       @Param("status") TicketStatus status,
                                       @Param("engineerId") String engineerId,
+                                      @Param("unassigned") boolean unassigned,
+                                      /** Pre-lowercased, wildcard-escaped and %-wrapped by the service. */
+                                      @Param("search") String search,
                                       @Param("onlyOverdue") boolean onlyOverdue,
                                       @Param("now") Date now,
                                       Pageable pageable);

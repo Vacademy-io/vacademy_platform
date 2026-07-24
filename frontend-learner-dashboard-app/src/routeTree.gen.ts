@@ -36,10 +36,13 @@ import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as CoursesIndexRouteImport } from './routes/courses/index'
 import { Route as ChatIndexRouteImport } from './routes/chat/index'
 import { Route as ChangePasswordIndexRouteImport } from './routes/change-password/index'
+import { Route as BookingResponseIndexRouteImport } from './routes/booking-response/index'
+import { Route as BookingManageIndexRouteImport } from './routes/booking-manage/index'
 import { Route as AuthTransferIndexRouteImport } from './routes/auth-transfer/index'
 import { Route as AudienceResponseIndexRouteImport } from './routes/audience-response/index'
 import { Route as AssessmentIndexRouteImport } from './routes/assessment/index'
 import { Route as AiSettingsIndexRouteImport } from './routes/ai-settings/index'
+import { Route as AccountDeletionIndexRouteImport } from './routes/account-deletion/index'
 import { Route as TagNameIndexRouteImport } from './routes/$tagName/index'
 import { Route as SubOrgRegistrationPaymentResultRouteImport } from './routes/sub-org-registration/payment-result'
 import { Route as ParentDocumentsRouteImport } from './routes/parent/documents'
@@ -50,6 +53,7 @@ import { Route as StudyLibraryLiveClassIndexRouteImport } from './routes/study-l
 import { Route as StudyLibraryCoursesIndexRouteImport } from './routes/study-library/courses/index'
 import { Route as ReportsAttendanceIndexRouteImport } from './routes/reports/attendance/index'
 import { Route as RegisterLiveClassIndexRouteImport } from './routes/register/live-class/index'
+import { Route as ProfileOnboardingIndexRouteImport } from './routes/profile/onboarding/index'
 import { Route as ProductPagesProductPageCodeIndexRouteImport } from './routes/product-pages/$productPageCode/index'
 import { Route as PlanningPlanningLogsIndexRouteImport } from './routes/planning/planning-logs/index'
 import { Route as PlanningActivityLogsIndexRouteImport } from './routes/planning/activity-logs/index'
@@ -58,6 +62,7 @@ import { Route as ParentScheduleIndexRouteImport } from './routes/parent/schedul
 import { Route as ParentPaymentIndexRouteImport } from './routes/parent/payment/index'
 import { Route as ParentDocumentsIndexRouteImport } from './routes/parent/documents/index'
 import { Route as ParentDashboardIndexRouteImport } from './routes/parent/dashboard/index'
+import { Route as ParentChildIndexRouteImport } from './routes/parent/child/index'
 import { Route as ParentApplicationIndexRouteImport } from './routes/parent/application/index'
 import { Route as ParentAdmissionIndexRouteImport } from './routes/parent/admission/index'
 import { Route as MyReportsProcessIdIndexRouteImport } from './routes/my-reports/$processId/index'
@@ -75,6 +80,7 @@ import { Route as AssessmentReportsIndexRouteImport } from './routes/assessment/
 import { Route as AssessmentListIndexRouteImport } from './routes/assessment/list/index'
 import { Route as AssessmentExaminationIndexRouteImport } from './routes/assessment/examination/index'
 import { Route as TagNameCourseIdIndexRouteImport } from './routes/$tagName/$courseId/index'
+import { Route as ParentChildChildIdRouteImport } from './routes/parent/child/$childId'
 import { Route as LoginOauthModalLearnerRouteImport } from './routes/login/oauth/modal-learner'
 import { Route as LoginOauthLearnerRouteImport } from './routes/login/oauth/learner'
 import { Route as StudyLibraryLiveClassWaitingRoomIndexRouteImport } from './routes/study-library/live-class/waiting-room/index'
@@ -83,6 +89,7 @@ import { Route as StudyLibraryLiveClassEmbedIndexRouteImport } from './routes/st
 import { Route as StudyLibraryLiveClassUsernameIndexRouteImport } from './routes/study-library/live-class/$username/index'
 import { Route as StudyLibraryCoursesCourseDetailsIndexRouteImport } from './routes/study-library/courses/course-details/index'
 import { Route as PayInvoiceInvoiceIdIndexRouteImport } from './routes/pay/invoice/$invoiceId/index'
+import { Route as ParentChildChildIdIndexRouteImport } from './routes/parent/child/$childId/index'
 import { Route as MMediaIdPhoneNumberIndexRouteImport } from './routes/m/$mediaId/$phoneNumber/index'
 import { Route as LeaderboardInstituteInstituteIdIndexRouteImport } from './routes/leaderboard/institute/$instituteId/index'
 import { Route as AssessmentReportsStudentReportIndexRouteImport } from './routes/assessment/reports/student-report/index'
@@ -93,6 +100,13 @@ import { Route as AssessmentExaminationAssessmentIdAssessmentPreviewRouteImport 
 import { Route as AssessmentExaminationAssessmentIdLearnerLiveTestRouteImport } from './routes/assessment/examination/$assessmentId/LearnerLiveTest'
 import { Route as UnChannelUsernameCategoryIndexRouteImport } from './routes/un/$channel/$username/$category/index'
 import { Route as StudyLibraryCoursesCourseDetailsSubjectsIndexRouteImport } from './routes/study-library/courses/course-details/subjects/index'
+import { Route as ParentChildChildIdRewardsIndexRouteImport } from './routes/parent/child/$childId/rewards/index'
+import { Route as ParentChildChildIdProgressIndexRouteImport } from './routes/parent/child/$childId/progress/index'
+import { Route as ParentChildChildIdPaymentsIndexRouteImport } from './routes/parent/child/$childId/payments/index'
+import { Route as ParentChildChildIdLiveClassesIndexRouteImport } from './routes/parent/child/$childId/live-classes/index'
+import { Route as ParentChildChildIdAttendanceIndexRouteImport } from './routes/parent/child/$childId/attendance/index'
+import { Route as ParentChildChildIdAssessmentsIndexRouteImport } from './routes/parent/child/$childId/assessments/index'
+import { Route as ParentChildChildIdReportsProcessIdRouteImport } from './routes/parent/child/$childId/reports/$processId'
 import { Route as StudyLibraryCoursesCourseDetailsSubjectsModulesIndexRouteImport } from './routes/study-library/courses/course-details/subjects/modules/index'
 import { Route as AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRouteImport } from './routes/admission/payment/$instituteId/$applicantId/$paymentOptionId/index'
 import { Route as StudyLibraryCoursesCourseDetailsSubjectsModulesChaptersIndexRouteImport } from './routes/study-library/courses/course-details/subjects/modules/chapters/index'
@@ -234,6 +248,16 @@ const ChangePasswordIndexRoute = ChangePasswordIndexRouteImport.update({
   path: '/change-password/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const BookingResponseIndexRoute = BookingResponseIndexRouteImport.update({
+  id: '/booking-response/',
+  path: '/booking-response/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BookingManageIndexRoute = BookingManageIndexRouteImport.update({
+  id: '/booking-manage/',
+  path: '/booking-manage/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AuthTransferIndexRoute = AuthTransferIndexRouteImport.update({
   id: '/auth-transfer/',
   path: '/auth-transfer/',
@@ -252,6 +276,11 @@ const AssessmentIndexRoute = AssessmentIndexRouteImport.update({
 const AiSettingsIndexRoute = AiSettingsIndexRouteImport.update({
   id: '/ai-settings/',
   path: '/ai-settings/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccountDeletionIndexRoute = AccountDeletionIndexRouteImport.update({
+  id: '/account-deletion/',
+  path: '/account-deletion/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TagNameIndexRoute = TagNameIndexRouteImport.update({
@@ -307,6 +336,11 @@ const RegisterLiveClassIndexRoute = RegisterLiveClassIndexRouteImport.update({
   path: '/register/live-class/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProfileOnboardingIndexRoute = ProfileOnboardingIndexRouteImport.update({
+  id: '/profile/onboarding/',
+  path: '/profile/onboarding/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProductPagesProductPageCodeIndexRoute =
   ProductPagesProductPageCodeIndexRouteImport.update({
     id: '/product-pages/$productPageCode/',
@@ -348,6 +382,11 @@ const ParentDocumentsIndexRoute = ParentDocumentsIndexRouteImport.update({
 const ParentDashboardIndexRoute = ParentDashboardIndexRouteImport.update({
   id: '/parent/dashboard/',
   path: '/parent/dashboard/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ParentChildIndexRoute = ParentChildIndexRouteImport.update({
+  id: '/parent/child/',
+  path: '/parent/child/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ParentApplicationIndexRoute = ParentApplicationIndexRouteImport.update({
@@ -443,6 +482,11 @@ const TagNameCourseIdIndexRoute = TagNameCourseIdIndexRouteImport.update({
   path: '/$tagName/$courseId/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ParentChildChildIdRoute = ParentChildChildIdRouteImport.update({
+  id: '/parent/child/$childId',
+  path: '/parent/child/$childId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginOauthModalLearnerRoute = LoginOauthModalLearnerRouteImport.update({
   id: '/login/oauth/modal-learner',
   path: '/login/oauth/modal-learner',
@@ -489,6 +533,11 @@ const PayInvoiceInvoiceIdIndexRoute =
     path: '/pay/invoice/$invoiceId/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ParentChildChildIdIndexRoute = ParentChildChildIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ParentChildChildIdRoute,
+} as any)
 const MMediaIdPhoneNumberIndexRoute =
   MMediaIdPhoneNumberIndexRouteImport.update({
     id: '/m/$mediaId/$phoneNumber/',
@@ -549,6 +598,48 @@ const StudyLibraryCoursesCourseDetailsSubjectsIndexRoute =
     path: '/study-library/courses/course-details/subjects/',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ParentChildChildIdRewardsIndexRoute =
+  ParentChildChildIdRewardsIndexRouteImport.update({
+    id: '/rewards/',
+    path: '/rewards/',
+    getParentRoute: () => ParentChildChildIdRoute,
+  } as any)
+const ParentChildChildIdProgressIndexRoute =
+  ParentChildChildIdProgressIndexRouteImport.update({
+    id: '/progress/',
+    path: '/progress/',
+    getParentRoute: () => ParentChildChildIdRoute,
+  } as any)
+const ParentChildChildIdPaymentsIndexRoute =
+  ParentChildChildIdPaymentsIndexRouteImport.update({
+    id: '/payments/',
+    path: '/payments/',
+    getParentRoute: () => ParentChildChildIdRoute,
+  } as any)
+const ParentChildChildIdLiveClassesIndexRoute =
+  ParentChildChildIdLiveClassesIndexRouteImport.update({
+    id: '/live-classes/',
+    path: '/live-classes/',
+    getParentRoute: () => ParentChildChildIdRoute,
+  } as any)
+const ParentChildChildIdAttendanceIndexRoute =
+  ParentChildChildIdAttendanceIndexRouteImport.update({
+    id: '/attendance/',
+    path: '/attendance/',
+    getParentRoute: () => ParentChildChildIdRoute,
+  } as any)
+const ParentChildChildIdAssessmentsIndexRoute =
+  ParentChildChildIdAssessmentsIndexRouteImport.update({
+    id: '/assessments/',
+    path: '/assessments/',
+    getParentRoute: () => ParentChildChildIdRoute,
+  } as any)
+const ParentChildChildIdReportsProcessIdRoute =
+  ParentChildChildIdReportsProcessIdRouteImport.update({
+    id: '/reports/$processId',
+    path: '/reports/$processId',
+    getParentRoute: () => ParentChildChildIdRoute,
+  } as any)
 const StudyLibraryCoursesCourseDetailsSubjectsModulesIndexRoute =
   StudyLibraryCoursesCourseDetailsSubjectsModulesIndexRouteImport.update({
     id: '/study-library/courses/course-details/subjects/modules/',
@@ -584,10 +675,13 @@ export interface FileRoutesByFullPath {
   '/parent/documents': typeof ParentDocumentsRouteWithChildren
   '/sub-org-registration/payment-result': typeof SubOrgRegistrationPaymentResultRoute
   '/$tagName': typeof TagNameIndexRoute
+  '/account-deletion': typeof AccountDeletionIndexRoute
   '/ai-settings': typeof AiSettingsIndexRoute
   '/assessment': typeof AssessmentIndexRoute
   '/audience-response': typeof AudienceResponseIndexRoute
   '/auth-transfer': typeof AuthTransferIndexRoute
+  '/booking-manage': typeof BookingManageIndexRoute
+  '/booking-response': typeof BookingResponseIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
   '/chat': typeof ChatIndexRoute
   '/courses': typeof CoursesIndexRoute
@@ -617,6 +711,7 @@ export interface FileRoutesByFullPath {
   '/user-profile': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
+  '/parent/child/$childId': typeof ParentChildChildIdRouteWithChildren
   '/$tagName/$courseId': typeof TagNameCourseIdIndexRoute
   '/assessment/examination': typeof AssessmentExaminationIndexRoute
   '/assessment/list': typeof AssessmentListIndexRoute
@@ -634,6 +729,7 @@ export interface FileRoutesByFullPath {
   '/my-reports/$processId': typeof MyReportsProcessIdIndexRoute
   '/parent/admission': typeof ParentAdmissionIndexRoute
   '/parent/application': typeof ParentApplicationIndexRoute
+  '/parent/child': typeof ParentChildIndexRoute
   '/parent/dashboard': typeof ParentDashboardIndexRoute
   '/parent/documents/': typeof ParentDocumentsIndexRoute
   '/parent/payment': typeof ParentPaymentIndexRoute
@@ -642,6 +738,7 @@ export interface FileRoutesByFullPath {
   '/planning/activity-logs': typeof PlanningActivityLogsIndexRoute
   '/planning/planning-logs': typeof PlanningPlanningLogsIndexRoute
   '/product-pages/$productPageCode': typeof ProductPagesProductPageCodeIndexRoute
+  '/profile/onboarding': typeof ProfileOnboardingIndexRoute
   '/register/live-class': typeof RegisterLiveClassIndexRoute
   '/reports/attendance': typeof ReportsAttendanceIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
@@ -655,12 +752,20 @@ export interface FileRoutesByFullPath {
   '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
   '/leaderboard/institute/$instituteId': typeof LeaderboardInstituteInstituteIdIndexRoute
   '/m/$mediaId/$phoneNumber': typeof MMediaIdPhoneNumberIndexRoute
+  '/parent/child/$childId/': typeof ParentChildChildIdIndexRoute
   '/pay/invoice/$invoiceId': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details': typeof StudyLibraryCoursesCourseDetailsIndexRoute
   '/study-library/live-class/$username': typeof StudyLibraryLiveClassUsernameIndexRoute
   '/study-library/live-class/embed': typeof StudyLibraryLiveClassEmbedIndexRoute
   '/study-library/live-class/feedback': typeof StudyLibraryLiveClassFeedbackIndexRoute
   '/study-library/live-class/waiting-room': typeof StudyLibraryLiveClassWaitingRoomIndexRoute
+  '/parent/child/$childId/reports/$processId': typeof ParentChildChildIdReportsProcessIdRoute
+  '/parent/child/$childId/assessments': typeof ParentChildChildIdAssessmentsIndexRoute
+  '/parent/child/$childId/attendance': typeof ParentChildChildIdAttendanceIndexRoute
+  '/parent/child/$childId/live-classes': typeof ParentChildChildIdLiveClassesIndexRoute
+  '/parent/child/$childId/payments': typeof ParentChildChildIdPaymentsIndexRoute
+  '/parent/child/$childId/progress': typeof ParentChildChildIdProgressIndexRoute
+  '/parent/child/$childId/rewards': typeof ParentChildChildIdRewardsIndexRoute
   '/study-library/courses/course-details/subjects': typeof StudyLibraryCoursesCourseDetailsSubjectsIndexRoute
   '/un/$channel/$username/$category': typeof UnChannelUsernameCategoryIndexRoute
   '/admission/payment/$instituteId/$applicantId/$paymentOptionId': typeof AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRoute
@@ -673,10 +778,13 @@ export interface FileRoutesByTo {
   '/assignment/$slideId': typeof AssignmentSlideIdRoute
   '/sub-org-registration/payment-result': typeof SubOrgRegistrationPaymentResultRoute
   '/$tagName': typeof TagNameIndexRoute
+  '/account-deletion': typeof AccountDeletionIndexRoute
   '/ai-settings': typeof AiSettingsIndexRoute
   '/assessment': typeof AssessmentIndexRoute
   '/audience-response': typeof AudienceResponseIndexRoute
   '/auth-transfer': typeof AuthTransferIndexRoute
+  '/booking-manage': typeof BookingManageIndexRoute
+  '/booking-response': typeof BookingResponseIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
   '/chat': typeof ChatIndexRoute
   '/courses': typeof CoursesIndexRoute
@@ -723,6 +831,7 @@ export interface FileRoutesByTo {
   '/my-reports/$processId': typeof MyReportsProcessIdIndexRoute
   '/parent/admission': typeof ParentAdmissionIndexRoute
   '/parent/application': typeof ParentApplicationIndexRoute
+  '/parent/child': typeof ParentChildIndexRoute
   '/parent/dashboard': typeof ParentDashboardIndexRoute
   '/parent/documents': typeof ParentDocumentsIndexRoute
   '/parent/payment': typeof ParentPaymentIndexRoute
@@ -731,6 +840,7 @@ export interface FileRoutesByTo {
   '/planning/activity-logs': typeof PlanningActivityLogsIndexRoute
   '/planning/planning-logs': typeof PlanningPlanningLogsIndexRoute
   '/product-pages/$productPageCode': typeof ProductPagesProductPageCodeIndexRoute
+  '/profile/onboarding': typeof ProfileOnboardingIndexRoute
   '/register/live-class': typeof RegisterLiveClassIndexRoute
   '/reports/attendance': typeof ReportsAttendanceIndexRoute
   '/study-library/courses': typeof StudyLibraryCoursesIndexRoute
@@ -744,12 +854,20 @@ export interface FileRoutesByTo {
   '/assessment/reports/student-report': typeof AssessmentReportsStudentReportIndexRoute
   '/leaderboard/institute/$instituteId': typeof LeaderboardInstituteInstituteIdIndexRoute
   '/m/$mediaId/$phoneNumber': typeof MMediaIdPhoneNumberIndexRoute
+  '/parent/child/$childId': typeof ParentChildChildIdIndexRoute
   '/pay/invoice/$invoiceId': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details': typeof StudyLibraryCoursesCourseDetailsIndexRoute
   '/study-library/live-class/$username': typeof StudyLibraryLiveClassUsernameIndexRoute
   '/study-library/live-class/embed': typeof StudyLibraryLiveClassEmbedIndexRoute
   '/study-library/live-class/feedback': typeof StudyLibraryLiveClassFeedbackIndexRoute
   '/study-library/live-class/waiting-room': typeof StudyLibraryLiveClassWaitingRoomIndexRoute
+  '/parent/child/$childId/reports/$processId': typeof ParentChildChildIdReportsProcessIdRoute
+  '/parent/child/$childId/assessments': typeof ParentChildChildIdAssessmentsIndexRoute
+  '/parent/child/$childId/attendance': typeof ParentChildChildIdAttendanceIndexRoute
+  '/parent/child/$childId/live-classes': typeof ParentChildChildIdLiveClassesIndexRoute
+  '/parent/child/$childId/payments': typeof ParentChildChildIdPaymentsIndexRoute
+  '/parent/child/$childId/progress': typeof ParentChildChildIdProgressIndexRoute
+  '/parent/child/$childId/rewards': typeof ParentChildChildIdRewardsIndexRoute
   '/study-library/courses/course-details/subjects': typeof StudyLibraryCoursesCourseDetailsSubjectsIndexRoute
   '/un/$channel/$username/$category': typeof UnChannelUsernameCategoryIndexRoute
   '/admission/payment/$instituteId/$applicantId/$paymentOptionId': typeof AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRoute
@@ -764,10 +882,13 @@ export interface FileRoutesById {
   '/parent/documents': typeof ParentDocumentsRouteWithChildren
   '/sub-org-registration/payment-result': typeof SubOrgRegistrationPaymentResultRoute
   '/$tagName/': typeof TagNameIndexRoute
+  '/account-deletion/': typeof AccountDeletionIndexRoute
   '/ai-settings/': typeof AiSettingsIndexRoute
   '/assessment/': typeof AssessmentIndexRoute
   '/audience-response/': typeof AudienceResponseIndexRoute
   '/auth-transfer/': typeof AuthTransferIndexRoute
+  '/booking-manage/': typeof BookingManageIndexRoute
+  '/booking-response/': typeof BookingResponseIndexRoute
   '/change-password/': typeof ChangePasswordIndexRoute
   '/chat/': typeof ChatIndexRoute
   '/courses/': typeof CoursesIndexRoute
@@ -797,6 +918,7 @@ export interface FileRoutesById {
   '/user-profile/': typeof UserProfileIndexRoute
   '/login/oauth/learner': typeof LoginOauthLearnerRoute
   '/login/oauth/modal-learner': typeof LoginOauthModalLearnerRoute
+  '/parent/child/$childId': typeof ParentChildChildIdRouteWithChildren
   '/$tagName/$courseId/': typeof TagNameCourseIdIndexRoute
   '/assessment/examination/': typeof AssessmentExaminationIndexRoute
   '/assessment/list/': typeof AssessmentListIndexRoute
@@ -814,6 +936,7 @@ export interface FileRoutesById {
   '/my-reports/$processId/': typeof MyReportsProcessIdIndexRoute
   '/parent/admission/': typeof ParentAdmissionIndexRoute
   '/parent/application/': typeof ParentApplicationIndexRoute
+  '/parent/child/': typeof ParentChildIndexRoute
   '/parent/dashboard/': typeof ParentDashboardIndexRoute
   '/parent/documents/': typeof ParentDocumentsIndexRoute
   '/parent/payment/': typeof ParentPaymentIndexRoute
@@ -822,6 +945,7 @@ export interface FileRoutesById {
   '/planning/activity-logs/': typeof PlanningActivityLogsIndexRoute
   '/planning/planning-logs/': typeof PlanningPlanningLogsIndexRoute
   '/product-pages/$productPageCode/': typeof ProductPagesProductPageCodeIndexRoute
+  '/profile/onboarding/': typeof ProfileOnboardingIndexRoute
   '/register/live-class/': typeof RegisterLiveClassIndexRoute
   '/reports/attendance/': typeof ReportsAttendanceIndexRoute
   '/study-library/courses/': typeof StudyLibraryCoursesIndexRoute
@@ -835,12 +959,20 @@ export interface FileRoutesById {
   '/assessment/reports/student-report/': typeof AssessmentReportsStudentReportIndexRoute
   '/leaderboard/institute/$instituteId/': typeof LeaderboardInstituteInstituteIdIndexRoute
   '/m/$mediaId/$phoneNumber/': typeof MMediaIdPhoneNumberIndexRoute
+  '/parent/child/$childId/': typeof ParentChildChildIdIndexRoute
   '/pay/invoice/$invoiceId/': typeof PayInvoiceInvoiceIdIndexRoute
   '/study-library/courses/course-details/': typeof StudyLibraryCoursesCourseDetailsIndexRoute
   '/study-library/live-class/$username/': typeof StudyLibraryLiveClassUsernameIndexRoute
   '/study-library/live-class/embed/': typeof StudyLibraryLiveClassEmbedIndexRoute
   '/study-library/live-class/feedback/': typeof StudyLibraryLiveClassFeedbackIndexRoute
   '/study-library/live-class/waiting-room/': typeof StudyLibraryLiveClassWaitingRoomIndexRoute
+  '/parent/child/$childId/reports/$processId': typeof ParentChildChildIdReportsProcessIdRoute
+  '/parent/child/$childId/assessments/': typeof ParentChildChildIdAssessmentsIndexRoute
+  '/parent/child/$childId/attendance/': typeof ParentChildChildIdAttendanceIndexRoute
+  '/parent/child/$childId/live-classes/': typeof ParentChildChildIdLiveClassesIndexRoute
+  '/parent/child/$childId/payments/': typeof ParentChildChildIdPaymentsIndexRoute
+  '/parent/child/$childId/progress/': typeof ParentChildChildIdProgressIndexRoute
+  '/parent/child/$childId/rewards/': typeof ParentChildChildIdRewardsIndexRoute
   '/study-library/courses/course-details/subjects/': typeof StudyLibraryCoursesCourseDetailsSubjectsIndexRoute
   '/un/$channel/$username/$category/': typeof UnChannelUsernameCategoryIndexRoute
   '/admission/payment/$instituteId/$applicantId/$paymentOptionId/': typeof AdmissionPaymentInstituteIdApplicantIdPaymentOptionIdIndexRoute
@@ -856,10 +988,13 @@ export interface FileRouteTypes {
     | '/parent/documents'
     | '/sub-org-registration/payment-result'
     | '/$tagName'
+    | '/account-deletion'
     | '/ai-settings'
     | '/assessment'
     | '/audience-response'
     | '/auth-transfer'
+    | '/booking-manage'
+    | '/booking-response'
     | '/change-password'
     | '/chat'
     | '/courses'
@@ -889,6 +1024,7 @@ export interface FileRouteTypes {
     | '/user-profile'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
+    | '/parent/child/$childId'
     | '/$tagName/$courseId'
     | '/assessment/examination'
     | '/assessment/list'
@@ -906,6 +1042,7 @@ export interface FileRouteTypes {
     | '/my-reports/$processId'
     | '/parent/admission'
     | '/parent/application'
+    | '/parent/child'
     | '/parent/dashboard'
     | '/parent/documents/'
     | '/parent/payment'
@@ -914,6 +1051,7 @@ export interface FileRouteTypes {
     | '/planning/activity-logs'
     | '/planning/planning-logs'
     | '/product-pages/$productPageCode'
+    | '/profile/onboarding'
     | '/register/live-class'
     | '/reports/attendance'
     | '/study-library/courses'
@@ -927,12 +1065,20 @@ export interface FileRouteTypes {
     | '/assessment/reports/student-report'
     | '/leaderboard/institute/$instituteId'
     | '/m/$mediaId/$phoneNumber'
+    | '/parent/child/$childId/'
     | '/pay/invoice/$invoiceId'
     | '/study-library/courses/course-details'
     | '/study-library/live-class/$username'
     | '/study-library/live-class/embed'
     | '/study-library/live-class/feedback'
     | '/study-library/live-class/waiting-room'
+    | '/parent/child/$childId/reports/$processId'
+    | '/parent/child/$childId/assessments'
+    | '/parent/child/$childId/attendance'
+    | '/parent/child/$childId/live-classes'
+    | '/parent/child/$childId/payments'
+    | '/parent/child/$childId/progress'
+    | '/parent/child/$childId/rewards'
     | '/study-library/courses/course-details/subjects'
     | '/un/$channel/$username/$category'
     | '/admission/payment/$instituteId/$applicantId/$paymentOptionId'
@@ -945,10 +1091,13 @@ export interface FileRouteTypes {
     | '/assignment/$slideId'
     | '/sub-org-registration/payment-result'
     | '/$tagName'
+    | '/account-deletion'
     | '/ai-settings'
     | '/assessment'
     | '/audience-response'
     | '/auth-transfer'
+    | '/booking-manage'
+    | '/booking-response'
     | '/change-password'
     | '/chat'
     | '/courses'
@@ -995,6 +1144,7 @@ export interface FileRouteTypes {
     | '/my-reports/$processId'
     | '/parent/admission'
     | '/parent/application'
+    | '/parent/child'
     | '/parent/dashboard'
     | '/parent/documents'
     | '/parent/payment'
@@ -1003,6 +1153,7 @@ export interface FileRouteTypes {
     | '/planning/activity-logs'
     | '/planning/planning-logs'
     | '/product-pages/$productPageCode'
+    | '/profile/onboarding'
     | '/register/live-class'
     | '/reports/attendance'
     | '/study-library/courses'
@@ -1016,12 +1167,20 @@ export interface FileRouteTypes {
     | '/assessment/reports/student-report'
     | '/leaderboard/institute/$instituteId'
     | '/m/$mediaId/$phoneNumber'
+    | '/parent/child/$childId'
     | '/pay/invoice/$invoiceId'
     | '/study-library/courses/course-details'
     | '/study-library/live-class/$username'
     | '/study-library/live-class/embed'
     | '/study-library/live-class/feedback'
     | '/study-library/live-class/waiting-room'
+    | '/parent/child/$childId/reports/$processId'
+    | '/parent/child/$childId/assessments'
+    | '/parent/child/$childId/attendance'
+    | '/parent/child/$childId/live-classes'
+    | '/parent/child/$childId/payments'
+    | '/parent/child/$childId/progress'
+    | '/parent/child/$childId/rewards'
     | '/study-library/courses/course-details/subjects'
     | '/un/$channel/$username/$category'
     | '/admission/payment/$instituteId/$applicantId/$paymentOptionId'
@@ -1035,10 +1194,13 @@ export interface FileRouteTypes {
     | '/parent/documents'
     | '/sub-org-registration/payment-result'
     | '/$tagName/'
+    | '/account-deletion/'
     | '/ai-settings/'
     | '/assessment/'
     | '/audience-response/'
     | '/auth-transfer/'
+    | '/booking-manage/'
+    | '/booking-response/'
     | '/change-password/'
     | '/chat/'
     | '/courses/'
@@ -1068,6 +1230,7 @@ export interface FileRouteTypes {
     | '/user-profile/'
     | '/login/oauth/learner'
     | '/login/oauth/modal-learner'
+    | '/parent/child/$childId'
     | '/$tagName/$courseId/'
     | '/assessment/examination/'
     | '/assessment/list/'
@@ -1085,6 +1248,7 @@ export interface FileRouteTypes {
     | '/my-reports/$processId/'
     | '/parent/admission/'
     | '/parent/application/'
+    | '/parent/child/'
     | '/parent/dashboard/'
     | '/parent/documents/'
     | '/parent/payment/'
@@ -1093,6 +1257,7 @@ export interface FileRouteTypes {
     | '/planning/activity-logs/'
     | '/planning/planning-logs/'
     | '/product-pages/$productPageCode/'
+    | '/profile/onboarding/'
     | '/register/live-class/'
     | '/reports/attendance/'
     | '/study-library/courses/'
@@ -1106,12 +1271,20 @@ export interface FileRouteTypes {
     | '/assessment/reports/student-report/'
     | '/leaderboard/institute/$instituteId/'
     | '/m/$mediaId/$phoneNumber/'
+    | '/parent/child/$childId/'
     | '/pay/invoice/$invoiceId/'
     | '/study-library/courses/course-details/'
     | '/study-library/live-class/$username/'
     | '/study-library/live-class/embed/'
     | '/study-library/live-class/feedback/'
     | '/study-library/live-class/waiting-room/'
+    | '/parent/child/$childId/reports/$processId'
+    | '/parent/child/$childId/assessments/'
+    | '/parent/child/$childId/attendance/'
+    | '/parent/child/$childId/live-classes/'
+    | '/parent/child/$childId/payments/'
+    | '/parent/child/$childId/progress/'
+    | '/parent/child/$childId/rewards/'
     | '/study-library/courses/course-details/subjects/'
     | '/un/$channel/$username/$category/'
     | '/admission/payment/$instituteId/$applicantId/$paymentOptionId/'
@@ -1126,10 +1299,13 @@ export interface RootRouteChildren {
   ParentDocumentsRoute: typeof ParentDocumentsRouteWithChildren
   SubOrgRegistrationPaymentResultRoute: typeof SubOrgRegistrationPaymentResultRoute
   TagNameIndexRoute: typeof TagNameIndexRoute
+  AccountDeletionIndexRoute: typeof AccountDeletionIndexRoute
   AiSettingsIndexRoute: typeof AiSettingsIndexRoute
   AssessmentIndexRoute: typeof AssessmentIndexRoute
   AudienceResponseIndexRoute: typeof AudienceResponseIndexRoute
   AuthTransferIndexRoute: typeof AuthTransferIndexRoute
+  BookingManageIndexRoute: typeof BookingManageIndexRoute
+  BookingResponseIndexRoute: typeof BookingResponseIndexRoute
   ChangePasswordIndexRoute: typeof ChangePasswordIndexRoute
   ChatIndexRoute: typeof ChatIndexRoute
   CoursesIndexRoute: typeof CoursesIndexRoute
@@ -1159,6 +1335,7 @@ export interface RootRouteChildren {
   UserProfileIndexRoute: typeof UserProfileIndexRoute
   LoginOauthLearnerRoute: typeof LoginOauthLearnerRoute
   LoginOauthModalLearnerRoute: typeof LoginOauthModalLearnerRoute
+  ParentChildChildIdRoute: typeof ParentChildChildIdRouteWithChildren
   TagNameCourseIdIndexRoute: typeof TagNameCourseIdIndexRoute
   AssessmentExaminationIndexRoute: typeof AssessmentExaminationIndexRoute
   AssessmentListIndexRoute: typeof AssessmentListIndexRoute
@@ -1176,6 +1353,7 @@ export interface RootRouteChildren {
   MyReportsProcessIdIndexRoute: typeof MyReportsProcessIdIndexRoute
   ParentAdmissionIndexRoute: typeof ParentAdmissionIndexRoute
   ParentApplicationIndexRoute: typeof ParentApplicationIndexRoute
+  ParentChildIndexRoute: typeof ParentChildIndexRoute
   ParentDashboardIndexRoute: typeof ParentDashboardIndexRoute
   ParentPaymentIndexRoute: typeof ParentPaymentIndexRoute
   ParentScheduleIndexRoute: typeof ParentScheduleIndexRoute
@@ -1183,6 +1361,7 @@ export interface RootRouteChildren {
   PlanningActivityLogsIndexRoute: typeof PlanningActivityLogsIndexRoute
   PlanningPlanningLogsIndexRoute: typeof PlanningPlanningLogsIndexRoute
   ProductPagesProductPageCodeIndexRoute: typeof ProductPagesProductPageCodeIndexRoute
+  ProfileOnboardingIndexRoute: typeof ProfileOnboardingIndexRoute
   RegisterLiveClassIndexRoute: typeof RegisterLiveClassIndexRoute
   ReportsAttendanceIndexRoute: typeof ReportsAttendanceIndexRoute
   StudyLibraryCoursesIndexRoute: typeof StudyLibraryCoursesIndexRoute
@@ -1401,6 +1580,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChangePasswordIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/booking-response/': {
+      id: '/booking-response/'
+      path: '/booking-response'
+      fullPath: '/booking-response'
+      preLoaderRoute: typeof BookingResponseIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/booking-manage/': {
+      id: '/booking-manage/'
+      path: '/booking-manage'
+      fullPath: '/booking-manage'
+      preLoaderRoute: typeof BookingManageIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/auth-transfer/': {
       id: '/auth-transfer/'
       path: '/auth-transfer'
@@ -1427,6 +1620,13 @@ declare module '@tanstack/react-router' {
       path: '/ai-settings'
       fullPath: '/ai-settings'
       preLoaderRoute: typeof AiSettingsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/account-deletion/': {
+      id: '/account-deletion/'
+      path: '/account-deletion'
+      fullPath: '/account-deletion'
+      preLoaderRoute: typeof AccountDeletionIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$tagName/': {
@@ -1499,6 +1699,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RegisterLiveClassIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/profile/onboarding/': {
+      id: '/profile/onboarding/'
+      path: '/profile/onboarding'
+      fullPath: '/profile/onboarding'
+      preLoaderRoute: typeof ProfileOnboardingIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/product-pages/$productPageCode/': {
       id: '/product-pages/$productPageCode/'
       path: '/product-pages/$productPageCode'
@@ -1553,6 +1760,13 @@ declare module '@tanstack/react-router' {
       path: '/parent/dashboard'
       fullPath: '/parent/dashboard'
       preLoaderRoute: typeof ParentDashboardIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/parent/child/': {
+      id: '/parent/child/'
+      path: '/parent/child'
+      fullPath: '/parent/child'
+      preLoaderRoute: typeof ParentChildIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/parent/application/': {
@@ -1674,6 +1888,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TagNameCourseIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/parent/child/$childId': {
+      id: '/parent/child/$childId'
+      path: '/parent/child/$childId'
+      fullPath: '/parent/child/$childId'
+      preLoaderRoute: typeof ParentChildChildIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login/oauth/modal-learner': {
       id: '/login/oauth/modal-learner'
       path: '/login/oauth/modal-learner'
@@ -1729,6 +1950,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/pay/invoice/$invoiceId'
       preLoaderRoute: typeof PayInvoiceInvoiceIdIndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/parent/child/$childId/': {
+      id: '/parent/child/$childId/'
+      path: '/'
+      fullPath: '/parent/child/$childId/'
+      preLoaderRoute: typeof ParentChildChildIdIndexRouteImport
+      parentRoute: typeof ParentChildChildIdRoute
     }
     '/m/$mediaId/$phoneNumber/': {
       id: '/m/$mediaId/$phoneNumber/'
@@ -1800,6 +2028,55 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StudyLibraryCoursesCourseDetailsSubjectsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/parent/child/$childId/rewards/': {
+      id: '/parent/child/$childId/rewards/'
+      path: '/rewards'
+      fullPath: '/parent/child/$childId/rewards'
+      preLoaderRoute: typeof ParentChildChildIdRewardsIndexRouteImport
+      parentRoute: typeof ParentChildChildIdRoute
+    }
+    '/parent/child/$childId/progress/': {
+      id: '/parent/child/$childId/progress/'
+      path: '/progress'
+      fullPath: '/parent/child/$childId/progress'
+      preLoaderRoute: typeof ParentChildChildIdProgressIndexRouteImport
+      parentRoute: typeof ParentChildChildIdRoute
+    }
+    '/parent/child/$childId/payments/': {
+      id: '/parent/child/$childId/payments/'
+      path: '/payments'
+      fullPath: '/parent/child/$childId/payments'
+      preLoaderRoute: typeof ParentChildChildIdPaymentsIndexRouteImport
+      parentRoute: typeof ParentChildChildIdRoute
+    }
+    '/parent/child/$childId/live-classes/': {
+      id: '/parent/child/$childId/live-classes/'
+      path: '/live-classes'
+      fullPath: '/parent/child/$childId/live-classes'
+      preLoaderRoute: typeof ParentChildChildIdLiveClassesIndexRouteImport
+      parentRoute: typeof ParentChildChildIdRoute
+    }
+    '/parent/child/$childId/attendance/': {
+      id: '/parent/child/$childId/attendance/'
+      path: '/attendance'
+      fullPath: '/parent/child/$childId/attendance'
+      preLoaderRoute: typeof ParentChildChildIdAttendanceIndexRouteImport
+      parentRoute: typeof ParentChildChildIdRoute
+    }
+    '/parent/child/$childId/assessments/': {
+      id: '/parent/child/$childId/assessments/'
+      path: '/assessments'
+      fullPath: '/parent/child/$childId/assessments'
+      preLoaderRoute: typeof ParentChildChildIdAssessmentsIndexRouteImport
+      parentRoute: typeof ParentChildChildIdRoute
+    }
+    '/parent/child/$childId/reports/$processId': {
+      id: '/parent/child/$childId/reports/$processId'
+      path: '/reports/$processId'
+      fullPath: '/parent/child/$childId/reports/$processId'
+      preLoaderRoute: typeof ParentChildChildIdReportsProcessIdRouteImport
+      parentRoute: typeof ParentChildChildIdRoute
+    }
     '/study-library/courses/course-details/subjects/modules/': {
       id: '/study-library/courses/course-details/subjects/modules/'
       path: '/study-library/courses/course-details/subjects/modules'
@@ -1843,16 +2120,48 @@ const ParentDocumentsRouteWithChildren = ParentDocumentsRoute._addFileChildren(
   ParentDocumentsRouteChildren,
 )
 
+interface ParentChildChildIdRouteChildren {
+  ParentChildChildIdIndexRoute: typeof ParentChildChildIdIndexRoute
+  ParentChildChildIdReportsProcessIdRoute: typeof ParentChildChildIdReportsProcessIdRoute
+  ParentChildChildIdAssessmentsIndexRoute: typeof ParentChildChildIdAssessmentsIndexRoute
+  ParentChildChildIdAttendanceIndexRoute: typeof ParentChildChildIdAttendanceIndexRoute
+  ParentChildChildIdLiveClassesIndexRoute: typeof ParentChildChildIdLiveClassesIndexRoute
+  ParentChildChildIdPaymentsIndexRoute: typeof ParentChildChildIdPaymentsIndexRoute
+  ParentChildChildIdProgressIndexRoute: typeof ParentChildChildIdProgressIndexRoute
+  ParentChildChildIdRewardsIndexRoute: typeof ParentChildChildIdRewardsIndexRoute
+}
+
+const ParentChildChildIdRouteChildren: ParentChildChildIdRouteChildren = {
+  ParentChildChildIdIndexRoute: ParentChildChildIdIndexRoute,
+  ParentChildChildIdReportsProcessIdRoute:
+    ParentChildChildIdReportsProcessIdRoute,
+  ParentChildChildIdAssessmentsIndexRoute:
+    ParentChildChildIdAssessmentsIndexRoute,
+  ParentChildChildIdAttendanceIndexRoute:
+    ParentChildChildIdAttendanceIndexRoute,
+  ParentChildChildIdLiveClassesIndexRoute:
+    ParentChildChildIdLiveClassesIndexRoute,
+  ParentChildChildIdPaymentsIndexRoute: ParentChildChildIdPaymentsIndexRoute,
+  ParentChildChildIdProgressIndexRoute: ParentChildChildIdProgressIndexRoute,
+  ParentChildChildIdRewardsIndexRoute: ParentChildChildIdRewardsIndexRoute,
+}
+
+const ParentChildChildIdRouteWithChildren =
+  ParentChildChildIdRoute._addFileChildren(ParentChildChildIdRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   TagNamePageSlugRoute: TagNamePageSlugRoute,
   AssignmentSlideIdRoute: AssignmentSlideIdRoute,
   ParentDocumentsRoute: ParentDocumentsRouteWithChildren,
   SubOrgRegistrationPaymentResultRoute: SubOrgRegistrationPaymentResultRoute,
   TagNameIndexRoute: TagNameIndexRoute,
+  AccountDeletionIndexRoute: AccountDeletionIndexRoute,
   AiSettingsIndexRoute: AiSettingsIndexRoute,
   AssessmentIndexRoute: AssessmentIndexRoute,
   AudienceResponseIndexRoute: AudienceResponseIndexRoute,
   AuthTransferIndexRoute: AuthTransferIndexRoute,
+  BookingManageIndexRoute: BookingManageIndexRoute,
+  BookingResponseIndexRoute: BookingResponseIndexRoute,
   ChangePasswordIndexRoute: ChangePasswordIndexRoute,
   ChatIndexRoute: ChatIndexRoute,
   CoursesIndexRoute: CoursesIndexRoute,
@@ -1882,6 +2191,7 @@ const rootRouteChildren: RootRouteChildren = {
   UserProfileIndexRoute: UserProfileIndexRoute,
   LoginOauthLearnerRoute: LoginOauthLearnerRoute,
   LoginOauthModalLearnerRoute: LoginOauthModalLearnerRoute,
+  ParentChildChildIdRoute: ParentChildChildIdRouteWithChildren,
   TagNameCourseIdIndexRoute: TagNameCourseIdIndexRoute,
   AssessmentExaminationIndexRoute: AssessmentExaminationIndexRoute,
   AssessmentListIndexRoute: AssessmentListIndexRoute,
@@ -1899,6 +2209,7 @@ const rootRouteChildren: RootRouteChildren = {
   MyReportsProcessIdIndexRoute: MyReportsProcessIdIndexRoute,
   ParentAdmissionIndexRoute: ParentAdmissionIndexRoute,
   ParentApplicationIndexRoute: ParentApplicationIndexRoute,
+  ParentChildIndexRoute: ParentChildIndexRoute,
   ParentDashboardIndexRoute: ParentDashboardIndexRoute,
   ParentPaymentIndexRoute: ParentPaymentIndexRoute,
   ParentScheduleIndexRoute: ParentScheduleIndexRoute,
@@ -1906,6 +2217,7 @@ const rootRouteChildren: RootRouteChildren = {
   PlanningActivityLogsIndexRoute: PlanningActivityLogsIndexRoute,
   PlanningPlanningLogsIndexRoute: PlanningPlanningLogsIndexRoute,
   ProductPagesProductPageCodeIndexRoute: ProductPagesProductPageCodeIndexRoute,
+  ProfileOnboardingIndexRoute: ProfileOnboardingIndexRoute,
   RegisterLiveClassIndexRoute: RegisterLiveClassIndexRoute,
   ReportsAttendanceIndexRoute: ReportsAttendanceIndexRoute,
   StudyLibraryCoursesIndexRoute: StudyLibraryCoursesIndexRoute,

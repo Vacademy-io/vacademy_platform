@@ -1,9 +1,10 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { useCatalogStore } from "../-store/catalogStore";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleFetchInstituteDetails } from "../-services/institute-details";
 import { Funnel, X } from '@phosphor-icons/react';
-import { cn, toTitleCase } from "@/lib/utils";
+import { cn, toTitleCase, compareByNameNatural } from "@/lib/utils";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -29,16 +30,18 @@ const FilterList: React.FC<FilterListProps> = ({
     handleChange,
     disabled,
 }) => {
+    const { t } = useTranslation("study");
+
     return (
         <div className="space-y-2">
             {items.length === 0 && !disabled && (
                 <div className="text-sm text-muted-foreground py-2 italic">
-                    No options available
+                    {t("filters.noOptions")}
                 </div>
             )}
             {disabled && (
                 <div className="text-sm text-muted-foreground py-2 italic">
-                    Unavailable
+                    {t("filters.unavailable")}
                 </div>
             )}
             {items.map((item) => (
@@ -55,7 +58,7 @@ const FilterList: React.FC<FilterListProps> = ({
                             title={item.name}
                             className={cn(
                                 "text-sm cursor-pointer leading-none truncate peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
-                                selectedItems.includes(item.id) ? "font-medium text-primary [.ui-vibrant_&]:font-semibold [.ui-play_&]:font-extrabold [.ui-play_&]:text-play-success" : "font-normal [.ui-play_&]:font-bold"
+                                selectedItems.includes(item.id) ? "font-medium text-primary [.ui-vibrant_&]:font-semibold [.ui-play_&]:font-extrabold [.ui-play_&]:text-play-success-soft-ink" : "font-normal [.ui-play_&]:font-bold"
                             )}
                         >
                             {item.name}
@@ -104,6 +107,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     isDesktopOpen = true,
     onClose,
 }) => {
+    const { t } = useTranslation("study");
     const instructor = useCatalogStore((state) => state.instructor);
 
     const { data: instituteData, isLoading } = useSuspenseQuery(
@@ -118,10 +122,18 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     const activeFiltersCount = selectedLevels.length + selectedTags.length + selectedInstructors.length;
 
     type LevelItem = { id: string; level_name?: string };
-    const levels = (instituteData?.levels || []).map((level: LevelItem) => ({
-        id: level.id,
-        name: toTitleCase(level.level_name || `Unnamed ${getTerminology(ContentTerms.Level, SystemTerms.Level)}`),
-    }));
+    const levels = (instituteData?.levels || [])
+        .map((level: LevelItem) => ({
+            id: level.id,
+            name: toTitleCase(
+                level.level_name ||
+                    t("filters.unnamedLevel", {
+                        level: getTerminology(ContentTerms.Level, SystemTerms.Level),
+                    })
+            ),
+        }))
+        // Natural sort so levels read as Class 6, 7, 8 … then non-numeric names.
+        .sort(compareByNameNatural);
 
     const tags = React.useMemo(() => {
         const uniqueMap = new Map<string, string>();
@@ -140,7 +152,12 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     type InstructorItem = { id: string; full_name?: string; username?: string };
     const instructors = (instructor || []).map((inst: InstructorItem) => ({
         id: inst.id,
-        name: inst.full_name || inst.username || `Unnamed ${getTerminology(RoleTerms.Teacher, SystemTerms.Teacher)}`,
+        name:
+            inst.full_name ||
+            inst.username ||
+            t("filters.unnamedInstructor", {
+                instructor: getTerminology(RoleTerms.Teacher, SystemTerms.Teacher),
+            }),
     }));
 
     if (isLoading) {
@@ -174,7 +191,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
             "[.ui-vibrant_&]:border-t-4 [.ui-vibrant_&]:border-t-primary-300",
             "[.ui-vibrant_&]:shadow-md",
             // Play Styles — deep navy panel with soft layered shadow
-            "[.ui-play_&]:bg-play-navy [.ui-play_&]:rounded-2xl [.ui-play_&]:text-white [.ui-play_&]:border-transparent",
+            "[.ui-play_&]:bg-play-navy-soft [.ui-play_&]:rounded-play-card-sm [.ui-play_&]:border-border",
             "[.ui-play_&]:shadow-play-glow-navy"
         )}>
             {/* Desktop Header */}
@@ -187,8 +204,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                 "[.ui-play_&]:border-white/20"
             )}>
                 <div className="flex items-center gap-2">
-                    <Funnel size={18} className={cn("text-muted-foreground", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-play-gold")} />
-                    <h2 className={cn("text-lg font-semibold", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-white [.ui-play_&]:font-extrabold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide")}>Filters</h2>
+                    <Funnel size={18} className={cn("text-muted-foreground", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-play-navy-soft-ink")} />
+                    <h2 className={cn("text-lg font-semibold", "[.ui-vibrant_&]:text-primary", "[.ui-play_&]:text-play-navy-soft-ink [.ui-play_&]:font-extrabold")}>{t("filters.title")}</h2>
                 </div>
                 <div className="flex items-center gap-1">
                     {hasActiveFilters && (
@@ -198,8 +215,8 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                             onClick={clearAllFilters}
                             className="h-8 text-xs px-2 text-muted-foreground hover:text-foreground"
                         >
-                            <X size={14} className="mr-1" />
-                            Clear All
+                            <X size={14} className="me-1" />
+                            {t("filters.clearAll")}
                         </Button>
                     )}
                     {onClose && (
@@ -209,7 +226,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                             onClick={onClose}
                             className="h-8 text-xs px-2 text-muted-foreground hover:text-foreground"
                         >
-                            Close
+                            {t("filters.close")}
                         </Button>
                     )}
                 </div>
@@ -218,7 +235,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
             {hasActiveFilters && (
                 <div className="px-4 py-2 bg-muted/30 border-b">
                     <p className="text-xs text-primary font-medium">
-                        {activeFiltersCount} filter(s) applied
+                        {t("filters.appliedCount", { count: activeFiltersCount })}
                     </p>
                 </div>
             )}
@@ -230,7 +247,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                             <AccordionTrigger className="hover:no-underline py-3">
                                 <span className="text-sm font-semibold">{getTerminology(ContentTerms.Level, SystemTerms.Level)}</span>
                                 {selectedLevels.length > 0 && (
-                                    <Badge variant="secondary" className="ml-2 text-caption h-5 px-1.5">
+                                    <Badge variant="secondary" className="ms-2 text-caption h-5 px-1.5">
                                         {selectedLevels.length}
                                     </Badge>
                                 )}
@@ -251,7 +268,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                             <AccordionTrigger className="hover:no-underline py-3">
                                 <span className="text-sm font-semibold">{getTerminologyPlural(ContentTerms.PopularTag, SystemTerms.PopularTag)}</span>
                                 {selectedTags.length > 0 && (
-                                    <Badge variant="secondary" className="ml-2 text-caption h-5 px-1.5">
+                                    <Badge variant="secondary" className="ms-2 text-caption h-5 px-1.5">
                                         {selectedTags.length}
                                     </Badge>
                                 )}
@@ -272,7 +289,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                             <AccordionTrigger className="hover:no-underline py-3">
                                 <span className="text-sm font-semibold">{getTerminologyPlural(RoleTerms.Teacher, SystemTerms.Teacher)}</span>
                                 {selectedInstructors.length > 0 && (
-                                    <Badge variant="secondary" className="ml-2 text-caption h-5 px-1.5">
+                                    <Badge variant="secondary" className="ms-2 text-caption h-5 px-1.5">
                                         {selectedInstructors.length}
                                     </Badge>
                                 )}
@@ -297,9 +314,9 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                     className="w-full"
                     size="sm"
                 >
-                    Apply Filters
+                    {t("filters.apply")}
                     {hasActiveFilters && (
-                        <Badge variant="secondary" className="ml-2 bg-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/30 border-0">
+                        <Badge variant="secondary" className="ms-2 bg-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/30 border-0">
                             {activeFiltersCount}
                         </Badge>
                     )}
@@ -330,28 +347,28 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                 "[.ui-vibrant_&]:shadow-sm",
                                 "[.ui-vibrant_&]:bg-primary-50/50 dark:[.ui-vibrant_&]:bg-primary-500/10",
                                 // Play Styles — bright green CTA with soft colored glow
-                                "[.ui-play_&]:bg-play-success [.ui-play_&]:text-white [.ui-play_&]:border-transparent [.ui-play_&]:rounded-full [.ui-play_&]:font-bold [.ui-play_&]:uppercase [.ui-play_&]:tracking-wide",
-                                "[.ui-play_&]:shadow-play-glow-success-sm [.ui-play_&]:hover:bg-play-success-deep [.ui-play_&]:hover:shadow-play-glow-success"
+                                "[.ui-play_&]:bg-play-success-soft [.ui-play_&]:text-play-success-soft-ink [.ui-play_&]:border-transparent [.ui-play_&]:rounded-full [.ui-play_&]:font-bold",
+                                "[.ui-play_&]:hover:bg-play-success-soft"
                             )}
                         >
                             <div className="flex items-center gap-2">
                                 <Funnel size={16} />
-                                <span>Filters</span>
+                                <span>{t("filters.title")}</span>
                                 {hasActiveFilters && (
                                     <Badge variant="secondary" className="h-5 px-1.5 text-caption">
                                         {activeFiltersCount}
                                     </Badge>
                                 )}
                             </div>
-                            <span className="text-xs text-muted-foreground mr-1">Show</span>
+                            <span className="text-xs text-muted-foreground me-1">{t("filters.show")}</span>
                         </Button>
                     </SheetTrigger>
                     <SheetContent side="left" className="w-72 sm:w-96 p-0 overflow-hidden flex flex-col">
                         <SheetHeader className="p-4 border-b">
-                            <SheetTitle className="text-left flex items-center justify-between">
+                            <SheetTitle className="text-start flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <Funnel size={18} />
-                                    <span>Filters</span>
+                                    <span>{t("filters.title")}</span>
                                 </div>
                                 {hasActiveFilters && (
                                     <Button
@@ -359,7 +376,7 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                         size="icon"
                                         onClick={clearAllFilters}
                                         className="h-8 w-8 text-muted-foreground"
-                                        title="Clear All"
+                                        title={t("filters.clearAll")}
                                     >
                                         <X size={16} />
                                     </Button>
@@ -426,7 +443,9 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
                                 disabled={!hasActiveFilters}
                                 className="w-full"
                             >
-                                Apply {activeFiltersCount > 0 ? `(${activeFiltersCount})` : ''}
+                                {activeFiltersCount > 0
+                                    ? t("filters.applyWithCount", { selected: activeFiltersCount })
+                                    : t("filters.applyShort")}
                             </Button>
                         </div>
                     </SheetContent>

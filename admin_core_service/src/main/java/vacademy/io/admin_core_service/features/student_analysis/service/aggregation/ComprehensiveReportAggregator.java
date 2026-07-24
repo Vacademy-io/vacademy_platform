@@ -19,6 +19,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -90,7 +91,10 @@ public class ComprehensiveReportAggregator {
                     ? CompletableFuture.supplyAsync(() -> attendanceCollector.collect(userId, batchId, startDate, endDate), executor)
                     : null;
 
-            CompletableFuture<LiveClassesSection> liveClassFuture = (has(mods, ReportModule.LIVE_CLASSES) && batchId != null)
+            // No `batchId != null` gate: the query treats a null batch as "all of the learner's
+            // batches", so gating here skipped the whole section for a learner opened without batch
+            // context — reporting no live classes for someone who attended plenty.
+            CompletableFuture<LiveClassesSection> liveClassFuture = has(mods, ReportModule.LIVE_CLASSES)
                     ? CompletableFuture.supplyAsync(() -> liveClassCollector.collect(userId, batchId, startDate, endDate), executor)
                     : null;
 
@@ -114,7 +118,7 @@ public class ComprehensiveReportAggregator {
                     : null;
 
             CompletableFuture<List<AchievementItem>> certFuture = has(mods, ReportModule.CERTIFICATES)
-                    ? CompletableFuture.supplyAsync(() -> certificateCollector.collect(userId), executor)
+                    ? CompletableFuture.supplyAsync(() -> certificateCollector.collect(userId, startDate, endDate), executor)
                     : null;
 
             CompletableFuture<AssignmentsSection> assignmentFuture = has(mods, ReportModule.ASSIGNMENTS)
@@ -141,8 +145,23 @@ public class ComprehensiveReportAggregator {
                     .filter(Objects::nonNull)
                     .collect(Collectors.toList());
 
-            CompletableFuture.allOf(active.toArray(new CompletableFuture[0]))
-                    .get(COLLECTOR_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            // Wait for the slowest collector, but do NOT let it sink the report. Previously a
+            // TimeoutException here propagated to the catch-all below, which discarded every section
+            // — including the ones that had already returned real data — and emitted a report with
+            // everything marked unavailable. One slow query (typically the cross-service assessment
+            // fetch) silently erased attendance, activity and progress along with it.
+            // Each collector already catches its own errors, so on timeout we simply keep whatever
+            // finished: getSafe() below is getNow(fallback), which yields the real value for every
+            // completed future and the "unavailable" fallback only for the stragglers.
+            try {
+                CompletableFuture.allOf(active.toArray(new CompletableFuture[0]))
+                        .get(COLLECTOR_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (TimeoutException te) {
+                long done = active.stream().filter(CompletableFuture::isDone).count();
+                log.warn("[ComprehensiveReportAggregator] {} of {} collectors finished within {}s for userId={}"
+                                + " — proceeding with partial data; the rest are reported as unavailable.",
+                        done, active.size(), COLLECTOR_TIMEOUT_SECONDS, userId);
+            }
 
             // Resolve sections
             StudentIdentitySection student = getSafe(identityFuture,

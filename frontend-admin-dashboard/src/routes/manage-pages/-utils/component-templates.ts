@@ -647,6 +647,8 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         enabled: true,
         props: {
             html: '',
+            css: '',
+            prompt: '',
         },
     },
 };

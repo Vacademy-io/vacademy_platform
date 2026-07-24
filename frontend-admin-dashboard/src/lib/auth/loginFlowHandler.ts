@@ -26,7 +26,7 @@ import {
     type DisplaySettingsData,
 } from '@/types/display-settings';
 import type { QueryClient } from '@tanstack/react-query';
-import { getCachedInstituteBranding } from '@/services/domain-routing';
+import { getCachedInstituteBranding, resolveInstituteForCurrentHost } from '@/services/domain-routing';
 import { getCourseSettings } from '@/services/course-settings';
 import {
     hasFacultyAssignedPermission,
@@ -241,48 +241,131 @@ export const handleLoginFlow = async (options: LoginFlowOptions): Promise<LoginF
 
             // Faculty Access Check
             if (hasFacultyAssignedPermission(instituteId)) {
+                // ── Portal-scoped login enforcement (sub-org tenant isolation) ──
+                // A white-label SUB-ORG admin portal maps its domain to ONE sub-org via
+                // `institute_domain_routing.sub_org_id`, surfaced as the resolved
+                // branding's `subOrgId`. Every sub-org admin is really a PARENT-institute
+                // user (same JWT + user_role), so the ONLY thing that tells, e.g., the VKE
+                // portal apart from the Edvance portal is which sub-org the user is mapped
+                // to in FSPSSM (processed.subOrgs). Without this, any Enark sub-org admin
+                // can log in on any Enark sub-org portal. Rules:
+                //   • mapped to THIS portal's sub-org → allow + auto-select it (works even
+                //     if the user belongs to several sub-orgs — the portal disambiguates)
+                //   • scoped to NO sub-org (parent-level admin or faculty) → allow to roam
+                //   • a sub-org user on the WRONG portal → reject ("wrong portal")
+                // If the access list can't be loaded we fail OPEN (log in as before) rather
+                // than risk logging out a legitimate user on a transient error — the check
+                // still applies on every successful load, which is the normal case.
+                // Non-sub-org portals (parent / rows without sub_org_id) → portalSubOrgId
+                // is null and the original selection behaviour runs unchanged.
+
+                // Resolve the portal's sub-org identity. Prefer cached branding, but if it
+                // is absent/stale (e.g. the tab was opened before this portal's sub_org_id
+                // was set) fall back to a LIVE host re-resolve so a stale localStorage entry
+                // can't silently disable the check below.
+                let portalSubOrgId = getCachedInstituteBranding()?.subOrgId ?? null;
+                if (!portalSubOrgId) {
+                    try {
+                        portalSubOrgId = (await resolveInstituteForCurrentHost())?.subOrgId ?? null;
+                    } catch {
+                        /* leave null — non-sub-org portal or resolve unavailable */
+                    }
+                }
+
+                // Load the user's sub-org access. On failure `processed` stays null and the
+                // check below fails OPEN (see comment above) — matching prior behaviour.
+                let processed: ReturnType<typeof processAccessMappings> | null = null;
                 try {
                     const userId = tokenData?.user as string;
                     if (userId) {
                         const accessDetails = await fetchUserAccessDetails(userId, instituteId);
-                        const processed = processAccessMappings(accessDetails.accessMappings);
-
-                        if (processed.subOrgs.length > 1) {
-                            saveFacultyAccessData({
-                                subOrgs: processed.subOrgs,
-                                selectedSubOrgId: null,
-                                globalPackageIds: processed.globalPackageIds,
-                                globalPackageSessionIds: processed.globalPackageSessionIds,
-                                permissions: processed.permissions,
-                            });
-                            return {
-                                success: true,
-                                shouldShowSubOrgSelection: true,
-                                subOrgs: processed.subOrgs,
-                                userRoles,
-                            };
-                        } else if (processed.subOrgs.length === 1 && processed.subOrgs[0]) {
-                            saveFacultyAccessData({
-                                subOrgs: processed.subOrgs,
-                                selectedSubOrgId: processed.subOrgs[0].subOrgId,
-                                globalPackageIds: processed.globalPackageIds,
-                                globalPackageSessionIds: processed.globalPackageSessionIds,
-                                permissions: processed.permissions,
-                            });
-                        } else {
-                            // No sub-orgs found, but might have global filters
-                            saveFacultyAccessData({
-                                subOrgs: processed.subOrgs,
-                                selectedSubOrgId: null,
-                                globalPackageIds: processed.globalPackageIds,
-                                globalPackageSessionIds: processed.globalPackageSessionIds,
-                                permissions: processed.permissions,
-                            });
-                        }
+                        processed = processAccessMappings(accessDetails.accessMappings);
                     }
                 } catch (error) {
                     console.error('Faculty access initialization failed:', error);
-                    // Continue with normal flow if faculty access check fails
+                    // Continue with normal flow if faculty access check fails.
+                }
+
+                if (portalSubOrgId) {
+                    const userSubOrgIds = processed ? processed.subOrgs.map((s) => s.subOrgId) : [];
+                    const belongsToPortalSubOrg = userSubOrgIds.includes(portalSubOrgId);
+                    // A user scoped to NO sub-org (parent-level admin or faculty) may roam any
+                    // sub-org portal. When the access list failed to load, userSubOrgIds is
+                    // empty here too, so we fail OPEN — same as the original behaviour — rather
+                    // than log out a legitimate user on a transient fetch error.
+                    const isUnrestrictedParentAdmin = userSubOrgIds.length === 0;
+
+                    if (!belongsToPortalSubOrg && !isUnrestrictedParentAdmin) {
+                        trackEvent('Login Blocked', {
+                            login_method: loginMethod,
+                            reason: 'suborg_portal_mismatch',
+                            portal_sub_org_id: portalSubOrgId,
+                            user_sub_org_ids: userSubOrgIds,
+                            timestamp: new Date().toISOString(),
+                        });
+
+                        // Clear tokens and show error — foreign sub-org user.
+                        removeCookiesAndLogout();
+
+                        toast.error('Access Denied', {
+                            description:
+                                'These credentials don’t belong to this portal. Please sign in on your organization’s own login page.',
+                            className: 'error-toast',
+                            duration: 5000,
+                        });
+
+                        return {
+                            success: false,
+                            error: 'suborg_portal_mismatch',
+                            userRoles,
+                        };
+                    }
+
+                    if (processed) {
+                        saveFacultyAccessData({
+                            subOrgs: processed.subOrgs,
+                            // On a sub-org portal the domain already picks the sub-org, so
+                            // select it directly and skip the picker. Parent admins keep
+                            // parent context (null).
+                            selectedSubOrgId: belongsToPortalSubOrg ? portalSubOrgId : null,
+                            globalPackageIds: processed.globalPackageIds,
+                            globalPackageSessionIds: processed.globalPackageSessionIds,
+                            permissions: processed.permissions,
+                        });
+                    }
+                } else if (processed) {
+                    if (processed.subOrgs.length > 1) {
+                        saveFacultyAccessData({
+                            subOrgs: processed.subOrgs,
+                            selectedSubOrgId: null,
+                            globalPackageIds: processed.globalPackageIds,
+                            globalPackageSessionIds: processed.globalPackageSessionIds,
+                            permissions: processed.permissions,
+                        });
+                        return {
+                            success: true,
+                            shouldShowSubOrgSelection: true,
+                            subOrgs: processed.subOrgs,
+                            userRoles,
+                        };
+                    } else if (processed.subOrgs.length === 1 && processed.subOrgs[0]) {
+                        saveFacultyAccessData({
+                            subOrgs: processed.subOrgs,
+                            selectedSubOrgId: processed.subOrgs[0].subOrgId,
+                            globalPackageIds: processed.globalPackageIds,
+                            globalPackageSessionIds: processed.globalPackageSessionIds,
+                            permissions: processed.permissions,
+                        });
+                    } else {
+                        // No sub-orgs found, but might have global filters
+                        saveFacultyAccessData({
+                            subOrgs: processed.subOrgs,
+                            selectedSubOrgId: null,
+                            globalPackageIds: processed.globalPackageIds,
+                            globalPackageSessionIds: processed.globalPackageSessionIds,
+                            permissions: processed.permissions,
+                        });
+                    }
                 }
             }
 
@@ -473,53 +556,109 @@ export const handleInstituteSelection = async (instituteId: string): Promise<Log
         // Set the selected institute
         setSelectedInstitute(instituteId);
 
-        // Faculty Access Check
-        try {
-            if (hasFacultyAssignedPermission(instituteId)) {
+        // Faculty Access Check — mirrors handleLoginFlow (see the detailed comment
+        // there). The portal's sub-org id is re-resolved live if the cached branding
+        // lacks it; a failed access fetch fails OPEN (logs in as before).
+        if (hasFacultyAssignedPermission(instituteId)) {
+            let portalSubOrgId = cachedBranding?.subOrgId ?? null;
+            if (!portalSubOrgId) {
+                try {
+                    portalSubOrgId = (await resolveInstituteForCurrentHost())?.subOrgId ?? null;
+                } catch {
+                    /* leave null — non-sub-org portal or resolve unavailable */
+                }
+            }
+
+            let processed: ReturnType<typeof processAccessMappings> | null = null;
+            try {
                 const accessToken = getTokenFromCookie(TokenKey.accessToken);
                 const { getTokenDecodedData } = await import('@/lib/auth/sessionUtility');
                 const tData = getTokenDecodedData(accessToken);
-
                 if (tData?.user) {
                     const accessDetails = await fetchUserAccessDetails(tData.user as string, instituteId);
-                    const processed = processAccessMappings(accessDetails.accessMappings);
+                    processed = processAccessMappings(accessDetails.accessMappings);
+                }
+            } catch (error) {
+                console.error('Faculty access initialization failed in institute selection:', error);
+                // Continue with normal flow if faculty access check fails.
+            }
 
-                    if (processed.subOrgs.length > 1) {
-                        saveFacultyAccessData({
-                            subOrgs: processed.subOrgs,
-                            selectedSubOrgId: null,
-                            globalPackageIds: processed.globalPackageIds,
-                            globalPackageSessionIds: processed.globalPackageSessionIds,
-                            permissions: processed.permissions,
-                        });
-                        return {
-                            success: true,
-                            shouldShowSubOrgSelection: true,
-                            subOrgs: processed.subOrgs,
-                            userRoles,
-                        };
-                    } else if (processed.subOrgs.length === 1 && processed.subOrgs[0]) {
-                        saveFacultyAccessData({
-                            subOrgs: processed.subOrgs,
-                            selectedSubOrgId: processed.subOrgs[0].subOrgId,
-                            globalPackageIds: processed.globalPackageIds,
-                            globalPackageSessionIds: processed.globalPackageSessionIds,
-                            permissions: processed.permissions,
-                        });
-                    } else {
-                        // No sub-orgs found, but might have global filters
-                        saveFacultyAccessData({
-                            subOrgs: processed.subOrgs,
-                            selectedSubOrgId: null,
-                            globalPackageIds: processed.globalPackageIds,
-                            globalPackageSessionIds: processed.globalPackageSessionIds,
-                            permissions: processed.permissions,
-                        });
-                    }
+            if (portalSubOrgId) {
+                const userSubOrgIds = processed ? processed.subOrgs.map((s) => s.subOrgId) : [];
+                const belongsToPortalSubOrg = userSubOrgIds.includes(portalSubOrgId);
+                // See handleLoginFlow: parent-level users (no sub-org) roam; a failed access
+                // load fails OPEN (empty list) rather than logging out a legitimate user.
+                const isUnrestrictedParentAdmin = userSubOrgIds.length === 0;
+
+                if (!belongsToPortalSubOrg && !isUnrestrictedParentAdmin) {
+                    trackEvent('Login Blocked', {
+                        login_method: 'institute_selection',
+                        reason: 'suborg_portal_mismatch',
+                        portal_sub_org_id: portalSubOrgId,
+                        user_sub_org_ids: userSubOrgIds,
+                        institute_id: instituteId,
+                        timestamp: new Date().toISOString(),
+                    });
+
+                    removeCookiesAndLogout();
+
+                    toast.error('Access Denied', {
+                        description:
+                            'These credentials don’t belong to this portal. Please sign in on your organization’s own login page.',
+                        className: 'error-toast',
+                        duration: 5000,
+                    });
+
+                    return {
+                        success: false,
+                        error: 'suborg_portal_mismatch',
+                        userRoles,
+                    };
+                }
+
+                if (processed) {
+                    saveFacultyAccessData({
+                        subOrgs: processed.subOrgs,
+                        selectedSubOrgId: belongsToPortalSubOrg ? portalSubOrgId : null,
+                        globalPackageIds: processed.globalPackageIds,
+                        globalPackageSessionIds: processed.globalPackageSessionIds,
+                        permissions: processed.permissions,
+                    });
+                }
+            } else if (processed) {
+                if (processed.subOrgs.length > 1) {
+                    saveFacultyAccessData({
+                        subOrgs: processed.subOrgs,
+                        selectedSubOrgId: null,
+                        globalPackageIds: processed.globalPackageIds,
+                        globalPackageSessionIds: processed.globalPackageSessionIds,
+                        permissions: processed.permissions,
+                    });
+                    return {
+                        success: true,
+                        shouldShowSubOrgSelection: true,
+                        subOrgs: processed.subOrgs,
+                        userRoles,
+                    };
+                } else if (processed.subOrgs.length === 1 && processed.subOrgs[0]) {
+                    saveFacultyAccessData({
+                        subOrgs: processed.subOrgs,
+                        selectedSubOrgId: processed.subOrgs[0].subOrgId,
+                        globalPackageIds: processed.globalPackageIds,
+                        globalPackageSessionIds: processed.globalPackageSessionIds,
+                        permissions: processed.permissions,
+                    });
+                } else {
+                    // No sub-orgs found, but might have global filters
+                    saveFacultyAccessData({
+                        subOrgs: processed.subOrgs,
+                        selectedSubOrgId: null,
+                        globalPackageIds: processed.globalPackageIds,
+                        globalPackageSessionIds: processed.globalPackageSessionIds,
+                        permissions: processed.permissions,
+                    });
                 }
             }
-        } catch (error) {
-            console.error('Faculty access initialization failed in institute selection:', error);
         }
 
         // Refresh settings caches for this institute (non-blocking for course settings)

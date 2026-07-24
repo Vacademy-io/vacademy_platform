@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.telephony.enums.CallStatus;
 import vacademy.io.admin_core_service.features.telephony.enums.ProviderType;
 import vacademy.io.admin_core_service.features.telephony.ivr.IvrMenuService;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.IvrMenu;
+import vacademy.io.admin_core_service.features.telephony.enums.IvrNodeType;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.IvrNode;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyCallLog;
 import vacademy.io.admin_core_service.features.telephony.persistence.entity.TelephonyProviderNumber;
@@ -47,6 +48,10 @@ public class PlivoCallbackController {
 
     private static final String HANGUP_XML =
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response><Hangup/></Response>";
+
+    /** Max DIAL-fallback legs before we stop and take a message — bounds a mis-configured
+     *  fallback cycle (A→B→A) from ringing forever. */
+    private static final int MAX_DIAL_HOPS = 5;
 
     @Autowired private TelephonyCallLogRepository callLogRepo;
     @Autowired private TelephonyConfigCache configCache;
@@ -186,6 +191,17 @@ public class PlivoCallbackController {
         String nextId = digits == null ? null : digitMap.get(digits.trim());
         IvrNode next = (nextId == null) ? null : ivrMenuService.getNode(nextId).orElse(null);
 
+        // Record the caller's menu choice on the call log (e.g. "1 · Shivir Info") so the
+        // team sees the category on the Call Log and can call back accordingly. Only on a
+        // valid press; best-effort — never blocks routing.
+        if (next != null && digits != null) {
+            try {
+                callLogRepo.updateIvrSelection(corr, ivrSelectionLabel(digits.trim(), next));
+            } catch (Exception e) {
+                log.warn("plivo dtmf: could not record IVR selection for corr={}: {}", corr, e.getMessage());
+            }
+        }
+
         // Invalid / no match → replay the current menu so the caller can retry.
         IvrNode toRender = next != null ? next : current;
         return xml(ivrRenderer.render(toRender, corr, row.getInstituteId(), record,
@@ -233,6 +249,132 @@ public class PlivoCallbackController {
         return xml(buildDialXml(callerId, target, statusBase, false));
     }
 
+    /**
+     * Post-dial continuation for an IVR DIAL node — the Dial's {@code action} URL. Plivo
+     * hits this once the ring finishes: if the call was ANSWERED we're done → hang up; if
+     * NOBODY answered (no-answer / busy / failed) we follow the DIAL node's fallback
+     * ({@code next_node_id} → another DIAL to try the next person, or a Voicemail to take a
+     * message), so a missed redirect doesn't just drop the caller. No fallback configured →
+     * a short "we'll call you back" message. Auth: unguessable {@code ?corr=} + optional token.
+     */
+    @RequestMapping(value = "/dial-next",
+            method = { RequestMethod.POST, RequestMethod.GET },
+            produces = MediaType.APPLICATION_XML_VALUE)
+    public ResponseEntity<String> dialNext(
+            @RequestParam("corr") String corr,
+            @RequestParam("nodeId") String nodeId,
+            @RequestParam(value = "token", required = false) String token,
+            @RequestParam(value = "hop", required = false) String hopRaw,
+            HttpServletRequest req) {
+
+        corr = firstValue(corr);
+        nodeId = firstValue(nodeId);
+        token = firstValue(token);
+
+        TelephonyCallLog row = callLogRepo.findById(corr).orElse(null);
+        if (row == null) return xml(HANGUP_XML);
+        TelephonyConfigCache.Resolved resolved = configCache.get(row.getInstituteId()).orElse(null);
+        if (resolved == null) return xml(HANGUP_XML);
+        if (!verifyToken(resolved.getWebhookToken(), token)) return xml(HANGUP_XML);
+
+        // Answered ONLY on a real connect: the b-leg had talk time, or DialStatus=="completed"
+        // (someone picked up, then it ended). NEVER substring-match "answer" — Plivo's ring-out
+        // value is "no-answer", which contains "answer" and would wrongly skip the fallback.
+        String dialStatus = lower(firstNonBlank(req.getParameter("DialStatus"), req.getParameter("DialBLegStatus")));
+        boolean answered = parsePositive(req.getParameter("DialBLegDuration"))
+                || "completed".equals(dialStatus);
+        if (answered) {
+            // Record the connect BEFORE hanging up: this action callback is the ONLY event
+            // that ever carries the human conversation's talk time (DialBLegDuration) for an
+            // inbound IVR <Dial> — Plivo's dial_callback events map to IN_PROGRESS with no
+            // duration, and there is no a-leg hangup ingestion wired for inbound. Without
+            // this the row stays IN_PROGRESS forever: invisible as a completed call AND
+            // structurally unbillable (the voice meter gates on COMPLETED + duration).
+            try {
+                Integer blegSecs = parseIntOrNull(req.getParameter("DialBLegDuration"));
+                callLogService.applyEvent(row, NormalizedCallEvent.builder()
+                        .correlationId(corr)
+                        .status(CallStatus.COMPLETED)
+                        .durationSeconds(blegSecs)
+                        .build());
+            } catch (Exception e) {
+                log.warn("plivo dial-next: could not record answered dial for corr={}: {}",
+                        corr, e.getMessage());
+            }
+            return xml(HANGUP_XML);
+        }
+
+        // Nobody answered → follow the DIAL node's fallback (next person / voicemail), bounded
+        // by a hop cap so a mis-configured cycle (A→B→A) can't ring forever.
+        int hop = parseIntOr(firstValue(hopRaw), 0);
+        IvrNode node = ivrMenuService.getNode(nodeId).orElse(null);
+        String fallbackId = node == null ? null : node.getNextNodeId();
+        IvrNode fallback = (fallbackId == null || fallbackId.isBlank())
+                ? null : ivrMenuService.getNode(fallbackId).orElse(null);
+
+        if (fallback == null || hop >= MAX_DIAL_HOPS) {
+            // Chain exhausted — definitively nobody in the redirect picked up (we only get
+            // here when no leg connected, else we'd have hung up above). Label the row so
+            // "which redirects weren't answered" is answerable on the Call Log, then sign off.
+            // applyEvent is rank-ordered, so it never regresses a genuine terminal already set.
+            try {
+                callLogService.applyEvent(row, NormalizedCallEvent.builder()
+                        .correlationId(corr).status(mapDialMiss(dialStatus)).build());
+            } catch (Exception e) {
+                log.warn("plivo dial-next: could not record dial miss for corr={}: {}", corr, e.getMessage());
+            }
+            return xml("<?xml version=\"1.0\" encoding=\"UTF-8\"?><Response>"
+                    + "<Speak>Sorry, no one is available right now. Our team will call you back shortly.</Speak>"
+                    + "<Hangup/></Response>");
+        }
+        boolean record = Boolean.TRUE.equals(resolved.getConfig().getRecordCalls());
+        log.info("plivo dial-next: corr={} dialStatus={} hop={} → fallback node {}",
+                corr, dialStatus, hop, fallback.getId());
+        return xml(ivrRenderer.render(fallback, corr, row.getInstituteId(), record,
+                resolved.getWebhookToken(), hop + 1));
+    }
+
+    private static String lower(String s) {
+        return s == null ? null : s.toLowerCase();
+    }
+
+    private static boolean parsePositive(String s) {
+        if (s == null || s.isBlank()) return false;
+        try {
+            return Integer.parseInt(s.trim()) > 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static int parseIntOr(String s, int fallback) {
+        if (s == null || s.isBlank()) return fallback;
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (Exception e) {
+            return fallback;
+        }
+    }
+
+    /** Positive int or null — applyEvent's duration is null-guarded first-write-wins. */
+    private static Integer parseIntOrNull(String s) {
+        if (s == null || s.isBlank()) return null;
+        try {
+            int v = Integer.parseInt(s.trim());
+            return v > 0 ? v : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** Terminal status for an unanswered redirect leg, from Plivo's DialStatus. */
+    private static CallStatus mapDialMiss(String dialStatus) {
+        String s = dialStatus == null ? "" : dialStatus;
+        if (s.contains("busy")) return CallStatus.BUSY;
+        if (s.contains("fail") || s.contains("error")) return CallStatus.FAILED;
+        return CallStatus.NO_ANSWER; // no-answer / timeout / cancel / unknown
+    }
+
     private static String parseHandoffNumber(String json) {
         if (json == null || json.isBlank()) return null;
         try {
@@ -249,6 +391,26 @@ public class PlivoCallbackController {
         if (a != null && !a.isBlank()) return a;
         if (b != null && !b.isBlank()) return b;
         return null;
+    }
+
+    /** Human-readable IVR selection for the call log: "{digit} · {node label or type}". */
+    private static String ivrSelectionLabel(String digit, IvrNode target) {
+        String label = target.getLabel();
+        if (label == null || label.isBlank()) label = friendlyType(IvrNodeType.parseOrNull(target.getNodeType()));
+        String s = digit + " · " + label;
+        return s.length() > 160 ? s.substring(0, 160) : s;
+    }
+
+    private static String friendlyType(IvrNodeType t) {
+        if (t == null) return "Option";
+        return switch (t) {
+            case AI_AGENT -> "AI Assistant";
+            case DIAL -> "Call team";
+            case VOICEMAIL -> "Voicemail";
+            case GATHER -> "Submenu";
+            case PLAY -> "Message";
+            case HANGUP -> "End call";
+        };
     }
 
     /** First value of a possibly comma-joined duplicated request param (Plivo

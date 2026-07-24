@@ -389,7 +389,7 @@ function FeedbackPage() {
               <Label className="text-subtitle font-semibold text-foreground">
                 {q.label}
                 {q.mandatory && (
-                  <span className="ml-0.5 text-danger-500">*</span>
+                  <span className="ms-0.5 text-danger-500">*</span>
                 )}
               </Label>
 

@@ -179,6 +179,12 @@ const DEFAULT_ASSIST_GATES: GateType[] = [
     'shot_plan',
     'styleframe',
     'narration',
+    // Approve/replace character portraits BEFORE dialogue clips are filmed —
+    // the only place a user can bind real faces ("Use my image") to the cast.
+    'cast',
+    // Review every filmed dialogue clip (with QC verdicts) BEFORE the final
+    // cut — approve or send clips back for a charged re-take.
+    'dailies',
     'visual_casting',
     'shot_look',
 ];

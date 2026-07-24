@@ -53,8 +53,50 @@ logger = logging.getLogger(__name__)
 # Constants — locked by the plan
 # ---------------------------------------------------------------------------
 _FAL_QUEUE_BASE = "https://queue.fal.run"
-_TEXT_TO_VIDEO_ENDPOINT = "fal-ai/veo3.1/lite"
-_IMAGE_TO_VIDEO_ENDPOINT = "fal-ai/veo3.1/lite/image-to-video"
+
+# ── Veo model registry ───────────────────────────────────────────────────
+# lite / full / fast are the SAME API (identical payload, 4/6/8 duration
+# grid, 720p/1080p, audio on/off) — only the fal endpoint and the per-second
+# price differ. So one client serves all three; the caller picks via `model`.
+# Non-Veo families (Seedance/Kling/Wan) have different payload+duration
+# contracts and get their own clients, not this registry.
+#   full  — top-tier photoreal + strongest prompt adherence (the fidelity fix
+#           for "lite looked bad"); $0.20/s no-audio, $0.40/s audio @720p/1080p
+#   fast  — cheaper full-model tier, still well above lite; $0.10 / $0.15
+#   lite  — budget tier (historical default); $0.03 / $0.05 / $0.08
+_VEO_MODELS: Dict[str, Dict[str, Any]] = {
+    "fal-ai/veo3.1/lite": {
+        "t2v": "fal-ai/veo3.1/lite",
+        "i2v": "fal-ai/veo3.1/lite/image-to-video",
+        "price": {("720p", False): 0.03, ("720p", True): 0.05,
+                  ("1080p", False): 0.05, ("1080p", True): 0.08},
+    },
+    "fal-ai/veo3.1": {
+        "t2v": "fal-ai/veo3.1",
+        "i2v": "fal-ai/veo3.1/image-to-video",
+        "price": {("720p", False): 0.20, ("720p", True): 0.40,
+                  ("1080p", False): 0.20, ("1080p", True): 0.40},
+    },
+    "fal-ai/veo3.1/fast": {
+        "t2v": "fal-ai/veo3.1/fast",
+        "i2v": "fal-ai/veo3.1/fast/image-to-video",
+        "price": {("720p", False): 0.10, ("720p", True): 0.15,
+                  ("1080p", False): 0.10, ("1080p", True): 0.15},
+    },
+}
+_DEFAULT_VEO_MODEL = "fal-ai/veo3.1/lite"
+
+
+def resolve_veo_model(model: Optional[str]) -> str:
+    """Coerce a caller-supplied model id to a known Veo endpoint key.
+    Unknown / None → the historical lite default (safe + cheap)."""
+    m = str(model or "").strip()
+    return m if m in _VEO_MODELS else _DEFAULT_VEO_MODEL
+
+
+# Back-compat module aliases (the lite endpoints many call sites imported).
+_TEXT_TO_VIDEO_ENDPOINT = _VEO_MODELS[_DEFAULT_VEO_MODEL]["t2v"]
+_IMAGE_TO_VIDEO_ENDPOINT = _VEO_MODELS[_DEFAULT_VEO_MODEL]["i2v"]
 
 _DEFAULT_SUBMIT_TIMEOUT_S = 30.0
 _DEFAULT_POLL_TIMEOUT_S = 30.0
@@ -77,16 +119,21 @@ _PRICE_PER_SECOND_USD: Dict[Tuple[str, bool], float] = {
 }
 
 
-def price_per_call_usd(*, resolution: str, duration_s: int, audio_on: bool) -> float:
+def price_per_call_usd(
+    *, resolution: str, duration_s: int, audio_on: bool,
+    model: Optional[str] = None,
+) -> float:
     """Cost in USD for one Veo call at the given params. The pipeline
     increments the per-video circuit-breaker tally with this value
     immediately after a successful submit — params fully determine cost,
-    no need to wait for the invoice."""
-    rate = _PRICE_PER_SECOND_USD.get((resolution, bool(audio_on)))
+    no need to wait for the invoice. `model` selects the per-tier price
+    table (full/fast cost far more than lite); None → lite (back-compat)."""
+    table = _VEO_MODELS.get(resolve_veo_model(model), {}).get("price") or _PRICE_PER_SECOND_USD
+    rate = table.get((resolution, bool(audio_on)))
     if rate is None:
         # Defensive: if a new combo arrives, charge the most expensive rate
-        # we know so the circuit breaker stays conservative.
-        rate = max(_PRICE_PER_SECOND_USD.values())
+        # in this model's table so the circuit breaker stays conservative.
+        rate = max(table.values())
     return round(rate * float(duration_s), 4)
 
 
@@ -174,6 +221,7 @@ class FalVeoClient:
         self,
         api_key: str,
         *,
+        model: Optional[str] = None,
         render_deadline_s: float = _DEFAULT_RENDER_DEADLINE_S,
         poll_interval_s: float = _DEFAULT_POLL_INTERVAL_S,
         submit_timeout_s: float = _DEFAULT_SUBMIT_TIMEOUT_S,
@@ -182,6 +230,11 @@ class FalVeoClient:
         if not api_key:
             raise ValueError("FalVeoClient requires a non-empty api_key (set FAL_API_KEY).")
         self._api_key = api_key
+        # Which Veo tier this client films with (lite/full/fast). Resolved to
+        # a known key; endpoints + pricing come from the registry.
+        self._model = resolve_veo_model(model)
+        self._t2v_endpoint = _VEO_MODELS[self._model]["t2v"]
+        self._i2v_endpoint = _VEO_MODELS[self._model]["i2v"]
         self._render_deadline_s = float(render_deadline_s)
         self._poll_interval_s = float(poll_interval_s)
         self._submit_timeout_s = float(submit_timeout_s)
@@ -229,7 +282,7 @@ class FalVeoClient:
             safety_tolerance=safety_tolerance,
         )
         return self._run_sync(
-            endpoint=_TEXT_TO_VIDEO_ENDPOINT,
+            endpoint=self._t2v_endpoint,
             payload=payload,
             duration_s=duration_s,
             resolution=resolution,
@@ -272,7 +325,7 @@ class FalVeoClient:
             safety_tolerance=safety_tolerance,
         )
         return self._run_sync(
-            endpoint=_IMAGE_TO_VIDEO_ENDPOINT,
+            endpoint=self._i2v_endpoint,
             payload=payload,
             duration_s=duration_s,
             resolution=resolution,
@@ -320,7 +373,10 @@ class FalVeoClient:
                 f"Veo completed but no video URL found in payload. "
                 f"Keys: {list(final_payload.keys()) if isinstance(final_payload, dict) else type(final_payload).__name__}"
             )
-        cost = price_per_call_usd(resolution=resolution, duration_s=duration_s, audio_on=audio_on)
+        cost = price_per_call_usd(
+            resolution=resolution, duration_s=duration_s,
+            audio_on=audio_on, model=self._model,
+        )
         return VeoResult(
             request_id=submission.request_id,
             video_url=video_url,

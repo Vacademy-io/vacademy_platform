@@ -357,6 +357,82 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
             @Param("liveSessionIdsSize") int liveSessionIdsSize
     );
 
+    // NOTE: keep SQL "--" comments OUT of this native @Query text block. Spring Data's
+    // SpEL QuotationMap scans the whole string for apostrophes (including inside comments)
+    // before binding params, so a lone "'" in a comment throws "starts a quoted range ...
+    // but never ends it" at startup. Put explanations in Java "//" comments like this one.
+    //
+    // The batch narrowing (:batchId filter) applies ONLY to BATCH rows. Applying it to USER
+    // rows would compare lsp.source_id (which IS the userId for those rows) against the batch
+    // id and drop every session the learner was individually added to.
+    @Query(value = """
+    SELECT DISTINCT ON (ss.id, ls.id)
+        ss.id AS scheduleId,
+        ss.meeting_date AS meetingDate,
+        ss.start_time AS startTime,
+        ss.last_entry_time AS lastEntryTime,
+        ls.id AS sessionId,
+        ls.title AS sessionTitle,
+        ls.subject AS subject,
+        ls.status AS sessionStatus,
+        ls.access_level AS accessLevel,
+        COALESCE(lsl.status, 'UNMARKED') AS attendanceStatus,
+        lsl.provider_total_duration_minutes AS durationMinutes
+    FROM live_session_participants lsp
+    JOIN session_schedules ss ON ss.session_id = lsp.session_id
+    JOIN live_session ls ON ls.id = lsp.session_id
+    LEFT JOIN LATERAL (
+        SELECT status, details, created_at, provider_total_duration_minutes
+        FROM live_session_logs
+        WHERE session_id = lsp.session_id
+          AND schedule_id = ss.id
+          AND user_source_type = 'USER'
+          AND user_source_id = :userId
+          AND log_type = 'ATTENDANCE_RECORDED'
+        ORDER BY created_at DESC
+        LIMIT 1
+    ) lsl ON TRUE
+    LEFT JOIN student_session_institute_group_mapping m
+        ON m.package_session_id = lsp.source_id
+        AND m.user_id = :userId
+        AND m.status = 'ACTIVE'
+    WHERE (
+            (lsp.source_type = 'USER' AND lsp.source_id = :userId)
+            OR (lsp.source_type = 'BATCH' AND m.user_id IS NOT NULL
+                AND (:batchId IS NULL OR lsp.source_id = :batchId))
+          )
+      AND ls.status <> 'DELETED'
+      AND ss.status <> 'DELETED'
+      AND ss.meeting_date BETWEEN :startDate AND :endDate
+      AND (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)
+    ORDER BY ss.id, ls.id
+    """, nativeQuery = true)
+    List<ScheduleAttendanceProjection> findAttendanceForUser(
+            @Param("userId") String userId,
+            @Param("batchId") String batchId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
+
+    /**
+     * Attendance rows for one learner, scoped to EVERY batch they are actively enrolled in
+     * (plus any session they were added to individually). Used by the student report.
+     *
+     * <p>Differs from {@link #findAttendanceForUser} — which required a single caller-supplied
+     * {@code batchId} to equal {@code live_session_participants.source_id} and therefore returned
+     * ZERO rows (reported as 0% attendance) whenever that batch id was null, stale, or simply not
+     * the batch the session was attached to. Semantics here deliberately mirror
+     * {@link #getAttendanceReportForStudentIds}, which is what the admin attendance screen shows,
+     * so the report and that screen can no longer disagree:
+     * <ul>
+     *   <li>enrolment is resolved from the learner's ACTIVE mappings, not a passed-in id;</li>
+     *   <li>{@code enrolled_date} is applied per-mapping (sessions before the learner joined that
+     *       batch don't count against them);</li>
+     *   <li>DELETED schedules are excluded — the old query only excluded non-LIVE sessions, so a
+     *       deleted schedule still counted as an UNMARKED (→ absent) session and deflated the %.</li>
+     * </ul>
+     * {@code batchId} is an OPTIONAL narrowing filter: pass null to count all batches.
+     */
     @Query(value = """
     SELECT DISTINCT ON (ss.id, ls.id)
         ss.id AS scheduleId,
@@ -371,9 +447,19 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         COALESCE(lsl.status, 'UNMARKED') AS attendanceStatus
     FROM live_session_participants lsp
     JOIN session_schedules ss ON ss.session_id = lsp.session_id
-    JOIN live_session ls ON ls.id = lsp.session_id AND ls.status = 'LIVE'
+    JOIN live_session ls ON ls.id = lsp.session_id
+    LEFT JOIN student_session_institute_group_mapping m
+        ON lsp.source_type = 'BATCH'
+       AND m.package_session_id = lsp.source_id
+       AND m.user_id = :userId
+       -- Enrolment status is deliberately NOT restricted to ACTIVE. A report for a past term is
+       -- generated after the mapping has flipped to EXPIRED/INACTIVE (or the learner moved to the
+       -- next years batch) -- requiring ACTIVE returned ZERO sessions for a learner with a full
+       -- attendance history. They *were* enrolled when those sessions ran, which is what matters.
+       -- INVITED (never enrolled) and DELETED are still excluded.
+       AND m.status NOT IN ('INVITED', 'DELETED')
     LEFT JOIN LATERAL (
-        SELECT status, details, created_at
+        SELECT status
         FROM live_session_logs
         WHERE session_id = lsp.session_id
           AND schedule_id = ss.id
@@ -383,30 +469,21 @@ public interface LiveSessionParticipantRepository extends JpaRepository<LiveSess
         ORDER BY created_at DESC
         LIMIT 1
     ) lsl ON TRUE
-    WHERE
-        (
+    WHERE (
             (lsp.source_type = 'USER' AND lsp.source_id = :userId)
-            OR 
-            (lsp.source_type = 'BATCH' AND lsp.source_id = :batchId 
-             AND EXISTS (
-                 SELECT 1 FROM student_session_institute_group_mapping 
-                 WHERE user_id = :userId 
-                   AND package_session_id = :batchId 
-                   AND status = 'ACTIVE'
-             ))
-        )
-        AND ss.meeting_date BETWEEN :startDate AND :endDate
-        AND ss.meeting_date >= COALESCE((
-            SELECT enrolled_date 
-            FROM student_session_institute_group_mapping 
-            WHERE user_id = :userId 
-              AND (:batchId IS NULL OR package_session_id = :batchId)
-            ORDER BY created_at DESC 
-            LIMIT 1
-        ), :startDate)
+            OR (lsp.source_type = 'BATCH' AND m.user_id IS NOT NULL
+                -- The batch narrowing applies ONLY to BATCH rows. Applying it to USER rows would
+                -- compare lsp.source_id (which IS the userId for those rows) against the batch id
+                -- and drop every session the learner was individually added to.
+                AND (:batchId IS NULL OR lsp.source_id = :batchId))
+          )
+      AND ls.status <> 'DELETED'
+      AND ss.status <> 'DELETED'
+      AND ss.meeting_date BETWEEN :startDate AND :endDate
+      AND (m.enrolled_date IS NULL OR ss.meeting_date >= m.enrolled_date)
     ORDER BY ss.id, ls.id
     """, nativeQuery = true)
-    List<ScheduleAttendanceProjection> findAttendanceForUser(
+    List<ScheduleAttendanceProjection> findAttendanceForUserAcrossBatches(
             @Param("userId") String userId,
             @Param("batchId") String batchId,
             @Param("startDate") LocalDate startDate,

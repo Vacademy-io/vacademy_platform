@@ -6,11 +6,13 @@ import org.springframework.http.ResponseEntity;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
+import vacademy.io.admin_core_service.features.telephony.core.CallDetailService;
 import vacademy.io.admin_core_service.features.telephony.core.CallDispositionService;
 import vacademy.io.admin_core_service.features.telephony.core.CallDispositionService.AppliedDisposition;
 import vacademy.io.admin_core_service.features.telephony.core.CallExportAiEnricher;
 import vacademy.io.admin_core_service.features.telephony.core.CallExportService;
 import vacademy.io.admin_core_service.features.telephony.core.CallSearchService;
+import vacademy.io.admin_core_service.features.telephony.core.dto.CallDetailDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallDispositionCatalogDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallDispositionRequestDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallMetricsDTO;
@@ -51,6 +53,7 @@ public class CallDashboardController {
     private final CallSearchService callSearchService;
     private final CallDispositionService callDispositionService;
     private final CallExportService callExportService;
+    private final CallDetailService callDetailService;
     private final CallExportAiEnricher callExportAiEnricher;
     private final InstituteAccessValidator instituteAccessValidator;
 
@@ -64,6 +67,25 @@ public class CallDashboardController {
         instituteAccessValidator.validateUserAccess(user, filter.getInstituteId());
         boolean unmask = hasAuthority(user, VIEW_CALL_NUMBERS);
         return ResponseEntity.ok(callSearchService.search(filter, user.getUserId(), unmask));
+    }
+
+    /**
+     * Deep detail for a single call — the "more details" popover on the Call Log,
+     * chiefly to explain a FAILED / BUSY / NO_ANSWER outcome. Surfaces the
+     * provider's own hangup/cause/error fields (mined from the stored webhook body),
+     * plus price and full timing that the paginated list omits.
+     */
+    @GetMapping("/{callLogId}/detail")
+    public ResponseEntity<CallDetailDTO> detail(
+            @PathVariable String callLogId,
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        if (instituteId == null || instituteId.isBlank()) {
+            throw new VacademyException("instituteId is required");
+        }
+        instituteAccessValidator.validateUserAccess(user, instituteId);
+        boolean unmask = hasAuthority(user, VIEW_CALL_NUMBERS);
+        return ResponseEntity.ok(callDetailService.detail(callLogId, instituteId, unmask));
     }
 
     /** Call-outcome catalog for the disposition picker + the dashboard's disposition filter. */

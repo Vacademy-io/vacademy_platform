@@ -227,8 +227,9 @@ export const handlePublishSlide = async (
                 status: 'PUBLISHED', // Override status to PUBLISHED
             });
 
-            // Call the API to publish the quiz slide
-            await addUpdateQuizSlide(payload);
+            // Call the API to publish the quiz slide (forward the notify choice —
+            // createQuizSlidePayload doesn't carry it).
+            await addUpdateQuizSlide({ ...payload, notify });
             toast.success('Quiz published successfully!');
             setIsOpen(false);
         } catch (error) {

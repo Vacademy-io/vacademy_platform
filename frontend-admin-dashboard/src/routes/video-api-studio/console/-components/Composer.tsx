@@ -876,6 +876,36 @@ export function Composer({
                     </Button>
 
                     <div className="ml-auto flex items-center gap-1.5">
+                        {/* Active-settings chips — settings silently reset (new browser,
+                            "Reuse settings" handoff) have shipped wrong requests before;
+                            surface the load-bearing ones right next to Send. */}
+                        {(options.dialogue_scenes_enabled || options.target_duration) && (
+                            <div className="hidden items-center gap-1 sm:flex">
+                                {options.dialogue_scenes_enabled && (
+                                    <span
+                                        className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700"
+                                        title="Story dialogue scenes are ON (set in Settings)"
+                                    >
+                                        {(options.dialogue_mode ?? 'storybook') === 'drama'
+                                            ? 'Drama'
+                                            : 'Storybook'}
+                                        {' · '}
+                                        {(options.dialogue_clip_model ?? 'seedance-2.0') ===
+                                        'omni-flash'
+                                            ? 'Omni'
+                                            : 'Seedance'}
+                                    </span>
+                                )}
+                                {options.target_duration && (
+                                    <span
+                                        className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground"
+                                        title="Target duration (set in Settings)"
+                                    >
+                                        {options.target_duration}
+                                    </span>
+                                )}
+                            </div>
+                        )}
                         {/* Settings popover */}
                         <div data-tour="vim-composer-settings">
                             <SettingsPopover

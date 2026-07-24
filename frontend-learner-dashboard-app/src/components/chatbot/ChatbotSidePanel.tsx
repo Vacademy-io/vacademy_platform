@@ -213,7 +213,7 @@ export const ChatbotSidePanel: React.FC = () => {
       ref={panelRef}
       style={{ width: panelWidth }}
       className={cn(
-        "h-full flex flex-col bg-background/95 backdrop-blur-sm border-l border-border/50 relative shrink-0 shadow-xl",
+        "h-full flex flex-col bg-background/95 backdrop-blur-sm border-s border-border/50 relative shrink-0 shadow-xl",
         isDragOver && "ring-2 ring-inset ring-primary/50"
       )}
       onDrop={handleDrop}
@@ -225,12 +225,12 @@ export const ChatbotSidePanel: React.FC = () => {
         ref={resizeRef}
         onMouseDown={handleResizeStart}
         className={cn(
-          "absolute left-0 top-0 bottom-0 w-1 cursor-ew-resize z-10",
+          "absolute start-0 top-0 bottom-0 w-1 cursor-ew-resize z-10",
           "hover:bg-primary/20 transition-colors",
           isResizing && "bg-primary/30",
         )}
       >
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-8 flex items-center justify-center -ml-1.5 opacity-0 hover:opacity-100 transition-opacity">
+        <div className="absolute start-0 top-1/2 -translate-y-1/2 w-4 h-8 flex items-center justify-center -ms-1.5 opacity-0 hover:opacity-100 transition-opacity">
           <DotsSixVertical className="h-4 w-4 text-muted-foreground" />
         </div>
       </div>
@@ -261,7 +261,7 @@ export const ChatbotSidePanel: React.FC = () => {
         </div>
 
         {/* Header Actions */}
-        <div className="flex items-center shrink-0 ml-2">
+        <div className="flex items-center shrink-0 ms-2">
           <Button
             variant="ghost"
             size="icon"
@@ -318,7 +318,7 @@ export const ChatbotSidePanel: React.FC = () => {
             {messages.map((msg) => {
               if (msg.role === "quiz" && msg.metadata?.quiz_data) {
                 return (
-                  <div key={msg.id} className="w-full max-w-pct-95 mr-auto">
+                  <div key={msg.id} className="w-full max-w-pct-95 me-auto">
                     <div className="flex gap-2">
                       <Avatar className="h-7 w-7 mt-1 shrink-0">
                         {avatarUrl ? (
@@ -358,7 +358,7 @@ export const ChatbotSidePanel: React.FC = () => {
 
               if (msg.role === "quiz_feedback" && msg.metadata?.feedback) {
                 return (
-                  <div key={msg.id} className="w-full max-w-pct-95 mr-auto">
+                  <div key={msg.id} className="w-full max-w-pct-95 me-auto">
                     <div className="flex gap-2">
                       <Avatar className="h-7 w-7 mt-1 shrink-0">
                         {avatarUrl ? (
@@ -391,12 +391,12 @@ export const ChatbotSidePanel: React.FC = () => {
                   className={cn(
                     "flex w-full max-w-pct-92",
                     msg.role === "user"
-                      ? "ml-auto justify-end"
-                      : "mr-auto justify-start",
+                      ? "ms-auto justify-end"
+                      : "me-auto justify-start",
                   )}
                 >
                   {msg.role === "assistant" && (
-                    <Avatar className="h-6 w-6 mr-1.5 mt-0.5 shrink-0 ring-1 ring-border/40">
+                    <Avatar className="h-6 w-6 me-1.5 mt-0.5 shrink-0 ring-1 ring-border/40">
                       {avatarUrl ? (
                         <AvatarImage
                           src={avatarUrl}
@@ -416,8 +416,8 @@ export const ChatbotSidePanel: React.FC = () => {
                       className={cn(
                         "rounded-xl px-2.5 py-1.5 text-caption break-words max-w-full leading-relaxed",
                         msg.role === "user"
-                          ? "bg-primary text-primary-foreground rounded-br-sm shadow-sm"
-                          : "bg-card text-card-foreground rounded-bl-sm shadow-sm ring-1 ring-border/30",
+                          ? "bg-primary text-primary-foreground rounded-ee-sm shadow-sm"
+                          : "bg-card text-card-foreground rounded-es-sm shadow-sm ring-1 ring-border/30",
                       )}
                     >
                       {msg.role === "user" ? (
@@ -430,7 +430,7 @@ export const ChatbotSidePanel: React.FC = () => {
                       ) : (
                         <div className="max-w-none group relative">
                           <button
-                            className="absolute -top-0.5 -right-0.5 p-1 rounded-md bg-muted/80 shrink-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="absolute -top-0.5 -end-0.5 p-1 rounded-md bg-muted/80 shrink-0 hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={() =>
                               handleCopyMessage(msg.content, msg.id)
                             }
@@ -488,7 +488,7 @@ export const ChatbotSidePanel: React.FC = () => {
                                 />
                               ),
                               li: ({ ...props }) => (
-                                <li className="ml-2" {...props} />
+                                <li className="ms-2" {...props} />
                               ),
                               code: ({ children, className, ...rest }: React.HTMLAttributes<HTMLElement>) => {
                                 const isInline = !className?.includes('language-');
@@ -506,7 +506,7 @@ export const ChatbotSidePanel: React.FC = () => {
                               },
                               blockquote: ({ ...props }) => (
                                 <blockquote
-                                  className="border-l-4 border-primary pl-3 py-1 my-3 italic text-muted-foreground text-sm"
+                                  className="border-s-4 border-primary ps-3 py-1 my-3 italic text-muted-foreground text-sm"
                                   {...props}
                                 />
                               ),
@@ -530,7 +530,7 @@ export const ChatbotSidePanel: React.FC = () => {
 
             {/* Streaming response */}
             {isStreaming && streamingContent && (
-              <div className="flex items-start gap-1.5 mr-auto max-w-pct-90">
+              <div className="flex items-start gap-1.5 me-auto max-w-pct-90">
                 <Avatar className="h-6 w-6 shrink-0 ring-1 ring-border/40">
                   {avatarUrl ? (
                     <AvatarImage
@@ -543,14 +543,14 @@ export const ChatbotSidePanel: React.FC = () => {
                     {chatbotSettings.assistant_name.substring(0, 2).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
-                <div className="rounded-xl rounded-bl-sm bg-card text-card-foreground px-2.5 py-1.5 shadow-sm ring-1 ring-border/30 text-caption leading-relaxed">
+                <div className="rounded-xl rounded-es-sm bg-card text-card-foreground px-2.5 py-1.5 shadow-sm ring-1 ring-border/30 text-caption leading-relaxed">
                   <ReactMarkdown
                     remarkPlugins={[remarkBreaks, remarkGfm, remarkMath]}
                     rehypePlugins={[rehypeKatex]}
                   >
                     {streamingContent}
                   </ReactMarkdown>
-                  <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ml-0.5" />
+                  <span className="inline-block w-1.5 h-4 bg-foreground/60 animate-pulse ms-0.5" />
                 </div>
               </div>
             )}
@@ -562,7 +562,7 @@ export const ChatbotSidePanel: React.FC = () => {
             {!isStreaming && (isLoading ||
               aiStatus === "thinking" ||
               aiStatus === "generating_quiz") && (
-              <div className="mr-auto flex max-w-pct-90 items-end space-x-1.5">
+              <div className="me-auto flex max-w-pct-90 items-end space-x-1.5">
                 <Avatar className="h-6 w-6 shrink-0 ring-1 ring-border/40">
                   {avatarUrl ? (
                     <AvatarImage
@@ -577,7 +577,7 @@ export const ChatbotSidePanel: React.FC = () => {
                       .toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
-                <div className="rounded-xl rounded-bl-sm bg-card text-card-foreground px-2.5 py-1.5 shadow-sm ring-1 ring-border/30">
+                <div className="rounded-xl rounded-es-sm bg-card text-card-foreground px-2.5 py-1.5 shadow-sm ring-1 ring-border/30">
                   <div className="flex space-x-1 items-center h-4">
                     {aiStatus === "generating_quiz" ? (
                       <span className="text-caption text-muted-foreground flex items-center gap-1.5">
@@ -678,7 +678,7 @@ export const ChatbotSidePanel: React.FC = () => {
                 title="Start a voice conversation"
                 className="inline-flex items-center h-6 px-2.5 text-caption font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 rounded-full border border-amber-200 transition-colors disabled:opacity-50"
               >
-                <Microphone className="h-3 w-3 mr-1" />
+                <Microphone className="h-3 w-3 me-1" />
                 Voice Chat
               </button>
             )}
@@ -699,7 +699,7 @@ export const ChatbotSidePanel: React.FC = () => {
                   </div>
                 )}
                 <button
-                  className="absolute -top-0.5 -right-0.5 size-3.5 rounded-full bg-destructive text-destructive-foreground text-caption flex items-center justify-center"
+                  className="absolute -top-0.5 -end-0.5 size-3.5 rounded-full bg-destructive text-destructive-foreground text-caption flex items-center justify-center"
                   onClick={() => {
                     if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
                     setPendingAttachments(prev => prev.filter((_, idx) => idx !== i));

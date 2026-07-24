@@ -54,6 +54,7 @@ public class LiveSessionProviderController {
     private final vacademy.io.common.auth.repository.UserRepository userRepository;
     private final vacademy.io.admin_core_service.features.youtube.service.YoutubeUploadJobService youtubeUploadJobService;
     private final ProviderMeetingBatchService providerMeetingBatchService;
+    private final vacademy.io.admin_core_service.features.live_session.service.RecordingAutoLinkService recordingAutoLinkService;
     private final vacademy.io.admin_core_service.core.security.InstituteAccessValidator instituteAccessValidator;
 
     // -----------------------------------------------------------------------
@@ -752,6 +753,10 @@ public class LiveSessionProviderController {
                 schedule.setLastRecordingSyncAt(new java.util.Date());
                 scheduleRepository.save(schedule);
                 log.info("[BBB Recording] Saved recording (type={}) for scheduleId={}", recordingType, schedule.getId());
+
+                // Auto-link to chapter slides if the session/institute has an
+                // auto-upload destination configured (never throws).
+                recordingAutoLinkService.processSchedule(schedule);
 
                 // Kick off YouTube auto-upload if the institute has connected
                 // their channel and not disabled auto-upload. Silent skip

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Sparkle, CircleNotch, ArrowRight, Warning, CheckCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
@@ -15,6 +15,50 @@ import { EventEntityPicker } from './event-entity-picker';
 import { useWorkflowBuilderStore } from '../-stores/workflow-builder-store';
 
 type TemplateItem = { id?: string; name: string; dynamic_parameters?: unknown };
+
+/**
+ * Layered fallback layout for drafts that ship without node positions — depth from the start
+ * node sets the row, siblings at the same depth spread into columns. Without this a ~15-node
+ * drip draft renders as one overlapping vertical stack. (Ported from the legacy panel on main.)
+ */
+const layoutDraft = (wf: WorkflowBuilderDTO): Map<string, { x: number; y: number }> => {
+    const nodes = wf.nodes ?? [];
+    const edges = wf.edges ?? [];
+    const childrenBySource = new Map<string, string[]>();
+    edges.forEach((e) => {
+        const list = childrenBySource.get(e.source_node_id) ?? [];
+        list.push(e.target_node_id);
+        childrenBySource.set(e.source_node_id, list);
+    });
+    const startId = nodes.find((n) => n.is_start_node)?.id ?? nodes[0]?.id;
+    const depthById = new Map<string, number>();
+    if (startId) {
+        const queue: Array<{ id: string; depth: number }> = [{ id: startId, depth: 0 }];
+        while (queue.length) {
+            const item = queue.shift();
+            if (!item || item.depth > nodes.length) continue; // cycle guard
+            const prev = depthById.get(item.id);
+            if (prev !== undefined && prev >= item.depth) continue;
+            depthById.set(item.id, item.depth);
+            (childrenBySource.get(item.id) ?? []).forEach((child) =>
+                queue.push({ id: child, depth: item.depth + 1 })
+            );
+        }
+    }
+    let extraDepth = depthById.size ? Math.max(...depthById.values()) : 0;
+    const colByDepth = new Map<number, number>();
+    const posById = new Map<string, { x: number; y: number }>();
+    nodes.forEach((n) => {
+        let depth = depthById.get(n.id);
+        if (depth === undefined) {
+            depth = ++extraDepth; // unreachable nodes go below the graph
+        }
+        const col = colByDepth.get(depth) ?? 0;
+        colByDepth.set(depth, col + 1);
+        posById.set(n.id, { x: 250 + col * 320, y: 80 + depth * 140 });
+    });
+    return posById;
+};
 
 /**
  * "Describe your automation" — assistive AI workflow builder (WORKFLOW_AI_ASSISTIVE_DESIGN.md).
@@ -62,6 +106,8 @@ export function AiDraftPanel({
     const templatesFor = (kind: string): TemplateItem[] =>
         (((kind === 'WHATSAPP_TEMPLATE' ? whatsappTemplates.data : emailTemplates.data) ?? []) as TemplateItem[]);
 
+    const abortRef = useRef<AbortController | null>(null);
+
     const resetFromGoal = () => {
         setPlan(null);
         setAnswers({});
@@ -70,11 +116,16 @@ export function AiDraftPanel({
 
     const runPlan = async () => {
         if (!goal.trim()) return;
+        const controller = new AbortController();
+        abortRef.current = controller;
         setPlanning(true);
         setPlan(null);
         setAnswers({});
         try {
-            const res = await draftWorkflowWithAi({ goal: goal.trim(), instituteId, mode: 'PLAN' });
+            const res = await draftWorkflowWithAi(
+                { goal: goal.trim(), instituteId, mode: 'PLAN' },
+                controller.signal
+            );
             if (res.error) {
                 toast({ title: 'Could not plan', description: res.error, variant: 'destructive' });
                 return;
@@ -82,13 +133,16 @@ export function AiDraftPanel({
             setPlan(res);
             setStage('plan');
         } catch (e) {
-            toast({
-                title: 'Planning failed',
-                description: e instanceof Error ? e.message : 'Unknown error',
-                variant: 'destructive',
-            });
+            if (!controller.signal.aborted) {
+                toast({
+                    title: 'Planning failed',
+                    description: e instanceof Error ? e.message : 'Unknown error',
+                    variant: 'destructive',
+                });
+            }
         } finally {
             setPlanning(false);
+            abortRef.current = null;
         }
     };
 
@@ -144,10 +198,14 @@ export function AiDraftPanel({
     };
 
     const loadIntoBuilder = (wf: WorkflowBuilderDTO) => {
+        const fallbackPos = layoutDraft(wf);
         const rfNodes = (wf.nodes ?? []).map((n, i) => ({
             id: n.id,
             type: 'workflowNode' as const,
-            position: { x: n.position_x ?? 250, y: n.position_y ?? 80 + i * 130 },
+            position:
+                n.position_x != null && n.position_y != null
+                    ? { x: n.position_x, y: n.position_y }
+                    : (fallbackPos.get(n.id) ?? { x: 250, y: 80 + i * 130 }),
             data: {
                 name: n.name,
                 nodeType: n.node_type,
@@ -166,16 +224,24 @@ export function AiDraftPanel({
         }));
         if (wf.name) setWorkflowName(wf.name);
         if (wf.description) setWorkflowDescription(wf.description);
-        if (wf.workflow_type === 'EVENT_DRIVEN' || wf.workflow_type === 'SCHEDULED') {
-            setWorkflowType(wf.workflow_type);
-        }
+        // Infer from the draft's contents when workflow_type is missing/mis-cased — otherwise
+        // the store default (SCHEDULED) silently drops the trigger at publish and substitutes
+        // a default daily cron.
+        const workflowType =
+            wf.workflow_type === 'EVENT_DRIVEN' || wf.workflow_type === 'SCHEDULED'
+                ? wf.workflow_type
+                : wf.trigger
+                  ? 'EVENT_DRIVEN'
+                  : 'SCHEDULED';
+        setWorkflowType(workflowType);
         if (wf.trigger) {
             setTriggerConfig({
                 eventName: wf.trigger.trigger_event_name ?? '',
                 description: wf.trigger.description ?? '',
                 eventAppliedType: wf.trigger.event_applied_type ?? '',
                 eventId: wf.trigger.event_id ?? undefined,
-                eventIds: wf.trigger.event_ids ?? undefined,
+                eventIds: wf.trigger.event_ids?.length ? wf.trigger.event_ids : undefined,
+                idempotencyGenerationSetting: wf.trigger.idempotency_generation_setting ?? undefined,
             });
         }
         if (wf.schedule) {
@@ -214,7 +280,12 @@ export function AiDraftPanel({
                 disabled={planning}
             />
 
-            <div className="mt-3 flex justify-end">
+            <div className="mt-3 flex justify-end gap-2">
+                {planning && (
+                    <MyButton buttonType="secondary" onClick={() => abortRef.current?.abort()}>
+                        Cancel
+                    </MyButton>
+                )}
                 <MyButton buttonType="primary" onClick={runPlan} disabled={planning || !goal.trim()}>
                     {planning ? (
                         <span className="flex items-center gap-2">

@@ -1,6 +1,8 @@
 package vacademy.io.admin_core_service.features.live_session.repository;
 
 import jakarta.transaction.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -42,6 +44,29 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         // DEFAULT | PRE_JOINING. Drives whether the learner's waiting-room-window
         // button enters the waiting-room screen or joins the live class directly.
         String getWaitingRoomType();
+    }
+
+    /**
+     * Projection backing the learner "Past Sessions" endpoint
+     * (findPastSessionsForUserAndBatch). Deliberately separate from
+     * {@link LiveSessionListProjection} — it carries institute_id (needed to
+     * resolve the LIVE_SESSION_SETTING learnerDisplay flags) and the raw
+     * provider_recordings_json (sanitized server-side into LearnerRecordingDTO),
+     * neither of which the live/upcoming projection exposes.
+     */
+    public interface LearnerPastSessionProjection {
+        String getSessionId();
+        String getScheduleId();
+        String getTitle();
+        String getSubject();
+        java.util.Date getMeetingDate();
+        java.sql.Time getStartTime();
+        java.sql.Time getLastEntryTime();
+        String getTimezone();
+        String getLinkType();
+        String getThumbnailFileId();
+        String getInstituteId();
+        String getProviderRecordingsJson();
     }
 
     public interface ScheduledSessionProjection {
@@ -356,6 +381,80 @@ public interface LiveSessionRepository extends JpaRepository<LiveSession, String
         @Param("endDate") String endDate,
         @Param("offset") Integer offset,
         @Param("size") Integer size
+    );
+
+    /**
+     * Learner "Past Sessions" — mirrors findUpcomingSessionsForUserAndBatchWithFilters
+     * scoping (BATCH participant on :batchId OR USER participant on :userId) but
+     * inverted to strictly-past occurrences, computed timezone-aware in the
+     * session's own timezone (never the server date — see
+     * findUpcomingSessions/findPreviousSessions for the same idiom). Only LIVE
+     * sessions are surfaced (DRAFT/DELETED excluded from history). Paged newest
+     * first via Pageable + an explicit countQuery (native pagination).
+     *
+     * NOTE: no SQL comments or stray apostrophes inside this query string — the
+     * Spring SpEL QuotationMap parser breaks on them (see plan doc gotchas).
+     */
+    @Query(value = """
+        SELECT DISTINCT
+            s.id AS sessionId,
+            ss.id AS scheduleId,
+            s.title AS title,
+            s.subject AS subject,
+            ss.meeting_date AS meetingDate,
+            ss.start_time AS startTime,
+            ss.last_entry_time AS lastEntryTime,
+            COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata') AS timezone,
+            COALESCE(ss.link_type, s.link_type) AS linkType,
+            COALESCE(ss.thumbnail_file_id, s.thumbnail_file_id, s.cover_file_id) AS thumbnailFileId,
+            s.institute_id AS instituteId,
+            ss.provider_recordings_json AS providerRecordingsJson
+        FROM session_schedules ss
+        JOIN live_session s ON ss.session_id = s.id
+        JOIN live_session_participants lsp ON lsp.session_id = s.id
+        WHERE (
+            (:batchId IS NOT NULL AND lsp.source_type = 'BATCH' AND lsp.source_id = :batchId)
+            OR
+            (:userId IS NOT NULL AND lsp.source_type = 'USER' AND lsp.source_id = :userId)
+        )
+        AND s.status = 'LIVE'
+        AND ss.status != 'DELETED'
+        AND (
+            ss.meeting_date < CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
+            OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
+                AND CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS time) > ss.last_entry_time)
+        )
+        AND (:startDate IS NULL OR ss.meeting_date >= CAST(:startDate AS DATE))
+        AND (:endDate IS NULL OR ss.meeting_date <= CAST(:endDate AS DATE))
+        ORDER BY ss.meeting_date DESC, ss.start_time DESC
+    """,
+    countQuery = """
+        SELECT COUNT(DISTINCT ss.id)
+        FROM session_schedules ss
+        JOIN live_session s ON ss.session_id = s.id
+        JOIN live_session_participants lsp ON lsp.session_id = s.id
+        WHERE (
+            (:batchId IS NOT NULL AND lsp.source_type = 'BATCH' AND lsp.source_id = :batchId)
+            OR
+            (:userId IS NOT NULL AND lsp.source_type = 'USER' AND lsp.source_id = :userId)
+        )
+        AND s.status = 'LIVE'
+        AND ss.status != 'DELETED'
+        AND (
+            ss.meeting_date < CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
+            OR (ss.meeting_date = CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS date)
+                AND CAST((CURRENT_TIMESTAMP AT TIME ZONE COALESCE(NULLIF(s.timezone, ''), 'Asia/Kolkata')) AS time) > ss.last_entry_time)
+        )
+        AND (:startDate IS NULL OR ss.meeting_date >= CAST(:startDate AS DATE))
+        AND (:endDate IS NULL OR ss.meeting_date <= CAST(:endDate AS DATE))
+    """,
+    nativeQuery = true)
+    Page<LiveSessionRepository.LearnerPastSessionProjection> findPastSessionsForUserAndBatch(
+        @Param("batchId") String batchId,
+        @Param("userId") String userId,
+        @Param("startDate") String startDate,
+        @Param("endDate") String endDate,
+        Pageable pageable
     );
 
     @Modifying

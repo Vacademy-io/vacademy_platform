@@ -345,6 +345,23 @@ Config is nested under `delay` — reads `delay.value` / `delay.unit`. A legacy 
 }
 ```
 
+**Until-next-weekday mode** _(added 2026-07-23)_ — waits until the STRICTLY next occurrence of a weekday at a given local time (an event landing on that same weekday waits a full week, unless `includeSameDay: true` and the time is still ahead that day). Uses the same persistent pause/resume path. Built for "drip starts next Monday regardless of signup day" flows; `WorkflowValidationService` validates the shape (weekday, HH:mm time, IANA timezone) and also rejects the legacy flat `delayValue`/`delayUnit`.
+
+```jsonc
+{
+  "nodeType": "DELAY",
+  "config": {
+    "delay": {
+      "until": "NEXT_DAY_OF_WEEK",
+      "dayOfWeek": "MONDAY",
+      "time": "09:00",            // optional, default 09:00
+      "timezone": "Asia/Kolkata", // optional, default Asia/Kolkata
+      "includeSameDay": false     // optional
+    }
+  }
+}
+```
+
 ### CONDITION
 
 Boolean branch on a SpEL expression.

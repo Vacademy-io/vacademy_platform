@@ -16,6 +16,8 @@ import WhiteLabelSettings from '../-components/WhiteLabelSettings';
 import AssessmentSettings from '../-components/AssessmentSettings';
 import WhatsAppSettings from '../-components/WhatsAppSettings/WhatsAppSettings';
 import LeadSettings from '../-components/LeadSettings';
+import GuardianSettings from '../-components/GuardianSettings';
+import OnboardingSettings from '../-components/OnboardingSettings';
 import GtmSettings from '../-components/GtmSettings';
 import TncSettings from '../-components/Tnc/TncSettings';
 import IntegrationSettings from '../-components/IntegrationSettings';
@@ -32,6 +34,8 @@ import AiCallingSettings from '../-components/AiCallingSettings';
 import CrmIntelligenceSettings from '../-components/CrmIntelligenceSettings';
 import AssistantToolsSettings from '../-components/AssistantToolsSettings';
 import BadgesRewardsSettings from '../-components/BadgesRewards/BadgesRewardsSettings';
+import LanguageSettings from '../-components/LanguageSettings';
+import AppearanceSettings from '../-components/Appearance/AppearanceSettings';
 
 export const getAvailableSettingsTabs = () => {
     // Entries are sorted A-Z by display label (`value`) at the end so the
@@ -134,6 +138,16 @@ export const getAvailableSettingsTabs = () => {
             component: LeadSettings,
         },
         {
+            tab: SettingsTabs.GuardianSettings,
+            value: 'Guardian Settings',
+            component: GuardianSettings,
+        },
+        {
+            tab: SettingsTabs.OnboardingSettings,
+            value: 'Onboarding Settings',
+            component: OnboardingSettings,
+        },
+        {
             tab: SettingsTabs.GtmSettings,
             value: 'GTM Settings',
             component: GtmSettings,
@@ -202,6 +216,16 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.BadgesRewards,
             value: 'Badges & Rewards',
             component: BadgesRewardsSettings,
+        },
+        {
+            tab: SettingsTabs.Language,
+            value: 'Language Settings',
+            component: LanguageSettings,
+        },
+        {
+            tab: SettingsTabs.Appearance,
+            value: 'Appearance',
+            component: AppearanceSettings,
         },
     ].sort((a, b) => a.value.localeCompare(b.value, undefined, { sensitivity: 'base' }));
 };

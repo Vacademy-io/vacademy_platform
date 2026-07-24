@@ -69,6 +69,10 @@ function defaultDashboardWidgetsTeacher(): DashboardWidgetConfig[] {
         'assessmentCenter',
         'myCourses',
         'aiFeaturesCard',
+        // Self-hides unless the viewer is a sub-org admin, so default it ON for
+        // every role — a sub-org admin resolving to teacher/custom settings
+        // should still get it without an admin flipping a hidden default.
+        'subOrgSelfStats',
     ]);
 
     const orderedIds: DashboardWidgetConfig['id'][] = [
@@ -81,6 +85,8 @@ function defaultDashboardWidgetsTeacher(): DashboardWidgetConfig[] {
         // 4. Operational health (finance)
         'financeSummary',
         'recentTransactions',
+        'subOrgOverview',
+        'subOrgSelfStats',
         // 5. Engagement signals
         'unresolvedDoubts',
         'recentNotifications',
@@ -161,6 +167,15 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         showSupportButton: true,
         showSidebar: true,
         showAiCredits: false,
+        // Hidden by default for non-admin roles (custom roles inherit these
+        // defaults too); enable per role from Display Settings → UI Options.
+        showAssistDock: false,
+        // Status link defaults visible for every role. The Settings gear is
+        // admin-only by default; non-admin roles (teacher/custom) must be
+        // opted in per role from Display Settings, since it surfaces a path
+        // into the full settings page.
+        showStatus: true,
+        showSettings: false,
     },
     contentTypes: {
         pdf: true,
@@ -215,6 +230,8 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         applicationTab: false,
         leadTab: false,
         fullHistoryTab: false,
+        parentTab: false,
+        onboardingTab: false,
         tabOrders: {
             overview: 1,
             courses: 2,
@@ -233,6 +250,7 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
             application: 15,
             lead: 16,
             fullHistory: 17,
+            parent: 18,
         },
         defaultTab: 'overview',
     },

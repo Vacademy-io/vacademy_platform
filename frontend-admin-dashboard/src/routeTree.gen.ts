@@ -38,6 +38,7 @@ import { Route as LearnerInsightsIndexRouteImport } from "./routes/learner-insig
 import { Route as InstructorCopilotIndexRouteImport } from "./routes/instructor-copilot/index"
 import { Route as EvaluatorAiIndexRouteImport } from "./routes/evaluator-ai/index"
 import { Route as EvaluationIndexRouteImport } from "./routes/evaluation/index"
+import { Route as EngagementEnginesIndexRouteImport } from "./routes/engagement-engines/index"
 import { Route as DashboardIndexRouteImport } from "./routes/dashboard/index"
 import { Route as CounsellorsIndexRouteImport } from "./routes/counsellors/index"
 import { Route as ConnectorCenterDetailsIndexRouteImport } from "./routes/connector-center-details/index"
@@ -53,6 +54,7 @@ import { Route as AdminActivityLogsIndexRouteImport } from "./routes/admin-activ
 import { Route as VimWaitlistRouteImport } from "./routes/vim/waitlist"
 import { Route as VimLoginRouteImport } from "./routes/vim/login"
 import { Route as VimDashboardRouteImport } from "./routes/vim/dashboard"
+import { Route as EngagementEnginesEngineIdRouteImport } from "./routes/engagement-engines/$engineId"
 import { Route as CounsellorsUserIdRouteImport } from "./routes/counsellors/$userId"
 import { Route as WorkflowListIndexRouteImport } from "./routes/workflow/list/index"
 import { Route as WorkflowCreateIndexRouteImport } from "./routes/workflow/create/index"
@@ -77,6 +79,8 @@ import { Route as SettingsTelephonyIndexRouteImport } from "./routes/settings/te
 import { Route as SettingsFeeManagementIndexRouteImport } from "./routes/settings/fee-management/index"
 import { Route as PlanningPlanningIndexRouteImport } from "./routes/planning/planning/index"
 import { Route as PlanningActivityLogsIndexRouteImport } from "./routes/planning/activity-logs/index"
+import { Route as MeetingsTeamIndexRouteImport } from "./routes/meetings/team/index"
+import { Route as MeetingsMyScheduleIndexRouteImport } from "./routes/meetings/my-schedule/index"
 import { Route as ManageStudentsStudentsListIndexRouteImport } from "./routes/manage-students/students-list/index"
 import { Route as ManageStudentsInviteIndexRouteImport } from "./routes/manage-students/invite/index"
 import { Route as ManageStudentsEnrollRequestsIndexRouteImport } from "./routes/manage-students/enroll-requests/index"
@@ -97,6 +101,8 @@ import { Route as EvaluatorAiEvaluationIndexRouteImport } from "./routes/evaluat
 import { Route as EvaluatorAiAssessmentIndexRouteImport } from "./routes/evaluator-ai/assessment/index"
 import { Route as EvaluationEvaluationsIndexRouteImport } from "./routes/evaluation/evaluations/index"
 import { Route as EvaluationEvaluationToolIndexRouteImport } from "./routes/evaluation/evaluation-tool/index"
+import { Route as EngagementEnginesInboxIndexRouteImport } from "./routes/engagement-engines/inbox/index"
+import { Route as EngagementEnginesCreateIndexRouteImport } from "./routes/engagement-engines/create/index"
 import { Route as ContentContentIdIndexRouteImport } from "./routes/content/$contentId/index"
 import { Route as CommunityQuestionPaperIndexRouteImport } from "./routes/community/question-paper/index"
 import { Route as CommunicationWhatsappTemplatesIndexRouteImport } from "./routes/communication/whatsapp-templates/index"
@@ -106,6 +112,7 @@ import { Route as CertificateGenerationStudentDataIndexRouteImport } from "./rou
 import { Route as AutomationChatbotFlowsIndexRouteImport } from "./routes/automation/chatbot-flows/index"
 import { Route as AudienceManagerReportsIndexRouteImport } from "./routes/audience-manager/reports/index"
 import { Route as AudienceManagerRecentLeadsIndexRouteImport } from "./routes/audience-manager/recent-leads/index"
+import { Route as AudienceManagerOnboardingIndexRouteImport } from "./routes/audience-manager/onboarding/index"
 import { Route as AudienceManagerListIndexRouteImport } from "./routes/audience-manager/list/index"
 import { Route as AudienceManagerFollowUpsIndexRouteImport } from "./routes/audience-manager/follow-ups/index"
 import { Route as AudienceManagerCallLogIndexRouteImport } from "./routes/audience-manager/call-log/index"
@@ -138,6 +145,7 @@ import { Route as ManagePagesEditorTagNameRouteImport } from "./routes/manage-pa
 import { Route as ManageCustomTeamsSubOrgsSubOrgSlugRouteImport } from "./routes/manage-custom-teams/sub-orgs/$subOrgSlug"
 import { Route as LoginOauthRedirectRouteImport } from "./routes/login/oauth/redirect"
 import { Route as AutomationChatbotFlowsFlowIdRouteImport } from "./routes/automation/chatbot-flows/$flowId"
+import { Route as AudienceManagerOnboardingFlowIdRouteImport } from "./routes/audience-manager/onboarding/$flowId"
 import { Route as WorkflowWorkflowIdEditIndexRouteImport } from "./routes/workflow/$workflowId/edit/index"
 import { Route as VimStudioProjectIdIndexRouteImport } from "./routes/vim/studio/$projectId/index"
 import { Route as VimReelsReelIdIndexRouteImport } from "./routes/vim/reels/$reelId/index"
@@ -173,6 +181,7 @@ import { Route as ManagePagesProductPagesEditorProductPageIdRouteImport } from "
 import { Route as StudyLibraryLiveSessionScheduleStep2IndexRouteImport } from "./routes/study-library/live-session/schedule/step2/index"
 import { Route as StudyLibraryLiveSessionScheduleStep1IndexRouteImport } from "./routes/study-library/live-session/schedule/step1/index"
 import { Route as StudyLibraryLiveSessionScheduleBulkIndexRouteImport } from "./routes/study-library/live-session/schedule/bulk/index"
+import { Route as StudyLibraryCoursesCourseDetailsTranslationIndexRouteImport } from "./routes/study-library/courses/course-details/translation/index"
 import { Route as StudyLibraryCoursesCourseDetailsSubjectsIndexRouteImport } from "./routes/study-library/courses/course-details/subjects/index"
 import { Route as StudyLibraryAiCopilotCourseOutlineGeneratingIndexRouteImport } from "./routes/study-library/ai-copilot/course-outline/generating/index"
 import { Route as HomeworkCreationCreateAssessmentAssessmentIdExamtypeIndexRouteImport } from "./routes/homework-creation/create-assessment/$assessmentId/$examtype/index"
@@ -389,6 +398,13 @@ const EvaluationIndexRoute = EvaluationIndexRouteImport.update({
 } as any).lazy(() =>
   import("./routes/evaluation/index.lazy").then((d) => d.Route),
 )
+const EngagementEnginesIndexRoute = EngagementEnginesIndexRouteImport.update({
+  id: "/engagement-engines/",
+  path: "/engagement-engines/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/engagement-engines/index.lazy").then((d) => d.Route),
+)
 const DashboardIndexRoute = DashboardIndexRouteImport.update({
   id: "/dashboard/",
   path: "/dashboard/",
@@ -490,6 +506,14 @@ const VimDashboardRoute = VimDashboardRouteImport.update({
   path: "/vim/dashboard",
   getParentRoute: () => rootRouteImport,
 } as any)
+const EngagementEnginesEngineIdRoute =
+  EngagementEnginesEngineIdRouteImport.update({
+    id: "/engagement-engines/$engineId",
+    path: "/engagement-engines/$engineId",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/engagement-engines/$engineId.lazy").then((d) => d.Route),
+  )
 const CounsellorsUserIdRoute = CounsellorsUserIdRouteImport.update({
   id: "/counsellors/$userId",
   path: "/counsellors/$userId",
@@ -671,6 +695,20 @@ const PlanningActivityLogsIndexRoute =
   } as any).lazy(() =>
     import("./routes/planning/activity-logs/index.lazy").then((d) => d.Route),
   )
+const MeetingsTeamIndexRoute = MeetingsTeamIndexRouteImport.update({
+  id: "/meetings/team/",
+  path: "/meetings/team/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/meetings/team/index.lazy").then((d) => d.Route),
+)
+const MeetingsMyScheduleIndexRoute = MeetingsMyScheduleIndexRouteImport.update({
+  id: "/meetings/my-schedule/",
+  path: "/meetings/my-schedule/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/meetings/my-schedule/index.lazy").then((d) => d.Route),
+)
 const ManageStudentsStudentsListIndexRoute =
   ManageStudentsStudentsListIndexRouteImport.update({
     id: "/manage-students/students-list/",
@@ -850,6 +888,24 @@ const EvaluationEvaluationToolIndexRoute =
       (d) => d.Route,
     ),
   )
+const EngagementEnginesInboxIndexRoute =
+  EngagementEnginesInboxIndexRouteImport.update({
+    id: "/engagement-engines/inbox/",
+    path: "/engagement-engines/inbox/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/engagement-engines/inbox/index.lazy").then((d) => d.Route),
+  )
+const EngagementEnginesCreateIndexRoute =
+  EngagementEnginesCreateIndexRouteImport.update({
+    id: "/engagement-engines/create/",
+    path: "/engagement-engines/create/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/engagement-engines/create/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
 const ContentContentIdIndexRoute = ContentContentIdIndexRouteImport.update({
   id: "/content/$contentId/",
   path: "/content/$contentId/",
@@ -925,6 +981,16 @@ const AudienceManagerRecentLeadsIndexRoute =
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
     import("./routes/audience-manager/recent-leads/index.lazy").then(
+      (d) => d.Route,
+    ),
+  )
+const AudienceManagerOnboardingIndexRoute =
+  AudienceManagerOnboardingIndexRouteImport.update({
+    id: "/audience-manager/onboarding/",
+    path: "/audience-manager/onboarding/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/audience-manager/onboarding/index.lazy").then(
       (d) => d.Route,
     ),
   )
@@ -1179,6 +1245,16 @@ const AutomationChatbotFlowsFlowIdRoute =
     getParentRoute: () => rootRouteImport,
   } as any).lazy(() =>
     import("./routes/automation/chatbot-flows/$flowId.lazy").then(
+      (d) => d.Route,
+    ),
+  )
+const AudienceManagerOnboardingFlowIdRoute =
+  AudienceManagerOnboardingFlowIdRouteImport.update({
+    id: "/audience-manager/onboarding/$flowId",
+    path: "/audience-manager/onboarding/$flowId",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/audience-manager/onboarding/$flowId.lazy").then(
       (d) => d.Route,
     ),
   )
@@ -1451,6 +1527,16 @@ const StudyLibraryLiveSessionScheduleBulkIndexRoute =
     path: "/study-library/live-session/schedule/bulk/",
     getParentRoute: () => rootRouteImport,
   } as any)
+const StudyLibraryCoursesCourseDetailsTranslationIndexRoute =
+  StudyLibraryCoursesCourseDetailsTranslationIndexRouteImport.update({
+    id: "/study-library/courses/course-details/translation/",
+    path: "/study-library/courses/course-details/translation/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import(
+      "./routes/study-library/courses/course-details/translation/index.lazy"
+    ).then((d) => d.Route),
+  )
 const StudyLibraryCoursesCourseDetailsSubjectsIndexRoute =
   StudyLibraryCoursesCourseDetailsSubjectsIndexRouteImport.update({
     id: "/study-library/courses/course-details/subjects/",
@@ -1628,6 +1714,7 @@ export interface FileRoutesByFullPath {
   "/learner-insights": typeof LearnerInsightsLazyRouteWithChildren
   "/pricing": typeof PricingLazyRoute
   "/counsellors/$userId": typeof CounsellorsUserIdRoute
+  "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -1643,6 +1730,7 @@ export interface FileRoutesByFullPath {
   "/connector-center-details/": typeof ConnectorCenterDetailsIndexRoute
   "/counsellors/": typeof CounsellorsIndexRoute
   "/dashboard/": typeof DashboardIndexRoute
+  "/engagement-engines/": typeof EngagementEnginesIndexRoute
   "/evaluation/": typeof EvaluationIndexRoute
   "/evaluator-ai/": typeof EvaluatorAiIndexRoute
   "/instructor-copilot/": typeof InstructorCopilotIndexRoute
@@ -1666,6 +1754,7 @@ export interface FileRoutesByFullPath {
   "/study-library/": typeof StudyLibraryIndexRoute
   "/video-api-studio/": typeof VideoApiStudioIndexRoute
   "/vim/": typeof VimIndexRoute
+  "/audience-manager/onboarding/$flowId": typeof AudienceManagerOnboardingFlowIdRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
@@ -1698,6 +1787,7 @@ export interface FileRoutesByFullPath {
   "/audience-manager/call-log/": typeof AudienceManagerCallLogIndexRoute
   "/audience-manager/follow-ups/": typeof AudienceManagerFollowUpsIndexRoute
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
+  "/audience-manager/onboarding/": typeof AudienceManagerOnboardingIndexRoute
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
@@ -1707,6 +1797,8 @@ export interface FileRoutesByFullPath {
   "/communication/whatsapp-templates/": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper/": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId/": typeof ContentContentIdIndexRoute
+  "/engagement-engines/create/": typeof EngagementEnginesCreateIndexRoute
+  "/engagement-engines/inbox/": typeof EngagementEnginesInboxIndexRoute
   "/evaluation/evaluation-tool/": typeof EvaluationEvaluationToolIndexRoute
   "/evaluation/evaluations/": typeof EvaluationEvaluationsIndexRoute
   "/evaluator-ai/assessment/": typeof EvaluatorAiAssessmentIndexRoute
@@ -1727,6 +1819,8 @@ export interface FileRoutesByFullPath {
   "/manage-students/enroll-requests/": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite/": typeof ManageStudentsInviteIndexRoute
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
+  "/meetings/my-schedule/": typeof MeetingsMyScheduleIndexRoute
+  "/meetings/team/": typeof MeetingsTeamIndexRoute
   "/planning/activity-logs/": typeof PlanningActivityLogsIndexRoute
   "/planning/planning/": typeof PlanningPlanningIndexRoute
   "/settings/fee-management/": typeof SettingsFeeManagementIndexRoute
@@ -1790,6 +1884,7 @@ export interface FileRoutesByFullPath {
   "/homework-creation/create-assessment/$assessmentId/$examtype/": typeof HomeworkCreationCreateAssessmentAssessmentIdExamtypeIndexRoute
   "/study-library/ai-copilot/course-outline/generating/": typeof StudyLibraryAiCopilotCourseOutlineGeneratingIndexRoute
   "/study-library/courses/course-details/subjects/": typeof StudyLibraryCoursesCourseDetailsSubjectsIndexRoute
+  "/study-library/courses/course-details/translation/": typeof StudyLibraryCoursesCourseDetailsTranslationIndexRoute
   "/study-library/live-session/schedule/bulk/": typeof StudyLibraryLiveSessionScheduleBulkIndexRoute
   "/study-library/live-session/schedule/step1/": typeof StudyLibraryLiveSessionScheduleStep1IndexRoute
   "/study-library/live-session/schedule/step2/": typeof StudyLibraryLiveSessionScheduleStep2IndexRoute
@@ -1812,6 +1907,7 @@ export interface FileRoutesByTo {
   "/landing": typeof LandingLazyRoute
   "/pricing": typeof PricingLazyRoute
   "/counsellors/$userId": typeof CounsellorsUserIdRoute
+  "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -1827,6 +1923,7 @@ export interface FileRoutesByTo {
   "/connector-center-details": typeof ConnectorCenterDetailsIndexRoute
   "/counsellors": typeof CounsellorsIndexRoute
   "/dashboard": typeof DashboardIndexRoute
+  "/engagement-engines": typeof EngagementEnginesIndexRoute
   "/evaluation": typeof EvaluationIndexRoute
   "/evaluator-ai": typeof EvaluatorAiIndexRoute
   "/instructor-copilot": typeof InstructorCopilotIndexRoute
@@ -1850,6 +1947,7 @@ export interface FileRoutesByTo {
   "/study-library": typeof StudyLibraryIndexRoute
   "/video-api-studio": typeof VideoApiStudioIndexRoute
   "/vim": typeof VimIndexRoute
+  "/audience-manager/onboarding/$flowId": typeof AudienceManagerOnboardingFlowIdRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
@@ -1882,6 +1980,7 @@ export interface FileRoutesByTo {
   "/audience-manager/call-log": typeof AudienceManagerCallLogIndexRoute
   "/audience-manager/follow-ups": typeof AudienceManagerFollowUpsIndexRoute
   "/audience-manager/list": typeof AudienceManagerListIndexRoute
+  "/audience-manager/onboarding": typeof AudienceManagerOnboardingIndexRoute
   "/audience-manager/recent-leads": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows": typeof AutomationChatbotFlowsIndexRoute
@@ -1891,6 +1990,8 @@ export interface FileRoutesByTo {
   "/communication/whatsapp-templates": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId": typeof ContentContentIdIndexRoute
+  "/engagement-engines/create": typeof EngagementEnginesCreateIndexRoute
+  "/engagement-engines/inbox": typeof EngagementEnginesInboxIndexRoute
   "/evaluation/evaluation-tool": typeof EvaluationEvaluationToolIndexRoute
   "/evaluation/evaluations": typeof EvaluationEvaluationsIndexRoute
   "/evaluator-ai/assessment": typeof EvaluatorAiAssessmentIndexRoute
@@ -1911,6 +2012,8 @@ export interface FileRoutesByTo {
   "/manage-students/enroll-requests": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite": typeof ManageStudentsInviteIndexRoute
   "/manage-students/students-list": typeof ManageStudentsStudentsListIndexRoute
+  "/meetings/my-schedule": typeof MeetingsMyScheduleIndexRoute
+  "/meetings/team": typeof MeetingsTeamIndexRoute
   "/planning/activity-logs": typeof PlanningActivityLogsIndexRoute
   "/planning/planning": typeof PlanningPlanningIndexRoute
   "/settings/fee-management": typeof SettingsFeeManagementIndexRoute
@@ -1974,6 +2077,7 @@ export interface FileRoutesByTo {
   "/homework-creation/create-assessment/$assessmentId/$examtype": typeof HomeworkCreationCreateAssessmentAssessmentIdExamtypeIndexRoute
   "/study-library/ai-copilot/course-outline/generating": typeof StudyLibraryAiCopilotCourseOutlineGeneratingIndexRoute
   "/study-library/courses/course-details/subjects": typeof StudyLibraryCoursesCourseDetailsSubjectsIndexRoute
+  "/study-library/courses/course-details/translation": typeof StudyLibraryCoursesCourseDetailsTranslationIndexRoute
   "/study-library/live-session/schedule/bulk": typeof StudyLibraryLiveSessionScheduleBulkIndexRoute
   "/study-library/live-session/schedule/step1": typeof StudyLibraryLiveSessionScheduleStep1IndexRoute
   "/study-library/live-session/schedule/step2": typeof StudyLibraryLiveSessionScheduleStep2IndexRoute
@@ -1998,6 +2102,7 @@ export interface FileRoutesById {
   "/learner-insights": typeof LearnerInsightsLazyRouteWithChildren
   "/pricing": typeof PricingLazyRoute
   "/counsellors/$userId": typeof CounsellorsUserIdRoute
+  "/engagement-engines/$engineId": typeof EngagementEnginesEngineIdRoute
   "/vim/dashboard": typeof VimDashboardRoute
   "/vim/login": typeof VimLoginRoute
   "/vim/waitlist": typeof VimWaitlistRoute
@@ -2013,6 +2118,7 @@ export interface FileRoutesById {
   "/connector-center-details/": typeof ConnectorCenterDetailsIndexRoute
   "/counsellors/": typeof CounsellorsIndexRoute
   "/dashboard/": typeof DashboardIndexRoute
+  "/engagement-engines/": typeof EngagementEnginesIndexRoute
   "/evaluation/": typeof EvaluationIndexRoute
   "/evaluator-ai/": typeof EvaluatorAiIndexRoute
   "/instructor-copilot/": typeof InstructorCopilotIndexRoute
@@ -2036,6 +2142,7 @@ export interface FileRoutesById {
   "/study-library/": typeof StudyLibraryIndexRoute
   "/video-api-studio/": typeof VideoApiStudioIndexRoute
   "/vim/": typeof VimIndexRoute
+  "/audience-manager/onboarding/$flowId": typeof AudienceManagerOnboardingFlowIdRoute
   "/automation/chatbot-flows/$flowId": typeof AutomationChatbotFlowsFlowIdRoute
   "/login/oauth/redirect": typeof LoginOauthRedirectRoute
   "/manage-custom-teams/sub-orgs/$subOrgSlug": typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
@@ -2068,6 +2175,7 @@ export interface FileRoutesById {
   "/audience-manager/call-log/": typeof AudienceManagerCallLogIndexRoute
   "/audience-manager/follow-ups/": typeof AudienceManagerFollowUpsIndexRoute
   "/audience-manager/list/": typeof AudienceManagerListIndexRoute
+  "/audience-manager/onboarding/": typeof AudienceManagerOnboardingIndexRoute
   "/audience-manager/recent-leads/": typeof AudienceManagerRecentLeadsIndexRoute
   "/audience-manager/reports/": typeof AudienceManagerReportsIndexRoute
   "/automation/chatbot-flows/": typeof AutomationChatbotFlowsIndexRoute
@@ -2077,6 +2185,8 @@ export interface FileRoutesById {
   "/communication/whatsapp-templates/": typeof CommunicationWhatsappTemplatesIndexRoute
   "/community/question-paper/": typeof CommunityQuestionPaperIndexRoute
   "/content/$contentId/": typeof ContentContentIdIndexRoute
+  "/engagement-engines/create/": typeof EngagementEnginesCreateIndexRoute
+  "/engagement-engines/inbox/": typeof EngagementEnginesInboxIndexRoute
   "/evaluation/evaluation-tool/": typeof EvaluationEvaluationToolIndexRoute
   "/evaluation/evaluations/": typeof EvaluationEvaluationsIndexRoute
   "/evaluator-ai/assessment/": typeof EvaluatorAiAssessmentIndexRoute
@@ -2097,6 +2207,8 @@ export interface FileRoutesById {
   "/manage-students/enroll-requests/": typeof ManageStudentsEnrollRequestsIndexRoute
   "/manage-students/invite/": typeof ManageStudentsInviteIndexRoute
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
+  "/meetings/my-schedule/": typeof MeetingsMyScheduleIndexRoute
+  "/meetings/team/": typeof MeetingsTeamIndexRoute
   "/planning/activity-logs/": typeof PlanningActivityLogsIndexRoute
   "/planning/planning/": typeof PlanningPlanningIndexRoute
   "/settings/fee-management/": typeof SettingsFeeManagementIndexRoute
@@ -2160,6 +2272,7 @@ export interface FileRoutesById {
   "/homework-creation/create-assessment/$assessmentId/$examtype/": typeof HomeworkCreationCreateAssessmentAssessmentIdExamtypeIndexRoute
   "/study-library/ai-copilot/course-outline/generating/": typeof StudyLibraryAiCopilotCourseOutlineGeneratingIndexRoute
   "/study-library/courses/course-details/subjects/": typeof StudyLibraryCoursesCourseDetailsSubjectsIndexRoute
+  "/study-library/courses/course-details/translation/": typeof StudyLibraryCoursesCourseDetailsTranslationIndexRoute
   "/study-library/live-session/schedule/bulk/": typeof StudyLibraryLiveSessionScheduleBulkIndexRoute
   "/study-library/live-session/schedule/step1/": typeof StudyLibraryLiveSessionScheduleStep1IndexRoute
   "/study-library/live-session/schedule/step2/": typeof StudyLibraryLiveSessionScheduleStep2IndexRoute
@@ -2185,6 +2298,7 @@ export interface FileRouteTypes {
     | "/learner-insights"
     | "/pricing"
     | "/counsellors/$userId"
+    | "/engagement-engines/$engineId"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2200,6 +2314,7 @@ export interface FileRouteTypes {
     | "/connector-center-details/"
     | "/counsellors/"
     | "/dashboard/"
+    | "/engagement-engines/"
     | "/evaluation/"
     | "/evaluator-ai/"
     | "/instructor-copilot/"
@@ -2223,6 +2338,7 @@ export interface FileRouteTypes {
     | "/study-library/"
     | "/video-api-studio/"
     | "/vim/"
+    | "/audience-manager/onboarding/$flowId"
     | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
     | "/manage-custom-teams/sub-orgs/$subOrgSlug"
@@ -2255,6 +2371,7 @@ export interface FileRouteTypes {
     | "/audience-manager/call-log/"
     | "/audience-manager/follow-ups/"
     | "/audience-manager/list/"
+    | "/audience-manager/onboarding/"
     | "/audience-manager/recent-leads/"
     | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
@@ -2264,6 +2381,8 @@ export interface FileRouteTypes {
     | "/communication/whatsapp-templates/"
     | "/community/question-paper/"
     | "/content/$contentId/"
+    | "/engagement-engines/create/"
+    | "/engagement-engines/inbox/"
     | "/evaluation/evaluation-tool/"
     | "/evaluation/evaluations/"
     | "/evaluator-ai/assessment/"
@@ -2284,6 +2403,8 @@ export interface FileRouteTypes {
     | "/manage-students/enroll-requests/"
     | "/manage-students/invite/"
     | "/manage-students/students-list/"
+    | "/meetings/my-schedule/"
+    | "/meetings/team/"
     | "/planning/activity-logs/"
     | "/planning/planning/"
     | "/settings/fee-management/"
@@ -2347,6 +2468,7 @@ export interface FileRouteTypes {
     | "/homework-creation/create-assessment/$assessmentId/$examtype/"
     | "/study-library/ai-copilot/course-outline/generating/"
     | "/study-library/courses/course-details/subjects/"
+    | "/study-library/courses/course-details/translation/"
     | "/study-library/live-session/schedule/bulk/"
     | "/study-library/live-session/schedule/step1/"
     | "/study-library/live-session/schedule/step2/"
@@ -2369,6 +2491,7 @@ export interface FileRouteTypes {
     | "/landing"
     | "/pricing"
     | "/counsellors/$userId"
+    | "/engagement-engines/$engineId"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2384,6 +2507,7 @@ export interface FileRouteTypes {
     | "/connector-center-details"
     | "/counsellors"
     | "/dashboard"
+    | "/engagement-engines"
     | "/evaluation"
     | "/evaluator-ai"
     | "/instructor-copilot"
@@ -2407,6 +2531,7 @@ export interface FileRouteTypes {
     | "/study-library"
     | "/video-api-studio"
     | "/vim"
+    | "/audience-manager/onboarding/$flowId"
     | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
     | "/manage-custom-teams/sub-orgs/$subOrgSlug"
@@ -2439,6 +2564,7 @@ export interface FileRouteTypes {
     | "/audience-manager/call-log"
     | "/audience-manager/follow-ups"
     | "/audience-manager/list"
+    | "/audience-manager/onboarding"
     | "/audience-manager/recent-leads"
     | "/audience-manager/reports"
     | "/automation/chatbot-flows"
@@ -2448,6 +2574,8 @@ export interface FileRouteTypes {
     | "/communication/whatsapp-templates"
     | "/community/question-paper"
     | "/content/$contentId"
+    | "/engagement-engines/create"
+    | "/engagement-engines/inbox"
     | "/evaluation/evaluation-tool"
     | "/evaluation/evaluations"
     | "/evaluator-ai/assessment"
@@ -2468,6 +2596,8 @@ export interface FileRouteTypes {
     | "/manage-students/enroll-requests"
     | "/manage-students/invite"
     | "/manage-students/students-list"
+    | "/meetings/my-schedule"
+    | "/meetings/team"
     | "/planning/activity-logs"
     | "/planning/planning"
     | "/settings/fee-management"
@@ -2531,6 +2661,7 @@ export interface FileRouteTypes {
     | "/homework-creation/create-assessment/$assessmentId/$examtype"
     | "/study-library/ai-copilot/course-outline/generating"
     | "/study-library/courses/course-details/subjects"
+    | "/study-library/courses/course-details/translation"
     | "/study-library/live-session/schedule/bulk"
     | "/study-library/live-session/schedule/step1"
     | "/study-library/live-session/schedule/step2"
@@ -2554,6 +2685,7 @@ export interface FileRouteTypes {
     | "/learner-insights"
     | "/pricing"
     | "/counsellors/$userId"
+    | "/engagement-engines/$engineId"
     | "/vim/dashboard"
     | "/vim/login"
     | "/vim/waitlist"
@@ -2569,6 +2701,7 @@ export interface FileRouteTypes {
     | "/connector-center-details/"
     | "/counsellors/"
     | "/dashboard/"
+    | "/engagement-engines/"
     | "/evaluation/"
     | "/evaluator-ai/"
     | "/instructor-copilot/"
@@ -2592,6 +2725,7 @@ export interface FileRouteTypes {
     | "/study-library/"
     | "/video-api-studio/"
     | "/vim/"
+    | "/audience-manager/onboarding/$flowId"
     | "/automation/chatbot-flows/$flowId"
     | "/login/oauth/redirect"
     | "/manage-custom-teams/sub-orgs/$subOrgSlug"
@@ -2624,6 +2758,7 @@ export interface FileRouteTypes {
     | "/audience-manager/call-log/"
     | "/audience-manager/follow-ups/"
     | "/audience-manager/list/"
+    | "/audience-manager/onboarding/"
     | "/audience-manager/recent-leads/"
     | "/audience-manager/reports/"
     | "/automation/chatbot-flows/"
@@ -2633,6 +2768,8 @@ export interface FileRouteTypes {
     | "/communication/whatsapp-templates/"
     | "/community/question-paper/"
     | "/content/$contentId/"
+    | "/engagement-engines/create/"
+    | "/engagement-engines/inbox/"
     | "/evaluation/evaluation-tool/"
     | "/evaluation/evaluations/"
     | "/evaluator-ai/assessment/"
@@ -2653,6 +2790,8 @@ export interface FileRouteTypes {
     | "/manage-students/enroll-requests/"
     | "/manage-students/invite/"
     | "/manage-students/students-list/"
+    | "/meetings/my-schedule/"
+    | "/meetings/team/"
     | "/planning/activity-logs/"
     | "/planning/planning/"
     | "/settings/fee-management/"
@@ -2716,6 +2855,7 @@ export interface FileRouteTypes {
     | "/homework-creation/create-assessment/$assessmentId/$examtype/"
     | "/study-library/ai-copilot/course-outline/generating/"
     | "/study-library/courses/course-details/subjects/"
+    | "/study-library/courses/course-details/translation/"
     | "/study-library/live-session/schedule/bulk/"
     | "/study-library/live-session/schedule/step1/"
     | "/study-library/live-session/schedule/step2/"
@@ -2740,6 +2880,7 @@ export interface RootRouteChildren {
   LearnerInsightsLazyRoute: typeof LearnerInsightsLazyRouteWithChildren
   PricingLazyRoute: typeof PricingLazyRoute
   CounsellorsUserIdRoute: typeof CounsellorsUserIdRoute
+  EngagementEnginesEngineIdRoute: typeof EngagementEnginesEngineIdRoute
   VimDashboardRoute: typeof VimDashboardRoute
   VimLoginRoute: typeof VimLoginRoute
   VimWaitlistRoute: typeof VimWaitlistRoute
@@ -2755,6 +2896,7 @@ export interface RootRouteChildren {
   ConnectorCenterDetailsIndexRoute: typeof ConnectorCenterDetailsIndexRoute
   CounsellorsIndexRoute: typeof CounsellorsIndexRoute
   DashboardIndexRoute: typeof DashboardIndexRoute
+  EngagementEnginesIndexRoute: typeof EngagementEnginesIndexRoute
   EvaluationIndexRoute: typeof EvaluationIndexRoute
   EvaluatorAiIndexRoute: typeof EvaluatorAiIndexRoute
   InstructorCopilotIndexRoute: typeof InstructorCopilotIndexRoute
@@ -2777,6 +2919,7 @@ export interface RootRouteChildren {
   StudyLibraryIndexRoute: typeof StudyLibraryIndexRoute
   VideoApiStudioIndexRoute: typeof VideoApiStudioIndexRoute
   VimIndexRoute: typeof VimIndexRoute
+  AudienceManagerOnboardingFlowIdRoute: typeof AudienceManagerOnboardingFlowIdRoute
   AutomationChatbotFlowsFlowIdRoute: typeof AutomationChatbotFlowsFlowIdRoute
   LoginOauthRedirectRoute: typeof LoginOauthRedirectRoute
   ManageCustomTeamsSubOrgsSubOrgSlugRoute: typeof ManageCustomTeamsSubOrgsSubOrgSlugRoute
@@ -2809,6 +2952,7 @@ export interface RootRouteChildren {
   AudienceManagerCallLogIndexRoute: typeof AudienceManagerCallLogIndexRoute
   AudienceManagerFollowUpsIndexRoute: typeof AudienceManagerFollowUpsIndexRoute
   AudienceManagerListIndexRoute: typeof AudienceManagerListIndexRoute
+  AudienceManagerOnboardingIndexRoute: typeof AudienceManagerOnboardingIndexRoute
   AudienceManagerRecentLeadsIndexRoute: typeof AudienceManagerRecentLeadsIndexRoute
   AudienceManagerReportsIndexRoute: typeof AudienceManagerReportsIndexRoute
   AutomationChatbotFlowsIndexRoute: typeof AutomationChatbotFlowsIndexRoute
@@ -2818,6 +2962,8 @@ export interface RootRouteChildren {
   CommunicationWhatsappTemplatesIndexRoute: typeof CommunicationWhatsappTemplatesIndexRoute
   CommunityQuestionPaperIndexRoute: typeof CommunityQuestionPaperIndexRoute
   ContentContentIdIndexRoute: typeof ContentContentIdIndexRoute
+  EngagementEnginesCreateIndexRoute: typeof EngagementEnginesCreateIndexRoute
+  EngagementEnginesInboxIndexRoute: typeof EngagementEnginesInboxIndexRoute
   EvaluationEvaluationToolIndexRoute: typeof EvaluationEvaluationToolIndexRoute
   EvaluationEvaluationsIndexRoute: typeof EvaluationEvaluationsIndexRoute
   EvaluatorAiAssessmentIndexRoute: typeof EvaluatorAiAssessmentIndexRoute
@@ -2838,6 +2984,8 @@ export interface RootRouteChildren {
   ManageStudentsEnrollRequestsIndexRoute: typeof ManageStudentsEnrollRequestsIndexRoute
   ManageStudentsInviteIndexRoute: typeof ManageStudentsInviteIndexRoute
   ManageStudentsStudentsListIndexRoute: typeof ManageStudentsStudentsListIndexRoute
+  MeetingsMyScheduleIndexRoute: typeof MeetingsMyScheduleIndexRoute
+  MeetingsTeamIndexRoute: typeof MeetingsTeamIndexRoute
   PlanningActivityLogsIndexRoute: typeof PlanningActivityLogsIndexRoute
   PlanningPlanningIndexRoute: typeof PlanningPlanningIndexRoute
   SettingsFeeManagementIndexRoute: typeof SettingsFeeManagementIndexRoute
@@ -2901,6 +3049,7 @@ export interface RootRouteChildren {
   HomeworkCreationCreateAssessmentAssessmentIdExamtypeIndexRoute: typeof HomeworkCreationCreateAssessmentAssessmentIdExamtypeIndexRoute
   StudyLibraryAiCopilotCourseOutlineGeneratingIndexRoute: typeof StudyLibraryAiCopilotCourseOutlineGeneratingIndexRoute
   StudyLibraryCoursesCourseDetailsSubjectsIndexRoute: typeof StudyLibraryCoursesCourseDetailsSubjectsIndexRoute
+  StudyLibraryCoursesCourseDetailsTranslationIndexRoute: typeof StudyLibraryCoursesCourseDetailsTranslationIndexRoute
   StudyLibraryLiveSessionScheduleBulkIndexRoute: typeof StudyLibraryLiveSessionScheduleBulkIndexRoute
   StudyLibraryLiveSessionScheduleStep1IndexRoute: typeof StudyLibraryLiveSessionScheduleStep1IndexRoute
   StudyLibraryLiveSessionScheduleStep2IndexRoute: typeof StudyLibraryLiveSessionScheduleStep2IndexRoute
@@ -3134,6 +3283,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof EvaluationIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/engagement-engines/": {
+      id: "/engagement-engines/"
+      path: "/engagement-engines"
+      fullPath: "/engagement-engines/"
+      preLoaderRoute: typeof EngagementEnginesIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/dashboard/": {
       id: "/dashboard/"
       path: "/dashboard"
@@ -3237,6 +3393,13 @@ declare module "@tanstack/react-router" {
       path: "/vim/dashboard"
       fullPath: "/vim/dashboard"
       preLoaderRoute: typeof VimDashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/engagement-engines/$engineId": {
+      id: "/engagement-engines/$engineId"
+      path: "/engagement-engines/$engineId"
+      fullPath: "/engagement-engines/$engineId"
+      preLoaderRoute: typeof EngagementEnginesEngineIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/counsellors/$userId": {
@@ -3407,6 +3570,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof PlanningActivityLogsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/meetings/team/": {
+      id: "/meetings/team/"
+      path: "/meetings/team"
+      fullPath: "/meetings/team/"
+      preLoaderRoute: typeof MeetingsTeamIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/meetings/my-schedule/": {
+      id: "/meetings/my-schedule/"
+      path: "/meetings/my-schedule"
+      fullPath: "/meetings/my-schedule/"
+      preLoaderRoute: typeof MeetingsMyScheduleIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/manage-students/students-list/": {
       id: "/manage-students/students-list/"
       path: "/manage-students/students-list"
@@ -3547,6 +3724,20 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof EvaluationEvaluationToolIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/engagement-engines/inbox/": {
+      id: "/engagement-engines/inbox/"
+      path: "/engagement-engines/inbox"
+      fullPath: "/engagement-engines/inbox/"
+      preLoaderRoute: typeof EngagementEnginesInboxIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/engagement-engines/create/": {
+      id: "/engagement-engines/create/"
+      path: "/engagement-engines/create"
+      fullPath: "/engagement-engines/create/"
+      preLoaderRoute: typeof EngagementEnginesCreateIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/content/$contentId/": {
       id: "/content/$contentId/"
       path: "/content/$contentId"
@@ -3608,6 +3799,13 @@ declare module "@tanstack/react-router" {
       path: "/audience-manager/recent-leads"
       fullPath: "/audience-manager/recent-leads/"
       preLoaderRoute: typeof AudienceManagerRecentLeadsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/audience-manager/onboarding/": {
+      id: "/audience-manager/onboarding/"
+      path: "/audience-manager/onboarding"
+      fullPath: "/audience-manager/onboarding/"
+      preLoaderRoute: typeof AudienceManagerOnboardingIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/audience-manager/list/": {
@@ -3832,6 +4030,13 @@ declare module "@tanstack/react-router" {
       path: "/automation/chatbot-flows/$flowId"
       fullPath: "/automation/chatbot-flows/$flowId"
       preLoaderRoute: typeof AutomationChatbotFlowsFlowIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/audience-manager/onboarding/$flowId": {
+      id: "/audience-manager/onboarding/$flowId"
+      path: "/audience-manager/onboarding/$flowId"
+      fullPath: "/audience-manager/onboarding/$flowId"
+      preLoaderRoute: typeof AudienceManagerOnboardingFlowIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/workflow/$workflowId/edit/": {
@@ -4079,6 +4284,13 @@ declare module "@tanstack/react-router" {
       preLoaderRoute: typeof StudyLibraryLiveSessionScheduleBulkIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    "/study-library/courses/course-details/translation/": {
+      id: "/study-library/courses/course-details/translation/"
+      path: "/study-library/courses/course-details/translation"
+      fullPath: "/study-library/courses/course-details/translation/"
+      preLoaderRoute: typeof StudyLibraryCoursesCourseDetailsTranslationIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     "/study-library/courses/course-details/subjects/": {
       id: "/study-library/courses/course-details/subjects/"
       path: "/study-library/courses/course-details/subjects"
@@ -4222,6 +4434,7 @@ const rootRouteChildren: RootRouteChildren = {
   LearnerInsightsLazyRoute: LearnerInsightsLazyRouteWithChildren,
   PricingLazyRoute: PricingLazyRoute,
   CounsellorsUserIdRoute: CounsellorsUserIdRoute,
+  EngagementEnginesEngineIdRoute: EngagementEnginesEngineIdRoute,
   VimDashboardRoute: VimDashboardRoute,
   VimLoginRoute: VimLoginRoute,
   VimWaitlistRoute: VimWaitlistRoute,
@@ -4237,6 +4450,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectorCenterDetailsIndexRoute: ConnectorCenterDetailsIndexRoute,
   CounsellorsIndexRoute: CounsellorsIndexRoute,
   DashboardIndexRoute: DashboardIndexRoute,
+  EngagementEnginesIndexRoute: EngagementEnginesIndexRoute,
   EvaluationIndexRoute: EvaluationIndexRoute,
   EvaluatorAiIndexRoute: EvaluatorAiIndexRoute,
   InstructorCopilotIndexRoute: InstructorCopilotIndexRoute,
@@ -4259,6 +4473,7 @@ const rootRouteChildren: RootRouteChildren = {
   StudyLibraryIndexRoute: StudyLibraryIndexRoute,
   VideoApiStudioIndexRoute: VideoApiStudioIndexRoute,
   VimIndexRoute: VimIndexRoute,
+  AudienceManagerOnboardingFlowIdRoute: AudienceManagerOnboardingFlowIdRoute,
   AutomationChatbotFlowsFlowIdRoute: AutomationChatbotFlowsFlowIdRoute,
   LoginOauthRedirectRoute: LoginOauthRedirectRoute,
   ManageCustomTeamsSubOrgsSubOrgSlugRoute:
@@ -4296,6 +4511,7 @@ const rootRouteChildren: RootRouteChildren = {
   AudienceManagerCallLogIndexRoute: AudienceManagerCallLogIndexRoute,
   AudienceManagerFollowUpsIndexRoute: AudienceManagerFollowUpsIndexRoute,
   AudienceManagerListIndexRoute: AudienceManagerListIndexRoute,
+  AudienceManagerOnboardingIndexRoute: AudienceManagerOnboardingIndexRoute,
   AudienceManagerRecentLeadsIndexRoute: AudienceManagerRecentLeadsIndexRoute,
   AudienceManagerReportsIndexRoute: AudienceManagerReportsIndexRoute,
   AutomationChatbotFlowsIndexRoute: AutomationChatbotFlowsIndexRoute,
@@ -4308,6 +4524,8 @@ const rootRouteChildren: RootRouteChildren = {
     CommunicationWhatsappTemplatesIndexRoute,
   CommunityQuestionPaperIndexRoute: CommunityQuestionPaperIndexRoute,
   ContentContentIdIndexRoute: ContentContentIdIndexRoute,
+  EngagementEnginesCreateIndexRoute: EngagementEnginesCreateIndexRoute,
+  EngagementEnginesInboxIndexRoute: EngagementEnginesInboxIndexRoute,
   EvaluationEvaluationToolIndexRoute: EvaluationEvaluationToolIndexRoute,
   EvaluationEvaluationsIndexRoute: EvaluationEvaluationsIndexRoute,
   EvaluatorAiAssessmentIndexRoute: EvaluatorAiAssessmentIndexRoute,
@@ -4334,6 +4552,8 @@ const rootRouteChildren: RootRouteChildren = {
     ManageStudentsEnrollRequestsIndexRoute,
   ManageStudentsInviteIndexRoute: ManageStudentsInviteIndexRoute,
   ManageStudentsStudentsListIndexRoute: ManageStudentsStudentsListIndexRoute,
+  MeetingsMyScheduleIndexRoute: MeetingsMyScheduleIndexRoute,
+  MeetingsTeamIndexRoute: MeetingsTeamIndexRoute,
   PlanningActivityLogsIndexRoute: PlanningActivityLogsIndexRoute,
   PlanningPlanningIndexRoute: PlanningPlanningIndexRoute,
   SettingsFeeManagementIndexRoute: SettingsFeeManagementIndexRoute,
@@ -4423,6 +4643,8 @@ const rootRouteChildren: RootRouteChildren = {
     StudyLibraryAiCopilotCourseOutlineGeneratingIndexRoute,
   StudyLibraryCoursesCourseDetailsSubjectsIndexRoute:
     StudyLibraryCoursesCourseDetailsSubjectsIndexRoute,
+  StudyLibraryCoursesCourseDetailsTranslationIndexRoute:
+    StudyLibraryCoursesCourseDetailsTranslationIndexRoute,
   StudyLibraryLiveSessionScheduleBulkIndexRoute:
     StudyLibraryLiveSessionScheduleBulkIndexRoute,
   StudyLibraryLiveSessionScheduleStep1IndexRoute:

@@ -290,7 +290,7 @@ export const ModernDesignShowcase: React.FC = () => {
           <ModernButton 
             variant="primary" 
             size="md"
-            className="mr-3"
+            className="me-3"
             onClick={() => handleAction('Form Submit')}
             isLoading={isLoading}
           >

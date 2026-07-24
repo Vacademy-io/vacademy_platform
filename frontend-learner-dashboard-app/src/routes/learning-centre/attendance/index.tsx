@@ -260,7 +260,7 @@ function RouteComponent() {
 
           {/* Clear Filters button */}
           {(dateRange.from || dateRange.to || selectedBatchId !== null) && (
-            <div className="mt-4 text-right">
+            <div className="mt-4 text-end">
               <button
                 onClick={clearFilters}
                 className="inline-flex items-center rounded-md bg-neutral-100 px-3 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-200"
@@ -337,7 +337,7 @@ function RouteComponent() {
           <div className="w-full overflow-x-auto">
             <table className="w-full min-w-table-wide table-auto border-collapse">
               <thead>
-                <tr className="border-b border-neutral-200 bg-primary-100 text-left text-sm font-medium text-neutral-600">
+                <tr className="border-b border-neutral-200 bg-primary-100 text-start text-sm font-medium text-neutral-600">
                   {/* <th className="w-10 px-4 py-3">
                     <Checkbox
                       checked={allRowsSelected}
@@ -477,7 +477,7 @@ function RangeDateFilter({ range, onChange }: RangeDateFilterProps) {
             ) : (
               <>Select date range</>
             )}
-            <CalendarBlank className="ml-2 size-4 text-neutral-500" />
+            <CalendarBlank className="ms-2 size-4 text-neutral-500" />
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-dialog-lg p-3 sm:w-auto" align="start">
@@ -488,7 +488,7 @@ function RangeDateFilter({ range, onChange }: RangeDateFilterProps) {
               onSelect={(sel: { from?: Date; to?: Date } | undefined) =>
                 onChange(sel || {})
               }
-              className="sm:border-r sm:border-neutral-100 sm:pr-3"
+              className="sm:border-e sm:border-neutral-100 sm:pe-3"
             />
             {/* Quick presets */}
             <div className="flex flex-col gap-2 pt-1">
@@ -519,7 +519,7 @@ function RangeDateFilter({ range, onChange }: RangeDateFilterProps) {
                   onClick={() =>
                     onChange({ from: preset.from, to: new Date() })
                   }
-                  className="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-left text-xs hover:border-neutral-300 hover:bg-neutral-50"
+                  className="w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-start text-xs hover:border-neutral-300 hover:bg-neutral-50"
                 >
                   {preset.label}
                 </button>
@@ -560,7 +560,7 @@ function BatchDropdown({
             )}
           >
             {value || label}
-            <CaretDown className="ml-2 size-4 text-neutral-500" />
+            <CaretDown className="ms-2 size-4 text-neutral-500" />
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-dialog-sm p-3 sm:w-auto" align="start">
@@ -572,7 +572,7 @@ function BatchDropdown({
               <button
                 key={opt.value || "all"}
                 onClick={() => onSelect(opt.value)}
-                className={`w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-left text-xs hover:border-neutral-300 hover:bg-neutral-50 ${
+                className={`w-full rounded-md border border-neutral-200 bg-white px-3 py-2 text-start text-xs hover:border-neutral-300 hover:bg-neutral-50 ${
                   value === opt.label ? "bg-primary-50 text-primary-600" : ""
                 }`}
               >

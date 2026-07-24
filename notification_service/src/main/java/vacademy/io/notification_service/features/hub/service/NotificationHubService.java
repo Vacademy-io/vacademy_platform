@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import vacademy.io.notification_service.features.announcements.service.EmailConfigurationService;
 import vacademy.io.notification_service.features.combot.entity.ChannelToInstituteMapping;
 import vacademy.io.notification_service.features.combot.repository.ChannelToInstituteMappingRepository;
+import vacademy.io.notification_service.features.hub.dto.HubEmailEventListDTO;
 import vacademy.io.notification_service.features.hub.dto.HubOverviewDTO;
 import vacademy.io.notification_service.features.hub.dto.HubRecentItemDTO;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
@@ -110,6 +111,86 @@ public class NotificationHubService {
                 .preview(truncate(nl.getBody(), 120))
                 .timestamp(nl.getNotificationDate())
                 .build();
+    }
+
+    /** Event names the drill-down accepts — the same set countEmailEvent is called with. */
+    private static final java.util.Set<String> DRILLDOWN_EVENT_TYPES =
+            java.util.Set.of("DELIVERY", "OPEN", "CLICK", "BOUNCE", "COMPLAINT");
+
+    /**
+     * Drill-down behind an overview email stat tile: the individual EMAIL_EVENT rows
+     * (recipient + subject + event details) for one event type within the window.
+     * Same scoping as the counts in {@link #getOverview}.
+     */
+    public HubEmailEventListDTO getEmailEvents(String instituteId, int windowDays,
+                                               String eventType, int page, int size) {
+        String normalized = eventType == null ? "" : eventType.trim().toUpperCase();
+        if (!DRILLDOWN_EVENT_TYPES.contains(normalized)) {
+            throw new IllegalArgumentException("Unsupported eventType: " + eventType
+                    + " (expected one of " + DRILLDOWN_EVENT_TYPES + ")");
+        }
+
+        String since = Instant.now().minus(java.time.Duration.ofDays(windowDays)).toString();
+        List<String> fromAddresses = getInstituteEmailAddresses(instituteId);
+
+        if (fromAddresses.isEmpty()) {
+            return HubEmailEventListDTO.builder()
+                    .eventType(normalized).page(page).size(size)
+                    .totalElements(0).totalPages(0).content(List.of())
+                    .build();
+        }
+
+        long total = notificationLogRepository.countEmailEvent(fromAddresses, normalized, since);
+        List<NotificationLog> rows = notificationLogRepository
+                .findEmailEventsForInstitute(fromAddresses, normalized, since, size, page * size);
+
+        return HubEmailEventListDTO.builder()
+                .eventType(normalized)
+                .page(page)
+                .size(size)
+                .totalElements(total)
+                .totalPages((int) Math.ceil((double) total / size))
+                .content(rows.stream().map(this::toEmailEventItem).collect(Collectors.toList()))
+                .build();
+    }
+
+    /**
+     * EMAIL_EVENT bodies are the line-oriented text written by
+     * EmailEventService.createEventDetailsBody ("Email Event: OPEN\nSubject: ...\n..."),
+     * so details are recovered by prefix parsing — same approach as EmailTrackingService.
+     */
+    private HubEmailEventListDTO.Item toEmailEventItem(NotificationLog ev) {
+        String body = ev.getBody();
+        return HubEmailEventListDTO.Item.builder()
+                .id(ev.getId())
+                .emailLogId(ev.getSource())
+                .recipient(ev.getChannelId())
+                .subject(cleanValue(extractLine(body, "Subject: ")))
+                .timestamp(ev.getNotificationDate())
+                .bounceType(cleanValue(extractLine(body, "Bounce Type: ")))
+                .bounceSubType(cleanValue(extractLine(body, "Bounce SubType: ")))
+                .clickedLink(cleanValue(extractLine(body, "Link: ")))
+                .ipAddress(cleanValue(extractLine(body, "IP Address: ")))
+                .userAgent(cleanValue(extractLine(body, "User Agent: ")))
+                .complaintType(cleanValue(extractLine(body, "Complaint Type: ")))
+                .build();
+    }
+
+    private String extractLine(String body, String prefix) {
+        if (body == null) return null;
+        int start = body.indexOf(prefix);
+        if (start < 0) return null;
+        start += prefix.length();
+        int end = body.indexOf('\n', start);
+        return (end > start ? body.substring(start, end) : body.substring(start)).trim();
+    }
+
+    /** SES omits some header/detail fields as the literal strings "null" / "N/A". */
+    private String cleanValue(String value) {
+        if (value == null || value.isBlank() || "null".equals(value) || "N/A".equals(value)) {
+            return null;
+        }
+        return value;
     }
 
     /**

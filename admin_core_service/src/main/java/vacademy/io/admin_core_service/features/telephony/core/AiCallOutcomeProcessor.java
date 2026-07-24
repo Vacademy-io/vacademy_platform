@@ -78,6 +78,7 @@ public class AiCallOutcomeProcessor {
     private final WorkflowExecutionStateRepository executionStateRepository;
     private final AiCallRecordingService aiCallRecordingService;
     private final AiCallingConfigService configService;
+    private final CallBillingService billingService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // @Lazy + field injection (NOT constructor): WorkflowTriggerService transitively
@@ -94,6 +95,18 @@ public class AiCallOutcomeProcessor {
     @Autowired
     @Lazy
     private AiAgentService aiAgentService;
+
+    // @Lazy: the booking services transitively reach live-session / audience services;
+    // lazy field injection avoids an eager bean cycle (same pattern as above). Used to
+    // auto-book a meeting when a call yields a scheduling request and the agent is linked
+    // to a booking page.
+    @Autowired
+    @Lazy
+    private vacademy.io.admin_core_service.features.booking.service.MeetingBookingService meetingBookingService;
+
+    @Autowired
+    @Lazy
+    private vacademy.io.admin_core_service.features.booking.service.BookingPageService bookingPageService;
 
     // @Lazy: AudienceService is a large service that transitively reaches back into the
     // lead/workflow graph — a final constructor dependency would risk an eager bean
@@ -244,6 +257,59 @@ public class AiCallOutcomeProcessor {
             }
         }
 
+        // AI-conversation-minutes metering (CallBillingService). Runs AFTER the
+        // ownership/verification gate above (the report webhook is public — never bill
+        // off an unverified report). Review-hardened gates:
+        //  - EXPLICIT completed status only ("completed"/"complete" verbatim) — never
+        //    mapStatus, whose default-to-COMPLETED exists to keep malformed reports
+        //    flowing through the NON-billing pipeline.
+        //  - Identity comes from aiIdempotencyKey: the provider call id when present
+        //    (stable across re-POSTs), else the call-log id only when the row provably
+        //    pre-dates this report. An unbindable no-call_uuid report mints a NEW
+        //    result row (and possibly call-log row) per webhook re-delivery — any
+        //    row-derived key would bill once per delivery, so those skip with a warn.
+        //  - A verified completed call with NULL duration (isConnected treats it as
+        //    connected) bills ONE minute rather than silently riding free; an explicit
+        //    zero/negative duration is not billable.
+        //  - callLogId is NOT required: an unknown inbound caller with lead-capture off
+        //    leaves only the ai_call_result, but the STT/LLM/TTS spend was real.
+        // Applies to lead and non-lead subjects alike. Dispatched after commit, same
+        // as the recording copy; success stamps ai_call_result.credits_billed_at so
+        // the reconciliation sweep stops re-attempting.
+        String rawAiStatus = r.getStatus() == null ? "" : r.getStatus().trim().toLowerCase();
+        boolean explicitlyCompleted = "completed".equals(rawAiStatus) || "complete".equals(rawAiStatus);
+        if (billingService.isAiBillableProvider(r.getProvider()) && explicitlyCompleted
+                && (r.getDurationSeconds() == null || r.getDurationSeconds() > 0)) {
+            String billKey = CallBillingService.aiIdempotencyKey(
+                    r.getProvider(), r.getCallUuid(), r.getCorrelationId(),
+                    existing != null ? callLogId : null);
+            if (billKey == null) {
+                log.warn("ai-call billing: result {} has no stable call identity "
+                        + "(call_uuid and correlation both absent) — NOT billed", r.getId());
+            } else {
+                final String key = billKey;
+                final String billResultId = r.getId();
+                final String billInstitute = existing != null ? existing.getInstituteId()
+                        : (lead.instituteId() != null ? lead.instituteId() : r.getInstituteId());
+                final String billProvider = r.getProvider();
+                final String billDirection = existing != null && existing.getDirection() != null
+                        ? existing.getDirection() : r.getDirection();
+                final int billSecs = r.getDurationSeconds() == null ? 60 : r.getDurationSeconds();
+                if (TransactionSynchronizationManager.isSynchronizationActive()) {
+                    TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                        @Override
+                        public void afterCommit() {
+                            billingService.billAiLeg(key, billResultId, billInstitute,
+                                    billProvider, billDirection, billSecs);
+                        }
+                    });
+                } else {
+                    billingService.billAiLeg(key, billResultId, billInstitute,
+                            billProvider, billDirection, billSecs);
+                }
+            }
+        }
+
         // Subject routing. The node is generic: its OUTPUT (disposition + the extracted
         // answers) is already persisted on this ai_call_result (subject-tagged → queryable),
         // and below it is also delivered into the workflow context so downstream nodes can
@@ -326,6 +392,37 @@ public class AiCallOutcomeProcessor {
                 log.warn("ai-call: LEAD_CALLED_BACK fire failed for response {}: {}",
                         lead.responseId(), ex.getMessage());
             }
+        }
+
+        // Auto-book a meeting when the caller agreed to a demo/visit/call at a specific
+        // time AND this agent is linked to a booking page. DEFERRED to AFTER this
+        // transaction commits — NOT inline. MeetingBookingService.createBooking persists
+        // via a TransactionTemplate with default PROPAGATION_REQUIRED, so calling it inside
+        // this @Transactional method would JOIN this tx: a booking failure would mark THIS
+        // tx rollback-only and — despite the try/catch — roll back the ENTIRE outcome
+        // (counsellor assignment, status, workflows) and re-loop via reprocessing; and its
+        // confirmation email / Meet link would fire before this tx committed. Post-commit it
+        // runs exactly once (PROCESSED is already persisted, so no reprocess re-book), fully
+        // isolated, and createBooking's own 2-phase tx behaves as designed.
+        final AiCallResult rRef = r;
+        final Lead leadRef = lead;
+        final String instRef = instituteId;
+        Runnable bookTask = () -> {
+            try {
+                maybeAutoBookMeeting(rRef, leadRef, instRef);
+            } catch (Exception ex) {
+                log.warn("ai-call: auto-book failed for result {} (non-fatal): {}", rRef.getId(), ex.getMessage());
+            }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    bookTask.run();
+                }
+            });
+        } else {
+            bookTask.run();
         }
 
         r.setProcessingStatus("PROCESSED");
@@ -457,7 +554,12 @@ public class AiCallOutcomeProcessor {
                 .terminationReason(r.getHangupCause())
                 .rawPayload(r.getRawPayload())
                 .build();
-        callLogService.applyEvent(row, ev);
+        // voiceBillable only for rows that PRE-DATE this report (a real telephony row
+        // fed by provider webhooks). A row this promotion just minted is a bookkeeping
+        // artifact of the report — no telephony webhook will ever reference it, and
+        // voice-metering it would double-bill the physical call (the real inbound row
+        // bills off the Plivo hangup) or monetize a forged-but-authenticated report.
+        callLogService.applyEvent(row, ev, existing != null);
         return row.getId();
     }
 
@@ -677,4 +779,87 @@ public class AiCallOutcomeProcessor {
                 c != null && "INBOUND".equalsIgnoreCase(c.getDirection())
                         && campaignId.equals(c.getCampaignId()));
     }
+
+    /**
+     * If the AI report flags a scheduled meeting/demo/visit with a resolvable time and the
+     * call's agent (VACADEMY_AI campaignId == agent id) is linked to a booking page, create
+     * a booking on that page for the lead. The page supplies host, duration, Google Meet and
+     * reminders; its linked audience list handles adding/refreshing the lead (name + phone).
+     * We only pass name/phone/email we already have — no custom fields (the caller can't fill
+     * arbitrary list fields on a call; when the lead already exists, its data is reused).
+     */
+    private void maybeAutoBookMeeting(AiCallResult r, Lead lead, String instituteId) {
+        if (!ProviderType.VACADEMY_AI.equals(r.getProvider()) || r.getCampaignId() == null) return;
+        String bookingPageId = aiAgentService.find(r.getCampaignId(), instituteId)
+                .map(a -> a.getBookingPageId()).orElse(null);
+        if (bookingPageId == null || bookingPageId.isBlank()) return;
+
+        // Meeting intent + resolved time live in the raw report payload the voice bot posted
+        // (meetingRequested / meetingDatetimeIso). Absent for non-VACADEMY_AI providers.
+        String rawIso = null; boolean requested = false;
+        try {
+            com.fasterxml.jackson.databind.JsonNode root = objectMapper.readTree(
+                    r.getRawPayload() == null ? "{}" : r.getRawPayload());
+            requested = root.path("meetingRequested").asBoolean(false);
+            com.fasterxml.jackson.databind.JsonNode isoNode = root.path("meetingDatetimeIso");
+            if (isoNode != null && !isoNode.isNull() && !isoNode.asText().isBlank()) {
+                rawIso = isoNode.asText().trim();
+            }
+        } catch (Exception ex) {
+            log.warn("ai-call: could not parse report payload for booking (result {}): {}",
+                    r.getId(), ex.getMessage());
+            return;
+        }
+        if (!requested || rawIso == null) return;
+
+        // Guard against a mis-resolved past time (LLM occasionally resolves 'tomorrow'
+        // to the wrong day, or picks a time already elapsed). A past meeting is useless
+        // (no reminder fires) — skip rather than create junk. Small grace for end-of-call
+        // 'in a few minutes' cases.
+        try {
+            java.time.OffsetDateTime when = java.time.OffsetDateTime.parse(rawIso);
+            if (when.toInstant().isBefore(java.time.Instant.now().minusSeconds(120))) {
+                log.info("ai-call: skip auto-book for result {} — resolved time {} is in the past",
+                        r.getId(), rawIso);
+                return;
+            }
+        } catch (Exception ex) {
+            log.warn("ai-call: skip auto-book for result {} — unparseable meeting time '{}': {}",
+                    r.getId(), rawIso, ex.getMessage());
+            return;
+        }
+
+        // Validate the page belongs to this institute + resolve its host for the principal.
+        var page = bookingPageService.getOrThrow(bookingPageId);
+        if (page == null || !instituteId.equals(page.getInstituteId())) {
+            log.warn("ai-call: booking page {} missing or cross-institute for result {} — skip",
+                    bookingPageId, r.getId());
+            return;
+        }
+
+        var req = vacademy.io.admin_core_service.features.booking.dto.MeetingBookingRequestDTO.builder()
+                .instituteId(instituteId)
+                .bookingPageId(bookingPageId)
+                .startTime(rawIso)                         // exact time the caller agreed to
+                .audienceResponseId(lead.responseId())     // links + reuses the existing lead
+                .inviteeUserId(lead.userId())
+                .inviteeName(r.getCustomerName())
+                .inviteePhone(r.getPhoneNumber())
+                .inviteeEmail(r.getCustomerEmail())
+                .build();
+
+        var principal = new vacademy.io.common.auth.model.CustomUserDetails(
+                buildHostPrincipal(page.getHostUserId()));
+        var created = meetingBookingService.createBooking(req, principal);
+        log.info("ai-call: auto-booked meeting {} on page {} for lead {} at {}",
+                created != null ? created.getId() : "?", bookingPageId, lead.responseId(), rawIso);
+    }
+
+    private vacademy.io.common.auth.dto.UserServiceDTO buildHostPrincipal(String hostUserId) {
+        var dto = new vacademy.io.common.auth.dto.UserServiceDTO();
+        dto.setUserId(hostUserId);
+        dto.setUsername("ai-call-autobook");
+        return dto;
+    }
+
 }

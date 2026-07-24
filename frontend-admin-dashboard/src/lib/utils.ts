@@ -56,6 +56,20 @@ export function formatTagForDisplay(tag: string): string {
         .join(' ');
 }
 
+/**
+ * Case-insensitive natural comparator for lists of `{ name }` objects, so
+ * numbered items order the way people expect: "Class 9" before "Class 10"
+ * (not after "Class 1"), then non-numeric names alphabetically. Use it to
+ * sort filter option lists (e.g. levels) that would otherwise inherit an
+ * arbitrary API/insertion order.
+ */
+export function compareByNameNatural<T extends { name: string }>(a: T, b: T): number {
+    return a.name.localeCompare(b.name, undefined, {
+        numeric: true,
+        sensitivity: 'base',
+    });
+}
+
 export const goToWhatsappSupport = () => {
     const phoneNumber = '+919201534254'; // Your WhatsApp number (with country code)
     const message = encodeURIComponent('Hello, I have a question.');

@@ -9,6 +9,14 @@ import {
     type ExportColumnOption,
 } from '@/components/shared/leads/export-column-picker-dialog';
 import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
+import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
+import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
+import {
+    decodeSelectionToEntries,
+    filterEntryValueLabel,
+    isRangeFieldType,
+    removeEntryFromSelection,
+} from '@/components/shared/leads/custom-field-filter-encoding';
 import { useLeadFilterCustomFields } from '@/components/shared/leads/use-lead-filter-custom-fields';
 import { toast } from 'sonner';
 import {
@@ -24,6 +32,7 @@ import {
     X,
     Clock,
     CaretDown,
+    Trash,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -70,15 +79,26 @@ import {
 import { MyDropdown } from '@/components/design-system/dropdown';
 import type { LeadCardVM } from '@/components/shared/leads/lead-view-model';
 import { MyButton } from '@/components/design-system/button';
+import { isAdminForInstitute } from '@/lib/auth/roleUtils';
+import { DeleteLeadsDialog } from '@/components/shared/leads/delete-leads-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
 import {
     LeadEmptyState,
     LeadTable,
     LeadPagination,
+    ManageColumnsPopover,
+    useLeadColumnPrefs,
+    buildLeadColumnToggles,
     useUpdateLeadTier,
     campaignRowToVM,
     type LeadActionHandlers,
+    type LeadSortKey,
+    type LeadSortDirection,
 } from '@/components/shared/leads';
+
+// Every row in this view is from the same audience, so "Lead source" is
+// redundant — hidden by default and not offered in the Manage Column list.
+const AUDIENCE_LEADS_DEFAULT_HIDDEN = ['source'];
 
 const ALL_VALUE = '__ALL__'; // every lead regardless of status (default — enrolled leads stay visible)
 const ALL_ACTIVE_VALUE = '__ACTIVE__'; // all leads except those enrolled/Converted
@@ -148,6 +168,13 @@ const CampaignUsersContent = ({
 
     // ── Filter state ─────────────────────────────────────────
     const [page, setPage] = useState(0);
+    const [sortBy, setSortBy] = useState<LeadSortKey>('SUBMITTED_AT');
+    const [sortDirection, setSortDirection] = useState<LeadSortDirection>('DESC');
+    const handleSortChange = (nextSortBy: LeadSortKey, nextSortDirection: LeadSortDirection) => {
+        setPage(0);
+        setSortBy(nextSortBy);
+        setSortDirection(nextSortDirection);
+    };
     const [searchInput, setSearchInput] = useState('');
     const [appliedSearch, setAppliedSearch] = useState('');
     // Multi-select arrays: empty = no filter (show all). Tier values: HOT/WARM/COLD.
@@ -174,6 +201,9 @@ const CampaignUsersContent = ({
         assignable: true,
     });
     const [fromDate, setFromDate] = useState('');
+    // Call-history filter — '' = no filter (NOT_CALLED / CALLED / CALLED_ONCE /
+    // CALLED_TWICE_PLUS / AI_CALLED / MANUAL_CALLED).
+    const [callHistoryFilter, setCallHistoryFilter] = useState<string>('');
     const [toDate, setToDate] = useState('');
     const [appliedRange, setAppliedRange] = useState<{ from: string; to: string }>({
         from: '',
@@ -193,11 +223,13 @@ const CampaignUsersContent = ({
             return next;
         });
     };
+    // Sentinel selections (contains / empty / ranges) decode into operator
+    // entries; plain values stay an IN entry.
     const customFieldFiltersPayload = useMemo(
         () =>
             Object.entries(customFieldFilters)
                 .filter(([, vals]) => vals.length > 0)
-                .map(([field_id, values]) => ({ field_id, values })),
+                .flatMap(([fieldId, values]) => decodeSelectionToEntries(fieldId, values)),
         [customFieldFilters]
     );
 
@@ -360,8 +392,8 @@ const CampaignUsersContent = ({
             audience_id: campaignId,
             page,
             size: PAGE_SIZE,
-            sort_by: 'SUBMITTED_AT',
-            sort_direction: 'DESC' as const,
+            sort_by: sortBy,
+            sort_direction: sortDirection,
             submitted_from_local: startOfDayIso(appliedRange.from),
             submitted_to_local: endOfDayIso(appliedRange.to),
             search_query: appliedSearch || undefined,
@@ -382,10 +414,13 @@ const CampaignUsersContent = ({
             custom_field_filters: customFieldFiltersPayload.length
                 ? customFieldFiltersPayload
                 : undefined,
+            call_history_filter: callHistoryFilter || undefined,
         };
     }, [
         campaignId,
         page,
+        sortBy,
+        sortDirection,
         appliedRange,
         appliedSearch,
         tierFilters,
@@ -393,6 +428,7 @@ const CampaignUsersContent = ({
         slaFilters,
         counsellorFilters,
         customFieldFiltersPayload,
+        callHistoryFilter,
         ALL_VALUE,
         ALL_ACTIVE_VALUE,
         ALL_CONVERTED_VALUE,
@@ -413,7 +449,7 @@ const CampaignUsersContent = ({
                 .filter((id: string): id is string => !!id),
         [usersResponse]
     );
-    const { profiles: leadProfiles } = useLeadProfiles(leadUserIds, showOps);
+    const { profiles: leadProfiles } = useLeadProfiles(leadUserIds, showOps, instituteId);
     const { notesByUserId } = useLatestNotesBatch(leadUserIds, showOps);
 
     // ── Transform server rows → CampaignUserTable[] ─────────────
@@ -510,10 +546,17 @@ const CampaignUsersContent = ({
     };
 
     // ── Bulk assign / remove counsellor (multi-select, every view) ──
-    const [selectedLeads, setSelectedLeads] = useState<Map<string, { userId: string; name: string }>>(
+    // Keyed by RESPONSE id, not user id: a row is one campaign response and the same person
+    // can hold several, so keying by user collapsed their rows into one checkbox. The value
+    // carries the userId too, because the assign actions operate per person.
+    const [selectedLeads, setSelectedLeads] = useState<
+        Map<string, { userId: string; responseId: string; name: string }>
+    >(
         new Map()
     );
     const [bulkAssignOpen, setBulkAssignOpen] = useState(false);
+    const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+    const canDeleteLeads = isAdminForInstitute(instituteId);
     // Which flow the "Bulk actions" menu opened: assign (round-robin default)
     // or unassign (REMOVE).
     const [bulkActionMode, setBulkActionMode] = useState<BulkAssignMode>('ROUND_ROBIN');
@@ -525,11 +568,11 @@ const CampaignUsersContent = ({
         setSelectedLeads(new Map());
     }, [counsellorFilters]);
 
-    const toggleLeadRow = (userId: string, vm: LeadCardVM) =>
+    const toggleLeadRow = (responseId: string, vm: LeadCardVM) =>
         setSelectedLeads((prev) => {
             const next = new Map(prev);
-            if (next.has(userId)) next.delete(userId);
-            else next.set(userId, { userId, name: vm.name });
+            if (next.has(responseId)) next.delete(responseId);
+            else if (vm.userId) next.set(responseId, { userId: vm.userId, responseId, name: vm.name });
             return next;
         });
 
@@ -537,9 +580,10 @@ const CampaignUsersContent = ({
         setSelectedLeads((prev) => {
             const next = new Map(prev);
             selectableVms.forEach((v) => {
-                if (!v.userId) return;
-                if (checked) next.set(v.userId, { userId: v.userId, name: v.name });
-                else next.delete(v.userId);
+                if (!v.userId || !v.responseId) return;
+                if (checked)
+                    next.set(v.responseId, { userId: v.userId, responseId: v.responseId, name: v.name });
+                else next.delete(v.responseId);
             });
             return next;
         });
@@ -557,11 +601,17 @@ const CampaignUsersContent = ({
         try {
             setSelectAllLoading(true);
             const res = await fetchCampaignLeads({ ...leadsPayload, page: 0, size: totalElements });
-            const map = new Map<string, { userId: string; name: string }>();
+            const map = new Map<string, { userId: string; responseId: string; name: string }>();
             (res.content ?? []).forEach((lead) => {
                 const uid = lead.user?.id || lead.user_id;
-                if (!uid) return;
-                map.set(uid, { userId: uid, name: lead.user?.full_name || lead.parent_name || uid });
+                // Keyed by response id to match the per-row selection — a person with several
+                // responses is several selected rows, not one.
+                if (!uid || !lead.response_id) return;
+                map.set(lead.response_id, {
+                    userId: uid,
+                    responseId: lead.response_id,
+                    name: lead.user?.full_name || lead.parent_name || uid,
+                });
             });
             setSelectedLeads(map);
         } catch {
@@ -571,8 +621,18 @@ const CampaignUsersContent = ({
         }
     };
 
-    // Hide the "Lead source" column — every row in this view is from the same audience.
-    const hiddenColumns = useMemo(() => new Set(['source']), []);
+    // Column show/hide is persisted per user (localStorage), seeded with the
+    // source column hidden. Kept on its own storage key so this audience view
+    // and the Recent Leads page each remember their own layout.
+    const { hiddenColumns, toggleColumn, resetColumns } = useLeadColumnPrefs(
+        'crm-lead-columns:audience-leads',
+        AUDIENCE_LEADS_DEFAULT_HIDDEN
+    );
+    // "Manage Column" list — source stays hidden and is not offered here.
+    const toggleableColumns = useMemo(
+        () => buildLeadColumnToggles(showOps, showScore).filter((c) => c.id !== 'source'),
+        [showOps, showScore]
+    );
 
     // ── Filter handlers ──────────────────────────────────────
     const handleTierChange = (values: string[]) => {
@@ -688,8 +748,14 @@ const CampaignUsersContent = ({
         const fieldName =
             filterCustomFields.find((cf) => cf.customFieldId === f.field_id)?.fieldName ?? 'Field';
         chips.push({
-            label: `${fieldName}: ${f.values.join(', ')}`,
-            onRemove: () => setCustomFieldFilter(f.field_id, []),
+            label: `${fieldName}: ${filterEntryValueLabel(f)}`,
+            // Remove only this entry's backing values — one field can carry
+            // several chips (values + contains + empty) at once.
+            onRemove: () =>
+                setCustomFieldFilter(
+                    f.field_id,
+                    removeEntryFromSelection(customFieldFilters[f.field_id] ?? [], f)
+                ),
         });
     });
 
@@ -743,7 +809,7 @@ const CampaignUsersContent = ({
             if (needsOps && exportUserIds.length > 0) {
                 try {
                     [exportProfiles, exportNotes, exportJourney] = await Promise.all([
-                        fetchBatchProfiles(exportUserIds),
+                        fetchBatchProfiles(exportUserIds, instituteId ?? ''),
                         fetchLatestNotesBatch(exportUserIds),
                         fetchLeadJourneyBatch(exportUserIds),
                     ]);
@@ -969,22 +1035,34 @@ const CampaignUsersContent = ({
                             isLoading={counsellorOptionsLoading}
                         />
                     )}
-                    {filterCustomFields.map((f) => (
-                        <CustomFieldMultiSelectFilter
-                            key={f.customFieldId}
-                            instituteId={instituteId ?? ''}
-                            fieldId={f.customFieldId}
-                            fieldName={f.fieldName}
-                            selected={customFieldFilters[f.customFieldId] ?? []}
-                            onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
-                        />
-                    ))}
+                    {filterCustomFields.map((f) =>
+                        isRangeFieldType(f.fieldType) ? (
+                            <CustomFieldRangeFilter
+                                key={f.customFieldId}
+                                fieldId={f.customFieldId}
+                                fieldName={f.fieldName}
+                                fieldType={f.fieldType}
+                                selected={customFieldFilters[f.customFieldId] ?? []}
+                                onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
+                            />
+                        ) : (
+                            <CustomFieldMultiSelectFilter
+                                key={f.customFieldId}
+                                instituteId={instituteId ?? ''}
+                                fieldId={f.customFieldId}
+                                fieldName={f.fieldName}
+                                selected={customFieldFilters[f.customFieldId] ?? []}
+                                onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
+                            />
+                        )
+                    )}
+                    <ManageListFiltersLink />
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button variant="outline" size="sm" className="h-10">
                                 <Funnel className="mr-1.5 size-4" />
                                 More filters
-                                {isDateFilterActive && (
+                                {(isDateFilterActive || !!callHistoryFilter) && (
                                     <span className="ml-1.5 size-1.5 rounded-full bg-primary-500" />
                                 )}
                             </Button>
@@ -1013,6 +1091,33 @@ const CampaignUsersContent = ({
                             <Button size="sm" className="w-full" onClick={handleApplyDate}>
                                 Apply dates
                             </Button>
+                            <div className="space-y-1.5">
+                                <Label className="text-xs text-neutral-600">Call history</Label>
+                                <Select
+                                    value={callHistoryFilter || 'ANY'}
+                                    onValueChange={(v) => {
+                                        setCallHistoryFilter(v === 'ANY' ? '' : v);
+                                        setPage(0);
+                                    }}
+                                >
+                                    <SelectTrigger className="h-9 w-full">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="ANY">Any</SelectItem>
+                                        <SelectItem value="NOT_CALLED">Not called</SelectItem>
+                                        <SelectItem value="CALLED">Called (any)</SelectItem>
+                                        <SelectItem value="CALLED_ONCE">Called once</SelectItem>
+                                        <SelectItem value="CALLED_TWICE_PLUS">
+                                            Called 2+ times
+                                        </SelectItem>
+                                        <SelectItem value="AI_CALLED">AI called</SelectItem>
+                                        <SelectItem value="MANUAL_CALLED">
+                                            Manually called
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </PopoverContent>
                     </Popover>
                 </div>
@@ -1038,6 +1143,12 @@ const CampaignUsersContent = ({
                             Import CSV
                         </Button>
                     )}
+                    <ManageColumnsPopover
+                        columns={toggleableColumns}
+                        hiddenColumns={hiddenColumns}
+                        onToggle={toggleColumn}
+                        onReset={resetColumns}
+                    />
                     <Button
                         variant="outline"
                         size="sm"
@@ -1057,6 +1168,7 @@ const CampaignUsersContent = ({
                         audienceId={campaignId}
                         instituteId={instituteId}
                         totalElements={totalElements}
+                        selectedLeads={selectedLeads}
                     />
                 </div>
             </div>
@@ -1157,8 +1269,24 @@ const CampaignUsersContent = ({
                                             value: 'unassign',
                                             icon: <UserMinus className="size-4" />,
                                         },
+                                        // Delete is admin-only, matching the endpoint's own check.
+                                        ...(canDeleteLeads
+                                            ? [
+                                                  {
+                                                      label: 'Delete leads',
+                                                      value: 'delete',
+                                                      icon: (
+                                                          <Trash className="size-4 text-danger-600" />
+                                                      ),
+                                                  },
+                                              ]
+                                            : []),
                                     ]}
                                     onSelect={(value) => {
+                                        if (value === 'delete') {
+                                            setBulkDeleteOpen(true);
+                                            return;
+                                        }
                                         setBulkActionMode(
                                             value === 'unassign' ? 'REMOVE' : 'ROUND_ROBIN'
                                         );
@@ -1194,6 +1322,9 @@ const CampaignUsersContent = ({
                             selectedIds={new Set(selectedLeads.keys())}
                             onToggleRow={toggleLeadRow}
                             onToggleAll={toggleAllLeads}
+                            sortBy={sortBy}
+                            sortDirection={sortDirection}
+                            onSortChange={handleSortChange}
                             emptyState={
                                 <LeadEmptyState
                                     title={
@@ -1227,6 +1358,17 @@ const CampaignUsersContent = ({
                     counsellorOptions={assignableCounsellorOptions}
                     initialMode={bulkActionMode}
                     onSuccess={handleBulkAssignSuccess}
+                />
+
+                <DeleteLeadsDialog
+                    open={bulkDeleteOpen}
+                    onOpenChange={setBulkDeleteOpen}
+                    instituteId={instituteId ?? ''}
+                    responseIds={Array.from(selectedLeads.keys())}
+                    onSuccess={() => {
+                        setSelectedLeads(new Map());
+                        handleStatusUpdated();
+                    }}
                 />
 
                 {noteTarget && (

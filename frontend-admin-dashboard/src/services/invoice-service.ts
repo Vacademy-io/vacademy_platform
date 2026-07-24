@@ -7,6 +7,9 @@ import {
     POST_ADMIN_CREATE_INVOICE,
     POST_ADMIN_PREVIEW_INVOICE,
     POST_REJECT_INVOICE,
+    GET_USER_ACCOUNT_SUMMARY,
+    GET_USER_ACCOUNT_LEDGER,
+    POST_MARK_INVOICE_PAID_MANUAL,
 } from '@/constants/urls';
 
 // Field names must match the wire format exactly: the backend InvoiceLineItemDTO is
@@ -41,6 +44,43 @@ export interface InvoiceDTO {
     created_at: string;
     updated_at: string;
     line_items: InvoiceLineItemDTO[];
+    /** Which flow created this invoice: ADMIN_MANUAL, USER_PLAN, STUDENT_FEE_PAYMENT, etc. */
+    source?: string | null;
+    source_id?: string | null;
+    /** Gateway payment link — present on ADMIN_MANUAL and USER_PLAN invoices when a payment option is configured. */
+    payment_link?: string | null;
+}
+
+export interface UserAccountLedgerEntryDTO {
+    id: string;
+    event_type: string; // DEBIT_ACCRUAL | CREDIT_PAYMENT | CREDIT_WAIVER | CREDIT_ADJUSTMENT | DEBIT_PENALTY
+    amount: number;
+    currency: string;
+    due_date: string | null;
+    source_type: string | null;
+    source_id: string | null;
+    invoice_id: string | null;
+    reference_id: string | null;
+    remarks: string | null;
+    created_at: string;
+}
+
+export interface LedgerPageResponse {
+    content: UserAccountLedgerEntryDTO[];
+    totalElements: number;
+    totalPages: number;
+    number: number;
+    last: boolean;
+}
+
+export interface UserAccountSummaryDTO {
+    user_id: string;
+    institute_id: string;
+    total_accrued: number;
+    total_paid: number;
+    balance: number;
+    overdue: number;
+    currency: string;
 }
 
 export interface InvoicePaginatedResponse {
@@ -56,6 +96,41 @@ export interface InvoicePaginatedResponse {
 export async function fetchUserInvoices(userId: string): Promise<InvoiceDTO[]> {
     const response = await authenticatedAxiosInstance.get<InvoiceDTO[]>(
         GET_INVOICES_BY_USER(userId)
+    );
+    return response.data;
+}
+
+export async function fetchUserAccountSummary(
+    userId: string,
+    instituteId: string
+): Promise<UserAccountSummaryDTO> {
+    const response = await authenticatedAxiosInstance.get<UserAccountSummaryDTO>(
+        GET_USER_ACCOUNT_SUMMARY(userId),
+        { params: { instituteId } }
+    );
+    return response.data;
+}
+
+export async function fetchUserAccountLedger(
+    userId: string,
+    instituteId: string,
+    page = 0,
+    size = 20
+): Promise<LedgerPageResponse> {
+    const response = await authenticatedAxiosInstance.get<LedgerPageResponse>(
+        GET_USER_ACCOUNT_LEDGER(userId),
+        { params: { instituteId, page, size } }
+    );
+    return response.data;
+}
+
+export async function markInvoicePaidManual(
+    invoiceId: string,
+    body: { transaction_id?: string; notes?: string }
+): Promise<InvoiceDTO> {
+    const response = await authenticatedAxiosInstance.post<InvoiceDTO>(
+        POST_MARK_INVOICE_PAID_MANUAL(invoiceId),
+        body
     );
     return response.data;
 }

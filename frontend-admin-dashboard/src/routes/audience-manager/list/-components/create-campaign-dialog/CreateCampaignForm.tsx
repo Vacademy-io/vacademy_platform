@@ -124,7 +124,15 @@ const convertExistingCustomFields = (fields?: any[] | string | null) => {
                         ? meta.isMandatory
                         : field.isRequired ?? true,
                 key: fieldKey,
-                order: typeof meta.formOrder === 'number' ? Math.max(meta.formOrder - 1, 0) : index,
+                // Order by the per-form mapping order (individual_order) so the editor
+                // matches what the public form renders. Fall back to the master formOrder
+                // (1-based) only when the mapping has no order, then to array index.
+                order:
+                    typeof field.individual_order === 'number'
+                        ? field.individual_order
+                        : typeof meta.formOrder === 'number'
+                          ? Math.max(meta.formOrder - 1, 0)
+                          : index,
                 options: configOptions
                     ? configOptions.map((value: string, optIndex: number) => ({
                           id: `${field.id || meta.id || field.field_id || index}_opt_${optIndex}`,
@@ -766,7 +774,9 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                 type_id: '',
                 group_name: field.group_name || customFieldData.groupName || '',
                 status: field.status || 'ACTIVE', // Preserve status (ACTIVE or DELETED)
-                individual_order: field.individual_order ?? field.order ?? index,
+                // Persist the current on-screen order so reordering in the editor
+                // actually updates the effective per-form order the public form reads.
+                individual_order: field.order ?? index,
                 group_internal_order: field.group_internal_order ?? 0,
                 custom_field: {
                     ...((customFieldData.id || field._id) && {
@@ -808,7 +818,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                     customFieldValue: customFieldData.customFieldValue || '',
                     groupName: field.group_name || customFieldData.groupName || '',
                     groupInternalOrder: field.group_internal_order ?? 0,
-                    individualOrder: field.individual_order ?? field.order ?? index,
+                    individualOrder: field.order ?? index,
                 },
             };
 

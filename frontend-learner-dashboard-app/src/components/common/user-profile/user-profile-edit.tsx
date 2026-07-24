@@ -2,6 +2,7 @@
 
 import type React from "react";
 import { useState, useEffect } from "react";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -342,7 +343,7 @@ export default function EditProfile() {
 
                 <DropdownMenu open={isMenuOpen} onOpenChange={setIsMenuOpen}>
                   <DropdownMenuTrigger asChild>
-                    <button type="button" className="absolute bottom-1 right-1 p-2 rounded-full bg-primary-500 text-white shadow-lg hover:bg-primary-600 transition-colors border-2 border-white">
+                    <button type="button" className="absolute bottom-1 end-1 p-2 rounded-full bg-primary-500 text-white shadow-lg hover:bg-primary-600 transition-colors border-2 border-white">
                       <PencilSimple className="w-4 h-4" />
                     </button>
                   </DropdownMenuTrigger>
@@ -441,11 +442,11 @@ export default function EditProfile() {
                             value={formData.institute_name}
                             onChange={(e) => handleChange("institute_name", e.target.value)}
                             placeholder="Enter institute name"
-                            className="h-11 pl-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                            className="h-11 ps-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
                           />
                           <GraduationCap
                             size={18}
-                            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                            className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-400"
                           />
                         </div>
                       </div>
@@ -490,11 +491,11 @@ export default function EditProfile() {
                             onChange={(e) => handleChange("email", e.target.value)}
                             placeholder="Enter email address"
                             required
-                            className="h-11 pl-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                            className="h-11 ps-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
                           />
                           <EnvelopeSimple
                             size={18}
-                            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                            className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-400"
                           />
                         </div>
                       </div>
@@ -523,11 +524,11 @@ export default function EditProfile() {
                           value={formData.country}
                           onChange={(e) => handleChange("country", e.target.value)}
                           placeholder="Enter country"
-                          className="h-11 pl-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                          className="h-11 ps-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
                         />
                         <GlobeSimple
                           size={18}
-                          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                          className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-400"
                         />
                       </div>
                     </div>
@@ -543,11 +544,11 @@ export default function EditProfile() {
                             value={formData.address_line}
                             onChange={(e) => handleChange("address_line", e.target.value)}
                             placeholder="Enter address"
-                            className="h-11 pl-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                            className="h-11 ps-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
                           />
                           <Buildings
                             size={18}
-                            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                            className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-400"
                           />
                         </div>
                       </div>
@@ -648,11 +649,11 @@ export default function EditProfile() {
                             type="email"
                             value={formData.parents_email}
                             onChange={(e) => handleChange("parents_email", e.target.value)}
-                            className="h-11 pl-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
+                            className="h-11 ps-10 bg-gray-50 border-gray-200 focus:bg-white transition-colors"
                           />
                           <EnvelopeSimple
                             size={18}
-                            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                            className="absolute start-3 top-1/2 -translate-y-1/2 text-gray-400"
                           />
                         </div>
                       </div>
@@ -698,7 +699,7 @@ export default function EditProfile() {
               >
                 {isLoading ? (
                   <>
-                    <SpinnerGap className="h-4 w-4 animate-spin mr-2" />
+                    <SpinnerGap className="h-4 w-4 animate-spin me-2" />
                     Saving...
                   </>
                 ) : (
@@ -709,8 +710,10 @@ export default function EditProfile() {
           </form>
 
           {/* Payment & Billing — outside the profile <form> because the
-              billing details editor submits its own form */}
-          {studentData?.institute_id && formData.user_id && (
+              billing details editor submits its own form. Hidden on native iOS
+              (reader-mode): payment methods / autopay / access-expiry are the
+              paid-subscription surfaces Apple flags under Guideline 3.1.1. */}
+          {studentData?.institute_id && formData.user_id && !shouldHidePaidPurchaseUI() && (
             <div className="border-t border-gray-100 p-6 md:p-8">
               <PaymentBillingSection
                 instituteId={studentData.institute_id}

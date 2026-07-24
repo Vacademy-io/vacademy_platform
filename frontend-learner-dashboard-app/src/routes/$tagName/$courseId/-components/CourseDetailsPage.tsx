@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { withArabicFallback } from "@/utils/branding";
 import { BASE_URL } from "@/constants/urls";
 import { Capacitor } from "@capacitor/core";
 import { useNavigate } from "@tanstack/react-router";
@@ -18,7 +19,7 @@ import {
   getTerminologyPlural,
 } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
-import { cn } from "@/lib/utils";
+import { cn, sanitizeHtml } from "@/lib/utils";
 import {
   BookOpen,
   CaretDown,
@@ -31,6 +32,22 @@ import {
   Star,
   Tag,
 } from "@phosphor-icons/react";
+
+// Backend sometimes stores sentinel level names (e.g. "default") that must not
+// surface in the course overview. Hide sentinels; show genuine values as-is.
+const SENTINEL_LEVEL_NAMES = new Set([
+  "default",
+  "none",
+  "null",
+  "undefined",
+  "",
+]);
+const displayLevelName = (raw?: string | null): string => {
+  if (!raw) return "";
+  const trimmed = raw.trim();
+  if (SENTINEL_LEVEL_NAMES.has(trimmed.toLowerCase())) return "";
+  return trimmed;
+};
 
 // Helper function to check if HTML content has actual visible text
 // Returns false for empty HTML like "<p></p>", "<p> </p>", or just whitespace
@@ -75,8 +92,8 @@ const HtmlWithViewMore: React.FC<{
     <div>
       <div
         ref={ref}
-        className={cn(className, !expanded && clampClass)}
-        dangerouslySetInnerHTML={{ __html: html }}
+        className={cn("richtext-content", className, !expanded && clampClass)}
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(html) }}
       />
       {(clamped || expanded) && (
         <button
@@ -134,12 +151,14 @@ const CourseHighlightsAccordion: React.FC<{
   aboutCourse: string | null;
   whoShouldLearn: string;
   instructors: Array<{ name: string; email: string }>;
-}> = ({ whyLearn, aboutCourse, whoShouldLearn, instructors }) => {
-  const [open, setOpen] = useState(false);
+  showInstructors: boolean;
+}> = ({ whyLearn, aboutCourse, whoShouldLearn, instructors, showInstructors }) => {
+  const [open, setOpen] = useState(true);
   const hasWhy = hasContent(whyLearn);
   const hasAbout = hasContent(aboutCourse);
   const hasWho = hasContent(whoShouldLearn);
-  const hasInstructors = instructors && instructors.length > 0;
+  // Instructors only render when the institute opts in (default hidden).
+  const hasInstructors = showInstructors && instructors && instructors.length > 0;
   if (!hasWhy && !hasAbout && !hasWho && !hasInstructors) return null;
 
   return (
@@ -148,14 +167,14 @@ const CourseHighlightsAccordion: React.FC<{
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
+        className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-start hover:bg-gray-50 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-300"
       >
         <span className="flex items-center gap-2 min-w-0">
           <div className="p-1 bg-primary-50 rounded-md">
             <Info className="w-3.5 h-3.5 text-primary-500 flex-shrink-0" weight="bold" />
           </div>
           <span className="text-sm font-semibold truncate text-gray-900">
-            {getTerminology(ContentTerms.Course, SystemTerms.Course)} highlights
+            {getTerminology(ContentTerms.Course, SystemTerms.Course)} Highlights
           </span>
         </span>
         <CaretDown
@@ -168,31 +187,12 @@ const CourseHighlightsAccordion: React.FC<{
       </button>
       {open && (
         <div className="px-3 sm:px-4 pb-4 pt-3 space-y-3 border-t border-gray-100 bg-gray-50/50">
-          {hasWhy && (
-            <HighlightSectionCard
-              title="What you'll learn"
-              icon={
-                <BookOpen
-                  size={18}
-                  className="text-success-600"
-                  weight="duotone"
-                />
-              }
-              iconBgClass="from-success-100 to-success-200"
-              overlayClass="from-success-500/5 to-transparent"
-            >
-              <HtmlWithViewMore
-                html={whyLearn}
-                className="text-sm text-gray-600 leading-relaxed"
-              />
-            </HighlightSectionCard>
-          )}
           {hasAbout && (
             <HighlightSectionCard
-              title={`About this ${getTerminology(
+              title={`About This ${getTerminology(
                 ContentTerms.Course,
                 SystemTerms.Course
-              ).toLowerCase()}`}
+              )}`}
               icon={
                 <FileIcon
                   size={18}
@@ -209,9 +209,28 @@ const CourseHighlightsAccordion: React.FC<{
               />
             </HighlightSectionCard>
           )}
+          {hasWhy && (
+            <HighlightSectionCard
+              title="What You'll Learn"
+              icon={
+                <BookOpen
+                  size={18}
+                  className="text-success-600"
+                  weight="duotone"
+                />
+              }
+              iconBgClass="from-success-100 to-success-200"
+              overlayClass="from-success-500/5 to-transparent"
+            >
+              <HtmlWithViewMore
+                html={whyLearn}
+                className="text-sm text-gray-600 leading-relaxed"
+              />
+            </HighlightSectionCard>
+          )}
           {hasWho && (
             <HighlightSectionCard
-              title="Who should join"
+              title="Who Should Join"
               icon={
                 <GraduationCap
                   size={18}
@@ -371,11 +390,38 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   const [showLeadCollection, setShowLeadCollection] = useState(false);
   const [catalogueData, setCatalogueData] =
     useState<CourseCatalogueData | null>(null);
+  // Teachers/Instructors section is hidden unless the institute opts in via
+  // STUDENT_DISPLAY_SETTINGS. Fetched from the public (open) settings endpoint
+  // because this catalogue page is unauthenticated.
+  const [showInstructors, setShowInstructors] = useState(false);
 
   // Debug catalogue data changes
   useEffect(() => {
     console.log("[CourseDetailsPage] Catalogue data loaded:", !!catalogueData);
   }, [catalogueData]);
+
+  useEffect(() => {
+    if (!instituteId) return;
+    let cancelled = false;
+    axios
+      .get(
+        `${BASE_URL}/admin-core-service/open/institute/setting/v1/student-display`,
+        { params: { instituteId } },
+      )
+      .then((res) => {
+        if (cancelled) return;
+        const cd = (
+          res.data as { courseDetails?: { showInstructors?: boolean } } | null
+        )?.courseDetails;
+        setShowInstructors(cd?.showInstructors ?? false);
+      })
+      .catch(() => {
+        if (!cancelled) setShowInstructors(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [instituteId]);
   const [enrollmentDialogOpen, setEnrollmentDialogOpen] = useState(false);
 
   // Fetch catalogue data for header and footer
@@ -464,9 +510,11 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       document.head.appendChild(link);
     }
 
-    // Apply font exactly as specified in JSON
-    document.body.style.fontFamily = fontFamily;
-    document.documentElement.style.setProperty("--app-font-family", fontFamily);
+    // Apply font exactly as specified in JSON, plus the Arabic fallback the
+    // stack would otherwise drop (withArabicFallback preserves Latin order).
+    const resolvedFontFamily = withArabicFallback(fontFamily);
+    document.body.style.fontFamily = resolvedFontFamily;
+    document.documentElement.style.setProperty("--app-font-family", resolvedFontFamily);
   }, [catalogueData]);
 
   // Fetch course details
@@ -622,6 +670,22 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           return stripped;
         };
 
+        // Preserve rich-text HTML for sections rendered via dangerouslySetInnerHTML
+        // (About / What you'll learn / Who should join). Only drops placeholder
+        // field-name echoes and visually-empty markup — keeps the formatting tags.
+        const rawHtmlContent = (htmlString: string) => {
+          if (!htmlString) return "";
+          const trimmed = htmlString.trim();
+          if (PLACEHOLDER_FIELD_NAMES.has(trimmed)) return "";
+          const stripped = trimmed
+            .replace(/<[^>]*>/g, "")
+            .replace(/&nbsp;/g, " ")
+            .trim();
+          if (!stripped) return "";
+          if (PLACEHOLDER_FIELD_NAMES.has(stripped)) return "";
+          return htmlString;
+        };
+
         // Extract learning outcomes from HTML content
         const extractLearningOutcomes = (htmlContent: string) => {
           if (!htmlContent)
@@ -707,12 +771,18 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             "Motivation to learn",
           ],
           whoShouldLearn:
-            parseHtmlContent(course.who_should_learn) ||
+            rawHtmlContent(course.who_should_learn) ||
             "Anyone interested in learning this subject",
           whyLearn:
-            parseHtmlContent(course.why_learn) ||
+            rawHtmlContent(course.why_learn) ||
             "Gain valuable skills and knowledge",
-          aboutCourse: parseHtmlContent(course.course_html_description) || null,
+          // "About this course" must show the dedicated About field (rich text),
+          // falling back to the course description. Previously read the wrong field
+          // (course_html_description) and stripped all formatting.
+          aboutCourse:
+            rawHtmlContent(course.about_the_course) ||
+            rawHtmlContent(course.course_html_description) ||
+            null,
           instructors:
             courseResponse.sessions?.[0]?.level_with_details?.[0]?.instructors?.map(
               (inst: any) => ({
@@ -992,6 +1062,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                   aboutCourse={courseData.aboutCourse}
                   whoShouldLearn={courseData.whoShouldLearn}
                   instructors={courseData.instructors || []}
+                  showInstructors={showInstructors}
                 />
 
                 {/* Course Overview Card - Mobile First */}
@@ -1056,16 +1127,18 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         </div>
                       </div>
 
-                      {/* Level */}
-                      <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-                        <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
-                          <GraduationCap size={13} className="text-gray-400" weight="duotone" />
-                          Level
-                        </span>
-                        <span className="text-xs font-semibold text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded-md">
-                          {courseData.level}
-                        </span>
-                      </div>
+                      {/* Level (hidden when the level is a sentinel like "Default") */}
+                      {displayLevelName(courseData.level) && (
+                        <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
+                          <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                            <GraduationCap size={13} className="text-gray-400" weight="duotone" />
+                            Level
+                          </span>
+                          <span className="text-xs font-semibold text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded-md">
+                            {displayLevelName(courseData.level)}
+                          </span>
+                        </div>
+                      )}
 
                       {/* Duration */}
                       {courseData.duration && (
@@ -1240,16 +1313,18 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                         </div>
                       </div>
 
-                      {/* Level */}
-                      <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
-                        <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
-                          <GraduationCap size={13} className="text-gray-400" weight="duotone" />
-                          Level
-                        </span>
-                        <span className="text-xs font-semibold text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded-md">
-                          {courseData.level}
-                        </span>
-                      </div>
+                      {/* Level (hidden when the level is a sentinel like "Default") */}
+                      {displayLevelName(courseData.level) && (
+                        <div className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
+                          <span className="text-xs font-medium text-gray-600 flex items-center gap-1.5">
+                            <GraduationCap size={13} className="text-gray-400" weight="duotone" />
+                            Level
+                          </span>
+                          <span className="text-xs font-semibold text-gray-800 bg-white border border-gray-200 px-2 py-0.5 rounded-md">
+                            {displayLevelName(courseData.level)}
+                          </span>
+                        </div>
+                      )}
 
                       {/* Duration */}
                       {courseData.duration && (
@@ -1517,7 +1592,7 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       {/* Mobile Action Buttons - Fixed at bottom for course details page */}
       {(catalogueData?.globalSettings as any)?.courseCatalogeType?.enabled !==
         true && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 p-4">
+        <div className="md:hidden fixed bottom-0 start-0 end-0 z-50 bg-white border-t border-gray-200 p-4">
           <div className={`flex flex-col gap-3 ${isAndroid || isIOS ? "mb-8" : ""}`}>
             {/* Login Button */}
             <div className="flex flex-col gap-1">

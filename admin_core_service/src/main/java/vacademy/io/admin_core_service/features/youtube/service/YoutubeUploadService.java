@@ -16,6 +16,7 @@ import vacademy.io.admin_core_service.features.live_session.entity.LiveSession;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
 import vacademy.io.admin_core_service.features.live_session.repository.LiveSessionRepository;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
+import vacademy.io.admin_core_service.features.live_session.service.RecordingAutoLinkService;
 import vacademy.io.admin_core_service.features.youtube.entity.YoutubeUploadDefaults;
 import vacademy.io.admin_core_service.features.youtube.entity.YoutubeUploadJob;
 import vacademy.io.admin_core_service.features.youtube.repository.YoutubeUploadDefaultsRepository;
@@ -54,6 +55,7 @@ public class YoutubeUploadService {
     private final LiveSessionRepository liveSessionRepository;
     private final FileService fileService;
     private final ObjectMapper objectMapper;
+    private final RecordingAutoLinkService recordingAutoLinkService;
 
     public UploadResult upload(YoutubeUploadJob job) {
         try {
@@ -220,6 +222,9 @@ public class YoutubeUploadService {
             if (changed) {
                 fresh.setProviderRecordingsJson(objectMapper.writeValueAsString(recordings));
                 scheduleRepository.save(fresh);
+                // The YouTube URL is what makes a non-mirrored recording linkable —
+                // re-run auto-linking now that it is (never throws).
+                recordingAutoLinkService.processSchedule(fresh);
             }
         } catch (Exception e) {
             log.warn("[YouTube Upload] Could not stamp video URL on recording: {}", e.getMessage());

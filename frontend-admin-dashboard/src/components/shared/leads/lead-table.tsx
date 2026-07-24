@@ -9,6 +9,9 @@ import {
     UserPlus,
     ArrowsClockwise,
     NotePencil,
+    CaretUp,
+    CaretDown,
+    CaretUpDown,
 } from '@phosphor-icons/react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -47,6 +50,10 @@ export interface LeadNotesSummary {
     count: number;
 }
 
+/** Sort keys the backend's lead-list/recent-leads endpoints understand. */
+export type LeadSortKey = 'SUBMITTED_AT' | 'LEAD_SCORE' | 'LEAD_TIER' | 'STATUS';
+export type LeadSortDirection = 'ASC' | 'DESC';
+
 interface LeadTableProps {
     vms: LeadCardVM[];
     profiles: Record<string, LeadProfileSummary>;
@@ -58,6 +65,8 @@ interface LeadTableProps {
     showScore?: boolean;
     isLoading: boolean;
     actions: LeadActionHandlers;
+    /** Always render the row's Call / AI-call buttons (default: reveal on row hover). */
+    alwaysShowActions?: boolean;
     /** Called after an inline status change so the parent can refetch. */
     onStatusUpdated?: () => void;
     hiddenColumns?: Set<string>;
@@ -68,12 +77,24 @@ interface LeadTableProps {
     extraColumns?: LeadTableExtraColumn[];
     /** Enables a leading checkbox column for multi-select (bulk actions). */
     selectable?: boolean;
-    /** Selected lead user ids (selection is keyed on vm.userId). */
+    /**
+     * Selected lead RESPONSE ids (selection is keyed on vm.responseId).
+     *
+     * Keyed per response, not per user: a row IS one campaign response, and the same person can
+     * hold several — keying on userId collapsed those into one checkbox, so ticking one of a
+     * person's rows silently ticked them all. Bulk actions that operate per-person (assign) must
+     * therefore de-duplicate userIds from the selection themselves.
+     */
     selectedIds?: Set<string>;
-    /** Toggle a single row. Only fired for rows that have a userId. */
-    onToggleRow?: (userId: string, vm: LeadCardVM) => void;
-    /** Toggle all selectable (userId-bearing) rows currently rendered. */
+    /** Toggle a single row. Only fired for rows with both a userId and a responseId. */
+    onToggleRow?: (responseId: string, vm: LeadCardVM) => void;
+    /** Toggle all selectable rows currently rendered. */
     onToggleAll?: (checked: boolean, selectableVms: LeadCardVM[]) => void;
+    /** Server-driven column sort. Omit to render headers as non-interactive (unsorted). */
+    sortBy?: LeadSortKey | null;
+    sortDirection?: LeadSortDirection | null;
+    /** Fired with the clicked column's sort key + the direction it should switch to. */
+    onSortChange?: (sortBy: LeadSortKey, sortDirection: LeadSortDirection) => void;
 }
 
 /** Shape of a caller-supplied trailing column. */
@@ -91,6 +112,8 @@ interface Col {
     show: boolean;
     /** Stops a cell click from bubbling to the row's open-side-view handler. */
     interactive?: boolean;
+    /** When set, the header becomes clickable and sorts the backend query by this key. */
+    sortKey?: LeadSortKey;
     render: (vm: LeadCardVM, profile?: LeadProfileSummary) => ReactNode;
 }
 
@@ -219,14 +242,26 @@ export function LeadTable({
     selectedIds,
     onToggleRow,
     onToggleAll,
+    sortBy,
+    sortDirection,
+    onSortChange,
+    alwaysShowActions = false,
 }: LeadTableProps) {
+    // Call / AI-call reveal: hover-only by default, or always-on when the page asks
+    // (Recent Leads — makes the AI-call action discoverable without hovering).
+    const actionReveal = alwaysShowActions
+        ? 'opacity-100'
+        : 'opacity-0 focus-within:opacity-100 group-hover/row:opacity-100';
     const profOf = (vm: LeadCardVM) => (vm.userId ? profiles[vm.userId] : undefined);
     const notesOf = (vm: LeadCardVM) => (vm.userId ? notes?.[vm.userId] : undefined);
 
-    // Rows that can participate in bulk selection (need a user id to assign).
-    const selectableVms = vms.filter((v) => !!v.userId);
+    // Rows that can participate in bulk selection. Needs a user id (assign targets a person)
+    // AND a response id (that's the selection key, and what delete targets). response_id is the
+    // audience_response primary key so it's always present on a lead row; the check is a guard,
+    // not a narrowing — the selectable set is the same rows as before.
+    const selectableVms = vms.filter((v) => !!v.userId && !!v.responseId);
     const allSelected =
-        selectableVms.length > 0 && selectableVms.every((v) => selectedIds?.has(v.userId!));
+        selectableVms.length > 0 && selectableVms.every((v) => selectedIds?.has(v.responseId!));
 
     const allCols: Col[] = [
         {
@@ -236,10 +271,10 @@ export function LeadTable({
             show: selectable,
             interactive: true,
             render: (vm) =>
-                vm.userId ? (
+                vm.userId && vm.responseId ? (
                     <Checkbox
-                        checked={!!selectedIds?.has(vm.userId)}
-                        onCheckedChange={() => onToggleRow?.(vm.userId!, vm)}
+                        checked={!!selectedIds?.has(vm.responseId)}
+                        onCheckedChange={() => onToggleRow?.(vm.responseId!, vm)}
                         aria-label={`Select ${vm.name}`}
                     />
                 ) : (
@@ -335,7 +370,8 @@ export function LeadTable({
                                                 }
                                                 aria-label="Call lead"
                                                 className={cn(
-                                                    'ml-auto inline-flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 opacity-0 transition focus-within:opacity-100 group-hover/row:opacity-100',
+                                                    'ml-auto inline-flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition',
+                                                    actionReveal,
                                                     callGate.allowed
                                                         ? 'hover:bg-success-50 hover:text-success-600'
                                                         : 'cursor-not-allowed'
@@ -361,7 +397,8 @@ export function LeadTable({
                                         }
                                         aria-label="AI call lead"
                                         className={cn(
-                                            'inline-flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 opacity-0 transition focus-within:opacity-100 group-hover/row:opacity-100',
+                                            'inline-flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition',
+                                            actionReveal,
                                             aiGate.allowed
                                                 ? 'hover:bg-primary-50 hover:text-primary-600'
                                                 : 'cursor-not-allowed'
@@ -389,6 +426,7 @@ export function LeadTable({
             thClass: 'w-40',
             show: showOps,
             interactive: true,
+            sortKey: 'STATUS',
             render: (vm) => (
                 <LeadStatusSelect
                     responseId={vm.responseId}
@@ -404,6 +442,7 @@ export function LeadTable({
             thClass: 'w-44',
             show: showScore,
             interactive: true,
+            sortKey: 'LEAD_SCORE',
             render: (vm, profile) => {
                 if (!vm.userId || profile?.best_score == null)
                     return <span className="text-sm text-neutral-300">—</span>;
@@ -416,6 +455,7 @@ export function LeadTable({
             thClass: 'w-28',
             show: showOps,
             interactive: true,
+            sortKey: 'LEAD_TIER',
             render: (vm, profile) => {
                 if (!vm.userId) return <span className="text-sm text-neutral-300">—</span>;
                 const explicitTier = profile?.lead_tier;
@@ -531,6 +571,7 @@ export function LeadTable({
             header: 'Submitted',
             thClass: 'min-w-32',
             show: true,
+            sortKey: 'SUBMITTED_AT',
             render: (vm) => (
                 <span className="whitespace-nowrap text-sm text-neutral-600">
                     {vm.submittedIso
@@ -548,6 +589,13 @@ export function LeadTable({
     }
 
     const cols = allCols.filter((c) => c.show && !hiddenColumns?.has(c.id));
+
+    const handleSortClick = (key: LeadSortKey) => {
+        if (!onSortChange) return;
+        const nextDirection: LeadSortDirection =
+            sortBy === key && sortDirection === 'ASC' ? 'DESC' : 'ASC';
+        onSortChange(key, nextDirection);
+    };
 
     if (!isLoading && vms.length === 0) {
         return <>{emptyState ?? <LeadEmptyState />}</>;
@@ -581,6 +629,24 @@ export function LeadTable({
                                         }
                                         aria-label="Select all"
                                     />
+                                ) : c.sortKey && onSortChange ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => handleSortClick(c.sortKey!)}
+                                        className="group/sort inline-flex items-center gap-1 hover:text-primary-700"
+                                        aria-label={`Sort by ${c.header}`}
+                                    >
+                                        {c.header}
+                                        {sortBy === c.sortKey ? (
+                                            sortDirection === 'ASC' ? (
+                                                <CaretUp className="size-3.5 text-primary-600" weight="bold" />
+                                            ) : (
+                                                <CaretDown className="size-3.5 text-primary-600" weight="bold" />
+                                            )
+                                        ) : (
+                                            <CaretUpDown className="size-3.5 text-neutral-400 opacity-60 group-hover/sort:opacity-100" />
+                                        )}
+                                    </button>
                                 ) : (
                                     c.header
                                 )}

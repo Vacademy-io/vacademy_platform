@@ -19,9 +19,33 @@ import { StorageKey } from '@/constants/storage/storage';
 import useLocalStorage from '@/hooks/use-local-storage';
 import { isNullOrEmptyOrUndefined } from '@/lib/utils';
 import { NamingSettingsType } from '@/routes/settings/-constants/terms';
+import { THEME_ROLE_SETTINGS_KEY } from '@/types/theme-role-settings';
+import {
+    setLanguageSettingCache,
+    clearLanguageSettingCache,
+    type LanguageSetting,
+} from '@/services/language-settings';
 
 // Cache duration: 1 hour
 const CACHE_STALE_TIME = 3600000;
+
+/**
+ * Caches setting.LANGUAGE_SETTING.data → localStorage 'languageSetting'
+ * (mirrors the NAMING_SETTING / THEME_SETTING extraction in the query fns
+ * below). Null-safe: most institutes don't have the key yet — in that case
+ * the cache is cleared so a value from a previously viewed institute never
+ * lingers.
+ */
+const syncLanguageSettingCache = (instituteSettings: {
+    setting?: { LANGUAGE_SETTING?: { data?: unknown } };
+}) => {
+    const languageData = instituteSettings?.setting?.LANGUAGE_SETTING?.data;
+    if (languageData && typeof languageData === 'object' && !Array.isArray(languageData)) {
+        setLanguageSettingCache(languageData as LanguageSetting);
+    } else {
+        clearLanguageSettingCache();
+    }
+};
 
 // Fetch setup data (lightweight - no batches)
 export const fetchInstituteSetup = async (): Promise<any> => {
@@ -193,6 +217,16 @@ export const useInstituteLightweightQuery = () => {
                         if (namingSettings && Array.isArray(namingSettings.data?.data)) {
                             setValue(namingSettings.data.data);
                         }
+                        const themeRoleData = instituteSettings.setting?.THEME_SETTING?.data;
+                        if (themeRoleData?.roles) {
+                            localStorage.setItem(
+                                THEME_ROLE_SETTINGS_KEY,
+                                JSON.stringify(themeRoleData)
+                            );
+                        } else {
+                            localStorage.removeItem(THEME_ROLE_SETTINGS_KEY);
+                        }
+                        syncLanguageSettingCache(instituteSettings);
                     }
                 }
                 if (data && !isNullOrEmptyOrUndefined(data.sub_modules)) {
@@ -247,6 +281,16 @@ export const useInstituteFullQuery = () => {
                         if (namingSettings && Array.isArray(namingSettings.data?.data)) {
                             setValue(namingSettings.data.data);
                         }
+                        const themeRoleData = instituteSettings.setting?.THEME_SETTING?.data;
+                        if (themeRoleData?.roles) {
+                            localStorage.setItem(
+                                THEME_ROLE_SETTINGS_KEY,
+                                JSON.stringify(themeRoleData)
+                            );
+                        } else {
+                            localStorage.removeItem(THEME_ROLE_SETTINGS_KEY);
+                        }
+                        syncLanguageSettingCache(instituteSettings);
                     }
                 }
                 if (data && !isNullOrEmptyOrUndefined(data.sub_modules)) {
@@ -301,6 +345,16 @@ export const useInstituteQuery = () => {
                         if (namingSettings && Array.isArray(namingSettings.data?.data)) {
                             setValue(namingSettings.data.data);
                         }
+                        const themeRoleData = instituteSettings.setting?.THEME_SETTING?.data;
+                        if (themeRoleData?.roles) {
+                            localStorage.setItem(
+                                THEME_ROLE_SETTINGS_KEY,
+                                JSON.stringify(themeRoleData)
+                            );
+                        } else {
+                            localStorage.removeItem(THEME_ROLE_SETTINGS_KEY);
+                        }
+                        syncLanguageSettingCache(instituteSettings);
                     }
                 }
                 if (data && !isNullOrEmptyOrUndefined(data.sub_modules)) {

@@ -68,13 +68,47 @@ class CopyCheckGrader:
         self.institute_id = institute_id
         self.user_id = user_id
         self._tokens_used = 0
+        # Prompt/completion split, accumulated across all LLM calls for this copy
+        # so per-copy credit billing can price input and output tokens correctly.
+        self._prompt_tokens = 0
+        self._completion_tokens = 0
         self._escalations_used = 0
 
     def add_tokens(self, n: int) -> None:
         """External counter for non-grading calls (e.g. criteria generation
         in rubric.RubricResolver) so the per-copy budget covers every LLM call,
-        not just the grading ones."""
-        self._tokens_used += max(0, int(n or 0))
+        not just the grading ones. Criteria generation is input-heavy, so count
+        it toward the prompt side for billing."""
+        n = max(0, int(n or 0))
+        self._tokens_used += n
+        self._prompt_tokens += n
+        if self._tokens_used > WARN_TOKENS_PER_COPY:
+            logger.warning(
+                "copy-check token usage high: %d (warn threshold %d)",
+                self._tokens_used, WARN_TOKENS_PER_COPY,
+            )
+
+    def add_usage(self, usage: dict[str, Any]) -> None:
+        """Same warn-threshold accounting as add_tokens, but also splits
+        prompt vs completion tokens (calculate_credits prices input/output
+        tokens differently for billing). Self-contained — does NOT delegate
+        to add_tokens, since that method attributes its whole count to the
+        prompt side and would double-count here. Falls back to counting an
+        unsplit total entirely as prompt tokens when the provider doesn't
+        report the split — grading calls are dominated by the resent
+        OCR+rubric context anyway, so this is a conservative under-charge
+        rather than an over-charge."""
+        usage = usage or {}
+        prompt = usage.get("prompt_tokens")
+        completion = usage.get("completion_tokens")
+        if prompt is None and completion is None:
+            prompt = usage.get("total_tokens") or usage.get("totalTokenCount") or 0
+            completion = 0
+        prompt = max(0, int(prompt or 0))
+        completion = max(0, int(completion or 0))
+        self._prompt_tokens += prompt
+        self._completion_tokens += completion
+        self._tokens_used += prompt + completion
         if self._tokens_used > WARN_TOKENS_PER_COPY:
             logger.warning(
                 "copy-check token usage high: %d (warn threshold %d)",
@@ -84,6 +118,14 @@ class CopyCheckGrader:
     @property
     def tokens_used(self) -> int:
         return self._tokens_used
+
+    @property
+    def prompt_tokens(self) -> int:
+        return self._prompt_tokens
+
+    @property
+    def completion_tokens(self) -> int:
+        return self._completion_tokens
 
     async def grade_question(
         self,
@@ -139,19 +181,7 @@ class CopyCheckGrader:
             raise
 
         # Token bookkeeping (best-effort — providers report usage differently).
-        usage = response.get("usage") or {}
-        used = (
-            usage.get("total_tokens")
-            or usage.get("totalTokenCount")
-            or ((usage.get("prompt_tokens") or 0) + (usage.get("completion_tokens") or 0))
-            or 0
-        )
-        self._tokens_used += int(used)
-        if self._tokens_used > WARN_TOKENS_PER_COPY:
-            logger.warning(
-                "copy-check token usage high: %d (warn threshold %d)",
-                self._tokens_used, WARN_TOKENS_PER_COPY,
-            )
+        self.add_usage(response.get("usage"))
 
         content = response.get("content") or ""
         try:
@@ -171,6 +201,11 @@ class CopyCheckGrader:
                 max_tokens=2000,
                 institute_id=self.institute_id,
                 user_id=self.user_id,
+                # Must pin the same model: this retry's output IS the grade that
+                # gets returned. Omitting model= silently downgraded the actual
+                # grade to ChatLLMClient's free default even when the teacher
+                # explicitly picked a premium model.
+                model=model,
             )
             return _parse_json_or_retry_payload(retry.get("content") or "")
 
@@ -200,12 +235,5 @@ async def call_llm_for_criteria(
         model=preferred_model,
     )
     if token_sink is not None:
-        usage = response.get("usage") or {}
-        used = (
-            usage.get("total_tokens")
-            or usage.get("totalTokenCount")
-            or ((usage.get("prompt_tokens") or 0) + (usage.get("completion_tokens") or 0))
-            or 0
-        )
-        token_sink.add_tokens(int(used))
+        token_sink.add_usage(response.get("usage"))
     return _parse_json_or_retry_payload(response.get("content") or "")

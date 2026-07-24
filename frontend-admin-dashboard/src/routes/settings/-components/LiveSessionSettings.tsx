@@ -14,6 +14,7 @@ import {
     Broadcast,
     BellRinging,
     MonitorPlay,
+    PlugsConnected,
 } from '@phosphor-icons/react';
 
 import { Button } from '@/components/ui/button';
@@ -51,6 +52,7 @@ import {
 import { WaitingRoomType } from '@/routes/study-library/live-session/-constants/enums';
 import { ZoomIntegrationCard } from './zoom/ZoomIntegrationCard';
 import { GoogleMeetIntegrationCard } from './google/GoogleMeetIntegrationCard';
+import { DefaultRecordingDestinationPicker } from './DefaultRecordingDestinationPicker';
 
 const PLATFORM_LABELS: Record<PlatformKey, string> = {
     youtube: 'YouTube',
@@ -146,6 +148,16 @@ export default function LiveSessionSettings() {
 
     const togglePrimitive = (key: keyof LiveSessionSettingsType, value: boolean) => {
         setSettings((prev) => ({ ...prev, [key]: value }) as LiveSessionSettingsType);
+    };
+
+    const toggleLmsConnection = (
+        key: keyof LiveSessionSettingsType['lmsConnection'],
+        value: boolean
+    ) => {
+        setSettings((prev) => ({
+            ...prev,
+            lmsConnection: { ...prev.lmsConnection, [key]: value },
+        }));
     };
 
     const reset = () => setSettings(initial);
@@ -1000,6 +1012,72 @@ export default function LiveSessionSettings() {
                         checked={settings.recordingTranscriptionEnabled}
                         onChange={(v) => togglePrimitive('recordingTranscriptionEnabled', v)}
                     />
+                </CardContent>
+            </Card>
+
+            {/* LMS Connection — live class content → course chapters */}
+            <Card className="border-neutral-200 shadow-none">
+                <CardHeader className="flex-row items-start gap-3 space-y-0 p-5 pb-4">
+                    <div className="flex size-9 items-center justify-center rounded-md bg-primary-50 text-primary-500">
+                        <PlugsConnected size={18} />
+                    </div>
+                    <div className="flex-1">
+                        <CardTitle className="text-base">LMS Connection</CardTitle>
+                        <CardDescription>
+                            Lets teachers push live-class content into course chapters right from
+                            the session page. Off by default — turn on the features you want.
+                            Turning one off hides its entry point only; recordings and materials
+                            already added to chapters stay there.
+                        </CardDescription>
+                    </div>
+                </CardHeader>
+                <CardContent className="border-t border-neutral-100 p-5">
+                    <SettingRow
+                        title="Add recordings to course"
+                        description="Shows an 'Add to course' action next to each recording on the live-session view, so teachers can link the recording into chapters of the session's batches."
+                        checked={settings.lmsConnection.recordingAddToCourseEnabled}
+                        onChange={(v) => toggleLmsConnection('recordingAddToCourseEnabled', v)}
+                    />
+                    <Separator />
+                    <SettingRow
+                        title="Class materials"
+                        description="Shows the Class Materials card on the live-session view, where teachers upload a PDF or video (or paste a YouTube link) and add it to chapters."
+                        checked={settings.lmsConnection.classMaterialsEnabled}
+                        onChange={(v) => toggleLmsConnection('classMaterialsEnabled', v)}
+                    />
+                    <Separator />
+                    <SettingRow
+                        title="Auto-upload recordings to course"
+                        description="Automatically adds a finished class recording as a slide in a chapter once it's ready — no manual 'Add to course' click needed. Sessions can pick their own destination while scheduling; otherwise the default below is used."
+                        checked={settings.lmsConnection.autoUploadRecordingsEnabled}
+                        onChange={(v) => toggleLmsConnection('autoUploadRecordingsEnabled', v)}
+                    />
+                    {settings.lmsConnection.autoUploadRecordingsEnabled && (
+                        <div className="pl-4">
+                            <SettingRow
+                                title="Notify learners on auto-upload"
+                                description="Emails enrolled learners ('New Study Material Available') when a recording is auto-added via the default destination below. Sessions with their own destination use the notify choice made while scheduling."
+                                checked={settings.lmsConnection.autoUploadNotifyLearners}
+                                onChange={(v) => toggleLmsConnection('autoUploadNotifyLearners', v)}
+                            />
+                        </div>
+                    )}
+                    {settings.lmsConnection.autoUploadRecordingsEnabled && (
+                        <div className="pb-1 pl-1 pt-2">
+                            <DefaultRecordingDestinationPicker
+                                value={settings.lmsConnection.autoUploadDefaultDestination}
+                                onChange={(dest) =>
+                                    setSettings((prev) => ({
+                                        ...prev,
+                                        lmsConnection: {
+                                            ...prev.lmsConnection,
+                                            autoUploadDefaultDestination: dest,
+                                        },
+                                    }))
+                                }
+                            />
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 

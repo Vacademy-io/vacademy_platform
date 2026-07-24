@@ -9,6 +9,7 @@ import { useChatbotPanelStore } from "@/stores/chatbot/useChatbotPanelStore";
 import { useChatbotContext } from "@/components/chatbot/useChatbotContext";
 import { usePlayTheme } from "@/hooks/use-play-theme";
 import { PlayBottomNav, PlayNavRail } from "./PlayBottomNav";
+import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
 
 interface LayoutContainerProps {
@@ -42,13 +43,14 @@ export const LayoutContainer = ({
     const { panelWidth, setIsDockedMode } = useChatbotPanelStore();
     const [isMobile, setIsMobile] = useState(false);
     const isPlayTheme = usePlayTheme();
+    const isCleanerPlayTheme = useCleanerPlayTheme();
     // Display settings can hide the standard sidebar app-wide
     // (sidebar.visible === false makes MySidebar render null). Track that
     // here so play mode can fill the desktop nav gap with PlayNavRail.
     const [standardSidebarHidden, setStandardSidebarHidden] = useState(false);
 
     useEffect(() => {
-        if (!isPlayTheme) return;
+        if (!isPlayTheme && !isCleanerPlayTheme) return;
         let cancelled = false;
         getStudentDisplaySettings(false).then((settings) => {
             if (!cancelled) {
@@ -58,7 +60,7 @@ export const LayoutContainer = ({
         return () => {
             cancelled = true;
         };
-    }, [isPlayTheme]);
+    }, [isPlayTheme, isCleanerPlayTheme]);
 
     // Detect mobile viewport
     useEffect(() => {
@@ -92,7 +94,9 @@ export const LayoutContainer = ({
     // rail exactly there (lg+ via CSS inside PlayNavRail) to avoid
     // double-nav everywhere else.
     const showPlayRail =
-        isPlayTheme && standardSidebarHidden && !sidebarComponent;
+        (isPlayTheme || isCleanerPlayTheme) &&
+        standardSidebarHidden &&
+        !sidebarComponent;
 
     return (
         <>
@@ -118,7 +122,7 @@ export const LayoutContainer = ({
                         fullWidth
                             ? "m-3 md:m-5 max-w-full"
                             : "mx-auto w-full max-w-screen-xl px-4 py-4 sm:px-6 lg:px-8 lg:py-6",
-                        isPlayTheme && isMobile && "pb-20",
+                        (isPlayTheme || isCleanerPlayTheme) && isMobile && "pb-20",
                         className
                     )}
                 >
@@ -128,14 +132,14 @@ export const LayoutContainer = ({
             {/* Docked Chatbot Side Panel - fixed position on the right */}
             {showDockedPanel && (
                 <div
-                    className="fixed top-0 right-0 h-screen z-50"
+                    className="fixed top-0 end-0 h-screen z-50"
                     style={{ width: panelWidth }}
                 >
                     <ChatbotSidePanel />
                 </div>
             )}
-            {/* Play theme: mobile bottom tab bar */}
-            {isPlayTheme && isMobile && <PlayBottomNav />}
+            {/* Play + Cleaner Play: mobile bottom tab bar (skin-aware inside) */}
+            {(isPlayTheme || isCleanerPlayTheme) && isMobile && <PlayBottomNav />}
         </>
     );
 };

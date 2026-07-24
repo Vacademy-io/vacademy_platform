@@ -41,6 +41,14 @@ public class FacultySubjectPackageSessionMapping {
 
     @Column(name = "suborg_id")
     private String suborgId;
+
+    // SOFT sub-org removal: the last date the member keeps access. While status is
+    // ACTIVE and this is in the future, the member is still enrolled; the nightly
+    // SubOrgTeamAccessExpiryJob flips ACTIVE rows whose access_till_date has passed
+    // to INACTIVE. NULL = no scheduled expiry.
+    @Column(name = "access_till_date")
+    private Timestamp accessTillDate;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private Timestamp createdAt;
     @Column(name = "updated_at", insertable = false, updatable = false)

@@ -60,7 +60,8 @@ export interface RecentLeadsRequest {
     institute_id: string;
     // When set, the backend's `findLeadsWithFilters` runs scoped to this
     // audience. When omitted, `findInstituteLeadsWithFilters` returns leads
-    // across every audience for the institute. Both order by submitted_at DESC.
+    // across every audience for the institute. Both default to submitted_at DESC
+    // and honor sort_by/sort_direction below.
     audience_id?: string;
     submitted_from_local?: string; // ISO-8601 timestamp
     submitted_to_local?: string;
@@ -73,6 +74,14 @@ export interface RecentLeadsRequest {
     // Conversion-state filter — defaults to EXCLUDE_CONVERTED on the backend so
     // leads that have been enrolled into a course don't pollute the active list.
     conversion_status_filter?: 'EXCLUDE_CONVERTED' | 'ONLY_CONVERTED' | 'ALL';
+    /** Call-attempt history filter (see CallHistoryFilter options). */
+    call_history_filter?: string;
+    /**
+     * Soft-delete visibility — defaults to EXCLUDE_DELETED on the backend, so deleted leads stay
+     * hidden unless explicitly asked for. ONLY_DELETED backs the "Deleted leads" view that restore
+     * is driven from.
+     */
+    audience_status_filter?: 'EXCLUDE_DELETED' | 'ONLY_DELETED' | 'ALL';
     /** Filter by SLA stage (the badge shown in the table). 'ANY_OVERDUE' = TAT_OVERDUE OR FOLLOW_UP_OVERDUE. */
     sla_filter?:
         | 'TAT_BEFORE'
@@ -95,6 +104,9 @@ export interface RecentLeadsRequest {
      *  custom_field_values row for {field_id} matches one of {values} (OR within
      *  the entry); across entries the backend AND-combines them. Omitted = none. */
     custom_field_filters?: LeadCustomFieldFilter[];
+    /** Column to sort by — SUBMITTED_AT (default) | LEAD_SCORE | LEAD_TIER | STATUS. */
+    sort_by?: string;
+    sort_direction?: 'ASC' | 'DESC';
     page: number;
     size: number;
 }

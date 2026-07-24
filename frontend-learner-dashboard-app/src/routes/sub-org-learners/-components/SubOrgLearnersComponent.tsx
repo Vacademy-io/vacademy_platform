@@ -46,6 +46,9 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
   const lastFetchedInviteRef = useRef<string | null>(null);
   const [isTerminateDialogOpen, setIsTerminateDialogOpen] = useState(false);
   const [isTerminating, setIsTerminating] = useState(false);
+  // Terminate mode: HARD = remove now, SOFT = keep access until a chosen date.
+  const [terminateMode, setTerminateMode] = useState<'SOFT' | 'HARD'>('HARD');
+  const [terminateAccessTillDate, setTerminateAccessTillDate] = useState<string>('');
   const [isBulkUploadOpen, setIsBulkUploadOpen] = useState(false);
 
   // Form states for add member
@@ -272,6 +275,8 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
       toast.error('Please select members to terminate');
       return;
     }
+    setTerminateMode('HARD');
+    setTerminateAccessTillDate('');
     setIsTerminateDialogOpen(true);
   };
 
@@ -287,6 +292,11 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
       return;
     }
 
+    if (terminateMode === 'SOFT' && !terminateAccessTillDate) {
+      toast.error('Please pick a last access date for a soft termination');
+      return;
+    }
+
     setIsTerminating(true);
     try {
       await terminateMembers({
@@ -294,9 +304,15 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
         institute_id: selectedMapping.institute_id,
         package_session_id: selectedPackageSession,
         user_ids: selectedMembers,
+        mode: terminateMode,
+        access_till_date: terminateMode === 'SOFT' ? terminateAccessTillDate : null,
       });
 
-      toast.success(`Successfully terminated ${selectedMembers.length} staff member(s)`);
+      toast.success(
+        terminateMode === 'SOFT'
+          ? `Access for ${selectedMembers.length} staff member(s) will continue until ${terminateAccessTillDate}`
+          : `Successfully terminated ${selectedMembers.length} staff member(s)`,
+      );
       setSelectedMembers([]);
       setIsTerminateDialogOpen(false);
       loadMembers(); // Refresh the list
@@ -437,7 +453,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
               enableSearch={true}
               placeholder="+1 234 567 8900"
               inputClass="!w-full h-10 !rounded-md !border-input"
-              buttonClass="!rounded-l-md !border-input"
+              buttonClass="!rounded-s-md !border-input"
               countryCodeEditable={false}
               enableAreaCodes={false}
               disableCountryGuess={false}
@@ -475,17 +491,17 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
         </div>
         <div className="flex items-center gap-3">
           <Button onClick={loadMembers} variant="outline" size="sm">
-            <ArrowsClockwise className="w-4 h-4 mr-2" />
+            <ArrowsClockwise className="w-4 h-4 me-2" />
             Refresh
           </Button>
           <Button variant="outline" onClick={() => setIsBulkUploadOpen(true)}>
-            <UploadSimple className="w-4 h-4 mr-2" />
+            <UploadSimple className="w-4 h-4 me-2" />
             Bulk Upload
           </Button>
           <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
             <DialogTrigger asChild>
               <Button>
-                <Plus className="w-4 h-4 mr-2" />
+                <Plus className="w-4 h-4 me-2" />
                 Add Staff
               </Button>
             </DialogTrigger>
@@ -540,7 +556,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                         value={formData.mobile_number}
                         onChange={(phone) => setFormData((prev: any) => ({ ...prev, mobile_number: phone.startsWith('+') ? phone : `+${phone}` }))}
                         inputClass="!w-full h-10 !rounded-md !border-input"
-                        buttonClass="!rounded-l-md !border-input"
+                        buttonClass="!rounded-s-md !border-input"
                       />
                     </div>
                   </>
@@ -618,7 +634,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
             {selectedMembers.length > 0 && (
               <>
                 <Button variant="destructive" size="sm" onClick={openTerminateDialog} className="text-white">
-                  <Trash className="w-4 h-4 mr-2 text-white" />
+                  <Trash className="w-4 h-4 me-2 text-white" />
                   Terminate Selected ({selectedMembers.length})
                 </Button>
 
@@ -629,26 +645,77 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                         Confirm Termination
                       </AlertDialogTitle>
                       <AlertDialogDescription className="text-gray-600">
-                        Are you sure you want to terminate <span className="font-semibold text-gray-900">{selectedMembers.length}</span> staff member{selectedMembers.length > 1 ? 's' : ''}?
-                        This action cannot be undone.
+                        Remove <span className="font-semibold text-gray-900">{selectedMembers.length}</span> staff member{selectedMembers.length > 1 ? 's' : ''} from this membership.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
+
+                    {/* SOFT vs HARD choice + last-access date (SOFT only). */}
+                    <div className="flex flex-col gap-2 rounded-lg border border-gray-100 bg-gray-50 p-3">
+                      <p className="text-xs font-medium text-gray-600">Termination Mode</p>
+                      <label className="flex items-start gap-2">
+                        <input
+                          type="radio"
+                          name="suborg-terminate-mode"
+                          checked={terminateMode === 'HARD'}
+                          onChange={() => setTerminateMode('HARD')}
+                          className="mt-0.5"
+                        />
+                        <span className="text-xs text-gray-700">
+                          <strong>Terminate now</strong> — Access is revoked immediately.
+                        </span>
+                      </label>
+                      <label className="flex items-start gap-2">
+                        <input
+                          type="radio"
+                          name="suborg-terminate-mode"
+                          checked={terminateMode === 'SOFT'}
+                          onChange={() => setTerminateMode('SOFT')}
+                          className="mt-0.5"
+                        />
+                        <span className="text-xs text-gray-700">
+                          <strong>Keep until date</strong> — Access continues until the last
+                          access date below, then ends automatically.
+                        </span>
+                      </label>
+
+                      {terminateMode === 'SOFT' && (
+                        <div className="ms-6 mt-1 flex flex-col gap-1.5">
+                          <p className="text-[11px] font-medium text-gray-600">Last access date</p>
+                          <input
+                            type="date"
+                            value={terminateAccessTillDate}
+                            min={new Date().toISOString().slice(0, 10)}
+                            onChange={(e) => setTerminateAccessTillDate(e.target.value)}
+                            className="w-fit rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-800 focus:border-primary-300 focus:outline-none"
+                          />
+                          {!terminateAccessTillDate && (
+                            <p className="text-[10px] text-red-500">Pick a date to keep access until.</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                     <AlertDialogFooter className="gap-2 sm:gap-0">
                       <AlertDialogCancel disabled={isTerminating} className="mt-0">
                         Cancel
                       </AlertDialogCancel>
                       <AlertDialogAction
                         onClick={handleTerminateMembers}
-                        disabled={isTerminating}
+                        disabled={
+                          isTerminating ||
+                          (terminateMode === 'SOFT' && !terminateAccessTillDate)
+                        }
                         className="bg-red-600 hover:bg-red-700 text-white"
                       >
                         {isTerminating ? (
                           <>
-                            <SpinnerGap className="w-4 h-4 mr-2 animate-spin" />
-                            Terminating...
+                            <SpinnerGap className="w-4 h-4 me-2 animate-spin" />
+                            {terminateMode === 'SOFT' ? 'Scheduling...' : 'Terminating...'}
                           </>
+                        ) : terminateMode === 'SOFT' ? (
+                          'Keep until date'
                         ) : (
-                          'Confirm'
+                          'Terminate now'
                         )}
                       </AlertDialogAction>
                     </AlertDialogFooter>
@@ -662,7 +729,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
-              <span className="ml-3 text-gray-600">Loading staff...</span>
+              <span className="ms-3 text-gray-600">Loading staff...</span>
             </div>
           ) : members.length === 0 ? (
             <div className="text-center py-8">
@@ -778,7 +845,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-12 sticky left-0 bg-white z-10">
+                        <TableHead className="w-12 sticky start-0 bg-white z-10">
                           <Checkbox
                             checked={selectedMembers.length === members.length && members.length > 0}
                             onCheckedChange={handleSelectAll}
@@ -790,13 +857,13 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                             {capitalizeFieldName(col.field_name)}
                           </TableHead>
                         ))}
-                        <TableHead className="sticky right-0 bg-white z-10">Status</TableHead>
+                        <TableHead className="sticky end-0 bg-white z-10">Status</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {members.map((member) => (
                         <TableRow key={member.id}>
-                          <TableCell className="sticky left-0 bg-white z-10">
+                          <TableCell className="sticky start-0 bg-white z-10">
                             <Checkbox
                               checked={selectedMembers.includes(member.user_id)}
                               onCheckedChange={(checked) => handleSelectMember(member.user_id, checked as boolean)}
@@ -808,7 +875,7 @@ export function SubOrgLearnersComponent({ adminMappings, instituteDetails }: Sub
                               {getCustomFieldValue(member, col.field_key, col.field_name)}
                             </TableCell>
                           ))}
-                          <TableCell className="sticky right-0 bg-white z-10">
+                          <TableCell className="sticky end-0 bg-white z-10">
                             <Badge className={getStatusColor(member.status)}>
                               {member.status}
                             </Badge>

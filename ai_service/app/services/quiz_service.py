@@ -17,9 +17,16 @@ from ..schemas.chat_agent import (
     QuizFeedback,
     QuestionFeedback,
 )
+from ..config import get_settings
 from ..services.chat_llm_client import ChatLLMClient
 
 logger = logging.getLogger(__name__)
+
+# Image generation for assessment questions goes through OpenRouter — the
+# direct Gemini image key is free-tier with a zero image quota (429s every
+# call). Same billed model the course-content and video pipelines use.
+_IMAGE_MODEL = "google/gemini-3.1-flash-image"
+_OPENROUTER_IMAGE_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 class QuizService:
@@ -334,7 +341,7 @@ OUTPUT — return ONLY this JSON object, no surrounding markdown / text:
         # Optional image enrichment. Adds an <img> tag at the start of
         # every question and every option's text. Skipped by default —
         # ~5 image calls per question (1 for the stem + 4 for options)
-        # adds 30-120s of latency and Gemini API spend. Caller must opt in.
+        # adds 30-120s of latency and image-gen API spend. Caller must opt in.
         if include_images:
             try:
                 await self._enrich_questions_with_images(questions)
@@ -366,16 +373,16 @@ OUTPUT — return ONLY this JSON object, no surrounding markdown / text:
         questions where the LLM tagged an `image_prompt`. Options are
         never image-enriched here — the existing AI-tools flow only puts
         images on question stems where a diagram genuinely helps, and we
-        match that behaviour to avoid 100 wasted Gemini calls on a
+        match that behaviour to avoid 100 wasted image calls on a
         20-question assessment.
 
         Failures fall through silently — the original text is preserved
         on a per-question basis, so a single image failing doesn't
         damage the rest of the assessment.
         """
-        gemini_key = self._gemini_api_key()
-        if not gemini_key:
-            logger.warning("[assessment-gen] include_images requested but no GEMINI_API_KEY available — skipping")
+        openrouter_key = get_settings().openrouter_api_key
+        if not openrouter_key:
+            logger.warning("[assessment-gen] include_images requested but no OPENROUTER_API_KEY available — skipping")
             return
 
         # Only the questions the LLM tagged as benefiting from an
@@ -402,9 +409,9 @@ OUTPUT — return ONLY this JSON object, no surrounding markdown / text:
             async with semaphore:
                 # Wrap the LLM's natural-language image description with
                 # the platform-wide style guidance (flat, colourful,
-                # white-bg, no text) before sending to Gemini.
+                # white-bg, no text) before sending to the image model.
                 public_url = await self._gen_image_s3_url(
-                    self._build_image_prompt(prompt), gemini_key
+                    self._build_image_prompt(prompt), openrouter_key
                 )
                 if not public_url:
                     return
@@ -426,12 +433,6 @@ OUTPUT — return ONLY this JSON object, no surrounding markdown / text:
         await asyncio.gather(*(_run_one(qi, pr) for qi, pr in jobs), return_exceptions=True)
         logger.info("[assessment-gen] image enrichment complete")
 
-    def _gemini_api_key(self) -> Optional[str]:
-        """Resolve the Gemini key from environment. Centralised so we don't
-        repeat the lookup logic across the various image-using callsites."""
-        import os
-        return os.environ.get("GEMINI_API_KEY")
-
     @staticmethod
     def _build_image_prompt(source_text: str) -> str:
         """Wrap the LLM-provided image description with consistent style
@@ -445,9 +446,9 @@ OUTPUT — return ONLY this JSON object, no surrounding markdown / text:
             f"Subject: {source_text.strip()}"
         )
 
-    async def _gen_image_s3_url(self, prompt: str, gemini_key: str) -> Optional[str]:
+    async def _gen_image_s3_url(self, prompt: str, openrouter_key: str) -> Optional[str]:
         """
-        Single Gemini image-gen call → S3 upload → public URL.
+        Single OpenRouter image-gen call → S3 upload → public URL.
 
         Returns None on any failure. We never raise: image gen is
         best-effort enrichment, so a single image failing should leave
@@ -456,45 +457,48 @@ OUTPUT — return ONLY this JSON object, no surrounding markdown / text:
 
         Matches the existing platform pattern — the URL we return looks
         like `https://vacademy-media-storage-public.s3.amazonaws.com/
-        SERVICE_UPLOAD/<uuid>.jpeg`, identical in shape to images
+        SERVICE_UPLOAD/<uuid>.png`, identical in shape to images
         produced by the AI-tools flow (which extracts them from PDFs).
         """
         try:
             import base64
             import httpx
-            url = (
-                "https://generativelanguage.googleapis.com/v1beta/models/"
-                f"gemini-3.1-flash-image-preview:generateContent?key={gemini_key}"
-            )
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.post(
-                    url,
-                    headers={"Content-Type": "application/json"},
+                    _OPENROUTER_IMAGE_URL,
+                    headers={
+                        "Authorization": f"Bearer {openrouter_key}",
+                        "Content-Type": "application/json",
+                    },
                     json={
-                        "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {
-                            "imageConfig": {"aspectRatio": "16:9"},
-                            "responseModalities": ["IMAGE"],
-                        },
+                        "model": _IMAGE_MODEL,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "modalities": ["image"],
+                        "image_config": {"aspect_ratio": "16:9"},
                     },
                 )
             if resp.status_code != 200:
                 logger.warning("[assessment-gen] image gen %s: %s", resp.status_code, resp.text[:200])
                 return None
             data = resp.json()
-            inline = data.get("inlineData")
-            if not inline:
-                for cand in data.get("candidates", []):
-                    for part in cand.get("content", {}).get("parts", []):
-                        if "inlineData" in part:
-                            inline = part["inlineData"]
-                            break
-                    if inline:
+            # OpenRouter returns generated images as data URLs on
+            # choices[].message.images[].image_url.url.
+            data_url = ""
+            for choice in data.get("choices") or []:
+                for image in (choice.get("message") or {}).get("images", []) or []:
+                    data_url = (image.get("image_url") or {}).get("url", "")
+                    if data_url:
                         break
-            if not inline:
+                if data_url:
+                    break
+            if not data_url:
+                logger.warning("[assessment-gen] image gen returned no image")
                 return None
-            mime = inline.get("mimeType", "image/png")
-            data_b64 = inline.get("data", "")
+            # data URL shape: data:image/png;base64,<...>
+            mime = "image/png"
+            if data_url.startswith("data:") and ";" in data_url:
+                mime = data_url[5:data_url.index(";")] or mime
+            data_b64 = data_url.split(",", 1)[1] if "," in data_url else data_url
             if not data_b64:
                 return None
             try:
@@ -503,7 +507,7 @@ OUTPUT — return ONLY this JSON object, no surrounding markdown / text:
                 logger.warning("[assessment-gen] image base64 decode failed: %s", decode_err)
                 return None
 
-            # Map mime → extension. PNG and JPEG are the two Gemini emits.
+            # Map mime → extension.
             ext = "jpeg" if "jpeg" in mime or "jpg" in mime else "png"
             object_key = f"SERVICE_UPLOAD/{uuid4()}.{ext}"
             filename = object_key.rsplit("/", 1)[-1]

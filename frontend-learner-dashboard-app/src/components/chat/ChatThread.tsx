@@ -184,8 +184,8 @@ export function ChatThread({
                         className={cn(
                           "relative rounded-2xl px-3 py-2 text-body",
                           isOwn
-                            ? "rounded-br-md bg-primary text-primary-foreground"
-                            : "rounded-bl-md bg-muted text-foreground",
+                            ? "rounded-ee-md bg-primary text-primary-foreground"
+                            : "rounded-es-md bg-muted text-foreground",
                           msg.failed && "opacity-70 ring-1 ring-destructive",
                         )}
                       >
@@ -195,7 +195,7 @@ export function ChatThread({
                             aria-label="Delete message"
                             onClick={() => onDelete?.(msg)}
                             className={cn(
-                              "absolute -left-8 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm transition-opacity hover:bg-muted",
+                              "absolute -start-8 top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm transition-opacity hover:bg-muted",
                               "opacity-0 group-hover/msg:opacity-100 focus-visible:opacity-100",
                             )}
                           >
@@ -273,7 +273,7 @@ export function ChatThread({
                           <span
                             aria-label={msg.pending ? "Sending message" : undefined}
                             className={cn(
-                              "mt-0.5 block text-right text-3xs leading-none",
+                              "mt-0.5 block text-end text-3xs leading-none",
                               isOwn
                                 ? "text-primary-foreground/70"
                                 : "text-muted-foreground",

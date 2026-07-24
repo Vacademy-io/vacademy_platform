@@ -2,6 +2,7 @@ package vacademy.io.admin_core_service.features.telephony.persistence.repository
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -13,6 +14,10 @@ import java.util.Optional;
 
 @Repository
 public interface AiCallResultRepository extends JpaRepository<AiCallResult, String> {
+
+    /** Recent results for one agent (campaign_id == agent id) — feedback grounding. */
+    java.util.List<AiCallResult> findTop12ByCampaignIdAndInstituteIdOrderByCreatedAtDesc(
+            String campaignId, String instituteId);
 
     /** Idempotency lookup: a re-POST of the same call updates the existing row. */
     Optional<AiCallResult> findByProviderAndCallUuid(String provider, String callUuid);
@@ -33,4 +38,10 @@ public interface AiCallResultRepository extends JpaRepository<AiCallResult, Stri
     @Query("UPDATE AiCallResult r SET r.processingStatus = 'PROCESSING' "
             + "WHERE r.id = :id AND r.processingStatus NOT IN ('PROCESSED', 'PROCESSING')")
     int claimForProcessing(@Param("id") String id);
+
+    /** Stamp a successful AI-minutes charge — guarded so it never un-stamps. */
+    @Modifying
+    @Transactional
+    @Query("UPDATE AiCallResult r SET r.creditsBilledAt = :at WHERE r.id = :id AND r.creditsBilledAt IS NULL")
+    int markCreditsBilled(@Param("id") String id, @Param("at") java.time.Instant at);
 }

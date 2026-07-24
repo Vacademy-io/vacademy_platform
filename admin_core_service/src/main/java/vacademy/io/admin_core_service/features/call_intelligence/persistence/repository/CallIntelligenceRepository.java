@@ -92,6 +92,22 @@ public interface CallIntelligenceRepository extends JpaRepository<CallIntelligen
                                          @Param("from") java.sql.Timestamp from,
                                          @Param("to") java.sql.Timestamp to);
 
+    /**
+     * Every user who actually has analyzed calls in this institute.
+     *
+     * <p>An ADMIN's team view must cover all of them. Resolving an admin's cohort
+     * from the COUNSELLOR-role roster alone silently hides calls made by users who
+     * don't hold that role (admins themselves, or reps whose role was never granted
+     * / was revoked) — and returns nothing at all when the institute has granted no
+     * counsellor roles, which blanked the whole AI Intelligence page.
+     */
+    @Query("""
+            SELECT DISTINCT c.counsellorUserId
+            FROM CallIntelligence c
+            WHERE c.instituteId = :instituteId AND c.counsellorUserId IS NOT NULL
+            """)
+    List<String> findDistinctCounsellorUserIdsByInstituteId(@Param("instituteId") String instituteId);
+
     /** Per-counsellor breakdown: {counsellor_user_id, count, avgSelf, avgOutput}. */
     @Query("""
             SELECT c.counsellorUserId, COUNT(c), AVG(c.callerSelfGoalRating), AVG(c.callOutputRating)

@@ -7,6 +7,8 @@ export const SUPPORT_BASE_URL = `${BASE_URL}/community-service/support/v1`;
 // Super-admin-managed dashboard widgets (community-service feature/dashboardwidget). Institute is
 // taken from the `clientId` header / instituteId param; see services/institute-widgets.ts.
 export const INSTITUTE_WIDGET_BASE_URL = `${BASE_URL}/community-service/dashboard-widget/v1`;
+// Read-only product roadmap shown in the Assist Dock (community-service feature/roadmap).
+export const ROADMAP_BASE_URL = `${BASE_URL}/community-service/roadmap/v1`;
 // Local admin-core override — kept for ad-hoc dev testing. Production callers
 // must use BASE_URL; flip specific URL constants to this only while testing locally.
 export const LOCAL_ADMIN_CORE_BASE = 'http://localhost:8072';
@@ -53,6 +55,29 @@ export const SCRAPE_URL = `${AI_SERVICE_BASE_URL}/utils/scrape-url`;
 // { transcript_text: string, title_hint?: string, target_language?: 'en'|'hi'|… }.
 // Response: { markdown: string, model: string }.
 export const GENERATE_TRANSCRIPT_NOTES_URL = `${AI_SERVICE_BASE_URL}/transcript/generate-notes`;
+
+// HTML Document slide — AI generates/edits creative standalone HTML.
+// Body: { prompt, current_html?, institute_id?, idempotency_key? }.
+// Response: { html: string, model: string }.
+export const GENERATE_HTML_DOCUMENT_URL = `${AI_SERVICE_BASE_URL}/html-doc/v1/generate`;
+
+// Content translation — AI-service side (job orchestration + credit estimate).
+// See ai_service app/routers/translation.py. The stage machine is
+// EXTRACT -> TRANSLATE -> REVIEW (DRAFT mode parks here as AWAITING_INPUT) ->
+// WRITE_BACK; TRANSLATE_COURSE answers 402 when credits are short.
+export const TRANSLATION_ESTIMATE_URL = `${AI_SERVICE_BASE_URL}/translation/v1/estimate`;
+export const TRANSLATE_COURSE_URL = (packageSessionId: string) =>
+    `${AI_SERVICE_BASE_URL}/translation/v1/course/${packageSessionId}`;
+export const TRANSLATION_JOB_URL = (jobId: string) =>
+    `${AI_SERVICE_BASE_URL}/translation/v1/job/${jobId}`;
+export const TRANSLATION_JOB_APPROVE_URL = (jobId: string) =>
+    `${AI_SERVICE_BASE_URL}/translation/v1/job/${jobId}/approve`;
+
+// Content translation — admin-core side (review sidecar reads/writes).
+// See admin_core_service features/translation TranslationAdminController.
+export const TRANSLATION_STATUS_URL = `${BASE_URL}/admin-core-service/translations/v1/status`;
+export const TRANSLATION_ITEMS_URL = `${BASE_URL}/admin-core-service/translations/v1/items`;
+export const TRANSLATION_ITEM_STATE_URL = `${BASE_URL}/admin-core-service/translations/v1/item/state`;
 
 // Institute AI Settings APIs
 export const GET_INSTITUTE_AI_SETTINGS = (instituteId: string) =>
@@ -262,8 +287,12 @@ export const TELEPHONY_VOICE_CONFIG = (instituteId: string) =>
 // Lead Reports endpoints — use BASE_URL so they work across dev/stage/prod.
 export const GET_LEAD_REPORT_SUMMARY = `${BASE_URL}/admin-core-service/v1/reports/leads/summary`;
 export const GET_COUNSELOR_PERFORMANCE = `${BASE_URL}/admin-core-service/v1/reports/counselor-performance`;
-export const DELETE_AUDIENCE_LEAD = (responseId: string) =>
-    `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}`;
+/** Soft-delete leads (ADMIN only). Body: { response_ids, scope: RESPONSE|USER, institute_id }. */
+export const DELETE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/delete`;
+/** Restore soft-deleted leads (ADMIN only). Same body shape as DELETE_AUDIENCE_LEADS. */
+export const RESTORE_AUDIENCE_LEADS = `${BASE_URL}/admin-core-service/v1/audience/leads/restore`;
+export const UPDATE_LEAD_PROFILE = (responseId: string) =>
+    `${BASE_URL}/admin-core-service/v1/audience/lead/${responseId}/profile`;
 export const GET_ENQUIRIES = `${BASE_URL}/admin-core-service/v1/audience/enquiries`;
 // Distinct values a custom field holds across the institute's leads — searchable
 // + paginated. Powers the multi-select custom-field dropdowns in the leads filter bar.
@@ -285,6 +314,9 @@ export const GET_LATEST_NOTES_BATCH = `${BASE_URL}/admin-core-service/timeline/v
 // dispositions) per lead, for CSV export.
 export const GET_LEAD_JOURNEY_BATCH = `${BASE_URL}/admin-core-service/timeline/v1/student/journey-batch`;
 export const CREATE_TIMELINE_EVENT = `${BASE_URL}/admin-core-service/timeline/v1/event`;
+// Guardian-student linking — student side-view "Guardian" tab.
+export const GET_PARENT_LINK_PARENT = `${BASE_URL}/admin-core-service/parent-link/v1/parent`;
+export const GET_PARENT_LINK_CHILDREN = `${BASE_URL}/admin-core-service/parent-link/v1/children`;
 export const GET_LEAD_JOURNEY = `${BASE_URL}/admin-core-service/timeline/v1/journey`;
 export const GET_ALL_LEAD_EVENTS = (studentUserId: string) =>
     `${BASE_URL}/admin-core-service/timeline/v1/student/${studentUserId}/all`;
@@ -293,6 +325,8 @@ export const GET_LEAD_FOLLOWUPS = (audienceResponseId: string) =>
     `${FOLLOWUP_BASE}/${audienceResponseId}`;
 export const CREATE_LEAD_FOLLOWUP = FOLLOWUP_BASE;
 export const CLOSE_LEAD_FOLLOWUP = (id: string) => `${FOLLOWUP_BASE}/${id}/close`;
+// Caller's own open follow-ups (no instituteId → backend scopes to created_by=caller).
+export const MY_PENDING_LEAD_FOLLOWUPS = `${FOLLOWUP_BASE}/my-pending`;
 export const UPDATE_LEAD_FOLLOWUP = (id: string) => `${FOLLOWUP_BASE}/${id}`;
 export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit-with-enquiry`;
 export const SUBMIT_AUDIENCE_LEAD_URL = `${BASE_URL}/admin-core-service/open/v1/audience/lead/submit`;
@@ -301,6 +335,7 @@ export const BULK_SUBMIT_AUDIENCE_LEAD = `${BASE_URL}/admin-core-service/open/v1
 export const BULK_SUBMIT_APPLICATION_WITH_LEAD = `${BASE_URL}/admin-core-service/v1/applicant/bulk-apply`;
 export const BULK_SUBMIT_ADMISSION_WITH_LEAD = `${BASE_URL}/admin-core-service/v1/admission/bulk-submit-with-admission`;
 export const GET_CUSTOM_FIELD_SETUP = `${BASE_URL}/admin-core-service/common/custom-fields/setup`;
+export const GET_STUDENT_CUSTOM_FIELD_VALUES = `${BASE_URL}/admin-core-service/common/custom-fields/student-values`;
 
 // Field Mapping
 export const FIELD_MAPPING_BASE_URL = `${BASE_URL}/admin-core-service/common/field-mapping`;
@@ -371,6 +406,7 @@ export const BATCHES_SUMMARY = `${BASE_URL}/admin-core-service/institute/v1/batc
 export const ADMIN_DETAILS_URL = `${BASE_URL}/auth-service/v1/user-details/get`;
 export const GET_STUDENTS = `${BASE_URL}/admin-core-service/institute/institute_learner/get/v2/all`;
 export const GET_CONTACTS_LIST = `${BASE_URL}/admin-core-service/v1/audience/distinct-institute-users-and-audience`;
+export const GET_CONTACT_CUSTOM_FIELD_VALUES = `${BASE_URL}/admin-core-service/v1/audience/contact-custom-field-values`;
 export const GET_ASSESSMENT_DETAILS = `${BASE_URL}/assessment-service/assessment/create/v1/status`;
 export const GET_STUDENTS_CSV = `${BASE_URL}/admin-core-service/institute/institute_learner/get/v1/all-csv`;
 
@@ -436,6 +472,7 @@ export const GET_EXPORT_CSV_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-servic
 export const GET_EXPORT_PDF_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/pdf/registered-participants`;
 export const GET_EXPORT_CSV_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/registered-participants`;
 export const GET_QUESTIONS_INSIGHTS_URL = `${BASE_URL}/assessment-service/assessment/admin/get-question-insights`;
+// LOCAL TESTING: submission_status filter only exists on the local build — revert to BASE_URL before merging.
 export const GET_ADMIN_PARTICIPANTS = `${BASE_URL}/assessment-service/assessment/admin-participants/all/registered-participants`;
 export const GET_PARTICIPANT_REGISTRATION_DETAILS = `${BASE_URL}/assessment-service/assessment/admin-participants/registration-details`;
 export const GET_PARTICIPANTS_QUESTION_WISE = `${BASE_URL}/assessment-service/assessment/admin-participants/all/respondent-list`;
@@ -593,6 +630,8 @@ export const GET_LEARNER_PACKAGES_BY_USER_ID = `${BASE_URL}/admin-core-service/l
 
 export const BULK_ASSIGN_LEARNERS = `${BASE_URL}/admin-core-service/v3/learner-management/assign`;
 export const BULK_DEASSIGN_LEARNERS = `${BASE_URL}/admin-core-service/v3/learner-management/deassign`;
+export const PARENT_LINK = `${BASE_URL}/admin-core-service/parent-link/v1/link`;
+export const PARENT_LINK_NEW_GUARDIAN = `${BASE_URL}/admin-core-service/parent-link/v1/link-new-guardian`;
 export const GET_DEFAULT_INVITE = (instituteId: string, packageSessionId: string) =>
     `${BASE_URL}/admin-core-service/v1/enroll-invite/default/${instituteId}/${packageSessionId}`;
 
@@ -618,7 +657,11 @@ export const UPDATE_INVITE_LINK_STATUS = `${BASE_URL}/admin-core-service/learner
 export const UPDATE_INVITATION = `${BASE_URL}/admin-core-service/learner-invitation/update`;
 export const ENROLL_REQUESTS = `${BASE_URL}/admin-core-service/learner-invitation/invitation-responses`;
 
+// LOCAL TESTING: manual-evaluation endpoints pointed at the local assessment
+// service — revert to BASE_URL before merging.
 export const GET_ATTEMPT_DATA = `${BASE_URL}/assessment-service/assessment/manual-evaluation/get/attempt-data`;
+// Batch lookup: attemptId -> submitted answer-sheet fileId for the submissions table badge.
+export const GET_ATTEMPTS_FILE_STATUS = `${BASE_URL}/assessment-service/assessment/manual-evaluation/attempts/file-status`;
 export const UPDATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/manual-evaluation/update/attempt`;
 export const SUBMIT_MARKS = `${BASE_URL}/assessment-service/assessment/manual-evaluation/submit/marks`;
 // Server-side "save draft": pause manual evaluation and resume it later from any device.
@@ -799,6 +842,13 @@ export const RECORDING_LIST_ASSESSMENTS = (scheduleId: string, recordingId: stri
 export const RECORDING_PUBLISH_ASSESSMENT = (recordingId: string, artifactId: string) =>
     `${BASE_URL}/admin-core-service/live-sessions/recording/${recordingId}/assessment/${artifactId}/publish`;
 
+// Track B — Teacher flow: link a recording/upload/YouTube video to one or more
+// course chapters as a slide directly from the session view page.
+export const LIVE_SESSION_CONTENT_LINK = `${BASE_URL}/admin-core-service/live-sessions/content/link`;
+export const LIVE_SESSION_CONTENT_LINKS = `${BASE_URL}/admin-core-service/live-sessions/content/links`;
+export const LIVE_SESSION_CONTENT_UNLINK = (linkId: string) =>
+    `${BASE_URL}/admin-core-service/live-sessions/content/link/${linkId}`;
+
 // export const GET_ALL_FACULTY = `${BASE_URL}/admin-core-service/institute/v1/faculty/faculty/get-all`;
 export const GET_FACULTY_BY_INSTITUTE_CREATORS_ONLY = `${BASE_URL}/admin-core-service/open/institute/v1/faculty/by-institute/only-creator`;
 
@@ -806,6 +856,7 @@ export const LOGIN_URL_GOOGLE_GITHUB = `${BASE_URL}/auth-service/v1/oauth`;
 
 export const ADD_DOUBT = `${BASE_URL}/admin-core-service/institute/v1/doubts/create`;
 export const GET_DOUBTS = `${BASE_URL}/admin-core-service/institute/v1/doubts/get-all`;
+export const GET_DOUBT_BY_ID = `${BASE_URL}/admin-core-service/institute/v1/doubts`;
 export const GET_USER_BASIC_DETAILS = `${BASE_URL}/auth-service/v1/user-details/get-basic-details`;
 
 // Engage Session URLs (Presentation specific)
@@ -885,6 +936,20 @@ export const REFERRAL_DELETE = `${BASE_URL}/admin-core-service/v1/referral-optio
 export const GET_INSITITUTE_SETTINGS = `${BASE_URL}/admin-core-service/institute/setting/v1/get`;
 export const SAVE_INSTITUTE_SETTING = `${BASE_URL}/admin-core-service/institute/setting/v1/save-setting`;
 export const GET_INSTITUTE_SETTING_DATA = `${BASE_URL}/admin-core-service/institute/setting/v1/data`;
+
+// Onboarding Flows — ordered checklists (FORM steps built from institute custom
+// fields) that a lead/student goes through between "agreed to join" and "fully
+// enrolled". Gated behind institute setting ONBOARDING_SETTING (see
+// useOnboardingSettings / OnboardingSettings.tsx).
+export const ONBOARDING_FLOWS_BASE = `${BASE_URL}/admin-core-service/onboarding/flows`;
+export const ONBOARDING_INSTANCES_BASE = `${BASE_URL}/admin-core-service/onboarding/instances`;
+// NOTE: OnboardingInstanceController mounts /side-view UNDER /instances
+// (class-level @RequestMapping("/onboarding/instances") + method
+// @GetMapping("/side-view")) — actual path is .../instances/side-view, not a
+// sibling of /instances as an earlier draft of this spec assumed.
+export const ONBOARDING_SIDE_VIEW = `${ONBOARDING_INSTANCES_BASE}/side-view`;
+export const ONBOARDING_STEP_INSTANCES_BASE = `${BASE_URL}/admin-core-service/onboarding/step-instances`;
+export const ONBOARDING_STEP_FEATURE_FIELDS = `${BASE_URL}/admin-core-service/common/custom-fields/feature-fields`;
 export const UPDATE_CUSTOM_FIELD_SETTINGS = `${BASE_URL}/admin-core-service/institute/v1/custom-field/create-or-update`;
 export const GET_CUSTOM_FIELD_LIST_WITH_USAGE = `${BASE_URL}/admin-core-service/institute/v1/custom-field/list-with-usage`;
 // Message Templates
@@ -977,6 +1042,7 @@ export const SUB_ORG_REGISTRATION_TEMPLATE_DETAIL = (templateId: string) =>
 export const SUB_ORG_REGISTRATION_TEMPLATE_UPDATE = (templateId: string) =>
     `${SUB_ORG_REGISTRATION_BASE}/template/${templateId}`;
 export const SUB_ORG_REGISTRATION_REGISTRATIONS = `${SUB_ORG_REGISTRATION_BASE}/registrations`;
+export const SUB_ORG_REGISTRATION_REGISTRATION_FACETS = `${SUB_ORG_REGISTRATION_BASE}/registrations/facets`;
 // Invoices
 export const GET_INVOICES_BY_USER = (userId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/user/${userId}`;
@@ -990,6 +1056,12 @@ export const POST_ADMIN_CREATE_INVOICE = `${BASE_URL}/admin-core-service/v1/invo
 export const POST_ADMIN_PREVIEW_INVOICE = `${BASE_URL}/admin-core-service/v1/invoices/admin/preview`;
 export const POST_REJECT_INVOICE = (invoiceId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/reject`;
+export const POST_MARK_INVOICE_PAID_MANUAL = (invoiceId: string) =>
+    `${BASE_URL}/admin-core-service/v1/invoices/${invoiceId}/mark-paid-manual`;
+export const GET_USER_ACCOUNT_SUMMARY = (userId: string) =>
+    `${BASE_URL}/admin-core-service/v1/user-account/${userId}/summary`;
+export const GET_USER_ACCOUNT_LEDGER = (userId: string) =>
+    `${BASE_URL}/admin-core-service/v1/user-account/${userId}/ledger`;
 export const GET_INVOICE_SETTINGS_URL = `${BASE_URL}/admin-core-service/v1/settings/institute`;
 
 // Instructor Copilot
@@ -1019,6 +1091,8 @@ export const TRIGGER_EVALUATION_URL = `${BASE_URL}/assessment-service/assessment
 export const STOP_EVALUATION_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/stop`;
 export const GET_EVALUATION_PROGRESS_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/progress`;
 export const GET_COMPLETED_QUESTIONS_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/completed-questions`;
+export const REVIEW_EVALUATION_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/review`;
+export const GET_EVALUATION_PROCESSES_URL = `${BASE_URL}/assessment-service/assessment/evaluation-ai/processes`;
 // Course Catalogue Editor
 export const CATALOGUE_BASE_URL = `${BASE_URL}/admin-core-service/v1/course-catalogue`;
 export const GET_CATALOGUE_TAGS = (instituteId: string) =>
@@ -1029,6 +1103,30 @@ export const UPDATE_CATALOGUE = (catalogueId: string) =>
     `${CATALOGUE_BASE_URL}/update?catalogueId=${catalogueId}`;
 export const GET_CATALOGUE_BY_TAG = (instituteId: string, tagName: string) =>
     `${CATALOGUE_BASE_URL}/institute/get/by-tag?instituteId=${instituteId}&tagName=${encodeURIComponent(tagName)}`;
+// Draft/publish revisions (AI Page Builder Phase A)
+export const CATALOGUE_REVISION_DRAFT = (catalogueId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/draft?catalogueId=${catalogueId}`;
+export const CATALOGUE_REVISION_SAVE_DRAFT = (catalogueId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/save-draft?catalogueId=${catalogueId}`;
+export const CATALOGUE_REVISION_PUBLISH = (catalogueId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/publish?catalogueId=${catalogueId}`;
+export const CATALOGUE_REVISION_DISCARD = (catalogueId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/discard-draft?catalogueId=${catalogueId}`;
+export const CATALOGUE_REVISION_HISTORY = (catalogueId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/history?catalogueId=${catalogueId}`;
+export const CATALOGUE_REVISION_GET = (revisionId: string) =>
+    `${CATALOGUE_BASE_URL}/revision/get?revisionId=${revisionId}`;
+// AI Page Builder (ai_service)
+export const AI_PAGE_BUILDER_GENERATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/generate`;
+// Institute scope comes from the auth token — no params
+export const AI_PAGE_BUILDER_ESTIMATE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/estimate`;
+export const AI_PAGE_BUILDER_EDIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/edit`;
+export const AI_PAGE_BUILDER_BRAND_KIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/brand-kit`;
+export const AI_PAGE_BUILDER_IMAGE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/image`;
+export const AI_PAGE_BUILDER_SITE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site`;
+// Course field AI assist (ai_service) — inline generate on the Add Course form
+export const AI_COURSE_ASSIST_TEXT = () => `${AI_SERVICE_BASE_URL}/course/assist/v1/text`;
+export const AI_COURSE_ASSIST_IMAGE = () => `${AI_SERVICE_BASE_URL}/course/assist/v1/image`;
 
 export const LINK_COUNSELLOR = `${BASE_URL}/admin-core-service/enquiry/link-counselor`;
 export const GET_ENQUIRY_DETAILS = `${BASE_URL}/admin-core-service/enquiry/v1/admin/details`;
@@ -1055,11 +1153,23 @@ export const BOOKING_TYPES_BY_INSTITUTE = `${BOOKING_BASE}/types/by-institute`;
 // Autosuggest Users API
 export const AUTOSUGGEST_USERS = `${BASE_URL}/auth-service/v1/user/autosuggest-users`;
 
+// CRM Meetings (booking pages + host calendars)
+export const MEETINGS_BASE = `${BASE_URL}/admin-core-service/v1/meetings`;
+export const MEETINGS_BOOKING_PAGE_CREATE = `${MEETINGS_BASE}/booking-page`;
+export const MEETINGS_BOOKING_PAGE_BY_ID = (id: string) => `${MEETINGS_BASE}/booking-page/${id}`;
+export const MEETINGS_BOOKING_PAGES_LIST = `${MEETINGS_BASE}/booking-pages`;
+export const MEETINGS_BOOK = `${MEETINGS_BASE}/book`;
+export const MEETINGS_MY_CALENDAR = `${MEETINGS_BASE}/my-calendar`;
+export const MEETINGS_TEAM_CALENDAR = `${MEETINGS_BASE}/team-calendar`;
+export const MEETINGS_SCOPE = `${MEETINGS_BASE}/scope`;
+export const MEETINGS_BY_LEAD = `${MEETINGS_BASE}/by-lead`;
+
 // Manage Custom Teams / Faculty Access v2
 export const GRANT_USER_ACCESS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access`;
 export const GET_ALL_FACULTY_V2 = `${BASE_URL}/admin-core-service/institute/v1/faculty/faculty/get-all`;
 export const CREATE_SUB_ORG = `${BASE_URL}/admin-core-service/institute/v1/sub-org/create`;
 export const GET_SUB_ORGS = `${BASE_URL}/admin-core-service/institute/v1/sub-org/get-all`;
+export const GET_SUB_ORGS_WITH_DETAILS = `${BASE_URL}/admin-core-service/institute/v1/sub-org/get-all-with-details`;
 export const CREATE_SUB_ORG_WITH_SUBSCRIPTION = `${BASE_URL}/admin-core-service/institute/v1/sub-org/create-with-subscription`;
 export const GET_SUB_ORG_SCOPED_INVITES = `${BASE_URL}/admin-core-service/institute/v1/sub-org/scoped-invites`;
 export const GET_SUB_ORG_SEAT_USAGE = `${BASE_URL}/admin-core-service/institute/v1/sub-org/seat-usage`;
@@ -1411,3 +1521,9 @@ export const SALES_DASHBOARD_LEADERBOARD = (
     `${SALES_DASHBOARD_BASE}/counsellor-leaderboard?${buildSdQS(instituteId, { team_id: teamId, limit })}`;
 export const SALES_DASHBOARD_INSIGHTS = (instituteId: string, teamId?: string) =>
     `${SALES_DASHBOARD_BASE}/insights?${buildSdQS(instituteId, { team_id: teamId })}`;
+
+// ---- Engagement Engines (admin-core-service) ----
+export const ENGAGEMENT_ENGINES_BASE = `${BASE_URL}/admin-core-service/v1/engagement/engines`;
+export const ENGAGEMENT_DATA_POINTS = `${ENGAGEMENT_ENGINES_BASE}/data-points`;
+export const ENGAGEMENT_TASKS_BASE = `${BASE_URL}/admin-core-service/v1/engagement/tasks`;
+export const ENGAGEMENT_TEMPLATES_BASE = `${BASE_URL}/admin-core-service/v1/engagement/template-proposals`;

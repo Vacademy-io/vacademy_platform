@@ -322,10 +322,17 @@ function mergeDisplayWithDefaults(
             incoming?.ui?.showSupportButton ?? defaults.ui?.showSupportButton ?? true,
         showSidebar: incoming?.ui?.showSidebar ?? defaults.ui?.showSidebar ?? true,
         showAiCredits: incoming?.ui?.showAiCredits ?? defaults.ui?.showAiCredits ?? true,
-        // Status link + Settings gear default to VISIBLE for every role; admins
-        // opt a role out per-role. Pass-through here or they're dropped on read.
+        // Status link defaults VISIBLE for every role; admins can opt a role
+        // out. Pass-through here or it's dropped on read.
         showStatus: incoming?.ui?.showStatus ?? defaults.ui?.showStatus ?? true,
-        showSettings: incoming?.ui?.showSettings ?? defaults.ui?.showSettings ?? true,
+        // Settings gear defaults ON for admins (who can hide it) and OFF for
+        // teacher/custom roles (opt-in), since surfacing it grants a path into
+        // the full settings page. Same admin-only-by-default shape as
+        // showAssistDock.
+        showSettings:
+            incoming?.ui?.showSettings ??
+            defaults.ui?.showSettings ??
+            role === ADMIN_DISPLAY_SETTINGS_KEY,
         // Admin-only by default; other roles must be opted in explicitly.
         showAssistDock:
             incoming?.ui?.showAssistDock ??

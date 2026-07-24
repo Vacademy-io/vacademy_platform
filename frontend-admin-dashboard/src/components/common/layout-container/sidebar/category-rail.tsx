@@ -78,10 +78,20 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
     // Check if Settings should be shown (it exists in finalSidebarItems only for admins)
     const hasSettings = sidebarItems.some((item) => item.id === 'settings');
 
-    // Per-role Display Settings can hide the pinned Status link + Settings gear.
-    // Both default to VISIBLE — only an explicit `false` hides them.
+    // The pinned Status link defaults visible for every role; an explicit
+    // `false` hides it.
     const showStatusLink = roleDisplay?.ui?.showStatus !== false;
-    const showSettingsButton = hasSettings && roleDisplay?.ui?.showSettings !== false;
+    // Settings gear visibility. `hasSettings` is true only for admins — the
+    // 'settings' item is stripped for every non-admin role by
+    // filterSidebarByRole. So:
+    //   - Admins: shown unless explicitly hidden (showSettings !== false).
+    //   - Non-admin roles (teacher/custom): the gear is NOT available by
+    //     default; it appears only when the role is explicitly opted in
+    //     (showSettings === true). Opting in also gives that role a doorway
+    //     into the full settings page, so it stays deliberate/opt-in.
+    const showSettingsButton = hasSettings
+        ? roleDisplay?.ui?.showSettings !== false
+        : roleDisplay?.ui?.showSettings === true;
 
     // Sort categories by display settings order
     const sortedCategories = [...BASE_CATEGORIES].sort((a, b) => {

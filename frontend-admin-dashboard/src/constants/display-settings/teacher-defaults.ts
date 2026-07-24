@@ -69,6 +69,10 @@ function defaultDashboardWidgetsTeacher(): DashboardWidgetConfig[] {
         'assessmentCenter',
         'myCourses',
         'aiFeaturesCard',
+        // Self-hides unless the viewer is a sub-org admin, so default it ON for
+        // every role — a sub-org admin resolving to teacher/custom settings
+        // should still get it without an admin flipping a hidden default.
+        'subOrgSelfStats',
     ]);
 
     const orderedIds: DashboardWidgetConfig['id'][] = [
@@ -81,6 +85,8 @@ function defaultDashboardWidgetsTeacher(): DashboardWidgetConfig[] {
         // 4. Operational health (finance)
         'financeSummary',
         'recentTransactions',
+        'subOrgOverview',
+        'subOrgSelfStats',
         // 5. Engagement signals
         'unresolvedDoubts',
         'recentNotifications',

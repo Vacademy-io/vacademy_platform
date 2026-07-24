@@ -73,6 +73,8 @@ function defaultDashboardWidgetsAdmin(): DashboardWidgetConfig[] {
         // 4. Operational health (finance)
         'financeSummary',
         'recentTransactions',
+        'subOrgOverview',
+        'subOrgSelfStats',
         // 5. Engagement signals
         'unresolvedDoubts',
         'recentNotifications',

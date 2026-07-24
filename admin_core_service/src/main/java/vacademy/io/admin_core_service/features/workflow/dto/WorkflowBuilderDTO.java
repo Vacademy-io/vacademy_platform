@@ -141,6 +141,16 @@ public class WorkflowBuilderDTO {
         @JsonProperty("event_applied_type")
         private String eventAppliedType;
 
+        /**
+         * Optional idempotency settings for the trigger (shape of IdempotencySettings;
+         * accepted as a JSON object or a pre-serialized JSON string). When null the builder
+         * applies its per-event default (EVENT_BASED for periodic-scan events, else UUID).
+         * Needed so per-entity flows (e.g. an enrollment drip deduped per learner via
+         * CUSTOM_EXPRESSION) can be authored from the builder / AI drafter at all.
+         */
+        @JsonProperty("idempotency_generation_setting")
+        private Object idempotencyGenerationSetting;
+
         /** Returns the effective list: event_ids if present, else singleton of eventId, else empty */
         public List<String> getEffectiveEventIds() {
             if (eventIds != null && !eventIds.isEmpty()) {

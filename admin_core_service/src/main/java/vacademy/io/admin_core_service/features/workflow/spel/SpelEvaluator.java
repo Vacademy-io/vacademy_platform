@@ -1,6 +1,7 @@
 package vacademy.io.admin_core_service.features.workflow.spel;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.expression.MapAccessor;
 import org.springframework.expression.Expression;
 import org.springframework.expression.ExpressionParser;
 import org.springframework.expression.TypeLocator;
@@ -40,6 +41,11 @@ public class SpelEvaluator {
         ExpressionParser parser = new SpelExpressionParser();
         StandardEvaluationContext context = new StandardEvaluationContext(contextVars);
         context.setTypeLocator(new SafeTypeLocator());
+        // Dot access on Map values (e.g. #ctx['user'].fullName). Context objects that start
+        // life as beans (UserDTO) come back as LinkedHashMaps after a persisted-DELAY pause
+        // serializes the context to JSONB — without this accessor every dot-style expression
+        // in a node AFTER a multi-day delay would throw EL1008 and drop/abort the run.
+        context.addPropertyAccessor(new MapAccessor());
         context.setVariable("ctx", contextVars);
 
         try {

@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import vacademy.io.admin_core_service.features.agent.dto.ConversationSession;
@@ -33,9 +34,21 @@ public class LLMService {
     @Value("${openrouter.api.key:#{null}}")
     private String openRouterApiKey;
 
-    private final RestTemplate restTemplate;
+    // Deliberately NOT the shared RestTemplate bean: that bean has no connect/read timeouts,
+    // so one stalled OpenRouter response would pin a Tomcat worker thread forever (and each
+    // admin retry would pin another). Other clients of the shared bean are untouched.
+    private final RestTemplate restTemplate = buildLlmRestTemplate();
     private final ObjectMapper objectMapper;
     private final AiTokenUsageService aiTokenUsageService;
+
+    private static RestTemplate buildLlmRestTemplate() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5_000);
+        // Large drafts (16k completion tokens) legitimately stream for minutes; the frontend
+        // aborts at 150s, so cap the server-side wait just above that.
+        factory.setReadTimeout(160_000);
+        return new RestTemplate(factory);
+    }
 
     /**
      * Generate a chat completion with tool calling support
@@ -123,7 +136,7 @@ public class LLMService {
 
         request.put("model", session.getModel());
         request.put("temperature", 0.7);
-        request.put("max_tokens", 4096);
+        request.put("max_tokens", session.getMaxTokens() != null ? session.getMaxTokens() : 4096);
 
         // Build messages array
         ArrayNode messages = objectMapper.createArrayNode();

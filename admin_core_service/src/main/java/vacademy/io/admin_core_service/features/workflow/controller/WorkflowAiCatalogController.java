@@ -34,7 +34,7 @@ public class WorkflowAiCatalogController {
     @GetMapping
     public ResponseEntity<Map<String, Object>> getAiCatalog() {
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("version", "2026-07-07");
+        out.put("version", "2026-07-23");
         out.put("workflowJsonShape", workflowJsonShape());
         out.put("generationRules", generationRules());
         out.put("nodeTypes", nodeTypes());
@@ -67,7 +67,8 @@ public class WorkflowAiCatalogController {
         shape.put("trigger", m(
                 "trigger_event_name", "e.g. AUDIENCE_LEAD_SUBMISSION (EVENT_DRIVEN only)",
                 "event_applied_type", "e.g. AUDIENCE (metadata only — does NOT scope matching)",
-                "event_id", "specific entity id, or null for 'all'"));
+                "event_id", "specific entity id, or null for 'all'",
+                "idempotency_generation_setting", "optional JSON object controlling execution dedup — see the idempotency generation rule"));
         shape.put("schedule", m(
                 "schedule_type", "CRON (SCHEDULED only)",
                 "cron_expression", "Quartz 6-field, e.g. 0 0 9 * * ? = 9AM daily",
@@ -94,10 +95,11 @@ public class WorkflowAiCatalogController {
             "SEND_EMAIL / SEND_WHATSAPP 'on' must resolve to a List. Wrap a single object as a SpEL list literal: \"{#ctx['user']}\".",
             "Recipient and templateVars field names must exist in the source query's output item fields. Casing differs per query (snake_case vs camelCase) — copy from readQueries[].itemFields.",
             "Trigger scoping is by event_id only; event_applied_type is metadata and does NOT scope. Set event_id to a real institute-owned entity, or null for 'all'.",
-            "For at-least-once event emitters, set idempotency strategy EVENT_BASED (default UUID = no dedup, double-fires).",
+            "Idempotency: set trigger.idempotency_generation_setting. Per-person flows (enrollment/lead drips) need CUSTOM_EXPRESSION including the person, e.g. {\"strategy\":\"CUSTOM_EXPRESSION\",\"customExpression\":\"'wf_' + #ctx['triggerId'] + '_' + #ctx['eventId'] + '_' + #ctx['user']['id']\"}. EVENT_BASED is ONLY for periodic-scan emitters (LIVE_SESSION_START/END, MEMBERSHIP_EXPIRY) — its key has no person in it, so on an enrollment event it would let only the first learner ever enter. Omitted = UUID = no dedup (event retries double-fire).",
             "Never emit a mutating prebuiltKey in a workflow the admin will Test Run — QueryNodeHandler has no dryRun gate. See mutatingQueryKeys.",
             "Never use ROUTER (no handler) or SEND_PUSH_NOTIFICATION (stub). See avoidNodeTypes.",
-            "DELAY config is nested: config.delay.{value,unit}. Never flat delayValue/delayUnit (executes as 0-delay).",
+            "DELAY config is nested: config.delay.{value,unit} or config.delay.{until:NEXT_DAY_OF_WEEK,dayOfWeek,time,timezone}. Never flat delayValue/delayUnit (executes as 0-delay).",
+            "A multi-day drip/nurture sequence is ONE event-driven workflow: TRIGGER -> [DELAY until weekday, if it must start on a fixed day] -> SEND -> DELAY {value,unit} -> SEND -> ... -> end. Never one workflow per message, never a LOOP node for the days.",
             "Every node must be reachable from the start node; every path must reach a routing {type:end}; every routing targetNodeId must reference a real node id.",
             "templateName must reference an ACTIVE institute template of the right channel (EMAIL/WHATSAPP). If none exists, ask the admin to create it rather than inventing one.",
             "All entity ids (event_id, batchId, audienceId, ...) must belong to the requesting institute — never cross-tenant.",
@@ -122,8 +124,12 @@ public class WorkflowAiCatalogController {
                 "{\"resultKey\":\"httpResult\",\"config\":{\"requestType\":\"EXTERNAL\",\"method\":\"POST\",\"url\":\"...\",\"body\":{}},\"routing\":[{\"type\":\"end\"}]}",
                 "Response at #ctx['<resultKey>']['body']. Optional SpEL 'condition' to skip."));
         nodes.add(node("DELAY", "Pauses; >60s persists and resumes via Quartz (survives restart).", true, false,
-                "{\"delay\":{\"value\":3,\"unit\":\"DAYS\"},\"routing\":[{\"type\":\"goto\",\"targetNodeId\":\"...\"}]}",
-                "Nested delay.{value,unit}. Units SECONDS/MINUTES/HOURS/DAYS."));
+                "{\"delay\":{\"value\":3,\"unit\":\"DAYS\"},\"routing\":[{\"type\":\"goto\",\"targetNodeId\":\"...\"}]} OR "
+                        + "{\"delay\":{\"until\":\"NEXT_DAY_OF_WEEK\",\"dayOfWeek\":\"MONDAY\",\"time\":\"09:00\",\"timezone\":\"Asia/Kolkata\"},\"routing\":[{\"type\":\"goto\",\"targetNodeId\":\"...\"}]}",
+                "Nested delay.{value,unit} (units SECONDS/MINUTES/HOURS/DAYS) for fixed waits. "
+                        + "delay.until=NEXT_DAY_OF_WEEK waits until the STRICTLY NEXT occurrence of dayOfWeek at time in timezone "
+                        + "(an event on that same weekday waits a full week; set includeSameDay=true to fire the same day when the time is still ahead). "
+                        + "Use it to align event-driven sequences to a fixed weekday, e.g. 'trial drip starts next Monday'."));
         nodes.add(node("CONDITION", "Boolean SpEL branch.", true, false,
                 "{\"condition\":\"#ctx['enrolled'] == false\",\"routing\":[{\"type\":\"conditional\",\"condition\":\"#ctx['enrolled'] == false\",\"label\":\"true\",\"trueNodeId\":\"<node>\",\"falseNodeId\":\"<node>\"}]}",
                 "The SpEL 'condition' MUST also be inside the routing entry (that is what the engine evaluates); routes to trueNodeId when true, falseNodeId when false. Both branch targets must be real node ids."));

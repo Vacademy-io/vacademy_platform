@@ -938,6 +938,7 @@ function WorkflowBuilderCanvas({ triggerEventsCatalog, instituteId }: {
                 // Send event_ids array for multi-select, event_id for backward compat
                 event_ids: triggerConfig.eventIds?.length ? triggerConfig.eventIds : undefined,
                 event_id: !triggerConfig.eventIds?.length ? triggerConfig.eventId : undefined,
+                idempotency_generation_setting: triggerConfig.idempotencyGenerationSetting ?? undefined,
             },
         }),
     });

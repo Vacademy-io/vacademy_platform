@@ -370,6 +370,27 @@ public class DynamicNotificationService {
         }
     }
 
+    /**
+     * Normalised learner-portal base URL for login links (the Parent Portal is
+     * served under it). Prod values are inconsistent — bare host vs http(s)://
+     * prefix vs trailing slash — so coerce to a clean {@code https://host}
+     * form, mirroring StudentReportNotificationService. Returns null if the
+     * institute has no learner portal configured.
+     */
+    private String resolveLearnerPortalUrl(Institute institute) {
+        if (institute == null || !org.springframework.util.StringUtils.hasText(institute.getLearnerPortalBaseUrl())) {
+            return null;
+        }
+        String base = institute.getLearnerPortalBaseUrl().trim();
+        if (!base.startsWith("http://") && !base.startsWith("https://")) {
+            base = "https://" + base;
+        }
+        if (base.endsWith("/")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        return base;
+    }
+
     private String getThemeColorFromInstitute(Institute institute) {
         if (institute == null || institute.getInstituteThemeCode() == null ||
                 institute.getInstituteThemeCode().trim().isEmpty()) {
@@ -785,7 +806,10 @@ public class DynamicNotificationService {
                     .userEmail(recipientEmail)
                     .userFullName(recipientName)
                     .userPassword(guardianPassword)
-                    .portalUrl(institute != null ? institute.getAdminPortalBaseUrl() : null)
+                    // Guardians onboard to the Parent Portal, which is served under the
+                    // LEARNER portal base URL (a PARENT-only login auto-routes to
+                    // /parent/child) — NOT the admin portal.
+                    .portalUrl(resolveLearnerPortalUrl(institute))
                     .instituteName(institute != null ? institute.getInstituteName() : null)
                     .instituteId(instituteId)
                     .themeColor(getThemeColorFromInstitute(institute))

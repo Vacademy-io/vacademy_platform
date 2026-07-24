@@ -52,6 +52,9 @@ public interface WorkflowExecutionStateRepository extends JpaRepository<Workflow
 
     List<WorkflowExecutionState> findByExecutionId(String executionId);
 
+    /** Used by the stuck-execution sweeper: a WAITING row means the run is parked, not stuck. */
+    boolean existsByExecutionIdAndStatus(String executionId, String status);
+
     /**
      * Cancel a lead's paused <b>AI-call retry</b> states (the CALL_AI pause/resume
      * loop) when its outcome is terminal. Deliberately scoped to the AI-call

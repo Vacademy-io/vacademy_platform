@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Sparkle, CircleNotch, Warning, ArrowRight } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -7,6 +7,61 @@ import { cn } from '@/lib/utils';
 import { draftWorkflowWithAi } from '@/services/workflow-service';
 import type { AiDraftResponse, WorkflowBuilderDTO } from '@/types/workflow/workflow-types';
 import { useWorkflowBuilderStore } from '../-stores/workflow-builder-store';
+import { EventEntityPicker } from './event-entity-picker';
+
+/** Clarifying-question entityType → EventEntityPicker applied-type (real dropdowns, not raw UUIDs). */
+const ENTITY_PICKER_TYPE: Record<string, string> = {
+    AUDIENCE: 'AUDIENCE',
+    BATCH: 'PACKAGE_SESSION',
+    PACKAGE_SESSION: 'PACKAGE_SESSION',
+    LIVE_SESSION: 'LIVE_SESSION',
+    ENROLL_INVITE: 'ENROLL_INVITE',
+    INVITE: 'ENROLL_INVITE',
+};
+
+/**
+ * Layered fallback layout for drafts that ship without node positions — depth from the start
+ * node sets the row, siblings at the same depth spread into columns. Without this a ~15-node
+ * drip draft renders as one overlapping vertical stack.
+ */
+const layoutDraft = (wf: WorkflowBuilderDTO): Map<string, { x: number; y: number }> => {
+    const nodes = wf.nodes ?? [];
+    const edges = wf.edges ?? [];
+    const childrenBySource = new Map<string, string[]>();
+    edges.forEach((e) => {
+        const list = childrenBySource.get(e.source_node_id) ?? [];
+        list.push(e.target_node_id);
+        childrenBySource.set(e.source_node_id, list);
+    });
+    const startId = nodes.find((n) => n.is_start_node)?.id ?? nodes[0]?.id;
+    const depthById = new Map<string, number>();
+    if (startId) {
+        const queue: Array<{ id: string; depth: number }> = [{ id: startId, depth: 0 }];
+        while (queue.length) {
+            const item = queue.shift();
+            if (!item || item.depth > nodes.length) continue; // cycle guard
+            const prev = depthById.get(item.id);
+            if (prev !== undefined && prev >= item.depth) continue;
+            depthById.set(item.id, item.depth);
+            (childrenBySource.get(item.id) ?? []).forEach((child) =>
+                queue.push({ id: child, depth: item.depth + 1 })
+            );
+        }
+    }
+    let extraDepth = depthById.size ? Math.max(...depthById.values()) : 0;
+    const colByDepth = new Map<number, number>();
+    const posById = new Map<string, { x: number; y: number }>();
+    nodes.forEach((n) => {
+        let depth = depthById.get(n.id);
+        if (depth === undefined) {
+            depth = ++extraDepth; // unreachable nodes go below the graph
+        }
+        const col = colByDepth.get(depth) ?? 0;
+        colByDepth.set(depth, col + 1);
+        posById.set(n.id, { x: 250 + col * 320, y: 80 + depth * 140 });
+    });
+    return posById;
+};
 
 /**
  * "Describe your automation" — AI-assisted drafting entry (see WORKFLOW_AI_ASSIST_DESIGN.md).
@@ -36,41 +91,64 @@ export function AiDraftPanel({
         setScheduleConfig,
     } = useWorkflowBuilderStore();
 
+    const abortRef = useRef<AbortController | null>(null);
+
     const runDraft = async (extraAnswers?: Record<string, string>) => {
         if (!goal.trim()) return;
         setLoading(true);
         setResult(null);
+        const controller = new AbortController();
+        abortRef.current = controller;
         try {
             const answersList = extraAnswers
                 ? Object.entries(extraAnswers)
                       .filter(([, value]) => value.trim().length > 0)
                       .map(([id, value]) => ({ id, value }))
                 : undefined;
-            const res = await draftWorkflowWithAi({
-                goal: goal.trim(),
-                instituteId,
-                answers: answersList,
-            });
+            const res = await draftWorkflowWithAi(
+                {
+                    goal: goal.trim(),
+                    instituteId,
+                    answers: answersList,
+                },
+                controller.signal
+            );
             setResult(res);
+            // Answers just submitted are baked into the request — any NEW questions start fresh.
+            setAnswers({});
             if (res.error) {
                 toast({ title: 'Could not draft', description: res.error, variant: 'destructive' });
+            } else if (!res.workflow && !res.clarifyingQuestions?.length) {
+                // Nothing usable came back — without this the panel would just go quiet.
+                toast({
+                    title: 'No draft produced',
+                    description: 'The AI returned nothing usable. Try rephrasing your goal.',
+                    variant: 'destructive',
+                });
             }
         } catch (e) {
-            toast({
-                title: 'Drafting failed',
-                description: e instanceof Error ? e.message : 'Unknown error',
-                variant: 'destructive',
-            });
+            if (!controller.signal.aborted) {
+                toast({
+                    title: 'Drafting failed',
+                    description: e instanceof Error ? e.message : 'Unknown error',
+                    variant: 'destructive',
+                });
+            }
         } finally {
+            abortRef.current = null;
             setLoading(false);
         }
     };
 
     const loadIntoBuilder = (wf: WorkflowBuilderDTO) => {
-        const rfNodes = (wf.nodes ?? []).map((n, i) => ({
+        const fallbackPos = layoutDraft(wf);
+        const rfNodes = (wf.nodes ?? []).map((n) => ({
             id: n.id,
             type: 'workflowNode' as const,
-            position: { x: n.position_x ?? 250, y: n.position_y ?? 80 + i * 130 },
+            position:
+                n.position_x != null && n.position_y != null
+                    ? { x: n.position_x, y: n.position_y }
+                    : (fallbackPos.get(n.id) ?? { x: 250, y: 80 }),
             data: {
                 name: n.name,
                 nodeType: n.node_type,
@@ -90,15 +168,24 @@ export function AiDraftPanel({
 
         if (wf.name) setWorkflowName(wf.name);
         if (wf.description) setWorkflowDescription(wf.description);
-        if (wf.workflow_type === 'EVENT_DRIVEN' || wf.workflow_type === 'SCHEDULED') {
-            setWorkflowType(wf.workflow_type);
-        }
+        // Infer from the draft's contents when workflow_type is missing/mis-cased — otherwise
+        // the store default (SCHEDULED) silently drops the trigger at publish and substitutes
+        // a default daily cron.
+        const workflowType =
+            wf.workflow_type === 'EVENT_DRIVEN' || wf.workflow_type === 'SCHEDULED'
+                ? wf.workflow_type
+                : wf.trigger
+                  ? 'EVENT_DRIVEN'
+                  : 'SCHEDULED';
+        setWorkflowType(workflowType);
         if (wf.trigger) {
             setTriggerConfig({
                 eventName: wf.trigger.trigger_event_name ?? '',
                 description: wf.trigger.description ?? '',
                 eventAppliedType: wf.trigger.event_applied_type ?? '',
                 eventId: wf.trigger.event_id ?? undefined,
+                eventIds: wf.trigger.event_ids?.length ? wf.trigger.event_ids : undefined,
+                idempotencyGenerationSetting: wf.trigger.idempotency_generation_setting ?? undefined,
             });
         }
         if (wf.schedule) {
@@ -152,7 +239,12 @@ export function AiDraftPanel({
                 disabled={loading}
             />
 
-            <div className="mt-3 flex justify-end">
+            <div className="mt-3 flex justify-end gap-2">
+                {loading && (
+                    <MyButton buttonType="secondary" onClick={() => abortRef.current?.abort()}>
+                        Cancel
+                    </MyButton>
+                )}
                 <MyButton
                     buttonType="primary"
                     onClick={() => runDraft()}
@@ -178,20 +270,43 @@ export function AiDraftPanel({
                         A couple of details so I can finish the draft:
                     </p>
                     <div className="flex flex-col gap-3">
-                        {questions.map((q) => (
-                            <div key={q.id} className="flex flex-col gap-1">
-                                <label className="text-caption text-neutral-600">{q.question}</label>
-                                <input
-                                    type="text"
-                                    value={answers[q.id] ?? ''}
-                                    onChange={(e) =>
-                                        setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))
-                                    }
-                                    placeholder={q.entityType ? `${q.entityType} id` : 'Your answer'}
-                                    className="rounded-md border border-neutral-300 bg-white px-3 py-2 text-body text-neutral-700 focus:border-primary-400 focus:outline-none"
-                                />
-                            </div>
-                        ))}
+                        {questions.map((q) => {
+                            const pickerType = q.entityType
+                                ? ENTITY_PICKER_TYPE[q.entityType.toUpperCase()]
+                                : undefined;
+                            return (
+                                <div key={q.id} className="flex flex-col gap-1">
+                                    <label className="text-caption text-neutral-600">
+                                        {q.question}
+                                    </label>
+                                    {pickerType ? (
+                                        <EventEntityPicker
+                                            eventAppliedType={pickerType}
+                                            value={answers[q.id] || undefined}
+                                            onChange={(id) =>
+                                                setAnswers((prev) => ({ ...prev, [q.id]: id ?? '' }))
+                                            }
+                                            instituteId={instituteId}
+                                        />
+                                    ) : (
+                                        <input
+                                            type="text"
+                                            value={answers[q.id] ?? ''}
+                                            onChange={(e) =>
+                                                setAnswers((prev) => ({
+                                                    ...prev,
+                                                    [q.id]: e.target.value,
+                                                }))
+                                            }
+                                            placeholder={
+                                                q.entityType ? `${q.entityType} id` : 'Your answer'
+                                            }
+                                            className="rounded-md border border-neutral-300 bg-white px-3 py-2 text-body text-neutral-700 focus:border-primary-400 focus:outline-none"
+                                        />
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                     <div className="mt-3 flex justify-end">
                         <MyButton

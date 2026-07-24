@@ -2,9 +2,11 @@ package vacademy.io.admin_core_service.features.call_intelligence.core;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 import vacademy.io.admin_core_service.features.call_intelligence.dto.CallIntelligenceAnalyticsDto;
 import vacademy.io.admin_core_service.features.call_intelligence.dto.CallIntelligenceCoachingDto;
 import vacademy.io.admin_core_service.features.call_intelligence.dto.CallIntelligenceDto;
+import vacademy.io.admin_core_service.features.call_intelligence.dto.CallTranscriptDto;
 import vacademy.io.admin_core_service.features.call_intelligence.persistence.entity.CallIntelligence;
 import vacademy.io.admin_core_service.features.call_intelligence.persistence.repository.CallIntelligenceRepository;
 import vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService;
@@ -38,8 +40,36 @@ public class CallIntelligenceQueryService {
     private final CounsellorScopeService counsellorScopeService;
     private final AuthService authService;
 
+    /** For fetching transcript artifacts from their stored S3 URLs. */
+    private final RestTemplate transcriptFetcher = new RestTemplate();
+
     public Optional<CallIntelligenceDto> getByCallLogId(String callLogId) {
         return repo.findByCallLogId(callLogId).map(CallIntelligenceDto::from);
+    }
+
+    /**
+     * Full transcript for one call, resolved server-side from the S3 text
+     * artifacts the pipeline wrote. Empty Optional when the call was never
+     * analyzed; a DTO with null texts when analysis ran but produced no
+     * transcript (e.g. skipped before transcription).
+     */
+    public Optional<CallTranscriptDto> getTranscript(String callLogId) {
+        return repo.findByCallLogId(callLogId).map(row -> CallTranscriptDto.builder()
+                .callLogId(callLogId)
+                .detectedLanguage(row.getDetectedLanguage())
+                .sourceText(fetchText(row.getSourceTextKey()))
+                .englishText(fetchText(row.getEnglishTextKey()))
+                .build());
+    }
+
+    private String fetchText(String url) {
+        if (url == null || url.isBlank()) return null;
+        try {
+            return transcriptFetcher.getForObject(url, String.class);
+        } catch (Exception e) {
+            // Artifact gone / unreachable — surface as "no transcript" rather than 500.
+            return null;
+        }
     }
 
     public List<CallIntelligenceDto> getByResponseId(String responseId) {

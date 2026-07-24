@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useRef, useCallback, type ChangeEvent, Suspe
 const YooptaEditorWrapper = React.lazy(() =>
     import('./YooptaEditorWrapper').then((module) => ({ default: module.YooptaEditorWrapper }))
 );
+const LexicalDocumentEditor = React.lazy(() => import('./lexical-editor/LexicalDocumentEditor'));
 import '../excalidraw-z-index-fix.css';
 import { MyButton } from '@/components/design-system/button';
 const PDFViewer = React.lazy(() =>
@@ -47,6 +48,7 @@ import { handlePublishSlide } from './slide-operations/handlePublishSlide';
 import { handleUnpublishSlide } from './slide-operations/handleUnpublishSlide';
 import { updateHeading } from './slide-operations/updateSlideHeading';
 import { formatHTMLString, stripAwsQueryParamsFromUrls } from './slide-operations/formatHtmlString';
+import { isLexicalDocSlide, EMPTY_LEXICAL_INNER } from './lexical-editor/lexical-doc-marker';
 import { flattenSemanticWrappers, detectDeserializeLoss } from './slide-operations/doc-slide-integrity/reload';
 import { handleConvertAndUpload } from './slide-operations/handleConvertUpload';
 const SlideEditor = React.lazy(() =>
@@ -424,6 +426,13 @@ export const SlideMaterial = ({
         lossy: false,
         lost: [],
     });
+    // ---- Lexical editor delegation (marker-routed DOC slides) ----
+    // True while the active DOC slide is a Lexical one (data-editor="lexical"
+    // marker in its stored HTML). getCurrentEditorHTMLContent delegates to the
+    // registered getter instead of Yoopta's html.serialize; everything
+    // downstream (SaveDraft, publish, 409 retry, stash) is shared unchanged.
+    const activeDocIsLexicalRef = useRef(false);
+    const lexicalGetHtmlRef = useRef<(() => string) | null>(null);
     // Dedup guard to prevent double-save on add + switch happening together
     const lastHandledPrevSlideIdRef = useRef<string | null>(null);
     // activeItem.id from the previous loadContent() run. Lets the DOC branch tell
@@ -1322,6 +1331,38 @@ export const SlideMaterial = ({
     };
 
     const getCurrentEditorHTMLContent: () => string = () => {
+        // Lexical-routed DOC slide: delegate to the mounted Lexical editor's
+        // getter (registered on mount). Everything downstream — SaveDraft,
+        // publish, 409 retry, PDF export, switch-time stash — consumes the
+        // returned HTML exactly as it does Yoopta's.
+        if (activeDocIsLexicalRef.current) {
+            lastSerializeDegradedRef.current = false;
+            if (lexicalGetHtmlRef.current) {
+                const htmlOut = lexicalGetHtmlRef.current();
+                if (htmlOut && !checkIsHtmlEmpty(htmlOut)) {
+                    currentDocHtmlRef.current = {
+                        slideId: prevDocSlideRef.current?.id ?? activeItem?.id ?? null,
+                        html: htmlOut,
+                    };
+                }
+                return htmlOut;
+            }
+            // Mount window: the Lexical editor hasn't registered its getter yet.
+            // Return the last-known HTML for this slide, else the stored data —
+            // never fall through to Yoopta's serializer (wrong editor).
+            if (
+                currentDocHtmlRef.current.html &&
+                currentDocHtmlRef.current.slideId ===
+                    (prevDocSlideRef.current?.id ?? activeItem?.id)
+            ) {
+                return currentDocHtmlRef.current.html;
+            }
+            return (
+                activeItem?.document_slide?.data ||
+                activeItem?.document_slide?.published_data ||
+                ''
+            );
+        }
         const data = editor.getEditorValue();
         // Fresh serialize — assume healthy until a fallback path proves otherwise.
         lastSerializeDegradedRef.current = false;
@@ -2409,7 +2450,7 @@ export const SlideMaterial = ({
                 // bold/colour edits — re-deserializing would revert them. Keep
                 // the editor as-is and just advance the unsaved-changes baseline
                 // to the latest (now-saved) HTML so a later slide switch doesn't
-                // auto-save identical content again.
+                // auto-save identical content again. (Shared by both editors.)
                 if (isSameSlideRerun) {
                     if (
                         currentDocHtmlRef.current.html &&
@@ -2422,6 +2463,107 @@ export const SlideMaterial = ({
                     }
                     return;
                 }
+
+                // Marker-based editor routing: docs whose stored HTML carries
+                // data-editor="lexical" open in the Lexical editor; everything
+                // else stays on the (deprecated, frozen) Yoopta path. Detection
+                // checks ALL content sources — a new Lexical doc's marker-only
+                // `data` reads as "empty" to checkIsHtmlEmpty, so precedence-
+                // based detection would misroute it into Yoopta and the first
+                // Yoopta save would erase the marker permanently.
+                const restorableDraft = getRestorableLocalDraftHtml(activeItem);
+                if (isLexicalDocSlide(activeItem, restorableDraft)) {
+                    activeDocIsLexicalRef.current = true;
+                    // New editor instance incoming — drop the previous one's getter
+                    // so the mount-window fallback (stored data) is used instead of
+                    // another slide's editor state.
+                    lexicalGetHtmlRef.current = null;
+                    const slideForThisLoad = activeItem;
+                    // Same content-source precedence as applyDocContentToEditor:
+                    // restorable local draft → published (when PUBLISHED) → non-empty
+                    // draft data → published fallback; final fallback = blank Lexical doc.
+                    const draftData = slideForThisLoad.document_slide?.data;
+                    const docData =
+                        restorableDraft ??
+                        ((slideForThisLoad.status === 'PUBLISHED'
+                            ? slideForThisLoad.document_slide?.published_data
+                            : (draftData && !checkIsHtmlEmpty(draftData) ? draftData : null) ||
+                              slideForThisLoad.document_slide?.published_data) ||
+                            null);
+                    const initialHtml =
+                        docData ||
+                        draftData ||
+                        slideForThisLoad.document_slide?.published_data ||
+                        formatHTMLString(EMPTY_LEXICAL_INNER);
+                    setContent(
+                        <Suspense
+                            fallback={
+                                <div className="flex items-center justify-center p-8">
+                                    <Loader2 className="size-8 animate-spin text-primary-500" />
+                                </div>
+                            }
+                        >
+                            <LexicalDocumentEditor
+                                key={slideForThisLoad.id}
+                                slideId={slideForThisLoad.id}
+                                initialHtml={initialHtml}
+                                readOnly={isLearnerView}
+                                registerHtmlGetter={(fn) => {
+                                    lexicalGetHtmlRef.current = fn;
+                                }}
+                                onReady={(roundTrippedHtml, lostTypes) => {
+                                    // Mirror of captureInitialDocSnapshot: the post-import
+                                    // round-trip is the only stable unsaved-changes baseline.
+                                    prevDocSlideRef.current = slideForThisLoad;
+                                    initialDocHtmlRef.current = {
+                                        slideId: slideForThisLoad.id,
+                                        html: roundTrippedHtml,
+                                    };
+                                    currentDocHtmlRef.current = {
+                                        slideId: slideForThisLoad.id,
+                                        html: roundTrippedHtml,
+                                    };
+                                    // Feed the existing Layer-2 publish/save guard.
+                                    docLoadIntegrityRef.current = {
+                                        slideId: slideForThisLoad.id,
+                                        lossy: lostTypes.length > 0,
+                                        lost: lostTypes,
+                                    };
+                                }}
+                                onDebouncedHtml={(serializedHtml) => {
+                                    currentDocHtmlRef.current = {
+                                        slideId: slideForThisLoad.id,
+                                        html: serializedHtml,
+                                    };
+                                    // Only stash a REAL edit (vs the load baseline), same as
+                                    // the Yoopta onChange — otherwise merely opening a slide
+                                    // would mark it dirty.
+                                    const initialForThisSlide =
+                                        initialDocHtmlRef.current.slideId === slideForThisLoad.id
+                                            ? initialDocHtmlRef.current.html
+                                            : null;
+                                    const isRealEdit =
+                                        initialForThisSlide !== null &&
+                                        serializedHtml !== initialForThisSlide;
+                                    if (
+                                        serializedHtml &&
+                                        !checkIsHtmlEmpty(serializedHtml) &&
+                                        isRealEdit
+                                    ) {
+                                        stashDocDraftLocally(
+                                            slideForThisLoad.id,
+                                            serializedHtml,
+                                            false
+                                        );
+                                    }
+                                }}
+                            />
+                        </Suspense>
+                    );
+                    return;
+                }
+                activeDocIsLexicalRef.current = false;
+
                 try {
                     // Single call — the focus() inside is already deferred via setTimeout
                     setEditorContent();

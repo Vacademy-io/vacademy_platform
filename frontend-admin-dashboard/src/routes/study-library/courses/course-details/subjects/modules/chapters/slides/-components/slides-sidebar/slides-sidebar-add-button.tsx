@@ -1,7 +1,5 @@
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
-import { getInstituteId } from '@/constants/helper';
-import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
-'use client';
+('use client');
 
 import { MyButton } from '@/components/design-system/button';
 import { Lightning } from '@phosphor-icons/react';
@@ -39,6 +37,7 @@ import { useContentStore } from '@/routes/study-library/courses/course-details/s
 import { useDialogStore } from '@/routes/study-library/courses/-stores/slide-add-dialogs-store';
 import { File, GameController, ClipboardText } from '@phosphor-icons/react';
 import { formatHTMLString } from '../slide-operations/formatHtmlString';
+import { EMPTY_LEXICAL_INNER } from '../lexical-editor/lexical-doc-marker';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import {
     buildAppendReorderPayload,
@@ -54,14 +53,8 @@ import { createPresentationSlidePayload } from '../create-presentation-slide';
 import AddQuestionDialog from './add-question-dialog';
 import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
 import { useEffect, useMemo, useState } from 'react';
-import {
-    ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
-    type DisplaySettingsData,
-} from '@/types/display-settings';
+import { type DisplaySettingsData } from '@/types/display-settings';
 import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
-import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
-import { TokenKey } from '@/constants/auth/tokens';
 
 // Simple utility function for setting first slide as active (used as fallback)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -75,11 +68,7 @@ export const ChapterSidebarAddButton = () => {
     // Load role display settings to enforce slide-type availability
     const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
     useEffect(() => {
-        const accessToken = getTokenFromCookie(TokenKey.accessToken);
-        const roles = getUserRoles(accessToken);
-        const isAdmin = roles.includes('ADMIN');
-        const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
-    const roleKey = getActiveRoleDisplaySettingsKey();
+        const roleKey = getActiveRoleDisplaySettingsKey();
         const cached = getDisplaySettingsFromCache(roleKey);
         if (cached) {
             setRoleDisplay(cached);
@@ -200,8 +189,13 @@ export const ChapterSidebarAddButton = () => {
                     },
                     {
                         label: 'Create new document',
-                        value: 'create-doc',
+                        value: 'create-doc-lexical',
                         description: 'Start with blank document',
+                    },
+                    {
+                        label: 'Create document (Legacy editor)',
+                        value: 'create-doc',
+                        description: 'Deprecated — old document editor',
                     },
                 ],
             },
@@ -317,6 +311,7 @@ export const ChapterSidebarAddButton = () => {
                 case 'doc':
                 case 'upload-doc':
                 case 'create-doc':
+                case 'create-doc-lexical':
                     return ct.document !== false;
                 case 'video':
                 case 'upload-video':
@@ -397,6 +392,47 @@ export const ChapterSidebarAddButton = () => {
             case 'upload-doc':
                 openDocUploadDialog();
                 break;
+            // New documents open in the Lexical editor; the data-editor="lexical"
+            // marker inside the stored HTML is what routes the slide to it
+            // (document_slide.type stays 'DOC' — see lexical-doc-marker.ts).
+            case 'create-doc-lexical': {
+                try {
+                    const documentData = formatHTMLString(EMPTY_LEXICAL_INNER);
+                    const slideId = crypto.randomUUID();
+                    const uniqueTitle = generateUniqueDocumentSlideTitle(items || [], 'DOC');
+                    const slideStatus = getSlideStatusForUser();
+                    const response = await addUpdateDocumentSlide({
+                        id: slideId,
+                        title: uniqueTitle,
+                        image_file_id: '',
+                        description: '',
+                        slide_order: getNextSlideOrder(items || []),
+                        document_slide: {
+                            id: crypto.randomUUID(),
+                            type: 'DOC',
+                            data: documentData,
+                            title: uniqueTitle,
+                            cover_file_id: '',
+                            total_pages: 1,
+                            // Auto-published roles need the marker in published_data
+                            // too — editor routing checks every content source.
+                            published_data: slideStatus === 'PUBLISHED' ? documentData : null,
+                            published_document_total_pages: 1,
+                        },
+                        status: slideStatus,
+                        new_slide: true,
+                        notify: false,
+                    });
+
+                    if (response) {
+                        await reorderSlidesAfterNewSlide(slideId);
+                    }
+                } catch (err) {
+                    console.error('Error creating new doc:', err);
+                    toast.error('Failed to create new document');
+                }
+                break;
+            }
             case 'create-doc': {
                 try {
                     const documentData = formatHTMLString('');
@@ -468,7 +504,6 @@ export const ChapterSidebarAddButton = () => {
             }
 
             case 'presentation': {
-
                 try {
                     // Create a new presentation slide payload
                     const slideTypeObj = {
@@ -732,13 +767,13 @@ export const ChapterSidebarAddButton = () => {
                             scale="medium"
                             className={`
                                 group relative h-9 w-full min-w-0
-                                overflow-hidden border-0 bg-gradient-to-r sm:min-w-0
-                                from-primary-400 to-primary-400
-                                shadow-md shadow-primary-500/20
-                                transition-all duration-300 ease-in-out
-                                hover:scale-[1.01] hover:from-primary-400
-                                hover:to-primary-400 hover:shadow-lg
-                                hover:shadow-primary-500/25 active:scale-[0.99]
+                                overflow-hidden border-0 bg-gradient-to-r from-primary-400
+                                to-primary-400 shadow-md
+                                shadow-primary-500/20 transition-all
+                                duration-300 ease-in-out hover:scale-[1.01]
+                                hover:from-primary-400 hover:to-primary-400
+                                hover:shadow-lg hover:shadow-primary-500/25
+                                active:scale-[0.99] sm:min-w-0
                                 ${open ? 'px-3' : 'px-2.5'}
                             `}
                             id="add-slides"

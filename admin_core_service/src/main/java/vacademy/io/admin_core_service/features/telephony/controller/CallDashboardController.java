@@ -8,6 +8,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.telephony.core.CallDispositionService;
 import vacademy.io.admin_core_service.features.telephony.core.CallDispositionService.AppliedDisposition;
+import vacademy.io.admin_core_service.features.telephony.core.CallExportAiEnricher;
 import vacademy.io.admin_core_service.features.telephony.core.CallExportService;
 import vacademy.io.admin_core_service.features.telephony.core.CallSearchService;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallDispositionCatalogDTO;
@@ -50,6 +51,7 @@ public class CallDashboardController {
     private final CallSearchService callSearchService;
     private final CallDispositionService callDispositionService;
     private final CallExportService callExportService;
+    private final CallExportAiEnricher callExportAiEnricher;
     private final InstituteAccessValidator instituteAccessValidator;
 
     @PostMapping("/search")
@@ -134,17 +136,19 @@ public class CallDashboardController {
         instituteAccessValidator.validateUserAccess(user, filter.getInstituteId());
         boolean unmask = hasAuthority(user, VIEW_CALL_NUMBERS);
         List<CallRowDTO> rows = callSearchService.exportRows(filter, user.getUserId(), unmask, EXPORT_CAP);
+        Map<String, CallExportAiEnricher.AiRow> ai =
+                callExportAiEnricher.forCalls(rows.stream().map(CallRowDTO::getId).toList());
         boolean xlsx = "xlsx".equalsIgnoreCase(format) || "excel".equalsIgnoreCase(format);
         try {
             if (xlsx) {
                 response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
                 response.setHeader("Content-Disposition", "attachment; filename=\"calls.xlsx\"");
-                callExportService.writeXlsx(rows, response.getOutputStream());
+                callExportService.writeXlsx(rows, ai, response.getOutputStream());
             } else {
                 response.setContentType("text/csv; charset=UTF-8");
                 response.setHeader("Content-Disposition", "attachment; filename=\"calls.csv\"");
                 OutputStreamWriter writer = new OutputStreamWriter(response.getOutputStream(), StandardCharsets.UTF_8);
-                callExportService.writeCsv(rows, writer);
+                callExportService.writeCsv(rows, ai, writer);
             }
         } catch (java.io.IOException e) {
             throw new UncheckedIOException("Failed to write call export", e);

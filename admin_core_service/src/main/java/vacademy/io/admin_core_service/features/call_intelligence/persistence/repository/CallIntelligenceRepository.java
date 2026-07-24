@@ -18,6 +18,9 @@ public interface CallIntelligenceRepository extends JpaRepository<CallIntelligen
 
     boolean existsByCallLogId(String callLogId);
 
+    /** Bulk 1:1 lookup for export enrichment. Callers chunk large id sets. */
+    List<CallIntelligence> findByCallLogIdIn(java.util.Collection<String> callLogIds);
+
     List<CallIntelligence> findByResponseIdOrderByCallStartedAtDesc(String responseId);
 
     /**

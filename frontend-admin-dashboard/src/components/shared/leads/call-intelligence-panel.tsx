@@ -12,8 +12,10 @@ import {
 } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     fetchCallIntelligence,
+    fetchCallTranscript,
     triggerCallIntelligence,
     type CallIntelligenceDto,
 } from './services/call-intelligence';
@@ -247,6 +249,77 @@ function CompletedView({ ci }: { ci: CallIntelligenceDto }) {
     );
 }
 
+/**
+ * Transcript tab body. Mounted only when the tab is active (Radix unmounts
+ * inactive tabs), so the transcript is fetched lazily on first open. Offers an
+ * Original / English toggle when both passes exist and differ.
+ */
+function TranscriptView({ callLogId }: { callLogId: string }) {
+    const [lang, setLang] = useState<'source' | 'english'>('source');
+    const query = useQuery({
+        queryKey: ['call-transcript', callLogId],
+        queryFn: () => fetchCallTranscript(callLogId),
+        staleTime: 5 * 60 * 1000,
+    });
+
+    if (query.isLoading) {
+        return <p className="text-body text-neutral-500">Loading transcript…</p>;
+    }
+    if (query.isError) {
+        return <p className="text-body text-danger-600">Couldn’t load the transcript.</p>;
+    }
+
+    const source = query.data?.sourceText?.trim() || null;
+    const english = query.data?.englishText?.trim() || null;
+    if (!source && !english) {
+        return (
+            <p className="text-body text-neutral-500">
+                No transcript is available for this call.
+            </p>
+        );
+    }
+
+    const hasBoth = Boolean(source && english && source !== english);
+    const text = lang === 'english' ? (english ?? source) : (source ?? english);
+
+    return (
+        <div className="space-y-2">
+            {hasBoth && (
+                <div className="flex items-center gap-1">
+                    {(
+                        [
+                            ['source', 'Original'],
+                            ['english', 'English'],
+                        ] as const
+                    ).map(([value, label]) => (
+                        <button
+                            key={value}
+                            type="button"
+                            onClick={() => setLang(value)}
+                            className={cn(
+                                'rounded-full px-2 py-0.5 text-caption',
+                                lang === value
+                                    ? 'bg-primary-100 font-medium text-primary-700'
+                                    : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'
+                            )}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+            )}
+            <div className="max-h-80 overflow-y-auto whitespace-pre-wrap rounded-md border border-neutral-200 bg-white p-3 text-body text-neutral-700">
+                {text}
+            </div>
+            {query.data?.detectedLanguage && (
+                <p className="text-caption text-neutral-400">
+                    Detected language: {query.data.detectedLanguage}
+                </p>
+            )}
+        </div>
+    );
+}
+
 export function CallIntelligencePanel({
     callLogId,
     className,
@@ -345,10 +418,23 @@ export function CallIntelligencePanel({
                     <AnalyzeButton label="Analyze this call" />
                 </>
             ) : ci.status === 'COMPLETED' ? (
-                <>
-                    <CompletedView ci={ci} />
-                    <AnalyzeButton label="Re-analyze" />
-                </>
+                <Tabs defaultValue="analysis">
+                    <TabsList className="h-8 bg-primary-100/60">
+                        <TabsTrigger value="analysis" className="text-caption">
+                            Analysis
+                        </TabsTrigger>
+                        <TabsTrigger value="transcript" className="text-caption">
+                            Transcript
+                        </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="analysis">
+                        <CompletedView ci={ci} />
+                        <AnalyzeButton label="Re-analyze" />
+                    </TabsContent>
+                    <TabsContent value="transcript">
+                        <TranscriptView callLogId={callLogId} />
+                    </TabsContent>
+                </Tabs>
             ) : ci.status === 'SKIPPED' ? (
                 <>
                     <p className="text-body text-neutral-500">

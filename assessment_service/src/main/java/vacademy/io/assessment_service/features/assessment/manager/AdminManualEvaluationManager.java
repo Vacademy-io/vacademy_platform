@@ -365,13 +365,44 @@ public class AdminManualEvaluationManager {
             String updatedAttemptJson = updateJson(attemptOptional.get().getAttemptData(), "fileId", fileId);
 
             attemptOptional.get().setAttemptData(updatedAttemptJson);
-            attemptOptional.get().setEvaluatedFileId(fileId);
+            // Deliberately NOT set evaluated_file_id here: this endpoint uploads the
+            // student's RAW answer sheet, while evaluated_file_id is reserved for the
+            // annotated copy written by submitManualEvaluatedMarks. Writing it here
+            // overwrote real evaluated copies on re-upload and made unevaluated
+            // attempts look like they had one. (updateJson now always persists the
+            // "fileId" key, so the old evaluator-loader fallback is no longer needed.)
             studentAttemptService.updateStudentAttempt(attemptOptional.get());
 
             return ResponseEntity.ok("Done");
         } catch (Exception e) {
             throw new VacademyException("Failed to Update: " + e.getMessage());
         }
+    }
+
+    // Batch answer-sheet lookup for the admin submissions table. Mirrors the
+    // getAttemptData resolution order (attempt_data JSON "fileId" -> evaluated_file_id
+    // fallback) but never mutates result status. Attempts without a file are omitted.
+    public ResponseEntity<Map<String, String>> getAttemptsFileStatus(CustomUserDetails userDetails, List<String> attemptIds) {
+        if (Objects.isNull(attemptIds) || attemptIds.isEmpty()) return ResponseEntity.ok(Map.of());
+
+        Map<String, String> attemptIdToFileId = new HashMap<>();
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        for (StudentAttempt attempt : studentAttemptService.getStudentAttemptsByIds(attemptIds)) {
+            String fileId = null;
+            try {
+                if (!Objects.isNull(attempt.getAttemptData())) {
+                    Map<String, Object> jsonMap = objectMapper.readValue(attempt.getAttemptData(), Map.class);
+                    fileId = (String) jsonMap.get("fileId");
+                }
+            } catch (Exception e) {
+                // Malformed attempt_data on one attempt must not fail the whole batch
+            }
+            if (fileId == null || fileId.isBlank()) fileId = attempt.getEvaluatedFileId();
+            if (fileId != null && !fileId.isBlank()) attemptIdToFileId.put(attempt.getId(), fileId);
+        }
+
+        return ResponseEntity.ok(attemptIdToFileId);
     }
 
     public ResponseEntity<String> getAttemptData(CustomUserDetails userDetails, String attemptId, boolean markEvaluating) {

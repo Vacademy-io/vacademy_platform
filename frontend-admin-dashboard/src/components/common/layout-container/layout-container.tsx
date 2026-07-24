@@ -11,6 +11,7 @@ import { getDisplaySettingsFromCache } from '@/services/display-settings';
 import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/types/display-settings';
 import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
+import { useAssistDockVisible } from '@/components/assist-dock/visibility';
 import { useIsMobile, useIsTablet } from '@/hooks/use-mobile';
 import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
@@ -64,6 +65,11 @@ export const LayoutContainer = ({
     const { instituteDetails } = useInstituteDetailsStore();
     const hasFacultyPermission = hasFacultyAssignedPermission(instituteDetails?.id);
     const showMainSidebar = roleDisplay?.ui?.showSidebar !== false;
+
+    // Whether the Assist Dock rail (right edge, mounted in __root) is visible
+    // for this role — shares AssistDock's own resolution so the reserved right
+    // gutter collapses exactly when the rail is hidden.
+    const showAssistDock = useAssistDockVisible();
 
     // Track previous sidebar config to detect actual changes vs re-renders
     const prevConfigRef = useRef<string | null>(null);
@@ -137,8 +143,14 @@ export const LayoutContainer = ({
                 md:pr-14 reserves the right gutter for the Assist Dock rail (a fixed
                 w-14 column mounted globally in __root) on desktop, so page content/
                 navbar never slide under it. On mobile the dock is hidden, so there's
-                no gutter — content uses the full width. */}
-            <div className="flex w-full min-w-0 flex-1 flex-col text-neutral-600 md:pr-14">
+                no gutter — content uses the full width. When the dock is hidden for
+                this role via Display Settings, the gutter collapses too. */}
+            <div
+                className={cn(
+                    'flex w-full min-w-0 flex-1 flex-col text-neutral-600',
+                    showAssistDock && 'md:pr-14'
+                )}
+            >
                 <Navbar showMobileBackButton={showMobileBackButton} />
                 <StudentSidebarProvider>
                     <div

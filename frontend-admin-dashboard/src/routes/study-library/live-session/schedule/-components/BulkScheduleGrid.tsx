@@ -36,7 +36,13 @@ import { fetchInstituteDefaultFields } from '@/services/custom-field-mappings';
 import { getInstituteId as getInstId } from '@/constants/helper';
 import { WAITING_ROOM_OPTIONS, WAITING_ROOM_TYPE_OPTIONS } from '../-constants/options';
 import { UploadFileInS3 } from '@/services/upload_file';
-import { UploadSimple, X as XIcon, MusicNote, MagnifyingGlass, CircleNotch, DownloadSimple, CheckCircle } from '@phosphor-icons/react';
+import { UploadSimple, X as XIcon, MusicNote, MagnifyingGlass, CircleNotch, DownloadSimple, CheckCircle, VideoCamera } from '@phosphor-icons/react';
+import {
+    SessionContentDestinationPicker,
+    type DestinationBatch,
+    type DestinationPickerSubmitPayload,
+} from '../../-components/content-linking/SessionContentDestinationPicker';
+import type { ContentLinkDestination } from '../../-services/content-link-service';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -333,6 +339,7 @@ export function BulkScheduleGrid() {
                 defaultDescription: '',
             },
             accessType: AccessType.PRIVATE,
+            recordingAutoLink: { enabled: false, destinations: [] },
             notifyBy: {
                 mail: liveSessionSettings.defaultNotifyByEmail ?? false,
                 whatsapp: liveSessionSettings.defaultNotifyByWhatsapp ?? false,
@@ -452,6 +459,73 @@ export function BulkScheduleGrid() {
         [studyLibraryData]
     );
     const accessType = form.watch('accessType');
+
+    // === "Auto-add recordings to course" — ONE shared per-batch map ===
+    // Destinations are configured per BATCH (not per row): every distinct
+    // batch assigned anywhere in the grid gets one subject→module→chapter
+    // row in the dialog. At submit time each session only receives the
+    // destinations matching its own batches; unmatched rows fall back to
+    // the institute default destination. Gated on the institute-level
+    // auto-upload setting and PRIVATE access (public rows have no batches).
+    const autoUploadConfigurable =
+        liveSessionSettings.lmsConnection.autoUploadRecordingsEnabled &&
+        accessType === AccessType.PRIVATE;
+    // Which row's "Recording" cell opened the dialog (null = closed). The
+    // dialog only shows THAT row's batches, but edits write into the shared
+    // per-batch map — so configuring a batch once covers every other row
+    // that uses the same batch.
+    const [recordingDestRowIndex, setRecordingDestRowIndex] = useState<number | null>(null);
+    const resolveRowBatches = useCallback(
+        (
+            selectedLevels: Array<{ courseId: string; sessionId: string; levelId: string }>
+        ): DestinationBatch[] => {
+            if (!instituteDetails) return [];
+            const seen = new Set<string>();
+            const result: DestinationBatch[] = [];
+            for (const level of selectedLevels) {
+                const batch = instituteDetails.batches_for_sessions.find(
+                    (b) =>
+                        b.package_dto.id === level.courseId &&
+                        b.session.id === level.sessionId &&
+                        b.level.id === level.levelId
+                );
+                if (!batch || seen.has(batch.id)) continue;
+                seen.add(batch.id);
+                result.push({
+                    packageSessionId: batch.id,
+                    displayName: [
+                        batch.package_dto.package_name,
+                        batch.level.level_name,
+                        batch.session.session_name,
+                    ]
+                        .filter(Boolean)
+                        .join(' · '),
+                });
+            }
+            return result;
+        },
+        [instituteDetails]
+    );
+    const recordingDestRowBatches = useMemo<DestinationBatch[]>(() => {
+        if (recordingDestRowIndex === null) return [];
+        return resolveRowBatches(
+            form.getValues(`rows.${recordingDestRowIndex}.selectedLevels` as const) ?? []
+        );
+    }, [recordingDestRowIndex, resolveRowBatches, form]);
+    // Merge the dialog's row-scoped selection back into the shared map:
+    // replace entries for this row's batches, keep every other batch's entry.
+    const handleRowAutoLinkChange = (payload: DestinationPickerSubmitPayload) => {
+        const rowBatchIds = new Set(recordingDestRowBatches.map((b) => b.packageSessionId));
+        const others = (form.getValues('recordingAutoLink.destinations') ?? []).filter(
+            (d) => !rowBatchIds.has(d.package_session_id)
+        );
+        const merged = [...others, ...payload.destinations.filter((d) => d.chapter_id)];
+        form.setValue(
+            'recordingAutoLink',
+            { enabled: merged.length > 0, destinations: merged },
+            { shouldDirty: true }
+        );
+    };
 
     // Public registration form — shared across every bulk-created session.
     // Mirrors single-class step 2: the same builder UI + the same seed from the
@@ -975,11 +1049,24 @@ export function BulkScheduleGrid() {
                     : `https://${rawPortalUrl}`
                 : BASE_URL_LEARNER_DASHBOARD;
 
+            // Shared "recording → chapter" map, applied per row below. Only
+            // destinations with a chapter chosen count; rows whose batches
+            // have none get NO config at all (an empty enabled config would
+            // shadow the institute-default fallback on the backend).
+            const autoLinkDestinations =
+                data.recordingAutoLink?.enabled && data.accessType === AccessType.PRIVATE
+                    ? (data.recordingAutoLink.destinations ?? []).filter((d) => d.chapter_id)
+                    : [];
+
             const step2PerRow = data.rows.map((row) => {
                 const joinLinkForRow =
                     data.accessType === AccessType.PUBLIC
                         ? `${learnerBaseUrl}/register/live-class?sessionId={{SESSION_ID}}`
                         : `${learnerBaseUrl}/study-library/live-class`;
+                const rowPackageSessionIds = buildPackageSessionIds(row.selectedLevels ?? []);
+                const rowAutoLinkDestinations = autoLinkDestinations.filter((d) =>
+                    rowPackageSessionIds.includes(d.package_session_id)
+                );
                 const syntheticStep2Form = {
                     accessType: data.accessType,
                     batchSelectionType: 'batch',
@@ -997,15 +1084,24 @@ export function BulkScheduleGrid() {
                     // Public sessions carry the shared registration form; private
                     // sessions have no public form, so send an empty list.
                     fields: data.accessType === AccessType.PUBLIC ? (data.fields ?? []) : [],
+                    // Slides are always Published in the bulk flow; notify is
+                    // governed by the institute-level auto-upload setting (the
+                    // backend overrides whatever is stored here).
+                    recordingAutoLink:
+                        rowAutoLinkDestinations.length > 0
+                            ? {
+                                  touched: true,
+                                  enabled: true,
+                                  slideStatus: 'PUBLISHED',
+                                  notify: false,
+                                  destinations: rowAutoLinkDestinations,
+                              }
+                            : undefined,
                 } as unknown as Parameters<typeof transformFormToDTOStep2>[0];
 
                 // Pass an empty session_id; backend's BulkLiveSessionService
                 // overwrites it with the real id from each created session.
-                return transformFormToDTOStep2(
-                    syntheticStep2Form,
-                    '',
-                    buildPackageSessionIds(row.selectedLevels ?? [])
-                );
+                return transformFormToDTOStep2(syntheticStep2Form, '', rowPackageSessionIds);
             });
 
             // Throttled creation: send rows in small chunks with a short pause
@@ -1776,6 +1872,11 @@ export function BulkScheduleGrid() {
                                     <TableHead className="min-w-[160px] text-[11px] uppercase tracking-wide text-neutral-500">
                                         Batches
                                     </TableHead>
+                                    {autoUploadConfigurable && (
+                                        <TableHead className="min-w-28 text-2xs uppercase tracking-wide text-neutral-500">
+                                            Recording
+                                        </TableHead>
+                                    )}
                                     <TableHead className="min-w-[160px] text-[11px] uppercase tracking-wide text-neutral-500">
                                         Waiting room
                                     </TableHead>
@@ -1800,6 +1901,9 @@ export function BulkScheduleGrid() {
                                     courses={courses ?? EMPTY_COURSES}
                                     sessionList={sessionList}
                                     descriptionEnabled={liveSessionSettings.descriptionEnabled}
+                                    showRecordingDest={autoUploadConfigurable}
+                                    onOpenRecordingDest={setRecordingDestRowIndex}
+                                    resolveRowBatches={resolveRowBatches}
                                     disableRemove={fields.length === 1}
                                     onDuplicate={duplicateRow}
                                     onRemove={remove}
@@ -2320,6 +2424,46 @@ export function BulkScheduleGrid() {
                     </MyButton>
                 </div>
             </MyDialog>
+
+            {recordingDestRowIndex !== null && (
+                <MyDialog
+                    heading="Recording destinations"
+                    onOpenChange={(o) => {
+                        if (!o) setRecordingDestRowIndex(null);
+                    }}
+                    open
+                    dialogWidth="max-w-3xl"
+                >
+                    <div className="flex flex-col gap-4 p-6">
+                        <p className="text-caption text-neutral-500">
+                            Recordings of this class are auto-added to the chosen chapter as
+                            Published video slides. Your choice applies to every other row
+                            using the same batch; unconfigured batches use the
+                            institute&apos;s default destination.
+                        </p>
+                        {recordingDestRowBatches.length === 0 ? (
+                            <p className="rounded-md border border-warning-200 bg-warning-50 p-3 text-caption text-warning-700">
+                                Assign batches to this row first — each batch gets its own
+                                chapter picker here.
+                            </p>
+                        ) : (
+                            <SessionContentDestinationPicker
+                                batches={recordingDestRowBatches}
+                                initialDestinations={
+                                    form.getValues('recordingAutoLink.destinations') as
+                                        | ContentLinkDestination[]
+                                        | undefined
+                                }
+                                hideSubmit
+                                hidePosition
+                                hideNotify
+                                hideStatus
+                                onDestinationsChange={handleRowAutoLinkChange}
+                            />
+                        )}
+                    </div>
+                </MyDialog>
+            )}
 
             <Dialog
                 open={!!resultDialog?.open}
@@ -3029,6 +3173,72 @@ const RowWaitingRoomPicker = ({ row, shared, onChange }: RowWaitingRoomPickerPro
     );
 };
 
+/**
+ * The per-row "Recording" cell: shows how many of this row's batches already
+ * have an auto-upload chapter configured (the map is shared per batch, so a
+ * batch configured on another row counts here too) and opens the row-scoped
+ * destination dialog. Subscribes only to this row's batches + the shared map.
+ */
+function RowRecordingDestCell({
+    index,
+    control,
+    resolveRowBatches,
+    onOpen,
+}: {
+    index: number;
+    control: UseFormReturn<BulkSessionForm>['control'];
+    resolveRowBatches: RowEditorProps['resolveRowBatches'];
+    onOpen: (index: number) => void;
+}) {
+    const selectedLevels = useWatch({
+        control,
+        name: `rows.${index}.selectedLevels` as const,
+    });
+    const destinations = useWatch({ control, name: 'recordingAutoLink.destinations' });
+    const batches = useMemo(
+        () => resolveRowBatches(selectedLevels ?? []),
+        [resolveRowBatches, selectedLevels]
+    );
+    const configured = useMemo(() => {
+        const ids = new Set(
+            (destinations ?? [])
+                .filter((d) => d.chapter_id)
+                .map((d) => d.package_session_id)
+        );
+        return batches.filter((b) => ids.has(b.packageSessionId)).length;
+    }, [batches, destinations]);
+    const disabled = batches.length === 0;
+
+    return (
+        <TooltipProvider>
+            <Tooltip>
+                <TooltipTrigger asChild>
+                    <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => onOpen(index)}
+                        className={cn(
+                            'inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border px-2 text-xs font-medium transition-colors',
+                            configured > 0
+                                ? 'border-primary-200 bg-primary-50 text-primary-500'
+                                : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-100',
+                            disabled && 'cursor-not-allowed opacity-50'
+                        )}
+                    >
+                        <VideoCamera className="size-3.5" />
+                        {configured > 0 ? `${configured}/${batches.length} set` : 'Set chapter'}
+                    </button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                    {disabled
+                        ? 'Assign batches to this row first'
+                        : 'Pick the chapter this class recording is auto-added to'}
+                </TooltipContent>
+            </Tooltip>
+        </TooltipProvider>
+    );
+}
+
 type RowEditorProps = {
     index: number;
     form: UseFormReturn<BulkSessionForm>;
@@ -3037,6 +3247,13 @@ type RowEditorProps = {
     courses: RowBatchPickerProps['courses'];
     sessionList: DropdownItemType[];
     descriptionEnabled: boolean;
+    /** Institute auto-upload setting is on (and access is private) — show the per-row "Recording" cell. */
+    showRecordingDest: boolean;
+    onOpenRecordingDest: (index: number) => void;
+    /** Maps a row's selected (course, session, level) tuples to batches — provided by the parent, which owns instituteDetails. */
+    resolveRowBatches: (
+        selectedLevels: Array<{ courseId: string; sessionId: string; levelId: string }>
+    ) => DestinationBatch[];
     disableRemove: boolean;
     onDuplicate: (index: number) => void;
     onRemove: (index: number) => void;
@@ -3060,6 +3277,9 @@ const RowEditor = memo(function RowEditor({
     courses,
     sessionList,
     descriptionEnabled,
+    showRecordingDest,
+    onOpenRecordingDest,
+    resolveRowBatches,
     disableRemove,
     onDuplicate,
     onRemove,
@@ -3246,6 +3466,16 @@ const RowEditor = memo(function RowEditor({
                     </p>
                 )}
             </TableCell>
+            {showRecordingDest && (
+                <TableCell>
+                    <RowRecordingDestCell
+                        index={index}
+                        control={control}
+                        resolveRowBatches={resolveRowBatches}
+                        onOpen={onOpenRecordingDest}
+                    />
+                </TableCell>
+            )}
             <TableCell>
                 <RowWaitingRoomPicker
                     rowIndex={index}

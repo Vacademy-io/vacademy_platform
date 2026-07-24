@@ -18,7 +18,12 @@ import { createYooptaEditor } from '@yoopta/editor';
 import { html } from '@yoopta/exports';
 import { plugins } from '@/constants/study-library/yoopta-editor-plugins-tools';
 import { formatHTMLString, stripAwsQueryParamsFromUrls } from '../formatHtmlString';
-import { appReloadPreprocess, detectDeserializeLoss, countSerializedBlocks } from './reload';
+import {
+    appReloadPreprocess,
+    detectDeserializeLoss,
+    countSerializedBlocks,
+    normalizeHtmlForDirtyCompare,
+} from './reload';
 
 // Register the app's real plugins onto a bare editor, mirroring
 // slide-material.tsx applyDocContentToEditor() so serialize/deserialize
@@ -659,5 +664,40 @@ describe('countSerializedBlocks — save-side block accounting', () => {
     it('stays silent when counting fails rather than blocking a save', () => {
         expect(countSerializedBlocks('')).toBe(0);
         expect(isDegraded(119, 0)).toBe(false); // out=0 disables the comparison
+    });
+});
+
+describe('normalizeHtmlForDirtyCompare: no-op clicks never count as edits', () => {
+    it('ignores an appended empty paragraph (click below content)', () => {
+        const before = '<div><p>Hello world</p></div>';
+        const after = '<div><p>Hello world</p><p></p></div>';
+        expect(normalizeHtmlForDirtyCompare(after)).toBe(normalizeHtmlForDirtyCompare(before));
+    });
+
+    it('ignores nested empty wrapper divs and nbsp-only paragraphs', () => {
+        const before = '<p>Content</p>';
+        const after = '<div><p>Content</p><div><p>&nbsp;</p></div><div></div></div>';
+        expect(normalizeHtmlForDirtyCompare(after)).toBe(normalizeHtmlForDirtyCompare(before));
+    });
+
+    it('still detects a real text edit', () => {
+        expect(normalizeHtmlForDirtyCompare('<p>Hello</p>')).not.toBe(
+            normalizeHtmlForDirtyCompare('<p>Hello!</p>')
+        );
+    });
+
+    it('an added image/table/divider counts as a real edit even with no text', () => {
+        const base = '<p>Text</p>';
+        expect(normalizeHtmlForDirtyCompare(`${base}<div><img src="x.png"/></div>`)).not.toBe(
+            normalizeHtmlForDirtyCompare(base)
+        );
+        expect(normalizeHtmlForDirtyCompare(`${base}<hr/>`)).not.toBe(
+            normalizeHtmlForDirtyCompare(base)
+        );
+    });
+
+    it('never throws on garbage input', () => {
+        expect(normalizeHtmlForDirtyCompare('')).toBe('');
+        expect(() => normalizeHtmlForDirtyCompare('<not <valid <<html')).not.toThrow();
     });
 });

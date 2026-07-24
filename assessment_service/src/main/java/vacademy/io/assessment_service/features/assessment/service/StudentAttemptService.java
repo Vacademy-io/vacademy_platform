@@ -315,6 +315,12 @@ public class StudentAttemptService {
         }
     }
 
+    public List<StudentAttempt> getStudentAttemptsByIds(List<String> attemptIds) {
+        return StreamSupport
+                .stream(studentAttemptRepository.findAllById(attemptIds).spliterator(), false)
+                .toList();
+    }
+
     public List<StudentAttempt> getAllParticipantsAttemptForAssessment(String assessmentId) {
         return studentAttemptRepository.findAllParticipantsFromAssessmentAndStatusNotIn(assessmentId, List.of("DELETED"));
     }

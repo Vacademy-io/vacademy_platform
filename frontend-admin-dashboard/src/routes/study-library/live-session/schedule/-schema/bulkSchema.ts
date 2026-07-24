@@ -161,6 +161,30 @@ export const bulkSessionFormSchema = z.object({
     rows: z.array(bulkSessionRowSchema).min(1, 'Add at least one session'),
     sharedOptions: bulkSharedOptionsSchema,
 
+    /**
+     * "Auto-add recordings to course" — ONE shared per-batch destination map
+     * for the whole grid (keyed by package_session_id, i.e. batch). At submit
+     * time each row only receives the destinations matching its own assigned
+     * batches; rows with none fall back to the institute default destination.
+     * Only meaningful when the institute has auto-upload enabled and access
+     * is PRIVATE (public rows have no batches).
+     */
+    recordingAutoLink: z
+        .object({
+            enabled: z.boolean().default(false),
+            destinations: z
+                .array(
+                    z.object({
+                        package_session_id: z.string(),
+                        subject_id: z.string().optional(),
+                        module_id: z.string().optional(),
+                        chapter_id: z.string(),
+                    })
+                )
+                .default([]),
+        })
+        .default({ enabled: false, destinations: [] }),
+
     // === Step-2 settings (applied to every created session) ===
     /** Private = batches assigned per row; Public = anyone with the link. */
     accessType: z.nativeEnum(AccessType).default(AccessType.PRIVATE),

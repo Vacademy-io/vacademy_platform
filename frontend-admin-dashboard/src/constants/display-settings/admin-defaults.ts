@@ -151,6 +151,9 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         showSupportButton: true,
         showSidebar: true,
         showAiCredits: true,
+        showAssistDock: true,
+        showStatus: true,
+        showSettings: true,
     },
     contentTypes: {
         pdf: true,

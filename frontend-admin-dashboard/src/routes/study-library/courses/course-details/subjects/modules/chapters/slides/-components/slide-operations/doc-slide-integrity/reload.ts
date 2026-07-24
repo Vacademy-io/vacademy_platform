@@ -172,6 +172,78 @@ export function countSerializedBlocks(serializedHtml: string): number {
     }
 }
 
+/**
+ * Canonical form of serialized editor HTML for "did the user actually change
+ * anything?" comparisons. Yoopta appends an empty paragraph block when the
+ * author merely clicks below the content, so a raw string compare flags a
+ * no-op click as an edit (false dirty badge). Drops elements that carry no
+ * text and no embedded content, then collapses whitespace. Both sides of a
+ * comparison must be normalized with this same function.
+ */
+export function normalizeHtmlForDirtyCompare(html: string): string {
+    if (!html) return '';
+    try {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const isMeaningful = (el: Element): boolean => {
+            if ((el.textContent ?? '').replace(/\u00a0/g, ' ').trim().length > 0) return true;
+            // Content-bearing embeds count even with no text.
+            return !!el.querySelector(
+                'img,iframe,video,audio,table,input,canvas,svg,embed,object,hr'
+            );
+        };
+        // Repeatedly drop empty elements until stable — the serializer nests
+        // blank paragraphs inside wrapper divs, so one pass isn't enough.
+        let changed = true;
+        while (changed) {
+            changed = false;
+            for (const el of Array.from(doc.body.querySelectorAll('*'))) {
+                if (!el.isConnected) continue;
+                const tag = el.tagName;
+                if (
+                    !isMeaningful(el) &&
+                    tag !== 'IMG' &&
+                    tag !== 'IFRAME' &&
+                    tag !== 'VIDEO' &&
+                    tag !== 'AUDIO' &&
+                    tag !== 'INPUT' &&
+                    tag !== 'CANVAS' &&
+                    tag !== 'SVG' &&
+                    tag !== 'EMBED' &&
+                    tag !== 'OBJECT' &&
+                    tag !== 'HR'
+                ) {
+                    el.remove();
+                    changed = true;
+                }
+            }
+        }
+        // Unwrap plain wrapper <div>s (formatHTMLString nests blocks in styled
+        // divs) so wrapper-depth differences don't read as edits. Divs that ARE
+        // a block — any data-* attribute, or the mermaid container — keep their
+        // identity so block-level changes still count.
+        let unwrapped = true;
+        while (unwrapped) {
+            unwrapped = false;
+            for (const div of Array.from(doc.body.querySelectorAll('div'))) {
+                if (!div.isConnected) continue;
+                const isRealBlock =
+                    Array.from(div.attributes).some((a) => a.name.startsWith('data-')) ||
+                    div.classList.contains('mermaid');
+                if (isRealBlock) continue;
+                const parent = div.parentNode;
+                if (!parent) continue;
+                while (div.firstChild) parent.insertBefore(div.firstChild, div);
+                parent.removeChild(div);
+                unwrapped = true;
+            }
+        }
+        return (doc.body.innerHTML || '').replace(/\s+/g, ' ').trim();
+    } catch {
+        // Comparison helper must never throw — fall back to the raw string.
+        return html;
+    }
+}
+
 export function appReloadPreprocess(storedHtml: string): string {
     let sanitized = stripAwsQueryParamsFromUrls(storedHtml || '');
     let contentForDeserialization = sanitized || '';

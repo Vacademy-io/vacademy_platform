@@ -1338,6 +1338,69 @@ export default function AdminDisplaySettings() {
                                 }
                             />
                         </div>
+                        <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                            <div className="text-sm font-medium text-neutral-800">Show Status</div>
+                            <Switch
+                                checked={settings.ui?.showStatus !== false}
+                                onCheckedChange={(checked) =>
+                                    updateSettings((prev) => ({
+                                        ...prev,
+                                        ui: {
+                                            showSupportButton: true,
+                                            ...prev.ui,
+                                            showStatus: checked,
+                                        },
+                                    }))
+                                }
+                            />
+                        </div>
+                        <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                            <div>
+                                <div className="text-sm font-medium text-neutral-800">
+                                    Show Settings
+                                </div>
+                                <div className="text-xs text-neutral-500">
+                                    Hides the Settings gear in the sidebar rail. You can still open
+                                    Settings directly at /settings.
+                                </div>
+                            </div>
+                            <Switch
+                                checked={settings.ui?.showSettings !== false}
+                                onCheckedChange={(checked) =>
+                                    updateSettings((prev) => ({
+                                        ...prev,
+                                        ui: {
+                                            showSupportButton: true,
+                                            ...prev.ui,
+                                            showSettings: checked,
+                                        },
+                                    }))
+                                }
+                            />
+                        </div>
+                        <div className="flex items-center justify-between gap-4 border-b border-border py-3.5 last:border-b-0">
+                            <div>
+                                <div className="text-sm font-medium text-neutral-800">
+                                    Show Right Side Rail
+                                </div>
+                                <div className="text-xs text-neutral-500">
+                                    Guides, Assist, Issues, What&apos;s new, Explore &amp; Admin App
+                                </div>
+                            </div>
+                            <Switch
+                                checked={settings.ui?.showAssistDock !== false}
+                                onCheckedChange={(checked) =>
+                                    updateSettings((prev) => ({
+                                        ...prev,
+                                        ui: {
+                                            showSupportButton: true,
+                                            ...prev.ui,
+                                            showAssistDock: checked,
+                                        },
+                                    }))
+                                }
+                            />
+                        </div>
                     </div>
                 </CardContent>
             </Card>

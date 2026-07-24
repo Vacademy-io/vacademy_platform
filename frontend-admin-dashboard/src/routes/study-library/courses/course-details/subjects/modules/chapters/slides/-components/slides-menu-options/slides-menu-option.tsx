@@ -14,7 +14,17 @@ import type { DripCondition } from '@/types/course-settings';
 import { toast } from 'sonner';
 import type { DropdownItem } from '@/components/design-system/utils/types/dropdown-types';
 
-export const SlidesMenuOption = () => {
+export const SlidesMenuOption = ({
+    extraOptions = [],
+    onExtraSelect,
+}: {
+    /**
+     * Occasional-use actions relocated from the header (Activity Stats,
+     * History, Export…) — prepended above the base copy/move/delete options.
+     */
+    extraOptions?: DropdownItem[];
+    onExtraSelect?: (value: string) => void;
+} = {}) => {
     const [openDialog, setOpenDialog] = useState<
         'copy' | 'move' | 'delete' | 'drip-conditions' | null
     >(null);
@@ -53,11 +63,11 @@ export const SlidesMenuOption = () => {
     // Filter menu options based on drip conditions setting
     const menuOptions = useMemo<DropdownItem[]>(() => {
         const baseOptions = getSlidesMenuOptions();
-        if (!dripConditionsEnabled) {
-            return baseOptions.filter((item) => item.value !== 'drip-conditions');
-        }
-        return baseOptions;
-    }, [dripConditionsEnabled]);
+        const filtered = dripConditionsEnabled
+            ? baseOptions
+            : baseOptions.filter((item) => item.value !== 'drip-conditions');
+        return [...extraOptions, ...filtered];
+    }, [dripConditionsEnabled, extraOptions]);
 
     const handleSelect = async (value: string) => {
         switch (value) {
@@ -74,6 +84,9 @@ export const SlidesMenuOption = () => {
                 await loadDripConditions();
                 setOpenDialog('drip-conditions');
                 break;
+            default:
+                // Relocated header actions (activity-stats / history / export…)
+                onExtraSelect?.(value);
         }
     };
 

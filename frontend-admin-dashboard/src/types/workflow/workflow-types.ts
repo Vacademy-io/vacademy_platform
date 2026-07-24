@@ -142,9 +142,56 @@ export interface ValidationError {
 // --- AI-assisted workflow drafting (see WORKFLOW_AI_ASSIST_DESIGN.md) ---
 
 export interface AiDraftRequest {
-    goal: string;
+    goal?: string;
     instituteId: string;
     answers?: Array<Record<string, unknown>>;
+    /** 'PLAN' | 'BUILD' | undefined (legacy single-shot). See WORKFLOW_AI_ASSISTIVE_DESIGN.md. */
+    mode?: 'PLAN' | 'BUILD';
+    /** BUILD: skeleton echoed back from the PLAN turn. */
+    skeleton?: WorkflowBuilderDTO;
+    /** BUILD: decision manifest echoed back from the PLAN turn. */
+    decisions?: AiDecisionItem[];
+    /** BUILD: the admin's answers. */
+    decisionAnswers?: Array<{ id: string; value: unknown }>;
+}
+
+export interface AiPlanStep {
+    stepId?: string;
+    nodeType?: string;
+    title?: string;
+    detail?: string;
+    openDecisions?: string[];
+}
+
+export interface AiPlan {
+    summary?: string;
+    workflowType?: string;
+    templateUsed?: string;
+    steps?: AiPlanStep[];
+    warnings?: string[];
+}
+
+export interface AiDecisionOptionSource {
+    hook?: string;
+    args?: Record<string, unknown>;
+    valueField?: string;
+    labelField?: string;
+}
+
+export interface AiDecisionItem {
+    id: string;
+    kind: string; // ENTITY_PICKER | EMAIL_TEMPLATE | WHATSAPP_TEMPLATE | TEMPLATE_VAR_MAP
+    prompt?: string;
+    stepId?: string;
+    nodeId?: string;
+    field?: string;
+    multi?: boolean;
+    required?: boolean;
+    options?: Array<{ value: string; label: string; subtitle?: string }>;
+    optionSource?: AiDecisionOptionSource;
+    dependsOn?: string[];
+    defaultValue?: unknown;
+    help?: string;
 }
 
 export interface AiDraftClarifyingQuestion {
@@ -159,6 +206,10 @@ export interface AiDraftRationale {
 }
 
 export interface AiDraftResponse {
+    turnType?: string; // PLAN_PROPOSAL | FINAL_WORKFLOW | null (legacy)
+    plan?: AiPlan;
+    decisions?: AiDecisionItem[];
+    skeleton?: WorkflowBuilderDTO;
     workflow?: WorkflowBuilderDTO;
     rationale?: AiDraftRationale[];
     clarifyingQuestions?: AiDraftClarifyingQuestion[];

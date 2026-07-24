@@ -138,6 +138,10 @@ export function IndividualSendDialog({
     const [loadingWaTemplates, setLoadingWaTemplates] = useState(false);
     const [selectedWaTemplate, setSelectedWaTemplate] = useState<WhatsAppTemplateDTO | null>(null);
     const [languageCode, setLanguageCode] = useState('en');
+    // Media URL for templates whose header is IMAGE/VIDEO/DOCUMENT. Meta requires the
+    // header component on every send of such a template — the sample approved with the
+    // template is NOT attached automatically — so omitting it fails the whole send.
+    const [headerMediaUrl, setHeaderMediaUrl] = useState('');
 
     // Custom fields setup (so we can show field names instead of IDs in the mapper)
     const [customFieldSetup, setCustomFieldSetup] = useState<CustomFieldSetupItem[]>([]);
@@ -160,6 +164,7 @@ export function IndividualSendDialog({
             setEmailBodyView('edit');
             setSelectedWaTemplate(null);
             setLanguageCode('en');
+            setHeaderMediaUrl('');
             setVariableMapping({});
             setLiteralValues({});
             setIsSending(false);
@@ -248,9 +253,24 @@ export function IndividualSendDialog({
             if (t?.language) setLanguageCode(t.language);
             setVariableMapping({});
             setLiteralValues({});
+            // Pre-fill with the media approved alongside the template so the common
+            // case needs no extra input; still editable before sending.
+            setHeaderMediaUrl(t?.headerSampleUrl ?? '');
         },
         [waTemplates]
     );
+
+    /**
+     * Lowercased media header kind ('image' | 'video' | 'document') when the selected
+     * template carries a media header, else null. TEXT/NONE headers need no media.
+     */
+    const waHeaderKind = useMemo<'image' | 'video' | 'document' | null>(() => {
+        const raw = selectedWaTemplate?.headerType?.toUpperCase();
+        if (raw === 'IMAGE') return 'image';
+        if (raw === 'VIDEO') return 'video';
+        if (raw === 'DOCUMENT') return 'document';
+        return null;
+    }, [selectedWaTemplate]);
 
     const approvedWaTemplates = useMemo(
         () => waTemplates.filter((t) => t.status === 'APPROVED'),
@@ -354,11 +374,22 @@ export function IndividualSendDialog({
             case 1:
                 return selectedWaTemplate !== null;
             case 2:
-                return true;
+                // A media-header template without its media is guaranteed to be rejected
+                // by the provider, so block it here instead of failing at send time.
+                return !waHeaderKind || headerMediaUrl.trim() !== '';
             default:
                 return false;
         }
-    }, [channel, step, selectedEmailTemplateId, subject, body, selectedWaTemplate]);
+    }, [
+        channel,
+        step,
+        selectedEmailTemplateId,
+        subject,
+        body,
+        selectedWaTemplate,
+        waHeaderKind,
+        headerMediaUrl,
+    ]);
 
     const handleNext = useCallback(() => {
         if (step < totalSteps) setStep((s) => s + 1);
@@ -435,6 +466,14 @@ export function IndividualSendDialog({
                     options: {
                         source: 'STUDENT_SIDE_VIEW',
                         sourceId: uuidv4(),
+                        // Meta rejects the whole send if a media-header template arrives
+                        // without its header component, so always thread it through.
+                        ...(waHeaderKind && headerMediaUrl.trim()
+                            ? {
+                                  headerType: waHeaderKind,
+                                  headerUrl: headerMediaUrl.trim(),
+                              }
+                            : {}),
                     },
                 });
                 setSendResult(result);
@@ -653,17 +692,52 @@ export function IndividualSendDialog({
         </div>
     );
 
+    // Media header input — rendered for any template whose header is IMAGE/VIDEO/DOCUMENT.
+    // Without it the provider rejects the send outright, so it is a required field.
+    const renderHeaderMediaField = () => {
+        if (!waHeaderKind) return null;
+        const url = headerMediaUrl.trim();
+        return (
+            <div className="mb-4 space-y-2 rounded-md border bg-muted/30 p-4">
+                <Label>
+                    Header {waHeaderKind} URL <span className="text-danger-600">*</span>
+                </Label>
+                <Input
+                    value={headerMediaUrl}
+                    onChange={(e) => setHeaderMediaUrl(e.target.value)}
+                    placeholder="https://..."
+                />
+                <p className="text-xs text-muted-foreground">
+                    This template has a {waHeaderKind} header, which WhatsApp requires on every
+                    send — the message fails without it. Pre-filled with the media approved
+                    alongside the template.
+                </p>
+                {waHeaderKind === 'image' && url && (
+                    <img
+                        src={url}
+                        alt="Header preview"
+                        className="max-h-40 rounded-md border object-contain"
+                    />
+                )}
+            </div>
+        );
+    };
+
     const renderVariableMappingStep = () => {
         if (variableKeys.length === 0) {
             return (
-                <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
-                    <CheckCircle2 className="size-8" />
-                    <p className="text-sm">No variables to map. You can proceed.</p>
+                <div>
+                    {renderHeaderMediaField()}
+                    <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
+                        <CheckCircle2 className="size-8" />
+                        <p className="text-sm">No variables to map. You can proceed.</p>
+                    </div>
                 </div>
             );
         }
         return (
             <div className="space-y-1">
+                {renderHeaderMediaField()}
                 <p className="mb-3 text-sm text-muted-foreground">
                     Map each placeholder to a learner field, or enter a literal value.
                 </p>

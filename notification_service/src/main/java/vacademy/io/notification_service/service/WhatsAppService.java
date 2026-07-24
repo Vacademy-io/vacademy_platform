@@ -100,6 +100,39 @@ public class WhatsAppService {
             String languageCode, String headerType, String instituteId,
             String source, String correlationId) {
 
+        List<WhatsAppSendResult> detailed = sendWhatsappMessagesDetailed(templateName, bodyParams,
+                headerParams, headerVideoParams, buttonUrlParams, buttonIndexParams,
+                languageCode, headerType, instituteId, source, correlationId);
+        if (detailed == null) return null;
+        return detailed.stream()
+                .map(r -> Collections.<String, Boolean>singletonMap(r.phone(), r.success()))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Per-recipient send outcome including the provider's rejection reason.
+     * <p>
+     * The legacy {@code List<Map<String, Boolean>>} shape collapses every failure to {@code false},
+     * which is why provider errors used to surface to API callers as {@code "error": null} —
+     * undebuggable without digging through service logs. Callers that report failures to a user
+     * or an HTTP response should use {@link #sendWhatsappMessagesDetailed} instead.
+     */
+    public record WhatsAppSendResult(String phone, boolean success, String error, String messageId) {}
+
+    /**
+     * Same send path as {@link #sendWhatsappMessagesExtended}, but each result carries the
+     * provider's error message. Returns {@code null} on the same whole-batch failures
+     * (missing instituteId / missing settings / unexpected exception).
+     */
+    public List<WhatsAppSendResult> sendWhatsappMessagesDetailed(String templateName,
+            List<Map<String, Map<String, String>>> bodyParams,
+            Map<String, Map<String, String>> headerParams,
+            Map<String, String> headerVideoParams,
+            Map<String, String> buttonUrlParams,
+            Map<String, String> buttonIndexParams,
+            String languageCode, String headerType, String instituteId,
+            String source, String correlationId) {
+
         if (instituteId == null) {
             log.error("Missing instituteId for WhatsApp message sending");
             SentryLogger.logError(new IllegalArgumentException("instituteId is null"),
@@ -138,27 +171,34 @@ public class WhatsAppService {
             String provider = whatsappSetting.path(NotificationConstants.PROVIDER).asText("META").toUpperCase();
             log.info("WhatsApp provider for institute {}: {}, recipients={}", instituteId, provider, bodyParams.size());
 
-            List<Map<String, Boolean>> results;
-            List<String> messageIds = null; // index-aligned with results; provider message ids (wamids)
+            List<WhatsAppSendResult> results;
             String senderChannelId = null;
 
             if ("WATI".equals(provider)) {
                 senderChannelId = resolveWatiChannelId(whatsappSetting);
-                results = sendViaWati(templateName, bodyParams, languageCode, whatsappSetting);
                 // WATI bulk responses carry no per-message ids; status joins stay phone-based
+                results = sendViaWati(templateName, bodyParams, languageCode, whatsappSetting).stream()
+                        // Defensive: an entry-less map carries no recipient, so skip it rather
+                        // than let iterator().next() throw and collapse the whole batch to null.
+                        .filter(m -> m != null && !m.isEmpty())
+                        .map(m -> {
+                            Map.Entry<String, Boolean> e = m.entrySet().iterator().next();
+                            boolean ok = Boolean.TRUE.equals(e.getValue());
+                            return new WhatsAppSendResult(e.getKey(), ok,
+                                    ok ? null : "WATI rejected the message (see service logs)", null);
+                        })
+                        .collect(Collectors.toList());
             } else {
                 // COMBOT and META both go through CombotMessageProvider
                 senderChannelId = resolveSenderChannelId(whatsappSetting, provider);
-                SendOutcome outcome = sendViaCombotProvider(templateName, bodyParams, headerParams,
+                results = sendViaCombotProvider(templateName, bodyParams, headerParams,
                         headerVideoParams, buttonUrlParams, buttonIndexParams,
                         languageCode, headerType, instituteId);
-                results = outcome.results();
-                messageIds = outcome.messageIds();
             }
 
             // Log to notification_log
             logWhatsAppMessages(templateName, bodyParams, headerParams, languageCode,
-                    headerType, provider, results, messageIds, senderChannelId,
+                    headerType, provider, results, senderChannelId,
                     source, correlationId, instituteId);
 
             return results;
@@ -181,18 +221,15 @@ public class WhatsAppService {
     // ==================== Provider Delegates ====================
 
     /**
-     * Per-send outcome: success flags (the legacy public return shape) plus the provider
-     * message ids, index-aligned. The wamid is what lets the sent/delivered/read webhooks
-     * join back to the exact outbound row instead of "most recent send to that phone".
-     */
-    private record SendOutcome(List<Map<String, Boolean>> results, List<String> messageIds) {}
-
-    /**
      * Delegates to CombotMessageProvider for both COMBOT and META providers.
      * Converts the legacy format (List<Map<phone, Map<key,value>>>) to the
      * provider's templatePayload format, one message at a time.
+     * <p>
+     * Each returned result carries the provider's rejection reason on failure, and the
+     * provider message id (wamid) on success — the wamid is what lets the sent/delivered/read
+     * webhooks join back to the exact outbound row instead of "most recent send to that phone".
      */
-    private SendOutcome sendViaCombotProvider(String templateName,
+    private List<WhatsAppSendResult> sendViaCombotProvider(String templateName,
             List<Map<String, Map<String, String>>> bodyParams,
             Map<String, Map<String, String>> headerParams,
             Map<String, String> headerVideoParams,
@@ -200,8 +237,7 @@ public class WhatsAppService {
             Map<String, String> buttonIndexParams,
             String languageCode, String headerType, String instituteId) {
 
-        List<Map<String, Boolean>> results = new ArrayList<>();
-        List<String> messageIds = new ArrayList<>();
+        List<WhatsAppSendResult> results = new ArrayList<>();
 
         for (Map<String, Map<String, String>> userDetail : bodyParams) {
             String phoneNumber = userDetail.keySet().iterator().next();
@@ -244,13 +280,15 @@ public class WhatsAppService {
 
                 // Delegate to CombotMessageProvider
                 String messageId = combotMessageProvider.sendTemplate(phoneNumber, templatePayload, instituteId, null);
-                results.add(Map.of(phoneNumber, true));
-                messageIds.add(messageId);
+                results.add(new WhatsAppSendResult(phoneNumber, true, null, messageId));
 
             } catch (Exception e) {
-                log.error("Failed to send to {} via provider: {}", phoneNumber, e.getMessage());
-                results.add(Map.of(phoneNumber, false));
-                messageIds.add(null);
+                // Keep the provider's message: for Meta this is the Graph API error body
+                // (e.g. code 132000 "number of parameters does not match"), which is the
+                // only thing that makes a failed send diagnosable by the caller.
+                String reason = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                log.error("Failed to send to {} via provider: {}", phoneNumber, reason);
+                results.add(new WhatsAppSendResult(phoneNumber, false, reason, null));
             }
 
             // Rate limit — OUTSIDE the send try/catch. An interrupt during the sleep must not
@@ -266,7 +304,7 @@ public class WhatsAppService {
             }
         }
 
-        return new SendOutcome(results, messageIds);
+        return results;
     }
 
     /**
@@ -472,8 +510,7 @@ public class WhatsAppService {
                                     String languageCode,
                                     String headerType,
                                     String provider,
-                                    List<Map<String, Boolean>> results,
-                                    List<String> messageIds,
+                                    List<WhatsAppSendResult> results,
                                     String senderBusinessChannelId,
                                     String source,
                                     String correlationId,
@@ -483,18 +520,14 @@ public class WhatsAppService {
 
             for (int i = 0; i < bodyParams.size() && i < results.size(); i++) {
                 Map<String, Map<String, String>> userDetail = bodyParams.get(i);
-                Map<String, Boolean> result = results.get(i);
+                WhatsAppSendResult result = results.get(i);
 
                 String phoneNumber = userDetail.keySet().iterator().next();
                 Map<String, String> params = userDetail.get(phoneNumber);
 
                 String userId = params.getOrDefault("userId", params.getOrDefault("user_id", null));
 
-                Boolean sendSuccess = result.get(phoneNumber);
-                if (sendSuccess == null && !result.isEmpty()) {
-                    sendSuccess = result.values().iterator().next();
-                }
-                boolean success = Boolean.TRUE.equals(sendSuccess);
+                boolean success = result.success();
 
                 Map<String, Object> payload = new HashMap<>();
                 payload.put("templateName", templateName);
@@ -507,6 +540,13 @@ public class WhatsAppService {
                     payload.put("headerParams", headerParams.get(phoneNumber));
                 }
 
+                // Persist the provider's rejection reason on the row itself. Without it a failed
+                // send can only be explained by correlating service logs by timestamp.
+                // Must be set BEFORE the payload is serialized below.
+                if (!success && result.error() != null) {
+                    payload.put("error", result.error());
+                }
+
                 String payloadJson;
                 try {
                     payloadJson = objectMapper.writeValueAsString(payload);
@@ -516,11 +556,14 @@ public class WhatsAppService {
 
                 String bodyMessage = String.format("WhatsApp Template: %s | Provider: %s | Status: %s | Params: %s",
                         templateName, provider, success ? "SUCCESS" : "FAILED", params);
+                if (!success && result.error() != null) {
+                    bodyMessage += " | Error: " + result.error();
+                }
 
                 // Provider message id (Meta wamid). With it, source_id lets the status webhooks
                 // (findOutgoingByMessageId) join sent/delivered/read events to THIS exact row.
                 // Without it (WATI, send failures), fall back to the legacy templateName value.
-                String messageId = (messageIds != null && i < messageIds.size()) ? messageIds.get(i) : null;
+                String messageId = result.messageId();
 
                 NotificationLog notifLog = new NotificationLog();
                 notifLog.setNotificationType("WHATSAPP_MESSAGE_OUTGOING");

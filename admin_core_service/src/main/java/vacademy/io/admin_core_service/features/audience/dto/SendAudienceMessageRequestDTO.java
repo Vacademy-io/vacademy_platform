@@ -24,6 +24,12 @@ public class SendAudienceMessageRequestDTO {
     private String templateName;
     private String languageCode;      // WA language code (default: en)
 
+    // WhatsApp media header. A template whose header is IMAGE/VIDEO/DOCUMENT is rejected
+    // outright by Meta unless the media is supplied on every send — the sample approved
+    // with the template is NOT attached automatically.
+    private String headerUrl;
+    private String headerType;        // image | video | document
+
     // Email/Push direct content
     private String subject;           // email subject or push title
     private String body;              // email HTML body or push body

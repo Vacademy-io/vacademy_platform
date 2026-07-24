@@ -23,5 +23,8 @@ public class AssessmentUserFilter {
     // Optional filter on the attempt's evaluation state (student_attempt.result_status),
     // e.g. ["PENDING"] to show only submissions a teacher still needs to grade.
     private List<String> evaluationStatus;
+    // Optional filter on whether the attempt has a submitted answer-sheet file
+    // (manual evaluation assessments): values "SUBMITTED" / "NOT_SUBMITTED".
+    private List<String> submissionStatus;
     private Map<String, String> sortColumns;
 }

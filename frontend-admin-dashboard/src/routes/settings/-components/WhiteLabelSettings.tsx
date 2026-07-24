@@ -131,6 +131,12 @@ interface RoutingConfig {
      * preserve existing behavior.
      */
     logo_height_px?: number;
+    /**
+     * When true, the institute name is rendered stacked BELOW the logo (centered
+     * vertical) instead of to its right, in the sidebar header. Default
+     * (undefined / false): name sits beside the logo, as before.
+     */
+    stack_name_below_logo?: boolean;
 }
 
 // UI-enforced caps so operators can't enter values that break the layout.
@@ -469,6 +475,22 @@ const ConfigFormSection = ({
                         onCheckedChange={v => onUpdate('hide_institute_name', v)}
                     />
                 </div>
+                <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                        <Label className="text-xs font-medium text-slate-700 cursor-pointer" htmlFor="switch-stack_name_below_logo">
+                            Stack name below logo
+                        </Label>
+                        <p className="text-xs text-slate-400">
+                            Render the institute name centered underneath the logo instead
+                            of beside it, in the sidebar header.
+                        </p>
+                    </div>
+                    <Switch
+                        id="switch-stack_name_below_logo"
+                        checked={!!config.stack_name_below_logo}
+                        onCheckedChange={v => onUpdate('stack_name_below_logo', v)}
+                    />
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1">
                         <Label className="text-xs text-slate-500">
@@ -737,6 +759,7 @@ export default function WhiteLabelSettings({ isTab }: { isTab?: boolean }) {
                     hide_institute_name: r.hide_institute_name ?? undefined,
                     logo_width_px: r.logo_width_px ?? undefined,
                     logo_height_px: r.logo_height_px ?? undefined,
+                    stack_name_below_logo: r.stack_name_below_logo ?? undefined,
                 },
             };
         });
@@ -1137,7 +1160,8 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
         entry.allow_phone_auth != null || entry.allow_username_password_auth != null ||
         entry.comma_separated_preferred_country ||
         entry.hide_institute_name != null ||
-        entry.logo_width_px != null || entry.logo_height_px != null
+        entry.logo_width_px != null || entry.logo_height_px != null ||
+        entry.stack_name_below_logo != null
     );
 
     const preferredCountryCodes = parsePreferredCountriesString(
@@ -1247,6 +1271,7 @@ function RoutingEntryCard({ entry }: { entry: RoutingEntry }) {
                         <ConfigValue label="Hide Institute Name" value={entry.hide_institute_name} />
                         <ConfigValue label="Logo Width (px)" value={entry.logo_width_px} />
                         <ConfigValue label="Logo Height (px)" value={entry.logo_height_px} />
+                        <ConfigValue label="Stack Name Below Logo" value={entry.stack_name_below_logo} />
                     </div>
                     {preferredCountryCodes.length > 0 && (
                         <div className="mt-3 border-t border-slate-200 pt-3">

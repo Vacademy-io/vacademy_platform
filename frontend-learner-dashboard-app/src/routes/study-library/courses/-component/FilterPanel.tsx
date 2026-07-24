@@ -4,7 +4,7 @@ import { useCatalogStore } from "../-store/catalogStore";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { handleFetchInstituteDetails } from "../-services/institute-details";
 import { Funnel, X } from '@phosphor-icons/react';
-import { cn, toTitleCase } from "@/lib/utils";
+import { cn, toTitleCase, compareByNameNatural } from "@/lib/utils";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -122,15 +122,18 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     const activeFiltersCount = selectedLevels.length + selectedTags.length + selectedInstructors.length;
 
     type LevelItem = { id: string; level_name?: string };
-    const levels = (instituteData?.levels || []).map((level: LevelItem) => ({
-        id: level.id,
-        name: toTitleCase(
-            level.level_name ||
-                t("filters.unnamedLevel", {
-                    level: getTerminology(ContentTerms.Level, SystemTerms.Level),
-                })
-        ),
-    }));
+    const levels = (instituteData?.levels || [])
+        .map((level: LevelItem) => ({
+            id: level.id,
+            name: toTitleCase(
+                level.level_name ||
+                    t("filters.unnamedLevel", {
+                        level: getTerminology(ContentTerms.Level, SystemTerms.Level),
+                    })
+            ),
+        }))
+        // Natural sort so levels read as Class 6, 7, 8 … then non-numeric names.
+        .sort(compareByNameNatural);
 
     const tags = React.useMemo(() => {
         const uniqueMap = new Map<string, string>();

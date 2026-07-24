@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Copy, ArrowSquareOut } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { getPublicUrl } from "@/services/upload_file";
+import { appendYouTubeEmbedOrigin } from "@/utils/youtube-embed";
 import { LearnerRecording } from "../-types/types";
 
 interface RecordingPlayerDialogProps {
@@ -106,10 +107,13 @@ export const RecordingPlayerDialog = ({
             {extractYoutubeId(recording.url) ? (
               <iframe
                 className="h-full w-full"
-                src={`https://www.youtube.com/embed/${extractYoutubeId(recording.url)}`}
+                src={appendYouTubeEmbedOrigin(
+                  `https://www.youtube.com/embed/${extractYoutubeId(recording.url)}`
+                )}
                 title={title}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
+                referrerPolicy="strict-origin-when-cross-origin"
               />
             ) : (
               <div className="flex h-full items-center justify-center text-neutral-300">

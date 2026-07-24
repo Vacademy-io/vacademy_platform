@@ -11,6 +11,15 @@ import { useSelectedSessionStore } from '@/stores/study-library/selected-session
 import { useQuery } from '@tanstack/react-query';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
+import { useListCustomFieldControls } from '@/components/shared/leads/use-list-custom-field-controls';
+import { fetchContactCustomFieldValues } from '../-services/get-contact-custom-field-values';
+import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
+import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
+import {
+    isRangeFieldType,
+    sentinelLabel,
+} from '@/components/shared/leads/custom-field-filter-encoding';
 
 interface ContactFiltersProps {
     filters: {
@@ -62,6 +71,17 @@ export const ContactFilters = ({ filters }: ContactFiltersProps) => {
         campaignsData?.content
     );
 
+    // Custom-field filters enabled for the CONTACTS surface in Settings →
+    // Display Settings → "List Filters & Sorting — Custom Fields". Selections
+    // ride in columnFilters under `cf:<custom_field_id>` and apply with the
+    // same "Apply Filters" button as every other chip on this page.
+    const { fields: customFieldFilterFields } = useListCustomFieldControls(
+        'CONTACTS',
+        instituteId || undefined
+    );
+    const selectedCustomFieldValues = (fieldId: string): string[] =>
+        columnFilters.find((f) => f.id === `cf:${fieldId}`)?.value.map((v) => v.id) ?? [];
+
     return (
         <div className="animate-fadeIn space-y-4">
             <div className="rounded-xl border border-neutral-200/50 bg-gradient-to-r from-white to-neutral-50/30 p-4 shadow-sm">
@@ -96,6 +116,46 @@ export const ContactFilters = ({ filters }: ContactFiltersProps) => {
                                 />
                             </div>
                         ))}
+                        {customFieldFilterFields.map((field) =>
+                            isRangeFieldType(field.fieldType) ? (
+                                <CustomFieldRangeFilter
+                                    key={field.customFieldId}
+                                    fieldId={field.customFieldId}
+                                    fieldName={field.fieldName}
+                                    fieldType={field.fieldType}
+                                    selected={selectedCustomFieldValues(field.customFieldId)}
+                                    onChange={(values) =>
+                                        handleFilterChange(
+                                            `cf:${field.customFieldId}`,
+                                            values.map((v) => ({
+                                                id: v,
+                                                label: sentinelLabel(v) ?? v,
+                                            }))
+                                        )
+                                    }
+                                />
+                            ) : (
+                                <CustomFieldMultiSelectFilter
+                                    key={field.customFieldId}
+                                    instituteId={instituteId}
+                                    fieldId={field.customFieldId}
+                                    fieldName={field.fieldName}
+                                    selected={selectedCustomFieldValues(field.customFieldId)}
+                                    onChange={(values) =>
+                                        handleFilterChange(
+                                            `cf:${field.customFieldId}`,
+                                            values.map((v) => ({
+                                                id: v,
+                                                label: sentinelLabel(v) ?? v,
+                                            }))
+                                        )
+                                    }
+                                    fetchValues={fetchContactCustomFieldValues}
+                                    cacheScope="contacts"
+                                />
+                            )
+                        )}
+                        <ManageListFiltersLink />
                     </div>
 
                     {(columnFilters.length > 0 || getActiveFiltersState()) && (

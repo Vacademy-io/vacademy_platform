@@ -505,6 +505,7 @@ export const AddCourseForm = ({
                         courseSettings={courseSettings}
                         settingsLoading={settingsLoading}
                         courseCreationDisplay={roleDisplaySettings?.courseCreation}
+                        courseId={formData.id}
                     />
                 )}
             </div>
@@ -572,6 +573,7 @@ export const AddCourseForm = ({
                             courseSettings={courseSettings}
                             settingsLoading={settingsLoading}
                             courseCreationDisplay={roleDisplaySettings?.courseCreation}
+                            courseId={formData.id}
                         />
                     )}
                 </div>

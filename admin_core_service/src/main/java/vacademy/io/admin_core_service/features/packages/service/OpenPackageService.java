@@ -9,6 +9,7 @@ import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.admin_core_service.features.enroll_invite.util.EnrollInviteAvailabilityUtil;
 import vacademy.io.admin_core_service.features.faculty.enums.FacultyStatusEnum;
 import vacademy.io.admin_core_service.features.level.enums.LevelStatusEnum;
 import vacademy.io.admin_core_service.features.packages.dto.*;
@@ -287,7 +288,8 @@ public class OpenPackageService {
                                         List.of(ChapterStatus.ACTIVE.name()),
                                         List.of(StatusEnum.ACTIVE.name()), // assignmentQuestionStatusList
                                         List.of(StatusEnum.ACTIVE.name()), // questionStatusList
-                                        List.of(StatusEnum.ACTIVE.name()), // enrollInviteStatus
+                                        // incl INACTIVE so the catalogue can badge a deactivated default invite as closed
+                                        List.of(StatusEnum.ACTIVE.name(), StatusEnum.INACTIVE.name()), // enrollInviteStatus
                                         List.of(StatusEnum.ACTIVE.name()), // psliStatus
                                         List.of(StatusEnum.ACTIVE.name()), // paymentOptionStatus
                                         List.of(StatusEnum.ACTIVE.name()), // paymentPlanStatus
@@ -312,7 +314,8 @@ public class OpenPackageService {
                                         List.of(StatusEnum.ACTIVE.name()), // questionStatusList
                                         List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),
                                         List.of(ChapterStatus.ACTIVE.name()),
-                                        List.of(StatusEnum.ACTIVE.name()), // enrollInviteStatus
+                                        // incl INACTIVE so the catalogue can badge a deactivated default invite as closed
+                                        List.of(StatusEnum.ACTIVE.name(), StatusEnum.INACTIVE.name()), // enrollInviteStatus
                                         List.of(StatusEnum.ACTIVE.name()), // psliStatus
                                         List.of(StatusEnum.ACTIVE.name()), // paymentOptionStatus
                                         List.of(StatusEnum.ACTIVE.name()), // paymentPlanStatus
@@ -383,7 +386,11 @@ public class OpenPackageService {
                                         projection.getMinPlanElevatedPrice(),
                                         projection.getCurrency(),
                                         projection.getAvailableSlots(),
-                                        projection.getMaxSeats());
+                                        projection.getMaxSeats(),
+                                        EnrollInviteAvailabilityUtil.compute(
+                                                projection.getEnrollInviteStatus(),
+                                                projection.getEnrollInviteStartDate(),
+                                                projection.getEnrollInviteEndDate()));
                 }).toList();
 
                 return new PageImpl<>(dtos, pageable, learnerPackageDetail.getTotalElements());

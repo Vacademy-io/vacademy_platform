@@ -2,6 +2,7 @@ import {
     GET_ADMIN_PARTICIPANTS,
     GET_ASSESSMENT_TOTAL_MARKS_URL,
     GET_ATTEMPT_DATA,
+    GET_ATTEMPTS_FILE_STATUS,
     GET_BATCH_DETAILS_URL,
     GET_EXPORT_CSV_URL_LEADERBOARD,
     GET_EXPORT_CSV_URL_RANK_MARK,
@@ -429,6 +430,10 @@ export const getAdminParticipants = async (
             evaluation_status: (selectedFilter.evaluation_status ?? []).map(
                 (option: { id: string }) => option.id
             ),
+            // SUBMITTED / NOT_SUBMITTED; empty array => backend treats as no filter.
+            submission_status: (selectedFilter.submission_status ?? []).map(
+                (option: { id: string }) => option.id
+            ),
         },
     });
     return response?.data;
@@ -755,6 +760,19 @@ export const getAttemptData = async (attemptId: string, markEvaluating = false) 
         },
     });
     return response?.data;
+};
+
+// Batch: which of these attempts have a submitted answer-sheet file. Returns a
+// map of attemptId -> fileId; attempts without a file are absent from the map.
+export const getAttemptsFileStatus = async (
+    attemptIds: string[]
+): Promise<Record<string, string>> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: GET_ATTEMPTS_FILE_STATUS,
+        data: attemptIds,
+    });
+    return response?.data ?? {};
 };
 
 export const getAttemptDetails = (attemptId: string, markEvaluating = false) => {

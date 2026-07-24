@@ -30,6 +30,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_INVITE_LINKS } from '@/constants/urls';
 import { getInstituteId } from '@/constants/helper';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { getValidSelectedSubOrgId } from '@/lib/auth/facultyAccessUtils';
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
 import {
     getCustomFieldSettingsFromCache,
@@ -138,12 +139,22 @@ const Students = ({
         setAppliedFilters,
         handleSessionChange,
     } = useStudentFilters();
+    // In a sub-org portal, scope the learner list to the selected sub-org. Sub-org
+    // learners are enrolled under the HOST institute id (which institute_ids already
+    // resolves to) with a sub_org_id tag, and one package_session is shared across
+    // many sub-orgs. Without this filter the tab would return every sub-org's learners
+    // for the batch (leaking them cross-sub-org and burying the ones this sub-org admin
+    // expects). getValidSelectedSubOrgId() is the same signal the navbar/sidebar use to
+    // decide sub-org-portal context, so this scoping stays in sync with the branding —
+    // and it's null for the parent institute admin, leaving their view unchanged.
+    const selectedSubOrgId = useMemo(() => getValidSelectedSubOrgId(), []);
     const appliedFilters = useMemo(
         () => ({
             ...baseAppliedFilters,
             package_session_ids: [packageSessionId],
+            ...(selectedSubOrgId ? { sub_org_ids: [selectedSubOrgId] } : {}),
         }),
-        [baseAppliedFilters, packageSessionId]
+        [baseAppliedFilters, packageSessionId, selectedSubOrgId]
     );
     const {
         studentTableData,

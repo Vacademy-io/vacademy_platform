@@ -6,6 +6,7 @@ import type { IconProps, IconWeight } from "@phosphor-icons/react";
 import { type FC, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { getPublicUrl, getPublicUrlWithoutLogin } from "@/services/upload_file";
+import { isLibraryToken, getLibraryUrl } from "@/services/badge-library";
 
 /**
  * Curated badge icon set shared by every badge surface (the Play widget and the
@@ -27,9 +28,11 @@ export function isBuiltInBadgeIcon(name: string | undefined | null): boolean {
 }
 
 /**
- * Renders a badge's visual: a built-in Phosphor icon when `icon` is a known name,
- * or the admin-uploaded image (resolved via getPublicUrl) otherwise. Falls back to
- * the Trophy icon while a custom image resolves.
+ * Renders a badge's visual, in priority order:
+ *  1. a bundled library badge when `icon` is a `lib:` token,
+ *  2. a built-in Phosphor icon when `icon` is a known name,
+ *  3. the admin-uploaded image (resolved via getPublicUrl) otherwise.
+ * Falls back to the Trophy icon while a custom image resolves.
  */
 export const BadgeVisual: FC<{
   icon: string;
@@ -41,11 +44,12 @@ export const BadgeVisual: FC<{
   /** On no-login pages (e.g. the public leaderboard), resolve uploaded images without auth. */
   noAuth?: boolean;
 }> = ({ icon, size = 22, className, weight = "fill", fill = false, noAuth = false }) => {
+  const libUrl = isLibraryToken(icon) ? getLibraryUrl(icon) : undefined;
   const builtIn = isBuiltInBadgeIcon(icon);
   const [url, setUrl] = useState("");
 
   useEffect(() => {
-    if (builtIn || !icon) return;
+    if (builtIn || libUrl || !icon) return;
     let active = true;
     const resolve = noAuth ? getPublicUrlWithoutLogin : getPublicUrl;
     resolve(icon)
@@ -56,7 +60,22 @@ export const BadgeVisual: FC<{
     return () => {
       active = false;
     };
-  }, [icon, builtIn, noAuth]);
+  }, [icon, builtIn, libUrl, noAuth]);
+
+  // Library badges are full artwork (their own circular shape) — contain, don't crop.
+  if (libUrl) {
+    return fill ? (
+      <img src={libUrl} alt="" className="h-full w-full object-contain" />
+    ) : (
+      <img
+        src={libUrl}
+        alt=""
+        width={size}
+        height={size}
+        className={cn("object-contain", className)}
+      />
+    );
+  }
 
   if (!builtIn && url) {
     return fill ? (

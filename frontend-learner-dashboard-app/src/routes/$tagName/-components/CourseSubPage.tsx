@@ -11,6 +11,7 @@ import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { getTokenFromStorage } from "@/lib/auth/sessionUtility";
 import { Preferences } from "@capacitor/preferences";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
+import { shouldShowMobileGetStarted } from "../-utils/catalogue-cta";
 
 interface CourseSubPageProps {
   tagName: string;
@@ -389,8 +390,9 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
               <span className="text-xs text-gray-500 text-center">If already registered</span>
             </div>
 
-            {/* Get Started Button */}
-            {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && (
+            {/* Get Started Button — mirrors the header's authLinks config, so a
+                catalogue that removed "Get Started" from its header hides it here too */}
+            {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && shouldShowMobileGetStarted(catalogueData, page) && (
               <div className="flex flex-col gap-1">
                 <button
                   onClick={() => {

@@ -236,7 +236,9 @@ export const AddModulesForm = ({ initialValues, onSubmitSuccess }: AddModulesFor
                             <div className="flex h-full flex-col items-center justify-center gap-2 text-neutral-500">
                                 <Image className="size-8" />
                                 <span className="text-sm font-medium">Upload Thumbnail</span>
-                                <span className="text-xs text-neutral-400">PNG, JPG</span>
+                                <span className="text-xs text-neutral-400">
+                                    PNG, JPG · 16:9 recommended
+                                </span>
                             </div>
                         </FileUploadComponent>
                     )}
@@ -261,7 +263,7 @@ export const AddModulesForm = ({ initialValues, onSubmitSuccess }: AddModulesFor
                     open={cropperOpen}
                     onOpenChange={setCropperOpen}
                     src={imagePreviewUrl}
-                    aspectRatio={2.64} // 2.64:1 aspect ratio for module thumbnails
+                    aspectRatio={16 / 9} // 16:9 ratio to match the display tile (no crop on display)
                     title="Crop Module Thumbnail"
                     outputMimeType="image/jpeg"
                     outputQuality={0.9}

@@ -11,6 +11,11 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { useCustomFieldSetup } from '@/routes/audience-manager/list/-hooks/useCustomFieldSetup';
+import {
+    isRangeFieldType,
+    sentinelLabel,
+    splitLegacyAndTyped,
+} from '@/components/shared/leads/custom-field-filter-encoding';
 
 export const ALL_SESSIONS_ID = '__ALL__';
 
@@ -29,6 +34,14 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
     const { data: customFieldSetup } = useCustomFieldSetup(INSTITUTE_ID || undefined);
     const textCustomFields = useMemo(
         () => (customFieldSetup ?? []).filter((f) => (f.field_type || '').toUpperCase() === 'TEXT'),
+        [customFieldSetup]
+    );
+    // DATE/NUMBER custom fields get the range popover (typed operators) instead
+    // of a value multi-select. Only shown when enabled in the settings gate
+    // (students-list-section decides that); the payload builder below still
+    // scans all of them so an applied selection always reaches the request.
+    const rangeCustomFields = useMemo(
+        () => (customFieldSetup ?? []).filter((f) => isRangeFieldType(f.field_type)),
         [customFieldSetup]
     );
     const [columnFilters, setColumnFilters] = useState<
@@ -377,7 +390,7 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                 const values = Array.isArray(urlValues) ? urlValues : [urlValues];
                 const options = [...new Set(values as string[])].map((value) => ({
                     id: value,
-                    label: value,
+                    label: sentinelLabel(value) ?? value,
                 }));
                 if (options.length > 0) {
                     initialFilters.push({ id: customField.field_key, value: options });
@@ -484,6 +497,19 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                     );
                 }
             });
+            rangeCustomFields.forEach((customField) => {
+                const filter = initialFilters.find((f) => f.id === customField.field_key);
+                if (filter && filter.value.length > 0) {
+                    customFieldFilters[customField.custom_field_id] = filter.value.map(
+                        (option) => option.id
+                    );
+                }
+            });
+
+            // Sentinel selections (contains / empty / ranges) go to the typed
+            // list; plain values keep the legacy values-IN map shape.
+            const { legacy: legacyCfFilters, typed: typedCfFilters } =
+                splitLegacyAndTyped(customFieldFilters);
 
             setAppliedFilters((prev) => ({
                 ...prev,
@@ -498,9 +524,12 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                 payment_statuses: paymentStatusesToApply,
                 type: learnerTypeToApply,
                 // approval_statuses is removed, merged into statuses
-                ...(Object.keys(customFieldFilters).length > 0
-                    ? { custom_field_filters: customFieldFilters }
+                ...(Object.keys(legacyCfFilters).length > 0
+                    ? { custom_field_filters: legacyCfFilters }
                     : { custom_field_filters: undefined }),
+                ...(typedCfFilters.length > 0
+                    ? { custom_field_typed_filters: typedCfFilters }
+                    : { custom_field_typed_filters: undefined }),
             }));
         }
     }, [instituteDetails, searchParams]);
@@ -661,6 +690,19 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                 );
             }
         });
+        rangeCustomFields.forEach((customField) => {
+            const filter = columnFilters.find((f) => f.id === customField.field_key);
+            if (filter && filter.value.length > 0) {
+                customFieldFilters[customField.custom_field_id] = filter.value.map(
+                    (option) => option.id
+                );
+            }
+        });
+
+        // Sentinel selections (contains / empty / ranges) go to the typed list;
+        // plain values keep the legacy values-IN map shape.
+        const { legacy: legacyCfFilters, typed: typedCfFilters } =
+            splitLegacyAndTyped(customFieldFilters);
 
         const gendersToApply = columnFilters.find((filter) => filter.id === 'gender')?.value.map((option) => option.label) || [];
         const rolesToApply = columnFilters.find((filter) => filter.id === 'sub_org_user_types')?.value.map((option) => option.id) || [];
@@ -687,8 +729,11 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             ...(enrollInviteIds.length > 0 ? { enroll_invite_ids: enrollInviteIds } : {}),
             ...(audienceIds.length > 0 ? { audience_ids: audienceIds } : {}),
             ...(subOrgIds.length > 0 ? { sub_org_ids: subOrgIds } : {}),
-            ...(Object.keys(customFieldFilters).length > 0
-                ? { custom_field_filters: customFieldFilters }
+            ...(Object.keys(legacyCfFilters).length > 0
+                ? { custom_field_filters: legacyCfFilters }
+                : {}),
+            ...(typedCfFilters.length > 0
+                ? { custom_field_typed_filters: typedCfFilters }
                 : {}),
         };
 
@@ -717,6 +762,9 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             });
         }
         textCustomFields.forEach((customField) => {
+            currentParams.delete(customField.field_key);
+        });
+        rangeCustomFields.forEach((customField) => {
             currentParams.delete(customField.field_key);
         });
 
@@ -799,6 +847,18 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
                 });
             }
         });
+        // Range (DATE/NUMBER) selections are sentinel-encoded strings — write
+        // them like text values so an applied range survives a reload (the
+        // URL-init effect decodes them back into typed filter entries).
+        rangeCustomFields.forEach((customField) => {
+            const filter = columnFilters.find((f) => f.id === customField.field_key);
+            if (filter && filter.value.length > 0) {
+                const uniqueValues = [...new Set(filter.value.map((opt) => opt.id))];
+                uniqueValues.forEach((value) => {
+                    currentParams.append(customField.field_key, value);
+                });
+            }
+        });
 
         const newUrl = `${window.location.pathname}?${currentParams.toString()}`;
         window.history.replaceState({}, '', newUrl);
@@ -839,6 +899,9 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
             });
         }
         textCustomFields.forEach((customField) => {
+            currentParams.delete(customField.field_key);
+        });
+        rangeCustomFields.forEach((customField) => {
             currentParams.delete(customField.field_key);
         });
 
@@ -952,5 +1015,6 @@ export const useStudentFilters = (options: { allowAllSessions?: boolean } = {}) 
         handleSessionChange,
         setColumnFilters,
         textCustomFields,
+        rangeCustomFields,
     };
 };

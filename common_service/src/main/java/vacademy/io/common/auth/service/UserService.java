@@ -308,6 +308,20 @@ public class UserService {
                 .map(UserWithRolesDTO::new).collect(Collectors.toList());
     }
 
+    /**
+     * Maps a User to {@link UserWithRolesDTO} and additionally copies the (plaintext) password.
+     * Deliberately NOT folded into the shared {@code UserWithRolesDTO(User)} constructor: that
+     * constructor also feeds the UNAUTHENTICATED {@code /auth-service/public/v1/users-of-status}
+     * endpoint, so copying the password there would leak every user's credential with no auth.
+     * Only the authenticated, paged Teams listing uses this helper, so admins can surface the
+     * credential in the Teams "Password" column.
+     */
+    private UserWithRolesDTO toUserWithRolesDtoWithPassword(User user) {
+        UserWithRolesDTO dto = new UserWithRolesDTO(user);
+        dto.setPassword(user.getPassword());
+        return dto;
+    }
+
     public PagedUserWithRolesResponse getUsersByInstituteIdAndStatusPaged(String instituteId, List<String> statuses,
             List<String> roles, String searchName, int pageNumber, int pageSize, CustomUserDetails userDetails) {
         org.springframework.data.domain.Pageable pageable = org.springframework.data.domain.PageRequest.of(pageNumber,
@@ -339,7 +353,7 @@ public class UserService {
                 applyRoleFilter, rolesParam, instituteId, name, email, mobile);
 
         List<UserWithRolesDTO> content = users.stream()
-                .map(UserWithRolesDTO::new)
+                .map(this::toUserWithRolesDtoWithPassword)
                 .collect(Collectors.toList());
 
         int totalPages = (int) Math.ceil((double) totalElements / pageSize);
@@ -406,7 +420,7 @@ public class UserService {
                 applyRoleFilter, rolesParam, instituteId, userIds, name, email, mobile);
 
         List<UserWithRolesDTO> content = users.stream()
-                .map(UserWithRolesDTO::new)
+                .map(this::toUserWithRolesDtoWithPassword)
                 .collect(Collectors.toList());
 
         int totalPages = (int) Math.ceil((double) totalElements / pageSize);

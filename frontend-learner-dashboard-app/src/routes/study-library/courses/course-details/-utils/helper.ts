@@ -1,4 +1,5 @@
 import { getPublicUrl } from "@/services/upload_file";
+import { appendYouTubeEmbedOrigin } from "@/utils/youtube-embed";
 
 // Utility functions for YouTube URL handling
 export function isYouTubeUrl(url: string): boolean {
@@ -26,7 +27,9 @@ export function convertToYouTubeEmbedUrl(url: string): string {
     const videoId = getYouTubeVideoId(url);
     if (!videoId) return url;
 
-    return `https://www.youtube.com/embed/${videoId}`;
+    // Append origin/widget_referrer so YouTube accepts the embed inside the
+    // iOS/Electron WebView (capacitor:// origin is otherwise rejected → Error 153).
+    return appendYouTubeEmbedOrigin(`https://www.youtube.com/embed/${videoId}`);
 }
 
 // Utility functions for Vimeo URL handling

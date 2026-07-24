@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.live_session.entity.SessionSchedule;
 import vacademy.io.admin_core_service.features.live_session.provider.dto.google.GoogleAccount;
 import vacademy.io.admin_core_service.features.live_session.repository.SessionScheduleRepository;
+import vacademy.io.admin_core_service.features.live_session.service.RecordingAutoLinkService;
 import vacademy.io.common.meeting.dto.MeetingRecordingDTO;
 
 import java.util.ArrayList;
@@ -36,6 +37,7 @@ public class GoogleRecordingService {
     private final GoogleAccountStore googleAccountStore;
     private final SessionScheduleRepository scheduleRepository;
     private final ObjectMapper objectMapper;
+    private final RecordingAutoLinkService recordingAutoLinkService;
 
     /**
      * Pulls recordings from the Meet REST API for a schedule and merges them into the stored list.
@@ -59,6 +61,7 @@ public class GoogleRecordingService {
         int added = persist(schedule, fetched);
         schedule.setLastRecordingSyncAt(new Date());
         scheduleRepository.save(schedule);
+        recordingAutoLinkService.processSchedule(schedule);
         return added;
     }
 

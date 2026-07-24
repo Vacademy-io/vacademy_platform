@@ -16,8 +16,23 @@ import { useActivityStatsStore } from '@/routes/study-library/courses/course-det
 import { useContentStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/chapter-sidebar-store';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 
-export const ActivityStatsSidebar = () => {
-    const [open, setOpen] = useState(false);
+export const ActivityStatsSidebar = ({
+    open: controlledOpen,
+    onOpenChange,
+    hideTrigger = false,
+}: {
+    /** Controlled mode (e.g. opened from the ⋯ menu): pass open + onOpenChange and hideTrigger. */
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+    hideTrigger?: boolean;
+} = {}) => {
+    const [internalOpen, setInternalOpen] = useState(false);
+    const isControlled = controlledOpen !== undefined;
+    const open = isControlled ? controlledOpen : internalOpen;
+    const setOpen = (o: boolean) => {
+        if (isControlled) onOpenChange?.(o);
+        else setInternalOpen(o);
+    };
     const [isDownloading, setIsDownloading] = useState(false);
     const [searchInput, setSearchInput] = useState('');
 
@@ -165,17 +180,19 @@ export const ActivityStatsSidebar = () => {
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
-            <DialogTrigger asChild>
-                <MyButton
-                    buttonType="secondary"
-                    scale="medium"
-                    layoutVariant="default"
-                    title="Activity Stats"
-                >
-                    <ChartBar className="size-4 md:hidden" />
-                    <span className="hidden md:inline">Activity Stats</span>
-                </MyButton>
-            </DialogTrigger>
+            {!hideTrigger && (
+                <DialogTrigger asChild>
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        layoutVariant="default"
+                        title="Activity Stats"
+                    >
+                        <ChartBar className="size-4 md:hidden" />
+                        <span className="hidden md:inline">Activity Stats</span>
+                    </MyButton>
+                </DialogTrigger>
+            )}
             <DialogContent className="flex h-[680px] max-h-[92vh] w-[760px] max-w-[95vw] flex-col gap-0 overflow-hidden p-0 font-normal">
                 {/* Hero header */}
                 <DialogHeader className="flex shrink-0 flex-col gap-0 space-y-0">

@@ -155,13 +155,13 @@ public class CounsellorReassignService {
                     .build());
 
             if (!dryRun) {
-                profileService.assignCounselor(userId, req.getInstituteId(), toUserId, toName);
+                UserLeadProfile updatedProfile = profileService.assignCounselor(userId, req.getInstituteId(), toUserId, toName);
                 String actorId = actor != null ? actor.getUserId() : null;
                 String actorName = actor != null ? actor.getUsername() : null;
                 try {
                     boolean unassign = toUserId == null;
                     timelineEventService.logJourneyEvent(
-                            "USER_LEAD_PROFILE", userId,
+                            "USER_LEAD_PROFILE", updatedProfile.getId(),
                             unassign ? LeadJourneyActionType.COUNSELOR_UNASSIGNED
                                      : LeadJourneyActionType.COUNSELOR_ASSIGNED,
                             "ADMIN", actorId, actorName,
@@ -429,7 +429,7 @@ public class CounsellorReassignService {
                 String actorName = actor != null ? actor.getUsername() : null;
                 try {
                     timelineEventService.logJourneyEvent(
-                            "USER_LEAD_PROFILE", p.leadProfile.getUserId(),
+                            "USER_LEAD_PROFILE", p.leadProfile.getId(),
                             LeadJourneyActionType.COUNSELOR_ASSIGNED,
                             "ADMIN", actorId, actorName,
                             "Counselor reassigned",

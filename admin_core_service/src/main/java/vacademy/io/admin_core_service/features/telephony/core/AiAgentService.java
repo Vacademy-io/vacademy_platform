@@ -86,6 +86,7 @@ public class AiAgentService {
         // an out-of-range value to the TTS (pace 0.5–2.0, temperature 0.01–2.0).
         agent.setPace(clamp(dto.getPace(), 0.5, 2.0));
         agent.setTemperature(clamp(dto.getTemperature(), 0.01, 2.0));
+        agent.setBookingPageId(blankToNull(dto.getBookingPageId()));
         AiAgent saved = repo.save(agent);
 
         bridgeIntoSettings(saved, /* remove= */ !Boolean.TRUE.equals(saved.getEnabled()));
@@ -178,6 +179,7 @@ public class AiAgentService {
                 .maxCallMinutes(a.getMaxCallMinutes())
                 .pace(a.getPace())
                 .temperature(a.getTemperature())
+                .bookingPageId(a.getBookingPageId())
                 .build();
     }
 

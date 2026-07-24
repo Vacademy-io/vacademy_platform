@@ -119,6 +119,28 @@ def plan_audio_policy(
             continue
         existing = shot.get("audio_policy")
         if isinstance(existing, str) and existing in AUDIO_POLICIES:
+            # DEAD-AIR GUARD: `intrinsic_only` promises the SHOT carries its
+            # own audio. An AI_VIDEO_HERO shot can only do that when the run
+            # generates Veo audio; with audio off the clip is rendered mute
+            # AND per-shot TTS skips the window (narration_text is blanked
+            # for intrinsic shots) → total silence for the shot's duration.
+            # The planner is explicitly invited to pick intrinsic_only for
+            # "pure visual moments", so this is reachable on any narrated
+            # AI-video run. Demote to narration_only so the narrator plays.
+            if (
+                existing == "intrinsic_only"
+                and not ai_video_audio_enabled
+                and str(shot.get("shot_type") or "").upper() == "AI_VIDEO_HERO"
+            ):
+                shot["audio_policy"] = "narration_only"
+                counts["narration_only"] = counts.get("narration_only", 0) + 1
+                if log_fn:
+                    log_fn(
+                        f"   🔇→🗣 shot {shot.get('shot_index')}: AI_VIDEO_HERO asked for "
+                        "intrinsic_only but run audio is OFF (clip would be silent) — "
+                        "using narration_only"
+                    )
+                continue
             counts[existing] = counts.get(existing, 0) + 1
             continue
         policy = _decide_policy(

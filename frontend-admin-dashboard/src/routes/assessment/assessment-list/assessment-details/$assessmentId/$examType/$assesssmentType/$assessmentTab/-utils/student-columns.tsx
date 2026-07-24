@@ -7,6 +7,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { MyDropdown } from '@/components/design-system/dropdown';
 import { StudentTable } from '@/types/student-table-types';
 import { AssessmentStatusOptions } from '../-components/AssessmentStatusOptions';
+import { SubmissionFileCell } from '../-components/SubmissionFileCell';
+import { EvaluationStatusCell } from '../-components/EvaluationStatusCell';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { ArrowSquareOut } from '@phosphor-icons/react';
 import { useStudentSidebar } from '@/routes/manage-students/students-list/-context/selected-student-sidebar-context';
@@ -136,6 +138,20 @@ const SortableHeader = ({
     );
 };
 
+// Only shown for MANUAL evaluation assessments (spliced in by
+// getAllColumnsForTable): whether the attempt has a submitted answer-sheet
+// file, with an on-behalf upload when it doesn't.
+export const assessmentSubmissionFileColumn: ColumnDef<StudentTable> = {
+    id: 'submission_file',
+    header: 'Submission',
+    cell: ({ row }) => (
+        <SubmissionFileCell
+            attemptId={row.original.attempt_id}
+            studentName={row.original.full_name}
+        />
+    ),
+};
+
 export const assessmentStatusStudentAttemptedColumnsInternal: ColumnDef<StudentTable>[] = [
     {
         id: 'checkbox',
@@ -216,17 +232,8 @@ export const assessmentStatusStudentAttemptedColumnsInternal: ColumnDef<StudentT
     {
         accessorKey: 'evaluation_status',
         header: 'Evaluation Status',
-        cell: ({ row }) => {
-            const status = row.original.evaluation_status || 'PENDING';
-            // API returns: "COMPLETED" | "EVALUATING" | "PENDING"
-            const statusMapping: Record<string, string> = {
-                COMPLETED: 'evaluated',
-                EVALUATING: 'evaluating',
-                PENDING: 'pending',
-            };
-            const mappedStatus = statusMapping[status] || 'pending';
-            return <StatusChips status={mappedStatus} />;
-        },
+        // Chip + (manual evaluation only) an eye button to open the evaluated copy.
+        cell: ({ row }) => <EvaluationStatusCell row={row} />,
     },
     {
         accessorKey: 'result_status',

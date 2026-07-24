@@ -17,6 +17,15 @@ import java.util.Map;
 @Data
 @Builder
 public class WorkflowAiDraftResponse {
+    /** PLAN_PROPOSAL | DECISION_REQUEST | FINAL_WORKFLOW | null (legacy draft). */
+    private String turnType;
+    /** PLAN turn: the skeleton for the admin to confirm before decisions are filled. */
+    private WorkflowPlanDTO plan;
+    /** PLAN turn: the typed decisions to render as real pickers. */
+    private List<WorkflowDecisionDTO> decisions;
+    /** PLAN turn: the placeholder workflow, echoed back on BUILD (do not load onto canvas). */
+    private WorkflowBuilderDTO skeleton;
+
     private WorkflowBuilderDTO workflow;
     private List<Map<String, Object>> rationale;
     private List<Map<String, Object>> clarifyingQuestions;

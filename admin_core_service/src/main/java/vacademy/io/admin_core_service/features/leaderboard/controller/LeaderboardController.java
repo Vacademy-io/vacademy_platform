@@ -16,14 +16,19 @@ public class LeaderboardController {
 
     private final LeaderboardService leaderboardService;
 
-    /** Learner-facing course leaderboard: anonymized (initials), the caller's own row marked "You". */
+    /**
+     * Learner-facing course leaderboard: the caller's own row marked "You". Peers are
+     * anonymized to initials unless the institute opted into full names (same toggle as
+     * the public page).
+     */
     @GetMapping("/course/me")
     public ResponseEntity<LeaderboardResponseDTO> getCourseLeaderboardForLearner(
             @RequestParam String packageSessionId,
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
+        boolean anonymize = !leaderboardService.showFullNames(instituteId);
         return ResponseEntity.ok(leaderboardService.buildCourseLeaderboard(
-                packageSessionId, instituteId, user.getUserId(), true, 50, user));
+                packageSessionId, instituteId, user.getUserId(), anonymize, 50, user));
     }
 
     /** Admin course leaderboard: real names, full list. */
@@ -36,13 +41,14 @@ public class LeaderboardController {
                 packageSessionId, instituteId, null, false, 200, user));
     }
 
-    /** Learner-facing institute-wide leaderboard: anonymized, own row marked "You". */
+    /** Learner-facing institute-wide leaderboard: own row marked "You", peers per the full-names toggle. */
     @GetMapping("/institute/me")
     public ResponseEntity<LeaderboardResponseDTO> getInstituteLeaderboardForLearner(
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
+        boolean anonymize = !leaderboardService.showFullNames(instituteId);
         return ResponseEntity.ok(leaderboardService.buildInstituteLeaderboard(
-                instituteId, user.getUserId(), true, 50));
+                instituteId, user.getUserId(), anonymize, 50));
     }
 
     /** Admin institute-wide leaderboard: real names, full list across all courses. */

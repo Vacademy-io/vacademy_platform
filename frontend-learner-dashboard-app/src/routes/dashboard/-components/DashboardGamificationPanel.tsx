@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { Star, Fire, Trophy, Lock } from "@phosphor-icons/react";
@@ -6,7 +6,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { usePlayGamificationStore } from "@/stores/play-gamification-store";
 import type { PlayBadge, PlayGamificationData } from "@/services/play-gamification";
+import { isLibraryToken } from "@/services/badge-library";
 import { BadgeVisual } from "./badge-icons";
+import { AchievementsDialog } from "./AchievementsDialog";
 import { useCleanerPlayTheme } from "@/hooks/use-cleaner-play-theme";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
@@ -258,25 +260,30 @@ function BadgeChip({ badge, isCleanerPlay }: { badge: PlayBadge; isCleanerPlay?:
         })
       : t("badges.awardedTooltip", { name: badge.name })
     : t("badges.tooltip", { name: badge.name, description: badge.description });
+  const isLib = isLibraryToken(badge.icon);
   return (
-    <div className="flex w-16 flex-col items-center gap-1" title={tooltip}>
+    <div className="flex w-16 flex-col items-center gap-1.5" title={tooltip}>
       <div
         className={cn(
-          "relative flex h-10 w-10 items-center justify-center rounded-full",
-          unlocked
-            ? isCleanerPlay ? "bg-cp-sage-tint" : "bg-primary-50"
-            : isCleanerPlay ? "bg-cp-bg-deep" : "bg-muted"
+          "relative flex items-center justify-center",
+          isLib ? "h-14 w-14" : "h-11 w-11 rounded-full",
+          !isLib &&
+            (unlocked
+              ? isCleanerPlay ? "bg-cp-sage-tint" : "bg-primary-50"
+              : isCleanerPlay ? "bg-cp-bg-deep" : "bg-muted")
         )}
       >
         <BadgeVisual
           icon={badge.icon}
           fill
           weight={unlocked ? "fill" : "regular"}
-          size={20}
+          size={isLib ? 52 : 24}
           className={cn(
-            unlocked
-              ? isCleanerPlay ? "text-cp-sage" : "text-primary-500"
-              : isCleanerPlay ? "cp-muted" : "text-muted-foreground"
+            isLib
+              ? !unlocked && "opacity-45 grayscale"
+              : unlocked
+                ? isCleanerPlay ? "text-cp-sage" : "text-primary-500"
+                : isCleanerPlay ? "cp-muted" : "text-muted-foreground"
           )}
         />
         {!unlocked && (
@@ -306,27 +313,45 @@ function BadgeChip({ badge, isCleanerPlay }: { badge: PlayBadge; isCleanerPlay?:
   );
 }
 
-function BadgesCard({ data }: { data: PlayGamificationData | null }) {
+function BadgesCard({
+  data,
+  onOpenDetails,
+}: {
+  data: PlayGamificationData | null;
+  onOpenDetails?: () => void;
+}) {
   const { t } = useTranslation("dashboard");
   const isCleanerPlay = useCleanerPlayTheme();
   const badges = data?.badges ?? [];
   const unlockedCount = badges.filter((b) => b.unlocked).length;
+  const showViewAll = Boolean(onOpenDetails) && badges.length > 0;
 
   if (isCleanerPlay) {
     return (
       <div className="cp-card flex h-full flex-col gap-3 p-4">
-        <div className="flex items-center gap-3">
-          <img src={iconBadges} alt="" aria-hidden="true" className="h-11 w-11 shrink-0 object-contain" />
-          <div>
-            <p className="cp-heading text-subtitle">{t("badges.title")}</p>
-            <p className="cp-muted text-caption">
-              {unlockedCount > 0
-                ? t("badges.unlockedCount", { unlocked: unlockedCount, total: badges.length })
-                : t("gamification.badgesEmptyPrompt", {
-                    slide: getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase(),
-                  })}
-            </p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <img src={iconBadges} alt="" aria-hidden="true" className="h-11 w-11 shrink-0 object-contain" />
+            <div>
+              <p className="cp-heading text-subtitle">{t("badges.title")}</p>
+              <p className="cp-muted text-caption">
+                {unlockedCount > 0
+                  ? t("badges.unlockedCount", { unlocked: unlockedCount, total: badges.length })
+                  : t("gamification.badgesEmptyPrompt", {
+                      slide: getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase(),
+                    })}
+              </p>
+            </div>
           </div>
+          {showViewAll && (
+            <button
+              type="button"
+              onClick={onOpenDetails}
+              className="cp-muted shrink-0 text-caption font-medium underline-offset-2 hover:underline"
+            >
+              View all
+            </button>
+          )}
         </div>
         {badges.length > 0 && (
           <div className="flex flex-wrap gap-2.5">
@@ -342,20 +367,31 @@ function BadgesCard({ data }: { data: PlayGamificationData | null }) {
   return (
     <Card className="h-full">
       <CardContent className="flex h-full flex-col gap-3 p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-50">
-            <Trophy weight="fill" size={20} className="text-primary-500" />
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary-50">
+              <Trophy weight="fill" size={20} className="text-primary-500" />
+            </div>
+            <div>
+              <p className="text-subtitle font-bold text-foreground">{t("badges.title")}</p>
+              <p className="text-caption text-muted-foreground">
+                {unlockedCount > 0
+                  ? t("badges.unlockedCount", { unlocked: unlockedCount, total: badges.length })
+                  : t("gamification.badgesEmptyPrompt", {
+                      slide: getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase(),
+                    })}
+              </p>
+            </div>
           </div>
-          <div>
-            <p className="text-subtitle font-bold text-foreground">{t("badges.title")}</p>
-            <p className="text-caption text-muted-foreground">
-              {unlockedCount > 0
-                ? t("badges.unlockedCount", { unlocked: unlockedCount, total: badges.length })
-                : t("gamification.badgesEmptyPrompt", {
-                    slide: getTerminology(ContentTerms.Slides, SystemTerms.Slides).toLocaleLowerCase(),
-                  })}
-            </p>
-          </div>
+          {showViewAll && (
+            <button
+              type="button"
+              onClick={onOpenDetails}
+              className="shrink-0 text-caption font-medium text-primary-500 underline-offset-2 hover:underline"
+            >
+              View all
+            </button>
+          )}
         </div>
         {badges.length > 0 && (
           <div className="flex flex-wrap gap-2.5">
@@ -372,6 +408,7 @@ function BadgesCard({ data }: { data: PlayGamificationData | null }) {
 export const DashboardGamificationPanel: React.FC = () => {
   const data = usePlayGamificationStore((s) => s.data);
   const isLoading = usePlayGamificationStore((s) => s.isLoading);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   // Master toggle off → hide the badges card (XP + streak stay).
   const showBadges = data?.badgesEnabled !== false;
 
@@ -393,10 +430,17 @@ export const DashboardGamificationPanel: React.FC = () => {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-      <XpCard data={data} />
-      <StreakCard data={data} />
-      {showBadges && <BadgesCard data={data} />}
-    </div>
+    <>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <XpCard data={data} />
+        <StreakCard data={data} />
+        {showBadges && (
+          <BadgesCard data={data} onOpenDetails={() => setDetailsOpen(true)} />
+        )}
+      </div>
+      {showBadges && (
+        <AchievementsDialog open={detailsOpen} onOpenChange={setDetailsOpen} data={data} />
+      )}
+    </>
   );
 };

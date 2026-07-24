@@ -57,6 +57,31 @@ public class EngagementLedgerService {
     @Value("${aws.inbound.email.enabled:false}")
     private boolean inboundEmailEnabled;
 
+    /**
+     * Recent inbound WhatsApp replies since a cursor, for the engine's reply-ingestion sweep and
+     * auto-reply. {@code text} is the FULL inbound message for rows written after the
+     * WebhookEventProcessor REPLY-branch change (and always was on the Combot path) — the auto-reply
+     * classifies money/anger on it, so do NOT re-truncate it at the read side. Legacy rows may still
+     * carry the old 100-char preview; the responder escalates those rather than auto-answering.
+     */
+    public List<Map<String, Object>> inboundSince(String instituteId, Instant since) {
+        if (instituteId == null || instituteId.isBlank()) {
+            throw new IllegalArgumentException("instituteId is required");
+        }
+        Instant cursor = since != null ? since : Instant.now().minus(Duration.ofMinutes(15));
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (NotificationLogRepository.InboundReplyRow row :
+                notificationLogRepository.findInboundRepliesSince(instituteId, cursor)) {
+            Map<String, Object> m = new java.util.HashMap<>();
+            m.put("phone", row.getChannelId());
+            m.put("text", row.getBody());
+            m.put("receivedAt", row.getReceivedAt() != null ? row.getReceivedAt().toInstant().toString() : null);
+            m.put("wamid", row.getWamid());   // stable per-message id the auto-reply dedups on
+            out.add(m);
+        }
+        return out;
+    }
+
     public LedgerBatchResponse ledgerBatch(LedgerBatchRequest request) {
         if (request == null || request.getInstituteId() == null || request.getInstituteId().isBlank()) {
             throw new IllegalArgumentException("instituteId is required");

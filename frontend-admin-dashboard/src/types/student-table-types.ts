@@ -23,6 +23,9 @@ export interface StudentFilterRequest {
     // (Map<String, List<String>>), NOT the legacy flat customFieldId*/customFieldValues*
     // shape (that shape was never read by the backend — see useStudentFilters.tsx).
     custom_field_filters?: Record<string, string[]>;
+    // Operator-aware custom-field filters (CONTAINS / IS_EMPTY / NOT_EMPTY /
+    // BETWEEN / GTE / LTE). Coexists with the legacy values-IN map above.
+    custom_field_typed_filters?: { field_id: string; operator?: string; values: string[] }[];
     [key: string]: any;
 }
 

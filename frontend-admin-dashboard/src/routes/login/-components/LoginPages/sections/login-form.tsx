@@ -47,6 +47,14 @@ import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_D
 
 type FormValues = z.infer<typeof loginSchema>;
 
+// Rejection error codes for which handleLoginFlow already shows its OWN specific
+// toast (admin-role required / student blocked / wrong sub-org portal). Callers
+// must not stack a second, generic toast on top of these.
+const isHandledLoginError = (error?: string): boolean =>
+    error === 'admin_role_required' ||
+    error === 'student_access_denied' ||
+    error === 'suborg_portal_mismatch';
+
 /**
  * Computes which auth providers to show from resolved domain-routing branding,
  * mirroring the learner login semantics: OAuth / email-OTP / username-password
@@ -191,16 +199,16 @@ export function LoginForm() {
                         });
 
                         if (!result.success) {
-                            const errorMessage =
-                                result.error === 'admin_role_required'
-                                    ? 'This portal requires ADMIN privileges. Please contact your administrator.'
-                                    : 'Students are not allowed to access the admin portal. Please contact your administrator.';
-
-                            toast.error('Access Denied', {
-                                description: errorMessage,
-                                className: 'error-toast',
-                                duration: 5000,
-                            });
+                            // handleLoginFlow already toasts its own rejection reasons —
+                            // don't stack a second (previously wrong) toast on top.
+                            if (!isHandledLoginError(result.error)) {
+                                toast.error('Access Denied', {
+                                    description:
+                                        'You are not allowed to access this portal. Please contact your administrator.',
+                                    className: 'error-toast',
+                                    duration: 5000,
+                                });
+                            }
                             return;
                         }
 
@@ -240,16 +248,16 @@ export function LoginForm() {
                     });
 
                     if (!result.success) {
-                        const errorMessage =
-                            result.error === 'admin_role_required'
-                                ? 'This portal requires ADMIN privileges. Please contact your administrator.'
-                                : 'Students are not allowed to access the admin portal. Please contact your administrator.';
-
-                        toast.error('Access Denied', {
-                            description: errorMessage,
-                            className: 'error-toast',
-                            duration: 5000,
-                        });
+                        // handleLoginFlow already toasts its own rejection reasons —
+                        // don't stack a second (previously wrong) toast on top.
+                        if (!isHandledLoginError(result.error)) {
+                            toast.error('Access Denied', {
+                                description:
+                                    'You are not allowed to access this portal. Please contact your administrator.',
+                                className: 'error-toast',
+                                duration: 5000,
+                            });
+                        }
                         return;
                     }
 
@@ -340,17 +348,18 @@ export function LoginForm() {
             });
 
             if (!result.success) {
-                // User was blocked or error occurred
-                const errorMessage =
-                    result.error === 'admin_role_required'
-                        ? 'This portal requires ADMIN privileges. Please contact your administrator.'
-                        : 'Students are not allowed to access the admin portal. Please contact your administrator.';
-
-                toast.error('Access Denied', {
-                    description: errorMessage,
-                    className: 'error-toast',
-                    duration: 5000,
-                });
+                // handleLoginFlow already shows a specific toast for its own rejection
+                // reasons (admin-role / student / wrong sub-org portal). Don't stack a
+                // second — and previously wrong ("Students are not allowed") — toast on
+                // top. Only surface a generic message for an unexpected error code.
+                if (!isHandledLoginError(result.error)) {
+                    toast.error('Access Denied', {
+                        description:
+                            'You are not allowed to access this portal. Please contact your administrator.',
+                        className: 'error-toast',
+                        duration: 5000,
+                    });
+                }
                 return;
             }
 

@@ -45,6 +45,9 @@ export interface DomainRoutingResponse {
   hideInstituteName?: boolean | null;
   logoWidthPx?: number | null;
   logoHeightPx?: number | null;
+  // When true, the institute name is stacked below the logo (centered vertical)
+  // instead of beside it. Default (undefined / null / false): name beside logo.
+  stackNameBelowLogo?: boolean | null;
   // Minimal naming overrides surfaced pre-login so screens like the login page
   // can honor institute-specific terminology before the full settings payload
   // is fetched post-login.
@@ -70,6 +73,7 @@ export interface CachedInstituteBranding {
   hideInstituteName: boolean | null;
   logoWidthPx: number | null;
   logoHeightPx: number | null;
+  stackNameBelowLogo: boolean | null;
 }
 
 const BRANDING_CACHE_KEY = "InstituteBranding";
@@ -236,6 +240,10 @@ const normalizeBranding = (
     typeof branding?.logoWidthPx === "number" ? branding.logoWidthPx : null,
   logoHeightPx:
     typeof branding?.logoHeightPx === "number" ? branding.logoHeightPx : null,
+  stackNameBelowLogo:
+    typeof branding?.stackNameBelowLogo === "boolean"
+      ? branding.stackNameBelowLogo
+      : null,
 });
 
 const readBrandingFromStorage = (): CachedInstituteBranding | null => {
@@ -296,6 +304,12 @@ const deriveBrandingFromInstituteDetails = (): CachedInstituteBranding | null =>
           ? parsed.logoHeightPx
           : typeof parsed?.logo_height_px === "number"
             ? parsed.logo_height_px
+            : null,
+      stackNameBelowLogo:
+        typeof parsed?.stackNameBelowLogo === "boolean"
+          ? parsed.stackNameBelowLogo
+          : typeof parsed?.stack_name_below_logo === "boolean"
+            ? parsed.stack_name_below_logo
             : null,
     });
   } catch (error) {

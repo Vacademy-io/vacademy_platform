@@ -254,6 +254,45 @@ export async function exportCallLog(
     URL.revokeObjectURL(url);
 }
 
+// ── GET /{id}/detail ───────────────────────────────────────────────────────
+
+/** One curated provider diagnostic field (hangup cause, SIP/cause code, error, …). */
+export interface CallDetailKeyVal {
+    label: string;
+    value: string;
+}
+
+/** Deep per-call detail — richer than the search row, used by the "more details" popover. */
+export interface CallDetail {
+    id: string;
+    provider_type: string | null;
+    direction: 'INBOUND' | 'OUTBOUND' | null;
+    status: string | null;
+    termination_reason: string | null;
+    provider_call_id: string | null;
+    start_time: number | string | null;
+    answer_time: number | string | null;
+    end_time: number | string | null;
+    duration_seconds: number | null;
+    price: number | null;
+    provider_details: CallDetailKeyVal[];
+    /** Verbatim provider webhook body — present only for callers who may unmask numbers. */
+    raw_provider_response: string | null;
+}
+
+export const callDetailKey = (instituteId: string, callLogId: string) =>
+    ['crm-call-log-detail', instituteId, callLogId] as const;
+
+export async function fetchCallDetail(instituteId: string, callLogId: string): Promise<CallDetail> {
+    const { data } = await authenticatedAxiosInstance.get(`${CALLS_BASE}/${callLogId}/detail`, {
+        params: { instituteId },
+    });
+    return {
+        ...data,
+        provider_details: Array.isArray(data?.provider_details) ? data.provider_details : [],
+    };
+}
+
 // ── GET /{id}/recording ────────────────────────────────────────────────────
 
 export async function fetchRecordingUrl(instituteId: string, callLogId: string): Promise<string | null> {

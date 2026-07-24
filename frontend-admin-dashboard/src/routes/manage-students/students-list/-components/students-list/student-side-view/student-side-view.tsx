@@ -32,6 +32,7 @@ import { StudentFullHistory } from './student-full-history/student-full-history'
 import { StudentParentProfile } from './student-parent/student-parent-profile';
 import { StudentOnboardingProfile } from './student-onboarding/student-onboarding-profile';
 import { LeadFormResponseCard } from '@/routes/audience-manager/list/-components/campaign-users/lead-form-response-card';
+import { LeadMeetingsSection } from '@/components/shared/leads/lead-meetings-section';
 import { useLeadSettings } from '@/hooks/use-lead-settings';
 import { useParentSettings } from '@/hooks/use-parent-settings';
 import { useOnboardingSettings } from '@/hooks/use-onboarding-settings';
@@ -42,8 +43,9 @@ import {
     getTerminology,
     getTerminologyPlural,
 } from '@/components/common/layout-container/sidebar/utils';
-import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
+import { ContentTerms, OtherTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { cn } from '@/lib/utils';
+import { useAssistDockVisible } from '@/components/assist-dock/visibility';
 import {
     getDisplaySettingsWithFallback,
     getDisplaySettingsFromCache,
@@ -131,6 +133,7 @@ export const StudentSidebar = ({
 }) => {
     const { state, setOpen, setOpenMobile } = useSidebar();
     const { isCompact } = useCompactMode();
+    const assistDockVisible = useAssistDockVisible();
     const [category, setCategory] = useState('overview');
     // Tab-bar scroll affordance: track whether more tabs sit off either edge so
     // we can show clickable chevrons — the plain fade wasn't a clear enough cue
@@ -357,9 +360,13 @@ export const StudentSidebar = ({
                 className
             )}
         >
-            {/* pr-14 keeps content clear of the fixed Assist Dock rail (w-14) that overlays this panel's right edge. */}
+            {/* pr-14 keeps content clear of the fixed Assist Dock rail (w-14) that overlays this
+                panel's right edge — only when the rail is visible for this role. */}
             <SidebarContent
-                className={`sidebar-content flex flex-col !gap-0 border-l border-t border-neutral-200 bg-white pr-14 font-app text-neutral-700`}
+                className={cn(
+                    'sidebar-content flex flex-col !gap-0 border-l border-t border-neutral-200 bg-white font-app text-neutral-700',
+                    assistDockVisible && 'pr-14'
+                )}
             >
                 <SidebarHeader className="sticky top-0 z-10 !mt-0 !gap-0 !p-0 border-b border-neutral-200 bg-white shadow-sm">
                     <div className="flex flex-col gap-1.5 px-3 pb-2 pt-1.5">
@@ -382,7 +389,7 @@ export const StudentSidebar = ({
                             <div className="flex min-w-0 flex-1 items-center gap-2">
                                 <h2
                                     className={cn(
-                                        'truncate text-base font-semibold leading-tight',
+                                        'min-w-0 truncate text-base font-semibold leading-tight',
                                         selectedStudent?.full_name
                                             ? 'text-neutral-900'
                                             : 'text-neutral-400'
@@ -392,7 +399,9 @@ export const StudentSidebar = ({
                                     {selectedStudent?.full_name || 'Unknown'}
                                 </h2>
                                 {selectedStudent?.status && (
-                                    <StatusChips status={selectedStudent.status} />
+                                    <div className="shrink-0">
+                                        <StatusChips status={selectedStudent.status} />
+                                    </div>
                                 )}
                                 {isCancelledMember && (
                                     <span
@@ -589,7 +598,7 @@ export const StudentSidebar = ({
                                             )}
                                             onClick={() => setCategory('subOrg')}
                                         >
-                                            SubOrg
+                                            {getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)}
                                         </button>
                                     )}
                                 </div>
@@ -692,6 +701,9 @@ export const StudentSidebar = ({
                         row (campaign-users / recent-leads); manage-students
                         rows don't carry the attached metadata. */}
                     {category === 'lead' && <LeadFormResponseCard />}
+                    {/* Meetings linked to this lead (by response id / user id / email) —
+                        renders alongside the form-response card on the Lead tab. */}
+                    {category === 'lead' && <LeadMeetingsSection className="my-3" />}
                     <ErrorBoundary>
                         {category === 'courses' && tabSettings?.coursesTab && (
                             <StudentCourses

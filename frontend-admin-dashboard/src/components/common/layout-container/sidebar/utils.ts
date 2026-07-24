@@ -263,7 +263,7 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItemId: 'teams',
             },
             {
-                subItem: 'Sub-Org Teams',
+                subItem: `${getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg)} Teams`,
                 subItemLink: '/manage-suborg-teams',
                 subItemId: 'suborg-teams',
             },
@@ -271,7 +271,7 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 // Institute-admin surface — sub-orgs list + drilldown to a sub-org's
                 // analytics deep page. Sibling to "Sub-Org Teams" (which is the
                 // sub-org-admin's narrow view). Both default off; institutes opt in.
-                subItem: 'Manage Institute Sub-Orgs',
+                subItem: `Manage Institute ${getTerminologyPlural(OtherTerms.SubOrg, SystemTerms.SubOrg)}`,
                 subItemLink: '/manage-custom-teams',
                 subItemId: 'manage-institute-suborgs',
             },
@@ -537,6 +537,44 @@ export const getSidebarItemsData = (): SidebarItemsType[] => [
                 subItem: 'Reports',
                 subItemLink: '/audience-manager/reports',
                 subItemId: 'lead-reports',
+            },
+        ],
+    },
+    {
+        icon: CalendarCheck,
+        title: 'Meetings',
+        id: 'meetings',
+        category: 'CRM',
+        subItems: [
+            {
+                subItem: 'My Schedule',
+                subItemLink: '/meetings/my-schedule',
+                subItemId: 'meetings-my-schedule',
+            },
+            {
+                subItem: 'Team Meetings',
+                subItemLink: '/meetings/team',
+                subItemId: 'meetings-team',
+            },
+        ],
+    },
+    {
+        icon: Lightning,
+        title: 'Engagement Engines',
+        id: 'engagement-engines',
+        category: 'CRM',
+        subItems: [
+            {
+                subItem: 'Engines',
+                subItemLink: '/engagement-engines',
+                subItemId: 'engagement-engines-list',
+                adminOnly: true,
+            },
+            {
+                subItem: 'Task Inbox',
+                subItemLink: '/engagement-engines/inbox',
+                subItemId: 'engagement-task-inbox',
+                adminOnly: true,
             },
         ],
     },

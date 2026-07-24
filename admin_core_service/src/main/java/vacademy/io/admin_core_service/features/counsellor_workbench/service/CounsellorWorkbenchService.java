@@ -436,7 +436,7 @@ public class CounsellorWorkbenchService {
             }
         }
 
-        List<LeadTransferDTO> rows = leadRepo.findTransfersForLead(leadUserId);
+        List<LeadTransferDTO> rows = leadRepo.findTransfersForLead(leadUserId, instituteId);
         if (rows.isEmpty()) return rows;
 
         // Hydrate display names for every distinct user_id surfaced in the

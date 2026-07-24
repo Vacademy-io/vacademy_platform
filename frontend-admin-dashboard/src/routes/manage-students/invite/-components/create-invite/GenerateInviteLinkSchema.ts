@@ -286,6 +286,14 @@ export const inviteLinkSchema = z.object({
     showReferralDialog: z.boolean().default(false),
     showAddReferralDialog: z.boolean().default(false),
     restrictToSameBatch: z.boolean().default(false),
+    // Invite-link availability window (maps to enroll_invite.start_date / end_date).
+    // Empty string = that side of the window is open. Outside the window (or when the link
+    // is deactivated) learners see `unavailableMessage` instead of the enrollment form.
+    availabilityStartDate: z.string().default(''),
+    availabilityEndDate: z.string().default(''),
+    // Admin-authored rich-text (HTML) message shown when the link is not accepting
+    // enrollments. Stored in setting_json under setting.AVAILABILITY_SETTING.UNAVAILABLE_MESSAGE.
+    unavailableMessage: z.string().default(''),
     accessDurationType: z.string().default('define'),
     accessDurationDays: z
         .string()

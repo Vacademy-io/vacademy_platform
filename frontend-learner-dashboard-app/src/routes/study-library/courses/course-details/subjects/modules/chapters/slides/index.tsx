@@ -428,6 +428,10 @@ function Slides() {
           previousItemCompletion: previousSlide?.percentage_completed || 0,
           itemIndex: index,
           prerequisiteCompletions,
+          // Completion of every slide before this one, in slide_order.
+          recentScores: slides
+            .slice(0, index)
+            .map((s: Slide) => s.percentage_completed || 0),
         };
 
         // Check if this slide has its own drip condition (check both fields)
@@ -549,104 +553,15 @@ function Slides() {
       if (slideId) {
         const targetSlide = slidesWithFeedback.find((s) => s.id === slideId);
         if (targetSlide) {
-          // Check if the target slide is locked
-          const slideIndex = accessibleSlides.findIndex(
-            (s) => s.id === slideId
-          );
-          if (slideIndex !== -1) {
-            // Build comprehensive prerequisite completions map
-            const prerequisiteCompletions: Record<string, number> = {};
+          // Reuse the evaluation computed above rather than re-deriving it —
+          // recomputing here indexed into the post-hide-filter list, which
+          // skewed itemIndex whenever an earlier slide was hidden. The
+          // synthesized feedback slide has no evaluation and is never locked.
+          const evaluation = evaluations[targetSlide.id];
 
-            // Add all chapters and their progress
-            if (modulesWithChaptersData) {
-              modulesWithChaptersData.forEach((module) => {
-                module.chapters.forEach((chapter) => {
-                  prerequisiteCompletions[chapter.id] = 0;
-                });
-              });
-            }
-
-            // Add all slides and their progress
-            slides.forEach((slide: Slide) => {
-              prerequisiteCompletions[slide.id] =
-                slide.percentage_completed || 0;
-            });
-
-            // Calculate current chapter progress
-            if (chapterId) {
-              const chapterProgress = calculateOverallCompletion(slides);
-              prerequisiteCompletions[chapterId] = chapterProgress;
-            }
-
-            const previousSlide =
-              slideIndex > 0 ? accessibleSlides[slideIndex - 1] : null;
-            const progressData: LearnerProgressData = {
-              percentageCompleted: targetSlide.percentage_completed || 0,
-              previousItemId: previousSlide?.id,
-              previousItemCompletion: previousSlide?.percentage_completed || 0,
-              itemIndex: slideIndex,
-              prerequisiteCompletions,
-            };
-
-            // Check if this slide has its own drip condition (check both fields)
-            let slideDripCondition = null;
-            const dripConditionData =
-              targetSlide.drip_condition || targetSlide.drip_condition_json;
-
-            if (dripConditionData) {
-              try {
-                const parsed =
-                  typeof dripConditionData === "string"
-                    ? JSON.parse(dripConditionData)
-                    : dripConditionData;
-
-                // Handle array of conditions - filter for enabled slide conditions
-                if (Array.isArray(parsed)) {
-                  slideDripCondition =
-                    parsed.find(
-                      (cond) =>
-                        (cond.target === "slide" || !cond.target) &&
-                        cond.is_enabled !== false
-                    ) || null;
-                } else if (parsed && typeof parsed === "object") {
-                  // Single condition - check if enabled and for slides
-                  if (
-                    (parsed.target === "slide" || !parsed.target) &&
-                    parsed.is_enabled !== false
-                  ) {
-                    slideDripCondition = parsed;
-                  }
-                }
-              } catch (e) {
-                console.error("Failed to parse slide drip condition:", e);
-              }
-            }
-
-            // Use slide-specific condition if available, otherwise fall back to package-level
-            const conditionToUse = slideDripCondition || slideCondition;
-            const hasCondition = !!slideDripCondition || !!slideCondition;
-
-            // Check global flag first, then per-item condition's is_enabled flag
-            const shouldEvaluate =
-              isDrippingEnable &&
-              hasCondition &&
-              conditionToUse?.is_enabled !== false;
-
-            const evaluation =
-              shouldEvaluate && conditionToUse
-                ? evaluateDripCondition(conditionToUse, progressData)
-                : {
-                  isLocked: false,
-                  isHidden: false,
-                  unlockMessage: null,
-                };
-
-            const locked = isItemLocked(evaluation);
-
-            if (locked) {
-              setActiveItem(slidesWithFeedback[0]);
-              return;
-            }
+          if (evaluation && isItemLocked(evaluation)) {
+            setActiveItem(slidesWithFeedback[0]);
+            return;
           }
 
           setActiveItem(targetSlide);

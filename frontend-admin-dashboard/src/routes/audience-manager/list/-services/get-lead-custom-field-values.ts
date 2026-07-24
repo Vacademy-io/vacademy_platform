@@ -9,6 +9,8 @@ import { GET_LEAD_CUSTOM_FIELD_VALUES } from '@/constants/urls';
  */
 export interface LeadCustomFieldFilter {
     field_id: string;
+    /** IN (default) | CONTAINS | IS_EMPTY | NOT_EMPTY | BETWEEN | GTE | LTE. */
+    operator?: string;
     values: string[];
 }
 

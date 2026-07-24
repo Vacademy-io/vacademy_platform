@@ -382,6 +382,7 @@ export interface QuizSlidePayload {
     };
     is_loaded: boolean;
     new_slide: boolean;
+    notify?: boolean;
 }
 
 export interface AudioSlidePayload {

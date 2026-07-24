@@ -789,6 +789,16 @@
         "showBadge": true,
         "showFilters": true
       }
+    },
+    {
+      "type": "htmlBlock",
+      "templateKey": "htmlBlock",
+      "exampleProps": {
+        "html": "",
+        "css": "",
+        "prompt": ""
+      },
+      "escapeHatch": "ESCAPE HATCH for bespoke sections only. props {html, css, prompt}. Sanitized + rendered in a scoped sandbox: no scripts/iframes/svg/forms; style via the css prop with class selectors using the theme CSS variables (var(--primary-500), var(--catalogue-text-primary), var(--catalogue-heading-font)); must include @media rules; images only from provided URLs. Max 2 per page. Prefer typed components whenever they fit."
     }
   ],
   "styleSchema": {
@@ -920,7 +930,7 @@
   "doctrine": [
     "Output is a single Page object: {id, name, route, components: Component[]}. Component = {id, type, enabled:true, props, style?}.",
     "ids: kebab-case unique strings.",
-    "NEVER emit htmlBlock. NEVER invent image URLs — only use media URLs provided in the source pack (or leave image fields empty).",
+    "htmlBlock is a LAST-RESORT escape hatch (see its note) — typed components first. NEVER invent image URLs — only use media URLs provided in the source pack (or leave image fields empty).",
     "Data-bound components render live institute data; configure, do not fabricate their entries.",
     "Rhythm: open with ONE hero; use sectionHeading before dense sections; alternate section surface tints; end with a CTA and/or contact section.",
     "Copy: concise, benefit-led, in the institute's voice; use the institute's configured terminology for Course/Batch/etc. when provided.",

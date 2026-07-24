@@ -52,6 +52,7 @@ import {
 import { WaitingRoomType } from '@/routes/study-library/live-session/-constants/enums';
 import { ZoomIntegrationCard } from './zoom/ZoomIntegrationCard';
 import { GoogleMeetIntegrationCard } from './google/GoogleMeetIntegrationCard';
+import { DefaultRecordingDestinationPicker } from './DefaultRecordingDestinationPicker';
 
 const PLATFORM_LABELS: Record<PlatformKey, string> = {
     youtube: 'YouTube',
@@ -1044,6 +1045,39 @@ export default function LiveSessionSettings() {
                         checked={settings.lmsConnection.classMaterialsEnabled}
                         onChange={(v) => toggleLmsConnection('classMaterialsEnabled', v)}
                     />
+                    <Separator />
+                    <SettingRow
+                        title="Auto-upload recordings to course"
+                        description="Automatically adds a finished class recording as a slide in a chapter once it's ready — no manual 'Add to course' click needed. Sessions can pick their own destination while scheduling; otherwise the default below is used."
+                        checked={settings.lmsConnection.autoUploadRecordingsEnabled}
+                        onChange={(v) => toggleLmsConnection('autoUploadRecordingsEnabled', v)}
+                    />
+                    {settings.lmsConnection.autoUploadRecordingsEnabled && (
+                        <div className="pl-4">
+                            <SettingRow
+                                title="Notify learners on auto-upload"
+                                description="Emails enrolled learners ('New Study Material Available') when a recording is auto-added via the default destination below. Sessions with their own destination use the notify choice made while scheduling."
+                                checked={settings.lmsConnection.autoUploadNotifyLearners}
+                                onChange={(v) => toggleLmsConnection('autoUploadNotifyLearners', v)}
+                            />
+                        </div>
+                    )}
+                    {settings.lmsConnection.autoUploadRecordingsEnabled && (
+                        <div className="pb-1 pl-1 pt-2">
+                            <DefaultRecordingDestinationPicker
+                                value={settings.lmsConnection.autoUploadDefaultDestination}
+                                onChange={(dest) =>
+                                    setSettings((prev) => ({
+                                        ...prev,
+                                        lmsConnection: {
+                                            ...prev.lmsConnection,
+                                            autoUploadDefaultDestination: dest,
+                                        },
+                                    }))
+                                }
+                            />
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 

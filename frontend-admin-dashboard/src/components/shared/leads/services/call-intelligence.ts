@@ -7,6 +7,7 @@ import {
     CALL_INTELLIGENCE_COUNSELLOR_COACHING,
     CALL_INTELLIGENCE_TEAM_ANALYTICS,
     CALL_INTELLIGENCE_TEAM_COACHING,
+    CALL_INTELLIGENCE_TRANSCRIPT,
 } from '@/constants/urls';
 
 // ─── Types (mirror the admin-core CallIntelligenceDto / AnalyticsDto) ──────────
@@ -93,6 +94,16 @@ export interface CallIntelligenceDto {
     completedAt?: string | null;
 }
 
+/** Full transcript of one call, proxied through admin-core from S3. */
+export interface CallTranscriptDto {
+    callLogId: string;
+    detectedLanguage?: string | null;
+    /** Transcript in the spoken language (hi/en/mixed). */
+    sourceText?: string | null;
+    /** English translation pass. */
+    englishText?: string | null;
+}
+
 export interface CounsellorStat {
     counsellorUserId: string;
     totalAnalyzed: number;
@@ -159,6 +170,22 @@ export const fetchCallIntelligence = async (
     try {
         const { data } = await authenticatedAxiosInstance.get<CallIntelligenceDto>(
             CALL_INTELLIGENCE_BY_CALL(callLogId)
+        );
+        return data ?? null;
+    } catch (err: unknown) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 404) return null;
+        throw err;
+    }
+};
+
+/** Full transcript for a single call. Returns null on 404 (not analyzed). */
+export const fetchCallTranscript = async (
+    callLogId: string
+): Promise<CallTranscriptDto | null> => {
+    try {
+        const { data } = await authenticatedAxiosInstance.get<CallTranscriptDto>(
+            CALL_INTELLIGENCE_TRANSCRIPT(callLogId)
         );
         return data ?? null;
     } catch (err: unknown) {

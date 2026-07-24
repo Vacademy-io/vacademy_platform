@@ -56,6 +56,7 @@ import vacademy.io.admin_core_service.features.notification.dto.NotificationTemp
 import vacademy.io.admin_core_service.features.notification_service.service.SendUniqueLinkService;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.admin_core_service.features.common.entity.CustomFields;
+import vacademy.io.admin_core_service.features.common.entity.InstituteCustomField;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.audience.enums.CustomFieldValueSourceType;
@@ -110,6 +111,9 @@ public class AudienceService {
     private CustomFieldValuesRepository customFieldValuesRepository;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver customFieldListFilterResolver;
+
+    @Autowired
     private AuthService authService;
 
     @Autowired
@@ -131,6 +135,10 @@ public class AudienceService {
     /** Resolves caller + user-to-user descendants in the leads team. */
     @Autowired
     private vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService counsellorScopeService;
+
+    /** Resolves a sub-org admin's lead scope (their sub-org's members) — see getLeads. */
+    @Autowired
+    private vacademy.io.admin_core_service.features.suborg.service.SubOrgLeadScopeService subOrgLeadScopeService;
 
     @Autowired
     private InstituteCustomFieldRepository instituteCustomFieldRepository;
@@ -602,6 +610,197 @@ public class AudienceService {
                             saved.getId(), instituteId);
                     return saved;
                 });
+    }
+
+    /** Campaign name for the auto-provisioned per-institute live-class / webinar lead audience. */
+    private static final String LIVE_CLASS_AUDIENCE_NAME = "Public Webinar - Live Session";
+
+    /**
+     * Capture a lead from a public live-class (webinar) guest registration.
+     *
+     * <p>Live-session guest registration ({@code RegistrationService.saveGuestUserDetails})
+     * writes only {@code session_guest_registrations} + EXTERNAL_PARTICIPANT custom field
+     * values and never created an {@code audience_response}, so webinar registrants were
+     * invisible in the CRM lead list. This routes them into a single per-institute
+     * "Public Webinar - Live Session" audience so they show up in Audience Manager →
+     * Recent Leads, exactly like {@link #submitCatalogueLead} does for catalogue leads.
+     *
+     * <p>Mirrors submitCatalogueLead deliberately: NOT {@code @Transactional} (its
+     * best-effort sub-calls must not mark a surrounding tx rollback-only), and it does
+     * NOT fire the {@code AUDIENCE_LEAD_SUBMISSION} workflow — the registrant already
+     * receives the {@code LIVE_SESSION_FORM_SUBMISSION} seat-confirmation, and firing the
+     * audience workflow too would double-message them.
+     *
+     * <p>Best-effort: returns null rather than throwing when it cannot create a lead, so
+     * the caller — an already-committed public registration — is never disturbed.
+     */
+    public String submitLiveClassLead(String instituteId, String fullName, String email,
+                                      String mobileNumber, Map<String, String> extraCustomFieldValues,
+                                      String sourceId) {
+        if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(email)) {
+            return null;
+        }
+
+        Audience audience = getOrCreateLiveClassAudience(instituteId);
+
+        UserDTO userDTO = UserDTO.builder()
+                .fullName(fullName)
+                .email(email)
+                .mobileNumber(mobileNumber)
+                .build();
+
+        // The webinar form's extra fields (anything beyond name/email/phone — e.g. "CUET
+        // Marks") arrive keyed by their custom_field_id. Attach each to this audience's
+        // AUDIENCE_FORM schema (idempotent) so it renders as a lead column; the value is
+        // saved below. This keeps the lead's fields in sync with the registration form for
+        // ANY institute — even one whose live-class audience was just auto-created — without
+        // any manual campaign setup.
+        if (extraCustomFieldValues != null && !extraCustomFieldValues.isEmpty()) {
+            int order = 3; // base identity fields occupy 0..2
+            for (String customFieldId : extraCustomFieldValues.keySet()) {
+                try {
+                    ensureAudienceFormField(instituteId, audience.getId(), customFieldId, order++);
+                } catch (Exception e) {
+                    logger.error("Live-class lead: attaching field {} to audience {} failed: {}",
+                            customFieldId, audience.getId(), e.getMessage());
+                }
+            }
+        }
+
+        final String src = StringUtils.hasText(sourceId) ? sourceId : "live-class";
+
+        // Institute-configured hard dedup — before creating the auth user.
+        java.util.Optional<String> dedupRejection = leadDeduplicationService.checkForRejection(
+                instituteId, audience.getId(), email, mobileNumber);
+        if (dedupRejection.isPresent()) {
+            return dedupRejection.get();
+        }
+
+        // 1. Create/fetch the lead's user in auth_service (no credentials email).
+        UserDTO createdUser = authService.createUserFromAuthService(userDTO, audience.getInstituteId(), false);
+        String userId = createdUser != null ? createdUser.getId() : null;
+
+        // 2. Per-person-per-campaign dedup — revive a soft-deleted lead rather than duplicate.
+        if (StringUtils.hasText(userId)
+                && audienceResponseRepository.existsByAudienceIdAndUserId(audience.getId(), userId)) {
+            reactivateSoftDeletedLeads(audience.getId(), userId);
+            return "You are already captured as a lead for this campaign";
+        }
+
+        // 3. Persist the lead — this is what Audience Manager → Recent Leads reads.
+        AudienceResponse savedResponse = audienceResponseRepository.save(AudienceResponse.builder()
+                .audienceId(audience.getId())
+                .sourceType("LIVE_SESSION")
+                .sourceId(src)
+                .userId(userId)
+                .parentName(fullName)
+                .parentEmail(email)
+                .parentMobile(truncateForParentMobileColumn(mobileNumber))
+                .workflowActivateDayAt(calculateWorkflowActivateDayAt(audience))
+                .initialScore(audience.getDefaultInitialScore())
+                .build());
+
+        // 4. Enrichment — best-effort; never block the saved lead.
+        try {
+            logLeadSubmitted(savedResponse);
+        } catch (Exception e) {
+            logger.error("Live-class lead {}: logLeadSubmitted failed: {}", savedResponse.getId(), e.getMessage());
+        }
+        try {
+            // Build the values to persist so every key resolves to a field that actually
+            // exists on this audience — otherwise saveCustomFieldValues' single saveAll would
+            // FK-fail on an unknown key and drop the whole batch (incl. the extras). Extras
+            // were attached above, so they resolve. Base identity keys are included only when
+            // the audience already has them (a freshly auto-created audience does not — the
+            // name/email/phone still surface on the lead via parent_name/parent_email/parent_mobile).
+            Map<String, String> valuesToSave = extraCustomFieldValues != null
+                    ? new HashMap<>(extraCustomFieldValues)
+                    : new HashMap<>();
+            Set<String> audienceFieldKeys = new HashSet<>();
+            for (Object[] row : instituteCustomFieldRepository.findInstituteCustomFieldsWithDetails(
+                    audience.getInstituteId(), CustomFieldTypeEnum.AUDIENCE_FORM.name(), audience.getId())) {
+                CustomFields cf = (CustomFields) row[1];
+                if (cf.getFieldKey() != null) audienceFieldKeys.add(cf.getFieldKey().toLowerCase().trim());
+            }
+            if (StringUtils.hasText(fullName) && audienceFieldKeys.contains("full_name")) {
+                valuesToSave.put("full_name", fullName);
+            }
+            if (StringUtils.hasText(email) && audienceFieldKeys.contains("email")) {
+                valuesToSave.put("email", email);
+            }
+            if (StringUtils.hasText(mobileNumber) && audienceFieldKeys.contains("phone_number")) {
+                valuesToSave.put("phone_number", mobileNumber);
+            }
+            if (!CollectionUtils.isEmpty(valuesToSave)) {
+                saveCustomFieldValues(savedResponse.getId(), valuesToSave, audience.getInstituteId(),
+                        audience.getId());
+            }
+        } catch (Exception e) {
+            logger.error("Live-class lead {}: saveCustomFieldValues failed: {}", savedResponse.getId(), e.getMessage());
+        }
+        try {
+            leadScoringService.calculateAndSaveScore(savedResponse.getId(), savedResponse.getAudienceId(),
+                    audience.getInstituteId(), savedResponse.getSourceType(), savedResponse.getEnquiryId());
+        } catch (Exception e) {
+            logger.error("Live-class lead {}: lead score failed: {}", savedResponse.getId(), e.getMessage());
+        }
+
+        // Pool auto-assignment — live-class leads carry no counsellor, so this is pure pool routing.
+        autoAssignCounsellorOnIntake(savedResponse, userId, audience.getInstituteId(),
+                null, null, createdUser != null ? createdUser.getFullName() : null,
+                audience.getCampaignName());
+
+        return savedResponse.getId();
+    }
+
+    /**
+     * Resolve the per-institute live-class / webinar lead audience, creating a minimal
+     * ACTIVE one on first use so no manual campaign setup is required. Resolved by name,
+     * so an institute that already has a "Public Webinar - Live Session" campaign reuses it.
+     */
+    private Audience getOrCreateLiveClassAudience(String instituteId) {
+        return audienceRepository.findFirstByInstituteIdAndCampaignName(instituteId, LIVE_CLASS_AUDIENCE_NAME)
+                .orElseGet(() -> {
+                    Audience audience = Audience.builder()
+                            .id(UUID.randomUUID().toString())
+                            .instituteId(instituteId)
+                            .campaignName(LIVE_CLASS_AUDIENCE_NAME)
+                            .campaignType("WEBSITE")
+                            .campaignObjective("LEAD_GENERATION")
+                            .description("Leads captured from public live-class / webinar registrations")
+                            .status("ACTIVE")
+                            .defaultInitialScore(20)
+                            .build();
+                    Audience saved = audienceRepository.save(audience);
+                    logger.info("Auto-provisioned live-class lead audience {} for institute {}",
+                            saved.getId(), instituteId);
+                    return saved;
+                });
+    }
+
+    /**
+     * Attach a custom field to an audience's AUDIENCE_FORM schema if it isn't already,
+     * so a value saved against it renders as a column in the lead list. Idempotent — a
+     * no-op when the link already exists. Used to mirror a live-class registration form's
+     * extra fields onto its lead audience.
+     */
+    private void ensureAudienceFormField(String instituteId, String audienceId, String customFieldId, int order) {
+        if (!StringUtils.hasText(customFieldId)) return;
+        boolean alreadyLinked = instituteCustomFieldRepository
+                .findTopByInstituteIdAndCustomFieldIdAndTypeAndTypeIdAndStatusOrderByCreatedAtDesc(
+                        instituteId, customFieldId, "AUDIENCE_FORM", audienceId, "ACTIVE")
+                .isPresent();
+        if (alreadyLinked) return;
+        instituteCustomFieldRepository.save(InstituteCustomField.builder()
+                .instituteId(instituteId)
+                .customFieldId(customFieldId)
+                .type("AUDIENCE_FORM")
+                .typeId(audienceId)
+                .status("ACTIVE")
+                .isMandatory(false)
+                .individualOrder(order)
+                .groupInternalOrder(0)
+                .build());
     }
 
     private static final String PHONE_ENQUIRIES_AUDIENCE_NAME = "Phone Enquiries";
@@ -2234,6 +2433,34 @@ public class AudienceService {
             return LeadCounsellorOptionsDTO.builder().scoped(false).counsellors(List.of()).build();
         }
 
+        // Sub-org admin: scope the counsellor roster to their sub-org, consistent
+        // with the sub-org-scoped leads in getLeads. Detected by the ACTIVE SUB_ORG
+        // FSPSSM linkage (a sub-org admin also holds the parent ADMIN role and would
+        // otherwise get the full institute roster). This one branch covers BOTH the
+        // filter dropdown (assignable=false) and the assignment pickers
+        // (assignable=true), so a sub-org admin can neither filter by nor assign to
+        // counsellors outside their sub-org. scoped=true tells the frontend the
+        // roster is narrowed server-side.
+        List<String> subOrgMembers = subOrgLeadScopeService
+                .subOrgScopedCounsellorUserIds(caller.getUserId());
+        if (!subOrgMembers.isEmpty()) {
+            // Show only the sub-org's actual COUNSELLORS — not the sub-org admin
+            // themselves or other non-counsellor team members (teachers, etc.).
+            // Intersect the sub-org members with the institute's COUNSELLOR-role
+            // roster. Fall back to the full member set only if that intersection is
+            // empty, so a sub-org whose counsellors don't yet carry the COUNSELLOR
+            // role still gets a usable picker rather than an empty dropdown.
+            Set<String> counsellorRoster = new HashSet<>(
+                    counsellorScopeService.allCounsellorUserIds(instituteId));
+            List<String> subOrgCounsellors = subOrgMembers.stream()
+                    .filter(counsellorRoster::contains)
+                    .collect(Collectors.toList());
+            List<String> rosterIds = subOrgCounsellors.isEmpty() ? subOrgMembers : subOrgCounsellors;
+            List<vacademy.io.common.auth.dto.UserDTO> subOrgUsers =
+                    authService.getUsersFromAuthServiceByUserIds(rosterIds);
+            return LeadCounsellorOptionsDTO.builder().scoped(true).counsellors(subOrgUsers).build();
+        }
+
         boolean scoped = counsellorScopeService.isScopedCaller(instituteId, caller);
         // assignable=true resolves ASSIGNMENT targets (bulk-assign dialog,
         // telephony/IVR routing config): ADMIN-role callers get the
@@ -2296,7 +2523,32 @@ public class AudienceService {
         // sending assignedCounselorId.
         String assignedCounselorIdsCsv = null;
         boolean rbacApplied = false;
+
+        // Sub-org admin scoping (highest precedence). A sub-org admin is ALSO
+        // granted the parent institute's ADMIN role, so without this they'd
+        // resolve to DEFAULT above and see the entire parent lead pool. Detection
+        // is by ACTIVE SUB_ORG FSPSSM linkage (SubOrgLeadScopeService) — the only
+        // reliable fingerprint, since by role they're indistinguishable from a
+        // true institute admin. We hard-scope their visible leads to the members
+        // of the sub-org(s) they administer, reusing the same assignedCounselorIdsCsv
+        // filter the counsellor-hierarchy RBAC below uses. The member set always
+        // includes the admin themselves, so a non-empty result also means "is a
+        // sub-org admin"; an empty result means a normal admin/user and this
+        // branch is a no-op that preserves the pre-existing behaviour exactly.
+        boolean subOrgScopeApplied = false;
         if (user != null && user.getUserId() != null
+                && filterDTO.getInstituteId() != null
+                && !filterDTO.getInstituteId().isBlank()) {
+            List<String> subOrgScope = subOrgLeadScopeService
+                    .subOrgScopedCounsellorUserIds(user.getUserId());
+            if (!subOrgScope.isEmpty()) {
+                assignedCounselorIdsCsv = String.join(",", subOrgScope);
+                rbacApplied = true;
+                subOrgScopeApplied = true;
+            }
+        }
+
+        if (!subOrgScopeApplied && user != null && user.getUserId() != null
                 && filterDTO.getInstituteId() != null
                 && !filterDTO.getInstituteId().isBlank()) {
             String instituteId = filterDTO.getInstituteId();
@@ -2328,7 +2580,10 @@ public class AudienceService {
         // we drop unassigned leads (no counsellor on either linked_users or
         // user_lead_profile) from the result; any other mode keeps them visible
         // to anyone in scope, as before.
-        boolean includeUnassigned = access.getMode() != Mode.COUNSELOR;
+        // A sub-org admin sees ONLY leads assigned to their sub-org's members;
+        // the shared unassigned pool belongs to the parent institute, so it is
+        // excluded from their view alongside the COUNSELOR-mode exclusion.
+        boolean includeUnassigned = access.getMode() != Mode.COUNSELOR && !subOrgScopeApplied;
 
         String allowedAudienceIdsCsv = null;
         if (access.getMode() == Mode.AUDIENCE_LIST) {
@@ -2400,15 +2655,16 @@ public class AudienceService {
         // using one indexed lookup per field (intersected across fields). This
         // replaces a per-row correlated jsonb subquery that scanned
         // custom_field_values for every candidate lead and timed out on the
-        // institute-wide Recent Leads query. null = no filter; empty list =
-        // filters set but nothing matches → short-circuit to an empty page.
-        List<String> customFieldMatchedIds =
-                resolveCustomFieldMatchedResponseIds(filterDTO.getCustomFieldFilters());
-        if (customFieldMatchedIds != null && customFieldMatchedIds.isEmpty()) {
+        // institute-wide Recent Leads query. Positive operators produce the
+        // matched set (null = no filter; empty = nothing matches → empty page);
+        // IS_EMPTY entries produce an exclusion set.
+        vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution
+                cfResolution = resolveCustomFieldFilters(filterDTO.getCustomFieldFilters());
+        if (cfResolution.shortCircuitsToEmpty()) {
             return Page.empty(pageable);
         }
-        String customFieldMatchedIdsCsv =
-                customFieldMatchedIds == null ? null : String.join(",", customFieldMatchedIds);
+        String customFieldMatchedIdsCsv = cfResolution.matchedIdsCsv();
+        String customFieldExcludedIdsCsv = cfResolution.excludedIdsCsv();
 
         // Cross-audience path: when no audienceId is supplied, return leads
         // across every campaign in the institute. Used by the "Recent Leads"
@@ -2435,8 +2691,11 @@ public class AudienceService {
                     filterDTO.getSlaFilter(),
                     filterTatHours,
                     customFieldMatchedIdsCsv,
+                    customFieldExcludedIdsCsv,
+                    filterDTO.getCallHistoryFilter(),
                     filterDTO.getSortBy(),
                     filterDTO.getSortDirection(),
+                    filterDTO.getSortCustomFieldId(),
                     pageable);
             return mapResponsesToLeadDetails(all, filterDTO.getInstituteId());
         }
@@ -2460,12 +2719,15 @@ public class AudienceService {
                 filterDTO.getIsUnassigned(),
                 overallStatusStr,
                 customFieldMatchedIdsCsv,
+                customFieldExcludedIdsCsv,
+                filterDTO.getCallHistoryFilter(),
                 conversionStatusFilter,
                 audienceStatusFilter,
                 filterDTO.getSlaFilter(),
                 filterTatHours,
                 filterDTO.getSortBy(),
                 filterDTO.getSortDirection(),
+                filterDTO.getSortCustomFieldId(),
                 pageable);
 
         // Resolve the institute for SLA-deadline computation: the filter usually
@@ -2482,50 +2744,23 @@ public class AudienceService {
     }
 
     /**
-     * Resolves the audience_response IDs that match the custom-field filters:
-     * for each field, the response IDs whose stored value is one of the selected
-     * values (OR within a field), intersected across fields (AND across fields).
-     * Each field is one indexed lookup, so this scales far better than a per-row
-     * correlated subquery in the leads query.
-     *
-     * @return {@code null} when there are no usable filters (predicate disabled);
-     *         an empty list when filters are set but nothing matches (caller
-     *         short-circuits to an empty page); otherwise the matched IDs.
+     * Resolves the leads custom-field filters (now operator-aware: IN, CONTAINS,
+     * IS_EMPTY, NOT_EMPTY, BETWEEN, GTE, LTE) through the shared
+     * CustomFieldListFilterResolver against AUDIENCE_RESPONSE answers. Positive
+     * operators intersect into a matched response-ID set; IS_EMPTY entries
+     * produce an exclusion set the leads queries apply as NOT-IN.
      */
-    private List<String> resolveCustomFieldMatchedResponseIds(
-            List<LeadFilterDTO.CustomFieldFilter> filters) {
-        if (filters == null || filters.isEmpty()) {
-            return null;
-        }
-        Set<String> matched = null;
-        for (LeadFilterDTO.CustomFieldFilter f : filters) {
-            if (f == null || f.getFieldId() == null || f.getFieldId().isBlank()
-                    || f.getValues() == null) {
-                continue;
-            }
-            // Strip blank values; a whitespace/empty option would otherwise widen
-            // or zero out the IN (...) match unexpectedly.
-            List<String> values = f.getValues().stream()
-                    .filter(v -> v != null && !v.isEmpty())
-                    .distinct()
-                    .collect(Collectors.toList());
-            if (values.isEmpty()) {
-                continue;
-            }
-            Set<String> ids = new HashSet<>(
-                    customFieldValuesRepository.findAudienceResponseIdsByCustomFieldValue(
-                            f.getFieldId(), values));
-            if (matched == null) {
-                matched = ids;
-            } else {
-                matched.retainAll(ids);
-            }
-            if (matched.isEmpty()) {
-                return Collections.emptyList();
-            }
-        }
-        // matched stays null when every entry was blank → treat as "no filter".
-        return matched == null ? null : new ArrayList<>(matched);
+    private vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Resolution
+            resolveCustomFieldFilters(List<LeadFilterDTO.CustomFieldFilter> filters) {
+        List<vacademy.io.admin_core_service.features.common.dto.CustomFieldListFilterDTO> converted =
+                filters == null ? null
+                        : filters.stream()
+                                .filter(Objects::nonNull)
+                                .map(f -> new vacademy.io.admin_core_service.features.common.dto.CustomFieldListFilterDTO(
+                                        f.getFieldId(), f.getOperator(), f.getValues()))
+                                .collect(Collectors.toList());
+        return customFieldListFilterResolver.resolve(converted,
+                vacademy.io.admin_core_service.features.common.service.CustomFieldListFilterResolver.Surface.RESPONSE);
     }
 
     /**
@@ -2668,7 +2903,7 @@ public class AudienceService {
         // per row.
         Map<String, vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile> userIdToProfile = userIds
                 .isEmpty() ? Collections.emptyMap()
-                        : userLeadProfileRepository.findByUserIdIn(new ArrayList<>(userIds)).stream()
+                        : userLeadProfileRepository.findByUserIdInAndInstituteId(new ArrayList<>(userIds), instituteId).stream()
                                 .collect(Collectors.toMap(
                                         vacademy.io.admin_core_service.features.audience.entity.UserLeadProfile::getUserId,
                                         p -> p,
@@ -2880,9 +3115,10 @@ public class AudienceService {
      * <p>Restricted to ADMIN. A lead that has already converted cannot be deleted (409): the
      * row is now the head of an admission/payment trail, and hiding it would strand that trail.</p>
      *
-     * <p>Deliberately does NOT touch {@code user_lead_profile}: that is one row per person and
-     * carries the counsellor assignment, while this is per response. Deleting one of a person's
-     * leads must not drop their assignment. The workbench derives its own visibility instead.</p>
+     * <p>Deliberately does NOT touch {@code user_lead_profile}: that is one row per person per
+     * institute and carries the counsellor assignment, while this is per response. Deleting one
+     * of a person's leads must not drop their assignment. The workbench derives its own
+     * visibility instead.</p>
      *
      * @return the number of leads actually flipped ACTIVE -> INACTIVE.
      */
@@ -2894,7 +3130,7 @@ public class AudienceService {
         // converted lead fails whole rather than half-applying.
         for (AudienceResponse response : targets) {
             String leadUserId = response.getUserId() != null ? response.getUserId() : response.getStudentUserId();
-            if (leadUserId != null && isConverted(leadUserId)) {
+            if (leadUserId != null && isConverted(leadUserId, request.getInstituteId())) {
                 throw new ConflictException(
                         "This lead has already converted and cannot be deleted.");
             }
@@ -2908,7 +3144,7 @@ public class AudienceService {
             response.setAudienceStatus(AudienceStatusEnum.INACTIVE.name());
             audienceResponseRepository.save(response);
             logLeadCurationEvent(response, actor, LeadJourneyActionType.LEAD_DELETED,
-                    "Lead deleted", "Lead removed from the CRM", request.getScope());
+                    "Lead deleted", "Lead removed from the CRM", request.getScope(), request.getInstituteId());
             deleted++;
         }
         logger.info("Soft-deleted {} lead(s) (scope={}) by user {}",
@@ -2933,7 +3169,7 @@ public class AudienceService {
             response.setAudienceStatus(AudienceStatusEnum.ACTIVE.name());
             audienceResponseRepository.save(response);
             logLeadCurationEvent(response, actor, LeadJourneyActionType.LEAD_RESTORED,
-                    "Lead restored", "Lead restored to the CRM", request.getScope());
+                    "Lead restored", "Lead restored to the CRM", request.getScope(), request.getInstituteId());
             restored++;
         }
         logger.info("Restored {} lead(s) (scope={}) by user {}",
@@ -3023,16 +3259,17 @@ public class AudienceService {
         return StringUtils.hasText(request.getScope()) ? request.getScope().toUpperCase() : "RESPONSE";
     }
 
-    /** True when this user's lead profile is marked CONVERTED. */
-    private boolean isConverted(String leadUserId) {
-        return userLeadProfileRepository.findByUserId(leadUserId)
+    /** True when this user's lead profile at this institute is marked CONVERTED. */
+    private boolean isConverted(String leadUserId, String instituteId) {
+        return userLeadProfileRepository.findByUserIdAndInstituteId(leadUserId, instituteId)
                 .map(p -> "CONVERTED".equalsIgnoreCase(p.getConversionStatus()))
                 .orElse(false);
     }
 
     /** Best-effort audit trail — a delete must be attributable, but must not fail over logging. */
     private void logLeadCurationEvent(AudienceResponse response, CustomUserDetails actor,
-            LeadJourneyActionType actionType, String title, String description, String scope) {
+            LeadJourneyActionType actionType, String title, String description, String scope,
+            String instituteId) {
         String leadUserId = response.getUserId() != null ? response.getUserId() : response.getStudentUserId();
         if (!StringUtils.hasText(leadUserId)) {
             return;
@@ -3046,8 +3283,9 @@ public class AudienceService {
             metadata.put("scope", scope != null ? scope.toUpperCase() : "RESPONSE");
             metadata.put("campaign_name", campaignName != null ? campaignName : "");
             metadata.put("actor", actor.getUsername() != null ? actor.getUsername() : "");
+            String typeId = userLeadProfileService.resolveProfileId(leadUserId, instituteId);
             timelineEventService.logJourneyEvent(
-                    "USER_LEAD_PROFILE", leadUserId, actionType,
+                    "USER_LEAD_PROFILE", typeId, actionType,
                     "ADMIN", actor.getUserId(), actor.getUsername(),
                     title, description, metadata, leadUserId);
         } catch (Exception e) {
@@ -5142,6 +5380,14 @@ public class AudienceService {
         if (("PUSH".equals(channel) || "SYSTEM_ALERT".equals(channel)) && StringUtils.hasText(request.getSubject())) {
             optsBuilder.pushTitle(request.getSubject());
         }
+        // Media header for WhatsApp templates. Without this the provider rejects every
+        // recipient of an IMAGE/VIDEO/DOCUMENT-header template, so the whole blast fails.
+        if ("WHATSAPP".equals(channel) && StringUtils.hasText(request.getHeaderUrl())) {
+            optsBuilder.headerUrl(request.getHeaderUrl());
+            optsBuilder.headerType(StringUtils.hasText(request.getHeaderType())
+                    ? request.getHeaderType()
+                    : "image");
+        }
 
         UnifiedSendRequest sendRequest = UnifiedSendRequest.builder()
                 .instituteId(request.getInstituteId())
@@ -5384,12 +5630,23 @@ public class AudienceService {
             try {
                 String responseId = submitLead(row);
 
-                // submitLead returns the response ID on success, or an error message string
+                // submitLead is stringly-typed: it returns either the new response ID or a
+                // human-readable outcome message. Any message must be classified as
+                // SKIPPED/FAILED — reporting one as SUCCESS puts prose in audienceResponseId
+                // and tells the caller a lead was saved when none was.
+                String outcome = responseId != null ? responseId.toLowerCase() : "";
+                boolean alreadySubmitted = outcome.contains("already submitted");
+                // Institute dedup (LEAD_SETTING.data.dedup) hard-rejects the row before
+                // anything is persisted ("A lead with this phone number/email already
+                // exists ..."), so it is a skip, not a success.
+                boolean dedupRejected = outcome.contains("already exists");
+
                 boolean isSuccess = responseId != null
                         && !responseId.startsWith("Error")
-                        && !responseId.contains("already submitted");
+                        && !alreadySubmitted
+                        && !dedupRejected;
 
-                if (responseId != null && responseId.contains("already submitted")) {
+                if (alreadySubmitted || dedupRejected) {
                     skipped++;
                     results.add(BulkSubmitLeadResultItemDTO.builder()
                             .index(i)

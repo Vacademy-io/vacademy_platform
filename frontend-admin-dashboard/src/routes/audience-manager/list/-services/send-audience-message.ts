@@ -13,6 +13,10 @@ export interface SendAudienceMessageRequest {
     channel: 'WHATSAPP' | 'EMAIL' | 'PUSH' | 'SYSTEM_ALERT';
     template_name?: string;
     language_code?: string;
+    // WhatsApp media header — required by Meta on every send of a template whose
+    // header is IMAGE/VIDEO/DOCUMENT, else the entire blast is rejected.
+    header_url?: string;
+    header_type?: 'image' | 'video' | 'document';
     subject?: string;
     body?: string;
     email_type?: string;

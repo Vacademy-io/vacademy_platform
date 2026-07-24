@@ -34,7 +34,8 @@ CREATE TABLE IF NOT EXISTS engagement_member (
     tier                 SMALLINT    NOT NULL DEFAULT 2,          -- 0 HOT .. 3 DORMANT
     next_action_at       TIMESTAMP   NOT NULL,
     last_decided_at      TIMESTAMP,
-    consecutive_no_ops   SMALLINT    NOT NULL DEFAULT 0,
+    consecutive_no_ops   SMALLINT    NOT NULL DEFAULT 0,          -- drives cadence backoff (LLM said no-op)
+    consecutive_failures SMALLINT    NOT NULL DEFAULT 0,          -- drives failure backoff (call errored) — kept SEPARATE so an outage never inflates the cadence
     wake_fingerprint     VARCHAR(64),            -- QUANTIZED feature hash (bands, never raw values)
     window_open_until    TIMESTAMP,              -- WhatsApp 24h reply window
     memory_json          JSONB       NOT NULL DEFAULT '{}',

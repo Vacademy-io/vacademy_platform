@@ -8,8 +8,18 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { X, Mail, Phone, Clock3, ListChecks, IdCard, FileText } from 'lucide-react';
+import {
+    X,
+    EnvelopeSimple,
+    Phone,
+    Clock,
+    ListChecks,
+    IdentificationCard,
+    FileText,
+} from '@phosphor-icons/react';
 import { useEffect } from 'react';
+import { cn } from '@/lib/utils';
+import { useAssistDockVisible } from '@/components/assist-dock/visibility';
 import { useQuery } from '@tanstack/react-query';
 import { useStudentSidebar } from '../../../-context/selected-student-sidebar-context';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -33,7 +43,7 @@ const DetailRow = ({
             {icon}
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
-            <p className="text-[11px] font-medium uppercase tracking-wider text-slate-500">
+            <p className="text-caption font-medium uppercase tracking-wider text-slate-500">
                 {label}
             </p>
             <p className="truncate text-sm font-semibold text-slate-900">
@@ -153,11 +163,11 @@ export const OpenStudentSidebar = () => {
                             <Card className="border-slate-200 shadow-none">
                                 <CardContent className="p-3">
                                     <SectionHeader
-                                        icon={<IdCard className="h-3.5 w-3.5" />}
+                                        icon={<IdentificationCard className="h-3.5 w-3.5" />}
                                         title="Contact Information"
                                     />
                                     <DetailRow
-                                        icon={<Mail className="h-4 w-4" />}
+                                        icon={<EnvelopeSimple className="h-4 w-4" />}
                                         label="Email"
                                         value={data.email}
                                     />
@@ -167,7 +177,7 @@ export const OpenStudentSidebar = () => {
                                         value={data.phone_number}
                                     />
                                     <DetailRow
-                                        icon={<Clock3 className="h-4 w-4" />}
+                                        icon={<Clock className="h-4 w-4" />}
                                         label="Registered On"
                                         value={
                                             data.registration_time

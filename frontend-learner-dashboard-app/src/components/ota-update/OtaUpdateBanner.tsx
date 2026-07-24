@@ -10,9 +10,29 @@ export function OtaUpdateBanner() {
     otaForceUpdate,
     otaReleaseNotes,
     otaDownloading,
+    otaAutoUpdating,
     setOtaDownloading,
     resetOta,
   } = useOtaUpdate();
+
+  // Auto-updating dialog ("auto" mode): non-dismissible loader shown at launch
+  // while the new bundle downloads + applies in place. No user action needed.
+  if (otaAutoUpdating) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+        <div className="mx-4 flex max-w-sm flex-col items-center rounded-2xl bg-white p-6 text-center shadow-2xl">
+          <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <h2 className="mb-1 text-lg font-semibold text-gray-900">
+            Updating app…
+          </h2>
+          {otaVersion && (
+            <p className="mb-1 text-sm text-gray-500">Version {otaVersion}</p>
+          )}
+          <p className="text-sm text-gray-600">Please wait a moment</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!otaUpdateAvailable) return null;
 

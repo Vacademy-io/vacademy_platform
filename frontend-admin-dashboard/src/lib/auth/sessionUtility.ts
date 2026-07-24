@@ -270,8 +270,12 @@ async function refreshTokens(refreshToken: string): Promise<UnauthorizedResponse
 }
 
 // Non-sensitive UI preferences that should survive logout (so the next visit
-// keeps the user's chosen theme). Everything else in localStorage is wiped.
+// keeps the user's chosen theme, table layout, etc.). Everything else in
+// localStorage is wiped.
 const LOGOUT_PRESERVE_KEYS = ['theme-code', 'theme-custom-color', 'vite-ui-theme'];
+// Key PREFIXES whose entries also survive logout — per-surface layout choices
+// such as the leads "Manage Column" show/hide (crm-lead-columns:<surface>).
+const LOGOUT_PRESERVE_PREFIXES = ['crm-lead-columns:'];
 
 // Expire every cookie visible to this document on the current host AND every
 // parent domain (so legacy `.vacademy.io`-scoped cookies are removed too).
@@ -306,6 +310,14 @@ const clearWebStorage = (): void => {
         const preserved = LOGOUT_PRESERVE_KEYS.map(
             (key) => [key, localStorage.getItem(key)] as const
         );
+        // Also carry over any prefixed layout/preference keys (e.g. per-surface
+        // Manage Column choices) so they survive logout → login.
+        for (let i = 0; i < localStorage.length; i += 1) {
+            const key = localStorage.key(i);
+            if (key && LOGOUT_PRESERVE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+                preserved.push([key, localStorage.getItem(key)] as const);
+            }
+        }
         localStorage.clear();
         for (const [key, value] of preserved) {
             if (value !== null) localStorage.setItem(key, value);

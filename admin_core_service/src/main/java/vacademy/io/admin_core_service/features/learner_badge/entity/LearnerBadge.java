@@ -52,6 +52,10 @@ public class LearnerBadge {
     @Column(name = "reason")
     private String reason;
 
+    /** MANUAL = admin-awarded; AUTO = synced from the learner app's client-computed unlocks. */
+    @Column(name = "source", nullable = false)
+    private String source = "MANUAL";
+
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private LearnerBadgeStatus status = LearnerBadgeStatus.ACTIVE;

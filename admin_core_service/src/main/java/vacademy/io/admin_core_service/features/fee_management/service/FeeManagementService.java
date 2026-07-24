@@ -149,6 +149,11 @@ public class FeeManagementService {
         // it like any other payment option. Also creates a synthetic PaymentPlan
         // whose actualPrice = sum of installments (full contract value).
         paymentOptionService.findOrCreateMirrorForCpo(savedCpo);
+        // Apply the admin-approval flag from the request onto the mirror (mirror is
+        // created with require_approval=false by default). When true, learners who
+        // enroll via this CPO go to PENDING_FOR_APPROVAL until an admin approves.
+        paymentOptionService.updateMirrorRequireApproval(
+                savedCpo.getId(), Boolean.TRUE.equals(request.getRequireApproval()));
 
         ComplexPaymentOptionDTO result = getFullCpo(savedCpo.getId());
 
@@ -362,6 +367,7 @@ public class FeeManagementService {
                 .status(cpo.getStatus())
                 .createdBy(cpo.getCreatedBy())
                 .approvedBy(cpo.getApprovedBy())
+                .requireApproval(paymentOptionService.getMirrorRequireApproval(cpo.getId()))
                 .feeTypes(feeTypeDTOs)
                 .packageSessionLinks(linkDTOs)
                 .build();
@@ -406,6 +412,11 @@ public class FeeManagementService {
 
         cpoRepository.save(cpo);
         paymentOptionService.syncMirrorForCpo(cpo);
+        // Only touch the approval flag when the caller explicitly sent it, so update
+        // paths that omit it (e.g. fee-only edits) leave the existing value intact.
+        if (request.getRequireApproval() != null) {
+            paymentOptionService.updateMirrorRequireApproval(cpo.getId(), request.getRequireApproval());
+        }
         return getFullCpo(cpoId);
     }
 

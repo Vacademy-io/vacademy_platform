@@ -47,6 +47,10 @@ const SYNC_PAIRS = [
         path.join(LEARNER, 'src/routes/$tagName/-utils/catalogue-decorations.tsx'),
         path.join(ADMIN, 'src/routes/manage-pages/-utils/catalogue-decorations.tsx'),
     ],
+    [
+        path.join(LEARNER, 'src/routes/$tagName/-utils/catalogue-html.ts'),
+        path.join(ADMIN, 'src/routes/manage-pages/-utils/catalogue-html.ts'),
+    ],
 ];
 
 const fix = process.argv.includes('--fix');

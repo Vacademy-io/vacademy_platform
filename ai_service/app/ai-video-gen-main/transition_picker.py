@@ -254,6 +254,23 @@ def _enforce_dialogue_boundaries(
         if st != "DIALOGUE_SCENE" and prev_st != "DIALOGUE_SCENE":
             continue
         cur = shot.get("transition_in") or ""
+        # CONTINUOUS scene-to-scene boundary: the next clip's first frame only
+        # APPROXIMATES the previous clip's last frame (reference-conditioned,
+        # not copied), so a hard cut exposes the mismatch as a visible jump.
+        # A short dissolve masks it almost completely — force fade even when
+        # the author picked cut.
+        if (
+            st == "DIALOGUE_SCENE"
+            and prev_st == "DIALOGUE_SCENE"
+            and str(shot.get("scene_continuity") or "").strip().lower() == "continuous"
+        ):
+            if cur != "fade":
+                shot["transition_in"] = "fade"
+                changes.append((
+                    i, cur or "(none)", "fade",
+                    "continuous scene boundary → dissolve (masks frame mismatch)",
+                ))
+            continue
         if cur not in _DIALOGUE_SAFE_IN:
             shot["transition_in"] = "fade"
             changes.append((

@@ -111,6 +111,9 @@ public class InstituteDomainRouting {
     @Column(name = "logo_height_px")
     private Integer logoHeightPx;
 
+    @Column(name = "stack_name_below_logo")
+    private Boolean stackNameBelowLogo;
+
     @Column(name = "apply_naming_setting", nullable = false)
     private boolean applyNamingSetting;
 }

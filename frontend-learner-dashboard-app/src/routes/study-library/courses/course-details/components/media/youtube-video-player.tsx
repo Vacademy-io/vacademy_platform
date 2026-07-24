@@ -25,6 +25,7 @@ export const YouTubeVideoPlayer: React.FC<YouTubeVideoPlayerProps> = ({
           frameBorder="0"
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           allowFullScreen
+          referrerPolicy="strict-origin-when-cross-origin"
           className="w-full h-full object-cover rounded-md"
         />
       </div>

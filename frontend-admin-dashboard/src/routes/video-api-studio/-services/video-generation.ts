@@ -235,7 +235,21 @@ export const VISUAL_PREFERENCE_FAMILIES = [
 /** Default AI video model when none is specified. Phase 3 only ships
  *  fal-ai/veo3.1/lite; the dropdown exists for future model additions. */
 export const AI_VIDEO_MODELS = [
-    { value: 'fal-ai/veo3.1/lite', label: 'Veo 3.1 Lite (fal.ai)' },
+    {
+        value: 'fal-ai/veo3.1',
+        label: 'Veo 3.1 — Best quality',
+        hint: 'Top photoreal fidelity + prompt adherence. ~$0.20/s (≈$1.60 per 8s clip).',
+    },
+    {
+        value: 'fal-ai/veo3.1/fast',
+        label: 'Veo 3.1 Fast — Balanced',
+        hint: 'Full-model quality, cheaper. ~$0.10/s (≈$0.80 per 8s clip).',
+    },
+    {
+        value: 'fal-ai/veo3.1/lite',
+        label: 'Veo 3.1 Lite — Budget',
+        hint: 'Lowest fidelity, cheapest. ~$0.03/s (≈$0.24 per 8s clip).',
+    },
 ] as const;
 export type AiVideoModel = (typeof AI_VIDEO_MODELS)[number]['value'];
 

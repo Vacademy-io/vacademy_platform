@@ -10,7 +10,19 @@ import {
     Sparkle, Star, Target, Trophy, UsersThree, Wrench,
 } from '@phosphor-icons/react';
 
+import { renderHtmlSection } from '../-utils/catalogue-html';
+
 interface P { props: any }
+
+/** Live, sanitized, shadow-scoped render of an htmlBlock on the canvas —
+ *  same safety layer the learner renderer uses (catalogue-html.ts). */
+const HtmlBlockLivePreview = ({ props }: P) => {
+    const hostRef = React.useRef<HTMLDivElement>(null);
+    React.useEffect(() => {
+        if (hostRef.current) renderHtmlSection(hostRef.current, props.html || '', props.css || '');
+    }, [props.html, props.css]);
+    return <div ref={hostRef} className="catalogue-html-section" />;
+};
 
 // Mirrors the learner JsonRenderer FEATURE_ICON_MAP so iconName renders on canvas
 const FEATURE_ICON_MAP: Record<string, React.ComponentType<any>> = {
@@ -1109,16 +1121,15 @@ export const renderComponentPreview = (
             );
         }
         case 'htmlBlock': {
-            return (
-                <div className="bg-gray-900 px-4 py-3">
-                    <div className="mb-1 font-mono text-[10px] text-green-400">{'</>'} HTML Block</div>
-                    {props.html ? (
-                        <code className="line-clamp-3 block font-mono text-[10px] text-green-300">{props.html}</code>
-                    ) : (
+            if (!props.html) {
+                return (
+                    <div className="bg-gray-900 px-4 py-3">
+                        <div className="mb-1 font-mono text-[10px] text-green-400">{'</>'} HTML Block</div>
                         <span className="font-mono text-[10px] text-gray-500">Empty HTML block</span>
-                    )}
-                </div>
-            );
+                    </div>
+                );
+            }
+            return <HtmlBlockLivePreview props={props} />;
         }
         case 'marquee':
             return <MarqueePreview props={props} />;

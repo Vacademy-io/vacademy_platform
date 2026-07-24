@@ -21,7 +21,7 @@ import {
   Clock,
   ChartBarHorizontal,
 } from "@phosphor-icons/react";
-import { cn, toTitleCase } from "@/lib/utils";
+import { cn, toTitleCase, compareByNameNatural } from "@/lib/utils";
 import { useCartStore, CartItem } from "../../-stores/cart-store";
 import { toast } from "sonner";
 import {
@@ -30,6 +30,7 @@ import {
 } from "@/components/common/layout-container/sidebar/utils";
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { OfferBadge, PriceWithMrp } from "@/components/common/price-with-mrp";
+import { resolveInviteAvailability } from "@/lib/invite-availability";
 
 // Compact, scaling page list with ellipsis. Always keeps a consistent number
 // of controls (~6-7) no matter how many pages there are — so the catalogue can
@@ -483,7 +484,11 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
     () =>
       [...new Set(courses.map((c) => c.level).filter(Boolean))]
         .filter((level) => displayLevelName(level))
-        .map((level) => ({ id: level, name: displayLevelName(level) })),
+        .map((level) => ({ id: level, name: displayLevelName(level) }))
+        // Sort naturally so the filter list is stable and reads sensibly
+        // (Class 6, 7, 8 … 12, then non-numeric levels) regardless of the
+        // order courses arrive from the API.
+        .sort(compareByNameNatural),
     [courses],
   );
   const tags = useMemo(
@@ -1445,26 +1450,43 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           )}
                         </div>
 
-                        {/* Right: price */}
+                        {/* Right: price (or closed/opens-soon when the invite window is not open) */}
                         {displayPrice &&
-                          globalSettings?.payment?.enabled !== false && (
-                            <div className="shrink-0">
-                              {course.price === 0 ? (
-                                <span className="text-xs font-bold text-green-600">
-                                  100% Free
-                                </span>
-                              ) : (
-                                <PriceWithMrp
-                                  actual={course.price}
-                                  elevated={course.elevatedPrice}
-                                  currency={course.currency}
-                                  size="sm"
-                                  layout="inline"
-                                  hideBadge
-                                />
-                              )}
-                            </div>
-                          )}
+                          globalSettings?.payment?.enabled !== false &&
+                          (() => {
+                            const availability = resolveInviteAvailability(
+                              course.enroll_invite_availability,
+                            );
+                            if (availability !== "AVAILABLE") {
+                              return (
+                                <div className="shrink-0">
+                                  <span className="text-xs font-semibold text-orange-600">
+                                    {availability === "NOT_STARTED"
+                                      ? "Opens soon"
+                                      : "Enrollment closed"}
+                                  </span>
+                                </div>
+                              );
+                            }
+                            return (
+                              <div className="shrink-0">
+                                {course.price === 0 ? (
+                                  <span className="text-xs font-bold text-green-600">
+                                    100% Free
+                                  </span>
+                                ) : (
+                                  <PriceWithMrp
+                                    actual={course.price}
+                                    elevated={course.elevatedPrice}
+                                    currency={course.currency}
+                                    size="sm"
+                                    layout="inline"
+                                    hideBadge
+                                  />
+                                )}
+                              </div>
+                            );
+                          })()}
                       </div>
 
                       {/* Cart controls */}

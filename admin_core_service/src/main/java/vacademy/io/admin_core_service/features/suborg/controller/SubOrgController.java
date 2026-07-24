@@ -2,10 +2,19 @@ package vacademy.io.admin_core_service.features.suborg.controller;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.admin_core_service.features.institute.repository.InstituteRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteDTO;
+import vacademy.io.common.auth.model.CustomUserDetails;
+import vacademy.io.common.auth.repository.UserRoleRepository;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
@@ -17,8 +26,10 @@ import vacademy.io.admin_core_service.features.suborg.dto.CreateSubOrgSubscripti
 import vacademy.io.admin_core_service.features.suborg.dto.CreateSubOrgSubscriptionResponseDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SeatUsageDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgFinanceDetailDTO;
+import vacademy.io.admin_core_service.features.suborg.dto.SubOrgListItemDTO;
 import vacademy.io.admin_core_service.features.suborg.dto.SubOrgSubscriptionStatusDTO;
 import vacademy.io.admin_core_service.features.suborg.service.SubOrgFinanceService;
+import vacademy.io.admin_core_service.features.suborg.service.SubOrgListService;
 import vacademy.io.admin_core_service.features.suborg.service.SubOrgManagementService;
 import vacademy.io.admin_core_service.features.suborg.service.SubOrgSubscriptionService;
 import vacademy.io.common.institute.dto.InstituteInfoDTO;
@@ -36,10 +47,15 @@ import java.util.stream.Collectors;
 public class SubOrgController {
 
     private final SubOrgManagementService subOrgService;
+    private final SubOrgListService subOrgListService;
     private final SubOrgSubscriptionService subOrgSubscriptionService;
     private final SubOrgFinanceService subOrgFinanceService;
     private final EnrollInviteRepository enrollInviteRepository;
     private final PackageSessionEnrollInviteToPaymentOptionService pslipoService;
+    private final UserRoleRepository userRoleRepository;
+    private final InstituteRepository instituteRepository;
+
+    private static final String ROLE_NAME_ADMIN = "ADMIN";
 
     @PostMapping("/create")
     public ResponseEntity<String> createSubOrg(
@@ -52,6 +68,62 @@ public class SubOrgController {
     public ResponseEntity<List<InstituteSubOrg>> getSubOrgs(
             @RequestParam String parentInstituteId) {
         return ResponseEntity.ok(subOrgService.getSubOrgs(parentInstituteId));
+    }
+
+    /** Enriched, paginated list for the Manage VLEs table: admin email/phone, plan status,
+     *  seats + invite. Newest sub-orgs first. Guarded to the caller's own institute — the
+     *  row returns admin PII (email/phone).
+     *
+     *  Dual response shape for rollout safety: callers that pass NO paging params (older
+     *  web bundles and mobile-app builds that predate pagination and expect a bare JSON
+     *  array) get the full legacy {@code List}; passing {@code page} and/or {@code size}
+     *  opts into the Spring {@code Page} wrapper. Do not collapse this until every shipped
+     *  admin bundle sends paging params. */
+    @GetMapping("/get-all-with-details")
+    public ResponseEntity<?> getSubOrgsWithDetails(
+            @RequestParam String parentInstituteId,
+            @RequestParam(value = "page", required = false) Integer page,
+            @RequestParam(value = "size", required = false) Integer size,
+            @RequestAttribute(value = "user", required = false) CustomUserDetails user) {
+        assertInstituteAdmin(user, parentInstituteId);
+        Sort sort = Sort.by(Sort.Direction.DESC, "createdAt");
+        if (page == null && size == null) {
+            // Legacy shape: everything in one bare array (page of MAX size keeps one code path).
+            return ResponseEntity.ok(subOrgListService
+                    .getSubOrgsWithDetails(parentInstituteId, PageRequest.of(0, Integer.MAX_VALUE, sort))
+                    .getContent());
+        }
+        Pageable pageable = PageRequest.of(page != null ? page : 0, size != null ? size : 10, sort);
+        return ResponseEntity.ok(subOrgListService.getSubOrgsWithDetails(parentInstituteId, pageable));
+    }
+
+    /**
+     * Assert the caller may read this institute's sub-org data. Mirrors
+     * SubOrgRegistrationAdminController#assertInstituteAdmin — bound to THIS instituteId:
+     * root users bypass; else an ACTIVE ADMIN role for this institute; else legacy staff
+     * membership. Prevents cross-institute enumeration of admin PII via a spoofed id.
+     */
+    private void assertInstituteAdmin(CustomUserDetails user, String instituteId) {
+        if (user == null) {
+            throw new VacademyException(HttpStatus.UNAUTHORIZED, "User authentication required");
+        }
+        if (instituteId == null || instituteId.isBlank()) {
+            throw new VacademyException(HttpStatus.BAD_REQUEST, "Institute ID is required");
+        }
+        if (user.isRootUser()) {
+            return;
+        }
+        if (userRoleRepository.existsByUserIdAndInstituteIdAndRoleName(
+                user.getUserId(), instituteId, ROLE_NAME_ADMIN)) {
+            return;
+        }
+        boolean isStaff = instituteRepository.findInstitutesByUserId(user.getUserId())
+                .stream()
+                .anyMatch(institute -> instituteId.equals(institute.getId()));
+        if (!isStaff) {
+            throw new VacademyException(HttpStatus.FORBIDDEN,
+                    "Access denied: you do not have admin access to institute " + instituteId);
+        }
     }
 
     @PostMapping("/create-with-subscription")

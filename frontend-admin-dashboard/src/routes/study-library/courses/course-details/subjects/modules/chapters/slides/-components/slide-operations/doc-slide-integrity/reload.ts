@@ -60,6 +60,15 @@ export interface DeserializeLossReport {
     lossy: boolean;
     /** Human-readable list of what was dropped, e.g. ["1 table", "2 heading(s)"]. */
     lost: string[];
+    /**
+     * Images sitting INSIDE a table cell. Yoopta's table has no representation for an
+     * image, so these are dropped on every single load — the editor cannot even create
+     * this shape (it arrives via AI-generated HTML or a paste). This is therefore a
+     * PERMANENT condition, not a transient glitch: telling the author to "reload and try
+     * again" loops them forever, because the loss happens DURING the load. Surfaced
+     * separately so the save gate can explain the real reason instead.
+     */
+    imagesInsideTables: number;
 }
 
 /**
@@ -82,8 +91,13 @@ export function detectDeserializeLoss(
     deserializedValue: Record<string, any>
 ): DeserializeLossReport {
     const lost: string[] = [];
+    let imagesInsideTables = 0;
     try {
         const doc = new DOMParser().parseFromString(sourceHtml || '', 'text/html');
+
+        // Count images inside tables BEFORE any stripping — these are unrepresentable
+        // in a Yoopta table and are dropped on every load (see the interface docs).
+        imagesInsideTables = doc.body.querySelectorAll('table img').length;
 
         // Source custom blocks (by data-yoopta-type), counted BEFORE stripping.
         const srcCustom: Record<string, number> = {};
@@ -121,9 +135,113 @@ export function detectDeserializeLoss(
         if (srcHeading > edHeading) lost.push(`${srcHeading - edHeading} heading(s)`);
     } catch {
         // Detection must never throw or block a load — treat as non-lossy on failure.
-        return { lossy: false, lost: [] };
+        return { lossy: false, lost: [], imagesInsideTables: 0 };
     }
-    return { lossy: lost.length > 0, lost };
+    return { lossy: lost.length > 0, lost, imagesInsideTables };
+}
+
+/**
+ * Count the top-level blocks in HTML produced by html.serialize + formatHTMLString.
+ * Yoopta emits one element per block; formatHTMLString then wraps the lot in plain
+ * <div>s, so we descend through those wrappers before counting. Used by the save-side
+ * integrity check to compare serialize INPUT (the editor value) against OUTPUT.
+ */
+export function countSerializedBlocks(serializedHtml: string): number {
+    if (!serializedHtml) return 0;
+    try {
+        const doc = new DOMParser().parseFromString(serializedHtml, 'text/html');
+        let root: Element = doc.body;
+        // Descend only through plain wrapper divs — never into a real block (a custom
+        // block root, or a div that IS the block, e.g. the mermaid/image wrapper).
+        while (root.children.length === 1) {
+            const only = root.children[0];
+            if (
+                !only ||
+                only.tagName !== 'DIV' ||
+                only.hasAttribute('data-yoopta-type') ||
+                only.classList.contains('mermaid')
+            ) {
+                break;
+            }
+            root = only;
+        }
+        return root.children.length;
+    } catch {
+        // Never let the check itself break a save; 0 disables the comparison.
+        return 0;
+    }
+}
+
+/**
+ * Canonical form of serialized editor HTML for "did the user actually change
+ * anything?" comparisons. Yoopta appends an empty paragraph block when the
+ * author merely clicks below the content, so a raw string compare flags a
+ * no-op click as an edit (false dirty badge). Drops elements that carry no
+ * text and no embedded content, then collapses whitespace. Both sides of a
+ * comparison must be normalized with this same function.
+ */
+export function normalizeHtmlForDirtyCompare(html: string): string {
+    if (!html) return '';
+    try {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        const isMeaningful = (el: Element): boolean => {
+            if ((el.textContent ?? '').replace(/\u00a0/g, ' ').trim().length > 0) return true;
+            // Content-bearing embeds count even with no text.
+            return !!el.querySelector(
+                'img,iframe,video,audio,table,input,canvas,svg,embed,object,hr'
+            );
+        };
+        // Repeatedly drop empty elements until stable — the serializer nests
+        // blank paragraphs inside wrapper divs, so one pass isn't enough.
+        let changed = true;
+        while (changed) {
+            changed = false;
+            for (const el of Array.from(doc.body.querySelectorAll('*'))) {
+                if (!el.isConnected) continue;
+                const tag = el.tagName;
+                if (
+                    !isMeaningful(el) &&
+                    tag !== 'IMG' &&
+                    tag !== 'IFRAME' &&
+                    tag !== 'VIDEO' &&
+                    tag !== 'AUDIO' &&
+                    tag !== 'INPUT' &&
+                    tag !== 'CANVAS' &&
+                    tag !== 'SVG' &&
+                    tag !== 'EMBED' &&
+                    tag !== 'OBJECT' &&
+                    tag !== 'HR'
+                ) {
+                    el.remove();
+                    changed = true;
+                }
+            }
+        }
+        // Unwrap plain wrapper <div>s (formatHTMLString nests blocks in styled
+        // divs) so wrapper-depth differences don't read as edits. Divs that ARE
+        // a block — any data-* attribute, or the mermaid container — keep their
+        // identity so block-level changes still count.
+        let unwrapped = true;
+        while (unwrapped) {
+            unwrapped = false;
+            for (const div of Array.from(doc.body.querySelectorAll('div'))) {
+                if (!div.isConnected) continue;
+                const isRealBlock =
+                    Array.from(div.attributes).some((a) => a.name.startsWith('data-')) ||
+                    div.classList.contains('mermaid');
+                if (isRealBlock) continue;
+                const parent = div.parentNode;
+                if (!parent) continue;
+                while (div.firstChild) parent.insertBefore(div.firstChild, div);
+                parent.removeChild(div);
+                unwrapped = true;
+            }
+        }
+        return (doc.body.innerHTML || '').replace(/\s+/g, ' ').trim();
+    } catch {
+        // Comparison helper must never throw — fall back to the raw string.
+        return html;
+    }
 }
 
 export function appReloadPreprocess(storedHtml: string): string {

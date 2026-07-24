@@ -518,6 +518,10 @@ export const CourseStructureDetails = ({
           : 0,
         itemIndex: index, // Add index for count-based exception logic
         prerequisiteCompletions, // Add prerequisite completions map
+        // Progress of every chapter before this one, in course order.
+        recentScores: allChapters
+          .slice(0, index)
+          .map((prev) => calculateChapterProgress(prev.id)),
       };
     });
 
@@ -622,6 +626,10 @@ export const CourseStructureDetails = ({
           previousItemCompletion: previousSlide?.percentage_completed || 0,
           itemIndex: index, // Add index for count-based exception logic
           prerequisiteCompletions, // Add prerequisite completions map
+          // Completion of every slide before this one within the chapter.
+          recentScores: slides
+            .slice(0, index)
+            .map((s) => s.percentage_completed || 0),
         };
 
         // Check if this slide has its own drip condition (check both fields)
@@ -2451,9 +2459,11 @@ export const CourseStructureDetails = ({
                     >
                       {toTitleCase(subject.subject_name)}
                     </h3>
-                    <p className="text-caption text-muted-foreground">
-                      {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)} {idx + 1}
-                    </p>
+                    {showContentPrefixes && (
+                      <p className="text-caption text-muted-foreground">
+                        {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)} {idx + 1}
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -2512,9 +2522,11 @@ export const CourseStructureDetails = ({
                     >
                       {toTitleCase(m.module.module_name)}
                     </h3>
-                    <p className="text-caption text-muted-foreground">
-                      {getTerminology(ContentTerms.Modules, SystemTerms.Modules)} {idx + 1}
-                    </p>
+                    {showContentPrefixes && (
+                      <p className="text-caption text-muted-foreground">
+                        {getTerminology(ContentTerms.Modules, SystemTerms.Modules)} {idx + 1}
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -2595,9 +2607,11 @@ export const CourseStructureDetails = ({
                           >
                             {toTitleCase(ch.chapter_name)}
                           </h3>
-                          <p className="text-caption text-muted-foreground">
-                            {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)} {idx + 1}
-                          </p>
+                          {showContentPrefixes && (
+                            <p className="text-caption text-muted-foreground">
+                              {getTerminology(ContentTerms.Chapters, SystemTerms.Chapters)} {idx + 1}
+                            </p>
+                          )}
                           {isChapterLocked && (
                             <LockedBadge size="sm" unlockMessage="" />
                           )}

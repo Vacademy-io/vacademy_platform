@@ -18,9 +18,31 @@ export function OtaUpdateBanner() {
         otaForceUpdate,
         otaReleaseNotes,
         otaDownloading,
+        otaAutoUpdating,
         setOtaDownloading,
         resetOta,
     } = useOtaUpdate();
+
+    // Auto-updating dialog ("auto" mode): non-dismissible loader shown at launch
+    // while the new bundle downloads + applies in place. No user action needed.
+    if (otaAutoUpdating) {
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm pt-safe pb-safe">
+                <div className="flex w-full max-w-sm flex-col items-center rounded-lg bg-white p-6 text-center shadow-lg">
+                    <CircleNotch className="mb-4 size-10 animate-spin text-primary-500" />
+                    <h2 className="mb-1 text-subtitle font-semibold text-neutral-700">
+                        Updating app…
+                    </h2>
+                    {otaVersion && (
+                        <p className="mb-1 text-caption text-neutral-500">
+                            Version {otaVersion}
+                        </p>
+                    )}
+                    <p className="text-body text-neutral-600">Please wait a moment</p>
+                </div>
+            </div>
+        );
+    }
 
     if (!otaUpdateAvailable) return null;
 

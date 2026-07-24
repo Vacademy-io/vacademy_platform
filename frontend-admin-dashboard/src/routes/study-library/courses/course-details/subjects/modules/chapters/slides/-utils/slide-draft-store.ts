@@ -12,6 +12,27 @@
  * `backend` object below so we can swap to IndexedDB later without touching callers.
  */
 
+/**
+ * Where the drafted slide lives in the course hierarchy, captured at stash time.
+ * Powers the course-scoped "unsaved changes" dialog (names + grouping) and the
+ * deep link back to the slide — without it a draft is an opaque slideId that
+ * can't be named, grouped, or jumped to from another chapter.
+ */
+export interface SlideDraftContext {
+    slideTitle?: string | null;
+    chapterId?: string | null;
+    chapterName?: string | null;
+    moduleId?: string | null;
+    moduleName?: string | null;
+    subjectId?: string | null;
+    subjectName?: string | null;
+    courseId?: string | null;
+    courseName?: string | null;
+    /** Extra route params needed to deep-link to the slide. */
+    levelId?: string | null;
+    sessionId?: string | null;
+}
+
 export interface SlideDraft<T = unknown> {
     slideId: string;
     /** The editor payload — HTML string, Excalidraw JSON, code data, etc. */
@@ -26,6 +47,23 @@ export interface SlideDraft<T = unknown> {
     baselineUpdatedAt?: string | null;
     /** epoch ms when this draft was last written locally. */
     savedAt: number;
+    /** Hierarchy metadata for scoping/labelling. Absent on legacy drafts. */
+    context?: SlideDraftContext;
+}
+
+/**
+ * Fired on window whenever a draft is written or removed, so badge/dialog
+ * consumers re-read without polling. Same-tab only — cross-tab updates ride the
+ * browser's native `storage` event; listen to both.
+ */
+export const SLIDE_DRAFTS_CHANGED_EVENT = 'slide-drafts-changed';
+
+function emitDraftsChanged(): void {
+    try {
+        window.dispatchEvent(new CustomEvent(SLIDE_DRAFTS_CHANGED_EVENT));
+    } catch {
+        /* SSR / test envs without window — ignore */
+    }
 }
 
 const PREFIX = 'slideDraft';
@@ -86,16 +124,22 @@ export function saveDraft<T>(
     userId: string,
     slideId: string,
     content: T,
-    baselineUpdatedAt?: string | null
+    baselineUpdatedAt?: string | null,
+    context?: SlideDraftContext
 ): SlideDraft<T> {
+    // Carry forward the previous stash's context when the caller doesn't pass
+    // one, so a code path that can't cheaply rebuild it never strips metadata.
+    const prior = context ? null : loadDraft<T>(userId, slideId);
     const draft: SlideDraft<T> = {
         slideId,
         content,
         contentHash: hashContent(content),
         baselineUpdatedAt: baselineUpdatedAt ?? null,
         savedAt: Date.now(),
+        context: context ?? prior?.context,
     };
     backend.set(keyFor(userId, slideId), JSON.stringify(draft));
+    emitDraftsChanged();
     return draft;
 }
 
@@ -112,6 +156,7 @@ export function loadDraft<T = unknown>(userId: string, slideId: string): SlideDr
 
 export function removeDraft(userId: string, slideId: string): void {
     backend.remove(keyFor(userId, slideId));
+    emitDraftsChanged();
 }
 
 export function hasDraft(userId: string, slideId: string): boolean {
@@ -140,10 +185,20 @@ export function dirtySlideIds(userId: string): Set<string> {
     return new Set(listDrafts(userId).map((d) => d.slideId));
 }
 
+/**
+ * Drafts belonging to one course. Legacy drafts without context metadata are
+ * excluded — they can't be named or navigated to, and age out via pruning.
+ */
+export function listCourseDrafts<T = unknown>(userId: string, courseId: string): SlideDraft<T>[] {
+    if (!courseId) return [];
+    return listDrafts<T>(userId).filter((d) => d.context?.courseId === courseId);
+}
+
 /** Drop drafts older than MAX_AGE_MS. Call once on mount. */
 export function pruneOldDrafts(userId: string): void {
     const wanted = `${PREFIX}:${userId}:`;
     const cutoff = Date.now() - MAX_AGE_MS;
+    let removedAny = false;
     for (const key of backend.keys()) {
         if (!key.startsWith(wanted)) continue;
         const raw = backend.get(key);
@@ -152,9 +207,12 @@ export function pruneOldDrafts(userId: string): void {
             const draft = JSON.parse(raw) as SlideDraft;
             if (typeof draft.savedAt !== 'number' || draft.savedAt < cutoff) {
                 backend.remove(key);
+                removedAny = true;
             }
         } catch {
             backend.remove(key);
+            removedAny = true;
         }
     }
+    if (removedAny) emitDraftsChanged();
 }

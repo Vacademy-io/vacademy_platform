@@ -159,7 +159,9 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                 tag: null,
                 currency: 'INR',
                 isDefault: false,
-                config: { cpoForm },
+                requireApproval: planData.requireApproval || false,
+                // Carry the approval flag inside cpoForm so buildCreateCPOPayload emits require_approval.
+                config: { cpoForm: { ...cpoForm, requireApproval: planData.requireApproval || false } },
             };
             onSave(cpoPlan);
             onClose();
@@ -446,7 +448,7 @@ export const PaymentPlanCreator: React.FC<PaymentPlanCreatorProps> = ({
                     {/* Step 2: Plan Configuration */}
                     {currentStep === 2 && (
                         <div className="space-y-6">
-                            {!editingPlan && planData.type !== PaymentPlans.CPO && (
+                            {!editingPlan && (
                                 <ApprovalToggle
                                     planType={planData.type as PaymentPlanType}
                                     requireApproval={requireApproval}

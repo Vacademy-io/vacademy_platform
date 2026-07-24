@@ -10,6 +10,7 @@ import { GET_VIDEO_URLS } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { AIContentPlayer } from '@/components/ai-video-player/AIContentPlayer';
 import { SplitScreenSlide } from './split-screen-slide';
+import { FileVideoPlayer } from './file-video-player';
 import { useSlideDownloadAccess } from '@/hooks/useSlideDownloadAccess';
 
 const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedUrl?: string }) => {
@@ -373,27 +374,19 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
     // FILE_ID video rendering
     if (videoSourceType === 'FILE_ID') {
         return (
-            <div key={`video-${activeItem.id}`} className="w-full overflow-hidden rounded-lg">
+            <div key={`video-${activeItem.id}`} className="w-full">
                 {isUrlExpired ? (
-                    <div className="flex h-64 flex-col items-center justify-center bg-yellow-50 p-4">
+                    <div className="flex h-64 flex-col items-center justify-center rounded-lg bg-yellow-50 p-4">
                         <p className="mb-4 text-yellow-700">Video URL has expired. Refreshing...</p>
                         <div className="size-8 animate-spin rounded-full border-y-2 border-primary-500"></div>
                     </div>
                 ) : (
-                    <video
-                        ref={videoRef}
-                        className="w-full"
-                        controls
-                        controlsList={allowVideoDownload ? undefined : 'nodownload'}
+                    <FileVideoPlayer
+                        src={videoUrl}
+                        videoRef={videoRef}
+                        allowDownload={allowVideoDownload}
                         onError={handleVideoError}
-                        playsInline
-                        preload="metadata"
-                    >
-                        <source src={videoUrl} type="video/webm" />
-                        <source src={videoUrl} type="video/mp4" />
-                        <source src={videoUrl} type="video/ogg" />
-                        Your browser does not support the video tag or the video format.
-                    </video>
+                    />
                 )}
             </div>
         );

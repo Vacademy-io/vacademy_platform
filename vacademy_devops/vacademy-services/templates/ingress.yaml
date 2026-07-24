@@ -120,6 +120,7 @@ spec:
         - u.vacademy.io
         - u.aanandham.uk
         - u.readonrent.com
+        - u.elevateeducation.in
       secretName: vacademy-tls-secret
   rules:
     - host: backend-stage.vacademy.io
@@ -214,6 +215,16 @@ spec:
                 port:
                   number: {{ .Values.services.media_service.port }}
     - host: u.readonrent.com
+      http:
+        paths:
+          - path: /s
+            pathType: Prefix
+            backend:
+              service:
+                name: media-service
+                port:
+                  number: {{ .Values.services.media_service.port }}
+    - host: u.elevateeducation.in
       http:
         paths:
           - path: /s

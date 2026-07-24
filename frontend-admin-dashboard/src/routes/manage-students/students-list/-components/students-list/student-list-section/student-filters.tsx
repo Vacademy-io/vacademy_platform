@@ -19,6 +19,9 @@ import { getTerminology } from '@/components/common/layout-container/sidebar/uti
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { useCompactMode } from '@/hooks/use-compact-mode';
 import { cn } from '@/lib/utils';
+import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
+import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
+import { sentinelLabel } from '@/components/shared/leads/custom-field-filter-encoding';
 
 export const StudentFilters = ({
     currentSession,
@@ -237,7 +240,27 @@ export const StudentFilters = ({
                                 className="animate-slideInRight"
                                 style={{ animationDelay: `${index * 0.1}s` }}
                             >
-                                {filter.kind === 'CUSTOM_FIELD_SEARCH' && filter.customFieldId ? (
+                                {filter.kind === 'CUSTOM_FIELD_RANGE' && filter.customFieldId ? (
+                                    <CustomFieldRangeFilter
+                                        fieldId={filter.customFieldId}
+                                        fieldName={filter.title}
+                                        fieldType={filter.fieldType ?? 'NUMBER'}
+                                        selected={
+                                            columnFilters
+                                                .find((f) => f.id === filter.id)
+                                                ?.value.map((v) => v.id) || []
+                                        }
+                                        onChange={(values) =>
+                                            onFilterChange(
+                                                filter.id,
+                                                values.map((v) => ({
+                                                    id: v,
+                                                    label: sentinelLabel(v) ?? v,
+                                                }))
+                                            )
+                                        }
+                                    />
+                                ) : filter.kind === 'CUSTOM_FIELD_SEARCH' && filter.customFieldId ? (
                                     <CustomFieldMultiSelectFilter
                                         instituteId={instituteDetails?.id || ''}
                                         fieldId={filter.customFieldId}
@@ -250,11 +273,15 @@ export const StudentFilters = ({
                                         onChange={(values) =>
                                             onFilterChange(
                                                 filter.id,
-                                                values.map((v) => ({ id: v, label: v }))
+                                                values.map((v) => ({
+                                                    id: v,
+                                                    label: sentinelLabel(v) ?? v,
+                                                }))
                                             )
                                         }
                                         fetchValues={fetchStudentCustomFieldValues}
                                         variant="pill"
+                                        cacheScope="students"
                                     />
                                 ) : (
                                     <Filters
@@ -273,6 +300,7 @@ export const StudentFilters = ({
                                 )}
                             </div>
                         ))}
+                        <ManageListFiltersLink />
                     </div>
 
                     {/* Filter action buttons */}

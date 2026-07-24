@@ -149,6 +149,63 @@ public class WhatsAppInboxService {
                 .build();
     }
 
+    /**
+     * Send a free-form WhatsApp session reply ON BEHALF OF the Engagement Engine (auto-reply or a
+     * human answering an escalated reply task). Same session-text primitive as {@link #sendReply},
+     * but the outgoing log is stamped source=ENGAGEMENT_ENGINE + correlation_id=<engagement action
+     * id> so the Phase-0 ledger attributes it to the engine (engine-gated correlation, §6.3). Legal
+     * only inside Meta's 24h window — the caller (the engine) guarantees that. Returns the wamid.
+     */
+    public String sendEngagementReply(String phone, String text, String instituteId, String correlationId) {
+        List<ChannelToInstituteMapping> mappings = channelMappingRepository.findAllByInstituteId(instituteId);
+        if (mappings.isEmpty()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "No WhatsApp channel configured for this institute");
+        }
+        if (text == null || text.isBlank()) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Reply text is required");
+        }
+        if (text.length() > 4096) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.BAD_REQUEST, "Message too long. Maximum 4096 characters.");
+        }
+
+        ChannelToInstituteMapping mapping = mappings.get(0);
+        String channelType = mapping.getChannelType();
+        String businessChannelId = mapping.getChannelId();
+
+        ChatbotMessageProvider provider = messageProviders.stream()
+                .filter(p -> p.supports(channelType))
+                .findFirst()
+                .orElse(messageProviders.stream()
+                        .filter(p -> p.supports("WHATSAPP"))
+                        .findFirst()
+                        .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                                org.springframework.http.HttpStatus.BAD_REQUEST, "No WhatsApp provider found")));
+
+        String providerMessageId = provider.sendText(phone, text, instituteId, businessChannelId);
+
+        NotificationLog outLog = new NotificationLog();
+        outLog.setNotificationType("WHATSAPP_MESSAGE_OUTGOING");
+        outLog.setChannelId(phone);
+        outLog.setBody(text);
+        outLog.setSource("ENGAGEMENT_ENGINE");   // engine-gated: Phase-0 correlation stamping keys on this
+        outLog.setSourceId(providerMessageId);   // wamid → exact join for the sent/delivered/read webhooks
+        outLog.setCorrelationId(correlationId);  // the engagement action id → ledger attribution
+        outLog.setSenderBusinessChannelId(businessChannelId);
+        outLog.setInstituteId(instituteId);
+        outLog.setNotificationDate(Instant.now());
+        try {
+            notificationLogRepository
+                    .findTopByChannelIdAndNotificationTypeOrderByNotificationDateDesc(phone, "WHATSAPP_MESSAGE_OUTGOING")
+                    .ifPresent(prev -> outLog.setUserId(prev.getUserId()));
+        } catch (Exception ignored) {}
+        notificationLogRepository.save(outLog);
+        return providerMessageId;
+    }
+
     private String truncate(String text, int maxLen) {
         if (text == null) return null;
         return text.length() <= maxLen ? text : text.substring(0, maxLen) + "...";

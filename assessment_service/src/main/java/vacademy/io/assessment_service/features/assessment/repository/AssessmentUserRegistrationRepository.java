@@ -48,6 +48,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
             AND (:status IS NULL OR sa.status IN (:attemptType))
             AND ('__ALL__' IN (:evaluationStatus) OR sa.result_status IN (:evaluationStatus))
+            AND ('__ALL__' IN (:submissionStatus) OR (CASE WHEN COALESCE(NULLIF(CAST(sa.attempt_data AS jsonb) ->> 'fileId', ''), NULLIF(sa.evaluated_file_id, '')) IS NOT NULL THEN 'SUBMITTED' ELSE 'NOT_SUBMITTED' END) IN (:submissionStatus))
             """,
             countQuery = """
                     select count(*)
@@ -64,6 +65,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                     AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
                     AND (:status IS NULL OR sa.status IN (:attemptType))
                     AND ('__ALL__' IN (:evaluationStatus) OR sa.result_status IN (:evaluationStatus))
+                    AND ('__ALL__' IN (:submissionStatus) OR (CASE WHEN COALESCE(NULLIF(CAST(sa.attempt_data AS jsonb) ->> 'fileId', ''), NULLIF(sa.evaluated_file_id, '')) IS NOT NULL THEN 'SUBMITTED' ELSE 'NOT_SUBMITTED' END) IN (:submissionStatus))
                     """, nativeQuery = true)
     Page<ParticipantsDetailsDto> findUserRegistrationWithFilterForBatch(@Param("assessmentId") String assessmentId,
                                                                         @Param("instituteId") String instituteId,
@@ -71,6 +73,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                                                                         @Param("status") List<String> status,
                                                                         @Param("attemptType") List<String> attemptType,
                                                                         @Param("evaluationStatus") List<String> evaluationStatus,
+                                                                        @Param("submissionStatus") List<String> submissionStatus,
                                                                         Pageable pageable);
 
     @Query(value = """
@@ -126,6 +129,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
             AND (:attemptType IS NULL OR sa.status IN (:attemptType))
             AND ('__ALL__' IN (:evaluationStatus) OR sa.result_status IN (:evaluationStatus))
+            AND ('__ALL__' IN (:submissionStatus) OR (CASE WHEN COALESCE(NULLIF(CAST(sa.attempt_data AS jsonb) ->> 'fileId', ''), NULLIF(sa.evaluated_file_id, '')) IS NOT NULL THEN 'SUBMITTED' ELSE 'NOT_SUBMITTED' END) IN (:submissionStatus))
             """,
             countQuery = """
                     SELECT COUNT(*)
@@ -146,6 +150,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                     AND aur.source = 'BATCH_PREVIEW_REGISTRATION'
                     AND (:attemptType IS NULL OR sa.status IN (:attemptType))
                     AND ('__ALL__' IN (:evaluationStatus) OR sa.result_status IN (:evaluationStatus))
+                    AND ('__ALL__' IN (:submissionStatus) OR (CASE WHEN COALESCE(NULLIF(CAST(sa.attempt_data AS jsonb) ->> 'fileId', ''), NULLIF(sa.evaluated_file_id, '')) IS NOT NULL THEN 'SUBMITTED' ELSE 'NOT_SUBMITTED' END) IN (:submissionStatus))
                     """,
             nativeQuery = true)
     Page<ParticipantsDetailsDto> findUserRegistrationWithFilterWithSearchForBatch(
@@ -156,6 +161,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             @Param("status") List<String> status,
             @Param("attemptType") List<String> attemptType,
             @Param("evaluationStatus") List<String> evaluationStatus,
+            @Param("submissionStatus") List<String> submissionStatus,
             Pageable pageable
     );
 
@@ -173,6 +179,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
             AND aur.source = :source
             AND (:status IS NULL OR sa.status IN (:attemptType))
             AND ('__ALL__' IN (:evaluationStatus) OR sa.result_status IN (:evaluationStatus))
+            AND ('__ALL__' IN (:submissionStatus) OR (CASE WHEN COALESCE(NULLIF(CAST(sa.attempt_data AS jsonb) ->> 'fileId', ''), NULLIF(sa.evaluated_file_id, '')) IS NOT NULL THEN 'SUBMITTED' ELSE 'NOT_SUBMITTED' END) IN (:submissionStatus))
             """,
             countQuery = """
                     select count(distinct aur.user_id)
@@ -184,6 +191,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                     AND aur.source = :source
                     AND (:status IS NULL OR sa.status IN (:attemptType))
                     AND ('__ALL__' IN (:evaluationStatus) OR sa.result_status IN (:evaluationStatus))
+                    AND ('__ALL__' IN (:submissionStatus) OR (CASE WHEN COALESCE(NULLIF(CAST(sa.attempt_data AS jsonb) ->> 'fileId', ''), NULLIF(sa.evaluated_file_id, '')) IS NOT NULL THEN 'SUBMITTED' ELSE 'NOT_SUBMITTED' END) IN (:submissionStatus))
                     """, nativeQuery = true)
     Page<ParticipantsDetailsDto> findUserRegistrationWithFilterForSource(@Param("assessmentId") String assessmentId,
                                                                          @Param("instituteId") String instituteId,
@@ -191,6 +199,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                                                                          @Param("attemptType") List<String> attemptType,
                                                                          @Param("source") String source,
                                                                          @Param("evaluationStatus") List<String> evaluationStatus,
+                                                                         @Param("submissionStatus") List<String> submissionStatus,
                                                                          Pageable pageable);
 
     @Query(value = """
@@ -237,6 +246,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
               AND aur.source = :source
               AND (:status IS NULL OR sa.status IN (:attemptType))
               AND ('__ALL__' IN (:evaluationStatus) OR sa.result_status IN (:evaluationStatus))
+              AND ('__ALL__' IN (:submissionStatus) OR (CASE WHEN COALESCE(NULLIF(CAST(sa.attempt_data AS jsonb) ->> 'fileId', ''), NULLIF(sa.evaluated_file_id, '')) IS NOT NULL THEN 'SUBMITTED' ELSE 'NOT_SUBMITTED' END) IN (:submissionStatus))
             """,
             countQuery = """
                      select count(distinct aur.user_id)
@@ -254,6 +264,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                      AND aur.source = :source
                      AND (:status IS NULL OR sa.status IN (:attemptType))
                      AND ('__ALL__' IN (:evaluationStatus) OR sa.result_status IN (:evaluationStatus))
+                     AND ('__ALL__' IN (:submissionStatus) OR (CASE WHEN COALESCE(NULLIF(CAST(sa.attempt_data AS jsonb) ->> 'fileId', ''), NULLIF(sa.evaluated_file_id, '')) IS NOT NULL THEN 'SUBMITTED' ELSE 'NOT_SUBMITTED' END) IN (:submissionStatus))
                     """, nativeQuery = true)
     Page<ParticipantsDetailsDto> findUserRegistrationWithFilterWithSearchForSource(@Param("name") String name,
                                                                                    @Param("assessmentId") String assessmentId,
@@ -262,6 +273,7 @@ public interface AssessmentUserRegistrationRepository extends JpaRepository<Asse
                                                                                    @Param("attemptType") List<String> attemptType,
                                                                                    @Param("source") String source,
                                                                                    @Param("evaluationStatus") List<String> evaluationStatus,
+                                                                                   @Param("submissionStatus") List<String> submissionStatus,
                                                                                    Pageable pageable);
 
 

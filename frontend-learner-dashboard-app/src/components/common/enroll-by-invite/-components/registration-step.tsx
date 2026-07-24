@@ -702,12 +702,18 @@ const RegistrationStep = ({
                       render={({ field: formField }) => (
                         <FormItem>
                           <div className="flex flex-col gap-1">
-                            <label className="text-subtitle font-regular">
-                              {capitalise(value.name)}
-                              {value.is_mandatory && (
-                                <span className="text-danger-600"> *</span>
-                              )}
-                            </label>
+                            {/* Checkbox fields render their own inline label
+                                (and optional description block) inside the
+                                renderer, so skip the label-above to avoid a
+                                duplicate. */}
+                            {renderType !== FieldRenderType.CHECKBOX && (
+                              <label className="text-subtitle font-regular">
+                                {capitalise(value.name)}
+                                {value.is_mandatory && (
+                                  <span className="text-danger-600"> *</span>
+                                )}
+                              </label>
+                            )}
                             <FormControl>
                               <CustomFieldRenderer
                                 type={renderType}

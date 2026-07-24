@@ -96,4 +96,11 @@ public class PortalRoutingConfig {
     /** Optional explicit logo height in pixels. Null means use responsive default. */
     @JsonProperty("logo_height_px")
     private Integer logoHeightPx;
+
+    /**
+     * When true, the institute name is rendered stacked BELOW the logo (centered
+     * vertical) instead of to its right. Null / false keeps the side-by-side layout.
+     */
+    @JsonProperty("stack_name_below_logo")
+    private Boolean stackNameBelowLogo;
 }

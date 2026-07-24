@@ -73,6 +73,8 @@ function defaultDashboardWidgetsAdmin(): DashboardWidgetConfig[] {
         // 4. Operational health (finance)
         'financeSummary',
         'recentTransactions',
+        'subOrgOverview',
+        'subOrgSelfStats',
         // 5. Engagement signals
         'unresolvedDoubts',
         'recentNotifications',
@@ -149,6 +151,9 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         showSupportButton: true,
         showSidebar: true,
         showAiCredits: true,
+        showAssistDock: true,
+        showStatus: true,
+        showSettings: true,
     },
     contentTypes: {
         pdf: true,

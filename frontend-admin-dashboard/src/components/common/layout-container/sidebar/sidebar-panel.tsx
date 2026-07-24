@@ -59,6 +59,7 @@ interface SidebarPanelProps {
     hideInstituteName?: boolean;
     logoWidthPx?: number | null;
     logoHeightPx?: number | null;
+    stackNameBelowLogo?: boolean;
 }
 
 export const SidebarPanel: React.FC<SidebarPanelProps> = ({
@@ -78,6 +79,7 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
     hideInstituteName = false,
     logoWidthPx = null,
     logoHeightPx = null,
+    stackNameBelowLogo = false,
 }) => {
     const navigate = useNavigate();
     const router = useRouter();
@@ -124,7 +126,11 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                 <div
                     className={cn(
                         'flex cursor-pointer items-center',
-                        hideInstituteName ? 'justify-center p-0' : 'gap-2.5 px-4 py-4'
+                        hideInstituteName
+                            ? 'justify-center p-0'
+                            : stackNameBelowLogo
+                              ? 'flex-col gap-2 px-4 py-4 text-center'
+                              : 'gap-2.5 px-4 py-4'
                     )}
                     onClick={() => {
                         navigate({ to: '/dashboard' });
@@ -160,7 +166,14 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                     })()}
                     {!hideInstituteName && (
                         <span
-                            className="truncate text-sm font-semibold text-neutral-800"
+                            className={cn(
+                                'text-sm font-semibold text-neutral-800',
+                                // Stacked: wrap up to 2 lines (centered), ellipsis
+                                // beyond. Beside the logo: single-line ellipsis.
+                                stackNameBelowLogo
+                                    ? 'w-full line-clamp-2 break-words'
+                                    : 'truncate'
+                            )}
                             title={instituteName}
                         >
                             {instituteName}

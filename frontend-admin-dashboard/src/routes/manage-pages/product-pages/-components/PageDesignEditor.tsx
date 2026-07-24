@@ -82,7 +82,7 @@ const COMPONENT_PALETTE: {
     { type: 'textBlock', label: 'Text Block', icon: <Type className="size-4" />, description: 'Rich text paragraph', group: 'Content' },
     { type: 'imageBlock', label: 'Image', icon: <ImageIcon className="size-4" />, description: 'Full-width clickable image', group: 'Content' },
     { type: 'videoEmbed', label: 'Video Embed', icon: <PlayCircle className="size-4" />, description: 'YouTube / Vimeo embed', group: 'Content' },
-    { type: 'htmlBlock', label: 'HTML Block', icon: <Code className="size-4" />, description: 'Custom HTML / CSS / JS', group: 'Content' },
+    { type: 'htmlBlock', label: 'HTML Block', icon: <Code className="size-4" />, description: 'Custom HTML / CSS (sandboxed, no scripts)', group: 'Content' },
     { type: 'statsHighlights', label: 'Stats', icon: <BarChart3 className="size-4" />, description: 'Key numbers highlight', group: 'Marketing' },
     { type: 'testimonialSection', label: 'Testimonials', icon: <Quote className="size-4" />, description: 'Student reviews', group: 'Marketing' },
     { type: 'faqSection', label: 'FAQ', icon: <HelpCircle className="size-4" />, description: 'Frequently asked questions', group: 'Marketing' },
@@ -591,9 +591,15 @@ const ImageBlockEditor = ({ props: p, onChange }: EditorProps) => (
 );
 
 const HtmlBlockEditor = ({ props: p, onChange }: EditorProps) => (
-    <div className="space-y-1">
-        <Label className="text-xs text-neutral-500">HTML</Label>
-        <textarea rows={6} value={p['html'] || ''} onChange={(e) => onChange({ ...p, html: e.target.value })} placeholder="<div>Custom content</div>" className="w-full rounded-md border border-neutral-200 px-3 py-2 font-mono text-xs focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-300" />
+    <div className="space-y-3">
+        <div className="space-y-1">
+            <Label className="text-xs text-neutral-500">HTML</Label>
+            <textarea rows={6} value={p['html'] || ''} onChange={(e) => onChange({ ...p, html: e.target.value })} placeholder="<div>Custom content</div>" className="w-full rounded-md border border-neutral-200 px-3 py-2 font-mono text-xs focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-300" />
+        </div>
+        <div className="space-y-1">
+            <Label className="text-xs text-neutral-500">CSS (scoped to this section)</Label>
+            <textarea rows={4} value={p['css'] || ''} onChange={(e) => onChange({ ...p, css: e.target.value })} placeholder=".my-band { background: var(--primary-50); }" className="w-full rounded-md border border-neutral-200 px-3 py-2 font-mono text-xs focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-300" />
+        </div>
     </div>
 );
 

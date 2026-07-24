@@ -218,7 +218,9 @@ public interface PackageSessionRepository extends JpaRepository<PackageSession, 
 
     @Query("""
                 SELECT
-                    CONCAT(l.levelName, ' ', p.packageName) AS batchName,
+                    CASE WHEN p.packageName LIKE CONCAT(l.levelName, '%')
+                         THEN p.packageName
+                         ELSE CONCAT(l.levelName, ' ', p.packageName) END AS batchName,
                     i.instituteName AS instituteName,
                     i.id AS instituteId,
                     i.logoFileId AS instituteLogoFileId,

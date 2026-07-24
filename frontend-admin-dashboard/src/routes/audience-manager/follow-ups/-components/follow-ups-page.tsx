@@ -189,7 +189,7 @@ const FollowUpsContent = () => {
         const source = view === 'calendar' ? pendingVms : sortedVms;
         return source.map((vm) => vm.userId ?? '').filter((id): id is string => !!id);
     }, [view, pendingVms, sortedVms]);
-    const { profiles: leadProfiles } = useLeadProfiles(userIds, showOps);
+    const { profiles: leadProfiles } = useLeadProfiles(userIds, showOps, instituteId);
     const { notesByUserId } = useLatestNotesBatch(userIds, showOps);
 
     const updateTier = useUpdateLeadTier({ invalidateKeys: INVALIDATE_KEYS });

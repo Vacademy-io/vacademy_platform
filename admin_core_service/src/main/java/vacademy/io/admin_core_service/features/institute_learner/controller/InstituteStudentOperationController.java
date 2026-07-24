@@ -23,7 +23,16 @@ public class InstituteStudentOperationController {
     @Autowired
     private LearnerSessionOperationService learnerSessionOperationService;
 
+    /**
+     * One mapping, six operations — so the audited action is derived from the
+     * request's own {@code operation} field rather than fixed on the annotation,
+     * keeping TERMINATE distinguishable from a batch move in the activity log.
+     */
     @PostMapping("/update")
+    @Auditable(
+            entityType = "LEARNER",
+            actionExpr = "#requestWrapper?.operation",
+            descriptionExpr = "@auditNarrator.statusChangeFor(#requestWrapper?.operation, #requestWrapper?.requests)")
     public void updateStudentStatus(@RequestAttribute("user") CustomUserDetails user, @RequestBody StudentStatusUpdateRequestWrapper requestWrapper) {
         manager.updateStudentStatus(requestWrapper.getRequests(), requestWrapper.getOperation(), user);
     }
@@ -33,7 +42,8 @@ public class InstituteStudentOperationController {
     @Auditable(
             entityType = "LEARNER",
             action = "ENROLL",
-            descriptionExpr = "'added ' + (#learnerBatchRegister?.userIds?.size() ?: 0) + ' learner(s) to batches'")
+            descriptionExpr = "@auditNarrator.bulkEnrollmentOf('enrolled', #learnerBatchRegister?.userIds, "
+                    + "#learnerBatchRegister?.learnerBatchRegisterInfos?.![packageSessionId])")
     public String addPackageSessionsToLearner(
             @RequestBody LearnerBatchRegisterRequestDTO learnerBatchRegister,
             @RequestAttribute("user") CustomUserDetails user) {
@@ -45,7 +55,9 @@ public class InstituteStudentOperationController {
     @Auditable(
             entityType = "LEARNER",
             action = "ENROLL",
-            descriptionExpr = "'re-enrolled learner ' + (#instituteStudentDTO?.userDetails?.fullName ?: #instituteStudentDTO?.userDetails?.email ?: '')")
+            descriptionExpr = "@auditNarrator.enrollmentOf('re-enrolled', "
+                    + "#instituteStudentDTO?.userDetails?.fullName ?: #instituteStudentDTO?.userDetails?.email, "
+                    + "{#instituteStudentDTO?.instituteStudentDetails?.packageSessionId})")
     public ResponseEntity<?> reEnrollLearner(
             @RequestBody InstituteStudentDTO instituteStudentDTO,
             @RequestAttribute("user") CustomUserDetails user) {

@@ -20,6 +20,7 @@ import { EwayCardUpdate } from "./eway-card-update";
 import { BillingDetailsForm } from "./billing-details-form";
 import { EnrollmentExpiryList } from "./enrollment-expiry-list";
 import { SubscriptionMandateList } from "./subscription-mandate-list";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 interface PaymentBillingSectionProps {
   instituteId: string;
@@ -35,6 +36,12 @@ export const PaymentBillingSection = ({
   instituteId,
   userId,
 }: PaymentBillingSectionProps) => {
+  // Reader-mode (native iOS): saved cards, autopay/subscriptions and access
+  // expiry are paid-subscription surfaces Apple flags under Guideline 3.1.1 —
+  // hide the whole section. The platform check is constant per session, so the
+  // early return never changes hook order between renders.
+  if (shouldHidePaidPurchaseUI()) return null;
+
   const [isEditingCard, setIsEditingCard] = useState(false);
   const queryClient = useQueryClient();
 

@@ -19,7 +19,11 @@ import {
 export interface LearnerProgressData {
   /** Percentage completed for current item (0-100) */
   percentageCompleted: number;
-  /** Array of recent quiz/assessment scores for average calculation */
+  /**
+   * Completion percentages of the items preceding this one, in list order
+   * (oldest first, immediately-previous item last). Required by
+   * `completion_based` rules — omitting it makes those rules unevaluable.
+   */
   recentScores?: number[];
   /** IDs of completed prerequisite chapters/slides */
   completedPrerequisiteIds?: string[];
@@ -91,25 +95,47 @@ function evaluateRule(
       const completionParams = params as CompletionBasedParams;
       const { metric, threshold, count } = completionParams;
 
+      // Completion percentages of the preceding items, oldest first.
+      const scores = progressData.recentScores || [];
+
+      const averageOf = (values: number[]) =>
+        values.reduce((sum, score) => sum + score, 0) / values.length;
+
       if (metric === "average_of_last_n") {
-        const scores = progressData.recentScores || [];
         const requiredCount = count || 1;
         if (scores.length < requiredCount) {
+          const missing = requiredCount - scores.length;
           return {
             passed: false,
-            message: `Complete ${requiredCount} more slides/chapters to unlock`,
+            message: `Complete ${missing} more slide${
+              missing === 1 ? "" : "s"
+            }/chapter${missing === 1 ? "" : "s"} to unlock`,
           };
         }
-        const lastNScores = scores.slice(-requiredCount);
-        const average =
-          lastNScores.reduce((sum, score) => sum + score, 0) /
-          lastNScores.length;
+        const average = averageOf(scores.slice(-requiredCount));
         const isPassed = average >= threshold;
         return {
           passed: isPassed,
           message: isPassed
             ? undefined
             : `Score average of ${threshold}% needed (current: ${Math.round(
+                average
+              )}%)`,
+        };
+      }
+
+      if (metric === "average_of_all") {
+        // Nothing precedes this item, so there is nothing to average against.
+        if (scores.length === 0) {
+          return { passed: true };
+        }
+        const average = averageOf(scores);
+        const isPassed = average >= threshold;
+        return {
+          passed: isPassed,
+          message: isPassed
+            ? undefined
+            : `Overall average of ${threshold}% needed (current: ${Math.round(
                 average
               )}%)`,
         };

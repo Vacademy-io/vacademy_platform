@@ -27,4 +27,8 @@ public class CreateEngineRequest {
     /** Raw JSON: {startHour,endHour,timezone} */
     private String quietHours;
     private Integer cadenceHours;
+    /** Phase 2: % of the audience (0..100) enrolled but never messaged, for lift measurement. */
+    private Integer holdoutPct;
+    /** Phase 2: human-approved sends before this engine may auto-send (null = global default). */
+    private Integer firstN;
 }

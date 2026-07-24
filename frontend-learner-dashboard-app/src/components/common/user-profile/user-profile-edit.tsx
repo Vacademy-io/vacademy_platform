@@ -2,6 +2,7 @@
 
 import type React from "react";
 import { useState, useEffect } from "react";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -709,8 +710,10 @@ export default function EditProfile() {
           </form>
 
           {/* Payment & Billing — outside the profile <form> because the
-              billing details editor submits its own form */}
-          {studentData?.institute_id && formData.user_id && (
+              billing details editor submits its own form. Hidden on native iOS
+              (reader-mode): payment methods / autopay / access-expiry are the
+              paid-subscription surfaces Apple flags under Guideline 3.1.1. */}
+          {studentData?.institute_id && formData.user_id && !shouldHidePaidPurchaseUI() && (
             <div className="border-t border-gray-100 p-6 md:p-8">
               <PaymentBillingSection
                 instituteId={studentData.institute_id}

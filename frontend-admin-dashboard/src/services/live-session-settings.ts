@@ -130,6 +130,33 @@ export interface LiveSessionSettings {
     lmsConnection: {
         recordingAddToCourseEnabled: boolean;
         classMaterialsEnabled: boolean;
+        /**
+         * Institute-wide auto-upload: when `true`, sessions can pick their own
+         * recording→chapter destination during scheduling (see the Step 2
+         * "Auto-add recordings to course" card), and any session left without
+         * its own config falls back to `autoUploadDefaultDestination` below.
+         */
+        autoUploadRecordingsEnabled: boolean;
+        /**
+         * When a recording is auto-uploaded via the institute-default fallback,
+         * also email enrolled learners ("New Study Material Available"). The
+         * Step 2 per-session config carries its own notify flag; this only
+         * governs the fallback path.
+         */
+        autoUploadNotifyLearners: boolean;
+        /**
+         * Institute-wide fallback destination used when a recording arrives for
+         * a session that has no per-session auto-link config of its own. A
+         * chapter is always batch-scoped, so `packageSessionId` travels with it.
+         * `subjectId`/`moduleId` may be null when the course's depth collapses
+         * that level (see course-depth handling in the picker).
+         */
+        autoUploadDefaultDestination?: {
+            packageSessionId: string;
+            subjectId?: string | null;
+            moduleId?: string | null;
+            chapterId: string;
+        } | null;
     };
     /**
      * Defaults for the "Vacademy Meet recording & controls" block. These only
@@ -235,6 +262,9 @@ export const DEFAULT_LIVE_SESSION_SETTINGS: LiveSessionSettings = {
     lmsConnection: {
         recordingAddToCourseEnabled: false,
         classMaterialsEnabled: false,
+        autoUploadRecordingsEnabled: false,
+        autoUploadNotifyLearners: false,
+        autoUploadDefaultDestination: null,
     },
     defaultBbbRecordEnabled: true,
     defaultBbbAutoStartRecording: false,

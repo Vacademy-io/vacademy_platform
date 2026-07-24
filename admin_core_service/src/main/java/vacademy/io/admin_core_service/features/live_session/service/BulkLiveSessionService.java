@@ -196,6 +196,7 @@ public class BulkLiveSessionService {
         copy.setUpdatedFields(template.getUpdatedFields());
         copy.setDeletedFieldIds(template.getDeletedFieldIds());
         copy.setInstituteCustomFields(template.getInstituteCustomFields());
+        copy.setRecordingAutoLinkConfig(template.getRecordingAutoLinkConfig());
         return copy;
     }
 

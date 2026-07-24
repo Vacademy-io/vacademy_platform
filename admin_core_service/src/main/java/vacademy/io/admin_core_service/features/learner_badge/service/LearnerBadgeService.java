@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.learner_badge.dto.AwardBadgeRequest;
 import vacademy.io.admin_core_service.features.learner_badge.dto.LearnerBadgeDTO;
+import vacademy.io.admin_core_service.features.learner_badge.dto.SyncUnlocksRequest;
 import vacademy.io.admin_core_service.features.learner_badge.entity.LearnerBadge;
 import vacademy.io.admin_core_service.features.learner_badge.entity.LearnerBadgeStatus;
 import vacademy.io.admin_core_service.features.learner_badge.repository.LearnerBadgeRepository;
@@ -56,6 +57,7 @@ public class LearnerBadgeService {
             badge.setBadgeIcon(request.getBadgeIcon());
             badge.setBadgeDescription(request.getBadgeDescription());
             badge.setReason(request.getReason());
+            badge.setSource("MANUAL");
             badge.setStatus(LearnerBadgeStatus.ACTIVE);
             badge.setAwardedByUserId(awardedByUserId);
             badge.setAwardedAt(new Timestamp(System.currentTimeMillis()));
@@ -67,6 +69,62 @@ public class LearnerBadgeService {
         }
 
         return awarded;
+    }
+
+    /**
+     * Persist a learner's client-computed auto-unlock badges (source = AUTO) so they show
+     * on the in-app and public leaderboards, which read {@code learner_badge}. The learner
+     * is taken from the JWT by the caller — never from the request body.
+     *
+     * Idempotent and non-destructive: a badge is inserted only when NO row exists for that
+     * (user, badge, institute). That skips badges already synced, admin-awarded (MANUAL),
+     * or explicitly revoked by an admin — so sync never resurrects a revoked badge, never
+     * duplicates, and never overwrites a manual award. Auto badges are not revoked here
+     * (a badge, once earned, stays earned even if the trigger later lapses). No
+     * notification is sent — the learner already saw the unlock in their own app.
+     *
+     * Deliberately NOT {@code @Transactional}: each badge insert must commit independently
+     * so that a rare concurrent same-user race (two dashboard loads inserting the same
+     * badge) surfaces the unique-index violation synchronously per {@code save()} — where
+     * the catch below can absorb it — instead of poisoning one shared transaction and
+     * rolling back the whole batch at commit. The inserts are independent, so no atomicity
+     * is lost.
+     *
+     * @return the number of newly-persisted badges.
+     */
+    public int syncAutoUnlocks(String userId, String instituteId,
+                               List<SyncUnlocksRequest.UnlockedBadge> badges) {
+        if (userId == null || userId.isBlank() || instituteId == null || badges == null) return 0;
+
+        int inserted = 0;
+        for (SyncUnlocksRequest.UnlockedBadge b : badges) {
+            if (b == null || b.getBadgeId() == null || b.getBadgeId().isBlank()) continue;
+            if (learnerBadgeRepository.existsByUserIdAndBadgeIdAndInstituteId(
+                    userId, b.getBadgeId(), instituteId)) {
+                continue;
+            }
+
+            LearnerBadge badge = new LearnerBadge();
+            badge.setUserId(userId);
+            badge.setInstituteId(instituteId);
+            badge.setBadgeId(b.getBadgeId());
+            badge.setBadgeName(b.getBadgeName());
+            badge.setBadgeIcon(b.getBadgeIcon());
+            badge.setBadgeDescription(b.getBadgeDescription());
+            badge.setSource("AUTO");
+            badge.setStatus(LearnerBadgeStatus.ACTIVE);
+            badge.setAwardedAt(new Timestamp(System.currentTimeMillis()));
+
+            try {
+                learnerBadgeRepository.save(badge);
+                inserted++;
+            } catch (org.springframework.dao.DataIntegrityViolationException e) {
+                // A concurrent sync/award inserted the same badge first — the partial
+                // unique index rejected the duplicate. Safe to ignore (idempotent).
+                log.debug("Auto-unlock already present for user {} badge {}", userId, b.getBadgeId());
+            }
+        }
+        return inserted;
     }
 
     /**

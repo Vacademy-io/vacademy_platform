@@ -20,8 +20,7 @@ import { MyPagination } from '@/components/design-system/pagination';
 import { ColumnDef } from '@tanstack/react-table';
 import { FilterChips } from '@/components/design-system/chips';
 import { MyButton } from '@/components/design-system/button';
-import { Funnel, X, Users } from '@phosphor-icons/react';
-import { CornerDownLeft } from 'lucide-react';
+import { Funnel, X, Users, ArrowElbowDownLeft } from '@phosphor-icons/react';
 import {
   getAllRoles,
   listUserSubOrgLinks,
@@ -34,6 +33,7 @@ import { ADMIN_DISPLAY_SETTINGS_KEY, TEACHER_DISPLAY_SETTINGS_KEY } from '@/type
 import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
 import { TokenKey } from '@/constants/auth/tokens';
 import { OrgChartTab } from './-components/OrgChartTab';
+import { PasswordCell } from './-components/PasswordCell';
 
 export interface RoleTypeSelectedFilter {
   roles: { id: string; name: string }[];
@@ -60,6 +60,9 @@ export interface TeamMember {
   roles: TeamMemberRole[];
   status: string | null;
   root_user: boolean;
+  // Present only on the authenticated users-of-status response and only when the
+  // institute has opted in; used by the gated Password column.
+  password?: string | null;
 }
 
 export interface PaginatedTeamResponse {
@@ -148,11 +151,22 @@ function RouteComponent() {
     return ds?.teamManagement;
   }, []);
 
-  const viewerVisibleRoles = viewerTeamManagement?.visibleRoles ?? {};
+  // Memoized so an institute without `visibleRoles` doesn't get a fresh `{}` each
+  // render — an unstable identity here cascades into allRoles → allRolesFilter and
+  // re-fires the users-of-status fetch effect on every render (infinite loop).
+  const viewerVisibleRoles = useMemo(
+    () => viewerTeamManagement?.visibleRoles ?? {},
+    [viewerTeamManagement]
+  );
 
   // Org Chart tab is opt-in per institute. Default false so it stays hidden
   // until an admin explicitly flips it on under Settings → Admin Display Settings.
   const orgChartTabVisible = viewerTeamManagement?.orgChartTabVisible === true;
+
+  // Password column shows by default; an admin can hide it per institute from
+  // Settings → Admin Display Settings by explicitly turning the flag off. The
+  // value comes straight from the users-of-status response (row.original.password).
+  const allowViewPassword = viewerTeamManagement?.allowViewPassword !== false;
 
   // All roles from the API for filters and dropdowns. Exclude STUDENT and any
   // roles the viewer's display settings have hidden — self-role is never
@@ -455,6 +469,16 @@ function RouteComponent() {
         </div>
       ),
     },
+    ...(allowViewPassword
+      ? [
+          {
+            id: 'password',
+            header: 'Password',
+            size: 200,
+            cell: ({ row }) => <PasswordCell password={row.original.password} />,
+          } as ColumnDef<TeamMember>,
+        ]
+      : []),
     {
       accessorKey: 'mobile_number',
       header: 'Phone',
@@ -559,7 +583,7 @@ function RouteComponent() {
                 Institute Users
               </span>
               <Badge
-                className="rounded-[10px] bg-primary-500 p-0 px-2 text-[9px] text-white"
+                className="rounded-lg bg-primary-500 p-0 px-2 text-caption text-white"
                 variant="outline"
               >
                 {dashboardUsers.instituteUsers?.total_elements || 0}
@@ -576,7 +600,7 @@ function RouteComponent() {
                 Invites
               </span>
               <Badge
-                className="rounded-[10px] bg-primary-500 p-0 px-2 text-[9px] text-white"
+                className="rounded-lg bg-primary-500 p-0 px-2 text-caption text-white"
                 variant="outline"
               >
                 {dashboardUsers.invites?.total_elements || 0}
@@ -606,7 +630,7 @@ function RouteComponent() {
         ) : (
         <>
         <div className="mb-4 flex flex-col gap-4 rounded-lg border border-neutral-200 bg-white p-4 shadow-sm">
-          <div className="flex w-[320px] items-center gap-2">
+          <div className="flex w-80 items-center gap-2">
             <div className="flex-1"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -638,7 +662,7 @@ function RouteComponent() {
                 onClick={handleSearch}
                 className="flex h-5 w-5 items-center justify-center rounded-md bg-primary-500 text-white hover:bg-primary-600 transition-colors shadow-sm"
               >
-                <CornerDownLeft size={14} strokeWidth={2.5} />
+                <ArrowElbowDownLeft size={14} weight="bold" />
               </button>
             )}
           </div>

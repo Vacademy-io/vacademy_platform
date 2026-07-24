@@ -165,6 +165,9 @@ export function SendMessageDialog({
     const [selectedTemplate, setSelectedTemplate] = useState<WhatsAppTemplateDTO | null>(null);
     const [languageCode, setLanguageCode] = useState('en');
     const [loadingTemplates, setLoadingTemplates] = useState(false);
+    // Media URL for templates whose header is IMAGE/VIDEO/DOCUMENT. Meta requires the
+    // header component on every send — omitting it fails every recipient in the blast.
+    const [headerMediaUrl, setHeaderMediaUrl] = useState('');
 
     // Email state
     const [subject, setSubject] = useState('');
@@ -203,6 +206,7 @@ export function SendMessageDialog({
             setTemplates([]);
             setSelectedTemplate(null);
             setLanguageCode('en');
+            setHeaderMediaUrl('');
             setLoadingTemplates(false);
             setSubject('');
             setBody('');
@@ -357,6 +361,20 @@ export function SendMessageDialog({
         return [...SYSTEM_FIELDS, ...custom];
     }, [customFields]);
 
+    /**
+     * Lowercased media header kind when the selected template carries an
+     * IMAGE/VIDEO/DOCUMENT header, else null. TEXT/NONE headers need no media.
+     * Declared before canProceed/handleSend, which both read it.
+     */
+    const waHeaderKind = useMemo<'image' | 'video' | 'document' | null>(() => {
+        if (channel !== 'WHATSAPP') return null;
+        const raw = selectedTemplate?.headerType?.toUpperCase();
+        if (raw === 'IMAGE') return 'image';
+        if (raw === 'VIDEO') return 'video';
+        if (raw === 'DOCUMENT') return 'document';
+        return null;
+    }, [channel, selectedTemplate]);
+
     // -----------------------------------------------------------------------
     // Can proceed to next step?
     // -----------------------------------------------------------------------
@@ -371,6 +389,9 @@ export function SendMessageDialog({
                     return pushTitle.trim() !== '' && pushBody.trim() !== '';
                 return false;
             case 3:
+                // A media-header template without its media is rejected for every
+                // recipient, so block the blast here rather than fail at send time.
+                if (waHeaderKind && headerMediaUrl.trim() === '') return false;
                 // Mapping is optional, but if the user picked "Static value…" for a row
                 // they must enter a non-empty value (sending `static:` would resolve to
                 // an empty string and break WhatsApp template sends).
@@ -378,7 +399,18 @@ export function SendMessageDialog({
             default:
                 return false;
         }
-    }, [step, channel, selectedTemplate, subject, body, pushTitle, pushBody, variableMapping]);
+    }, [
+        step,
+        channel,
+        selectedTemplate,
+        subject,
+        body,
+        pushTitle,
+        pushBody,
+        variableMapping,
+        waHeaderKind,
+        headerMediaUrl,
+    ]);
 
     // -----------------------------------------------------------------------
     // Handlers
@@ -400,6 +432,8 @@ export function SendMessageDialog({
             const t = approvedTemplates.find((t) => t.name === templateName) ?? null;
             setSelectedTemplate(t);
             if (t?.language) setLanguageCode(t.language);
+            // Pre-fill with the media approved alongside the template; still editable.
+            setHeaderMediaUrl(t?.headerSampleUrl ?? '');
         },
         [approvedTemplates]
     );
@@ -426,6 +460,12 @@ export function SendMessageDialog({
             if (channel === 'WHATSAPP' && selectedTemplate) {
                 payload.template_name = selectedTemplate.name;
                 payload.language_code = languageCode;
+                // Meta rejects every recipient of a media-header template that arrives
+                // without its header component, so always thread it through.
+                if (waHeaderKind && headerMediaUrl.trim()) {
+                    payload.header_url = headerMediaUrl.trim();
+                    payload.header_type = waHeaderKind;
+                }
             }
             if (channel === 'EMAIL') {
                 payload.subject = subject;
@@ -451,6 +491,8 @@ export function SendMessageDialog({
         variableMapping,
         selectedTemplate,
         languageCode,
+        waHeaderKind,
+        headerMediaUrl,
         subject,
         body,
         emailType,
@@ -720,19 +762,54 @@ export function SendMessageDialog({
         );
     };
 
+    // Media header input — shown for any template whose header is IMAGE/VIDEO/DOCUMENT.
+    // Required: without it the provider rejects every recipient of the blast.
+    const renderHeaderMediaField = () => {
+        if (!waHeaderKind) return null;
+        const url = headerMediaUrl.trim();
+        return (
+            <div className="mb-4 space-y-2 rounded-md border bg-muted/30 p-4">
+                <Label>
+                    Header {waHeaderKind} URL <span className="text-danger-600">*</span>
+                </Label>
+                <Input
+                    value={headerMediaUrl}
+                    onChange={(e) => setHeaderMediaUrl(e.target.value)}
+                    placeholder="https://..."
+                />
+                <p className="text-xs text-muted-foreground">
+                    This template has a {waHeaderKind} header, which WhatsApp requires on every
+                    send — without it every recipient fails. Pre-filled with the media approved
+                    alongside the template.
+                </p>
+                {waHeaderKind === 'image' && url && (
+                    <img
+                        src={url}
+                        alt="Header preview"
+                        className="max-h-40 rounded-md border object-contain"
+                    />
+                )}
+            </div>
+        );
+    };
+
     // Step 3 ------------------------------------------------------------------
     const renderVariableMapping = () => {
         if (variableKeys.length === 0) {
             return (
-                <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
-                    <CheckCircle2 className="h-8 w-8" />
-                    <p className="text-sm">No variables to map. You can proceed.</p>
+                <div>
+                    {renderHeaderMediaField()}
+                    <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
+                        <CheckCircle2 className="h-8 w-8" />
+                        <p className="text-sm">No variables to map. You can proceed.</p>
+                    </div>
                 </div>
             );
         }
 
         return (
             <div className="space-y-1">
+                {renderHeaderMediaField()}
                 <p className="mb-3 text-sm text-muted-foreground">
                     Map each template variable to a lead field.
                 </p>

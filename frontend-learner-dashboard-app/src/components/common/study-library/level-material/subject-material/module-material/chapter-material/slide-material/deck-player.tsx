@@ -19,15 +19,29 @@ import { cn } from "@/lib/utils";
  * `baseUrl` is the deck prefix (e.g. "https://cdn/decks/123/"); the manifest is
  * fetched from `<baseUrl>manifest.json` and image paths in it are relative.
  */
+/** An animated GIF re-overlaid on the snapshot; rect is a fraction of the slide. */
+interface DeckOverlay {
+  url: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 interface DeckManifest {
   slides: string[][];
   steps_per_slide?: number[];
+  /** Real slide size (EMU). Older decks omit it — default 16:9. */
+  aspect?: { w: number; h: number };
+  /** [slide][step][] — GIFs visible at that build step. Older decks omit it. */
+  overlays?: DeckOverlay[][][];
 }
 
 interface FlatStep {
   url: string;
   slideIndex: number;
   isSlideStart: boolean;
+  overlays: DeckOverlay[];
 }
 
 interface DeckPlayerProps {
@@ -40,7 +54,13 @@ export default function DeckPlayer({ baseUrl }: DeckPlayerProps) {
   const [index, setIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
+  const [aspect, setAspect] = useState(16 / 9);
+  // Rect of the letterboxed snapshot inside the stage. GIF overlays are fractions
+  // of the SLIDE, so they must be placed against the contained image box — not the
+  // stage — or they drift whenever the stage isn't exactly the slide's ratio.
+  const [fit, setFit] = useState<{ l: number; t: number; w: number; h: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
@@ -59,10 +79,19 @@ export default function DeckPlayer({ baseUrl }: DeckPlayerProps) {
       })
       .then((m: DeckManifest) => {
         if (cancelled) return;
+        if (m.aspect?.w && m.aspect?.h) setAspect(m.aspect.w / m.aspect.h);
         const flat: FlatStep[] = [];
         (m.slides || []).forEach((group, si) => {
           group.forEach((path, gi) => {
-            flat.push({ url: base + path, slideIndex: si, isSlideStart: gi === 0 });
+            flat.push({
+              url: base + path,
+              slideIndex: si,
+              isSlideStart: gi === 0,
+              overlays: (m.overlays?.[si]?.[gi] || []).map((o) => ({
+                ...o,
+                url: base + o.url,
+              })),
+            });
           });
         });
         if (!flat.length) {
@@ -134,6 +163,25 @@ export default function DeckPlayer({ baseUrl }: DeckPlayerProps) {
     return () => document.removeEventListener("fullscreenchange", onFs);
   }, []);
 
+  // Track where object-contain actually lands the snapshot inside the stage, so
+  // GIF overlays sit exactly on top of their baked-in first frame at any size.
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const measure = () => {
+      const cw = el.clientWidth;
+      const ch = el.clientHeight;
+      if (!cw || !ch) return;
+      const h = Math.min(ch, cw / aspect);
+      const w = h * aspect;
+      setFit({ l: (cw - w) / 2, t: (ch - h) / 2, w, h });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [aspect, steps]);
+
   // Preload neighbouring step images so the cross-fade is instant.
   useEffect(() => {
     if (!steps) return;
@@ -194,7 +242,7 @@ export default function DeckPlayer({ baseUrl }: DeckPlayerProps) {
         isFullscreen && "fixed inset-0 z-50 rounded-none"
       )}
     >
-      <div className="relative size-full">
+      <div ref={stageRef} className="relative size-full">
         {fade && prev && (
           <img
             src={prev.url}
@@ -214,6 +262,24 @@ export default function DeckPlayer({ baseUrl }: DeckPlayerProps) {
             )}
           />
         )}
+        {/* Animated GIFs: LibreOffice can only bake their first frame into the
+            snapshot, so play the real .gif on top of that frame. */}
+        {fit &&
+          current?.overlays.map((o, i) => (
+            <img
+              key={`${index}-${i}`}
+              src={o.url}
+              alt=""
+              aria-hidden
+              className="pointer-events-none absolute"
+              style={{
+                left: fit.l + o.x * fit.w,
+                top: fit.t + o.y * fit.h,
+                width: o.w * fit.w,
+                height: o.h * fit.h,
+              }}
+            />
+          ))}
       </div>
 
       {/* Deck progress */}

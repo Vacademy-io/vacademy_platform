@@ -16,6 +16,11 @@ const CACHE_EXPIRY_HOURS = 24;
 const LEGACY_ADMIN_KEY = StorageKey.ADMIN_DISPLAY_SETTINGS;
 const LEGACY_TEACHER_KEY = StorageKey.TEACHER_DISPLAY_SETTINGS;
 
+/** Fired on window whenever a display-settings blob is (re)cached — fetch or
+ *  save. Components that read settings outside React state (e.g. AssistDock)
+ *  listen to re-resolve without waiting for a navigation. */
+export const DISPLAY_SETTINGS_UPDATED_EVENT = 'vacademy:display-settings-updated';
+
 type RoleKey = string;
 
 interface CachedDisplaySettings {
@@ -317,6 +322,22 @@ function mergeDisplayWithDefaults(
             incoming?.ui?.showSupportButton ?? defaults.ui?.showSupportButton ?? true,
         showSidebar: incoming?.ui?.showSidebar ?? defaults.ui?.showSidebar ?? true,
         showAiCredits: incoming?.ui?.showAiCredits ?? defaults.ui?.showAiCredits ?? true,
+        // Status link defaults VISIBLE for every role; admins can opt a role
+        // out. Pass-through here or it's dropped on read.
+        showStatus: incoming?.ui?.showStatus ?? defaults.ui?.showStatus ?? true,
+        // Settings gear defaults ON for admins (who can hide it) and OFF for
+        // teacher/custom roles (opt-in), since surfacing it grants a path into
+        // the full settings page. Same admin-only-by-default shape as
+        // showAssistDock.
+        showSettings:
+            incoming?.ui?.showSettings ??
+            defaults.ui?.showSettings ??
+            role === ADMIN_DISPLAY_SETTINGS_KEY,
+        // Admin-only by default; other roles must be opted in explicitly.
+        showAssistDock:
+            incoming?.ui?.showAssistDock ??
+            defaults.ui?.showAssistDock ??
+            role === ADMIN_DISPLAY_SETTINGS_KEY,
     };
 
     // Content Types
@@ -594,6 +615,13 @@ function mergeDisplayWithDefaults(
     merged.leadsFilterCustomFields =
         incoming?.leadsFilterCustomFields ?? defaults.leadsFilterCustomFields ?? [];
 
+    // Unified per-surface custom-field filter/sort controls (institute-wide).
+    // Pass saved surfaces through untouched so they survive the field-by-field
+    // merge; absent surfaces stay absent — consumers apply their own fallback
+    // (LEADS → leadsFilterCustomFields, STUDENTS → legacy auto-expose).
+    merged.listCustomFieldControls =
+        incoming?.listCustomFieldControls ?? defaults.listCustomFieldControls;
+
     // Live class scheduling (role-level overlay on top of institute-level
     // Live Session Settings). Both flags default ON so existing roles aren't
     // suddenly locked out of either flow.
@@ -724,6 +752,7 @@ function writeCache(role: RoleKey, data: DisplaySettingsData): void {
             instituteId,
         };
         localStorage.setItem(key, JSON.stringify(payload));
+        window.dispatchEvent(new Event(DISPLAY_SETTINGS_UPDATED_EVENT));
     } catch (e) {
         console.error('Error writing display settings cache', e);
     }

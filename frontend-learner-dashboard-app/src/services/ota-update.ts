@@ -13,26 +13,40 @@ const OTA_DISABLED_APP_IDS = new Set<string>([
   "io.sadbhavana.com",
 ]);
 
-// ALL native institute apps apply OTA updates SILENTLY in the background: the
-// new bundle is downloaded and staged with next() so it activates on the next
-// natural app restart/resume — NO banner, NO toast, NO mid-session reload. This
-// is deliberate for a learner/exam app: an immediate set() reload would wipe a
-// student's in-progress attempt. Apps that must not OTA at all are handled
-// earlier via OTA_DISABLED_APP_IDS (checkForOtaUpdate returns no-update for
-// them, so they never reach the silent path).
+// How a native app surfaces an available OTA bundle. Two live modes:
+//   "auto"   — show a non-dismissible "Updating app…" loader dialog on launch,
+//              then download + apply the bundle in place (set → WebView reload).
+//              Runs at launch ONLY, so it can never reload mid-session and wipe
+//              a learner's in-progress exam attempt.
+//   "banner" — surface a dismissible "Update X available" banner (or a blocking
+//              "Update Required" overlay for force updates) and let the user tap
+//              to apply.
+// Apps that must not OTA at all are handled earlier via OTA_DISABLED_APP_IDS.
 //
-// NOTE (bootstrap): the silent behavior ships IN the bundle, so the FIRST OTA a
-// device receives is still handled by whatever JS it currently runs; every
-// update AFTER that is silent.
+// NOTE (bootstrap): the mode ships IN the bundle, so the FIRST OTA a device
+// receives is still handled by whatever JS it currently runs; every update
+// AFTER that uses the mode below.
+export type OtaUpdateMode = "auto" | "banner";
+
+// Fleet-wide default. Every native app uses this unless its app id is listed in
+// BANNER_OTA_APP_IDS below. Flip this one constant to change the default mode
+// for all apps.
+const DEFAULT_OTA_MODE: OtaUpdateMode = "auto";
+
+// Per-app overrides: app ids listed here use the dismissible banner instead of
+// the auto-updating dialog. (Add an app's id here to opt it out of auto-update.)
+const BANNER_OTA_APP_IDS = new Set<string>([
+  // e.g. "com.example.app",
+]);
 
 /**
- * Whether the running app should apply OTA updates silently (download + stage
- * for next restart) instead of surfacing a banner/toast. True for every native
- * build; web/electron return false (no OTA there).
+ * Resolve the OTA update mode for the currently running app. Returns the fleet
+ * default (DEFAULT_OTA_MODE) unless this app id is explicitly listed as a
+ * banner app in BANNER_OTA_APP_IDS.
  */
-export async function isSilentOtaApp(): Promise<boolean> {
-  const platform = Capacitor.getPlatform();
-  return platform === "android" || platform === "ios";
+export async function getOtaUpdateMode(): Promise<OtaUpdateMode> {
+  const appInfo = await App.getInfo();
+  return BANNER_OTA_APP_IDS.has(appInfo.id) ? "banner" : DEFAULT_OTA_MODE;
 }
 
 export interface OtaCheckResponse {

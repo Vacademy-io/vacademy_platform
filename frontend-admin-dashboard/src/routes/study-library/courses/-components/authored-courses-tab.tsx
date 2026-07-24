@@ -535,7 +535,7 @@ export const AuthoredCoursesTab: React.FC<AuthoredCoursesTabProps> = ({
         const displayName = convertCapitalToTitleCase(course.packageName);
 
         return (
-            <div className="relative flex aspect-video w-full flex-shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br from-primary-50 via-primary-100/50 to-white">
+            <div className="relative flex aspect-[2/1] w-full flex-shrink-0 items-center justify-center overflow-hidden bg-gradient-to-br from-primary-50 via-primary-100/50 to-white">
                 {isLoading ? (
                     <div className="size-8 animate-spin rounded-full border-2 border-gray-300 border-t-transparent"></div>
                 ) : mediaId && imageUrl ? (

@@ -397,7 +397,7 @@ public class CounselorPoolService {
             // LEAD_ASSIGNED_TO_COUNSELOR. Joins the outer @Transactional via
             // REQUIRED propagation, so a failure here rolls back the whole
             // mark-inactive operation (all-or-nothing).
-            userLeadProfileService.assignCounselor(userId, instituteId, backupUserId, backupName);
+            var updatedProfile = userLeadProfileService.assignCounselor(userId, instituteId, backupUserId, backupName);
 
             // Timeline event mirrors the manual reassign controller's payload so
             // the journey timeline reads identically regardless of how the
@@ -405,7 +405,7 @@ public class CounselorPoolService {
             // try/catch so logging failures don't roll back the reassignment.
             try {
                 timelineEventService.logJourneyEvent(
-                        "USER_LEAD_PROFILE", userId,
+                        "USER_LEAD_PROFILE", updatedProfile.getId(),
                         LeadJourneyActionType.COUNSELOR_ASSIGNED,
                         "ADMIN", actorId, actorName,
                         "Counselor reassigned",

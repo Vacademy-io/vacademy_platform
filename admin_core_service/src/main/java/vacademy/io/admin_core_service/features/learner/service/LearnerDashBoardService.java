@@ -17,6 +17,7 @@ import vacademy.io.admin_core_service.features.learner.dto.LeanerDashBoardDetail
 import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
 import vacademy.io.admin_core_service.features.notification_service.service.NotificationService;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
+import vacademy.io.admin_core_service.features.packages.enums.PackageStatusEnum;
 import vacademy.io.admin_core_service.features.packages.repository.PackageRepository;
 import vacademy.io.admin_core_service.features.slide.enums.SlideStatus;
 import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
@@ -139,12 +140,18 @@ public class LearnerDashBoardService {
         List<String> validPackageSessionIds = (packageSessionId == null) ? List.of()
                 : packageSessionId.stream().filter(id -> id != null && !id.isBlank()).collect(java.util.stream.Collectors.toList());
 
-        // Count of user-visible packages — excludes internal types (DELIVERY_CHARGE,
-        // SECURITY_DEPOSIT) so the dashboard "books" count matches what the My Books
-        // widget renders. Filtering here (not in the repo) keeps the underlying query
-        // reusable by other callers that legitimately need internal types.
+        // Count of accessible packages — restricted to ACTIVE package / ACTIVE|HIDDEN
+        // package_session / ACTIVE mapping so the tile matches the "My Courses" cards
+        // (a learner removed from every batch counts 0). Also excludes internal types
+        // (DELIVERY_CHARGE, SECURITY_DEPOSIT); that filter stays here (not in the repo)
+        // to keep the underlying query reusable by callers that need internal types.
         int visiblePackagesCount = packageRepository
-                .findDistinctPackagesByUserIdAndInstituteId(user.getUserId(), instituteId)
+                .findDistinctPackagesByUserIdAndInstituteId(
+                        user.getUserId(),
+                        instituteId,
+                        List.of(PackageStatusEnum.ACTIVE.name()),
+                        List.of(PackageSessionStatusEnum.ACTIVE.name(), PackageSessionStatusEnum.HIDDEN.name()),
+                        List.of(LearnerStatusEnum.ACTIVE.name()))
                 .stream()
                 .filter(p -> {
                     String t = p.getPackageType();

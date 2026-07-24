@@ -7,20 +7,7 @@ import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import useOrganizationStore from '../-zustand-store/step1OrganizationZustand';
-import themeData from '@/constants/themes/theme.json';
-
-// Predefined themes with their base colors
-const presetThemes = [
-    { name: 'Orange', code: 'primary' },
-    { name: 'Blue', code: 'blue' },
-    { name: 'Green', code: 'green' },
-    { name: 'Purple', code: 'purple' },
-    { name: 'Red', code: 'red' },
-    { name: 'Pink', code: 'pink' },
-    { name: 'Indigo', code: 'indigo' },
-    { name: 'Yellow', code: 'amber' },
-    { name: 'Cyan', code: 'cyan' },
-];
+import { PRESET_THEMES, getThemeShades } from '@/constants/themes/preset-themes';
 
 const organizationThemeSetup = z.object({
     instituteThemeCode: z.union([z.string(), z.undefined()]),
@@ -33,7 +20,7 @@ const Step2OrganizationTheme: React.FC<OrganizationOnboardingProps> = ({
     handleCompleteCurrentStep,
     completedSteps,
 }) => {
-    const [selectedTheme, setSelectedTheme] = useState(presetThemes[0]?.code || 'primary');
+    const [selectedTheme, setSelectedTheme] = useState(PRESET_THEMES[0]?.code || 'primary');
     // const [customColor, setCustomColor] = useState('#ED7424');
     // const [openCustomDialog, setOpenCustomDialog] = useState(false);
     const { formData, setFormData } = useOrganizationStore();
@@ -48,16 +35,6 @@ const Step2OrganizationTheme: React.FC<OrganizationOnboardingProps> = ({
 
     console.log('Current step:', currentStep);
     console.log('Completed steps:', completedSteps);
-
-    // Get theme shades from theme.json instead of generating them
-    const getThemeShades = (code: string) => {
-        const theme = themeData.themes.find((theme) => theme.code === code);
-        if (theme && theme.colors) {
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            return Object.entries(theme.colors).map(([key, color]) => color);
-        }
-        return [];
-    };
 
     const handleThemeSelect = (code: string) => {
         setSelectedTheme(code);
@@ -79,7 +56,7 @@ const Step2OrganizationTheme: React.FC<OrganizationOnboardingProps> = ({
             <h1 className="mb-4 text-[1.6rem]">Set your organization theme</h1>
 
             <div className="mb-20 grid w-full grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:mb-2">
-                {presetThemes.map((theme) => {
+                {PRESET_THEMES.map((theme) => {
                     const shades = getThemeShades(theme.code);
                     return (
                         <div
@@ -99,7 +76,7 @@ const Step2OrganizationTheme: React.FC<OrganizationOnboardingProps> = ({
                                     <div
                                         key={index}
                                         className="h-7"
-                                        style={{ backgroundColor: shade }}
+                                        style={{ backgroundColor: shade }} // design-lint-ignore: data-driven palette swatch
                                     />
                                 ))}
                             </div>
@@ -108,7 +85,10 @@ const Step2OrganizationTheme: React.FC<OrganizationOnboardingProps> = ({
                 })}
             </div>
 
-            {/* //TODO: Implement custom theme */}
+            {/* Custom brand color lives in the full theme editor
+                (dashboard → Edit Institute → Change Theme), which also covers
+                sidebar, accent, and page-background roles. Onboarding stays a
+                one-tap preset choice. */}
 
             {/* <Dialog open={openCustomDialog} onOpenChange={setOpenCustomDialog}>
                 ...

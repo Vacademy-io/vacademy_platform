@@ -26,6 +26,7 @@ const ADMIN_BUNDLE: RoleBundle = {
     recommendedWidgets: [
         'pendingActions',
         'recentTransactions',
+        'subOrgOverview',
         'recentNotifications',
         'dailyActivityTrend',
         'enrollLearners',

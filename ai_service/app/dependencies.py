@@ -26,8 +26,10 @@ from .services.learning_analytics_service import LearningAnalyticsService
 from .config import get_settings
 from .db import db_dependency
 from sqlalchemy.orm import Session
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from typing import Optional
+from .config import Settings
+from .core.security import get_pinned_principal
 
 
 @lru_cache(maxsize=1)
@@ -262,6 +264,53 @@ def get_institute_id_or_internal(
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Missing auth: provide X-Institute-Key or X-Internal-Service-Token",
+    )
+
+
+async def get_institute_id_or_internal_or_user(
+    request: Request,
+    x_institute_key: Optional[str] = Header(None, description="API Key for institute auth"),
+    x_internal_service_token: Optional[str] = Header(
+        None, description="Server-to-server token (admin-core ↔ ai-service)"
+    ),
+    authorization: Optional[str] = Header(None, description="Bearer JWT (dashboard callers)"),
+    settings: Settings = Depends(get_settings),
+) -> tuple[Optional[str], str]:
+    """
+    Triple-auth dependency for endpoints that BOTH machines and signed-in
+    dashboard users call. Returns the same (institute_id, mode) tuple as
+    get_institute_id_or_internal, so handlers are identical either way:
+
+      - X-Institute-Key          → ('<institute>', 'INSTITUTE')
+      - X-Internal-Service-Token → (None, 'INTERNAL')   [institute from body]
+      - Authorization: Bearer    → ('<clientId>', 'INSTITUTE')
+
+    The JWT branch exists because the admin/learner dashboards authenticate with
+    a Bearer token + clientId header (their axios interceptors attach both) and
+    have no institute API key — a router wired to key/token auth alone rejects
+    every request the UI makes.
+
+    SECURITY: the JWT branch goes through get_pinned_principal, NOT
+    get_current_user. get_current_user trusts the clientId header verbatim,
+    which would let a member of institute A pass clientId=B and spend B's
+    credits on B's content. get_pinned_principal verifies membership of the
+    pinned institute against the token's per-institute authorities map (with the
+    documented root-user exception), so the returned institute id is always one
+    the caller may act for.
+    """
+    if x_institute_key or x_internal_service_token:
+        return get_institute_id_or_internal(x_institute_key, x_internal_service_token)
+
+    if authorization:
+        principal = await get_pinned_principal(request, authorization, settings)
+        return principal.institute_id, "INSTITUTE"
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=(
+            "Missing auth: provide Authorization: Bearer <jwt> with a clientId "
+            "header, X-Institute-Key, or X-Internal-Service-Token"
+        ),
     )
 
 

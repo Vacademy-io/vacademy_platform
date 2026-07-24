@@ -383,12 +383,14 @@ def orchestrate_ai_video_shot(
     # callers can keep their single `if result.error: <fallback>` branch.
     try:
         from app.services.fal_veo_client import (
-            VeoError, price_per_call_usd,
+            VeoError, VeoQuotaExceeded, VeoTimeout, VeoPollError,
+            price_per_call_usd,
         )
     except ImportError:
         try:
             from fal_veo_client import (  # type: ignore[no-redef]
-                VeoError, price_per_call_usd,
+                VeoError, VeoQuotaExceeded, VeoTimeout, VeoPollError,
+                price_per_call_usd,
             )
         except ImportError as imp_err:
             return AiVideoShotResult(
@@ -401,11 +403,32 @@ def orchestrate_ai_video_shot(
     # ── Validate shot spec ────────────────────────────────────────────
     prompt = (shot.get("ai_video_prompt") or "").strip()
     if not prompt:
-        return AiVideoShotResult(
-            shot_idx=shot_idx,
-            error="AI_VIDEO_HERO shot missing required ai_video_prompt",
-            error_class="AiVideoSpecError",
-        )
+        # DERIVE rather than fail. A shot can legitimately reach here with no
+        # `ai_video_prompt`: the user flipped its shot_type to AI_VIDEO_HERO
+        # on the assist plan card (the planner authored it as IMAGE_HERO, so
+        # there was never an ai_video_prompt), or the planner emitted the
+        # type without the field. Hard-failing turned an explicit user
+        # request for AI footage into a silent demotion back to a still.
+        # visual_description / narration_excerpt describe the same beat.
+        _derived = " ".join(
+            str(shot.get(k) or "").strip()
+            for k in ("visual_description", "scene_description", "narration_excerpt")
+        ).strip()
+        if _derived:
+            prompt = (
+                f"Cinematic footage: {_derived[:400]}. Photorealistic, natural "
+                "motion, shallow depth of field, no text or captions in frame."
+            )
+            _log(
+                f"   🎬 AI_VIDEO_HERO shot {shot_idx}: no ai_video_prompt — derived "
+                "one from the shot's visual description"
+            )
+        else:
+            return AiVideoShotResult(
+                shot_idx=shot_idx,
+                error="AI_VIDEO_HERO shot missing required ai_video_prompt",
+                error_class="AiVideoSpecError",
+            )
 
     duration_s = _normalize_duration_s(shot.get("ai_video_duration_s"))
     aspect_ratio = _resolve_aspect_ratio(canvas)
@@ -428,8 +451,12 @@ def orchestrate_ai_video_shot(
         )
 
     # ── Circuit-breaker reservation ──────────────────────────────────
+    # Reserve at the SELECTED model's rate, not lite's — full Veo is ~7x
+    # lite, so pricing the reservation at lite would let the cap overspend.
+    _veo_model = getattr(veo_client, "_model", None)
     expected_cost = price_per_call_usd(
         resolution=resolution, duration_s=duration_s, audio_on=audio_on,
+        model=_veo_model,
     )
     if cost_tracker is not None:
         try:
@@ -513,8 +540,9 @@ def orchestrate_ai_video_shot(
     )
     negative_prompt = (shot.get("ai_video_negative_prompt") or "").strip() or None
     seed = shot.get("ai_video_seed")
-    try:
-        veo_result = veo_client.generate_text_to_video(
+
+    def _submit_once():
+        return veo_client.generate_text_to_video(
             prompt=prompt,
             duration_s=duration_s,
             aspect_ratio=aspect_ratio,
@@ -525,6 +553,24 @@ def orchestrate_ai_video_shot(
             auto_fix=True,
             safety_tolerance=safety_tolerance,
         )
+
+    try:
+        try:
+            veo_result = _submit_once()
+        except (VeoQuotaExceeded, VeoTimeout, VeoPollError) as _transient:
+            # Retry ONCE on transient failures. AI-video runs submit up to 8
+            # shots concurrently (the per-shot thread pool), which makes 429s
+            # realistic — and without this a single transient error
+            # PERMANENTLY demotes that beat to stock. Mirrors the dialogue
+            # path. The budget reservation + ledger charge are held across
+            # the retry; the except below refunds only on final failure.
+            # Safety blocks stay no-retry (auto_fix already applied).
+            _log(
+                f"🔁 AI_VIDEO_HERO shot {shot_idx}: transient "
+                f"{type(_transient).__name__} — retrying once in 45s…"
+            )
+            _time.sleep(45)
+            veo_result = _submit_once()
     except VeoError as err:
         # Refund the reserved budget — failed calls shouldn't permanently
         # eat the cap. The pipeline retries via fallback regen, not via
@@ -987,8 +1033,12 @@ def orchestrate_ai_video_chain(
     # the whole budget atomically — if we can't, fail fast WITHOUT making
     # any Veo calls. This avoids the "half a chain shipped before cap
     # tripped" outcome.
+    _chain_model = getattr(veo_client, "_model", None)
     per_seg_costs = [
-        price_per_call_usd(resolution=resolution, duration_s=seg["duration_s"], audio_on=audio_on)
+        price_per_call_usd(
+            resolution=resolution, duration_s=seg["duration_s"],
+            audio_on=audio_on, model=_chain_model,
+        )
         for seg in segments_spec
     ]
     total_cost = sum(per_seg_costs)

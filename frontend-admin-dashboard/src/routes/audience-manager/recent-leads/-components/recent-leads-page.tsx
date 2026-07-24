@@ -11,13 +11,11 @@ import {
     X,
     Flame,
     CheckCircle,
-    Columns,
     Clock,
     Megaphone,
     CalendarBlank,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -49,10 +47,23 @@ import { useLeadCounsellorOptions } from '@/hooks/use-lead-counsellor-options';
 import { CounsellorFilter } from '@/components/shared/leads/counsellor-filter';
 import { MultiSelectFilter } from '@/components/shared/leads/multi-select-filter';
 import {
+    ManageColumnsPopover,
+    useLeadColumnPrefs,
+    buildLeadColumnToggles,
+} from '@/components/shared/leads';
+import {
     ExportColumnPickerDialog,
     type ExportColumnOption,
 } from '@/components/shared/leads/export-column-picker-dialog';
 import { CustomFieldMultiSelectFilter } from '@/components/shared/leads/custom-field-multi-select-filter';
+import { ManageListFiltersLink } from '@/components/shared/leads/manage-list-filters-link';
+import { CustomFieldRangeFilter } from '@/components/shared/leads/custom-field-range-filter';
+import {
+    decodeSelectionToEntries,
+    filterEntryValueLabel,
+    isRangeFieldType,
+    removeEntryFromSelection,
+} from '@/components/shared/leads/custom-field-filter-encoding';
 import { useLeadFilterCustomFields } from '@/components/shared/leads/use-lead-filter-custom-fields';
 import { AddLeadNoteDialog } from '@/components/shared/add-lead-note-dialog';
 import { AssignCounselorToLeadDialog } from '@/components/shared/assign-counselor-to-lead-dialog';
@@ -69,6 +80,7 @@ import { restoreAudienceLeads } from '@/routes/audience-manager/list/-services/d
 import {
     ArrowCounterClockwise,
     CaretDown,
+    Phone,
     Trash,
     UserMinus,
     UserPlus,
@@ -81,6 +93,8 @@ import {
     usePlaceCall,
     usePlaceAiCall,
     useAiCallButtonEnabled,
+    AiCallDialog,
+    type AiCallDialogTarget,
     recentLeadToVM,
     type LeadActionHandlers,
     type LeadSortKey,
@@ -277,6 +291,10 @@ const RecentLeadsContent = () => {
     // from the Reports source breakdown set it. Empty string = all sources.
     const [sourceFilter, setSourceFilter] = useState<string>(urlSearch.source ?? '');
 
+    // Call-history filter — has this lead been call-attempted (AI or manual), and
+    // how many times. Single-select; '' = no filter.
+    const [callHistoryFilter, setCallHistoryFilter] = useState<string>(urlSearch.called ?? '');
+
     // Custom-field filters — keyed by custom_field_id, each holding the selected
     // values (multi-select). Only fields the admin enabled in Lead Settings
     // render a control; an empty map means none are active.
@@ -291,18 +309,20 @@ const RecentLeadsContent = () => {
             return next;
         });
     };
-    // Serialized {field_id, values} payload + a stable cache key (order-independent).
+    // Serialized {field_id, operator, values} payload + a stable cache key
+    // (order-independent). Sentinel selections (contains / empty / ranges)
+    // decode into their operator entries; plain values stay an IN entry.
     const customFieldFiltersPayload = useMemo(
         () =>
             Object.entries(customFieldFilters)
                 .filter(([, vals]) => vals.length > 0)
-                .map(([field_id, values]) => ({ field_id, values })),
+                .flatMap(([fieldId, values]) => decodeSelectionToEntries(fieldId, values)),
         [customFieldFilters]
     );
     const customFieldFiltersKey = useMemo(
         () =>
             customFieldFiltersPayload
-                .map((f) => `${f.field_id}=${[...f.values].sort().join(',')}`)
+                .map((f) => `${f.field_id}:${f.operator ?? 'IN'}=${[...f.values].sort().join(',')}`)
                 .sort()
                 .join('|'),
         [customFieldFiltersPayload]
@@ -325,6 +345,7 @@ const RecentLeadsContent = () => {
                 from: rangeDays === CUSTOM_DATE_VALUE && customFrom ? customFrom : undefined,
                 to: rangeDays === CUSTOM_DATE_VALUE && customTo ? customTo : undefined,
                 source: sourceFilter || undefined,
+                called: callHistoryFilter || undefined,
             },
             replace: true,
         });
@@ -340,6 +361,7 @@ const RecentLeadsContent = () => {
         customFrom,
         customTo,
         sourceFilter,
+        callHistoryFilter,
     ]);
     // Filter options — hierarchy scoped: a manager sees themselves + their
     // counsellor reports; pure admins get the institute-wide roster.
@@ -360,8 +382,11 @@ const RecentLeadsContent = () => {
     // editable status chip in the table.
     const { statuses: leadStatusCatalog } = useLeadStatuses();
 
-    // Table UI state
-    const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set());
+    // Table UI state — column show/hide is persisted per user (localStorage) so
+    // the "Manage Column" choice survives reloads and navigation.
+    const { hiddenColumns, toggleColumn, resetColumns } = useLeadColumnPrefs(
+        'crm-lead-columns:recent-leads'
+    );
 
     const [noteTarget, setNoteTarget] = useState<{
         userId: string;
@@ -376,25 +401,10 @@ const RecentLeadsContent = () => {
 
     // "Manage Column" toggle list — only the columns actually visible for the
     // current config (the Lead-name column is always shown).
-    const toggleableColumns = useMemo(() => {
-        const cols: { id: string; label: string }[] = [
-            { id: 'contact', label: 'Contact' },
-            { id: 'source', label: 'Lead source' },
-        ];
-        if (showOps) cols.push({ id: 'status', label: 'Lead status' });
-        if (showScore) cols.push({ id: 'score', label: 'Lead score' });
-        if (showOps) {
-            cols.push(
-                { id: 'tier', label: 'Tier' },
-                { id: 'reachout', label: 'Reach out in' },
-                { id: 'followup', label: 'Follow up at' },
-                { id: 'owner', label: 'Lead owner' },
-                { id: 'activity', label: 'Activity' }
-            );
-        }
-        cols.push({ id: 'submitted', label: 'Submitted' });
-        return cols;
-    }, [showOps, showScore]);
+    const toggleableColumns = useMemo(
+        () => buildLeadColumnToggles(showOps, showScore),
+        [showOps, showScore]
+    );
 
     const audiencesQuery = useQuery(
         handleFetchCampaignsList({ institute_id: instituteId ?? '', page: 0, size: 200 })
@@ -470,6 +480,7 @@ const RecentLeadsContent = () => {
             slaFilters.join(','),
             counsellorFilters.join(','),
             sourceFilter,
+            callHistoryFilter,
             customFieldFiltersKey,
             page,
             pageSize,
@@ -496,6 +507,7 @@ const RecentLeadsContent = () => {
                         : undefined,
                 is_unassigned: onlyUnassigned ? true : undefined,
                 source_type: sourceFilter || undefined,
+                call_history_filter: callHistoryFilter || undefined,
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
                     : undefined,
@@ -519,7 +531,7 @@ const RecentLeadsContent = () => {
                 .filter((id): id is string => !!id),
         [data]
     );
-    const { profiles: leadProfiles } = useLeadProfiles(userIds, showOps);
+    const { profiles: leadProfiles } = useLeadProfiles(userIds, showOps, instituteId);
     const { notesByUserId } = useLatestNotesBatch(userIds, showOps);
 
     const invalidateKeys = [['recent-leads'], ['lead-profiles-batch']];
@@ -529,6 +541,9 @@ const RecentLeadsContent = () => {
     // The robot "AI call" button only shows when an admin has turned it on in
     // Settings → AI Calling. Automated AI workflows are unaffected by this.
     const showAiButton = useAiCallButtonEnabled();
+    // Per-row AI call opens a chooser (which agent speaks) instead of silently
+    // dialing with the institute default.
+    const [aiCallTarget, setAiCallTarget] = useState<AiCallDialogTarget | null>(null);
 
     const actions: LeadActionHandlers = useMemo(
         () => ({
@@ -560,7 +575,7 @@ const RecentLeadsContent = () => {
             onAiCallLead: showAiButton
                 ? (vm) => {
                       if (!vm.responseId) return;
-                      placeAiCall.mutate({
+                      setAiCallTarget({
                           responseId: vm.responseId,
                           userId: vm.userId ?? undefined,
                           leadName: vm.name,
@@ -568,7 +583,7 @@ const RecentLeadsContent = () => {
                   }
                 : undefined,
         }),
-        [setSelectedStudent, updateTier, placeCall, placeAiCall, showAiButton]
+        [setSelectedStudent, updateTier, placeCall, showAiButton]
     );
 
     // The backend mirrors a per-response status change onto the user's profile
@@ -656,6 +671,7 @@ const RecentLeadsContent = () => {
                         : undefined,
                 is_unassigned: onlyUnassigned ? true : undefined,
                 source_type: sourceFilter || undefined,
+                call_history_filter: callHistoryFilter || undefined,
                 custom_field_filters: customFieldFiltersPayload.length
                     ? customFieldFiltersPayload
                     : undefined,
@@ -682,14 +698,6 @@ const RecentLeadsContent = () => {
         }
     };
 
-    const toggleColumn = (id: string) =>
-        setHiddenColumns((prev) => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id);
-            else next.add(id);
-            return next;
-        });
-
     // Filters
     const handleClearFilter = () => {
         setAudienceFilters([]);
@@ -700,6 +708,7 @@ const RecentLeadsContent = () => {
         setSlaFilters([]);
         setCounsellorFilters([]);
         setSourceFilter('');
+        setCallHistoryFilter('');
         setCustomFieldFilters({});
         setRangeDays(DEFAULT_RANGE_DAYS);
         setCustomFrom('');
@@ -763,6 +772,7 @@ const RecentLeadsContent = () => {
         slaFilters.length > 0 ||
         counsellorFilters.length > 0 ||
         !!sourceFilter ||
+        !!callHistoryFilter ||
         customFieldFiltersPayload.length > 0;
 
     // CSV export (shared by "Export" + "Export selected")
@@ -806,7 +816,7 @@ const RecentLeadsContent = () => {
                 selectedExportCols.has('notes_count') ||
                 selectedExportCols.has('lead_journey'));
         const [prof, nts, jny] = await Promise.all([
-            needsOps ? fetchBatchProfiles(ids) : Promise.resolve({}),
+            needsOps ? fetchBatchProfiles(ids, instituteId ?? '') : Promise.resolve({}),
             needsOps ? fetchLatestNotesBatch(ids) : Promise.resolve({}),
             needsOps ? fetchLeadJourneyBatch(ids) : Promise.resolve({}),
         ]);
@@ -937,6 +947,7 @@ const RecentLeadsContent = () => {
                             : undefined,
                     is_unassigned: onlyUnassigned ? true : undefined,
                     source_type: sourceFilter || undefined,
+                    call_history_filter: callHistoryFilter || undefined,
                     custom_field_filters: customFieldFiltersPayload.length
                         ? customFieldFiltersPayload
                         : undefined,
@@ -1019,8 +1030,14 @@ const RecentLeadsContent = () => {
         const fieldName =
             filterCustomFields.find((cf) => cf.customFieldId === f.field_id)?.fieldName ?? 'Field';
         chips.push({
-            label: `${fieldName}: ${f.values.join(', ')}`,
-            onRemove: () => setCustomFieldFilter(f.field_id, []),
+            label: `${fieldName}: ${filterEntryValueLabel(f)}`,
+            // Remove only this entry's backing values — one field can carry
+            // several chips (values + contains + empty) at once.
+            onRemove: () =>
+                setCustomFieldFilter(
+                    f.field_id,
+                    removeEntryFromSelection(customFieldFilters[f.field_id] ?? [], f)
+                ),
         });
     });
     if (rangeDays !== DEFAULT_RANGE_DAYS) {
@@ -1112,16 +1129,49 @@ const RecentLeadsContent = () => {
                         onChange={handleAudienceChange}
                         widthClass="w-44"
                     />
-                    {filterCustomFields.map((f) => (
-                        <CustomFieldMultiSelectFilter
-                            key={f.customFieldId}
-                            instituteId={instituteId ?? ''}
-                            fieldId={f.customFieldId}
-                            fieldName={f.fieldName}
-                            selected={customFieldFilters[f.customFieldId] ?? []}
-                            onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
-                        />
-                    ))}
+                    <Select
+                        value={callHistoryFilter || 'ANY'}
+                        onValueChange={(v) => {
+                            setCallHistoryFilter(v === 'ANY' ? '' : v);
+                            setPage(0);
+                        }}
+                    >
+                        <SelectTrigger className="h-10 w-44">
+                            <Phone className="mr-1.5 size-4 shrink-0 text-neutral-400" />
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="ANY">Call history</SelectItem>
+                            <SelectItem value="NOT_CALLED">Not called</SelectItem>
+                            <SelectItem value="CALLED">Called (any)</SelectItem>
+                            <SelectItem value="CALLED_ONCE">Called once</SelectItem>
+                            <SelectItem value="CALLED_TWICE_PLUS">Called 2+ times</SelectItem>
+                            <SelectItem value="AI_CALLED">AI called</SelectItem>
+                            <SelectItem value="MANUAL_CALLED">Manually called</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    {filterCustomFields.map((f) =>
+                        isRangeFieldType(f.fieldType) ? (
+                            <CustomFieldRangeFilter
+                                key={f.customFieldId}
+                                fieldId={f.customFieldId}
+                                fieldName={f.fieldName}
+                                fieldType={f.fieldType}
+                                selected={customFieldFilters[f.customFieldId] ?? []}
+                                onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
+                            />
+                        ) : (
+                            <CustomFieldMultiSelectFilter
+                                key={f.customFieldId}
+                                instituteId={instituteId ?? ''}
+                                fieldId={f.customFieldId}
+                                fieldName={f.fieldName}
+                                selected={customFieldFilters[f.customFieldId] ?? []}
+                                onChange={(vals) => setCustomFieldFilter(f.customFieldId, vals)}
+                            />
+                        )
+                    )}
+                    <ManageListFiltersLink />
                     <Select value={rangeDays} onValueChange={setDateRange}>
                         <SelectTrigger className="h-10 w-40">
                             <CalendarBlank className="mr-1.5 size-4 text-neutral-400" />
@@ -1198,33 +1248,12 @@ const RecentLeadsContent = () => {
                             {showDeleted ? 'Viewing deleted' : 'Deleted leads'}
                         </Button>
                     )}
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button variant="outline" size="sm" className="h-10">
-                                <Columns className="mr-1.5 size-4" />
-                                Manage Column
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="end" className="w-52">
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                                Columns
-                            </p>
-                            <div className="space-y-1">
-                                {toggleableColumns.map((c) => (
-                                    <label
-                                        key={c.id}
-                                        className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm text-neutral-700 hover:bg-neutral-50"
-                                    >
-                                        <Checkbox
-                                            checked={!hiddenColumns.has(c.id)}
-                                            onCheckedChange={() => toggleColumn(c.id)}
-                                        />
-                                        {c.label}
-                                    </label>
-                                ))}
-                            </div>
-                        </PopoverContent>
-                    </Popover>
+                    <ManageColumnsPopover
+                        columns={toggleableColumns}
+                        hiddenColumns={hiddenColumns}
+                        onToggle={toggleColumn}
+                        onReset={resetColumns}
+                    />
                     <Button
                         size="sm"
                         variant="outline"
@@ -1416,6 +1445,7 @@ const RecentLeadsContent = () => {
                             showScore={showScore}
                             isLoading={isLoading}
                             actions={actions}
+                            alwaysShowActions
                             onStatusUpdated={handleStatusUpdated}
                             hiddenColumns={hiddenColumns}
                             selectable
@@ -1479,6 +1509,23 @@ const RecentLeadsContent = () => {
                         invalidateKeys={[['lead-profiles-batch']]}
                     />
                 )}
+                <AiCallDialog
+                    target={aiCallTarget}
+                    onClose={() => setAiCallTarget(null)}
+                    isPending={placeAiCall.isPending}
+                    onConfirm={(target, agentId, numberId) => {
+                        placeAiCall.mutate(
+                            {
+                                responseId: target.responseId,
+                                userId: target.userId,
+                                leadName: target.leadName,
+                                campaignId: agentId || undefined,
+                                preferredNumberId: numberId || undefined,
+                            },
+                            { onSuccess: () => setAiCallTarget(null) }
+                        );
+                    }}
+                />
             </SidebarProvider>
 
             {/* Pagination */}

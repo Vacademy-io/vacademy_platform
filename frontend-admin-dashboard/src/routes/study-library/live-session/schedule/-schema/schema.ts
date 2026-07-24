@@ -255,6 +255,26 @@ export const addParticipantsSchema = z.object({
     // institute's approved template).
     requireEmailVerification: z.boolean().optional(),
     requirePhoneVerification: z.boolean().optional(),
+    // "Auto-add recordings to course" (see docs/LIVE_SESSION_RECORDING_AUTO_LINK_PLAN.md).
+    // Kept optional/untouched-tracking so the DTO transform can omit the field
+    // entirely in edit mode when the admin never opened this section.
+    recordingAutoLink: z
+        .object({
+            enabled: z.boolean(),
+            slideStatus: z.enum(['PUBLISHED', 'DRAFT']),
+            notify: z.boolean(),
+            destinations: z.array(
+                z.object({
+                    package_session_id: z.string(),
+                    subject_id: z.string().optional(),
+                    module_id: z.string().optional(),
+                    chapter_id: z.string(),
+                })
+            ),
+            /** True once the admin has interacted with this section (toggled it, or it was hydrated from an existing config in edit mode) — distinguishes "never touched" from "explicitly off". */
+            touched: z.boolean(),
+        })
+        .optional(),
 }).superRefine((data, ctx) => {
     if (data.paymentEnabled) {
         const price = parseFloat(data.paymentPrice ?? '');

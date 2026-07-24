@@ -2,26 +2,37 @@ package vacademy.io.admin_core_service.features.suborg.registration.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
+import vacademy.io.admin_core_service.features.common.dto.InstituteCustomFieldDTO;
 import vacademy.io.admin_core_service.features.common.enums.CustomFieldTypeEnum;
+import vacademy.io.admin_core_service.features.common.enums.CustomFieldValueSourceTypeEnum;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
+import vacademy.io.admin_core_service.features.common.repository.CustomFieldValuesRepository;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
 import vacademy.io.admin_core_service.features.enroll_invite.service.PackageSessionEnrollInviteToPaymentOptionService;
+import vacademy.io.admin_core_service.features.institute_learner.repository.StudentSessionInstituteGroupMappingRepository;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.CreateRegistrationTemplateDTO;
+import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.CustomFieldFacetDTO;
+import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.RegistrationFacetsDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.RegistrationListItemDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationFlowDTOs.TemplateListItemDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.SubOrgRegistrationSettingDTO;
 import vacademy.io.admin_core_service.features.suborg.registration.dto.TemplateDetailDTO;
+import vacademy.io.admin_core_service.features.suborg.registration.entity.SubOrgRegistration;
 import vacademy.io.admin_core_service.features.suborg.registration.enums.SubOrgRegistrationStatus;
 import vacademy.io.admin_core_service.features.suborg.registration.repository.SubOrgRegistrationRepository;
+import vacademy.io.admin_core_service.features.suborg.registration.repository.SubOrgRegistrationSpecification;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentOption;
 import vacademy.io.admin_core_service.features.user_subscription.entity.PaymentPlan;
 import vacademy.io.admin_core_service.features.user_subscription.enums.PaymentOptionType;
@@ -31,10 +42,12 @@ import vacademy.io.common.institute.entity.session.PackageSession;
 
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 /**
@@ -57,6 +70,16 @@ public class SubOrgRegistrationTemplateService {
     private final PackageSessionEnrollInviteToPaymentOptionService pslipoService;
     private final InstituteCustomFiledService instituteCustomFiledService;
     private final SubOrgRegistrationRepository registrationRepository;
+    private final CustomFieldValuesRepository customFieldValuesRepository;
+    private final StudentSessionInstituteGroupMappingRepository ssigmRepository;
+
+    /**
+     * A custom field becomes a filter only if it has at most this many distinct
+     * submitted values. Keeps per-registration-unique fields (name/email/phone/free
+     * text) out of the filter bar while letting real choice fields through — the
+     * guard is data-driven, not a hardcoded field allow-list.
+     */
+    private static final int MAX_CUSTOM_FIELD_FACET_VALUES = 50;
 
     @Transactional
     public Map<String, Object> createTemplate(CreateRegistrationTemplateDTO request, String instituteId) {
@@ -361,22 +384,165 @@ public class SubOrgRegistrationTemplateService {
         return Map.of("template_id", template.getId(), "status", template.getStatus());
     }
 
-    public List<RegistrationListItemDTO> listRegistrations(String templateId, String instituteId) {
-        requireTemplate(templateId, instituteId);
-        List<RegistrationListItemDTO> result = new ArrayList<>();
-        registrationRepository.findByTemplateInviteIdOrderByCreatedAtDesc(templateId)
-                .forEach(r -> result.add(RegistrationListItemDTO.builder()
-                        .id(r.getId())
-                        .status(r.getStatus())
-                        .orgName(r.getOrgName())
-                        .adminName(r.getAdminName())
-                        .adminEmail(r.getAdminEmail())
-                        .adminPhone(r.getAdminPhone())
-                        .spawnedSubOrgId(r.getSpawnedSubOrgId())
-                        .createdAt(r.getCreatedAt())
-                        .kycStatus(r.getKycStatus())
-                        .build()));
-        return result;
+    public Page<RegistrationListItemDTO> listRegistrations(
+            String templateId, String instituteId,
+            List<String> cities, List<String> states, List<String> pincodes,
+            String legacyCity, String legacyState, String legacyPincode,
+            String status, String search, Map<String, List<String>> customFieldFilters,
+            Pageable pageable) {
+        EnrollInvite template = requireTemplate(templateId, instituteId);
+        // Seat capacity is the template's member_count — same for every sub-org spawned
+        // from this link, so resolve it once per page rather than per row.
+        SubOrgRegistrationSettingDTO.RegistrationSetting setting =
+                SubOrgRegistrationSettings.parse(template.getSettingJson());
+        Integer totalSeats = setting != null ? setting.getMemberCount() : null;
+
+        Specification<SubOrgRegistration> spec =
+                SubOrgRegistrationSpecification.withFilters(
+                        templateId, cities, states, pincodes,
+                        legacyCity, legacyState, legacyPincode,
+                        status, search, customFieldFilters);
+        Page<SubOrgRegistration> page = registrationRepository.findAll(spec, pageable);
+
+        // One bulk query for the used-seat counts of every spawned sub-org on this page.
+        Map<String, Long> usedBySubOrg = usedSeatsForSubOrgs(
+                page.getContent().stream()
+                        .map(SubOrgRegistration::getSpawnedSubOrgId)
+                        .filter(StringUtils::hasText)
+                        .distinct()
+                        .collect(Collectors.toList()));
+
+        return page.map(r -> {
+            String subOrgId = r.getSpawnedSubOrgId();
+            boolean spawned = StringUtils.hasText(subOrgId);
+            return RegistrationListItemDTO.builder()
+                    .id(r.getId())
+                    .status(r.getStatus())
+                    .orgName(r.getOrgName())
+                    .adminName(r.getAdminName())
+                    .adminEmail(r.getAdminEmail())
+                    .adminPhone(r.getAdminPhone())
+                    .city(r.getCity())
+                    .state(r.getState())
+                    .pincode(r.getPincode())
+                    .usedSeats(spawned ? usedBySubOrg.getOrDefault(subOrgId, 0L) : null)
+                    .totalSeats(spawned ? totalSeats : null)
+                    .spawnedSubOrgId(subOrgId)
+                    .createdAt(r.getCreatedAt())
+                    .kycStatus(r.getKycStatus())
+                    .build();
+        });
+    }
+
+    /**
+     * Distinct filter options present in this template's registrations, for the admin
+     * listing's multi-select filters: the fixed City/State/Pincode address columns PLUS
+     * one entry per form-collected custom field worth filtering on (see
+     * {@link #buildCustomFieldFacets}). Scoped + auth-guarded via requireTemplate so one
+     * institute can't read another's facets.
+     */
+    public RegistrationFacetsDTO getRegistrationFacets(String templateId, String instituteId) {
+        EnrollInvite template = requireTemplate(templateId, instituteId);
+        return RegistrationFacetsDTO.builder()
+                .cities(registrationRepository.findDistinctCities(templateId))
+                .states(registrationRepository.findDistinctStates(templateId))
+                .pincodes(registrationRepository.findDistinctPincodes(templateId))
+                .customFields(buildCustomFieldFacets(template))
+                .build();
+    }
+
+    /**
+     * One facet per custom field the form collected values for — label from the field
+     * definition, options = distinct submitted values. Fields whose distinct-value count
+     * exceeds {@link #MAX_CUSTOM_FIELD_FACET_VALUES} (identity/free-text like name, email,
+     * phone) are dropped so only genuine choice-like fields become filters. Ordered by the
+     * field's form order so filters read in the same order as the form.
+     */
+    private List<CustomFieldFacetDTO> buildCustomFieldFacets(EnrollInvite template) {
+        // custom_field_id -> distinct submitted values (sorted, case-insensitive dedupe).
+        List<Object[]> rows = customFieldValuesRepository.findDistinctFieldValuesByTypeId(
+                CustomFieldValueSourceTypeEnum.SUB_ORG_REGISTRATION.name(), template.getId());
+        if (CollectionUtils.isEmpty(rows)) {
+            return List.of();
+        }
+        Map<String, Set<String>> valuesByField = new HashMap<>();
+        for (Object[] row : rows) {
+            if (row[0] == null || row[1] == null) {
+                continue;
+            }
+            String fieldId = String.valueOf(row[0]);
+            String value = String.valueOf(row[1]).trim();
+            if (value.isEmpty()) {
+                continue;
+            }
+            valuesByField.computeIfAbsent(fieldId, k -> new LinkedHashSet<>()).add(value);
+        }
+        if (valuesByField.isEmpty()) {
+            return List.of();
+        }
+
+        // Field id -> (label, order) from the template's custom-field definitions, so we
+        // show human labels and drop values for fields no longer on the form.
+        List<InstituteCustomFieldDTO> definitions = instituteCustomFiledService.findCustomFieldsAsJson(
+                template.getInstituteId(), CustomFieldTypeEnum.ENROLL_INVITE.name(), template.getId());
+        Map<String, String> labelByFieldId = new HashMap<>();
+        Map<String, Integer> orderByFieldId = new HashMap<>();
+        if (definitions != null) {
+            int fallbackOrder = 0;
+            for (InstituteCustomFieldDTO def : definitions) {
+                if (def == null || def.getCustomField() == null) {
+                    continue;
+                }
+                String id = def.getCustomField().getId();
+                if (!StringUtils.hasText(id)) {
+                    continue;
+                }
+                labelByFieldId.put(id, def.getCustomField().getFieldName());
+                Integer order = def.getIndividualOrder() != null
+                        ? def.getIndividualOrder()
+                        : def.getCustomField().getFormOrder();
+                orderByFieldId.put(id, order != null ? order : fallbackOrder);
+                fallbackOrder++;
+            }
+        }
+
+        List<CustomFieldFacetDTO> facets = new ArrayList<>();
+        for (Map.Entry<String, Set<String>> entry : valuesByField.entrySet()) {
+            String fieldId = entry.getKey();
+            // Only surface fields still defined on the form (gives us a label), and skip
+            // high-cardinality identity/free-text fields.
+            if (!labelByFieldId.containsKey(fieldId)
+                    || entry.getValue().size() > MAX_CUSTOM_FIELD_FACET_VALUES) {
+                continue;
+            }
+            Set<String> sortedValues = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            sortedValues.addAll(entry.getValue());
+            facets.add(CustomFieldFacetDTO.builder()
+                    .id(fieldId)
+                    .label(labelByFieldId.get(fieldId))
+                    .values(new ArrayList<>(sortedValues))
+                    .build());
+        }
+        facets.sort((a, b) -> Integer.compare(
+                orderByFieldId.getOrDefault(a.getId(), Integer.MAX_VALUE),
+                orderByFieldId.getOrDefault(b.getId(), Integer.MAX_VALUE)));
+        return facets;
+    }
+
+    /** Active learner-seat count per sub-org, in one bulk query. Empty map for no ids. */
+    private Map<String, Long> usedSeatsForSubOrgs(List<String> subOrgIds) {
+        if (subOrgIds.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Long> used = new HashMap<>();
+        for (Object[] row : ssigmRepository.countActiveLearnersBySubOrgIds(subOrgIds)) {
+            if (row[0] == null) {
+                continue;
+            }
+            // sub_org_id may come back as a UUID or String depending on the column type.
+            used.put(String.valueOf(row[0]), ((Number) row[1]).longValue());
+        }
+        return used;
     }
 
     private EnrollInvite requireTemplate(String templateId, String instituteId) {

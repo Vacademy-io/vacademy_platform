@@ -1,0 +1,59 @@
+/* Structural styles for the Lexical document editor that can't be expressed
+   as per-node Tailwind theme classes (pseudo-elements, contenteditable). */
+
+.lexical-doc-editor {
+    position: relative;
+    width: 100%;
+}
+
+.lexical-doc-editor .lexical-content-editable {
+    min-height: 200px;
+    outline: none;
+    padding: 4px 0 120px;
+}
+
+/* Check-list items (CheckListPlugin toggles via the theme classes) */
+.lexical-doc-editor .lex-check-item {
+    position: relative;
+    list-style: none;
+    margin-left: -1.5rem;
+    padding-left: 1.75rem;
+    cursor: pointer;
+    outline: none;
+}
+.lexical-doc-editor .lex-check-item::before {
+    content: '';
+    position: absolute;
+    left: 0.25rem;
+    top: 0.3rem;
+    width: 1rem;
+    height: 1rem;
+    border: 1px solid #a3a3a3;
+    border-radius: 0.25rem;
+    background: #fff;
+}
+.lexical-doc-editor .lex-check-item--checked {
+    text-decoration: line-through;
+    color: #737373;
+}
+.lexical-doc-editor .lex-check-item--checked::before {
+    background: hsl(var(--primary-500));
+    border-color: hsl(var(--primary-500));
+}
+.lexical-doc-editor .lex-check-item--checked::after {
+    content: '';
+    position: absolute;
+    left: 0.55rem;
+    top: 0.45rem;
+    width: 0.35rem;
+    height: 0.6rem;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+/* Tables need visible borders while editing even before theme classes apply */
+.lexical-doc-editor .lex-table td,
+.lexical-doc-editor .lex-table th {
+    min-width: 60px;
+}

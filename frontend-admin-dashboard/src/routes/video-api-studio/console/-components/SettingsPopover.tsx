@@ -1170,7 +1170,17 @@ function SettingsBody({
                     model={options.ai_video_model}
                     qualityTier={options.quality_tier || 'ultra'}
                     onChange={(patch) => {
-                        if ('enabled' in patch) update('ai_video_enabled', patch.enabled);
+                        if ('enabled' in patch) {
+                            update('ai_video_enabled', patch.enabled);
+                            // Pin the model when enabling so the request SENDS
+                            // what the dropdown SHOWS. Without this the panel
+                            // displays the [0] default (best quality) but
+                            // leaves ai_video_model undefined → the backend
+                            // falls back to the lite tier the user disliked.
+                            if (patch.enabled && !options.ai_video_model) {
+                                update('ai_video_model', AI_VIDEO_MODELS[0].value);
+                            }
+                        }
                         if ('audioEnabled' in patch)
                             update('ai_video_audio_enabled', patch.audioEnabled);
                         if ('model' in patch) update('ai_video_model', patch.model);
@@ -1297,6 +1307,11 @@ function AiVideoPanel({
                                 ))}
                             </SelectContent>
                         </Select>
+                        {AI_VIDEO_MODELS.find((m) => m.value === effectiveModel)?.hint && (
+                            <p className="pl-0.5 text-xs text-muted-foreground">
+                                {AI_VIDEO_MODELS.find((m) => m.value === effectiveModel)?.hint}
+                            </p>
+                        )}
                     </div>
                     <div className="flex items-center justify-between gap-3 pl-5">
                         <Label className="flex items-center gap-1.5 text-[11px]">

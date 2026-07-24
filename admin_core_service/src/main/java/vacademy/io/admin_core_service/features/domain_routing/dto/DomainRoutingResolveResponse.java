@@ -43,5 +43,6 @@ public class DomainRoutingResolveResponse {
     private Boolean hideInstituteName;
     private Integer logoWidthPx;
     private Integer logoHeightPx;
+    private Boolean stackNameBelowLogo;
     private NamingOverridesDto namingOverrides;
 }

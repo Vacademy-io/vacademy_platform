@@ -35,6 +35,11 @@ public class StudentListFilter {
     // (matched on ssigm.sub_org_id).
     private List<String> subOrgIds;
     private Map<String, List<String>> customFieldFilters;
+    // Operator-aware custom-field filters ([{field_id, operator, values}] —
+    // CONTAINS / IS_EMPTY / NOT_EMPTY / BETWEEN / GTE / LTE; see
+    // CustomFieldListFilterDTO). Coexists with the legacy values-IN map above;
+    // both AND together when sent.
+    private List<vacademy.io.admin_core_service.features.common.dto.CustomFieldListFilterDTO> customFieldTypedFilters;
     private LocalDate startDate;
     private LocalDate endDate;
 
@@ -50,4 +55,20 @@ public class StudentListFilter {
     private List<String> serverEnrollInviteIds;
     @JsonIgnore
     private List<String> enrollInvitePackageSessionIds;
+
+    // Internal fields — the typed custom-field filters above, pre-resolved by
+    // CustomFieldListFilterResolver into user-id sets before the repository call.
+    @JsonIgnore
+    private List<String> cfTypedMatchedUserIds;
+    @JsonIgnore
+    private List<String> cfTypedExcludedUserIds;
+
+    // Internal fields — custom-field sort, extracted server-side from a
+    // sortColumns entry keyed "cf:<custom_field_id>" (the students table sends
+    // that key when sorting a custom-field column). Forces the heavy
+    // custom-repo path, which orders by the learner's latest USER-scoped answer.
+    @JsonIgnore
+    private String sortCustomFieldId;
+    @JsonIgnore
+    private String sortCustomFieldDirection;
 }

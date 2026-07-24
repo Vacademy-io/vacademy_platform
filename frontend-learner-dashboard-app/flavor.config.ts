@@ -157,6 +157,20 @@ export const flavorConfig: FlavorConfigs = {
     subdomain: "student",
   },
 
+  // ZOE Edtech iOS app
+  "io.zoeedtech.app": {
+    appName: "ZOE Edtech",
+    domain: "zoeedtech.com",
+    subdomain: "student",
+  },
+
+  // ZOE Edtech Android app
+  "com.zoeedtech.app": {
+    appName: "ZOE Edtech",
+    domain: "zoeedtech.com",
+    subdomain: "student",
+  },
+
   // HCCA Learning iOS app
   "io.hcca.app": {
     appName: "HCCA Learning",

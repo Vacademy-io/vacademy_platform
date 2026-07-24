@@ -7,6 +7,7 @@ import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.enroll_invite.dto.EnrollInviteDTO;
 import vacademy.io.admin_core_service.features.enroll_invite.entity.EnrollInvite;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
+import vacademy.io.admin_core_service.features.enroll_invite.util.EnrollInviteAvailabilityUtil;
 import vacademy.io.admin_core_service.features.workflow.enums.WorkflowTriggerEvent;
 import vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService;
 import vacademy.io.common.exceptions.VacademyException;
@@ -39,35 +40,36 @@ public class LearnerEnrollInviteService {
             throw new VacademyException("Institute ID and Invite Code are required.");
         }
 
+        // Load ACTIVE or INACTIVE invites (only DELETED / genuinely-missing codes 404), so that an
+        // expired, not-yet-started, or manually-deactivated link is still returned to the learner —
+        // carrying its status/dates and its admin-authored "unavailable" message in setting_json.
+        // Previously this method threw a hardcoded 510 for those cases, so the message (and the whole
+        // DTO) never reached the browser. The FE now reads availabilityStatus to decide whether to
+        // render the enrollment form or the admin message. The actual enrollment block is enforced
+        // server-side in LearnerEnrollRequestService (see EnrollInviteAvailabilityUtil).
         EnrollInvite enrollInvite = enrollInviteRepository
-                .findValidEnrollInvite(List.of(StatusEnum.ACTIVE.name()), instituteId, inviteCode)
+                .findValidEnrollInvite(
+                        List.of(StatusEnum.ACTIVE.name(), StatusEnum.INACTIVE.name()),
+                        instituteId, inviteCode)
                 .orElseThrow(() -> new VacademyException("Enroll invite not found."));
-
-        Date now = new Date();
-
-        if (enrollInvite.getStartDate() != null && enrollInvite.getStartDate().after(now)) {
-            throw new VacademyException("This enroll invite has not started accepting enrollments yet.");
-        }
-
-        if (enrollInvite.getEndDate() != null && enrollInvite.getEndDate().before(now)) {
-            throw new VacademyException("This enroll invite has expired.");
-        }
 
         EnrollInviteDTO result = enrollInviteService.buildFullEnrollInviteDTO(enrollInvite, instituteId);
 
-        // Trigger INVITE_FORM_FILL workflow
-        try {
-            Map<String, Object> contextData = new HashMap<>();
-            contextData.put("invite", enrollInvite);
-            contextData.put("instituteId", instituteId);
-            contextData.put("inviteCode", inviteCode);
-            workflowTriggerService.handleTriggerEvents(
-                    WorkflowTriggerEvent.INVITE_FORM_FILL.name(),
-                    enrollInvite.getId(),
-                    instituteId,
-                    contextData);
-        } catch (Exception e) {
-            log.warn("Failed to trigger INVITE_FORM_FILL workflow", e);
+        // Only fire the form-fill workflow when the invite is actually open for enrollment.
+        if (EnrollInviteAvailabilityUtil.isAvailable(enrollInvite)) {
+            try {
+                Map<String, Object> contextData = new HashMap<>();
+                contextData.put("invite", enrollInvite);
+                contextData.put("instituteId", instituteId);
+                contextData.put("inviteCode", inviteCode);
+                workflowTriggerService.handleTriggerEvents(
+                        WorkflowTriggerEvent.INVITE_FORM_FILL.name(),
+                        enrollInvite.getId(),
+                        instituteId,
+                        contextData);
+            } catch (Exception e) {
+                log.warn("Failed to trigger INVITE_FORM_FILL workflow", e);
+            }
         }
 
         return result;

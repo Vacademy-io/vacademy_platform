@@ -35,6 +35,7 @@ import CrmIntelligenceSettings from '../-components/CrmIntelligenceSettings';
 import AssistantToolsSettings from '../-components/AssistantToolsSettings';
 import BadgesRewardsSettings from '../-components/BadgesRewards/BadgesRewardsSettings';
 import LanguageSettings from '../-components/LanguageSettings';
+import AppearanceSettings from '../-components/Appearance/AppearanceSettings';
 
 export const getAvailableSettingsTabs = () => {
     // Entries are sorted A-Z by display label (`value`) at the end so the
@@ -220,6 +221,11 @@ export const getAvailableSettingsTabs = () => {
             tab: SettingsTabs.Language,
             value: 'Language Settings',
             component: LanguageSettings,
+        },
+        {
+            tab: SettingsTabs.Appearance,
+            value: 'Appearance',
+            component: AppearanceSettings,
         },
     ].sort((a, b) => a.value.localeCompare(b.value, undefined, { sensitivity: 'base' }));
 };

@@ -19,6 +19,7 @@ import { convertTimeToSeconds } from "@/utils/study-library/tracking/convertTime
 import { formatVideoTime } from "@/utils/study-library/tracking/formatVideoTime";
 import { calculateNetDuration } from "@/utils/study-library/tracking/calculateNetDuration";
 import { useVideoSync } from "@/hooks/study-library/useVideoSync";
+import { getYouTubeEmbedOrigin } from "@/utils/youtube-embed";
 import { useSlideContentProtection } from "@/hooks/useSlideContentProtection";
 import YouTube, {
   type YouTubeEvent,
@@ -1019,15 +1020,9 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
   // Note: CSS injection into YouTube iframe removed due to cross-origin restrictions
   // YouTube UI elements are controlled via playerVars (controls, modestbranding, etc.)
 
-  // Determine proper origin for Electron vs Web
-  const getPlayerOrigin = () => {
-    const origin = window.location.origin;
-    // If running in Electron with capacitor protocol, use localhost as origin
-    if (origin.includes('capacitor-electron') || origin.includes('file://')) {
-      return 'http://localhost';
-    }
-    return origin;
-  };
+  // Determine a valid http(s) origin for Electron / iOS WebView vs Web.
+  // iOS exposes `capacitor://localhost` which YouTube rejects → Error 153.
+  const getPlayerOrigin = () => getYouTubeEmbedOrigin();
 
   const opts: YouTubeProps["opts"] = {
     height: "100%",
@@ -1051,7 +1046,12 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       start: 0, // Start from the beginning
       end: 0, // End at the natural end of the video
       // autohide: 1, // Hide controls after play begins
-      widget_referrer: window.location.href, // Fix for error 153
+      // Web/Android keep their existing full-href referrer (unchanged behaviour); only
+      // iOS/Electron — where href is a rejected capacitor://…/file:// value — fall back to
+      // the sanitized origin. Fix for error 153.
+      widget_referrer: /^https?:/.test(window.location.origin)
+        ? window.location.href
+        : getPlayerOrigin(),
     },
   };
 

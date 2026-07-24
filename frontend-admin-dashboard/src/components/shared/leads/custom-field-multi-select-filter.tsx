@@ -16,6 +16,13 @@ import { ChipsWrapper } from '@/components/design-system/chips';
 import { useCompactMode } from '@/hooks/use-compact-mode';
 import { cn } from '@/lib/utils';
 import { fetchLeadCustomFieldValues } from '@/routes/audience-manager/list/-services/get-lead-custom-field-values';
+import {
+    EMPTY_SENTINEL,
+    NOT_EMPTY_SENTINEL,
+    encodeContains,
+    isSentinelValue,
+    sentinelLabel,
+} from './custom-field-filter-encoding';
 
 const PAGE_SIZE = 20;
 
@@ -53,6 +60,12 @@ interface CustomFieldMultiSelectFilterProps {
      *  in next to that page's other filter chips. Styling only — no behavior
      *  differs between variants. */
     variant?: 'button' | 'pill';
+    /** Cache namespace for the distinct-values query. Surfaces with different
+     *  fetchers (leads vs students vs contacts) return DIFFERENT value lists
+     *  for the same field — without this segment they'd share a React Query
+     *  cache entry and show each other's values. Defaults to 'leads' (the
+     *  default fetcher). */
+    cacheScope?: string;
 }
 
 /**
@@ -73,6 +86,7 @@ export function CustomFieldMultiSelectFilter({
     onChange,
     fetchValues = fetchLeadCustomFieldValues,
     variant = 'button',
+    cacheScope = 'leads',
 }: CustomFieldMultiSelectFilterProps) {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -94,7 +108,7 @@ export function CustomFieldMultiSelectFilter({
 
     const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading, isError } =
         useInfiniteQuery({
-            queryKey: ['customFieldValues', instituteId, fieldId, debouncedSearch],
+            queryKey: ['customFieldValues', cacheScope, instituteId, fieldId, debouncedSearch],
             queryFn: ({ pageParam }) =>
                 fetchValues({
                     instituteId,
@@ -111,17 +125,36 @@ export function CustomFieldMultiSelectFilter({
             staleTime: 60 * 1000,
         });
 
-    const fetchedValues = useMemo(
-        () => data?.pages.flatMap((p) => p.content ?? []) ?? [],
-        [data]
-    );
+    const fetchedValues = useMemo(() => data?.pages.flatMap((p) => p.content ?? []) ?? [], [data]);
 
     // Surface already-selected values that aren't in the current (search-filtered)
-    // page first, so they can always be unchecked.
+    // page first, so they can always be unchecked. Sentinel selections (empty /
+    // contains) are rendered separately with friendly labels, not as raw values.
     const orderedValues = useMemo(() => {
-        const selectedNotShown = selected.filter((v) => !fetchedValues.includes(v));
+        const selectedNotShown = selected.filter(
+            (v) => !fetchedValues.includes(v) && !isSentinelValue(v)
+        );
         return [...selectedNotShown, ...fetchedValues];
     }, [selected, fetchedValues]);
+
+    // Pinned typed-operator rows: "contains <search>" while the admin is
+    // typing, plus Empty / Not-empty. Selecting one adds a sentinel-encoded
+    // value; the payload builders decode sentinels into operator entries.
+    const containsSentinel = debouncedSearch ? encodeContains(debouncedSearch) : null;
+    const pinnedOptions = useMemo(() => {
+        const pinned: Array<{ value: string; label: string }> = [];
+        if (containsSentinel && !selected.includes(containsSentinel)) {
+            pinned.push({
+                value: containsSentinel,
+                label: `Contains "${debouncedSearch}"`,
+            });
+        }
+        pinned.push({ value: EMPTY_SENTINEL, label: 'Empty (no value)' });
+        pinned.push({ value: NOT_EMPTY_SENTINEL, label: 'Has any value' });
+        return pinned;
+    }, [containsSentinel, debouncedSearch, selected]);
+
+    const selectedSentinels = useMemo(() => selected.filter((v) => isSentinelValue(v)), [selected]);
 
     const toggle = (value: string) => {
         if (selected.includes(value)) {
@@ -154,7 +187,10 @@ export function CustomFieldMultiSelectFilter({
                         >
                             <div className="flex items-center gap-2">
                                 <PlusCircle
-                                    className={cn(isCompact ? 'size-3.5' : 'size-4', 'text-neutral-600')}
+                                    className={cn(
+                                        isCompact ? 'size-3.5' : 'size-4',
+                                        'text-neutral-600'
+                                    )}
                                 />
                                 <div
                                     className={cn(
@@ -227,6 +263,36 @@ export function CustomFieldMultiSelectFilter({
                                         Clear selection
                                     </CommandItem>
                                 )}
+                                <CommandGroup>
+                                    {selectedSentinels.map((value) => (
+                                        <CommandItem
+                                            key={value}
+                                            value={value}
+                                            onSelect={() => toggle(value)}
+                                            className="cursor-pointer"
+                                        >
+                                            <Check className="mr-2 size-4 opacity-100" />
+                                            <span className="truncate italic text-neutral-600">
+                                                {sentinelLabel(value)}
+                                            </span>
+                                        </CommandItem>
+                                    ))}
+                                    {pinnedOptions
+                                        .filter((opt) => !selected.includes(opt.value))
+                                        .map((opt) => (
+                                            <CommandItem
+                                                key={opt.value}
+                                                value={opt.value}
+                                                onSelect={() => toggle(opt.value)}
+                                                className="cursor-pointer"
+                                            >
+                                                <Check className="mr-2 size-4 opacity-0" />
+                                                <span className="truncate italic text-neutral-600">
+                                                    {opt.label}
+                                                </span>
+                                            </CommandItem>
+                                        ))}
+                                </CommandGroup>
                                 <CommandGroup>
                                     {orderedValues.map((value) => (
                                         <CommandItem

@@ -70,6 +70,18 @@ public class EngagementEngine {
     @Column(name = "cadence_hours", nullable = false)
     private Integer cadenceHours = 72;
 
+    /** Phase 2 kill switch: true = never auto-send (drops to copilot tasks); the engine keeps deciding. */
+    @Column(name = "auto_send_killed", nullable = false)
+    private Boolean autoSendKilled = false;
+
+    /** Graduation ramp override: N human-approved sends before autonomous; NULL = global default. */
+    @Column(name = "first_n")
+    private Integer firstN;
+
+    /** Holdout %: 0..100 of the audience enrolled but never messaged (for lift measurement). */
+    @Column(name = "holdout_pct", nullable = false)
+    private Integer holdoutPct = 0;
+
     @Column(name = "next_due_at")
     private Instant nextDueAt;
 

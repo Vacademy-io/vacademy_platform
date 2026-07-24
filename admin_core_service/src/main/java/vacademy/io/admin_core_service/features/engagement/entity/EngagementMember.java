@@ -66,6 +66,10 @@ public class EngagementMember {
     @Column(name = "consecutive_no_ops", nullable = false)
     private Short consecutiveNoOps = 0;
 
+    /** Separate from no-ops: transient call failures back off THIS, never the cadence counter. */
+    @Column(name = "consecutive_failures", nullable = false)
+    private Short consecutiveFailures = 0;
+
     /** Hash of QUANTIZED features (bands, never raw values — raw values change every tick for active users). */
     @Column(name = "wake_fingerprint", length = 64)
     private String wakeFingerprint;
@@ -73,6 +77,14 @@ public class EngagementMember {
     /** WhatsApp 24h free-form reply window (stamped by reply ingestion in 1b). */
     @Column(name = "window_open_until")
     private Instant windowOpenUntil;
+
+    /** Last inbound wamid the auto-reply has handled — the at-most-once dedup key for answering replies. */
+    @Column(name = "last_reply_wamid", length = 255)
+    private String lastReplyWamid;
+
+    /** Holdout cohort (Phase 2): enrolled but never messaged, for lift measurement. Set once at enroll. */
+    @Column(name = "is_holdout", nullable = false)
+    private Boolean isHoldout = false;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "memory_json", columnDefinition = "jsonb", nullable = false)

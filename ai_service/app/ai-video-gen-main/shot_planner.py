@@ -486,6 +486,7 @@ def build_shot_planner_user_prompt(
     ai_video_enabled: bool = False,
     ai_video_audio_enabled: bool = False,
     ai_video_cost_cap_usd: float = 1.50,
+    ai_video_per_clip_usd: float = 0.24,
     source_clip_available: bool = False,
     dialogue_scenes_enabled: bool = False,
     dialogue_mode: str = "storybook",
@@ -543,11 +544,41 @@ def build_shot_planner_user_prompt(
             if ai_video_audio_enabled
             else "Audio mode is OFF — do NOT set `ai_video_audio: true`."
         )
+        # Derive the REAL shot budget from the cap AND the selected model's
+        # per-clip cost — NOT a hardcoded lite price. Full Veo ($1.60/clip)
+        # funds ~7x fewer clips than lite ($0.24) for the same cap; hardcoding
+        # 0.24 would make the planner plan far more AI shots than the cap can
+        # fund, and the excess would silently demote to stock mid-video.
+        _per_clip = ai_video_per_clip_usd if ai_video_per_clip_usd and ai_video_per_clip_usd > 0 else 0.24
+        _ai_shot_budget = max(1, int(ai_video_cost_cap_usd / _per_clip))
         lines.append("")
-        lines.append(
-            f"AI_VIDEO_HERO IS ENABLED for this run. Cap: ${ai_video_cost_cap_usd:.2f} per "
-            f"video (typically 1-3 AI video shots). {audio_note}"
-        )
+        # AI_VIDEO_HERO has NO entry in this file's shot-type vocabulary —
+        # the only place its required fields (`ai_video_prompt`,
+        # `ai_video_duration_s` ∈ {4,6,8}, `video_query` fallback, ≥4s
+        # duration) are actually taught is the v2 Director block. Without
+        # it the planner emits AI_VIDEO_HERO shots missing those fields and
+        # the orchestrator demotes every one to IMAGE_HERO — i.e. the user
+        # opts in to AI footage and silently gets none. Reuse the block so
+        # both planners teach the identical contract.
+        try:
+            from director_prompts import build_ai_video_director_block
+            lines.append(build_ai_video_director_block(
+                enabled=True,
+                audio_enabled=bool(ai_video_audio_enabled),
+                cost_cap_usd=ai_video_cost_cap_usd,
+                shot_budget=_ai_shot_budget,
+            ))
+        except Exception:
+            # Fallback: state the hard contract inline rather than leaving
+            # the planner with no field spec at all.
+            lines.append(
+                f"AI_VIDEO_HERO IS ENABLED — budget ~{_ai_shot_budget} shot(s) "
+                f"(cap ${ai_video_cost_cap_usd:.2f}). REQUIRED per shot: "
+                "`ai_video_prompt` (vivid visual description, no in-frame text), "
+                "`ai_video_duration_s` ∈ {4,6,8}, `video_query` (stock fallback "
+                "terms), and duration_estimate_s ≥ 4.0."
+            )
+        lines.append(audio_note)
     else:
         lines.append("")
         lines.append(
@@ -1221,6 +1252,28 @@ def _check_dialogue_conformance(plan: Dict[str, Any], dialogue_mode: str = "stor
                 f"shot {idx}: {words} words of dialogue cannot fit one clip — cut to "
                 f"≤{_DIALOGUE_MAX_WORDS} words or split the scene into two continuous shots"
             )
+    # No line may appear in TWO scenes. When a longer exchange is split
+    # across continuous scenes, the planner/writer sometimes repeats the
+    # boundary line — the viewer hears the same words twice across the cut.
+    _seen_lines: Dict[str, Any] = {}
+    for s in dlg:
+        idx = s.get("shot_index")
+        for l in (s.get("dialogue") or []):
+            if not isinstance(l, dict):
+                continue
+            norm = re.sub(r"[^a-z0-9 ]", "", str(l.get("line") or "").lower()).strip()
+            if len(norm.split()) < 3:
+                continue  # short interjections ("yes", "okay") may repeat
+            if norm in _seen_lines and _seen_lines[norm] != idx:
+                issues.append(
+                    f"shots {_seen_lines[norm]} and {idx}: the line "
+                    f"\"{str(l.get('line'))[:60]}\" appears in BOTH scenes — every "
+                    "line must be spoken exactly once; continue the exchange with "
+                    "NEW words, never repeat across a cut"
+                )
+            else:
+                _seen_lines[norm] = idx
+
     if str(dialogue_mode or "").lower() == "drama" and len(dlg) >= 2:
         # Ends-on-despair detector: the arc must MOVE. Compare the beat_map
         # emotions covering the first and last dialogue scenes when available.
@@ -1404,6 +1457,7 @@ def plan_shots(
     ai_video_enabled: bool = False,
     ai_video_audio_enabled: bool = False,
     ai_video_cost_cap_usd: float = 1.50,
+    ai_video_per_clip_usd: float = 0.24,
     source_clip_available: bool = False,
     dialogue_scenes_enabled: bool = False,
     dialogue_mode: str = "storybook",
@@ -1473,6 +1527,7 @@ def plan_shots(
         ai_video_enabled=ai_video_enabled,
         ai_video_audio_enabled=ai_video_audio_enabled,
         ai_video_cost_cap_usd=ai_video_cost_cap_usd,
+        ai_video_per_clip_usd=ai_video_per_clip_usd,
         source_clip_available=source_clip_available,
         dialogue_scenes_enabled=dialogue_scenes_enabled,
         dialogue_mode=dialogue_mode,

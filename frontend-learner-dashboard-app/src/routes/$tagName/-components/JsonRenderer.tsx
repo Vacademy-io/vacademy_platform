@@ -34,6 +34,7 @@ import {
   Check,
 } from "@phosphor-icons/react";
 import { HeaderComponent } from "./components/HeaderComponent";
+import { HtmlBlockSection } from "./components/HtmlBlockSection";
 import { BannerComponent } from "./components/BannerComponent";
 import { CourseCatalogComponent } from "./components/CourseCatalogComponent";
 // Removed CourseRecommendationsComponent import as it's not used
@@ -271,11 +272,14 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         );
 
       case "htmlBlock":
+        // Sanitized + shadow-scoped custom HTML/CSS (see catalogue-html.ts) —
+        // never raw dangerouslySetInnerHTML: htmlBlock content can come from
+        // AI generation or admin paste and renders on the learner domain.
         return (
-          <div
+          <HtmlBlockSection
             key={id}
-            className="px-6 py-4"
-            dangerouslySetInnerHTML={{ __html: (props.html as string) || "" }}
+            html={props.html as string}
+            css={props.css as string}
           />
         );
 

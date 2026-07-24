@@ -497,6 +497,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                                 hideInstituteName={brandingDisplay.hideInstituteName}
                                 logoWidthPx={brandingDisplay.logoWidthPx}
                                 logoHeightPx={brandingDisplay.logoHeightPx}
+                                stackNameBelowLogo={brandingDisplay.stackNameBelowLogo}
                             />
                         </div>
                     </TooltipProvider>
@@ -540,6 +541,7 @@ export const MySidebar = ({ sidebarComponent }: { sidebarComponent?: React.React
                         hideInstituteName={brandingDisplay.hideInstituteName}
                         logoWidthPx={brandingDisplay.logoWidthPx}
                         logoHeightPx={brandingDisplay.logoHeightPx}
+                        stackNameBelowLogo={brandingDisplay.stackNameBelowLogo}
                     />
                 </TooltipProvider>
             </SidebarContent>

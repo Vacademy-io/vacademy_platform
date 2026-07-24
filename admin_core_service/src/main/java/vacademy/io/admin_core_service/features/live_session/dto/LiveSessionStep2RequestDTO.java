@@ -87,6 +87,13 @@ public class LiveSessionStep2RequestDTO {
     private Boolean requireEmailVerification;
     private Boolean requirePhoneVerification;
 
+    /**
+     * Optional "auto-add recordings to course" config. Omitting this field on
+     * update leaves the stored config unchanged; sending {"enabled": false, ...}
+     * disables auto-linking. See RecordingAutoLinkConfigDTO.
+     */
+    private RecordingAutoLinkConfigDTO recordingAutoLinkConfig;
+
     @Data
     @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
     public static class NotificationActionDTO {

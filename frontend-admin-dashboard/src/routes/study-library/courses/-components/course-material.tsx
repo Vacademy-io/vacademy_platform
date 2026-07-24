@@ -13,6 +13,7 @@ import type { LevelType } from '@/schemas/student/student-list/institute-schema'
 // import { handleGetInstituteUsersForAccessControl } from '@/routes/dashboard/-services/dashboard-services';
 import { useQuery } from '@tanstack/react-query';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import { compareByNameNatural } from '@/lib/utils';
 import { useFacultyCreatorsList } from '@/routes/dashboard/-hooks/useTeacherList';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
@@ -289,10 +290,14 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
 
     const levels = useMemo(() => {
         return (
-            instituteDetails?.levels?.map((level: LevelType) => ({
-                id: level.id,
-                name: level.level_name,
-            })) || []
+            instituteDetails?.levels
+                ?.map((level: LevelType) => ({
+                    id: level.id,
+                    name: level.level_name,
+                }))
+                // Natural sort so levels read as Class 6, 7, 8 … then
+                // non-numeric names, instead of the store's arbitrary order.
+                .sort(compareByNameNatural) || []
         );
     }, [instituteDetails]);
 

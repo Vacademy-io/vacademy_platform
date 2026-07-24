@@ -32,6 +32,20 @@ export interface ContentLinkDestination {
 export type SlideStatus = 'PUBLISHED' | 'DRAFT';
 export type ContentLinkPosition = 'TOP' | 'BOTTOM';
 
+/**
+ * Step 2 "auto-add recordings to course" config — stored verbatim on the
+ * session (recording_auto_link_json) and echoed back in session-detail for
+ * edit prefill. See docs/LIVE_SESSION_RECORDING_AUTO_LINK_PLAN.md.
+ * Destinations reuse ContentLinkDestination; position is not configurable
+ * here (backend always appends, position=BOTTOM).
+ */
+export interface RecordingAutoLinkConfig {
+    enabled: boolean;
+    slide_status: SlideStatus;
+    notify: boolean;
+    destinations: ContentLinkDestination[];
+}
+
 export interface LinkSessionContentRequest {
     session_id: string;
     schedule_id?: string;

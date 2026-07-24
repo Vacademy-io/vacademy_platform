@@ -11,6 +11,10 @@ export interface StartAiCampaignRequest {
     campaignId?: string;
     /** Optional chosen caller-ID number id; blank ⇒ provider default. */
     preferredNumberId?: string;
+    /** Optional: call ONLY these audience responses (the checked rows). */
+    responseIds?: string[];
+    /** Calls in parallel (1..3). 1 = strictly one at a time, next starts when one ends. */
+    parallel?: number;
 }
 
 export interface StartAiCampaignResult {
@@ -34,7 +38,10 @@ export const startAiCallCampaign = async (
 ): Promise<StartAiCampaignResult> => {
     const { data } = await authenticatedAxiosInstance.post<StartAiCampaignResult>(
         TELEPHONY_AI_CALL_CAMPAIGN(req.audienceId),
-        null,
+        {
+            responseIds: req.responseIds?.length ? req.responseIds : undefined,
+            parallel: req.parallel,
+        },
         {
             params: {
                 instituteId: req.instituteId,
@@ -45,4 +52,27 @@ export const startAiCallCampaign = async (
         }
     );
     return data;
+};
+
+export interface AiCampaignCallStatus {
+    callLogId: string;
+    responseId: string;
+    /** CallStatus name: INITIATED/QUEUED/COUNSELLOR_RINGING/ANSWERED/IN_PROGRESS/COMPLETED/NO_ANSWER/BUSY/FAILED/CANCELLED */
+    status: string;
+    durationSeconds: number | null;
+    createdAt: string | null;
+    disposition: string | null;
+}
+
+/** Live per-lead statuses for the campaign progress dialog (poll every few seconds). */
+export const fetchAiCampaignStatus = async (
+    audienceId: string,
+    instituteId: string,
+    sinceEpochMs: number
+): Promise<AiCampaignCallStatus[]> => {
+    const { data } = await authenticatedAxiosInstance.get<AiCampaignCallStatus[]>(
+        `${TELEPHONY_AI_CALL_CAMPAIGN(audienceId)}/status`,
+        { params: { instituteId, sinceEpochMs } }
+    );
+    return data ?? [];
 };

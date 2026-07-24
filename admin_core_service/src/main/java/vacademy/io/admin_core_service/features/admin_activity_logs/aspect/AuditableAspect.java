@@ -214,6 +214,18 @@ public class AuditableAspect {
         Object beforeRaw = before == null ? null : before.raw();
         String beforeJson = before == null ? null : before.json();
 
+        if (!passesCondition(auditable, signature, args, user, result, beforeRaw)) {
+            return null;
+        }
+
+        String action = resolveAction(auditable, signature, args, user, result, beforeRaw);
+        if (action == null) {
+            // `action` is NOT NULL — a row without one would fail the insert.
+            logger.warn("Skipping audit for {} — actionExpr '{}' yielded nothing and no static action() fallback",
+                    signature.toShortString(), auditable.actionExpr());
+            return null;
+        }
+
         String entityId = spelEvaluator.evaluateString(
                 auditable.entityIdExpr(), signature, args, user, result, beforeRaw);
         String description = spelEvaluator.evaluateString(
@@ -228,7 +240,7 @@ public class AuditableAspect {
                 .actorEmail(snapshot.getActorEmail())
                 .entityType(auditable.entityType())
                 .entityId(entityId)
-                .action(auditable.action())
+                .action(action)
                 .httpMethod(snapshot.getHttpMethod())
                 .endpoint(truncate(snapshot.getEndpoint(), 512))
                 .description(description)
@@ -239,6 +251,47 @@ public class AuditableAspect {
                 .responseStatus(200) // We're past proceed() — exception path doesn't reach here
                 .responseTimeMs(elapsedMs)
                 .build();
+    }
+
+    /**
+     * Resolves the row's action: {@code actionExpr} first, falling back to the
+     * static {@code action()}. Returns null when neither yields a value, which
+     * tells the caller to skip the row rather than fail the insert.
+     */
+    private String resolveAction(Auditable auditable,
+            MethodSignature signature,
+            Object[] args,
+            CustomUserDetails user,
+            Object result,
+            Object beforeRaw) {
+        if (auditable.actionExpr() != null && !auditable.actionExpr().isBlank()) {
+            String resolved = spelEvaluator.evaluateString(
+                    auditable.actionExpr(), signature, args, user, result, beforeRaw);
+            if (resolved != null && !resolved.isBlank()) {
+                return truncate(resolved.trim(), 64);
+            }
+        }
+        String fallback = auditable.action();
+        return fallback == null || fallback.isBlank() ? null : fallback;
+    }
+
+    /**
+     * A blank {@code conditionExpr} means "always audit". Otherwise the row is
+     * written only on an explicit true — a null (failed eval) skips, so we never
+     * record an action we are not sure happened.
+     */
+    private boolean passesCondition(Auditable auditable,
+            MethodSignature signature,
+            Object[] args,
+            CustomUserDetails user,
+            Object result,
+            Object beforeRaw) {
+        if (auditable.conditionExpr() == null || auditable.conditionExpr().isBlank()) {
+            return true;
+        }
+        Object value = spelEvaluator.evaluateObject(
+                auditable.conditionExpr(), signature, args, user, result, beforeRaw);
+        return Boolean.TRUE.equals(value);
     }
 
     private String serializePayload(Auditable auditable, String httpMethod, Object[] args) {

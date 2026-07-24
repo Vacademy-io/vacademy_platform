@@ -25,6 +25,13 @@ public class ComplexPaymentOptionDTO {
     private String status;
     private String createdBy;
     private String approvedBy;
+    /**
+     * When true, learners who enroll via this CPO land in PENDING_FOR_APPROVAL and an
+     * admin must approve them before they get course access. Mirrored onto the CPO's
+     * PaymentOption row (payment_option.require_approval). Nullable so update calls that
+     * omit it leave the existing value untouched.
+     */
+    private Boolean requireApproval;
     private List<FeeTypeDTO> feeTypes;
 
     @Builder.Default

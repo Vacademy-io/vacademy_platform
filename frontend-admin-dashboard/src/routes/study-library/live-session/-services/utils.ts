@@ -23,6 +23,7 @@ import {
     RECORDING_LIST_ASSESSMENTS,
 } from '@/constants/urls';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import type { RecordingAutoLinkConfig } from './content-link-service';
 
 export interface LiveSession {
     session_id: string;
@@ -135,6 +136,8 @@ export interface Schedule {
     meeting_date: string | null;
     timezone?: string;
     package_session_ids: string[];
+    /** Auto-add-recordings-to-course config, echoed back for edit-mode prefill. Null/absent when never configured. */
+    recording_auto_link_config?: RecordingAutoLinkConfig | null;
     package_session_details?: Array<{
         package_session_id: string;
         package_name: string;

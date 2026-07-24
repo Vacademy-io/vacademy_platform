@@ -118,10 +118,16 @@ export const updateHeading = async (
                 document_slide: {
                     id: activeItem?.document_slide?.id || '',
                     type: activeItem?.document_slide?.type || '',
-                    data:
-                        activeItem.status == 'PUBLISHED'
-                            ? activeItem.document_slide?.published_data || null
-                            : activeItem.document_slide?.data || null,
+                    // A rename must NOT carry content. This used to send the STORE's copy
+                    // of the slide (never the live editor's), which meant renaming while
+                    // you had unsaved edits silently reverted them — and made the rename
+                    // one more writer that could persist a stale/collapsed document.
+                    // null is safe: handleDraft/handleUnsyncDocumentSlide only write
+                    // `data` when it is non-null (SlideService.java), while the title is
+                    // applied from the DTO regardless. Status stays UNSYNC/DRAFT as
+                    // before, so this never reaches handlePublishedDocumentSlide (which
+                    // WOULD republish `data` when published_data is null).
+                    data: null,
                     title: heading,
                     cover_file_id: activeItem.document_slide?.cover_file_id || '',
                     total_pages: activeItem?.document_slide?.total_pages || 0,

@@ -50,6 +50,32 @@ export interface SelectedQuestionPaperFilters {
     evaluation_types: MyFilterOption[];
 }
 
+// Per-tab request flags/status — shared by the full-list fetch and the
+// lightweight count-only fetch so both stay in lockstep.
+const TAB_CONFIGS = {
+    liveTests: { get_live: true, get_passed: false, get_upcoming: false, status: 'PUBLISHED' },
+    upcomingTests: { get_live: false, get_passed: false, get_upcoming: true, status: 'PUBLISHED' },
+    previousTests: { get_live: false, get_passed: true, get_upcoming: false, status: 'PUBLISHED' },
+    draftTests: { get_live: false, get_passed: false, get_upcoming: false, status: 'DRAFT' },
+} satisfies Record<
+    string,
+    { get_live: boolean; get_passed: boolean; get_upcoming: boolean; status: string }
+>;
+
+const TAB_VALUES = ['liveTests', 'upcomingTests', 'previousTests', 'draftTests'] as const;
+
+// Overlay the per-tab flags/status onto a shared filter payload.
+const buildTabData = (baseData: SelectedQuestionPaperFilters, tabValue: string) => {
+    const config = TAB_CONFIGS[tabValue as keyof typeof TAB_CONFIGS] ?? TAB_CONFIGS.liveTests;
+    return {
+        ...baseData,
+        get_live_assessments: config.get_live,
+        get_passed_assessments: config.get_passed,
+        get_upcoming_assessments: config.get_upcoming,
+        assessment_statuses: [{ id: '0', name: config.status }],
+    };
+};
+
 const SafeRouteSearch = () => {
     try {
         return Route.useSearch();
@@ -164,6 +190,35 @@ export const ScheduleTestMainComponent = ({
     const [pageNo, setPageNo] = useState(0);
     const [isLoading, setIsLoading] = useState(false);
 
+    // Tab badge counts kept independent of the (lazily loaded) per-tab list data,
+    // so every tab shows its real count on first paint — not 0 until opened.
+    // null = not fetched yet.
+    const [tabCounts, setTabCounts] = useState<Record<string, number | null>>({
+        liveTests: null,
+        upcomingTests: null,
+        previousTests: null,
+        draftTests: null,
+    });
+
+    // Count-only fetch (pageSize=1): we only read total_elements, so this stays
+    // cheap and runs in the background without gating the page loader.
+    const fetchTabCount = async (tabValue: string, dataForTab: SelectedQuestionPaperFilters) => {
+        try {
+            const data = await getAssessmentListWithFilters(0, 1, INSTITUTE_ID, dataForTab);
+            setTabCounts((prev) => ({ ...prev, [tabValue]: data?.total_elements ?? 0 }));
+        } catch (error) {
+            console.error('Failed to fetch count for', tabValue, error);
+        }
+    };
+
+    // Refresh all four badge counts in parallel from a shared filter payload
+    // (search text + selected filters), so badges reflect the current filters.
+    const refreshAllTabCounts = (baseData: SelectedQuestionPaperFilters) => {
+        TAB_VALUES.forEach((tabValue) =>
+            fetchTabCount(tabValue, buildTabData(baseData, tabValue))
+        );
+    };
+
     const handleFilterChange = (filterKey: string, selectedItems: MyFilterOption[]) => {
         setSelectedQuestionPaperFilters((prev) => {
             const updatedFilters = { ...prev, [filterKey]: selectedItems };
@@ -192,6 +247,7 @@ export const ScheduleTestMainComponent = ({
                 name: '',
             },
         });
+        refreshAllTabCounts({ ...selectedQuestionPaperFilters, name: '' });
     };
 
     const handleSearch = (searchValue: string) => {
@@ -214,6 +270,10 @@ export const ScheduleTestMainComponent = ({
                 name: [{ id: searchValue, name: searchValue }],
             },
         });
+        refreshAllTabCounts({
+            ...selectedQuestionPaperFilters,
+            name: [{ id: searchValue, name: searchValue }],
+        });
     };
 
     const handleResetFilters = () => {
@@ -233,30 +293,38 @@ export const ScheduleTestMainComponent = ({
             evaluation_types: [],
         });
         setSearchText('');
+        const resetBaseData: SelectedQuestionPaperFilters = {
+            name: '',
+            batch_ids: isCourseOutline && batchId ? [{ id: batchId, name: '' }] : [],
+            subjects_ids: [],
+            tag_ids: [],
+            get_live_assessments: false,
+            get_passed_assessments: false,
+            get_upcoming_assessments: false,
+            institute_ids: [initData?.id || ''],
+            evaluation_types: [],
+            assessment_statuses: [],
+            assessment_modes: [],
+            access_statuses: [],
+        };
         getFilteredData.mutate({
             pageNo: pageNo,
             pageSize: 10,
             instituteId: INSTITUTE_ID,
             data: {
-                name: '',
-                batch_ids: [],
-                subjects_ids: [],
-                tag_ids: [],
+                ...resetBaseData,
                 get_live_assessments: selectedTab === 'liveTests' ? true : false,
                 get_passed_assessments: selectedTab === 'previousTests' ? true : false,
                 get_upcoming_assessments: selectedTab === 'upcomingTests' ? true : false,
-                institute_ids: [initData?.id || ''],
-                evaluation_types: [],
                 assessment_statuses: [
                     {
                         id: '0',
                         name: selectedTab === 'draftTests' ? 'DRAFT' : 'PUBLISHED',
                     },
                 ],
-                assessment_modes: [],
-                access_statuses: [],
             },
         });
+        refreshAllTabCounts(resetBaseData);
     };
 
     const getFilteredData = useMutation({
@@ -272,6 +340,8 @@ export const ScheduleTestMainComponent = ({
             data: SelectedQuestionPaperFilters;
         }) => getAssessmentListWithFilters(pageNo, pageSize, instituteId, data),
         onSuccess: (data) => {
+            // Keep the active tab's badge in sync with the freshly loaded list.
+            setTabCounts((prev) => ({ ...prev, [selectedTab]: data?.total_elements ?? 0 }));
             if (selectedTab === 'liveTests') {
                 setScheduleTestTabsData((prevTabs) =>
                     prevTabs.map((tab) =>
@@ -321,6 +391,8 @@ export const ScheduleTestMainComponent = ({
                 ],
             },
         });
+        // Filters apply to every tab — refresh all badge counts, not just the open one.
+        refreshAllTabCounts(selectedQuestionPaperFilters);
     };
 
     const handleRefetchData = () => {
@@ -363,6 +435,7 @@ export const ScheduleTestMainComponent = ({
                         tab.value === selectedTab ? { ...tab, data: data } : tab
                     )
                 );
+                setTabCounts((prev) => ({ ...prev, [selectedTab]: data?.total_elements ?? 0 }));
                 setIsLoading(false);
             })
             .catch((error) => {
@@ -424,6 +497,7 @@ export const ScheduleTestMainComponent = ({
                     tab.value === tabValue ? { ...tab, data: data } : tab
                 )
             );
+            setTabCounts((prev) => ({ ...prev, [tabValue]: data?.total_elements ?? 0 }));
             setLoadedTabs((prev) => new Set([...prev, tabValue]));
         });
     }, [pageNo, INSTITUTE_ID, getBaseFilters]);
@@ -441,7 +515,9 @@ export const ScheduleTestMainComponent = ({
         }
     }, [loadedTabs, fetchTabData]);
 
-    // Initial fetch - only load the default tab
+    // Initial fetch - load the selected tab's full list (gates the page loader),
+    // and fetch every tab's badge count in the background so all counts show up
+    // front without waiting for each tab to be opened.
     useEffect(() => {
         setIsLoading(true);
 
@@ -449,6 +525,8 @@ export const ScheduleTestMainComponent = ({
         fetchTabData(selectedTab)
             .catch((error) => console.error(error))
             .finally(() => setIsLoading(false));
+
+        refreshAllTabCounts(getBaseFilters());
     }, [isCourseOutline, batchId]);
 
     useEffect(() => {
@@ -493,6 +571,7 @@ export const ScheduleTestMainComponent = ({
                     <ScheduleTestTabList
                         selectedTab={selectedTab}
                         scheduleTestTabsData={scheduleTestTabsData}
+                        tabCounts={tabCounts}
                     />
                     <div className="my-4 flex flex-col gap-3 sm:my-6 sm:gap-4">
                         {/* Filters Row - scrollable on mobile */}

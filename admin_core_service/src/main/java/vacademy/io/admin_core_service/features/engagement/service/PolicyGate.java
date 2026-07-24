@@ -72,68 +72,51 @@ public class PolicyGate {
 
     /**
      * Clamp a proposed action time out of quiet hours. Correctness matters here: an off-by-one
-     * on the window sends outreach at 2 AM. Modelled as a QUIET interval on a 24-hour clock in
-     * the institute's timezone (default 21:00→08:00, wrapping midnight). The engine may only
-     * WIDEN the quiet interval (= tighten the send window); a narrower engine quiet interval is
-     * ignored, and the engine cannot swap the timezone (that would shift the whole floor).
-     * Replies are exempt (D10) — but Phase 1a creates tasks only, which respect the floor.
+     * sends outreach at 2 AM. The institute floor (default 21:00→08:00, wrapping midnight) is
+     * ALWAYS enforced; the engine's own quiet_hours can only ADD more quiet time, never remove
+     * the floor — modelled as: a minute is blocked if it is floor-quiet OR engine-quiet (union).
+     * The engine cannot move the floor's timezone. Replies are exempt (D10), but Phase 1a
+     * creates tasks only, which respect the floor.
      */
     public Instant clampToAllowedWindow(EngagementEngine engine, Instant proposed) {
-        // Floor timezone is pinned — the engine cannot move it.
-        ZoneId zone = ZoneId.of(quietTimezone);
-
-        // Quiet interval as [startMin, endMin) minutes-of-day, allowed to wrap past midnight.
+        ZoneId zone = ZoneId.of(quietTimezone);              // pinned — engine cannot move it
         int floorStart = quietStartHour * 60;
         int floorEnd = quietEndHour * 60;
 
-        int start = floorStart;
-        int end = floorEnd;
+        Integer engStart = null, engEnd = null;
         try {
             JsonNode qh = objectMapper.readTree(engine.getQuietHours());
             if (qh.hasNonNull("startHour") && qh.hasNonNull("endHour")) {
                 int es = qh.get("startHour").asInt() * 60;
                 int ee = qh.get("endHour").asInt() * 60;
-                // Widen quiet = union of the two intervals. On the wrapping floor (start>end),
-                // only accept an engine interval that extends it: an earlier start OR a later end
-                // still on the same wrap. Simplest safe rule: take the widest quiet that still
-                // contains the floor — earliest start, latest end (both measured on the wrap).
-                if (floorStart > floorEnd) {                 // wrapping floor (the default 21→8)
-                    start = Math.min(start, normalizeStart(es, ee, floorStart));
-                    end = Math.max(end, normalizeEnd(es, ee, floorEnd));
+                // Ignore a degenerate/empty engine interval (start==end would be a no-op that
+                // could otherwise be read as "disable" — the floor stays regardless).
+                if (es != ee && es >= 0 && es < 1440 && ee >= 0 && ee < 1440) {
+                    engStart = es;
+                    engEnd = ee;
                 }
             }
         } catch (Exception ignored) {
-            // unparseable engine quiet hours → institute floor applies
+            // unparseable engine quiet hours → institute floor alone applies
         }
 
         ZonedDateTime t = proposed.atZone(zone);
-        int minute = t.getHour() * 60 + t.getMinute();
-        boolean inQuiet = start > end
-                ? (minute >= start || minute < end)          // wraps midnight
-                : (minute >= start && minute < end);          // same-day
-        if (!inQuiet) return proposed;
-
-        // Next allowed instant = the quiet interval's END. If end is "earlier in the clock" than
-        // now (i.e. we're in the pre-midnight part of a wrapping window), roll to tomorrow.
-        int endHour = end / 60;
-        int endMin = end % 60;
-        ZonedDateTime candidate = t.withHour(endHour).withMinute(endMin).withSecond(0).withNano(0);
-        if (!candidate.isAfter(t)) candidate = candidate.plusDays(1);
-        return candidate.toInstant();
+        // Walk forward in 15-min steps to the first minute that is neither floor- nor engine-quiet.
+        // Bounded to 24h of steps; the floor+engine union can never cover a full day (floor is
+        // 11h and the engine interval is ignored if it equals a full wrap), so a slot always exists.
+        for (int i = 0; i <= 96; i++) {
+            ZonedDateTime candidate = t.plusMinutes(15L * i).withSecond(0).withNano(0);
+            int minute = candidate.getHour() * 60 + candidate.getMinute();
+            if (!inInterval(minute, floorStart, floorEnd)
+                    && (engStart == null || !inInterval(minute, engStart, engEnd))) {
+                return candidate.toInstant();
+            }
+        }
+        return t.toInstant(); // unreachable in practice; fail open rather than loop
     }
 
-    /** Widen-only: an engine start earlier than the floor start (on the wrap) tightens the send window. */
-    private static int normalizeStart(int engStart, int engEnd, int floorStart) {
-        // Only honor an engine start that begins the quiet period EARLIER in the evening
-        // (>= noon, before the floor's start), i.e. it makes quiet start sooner.
-        if (engStart >= 12 * 60 && engStart < floorStart) return engStart;
-        return floorStart;
-    }
-
-    /** Widen-only: an engine end later than the floor end (on the wrap) tightens the send window. */
-    private static int normalizeEnd(int engStart, int engEnd, int floorEnd) {
-        // Only honor an engine end that keeps quiet LATER in the morning (<= noon, after floor end).
-        if (engEnd <= 12 * 60 && engEnd > floorEnd) return engEnd;
-        return floorEnd;
+    /** [start, end) minutes-of-day membership, wrapping past midnight when start > end. */
+    private static boolean inInterval(int minute, int start, int end) {
+        return start > end ? (minute >= start || minute < end) : (minute >= start && minute < end);
     }
 }

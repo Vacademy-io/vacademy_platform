@@ -36,6 +36,8 @@ import { Route as DashboardIndexRouteImport } from './routes/dashboard/index'
 import { Route as CoursesIndexRouteImport } from './routes/courses/index'
 import { Route as ChatIndexRouteImport } from './routes/chat/index'
 import { Route as ChangePasswordIndexRouteImport } from './routes/change-password/index'
+import { Route as BookingResponseIndexRouteImport } from './routes/booking-response/index'
+import { Route as BookingManageIndexRouteImport } from './routes/booking-manage/index'
 import { Route as AuthTransferIndexRouteImport } from './routes/auth-transfer/index'
 import { Route as AudienceResponseIndexRouteImport } from './routes/audience-response/index'
 import { Route as AssessmentIndexRouteImport } from './routes/assessment/index'
@@ -244,6 +246,16 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
 const ChangePasswordIndexRoute = ChangePasswordIndexRouteImport.update({
   id: '/change-password/',
   path: '/change-password/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BookingResponseIndexRoute = BookingResponseIndexRouteImport.update({
+  id: '/booking-response/',
+  path: '/booking-response/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BookingManageIndexRoute = BookingManageIndexRouteImport.update({
+  id: '/booking-manage/',
+  path: '/booking-manage/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthTransferIndexRoute = AuthTransferIndexRouteImport.update({
@@ -668,6 +680,8 @@ export interface FileRoutesByFullPath {
   '/assessment': typeof AssessmentIndexRoute
   '/audience-response': typeof AudienceResponseIndexRoute
   '/auth-transfer': typeof AuthTransferIndexRoute
+  '/booking-manage': typeof BookingManageIndexRoute
+  '/booking-response': typeof BookingResponseIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
   '/chat': typeof ChatIndexRoute
   '/courses': typeof CoursesIndexRoute
@@ -769,6 +783,8 @@ export interface FileRoutesByTo {
   '/assessment': typeof AssessmentIndexRoute
   '/audience-response': typeof AudienceResponseIndexRoute
   '/auth-transfer': typeof AuthTransferIndexRoute
+  '/booking-manage': typeof BookingManageIndexRoute
+  '/booking-response': typeof BookingResponseIndexRoute
   '/change-password': typeof ChangePasswordIndexRoute
   '/chat': typeof ChatIndexRoute
   '/courses': typeof CoursesIndexRoute
@@ -871,6 +887,8 @@ export interface FileRoutesById {
   '/assessment/': typeof AssessmentIndexRoute
   '/audience-response/': typeof AudienceResponseIndexRoute
   '/auth-transfer/': typeof AuthTransferIndexRoute
+  '/booking-manage/': typeof BookingManageIndexRoute
+  '/booking-response/': typeof BookingResponseIndexRoute
   '/change-password/': typeof ChangePasswordIndexRoute
   '/chat/': typeof ChatIndexRoute
   '/courses/': typeof CoursesIndexRoute
@@ -975,6 +993,8 @@ export interface FileRouteTypes {
     | '/assessment'
     | '/audience-response'
     | '/auth-transfer'
+    | '/booking-manage'
+    | '/booking-response'
     | '/change-password'
     | '/chat'
     | '/courses'
@@ -1076,6 +1096,8 @@ export interface FileRouteTypes {
     | '/assessment'
     | '/audience-response'
     | '/auth-transfer'
+    | '/booking-manage'
+    | '/booking-response'
     | '/change-password'
     | '/chat'
     | '/courses'
@@ -1177,6 +1199,8 @@ export interface FileRouteTypes {
     | '/assessment/'
     | '/audience-response/'
     | '/auth-transfer/'
+    | '/booking-manage/'
+    | '/booking-response/'
     | '/change-password/'
     | '/chat/'
     | '/courses/'
@@ -1280,6 +1304,8 @@ export interface RootRouteChildren {
   AssessmentIndexRoute: typeof AssessmentIndexRoute
   AudienceResponseIndexRoute: typeof AudienceResponseIndexRoute
   AuthTransferIndexRoute: typeof AuthTransferIndexRoute
+  BookingManageIndexRoute: typeof BookingManageIndexRoute
+  BookingResponseIndexRoute: typeof BookingResponseIndexRoute
   ChangePasswordIndexRoute: typeof ChangePasswordIndexRoute
   ChatIndexRoute: typeof ChatIndexRoute
   CoursesIndexRoute: typeof CoursesIndexRoute
@@ -1552,6 +1578,20 @@ declare module '@tanstack/react-router' {
       path: '/change-password'
       fullPath: '/change-password'
       preLoaderRoute: typeof ChangePasswordIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/booking-response/': {
+      id: '/booking-response/'
+      path: '/booking-response'
+      fullPath: '/booking-response'
+      preLoaderRoute: typeof BookingResponseIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/booking-manage/': {
+      id: '/booking-manage/'
+      path: '/booking-manage'
+      fullPath: '/booking-manage'
+      preLoaderRoute: typeof BookingManageIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth-transfer/': {
@@ -2120,6 +2160,8 @@ const rootRouteChildren: RootRouteChildren = {
   AssessmentIndexRoute: AssessmentIndexRoute,
   AudienceResponseIndexRoute: AudienceResponseIndexRoute,
   AuthTransferIndexRoute: AuthTransferIndexRoute,
+  BookingManageIndexRoute: BookingManageIndexRoute,
+  BookingResponseIndexRoute: BookingResponseIndexRoute,
   ChangePasswordIndexRoute: ChangePasswordIndexRoute,
   ChatIndexRoute: ChatIndexRoute,
   CoursesIndexRoute: CoursesIndexRoute,

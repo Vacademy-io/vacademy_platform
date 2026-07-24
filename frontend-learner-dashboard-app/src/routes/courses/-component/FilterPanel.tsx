@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { useCatalogStore } from "../-store/catalogStore";
 import { ContentTerms, RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { getTerminology, getTerminologyPlural } from "@/components/common/layout-container/sidebar/utils";
-import { toTitleCase } from "@/lib/utils";
+import { toTitleCase, compareByNameNatural } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Funnel, CaretDown, CaretUp } from "@phosphor-icons/react";
 
@@ -123,10 +123,13 @@ const FilterPanel: React.FC<FilterPanelProps> = ({
     selectedInstructors.length > 0;
 
   //   eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const levels = (instituteData?.levels || []).map((level: any) => ({
-    id: level.id,
-    name: toTitleCase(level.level_name || `Unnamed ${getTerminology(ContentTerms.Level, SystemTerms.Level)}`),
-  }));
+  const levels = (instituteData?.levels || [])
+    .map((level: any) => ({
+      id: level.id,
+      name: toTitleCase(level.level_name || `Unnamed ${getTerminology(ContentTerms.Level, SystemTerms.Level)}`),
+    }))
+    // Natural sort so levels read as Class 6, 7, 8 … then non-numeric names.
+    .sort(compareByNameNatural);
 
   const tags = useMemo(() => {
     const uniqueNormalizedTags = new Set<string>();

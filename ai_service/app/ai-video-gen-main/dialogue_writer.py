@@ -94,6 +94,9 @@ def polish_dialogue(
         "- Per line add `emotion` (2-4 words of acting direction, e.g. 'weary, "
         "self-mocking') and `pause_after_ms` (a natural beat AFTER the line, "
         "0-800; 0 for the last line of a scene).\n"
+        "- NEVER repeat a line or sentence across scenes — each thought is "
+        "spoken exactly once in the whole film. When an exchange continues "
+        "into the next scene, it continues with NEW words.\n"
         f"\nTONE: {str(cc.get('tonal_register') or 'warm, human')[:120]}\n"
         f"STORY: {str(base_prompt or '')[:800]}\n"
         f"CAST:\n{cast_txt}\n"
@@ -120,6 +123,15 @@ def polish_dialogue(
     }
     known = {str(c.get("name") or "").strip().lower() for c in cast}
     polished = 0
+    # Cross-scene dedup guard: no line may be spoken in two scenes. A split
+    # exchange sometimes repeats its boundary line — the viewer hears the
+    # same words twice across the cut. Track normalized lines across ALL
+    # accepted scenes; a rewrite that duplicates one keeps the original.
+    _accepted_lines: set = set()
+
+    def _norm_line(txt: str) -> str:
+        return re.sub(r"[^a-z0-9 ]", "", txt.lower()).strip()
+
     for s in shots:
         new = by_index.get(s.get("shot_index"))
         if not isinstance(new, list) or not new:
@@ -146,6 +158,15 @@ def polish_dialogue(
                 "pause_after_ms": pause,
             })
         if clean and _scene_words(clean) <= MAX_SCENE_WORDS:
+            _norms = [
+                _norm_line(l["line"]) for l in clean
+                if len(_norm_line(l["line"]).split()) >= 3
+            ]
+            if any(n in _accepted_lines for n in _norms):
+                # Rewrite repeats a line from an earlier scene — keep the
+                # original scene (writer must never make things worse).
+                continue
+            _accepted_lines.update(_norms)
             s["dialogue"] = clean
             polished += 1
     if polished:

@@ -120,7 +120,8 @@ public class DomainRoutingService {
                 .commaSeparatedPreferredCountry(mapping.getCommaSeparatedPreferredCountry())
                 .hideInstituteName(mapping.getHideInstituteName())
                 .logoWidthPx(mapping.getLogoWidthPx())
-                .logoHeightPx(mapping.getLogoHeightPx());
+                .logoHeightPx(mapping.getLogoHeightPx())
+                .stackNameBelowLogo(mapping.getStackNameBelowLogo());
 
         if (institute != null) {
             responseBuilder.instituteId(institute.getId())
@@ -129,6 +130,21 @@ public class DomainRoutingService {
                     .instituteThemeCode(institute.getInstituteThemeCode())
                     .learnerPortalUrl(institute.getLearnerPortalBaseUrl())
                     .instructorPortalUrl(institute.getAdminPortalBaseUrl());
+
+            // Font: the domain routing row's fontFamily is the legacy per-domain
+            // white-label override. The current way institutes pick a font is
+            // Settings > Appearance, which writes THEME_SETTING.data.roles.fontFamily
+            // on the institute record. Custom-domain learners resolve their branding
+            // ONLY through this endpoint pre-login (institute_settings_json is fetched
+            // post-login), so without this fallback the Appearance-tab font never
+            // reaches them and the learner keeps the default typeface. The per-domain
+            // override, when present, still wins.
+            if (!StringUtils.hasText(mapping.getFontFamily())) {
+                String themeFont = extractThemeFontFamily(institute.getSetting());
+                if (StringUtils.hasText(themeFont)) {
+                    responseBuilder.fontFamily(themeFont);
+                }
+            }
 
             // Opt-in per domain routing row so the JSON parse only runs for
             // tenants that actually need custom terminology on pre-login screens.
@@ -157,6 +173,30 @@ public class DomainRoutingService {
         }
 
         return Optional.of(responseBuilder.build());
+    }
+
+    /**
+     * Pull THEME_SETTING.data.roles.fontFamily out of the institute setting JSON —
+     * the font an institute picks in Settings > Appearance. Returns null when the
+     * setting is absent or malformed so callers fall back to the default typeface.
+     */
+    private String extractThemeFontFamily(String settingJson) {
+        if (!StringUtils.hasText(settingJson)) {
+            return null;
+        }
+        try {
+            JsonNode root = NAMING_OBJECT_MAPPER.readTree(settingJson);
+            String fontFamily = root.path("setting")
+                    .path(SettingKeyEnums.THEME_SETTING.name())
+                    .path("data")
+                    .path("roles")
+                    .path("fontFamily")
+                    .asText(null);
+            return StringUtils.hasText(fontFamily) ? fontFamily : null;
+        } catch (Exception e) {
+            log.warn("Failed to parse THEME_SETTING for domain routing response", e);
+            return null;
+        }
     }
 
     private NamingOverridesDto extractNamingOverrides(String settingJson) {

@@ -24,6 +24,7 @@ export interface NamingSettingsRequest {
     AudienceList?: string;
     Invite?: string;
     Inventory?: string;
+    SubOrg?: string;
     // Plural variants are sent as {key}_plural
     [key: string]: string | undefined;
 }

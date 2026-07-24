@@ -1,5 +1,6 @@
 package vacademy.io.admin_core_service.features.slide.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.databind.PropertyNamingStrategy;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import lombok.Data;
@@ -28,5 +29,8 @@ public class SlideDTO {
     private AssessmentSlideDTO assessmentSlide;
     private Boolean isLoaded = false;
     private String parentId;
+    // DB native query emits this under key 'drip_condition'; alias lets Jackson map it
+    // while the response still serializes as 'drip_condition_json' (SnakeCaseStrategy).
+    @JsonAlias("drip_condition")
     private String dripConditionJson;
 }

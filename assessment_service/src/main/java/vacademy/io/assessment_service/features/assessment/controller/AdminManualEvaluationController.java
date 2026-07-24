@@ -11,6 +11,9 @@ import vacademy.io.assessment_service.features.assessment.dto.manual_evaluation.
 import vacademy.io.assessment_service.features.assessment.manager.AdminManualEvaluationManager;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
+import java.util.List;
+import java.util.Map;
+
 import static vacademy.io.common.core.constants.PageConstants.DEFAULT_PAGE_NUMBER;
 import static vacademy.io.common.core.constants.PageConstants.DEFAULT_PAGE_SIZE;
 
@@ -42,6 +45,14 @@ public class AdminManualEvaluationController {
                                                         @RequestParam("attemptId") String attemptId,
                                                         @RequestParam("fileId") String fileId) {
         return adminManualEvaluationManager.updateAttemptResponse(userDetails, attemptId, fileId);
+    }
+
+    // Batch lookup for the submissions table: attemptId -> answer-sheet fileId (only
+    // attempts that actually have a submitted file appear in the map).
+    @PostMapping("/attempts/file-status")
+    public ResponseEntity<Map<String, String>> getAttemptsFileStatus(@RequestAttribute("user") CustomUserDetails userDetails,
+                                                                     @RequestBody List<String> attemptIds) {
+        return adminManualEvaluationManager.getAttemptsFileStatus(userDetails, attemptIds);
     }
 
     @GetMapping("/get/attempt-data")

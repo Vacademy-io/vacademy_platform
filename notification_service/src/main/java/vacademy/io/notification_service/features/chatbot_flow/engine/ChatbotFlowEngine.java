@@ -615,6 +615,9 @@ public class ChatbotFlowEngine {
             outLog.setSenderBusinessChannelId(context.getBusinessChannelId());
             outLog.setNotificationDate(Instant.now());
             outLog.setUserId(context.getUserId());
+            // Stamp institute_id so this outgoing bot message is visible in the WA Inbox
+            // conversation view, which filters rows by institute_id.
+            outLog.setInstituteId(context.getInstituteId());
 
             notificationLogRepository.save(outLog);
         } catch (Exception e) {

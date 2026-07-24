@@ -313,6 +313,7 @@ public class WhiteLabelService {
                         .hideInstituteName(r.getHideInstituteName())
                         .logoWidthPx(r.getLogoWidthPx())
                         .logoHeightPx(r.getLogoHeightPx())
+                        .stackNameBelowLogo(r.getStackNameBelowLogo())
                         .build())
                 .collect(Collectors.toList());
 
@@ -578,6 +579,7 @@ public class WhiteLabelService {
             r.setHideInstituteName(cfg.getHideInstituteName());
             r.setLogoWidthPx(cfg.getLogoWidthPx());
             r.setLogoHeightPx(cfg.getLogoHeightPx());
+            r.setStackNameBelowLogo(cfg.getStackNameBelowLogo());
         } else {
             r.setAllowUsernamePasswordAuth(true);
             r.setConvertUsernamePasswordToLowercase(false);

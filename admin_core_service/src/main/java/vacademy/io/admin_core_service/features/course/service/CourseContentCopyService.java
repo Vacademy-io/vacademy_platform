@@ -600,6 +600,13 @@ public class CourseContentCopyService {
         List<ChapterToSlides> sourceLinks = chapterToSlidesRepository.findByChapterId(sourceChapter.getId());
         if (sourceLinks == null || sourceLinks.isEmpty()) return;
 
+        // Sort into the rendered order (slide_order, then slide.created_at DESC) and
+        // stamp a fresh sequential slide_order below, so the clone preserves the
+        // source's visible order. Clones share one batch-insert created_at, so without
+        // a unique slide_order a slide_order=0 chapter would copy in arbitrary order.
+        sourceLinks = new ArrayList<>(sourceLinks);
+        sourceLinks.sort(SlideService.renderOrderComparator());
+
         // First persist the new Slide rows (so they're managed) without source ids.
         List<Slide> newSlides = new ArrayList<>(sourceLinks.size());
         for (ChapterToSlides link : sourceLinks) {
@@ -621,8 +628,10 @@ public class CourseContentCopyService {
             newSlide.setSourceId(newSourceId);
 
             slideIdMap.put(oldSlide.getId(), newSlide.getId());
+            // slide_order = position in the sorted (rendered) order so the clone is
+            // deterministic and preserves the source's visible slide order.
             newLinks.add(new ChapterToSlides(newChapter, newSlide,
-                    oldLink.getSlideOrder(), oldLink.getStatus()));
+                    i, oldLink.getStatus()));
         }
         slideRepository.saveAll(persistedSlides);
         chapterToSlidesRepository.saveAll(newLinks);

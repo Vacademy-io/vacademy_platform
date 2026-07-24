@@ -263,16 +263,19 @@ public class DoubtsManager {
 
         Doubts savedDoubt = doubtService.updateOrCreateDoubt(doubts);
         List<String> finalAssigneeIds = new ArrayList<>();
-        try {
-            if (savedDoubt.getParentId() == null) {
-                // Seed the assignee list via per-type routing (DOUBT_MANAGEMENT_SETTING.queryTypes):
-                // each type may route to subject/batch teacher, a role, or specific staff. Types with
-                // no config fall back to the global defaultAssigneeSource cascade. In every faculty
-                // path the institute admin is the safety net so the doubt is never silently dropped.
+        if (savedDoubt.getParentId() == null) {
+            // Resolve the assignee list via per-type routing (DOUBT_MANAGEMENT_SETTING.queryTypes):
+            // each type may route to subject/batch teacher, a role, or specific staff. Types with no
+            // config fall back to the global defaultAssigneeSource cascade. Resolution is best-effort:
+            // a transient failure here (e.g. slide-metadata / faculty lookup) must NOT leave the doubt
+            // with zero recipients — that silently drops BOTH the email and the bell alert. We fall
+            // back to the institute admin below so every raised doubt notifies at least one person.
+            Set<String> assigneeIds = new LinkedHashSet<>();
+            boolean resolutionFailed = false;
+            try {
                 String subjectId = resolveSubjectIdForDoubt(savedDoubt);
                 DoubtManagementSettingDataDto setting = loadDoubtManagementSettingByInstitute(instituteId);
-                Set<String> assigneeIds = new LinkedHashSet<>(resolveAssigneesForDoubt(
-                        savedDoubt, subjectId, instituteId, setting));
+                assigneeIds.addAll(resolveAssigneesForDoubt(savedDoubt, subjectId, instituteId, setting));
                 // Overlay any explicit ids the client asked for (e.g. admin picked someone from
                 // the dropdown at creation time).
                 if (request.getDoubtAssigneeRequestUserIds() != null) {
@@ -280,17 +283,33 @@ public class DoubtsManager {
                             .filter(id -> id != null && !id.isEmpty())
                             .forEach(assigneeIds::add);
                 }
-                if (!assigneeIds.isEmpty()) {
-                    createDoubtsAssignee(savedDoubt, new ArrayList<>(assigneeIds));
-                }
-                finalAssigneeIds.addAll(assigneeIds);
+            } catch (Exception e) {
+                resolutionFailed = true;
+                log.error("Failed to resolve doubt assignees for doubt {}: {}", savedDoubt.getId(), e.getMessage());
             }
-        } catch (Exception e) {
-            log.error("Failed To Save Doubt Assignee: {}", e.getMessage());
+            // Safety net: if assignee routing *threw* before returning, fall back to the institute
+            // admin(s) so a transient failure (slide-metadata / faculty lookup) never silently drops
+            // the raise notification — no email AND no bell. A deliberate empty result (e.g. per-type
+            // NONE routing = manual triage from the admin inbox) is respected: we only backfill when
+            // resolution errored out, since the faculty cascade already appends the admin fallback on
+            // its own genuinely-empty results.
+            if (resolutionFailed && assigneeIds.isEmpty() && instituteId != null) {
+                assigneeIds.addAll(resolveAdminFallback(instituteId));
+            }
+            // Persist the assignee rows best-effort. A transient save failure must not drop the
+            // notification — we keep the resolved ids and still notify below.
+            if (!assigneeIds.isEmpty()) {
+                try {
+                    createDoubtsAssignee(savedDoubt, new ArrayList<>(assigneeIds));
+                } catch (Exception e) {
+                    log.error("Failed to persist doubt assignees for doubt {}: {}", savedDoubt.getId(), e.getMessage());
+                }
+            }
+            finalAssigneeIds.addAll(assigneeIds);
         }
 
-        // Fire "doubt raised" notifications after the assignees are persisted. Only for top-level
-        // doubts (not replies) and only when we have at least one assignee to notify. Notification
+        // Fire "doubt raised" notifications after the assignees are resolved. Only for top-level
+        // doubts (not replies) and only when we have at least one recipient to notify. Notification
         // failures are swallowed inside the service and must not affect the doubt creation response.
         if (savedDoubt.getParentId() == null && !finalAssigneeIds.isEmpty() && instituteId != null) {
             doubtNotificationService.notifyDoubtRaised(savedDoubt, finalAssigneeIds, instituteId);
@@ -538,9 +557,19 @@ public class DoubtsManager {
     private String resolveSubjectIdForDoubt(Doubts doubt) {
         if (!DoubtsSourceEnum.SLIDE.name().equals(doubt.getSource())) return null;
         if (doubt.getSourceId() == null || doubt.getSourceId().isEmpty()) return null;
-        Optional<SlideMetadataProjection> projection =
-                slideMetaDataService.getSlideMetadataForAdmin(doubt.getSourceId());
-        return projection.map(SlideMetadataProjection::getSubjectId).orElse(null);
+        try {
+            Optional<SlideMetadataProjection> projection =
+                    slideMetaDataService.getSlideMetadataForAdmin(doubt.getSourceId());
+            return projection.map(SlideMetadataProjection::getSubjectId).orElse(null);
+        } catch (Exception e) {
+            // The subject is only needed for SUBJECT_TEACHER routing. A transient/duplicate-mapping
+            // failure in the slide-metadata lookup must not propagate and abort the whole assignee
+            // resolution (which would leave the doubt with no recipient, hence no notification) —
+            // degrade to "no subject narrowing" so the batch-teacher / admin cascade still runs.
+            log.warn("Failed to resolve subject for doubt {} (slide {}): {}",
+                    doubt.getId(), doubt.getSourceId(), e.getMessage());
+            return null;
+        }
     }
 
     private String updateDoubt(String doubtId, DoubtsDto request) {

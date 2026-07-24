@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearch } from '@tanstack/react-router';
 import { ContactListRequest } from '../-types/contact-types';
+import { decodeSelectionToEntries } from '@/components/shared/leads/custom-field-filter-encoding';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
 export const useContactFilters = () => {
@@ -103,6 +104,20 @@ export const useContactFilters = () => {
         // When filtering by specific audience, only show audience respondents
         const hasAudienceFilter = audienceIds && audienceIds.length > 0;
 
+        // Custom-field filters live in columnFilters under `cf:<custom_field_id>`
+        // (set by the multi-select / range dropdowns in the filter bar). Sentinel
+        // values (contains / empty / ranges) decode into operator entries; plain
+        // values stay an IN entry. The backend ANDs across entries and matches
+        // either the contact's learner answer or any of their lead answers.
+        const customFieldFilters = filters
+            .filter((f) => f.id.startsWith('cf:') && f.value.length > 0)
+            .flatMap((f) =>
+                decodeSelectionToEntries(
+                    f.id.slice(3),
+                    f.value.map((v) => v.id)
+                )
+            );
+
         return {
             include_institute_users: hasAudienceFilter ? false : includeInst,
             include_audience_respondents: includeAud,
@@ -113,6 +128,7 @@ export const useContactFilters = () => {
             statuses: statuses && statuses.length > 0 ? statuses : undefined,
             package_session_ids: packageSessionIds && packageSessionIds.length > 0 ? packageSessionIds : undefined,
             campaign_filter: audienceIds && audienceIds.length > 0 ? { audience_ids: audienceIds } : {},
+            custom_field_filters: customFieldFilters.length > 0 ? customFieldFilters : undefined,
             page: 0,
         };
     };

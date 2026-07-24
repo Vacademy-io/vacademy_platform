@@ -1,7 +1,5 @@
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
-import { getInstituteId } from '@/constants/helper';
-import { hasFacultyAssignedPermission } from '@/lib/auth/facultyAccessUtils';
-'use client';
+('use client');
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from '@tanstack/react-router';
@@ -20,6 +18,7 @@ import { convertPptToPdf } from './-components/slides-sidebar/add-ppt-dialog';
 import { useReplaceBase64ImagesWithNetworkUrls } from '@/utils/helpers/study-library-helpers.ts/slides/replaceBase64ToNetworkUrl';
 import { convertHtmlToPdf } from './-helper/helper';
 import { formatHTMLString } from './-components/slide-operations/formatHtmlString';
+import { EMPTY_LEXICAL_INNER } from './-components/lexical-editor/lexical-doc-marker';
 import {
     Plus,
     YoutubeLogo,
@@ -39,11 +38,7 @@ import {
     CircleNotch,
     DotsSixVertical,
 } from '@phosphor-icons/react';
-import {
-    ADMIN_DISPLAY_SETTINGS_KEY,
-    TEACHER_DISPLAY_SETTINGS_KEY, CUSTOM_ROLE_DISPLAY_SETTINGS_KEY,
-    type DisplaySettingsData,
-} from '@/types/display-settings';
+import { type DisplaySettingsData } from '@/types/display-settings';
 import { getDisplaySettings, getDisplaySettingsFromCache } from '@/services/display-settings';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -124,14 +119,7 @@ export function QuickAddView({ search }: { search: ChapterSearchParamsForQuickAd
 
     const [roleDisplay, setRoleDisplay] = useState<DisplaySettingsData | null>(null);
     useEffect(() => {
-        const accessToken = getTokenFromCookie(TokenKey.accessToken);
-        const roles = getTokenDecodedData(accessToken);
-        const instituteId = roles && Object.keys(roles.authorities)[0];
-        const isAdmin = instituteId
-            ? roles.authorities[instituteId]?.roles?.includes('ADMIN')
-            : false;
-        const hasFaculty = hasFacultyAssignedPermission(getInstituteId());
-    const roleKey = getActiveRoleDisplaySettingsKey();
+        const roleKey = getActiveRoleDisplaySettingsKey();
         const cached = getDisplaySettingsFromCache(roleKey);
         if (cached) {
             setRoleDisplay(cached);
@@ -828,7 +816,9 @@ export function QuickAddView({ search }: { search: ChapterSearchParamsForQuickAd
                     });
                     createdIds.push(resp || id);
                 } else if (item.kind === 'EMPTY_DOC') {
-                    const yooptaHtml = formatHTMLString('');
+                    // Blank docs are created for the Lexical editor (marker-routed);
+                    // uploaded/converted docs below stay marker-less → legacy editor.
+                    const yooptaHtml = formatHTMLString(EMPTY_LEXICAL_INNER);
                     const normalized = normalizeHtmlQuotes(yooptaHtml);
                     const { totalPages } = await convertHtmlToPdf(normalized);
                     const id = crypto.randomUUID();

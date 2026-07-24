@@ -153,6 +153,88 @@ def _strip(slide_xml_bytes, remove_ids):
     return etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
 
 
+def _slide_size(unzipped):
+    """(cx, cy) of a slide in EMU, from ppt/presentation.xml. Defaults to 16:9."""
+    try:
+        pres = etree.parse(os.path.join(unzipped, "ppt", "presentation.xml")).getroot()
+        sz = pres.find("p:sldSz", NS)
+        if sz is not None:
+            return int(sz.get("cx")), int(sz.get("cy"))
+    except Exception:  # noqa: BLE001
+        pass
+    return 12192000, 6858000
+
+
+def _slide_rels(slide_path):
+    """rId -> Target map for one slide part."""
+    rels_path = os.path.join(
+        os.path.dirname(slide_path), "_rels", os.path.basename(slide_path) + ".rels"
+    )
+    if not os.path.exists(rels_path):
+        return {}
+    root = etree.parse(rels_path).getroot()
+    return {r.get("Id"): r.get("Target") for r in root.findall(f"{{{REL}}}Relationship")}
+
+
+def _is_animated_gif(path):
+    try:
+        from PIL import Image
+
+        with Image.open(path) as im:
+            return bool(getattr(im, "is_animated", False)) and getattr(im, "n_frames", 1) > 1
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _gif_overlays(slide_path, sld_cx, sld_cy):
+    """Animated-GIF pictures on a slide, as fractional-rect overlays.
+
+    LibreOffice bakes a GIF's FIRST FRAME into the PDF (neither PDF nor PNG can
+    animate), so the player re-overlays the real .gif on top of the snapshot at
+    the same rect — the baked frame underneath doubles as the fallback.
+
+    Only TOP-LEVEL <p:pic> with an explicit xfrm is handled; a picture nested in a
+    group (or inheriting a placeholder's geometry) would need full transform
+    composition, so those are left as the baked still rather than mis-positioned.
+    """
+    root = etree.parse(slide_path).getroot()
+    tree = root.find(".//p:cSld/p:spTree", NS)
+    if tree is None:
+        return []
+    rels = _slide_rels(slide_path)
+    out = []
+    for pic in tree.findall("p:pic", NS):  # direct children only
+        blip = pic.find(".//a:blip", NS)
+        if blip is None:
+            continue
+        target = rels.get(blip.get(f"{{{R}}}embed") or "")
+        if not target or not target.lower().endswith(".gif"):
+            continue
+        media_path = os.path.normpath(
+            os.path.join(os.path.dirname(slide_path), target.replace("\\", "/"))
+        )
+        if not os.path.exists(media_path) or not _is_animated_gif(media_path):
+            continue
+        xfrm = pic.find("p:spPr/a:xfrm", NS)
+        if xfrm is None:
+            continue
+        off, ext = xfrm.find("a:off", NS), xfrm.find("a:ext", NS)
+        if off is None or ext is None:
+            continue
+        sid = _shape_id(pic)
+        if not sid:
+            continue
+        out.append({
+            "id": sid,
+            "media": media_path,
+            "x": int(off.get("x")) / sld_cx,
+            "y": int(off.get("y")) / sld_cy,
+            "w": int(ext.get("cx")) / sld_cx,
+            "h": int(ext.get("cy")) / sld_cy,
+        })
+    return out
+
+
 def _build_plan(unzipped):
     """Return (plan, steps_per_slide).
 
@@ -347,16 +429,51 @@ def convert(pptx_path, out_dir, dpi=110, image_subdir="images"):
             f"page/plan mismatch: {len(pages)} images vs {len(plan)} planned steps"
         )
 
-    # group images back into original slides
-    slides, idx = [], 0
-    for count in steps_per_slide:
+    # Animated GIFs: collect per slide + copy the media next to the snapshots.
+    sld_cx, sld_cy = _slide_size(unzipped)
+    media_subdir = "media"
+    gifs_by_slide = {}
+    for i, sp in enumerate(_slide_paths(unzipped)):
+        found = _gif_overlays(sp, sld_cx, sld_cy)
+        if not found:
+            continue
+        for g in found:
+            name = os.path.basename(g["media"])
+            dest_dir = os.path.join(out_dir, media_subdir)
+            os.makedirs(dest_dir, exist_ok=True)
+            shutil.copyfile(g["media"], os.path.join(dest_dir, name))
+            g["url"] = f"{media_subdir}/{name}"
+        gifs_by_slide[i] = found
+
+    # group images (and each step's visible GIF overlays) back into original slides
+    slides, overlays, idx = [], [], 0
+    for si, count in enumerate(steps_per_slide):
         group = [
             f"{image_subdir}/{os.path.basename(pages[idx + k])}" for k in range(count)
         ]
         slides.append(group)
+        # A GIF is visible at step k when its shape isn't in that step's hidden set,
+        # so an animated GIF revealed by a build step only appears from that step on.
+        step_overlays = []
+        for k in range(count):
+            hidden = plan[idx + k][1]
+            step_overlays.append([
+                {"url": g["url"], "x": g["x"], "y": g["y"], "w": g["w"], "h": g["h"]}
+                for g in gifs_by_slide.get(si, [])
+                if g["id"] not in hidden
+            ])
+        overlays.append(step_overlays)
         idx += count
 
-    manifest = {"slides": slides, "steps_per_slide": steps_per_slide}
+    manifest = {
+        "slides": slides,
+        "steps_per_slide": steps_per_slide,
+        # Real slide ratio so the player can size the stage exactly (4:3 decks too)
+        # — overlay rects are fractions of the slide, so the box must match.
+        "aspect": {"w": sld_cx, "h": sld_cy},
+    }
+    if any(any(s) for s in overlays):
+        manifest["overlays"] = overlays
     with open(os.path.join(out_dir, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=2)
 
@@ -396,6 +513,12 @@ def convert_deck_to_s3(pptx_url, deck_id, dpi=110, progress_cb=None):
         for done, png in enumerate(pngs, start=1):
             s3.upload(png, f"{prefix}/images/{png.name}", content_type="image/png")
             _p(70 + int(25 * done / total))
+
+        # Animated GIFs the player re-overlays on top of the snapshots.
+        media_dir = out / "media"
+        if media_dir.is_dir():
+            for gif in sorted(media_dir.glob("*")):
+                s3.upload(gif, f"{prefix}/media/{gif.name}", content_type="image/gif")
 
         manifest_url = s3.upload(
             out / "manifest.json",

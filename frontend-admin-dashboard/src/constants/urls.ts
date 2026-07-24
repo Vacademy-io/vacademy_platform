@@ -187,6 +187,9 @@ export const TELEPHONY_CALL_EVENTS = (callLogId: string) =>
 /** Intelligence for a single call, keyed by the universal call_log id. */
 export const CALL_INTELLIGENCE_BY_CALL = (callLogId: string) =>
     `${BASE_URL}/admin-core-service/call-intelligence/call/${encodeURIComponent(callLogId)}`;
+/** Full transcript (source language + English) for a single call. */
+export const CALL_INTELLIGENCE_TRANSCRIPT = (callLogId: string) =>
+    `${BASE_URL}/admin-core-service/call-intelligence/call/${encodeURIComponent(callLogId)}/transcript`;
 /** Trigger on-demand (re)analysis for a single call. */
 export const CALL_INTELLIGENCE_ANALYZE = (callLogId: string) =>
     `${BASE_URL}/admin-core-service/call-intelligence/call/${encodeURIComponent(callLogId)}/analyze`;
@@ -403,6 +406,7 @@ export const BATCHES_SUMMARY = `${BASE_URL}/admin-core-service/institute/v1/batc
 export const ADMIN_DETAILS_URL = `${BASE_URL}/auth-service/v1/user-details/get`;
 export const GET_STUDENTS = `${BASE_URL}/admin-core-service/institute/institute_learner/get/v2/all`;
 export const GET_CONTACTS_LIST = `${BASE_URL}/admin-core-service/v1/audience/distinct-institute-users-and-audience`;
+export const GET_CONTACT_CUSTOM_FIELD_VALUES = `${BASE_URL}/admin-core-service/v1/audience/contact-custom-field-values`;
 export const GET_ASSESSMENT_DETAILS = `${BASE_URL}/assessment-service/assessment/create/v1/status`;
 export const GET_STUDENTS_CSV = `${BASE_URL}/admin-core-service/institute/institute_learner/get/v1/all-csv`;
 
@@ -468,6 +472,7 @@ export const GET_EXPORT_CSV_URL_RESPONDENT_LIST = `${BASE_URL}/assessment-servic
 export const GET_EXPORT_PDF_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/pdf/registered-participants`;
 export const GET_EXPORT_CSV_URL_SUBMISSIONS_LIST = `${BASE_URL}/assessment-service/assessment/export/csv/registered-participants`;
 export const GET_QUESTIONS_INSIGHTS_URL = `${BASE_URL}/assessment-service/assessment/admin/get-question-insights`;
+// LOCAL TESTING: submission_status filter only exists on the local build — revert to BASE_URL before merging.
 export const GET_ADMIN_PARTICIPANTS = `${BASE_URL}/assessment-service/assessment/admin-participants/all/registered-participants`;
 export const GET_PARTICIPANT_REGISTRATION_DETAILS = `${BASE_URL}/assessment-service/assessment/admin-participants/registration-details`;
 export const GET_PARTICIPANTS_QUESTION_WISE = `${BASE_URL}/assessment-service/assessment/admin-participants/all/respondent-list`;
@@ -652,7 +657,11 @@ export const UPDATE_INVITE_LINK_STATUS = `${BASE_URL}/admin-core-service/learner
 export const UPDATE_INVITATION = `${BASE_URL}/admin-core-service/learner-invitation/update`;
 export const ENROLL_REQUESTS = `${BASE_URL}/admin-core-service/learner-invitation/invitation-responses`;
 
+// LOCAL TESTING: manual-evaluation endpoints pointed at the local assessment
+// service — revert to BASE_URL before merging.
 export const GET_ATTEMPT_DATA = `${BASE_URL}/assessment-service/assessment/manual-evaluation/get/attempt-data`;
+// Batch lookup: attemptId -> submitted answer-sheet fileId for the submissions table badge.
+export const GET_ATTEMPTS_FILE_STATUS = `${BASE_URL}/assessment-service/assessment/manual-evaluation/attempts/file-status`;
 export const UPDATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/manual-evaluation/update/attempt`;
 export const SUBMIT_MARKS = `${BASE_URL}/assessment-service/assessment/manual-evaluation/submit/marks`;
 // Server-side "save draft": pause manual evaluation and resume it later from any device.
@@ -1033,6 +1042,7 @@ export const SUB_ORG_REGISTRATION_TEMPLATE_DETAIL = (templateId: string) =>
 export const SUB_ORG_REGISTRATION_TEMPLATE_UPDATE = (templateId: string) =>
     `${SUB_ORG_REGISTRATION_BASE}/template/${templateId}`;
 export const SUB_ORG_REGISTRATION_REGISTRATIONS = `${SUB_ORG_REGISTRATION_BASE}/registrations`;
+export const SUB_ORG_REGISTRATION_REGISTRATION_FACETS = `${SUB_ORG_REGISTRATION_BASE}/registrations/facets`;
 // Invoices
 export const GET_INVOICES_BY_USER = (userId: string) =>
     `${BASE_URL}/admin-core-service/v1/invoices/user/${userId}`;
@@ -1114,6 +1124,9 @@ export const AI_PAGE_BUILDER_EDIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v
 export const AI_PAGE_BUILDER_BRAND_KIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/brand-kit`;
 export const AI_PAGE_BUILDER_IMAGE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/image`;
 export const AI_PAGE_BUILDER_SITE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site`;
+// Course field AI assist (ai_service) — inline generate on the Add Course form
+export const AI_COURSE_ASSIST_TEXT = () => `${AI_SERVICE_BASE_URL}/course/assist/v1/text`;
+export const AI_COURSE_ASSIST_IMAGE = () => `${AI_SERVICE_BASE_URL}/course/assist/v1/image`;
 
 export const LINK_COUNSELLOR = `${BASE_URL}/admin-core-service/enquiry/link-counselor`;
 export const GET_ENQUIRY_DETAILS = `${BASE_URL}/admin-core-service/enquiry/v1/admin/details`;
@@ -1140,11 +1153,23 @@ export const BOOKING_TYPES_BY_INSTITUTE = `${BOOKING_BASE}/types/by-institute`;
 // Autosuggest Users API
 export const AUTOSUGGEST_USERS = `${BASE_URL}/auth-service/v1/user/autosuggest-users`;
 
+// CRM Meetings (booking pages + host calendars)
+export const MEETINGS_BASE = `${BASE_URL}/admin-core-service/v1/meetings`;
+export const MEETINGS_BOOKING_PAGE_CREATE = `${MEETINGS_BASE}/booking-page`;
+export const MEETINGS_BOOKING_PAGE_BY_ID = (id: string) => `${MEETINGS_BASE}/booking-page/${id}`;
+export const MEETINGS_BOOKING_PAGES_LIST = `${MEETINGS_BASE}/booking-pages`;
+export const MEETINGS_BOOK = `${MEETINGS_BASE}/book`;
+export const MEETINGS_MY_CALENDAR = `${MEETINGS_BASE}/my-calendar`;
+export const MEETINGS_TEAM_CALENDAR = `${MEETINGS_BASE}/team-calendar`;
+export const MEETINGS_SCOPE = `${MEETINGS_BASE}/scope`;
+export const MEETINGS_BY_LEAD = `${MEETINGS_BASE}/by-lead`;
+
 // Manage Custom Teams / Faculty Access v2
 export const GRANT_USER_ACCESS = `${BASE_URL}/admin-core-service/institute/v1/faculty/user-access`;
 export const GET_ALL_FACULTY_V2 = `${BASE_URL}/admin-core-service/institute/v1/faculty/faculty/get-all`;
 export const CREATE_SUB_ORG = `${BASE_URL}/admin-core-service/institute/v1/sub-org/create`;
 export const GET_SUB_ORGS = `${BASE_URL}/admin-core-service/institute/v1/sub-org/get-all`;
+export const GET_SUB_ORGS_WITH_DETAILS = `${BASE_URL}/admin-core-service/institute/v1/sub-org/get-all-with-details`;
 export const CREATE_SUB_ORG_WITH_SUBSCRIPTION = `${BASE_URL}/admin-core-service/institute/v1/sub-org/create-with-subscription`;
 export const GET_SUB_ORG_SCOPED_INVITES = `${BASE_URL}/admin-core-service/institute/v1/sub-org/scoped-invites`;
 export const GET_SUB_ORG_SEAT_USAGE = `${BASE_URL}/admin-core-service/institute/v1/sub-org/seat-usage`;
@@ -1496,3 +1521,9 @@ export const SALES_DASHBOARD_LEADERBOARD = (
     `${SALES_DASHBOARD_BASE}/counsellor-leaderboard?${buildSdQS(instituteId, { team_id: teamId, limit })}`;
 export const SALES_DASHBOARD_INSIGHTS = (instituteId: string, teamId?: string) =>
     `${SALES_DASHBOARD_BASE}/insights?${buildSdQS(instituteId, { team_id: teamId })}`;
+
+// ---- Engagement Engines (admin-core-service) ----
+export const ENGAGEMENT_ENGINES_BASE = `${BASE_URL}/admin-core-service/v1/engagement/engines`;
+export const ENGAGEMENT_DATA_POINTS = `${ENGAGEMENT_ENGINES_BASE}/data-points`;
+export const ENGAGEMENT_TASKS_BASE = `${BASE_URL}/admin-core-service/v1/engagement/tasks`;
+export const ENGAGEMENT_TEMPLATES_BASE = `${BASE_URL}/admin-core-service/v1/engagement/template-proposals`;

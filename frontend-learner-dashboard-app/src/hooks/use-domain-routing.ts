@@ -30,6 +30,7 @@ export interface DomainRoutingState {
   hideInstituteName: boolean | null;
   logoWidthPx: number | null;
   logoHeightPx: number | null;
+  stackNameBelowLogo: boolean | null;
 }
 
 // Global state to prevent multiple simultaneous domain routing calls
@@ -63,6 +64,7 @@ export const useDomainRouting = () => {
       hideInstituteName: null,
       logoWidthPx: null,
       logoHeightPx: null,
+      stackNameBelowLogo: null,
     };
   });
 
@@ -110,6 +112,10 @@ export const useDomainRouting = () => {
           typeof data.logoWidthPx === "number" ? data.logoWidthPx : null,
         logoHeightPx:
           typeof data.logoHeightPx === "number" ? data.logoHeightPx : null,
+        stackNameBelowLogo:
+          typeof data.stackNameBelowLogo === "boolean"
+            ? data.stackNameBelowLogo
+            : null,
       });
 
       // Store per-institute learner settings for quick access
@@ -208,6 +214,10 @@ export const useDomainRouting = () => {
           typeof data.logoWidthPx === "number" ? data.logoWidthPx : null,
         logoHeightPx:
           typeof data.logoHeightPx === "number" ? data.logoHeightPx : null,
+        stackNameBelowLogo:
+          typeof data.stackNameBelowLogo === "boolean"
+            ? data.stackNameBelowLogo
+            : null,
       });
 
       // Cache preferred countries for synchronous access by phone inputs
@@ -310,6 +320,10 @@ export const useDomainRouting = () => {
             typeof apiResult.logoHeightPx === "number"
               ? apiResult.logoHeightPx
               : null,
+          stackNameBelowLogo:
+            typeof apiResult.stackNameBelowLogo === "boolean"
+              ? apiResult.stackNameBelowLogo
+              : null,
         };
 
         // Cache the result globally
@@ -338,6 +352,7 @@ export const useDomainRouting = () => {
           hideInstituteName: null,
           logoWidthPx: null,
           logoHeightPx: null,
+          stackNameBelowLogo: null,
         };
 
         globalDomainRoutingState = newState;

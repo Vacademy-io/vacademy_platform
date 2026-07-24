@@ -6,6 +6,7 @@ import {
     SUB_ORG_REGISTRATION_TEMPLATE_DETAIL,
     SUB_ORG_REGISTRATION_TEMPLATE_UPDATE,
     SUB_ORG_REGISTRATION_REGISTRATIONS,
+    SUB_ORG_REGISTRATION_REGISTRATION_FACETS,
 } from '@/constants/urls';
 
 /**
@@ -153,10 +154,90 @@ export interface SubOrgRegistrationRow {
     admin_name?: string | null;
     admin_email?: string | null;
     admin_phone?: string | null;
+    /** Collected only when the template had "Collect full address" on; null otherwise. */
+    city?: string | null;
+    state?: string | null;
+    pincode?: string | null;
+    /** Seats of the spawned sub-org — null until the registration spawns one.
+     *  used = active learner members; total = the template's member_count cap. */
+    used_seats?: number | null;
+    total_seats?: number | null;
     spawned_sub_org_id?: string | null;
     created_at?: string | number | null;
     /** PENDING | VERIFIED | CONSENT_DENIED | EXPIRED | FAILED; null = not started / not required. */
     kyc_status?: string | null;
+}
+
+/** Optional filters + 0-based page for the registrations listing. */
+export interface ListTemplateRegistrationsParams {
+    templateInviteId: string;
+    instituteId: string;
+    page?: number;
+    size?: number;
+    /** Match any of the selected cities (exact, case-insensitive). Empty/undefined = no filter. */
+    cities?: string[];
+    /** Match any of the selected states. */
+    states?: string[];
+    /** Match any of the selected pincodes. */
+    pincodes?: string[];
+    /**
+     * Per-custom-field filters: custom_field id → selected values. A registration must
+     * match at least one selected value for EACH field with a non-empty selection.
+     */
+    customFieldFilters?: Record<string, string[]>;
+    /** Exact registration status (DRAFT | OTP_VERIFIED | PENDING_PAYMENT | COMPLETED | FAILED). */
+    status?: string;
+    /** Free-text search across org name / admin name / admin email. */
+    search?: string;
+}
+
+/** One filterable custom field + the distinct values its registrants submitted. */
+export interface CustomFieldFacet {
+    id: string;
+    label: string;
+    values: string[];
+}
+
+/** Distinct values present in a template's registrations — drive the listing filters. */
+export interface RegistrationFacets {
+    cities: string[];
+    states: string[];
+    pincodes: string[];
+    /** One entry per form-collected custom field worth filtering on. */
+    customFields: CustomFieldFacet[];
+}
+
+/** Drop blank entries; return undefined when nothing is selected so the param is omitted. */
+const cleanList = (values?: string[]): string[] | undefined => {
+    if (!values) return undefined;
+    const cleaned = values.map((v) => v.trim()).filter(Boolean);
+    return cleaned.length ? cleaned : undefined;
+};
+
+/** Flatten {fieldId: [v1, v2]} into ["fieldId:v1", "fieldId:v2"] for repeated `customField` params. */
+const encodeCustomFieldFilters = (
+    filters?: Record<string, string[]>
+): string[] | undefined => {
+    if (!filters) return undefined;
+    const pairs: string[] = [];
+    Object.entries(filters).forEach(([fieldId, values]) => {
+        (values || []).forEach((value) => {
+            const v = value?.trim();
+            if (fieldId && v) pairs.push(`${fieldId}:${v}`);
+        });
+    });
+    return pairs.length ? pairs : undefined;
+};
+
+/** Raw Spring Page<> passthrough (camelCase wrapper, snake_case rows). */
+export interface SubOrgRegistrationPage {
+    content: SubOrgRegistrationRow[];
+    total_pages: number;
+    total_elements: number;
+    /** 0-based current page. */
+    page_no: number;
+    page_size: number;
+    last: boolean;
 }
 
 export const createRegistrationTemplate = async (
@@ -227,14 +308,99 @@ export const updateRegistrationTemplateStatus = async (
     return response.data;
 };
 
-export const listTemplateRegistrations = async (
+export const getRegistrationFacets = async (
     templateInviteId: string,
     instituteId: string
-): Promise<SubOrgRegistrationRow[]> => {
+): Promise<RegistrationFacets> => {
+    const response = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: SUB_ORG_REGISTRATION_REGISTRATION_FACETS,
+        params: { templateInviteId, instituteId },
+    });
+    const data = response.data ?? {};
+    return {
+        cities: Array.isArray(data.cities) ? data.cities : [],
+        states: Array.isArray(data.states) ? data.states : [],
+        pincodes: Array.isArray(data.pincodes) ? data.pincodes : [],
+        customFields: Array.isArray(data.custom_fields)
+            ? data.custom_fields
+                  .filter((f: CustomFieldFacet) => f && f.id && Array.isArray(f.values))
+                  .map((f: CustomFieldFacet) => ({
+                      id: f.id,
+                      label: f.label || f.id,
+                      values: f.values,
+                  }))
+            : [],
+    };
+};
+
+export const listTemplateRegistrations = async ({
+    templateInviteId,
+    instituteId,
+    page = 0,
+    size = 10,
+    cities,
+    states,
+    pincodes,
+    customFieldFilters,
+    status,
+    search,
+}: ListTemplateRegistrationsParams): Promise<SubOrgRegistrationPage> => {
     const response = await authenticatedAxiosInstance({
         method: 'GET',
         url: SUB_ORG_REGISTRATION_REGISTRATIONS,
-        params: { templateInviteId, instituteId },
+        // indexes:null → arrays serialize as repeated keys (cities=A&cities=B), which
+        // Spring binds to List<String>. Bracketed keys (the axios default) would not.
+        paramsSerializer: { indexes: null },
+        params: {
+            templateInviteId,
+            instituteId,
+            page,
+            size,
+            cities: cleanList(cities),
+            states: cleanList(states),
+            pincodes: cleanList(pincodes),
+            customField: encodeCustomFieldFilters(customFieldFilters),
+            status: status || undefined,
+            search: search?.trim() || undefined,
+        },
     });
-    return Array.isArray(response.data) ? response.data : [];
+    // Backend returns a raw Spring Page<> (camelCase wrapper). Normalize to our
+    // snake_case shape; tolerate a bare array in case an older API is hit.
+    const data = response.data;
+    if (Array.isArray(data)) {
+        return {
+            content: data,
+            total_pages: 1,
+            total_elements: data.length,
+            page_no: 0,
+            page_size: data.length,
+            last: true,
+        };
+    }
+    return {
+        content: Array.isArray(data?.content) ? data.content : [],
+        total_pages: data?.totalPages ?? 1,
+        total_elements: data?.totalElements ?? 0,
+        page_no: data?.number ?? 0,
+        page_size: data?.size ?? size,
+        last: data?.last ?? true,
+    };
+};
+
+/**
+ * Fetch EVERY registration matching the given filters (ignoring UI pagination) for CSV
+ * export. Walks all pages at a large page size so even long lists come back complete.
+ */
+export const fetchAllTemplateRegistrations = async (
+    params: Omit<ListTemplateRegistrationsParams, 'page' | 'size'>
+): Promise<SubOrgRegistrationRow[]> => {
+    const PAGE = 500;
+    const first = await listTemplateRegistrations({ ...params, page: 0, size: PAGE });
+    const rows = [...first.content];
+    for (let p = 1; p < first.total_pages; p++) {
+        const next = await listTemplateRegistrations({ ...params, page: p, size: PAGE });
+        rows.push(...next.content);
+    }
+    return rows;
 };

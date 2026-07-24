@@ -24,6 +24,7 @@ interface StoreState {
   hideInstituteName: boolean;
   logoWidthPx: number | null;
   logoHeightPx: number | null;
+  stackNameBelowLogo: boolean;
   setSidebarOpen: () => void;
   setSideBarState: (sidebarstate: sideBarStateType) => void;
   setInstituteDetails: (
@@ -35,6 +36,7 @@ interface StoreState {
     hideInstituteName?: boolean | null;
     logoWidthPx?: number | null;
     logoHeightPx?: number | null;
+    stackNameBelowLogo?: boolean | null;
   }) => void;
   setHasCustomSidebar: (value: boolean) => void;
 }
@@ -50,9 +52,15 @@ const readBrandingOverridesFromCache = () => {
         typeof branding?.logoHeightPx === "number"
           ? branding.logoHeightPx
           : null,
+      stackNameBelowLogo: branding?.stackNameBelowLogo === true,
     };
   } catch {
-    return { hideInstituteName: false, logoWidthPx: null, logoHeightPx: null };
+    return {
+      hideInstituteName: false,
+      logoWidthPx: null,
+      logoHeightPx: null,
+      stackNameBelowLogo: false,
+    };
   }
 };
 
@@ -81,11 +89,13 @@ const useStore = create<StoreState>((set) => ({
     hideInstituteName,
     logoWidthPx,
     logoHeightPx,
+    stackNameBelowLogo,
   }) =>
     set({
       hideInstituteName: hideInstituteName === true,
       logoWidthPx: typeof logoWidthPx === "number" ? logoWidthPx : null,
       logoHeightPx: typeof logoHeightPx === "number" ? logoHeightPx : null,
+      stackNameBelowLogo: stackNameBelowLogo === true,
     }),
 
   setInstituteDetails: async (

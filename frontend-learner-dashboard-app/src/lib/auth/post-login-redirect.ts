@@ -54,10 +54,19 @@ export async function navigateAfterLogin(
 ): Promise<void> {
   const route = await resolvePostLoginRoute(opts);
 
+  // Replace the history entry by default so /login is not left in the back
+  // stack. On native (Android hardware back), pressing back on the landing
+  // screen must exit/minimize the app — not walk history back to /login. This
+  // gives first-login the same behaviour as the SSO/auto-login path, which
+  // already uses window.location.replace (see __root.tsx). Callers can still
+  // opt into a pushed entry with { replace: false }.
+  const replace = opts?.replace ?? true;
+
   if (needsFullPageLoad(route)) {
-    window.location.assign(route);
+    if (replace) window.location.replace(route);
+    else window.location.assign(route);
     return;
   }
 
-  navigate({ to: route as never, replace: opts?.replace });
+  navigate({ to: route as never, replace });
 }

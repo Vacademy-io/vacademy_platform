@@ -26,6 +26,8 @@ export const DASHBOARD_WIDGET_LABELS: Record<DashboardWidgetId, string> = {
     liveClasses: 'Live classes',
     aiFeaturesCard: 'AI features card',
     instituteOverview: 'Institute overview',
+    subOrgOverview: 'Sub-org overview',
+    subOrgSelfStats: 'My sub-org stats (sub-org admin)',
 };
 
 export const widgetLabel = (id: DashboardWidgetId): string =>

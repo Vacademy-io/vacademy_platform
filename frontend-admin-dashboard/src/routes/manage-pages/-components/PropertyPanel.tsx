@@ -1215,6 +1215,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
             return <SectionHeadingEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'spacer':
             return <SpacerEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'htmlBlock':
+            return <HtmlBlockEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'tabsAccordion':
             return <TabsAccordionEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'logoCloud':
@@ -3286,6 +3288,54 @@ const ImageGalleryEditor = ({ component, pageId, updateComponent }: any) => {
 };
 
 /* ─── Spacer Editor ────────────────────────────────────────────────────── */
+const HtmlBlockEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    return (
+        <div className="space-y-4">
+            <div className="rounded border border-gray-200 bg-gray-50 p-2 text-caption text-gray-500">
+                Custom section — rendered sandboxed (no scripts). Style it with the CSS field
+                below using theme variables like <code>var(--primary-500)</code>,{' '}
+                <code>var(--catalogue-text-primary)</code> and{' '}
+                <code>var(--catalogue-heading-font)</code> so it follows your site theme.
+            </div>
+            {props.prompt && (
+                <div>
+                    <Label className="text-xs">AI section brief</Label>
+                    <p className="mt-1 rounded border border-gray-200 bg-white p-2 text-caption text-gray-600">
+                        {props.prompt}
+                    </p>
+                    <p className="mt-1 text-caption text-gray-400">
+                        Tip: ask the AI copilot to “redesign this section” — it uses this brief.
+                    </p>
+                </div>
+            )}
+            <div>
+                <Label className="text-xs">HTML</Label>
+                <Textarea
+                    value={props.html || ''}
+                    onChange={(e) => updateProp('html', e.target.value)}
+                    rows={10}
+                    className="mt-1 font-mono text-caption"
+                    placeholder="<section class='my-band'>…</section>"
+                />
+            </div>
+            <div>
+                <Label className="text-xs">CSS (scoped to this section)</Label>
+                <Textarea
+                    value={props.css || ''}
+                    onChange={(e) => updateProp('css', e.target.value)}
+                    rows={8}
+                    className="mt-1 font-mono text-caption"
+                    placeholder=".my-band { background: var(--primary-50); }"
+                />
+            </div>
+        </div>
+    );
+};
+
 const SpacerEditor = ({ component, pageId, updateComponent }: any) => {
     const { props } = component;
     const updateProp = (key: string, value: any) =>

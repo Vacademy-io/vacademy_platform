@@ -22,6 +22,7 @@ import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessi
 import vacademy.io.admin_core_service.features.enroll_invite.entity.PackageSessionLearnerInvitationToPaymentOption;
 import vacademy.io.admin_core_service.features.enroll_invite.enums.EnrollInviteTag;
 import vacademy.io.admin_core_service.features.enroll_invite.repository.EnrollInviteRepository;
+import vacademy.io.admin_core_service.features.enroll_invite.util.EnrollInviteAvailabilityUtil;
 import vacademy.io.admin_core_service.features.packages.enums.PackageSessionStatusEnum;
 import vacademy.io.admin_core_service.features.packages.service.PackageSessionService;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentOptionDTO;
@@ -441,6 +442,9 @@ public class EnrollInviteService {
     private EnrollInviteDTO buildFullEnrollInviteDTO(EnrollInvite enrollInvite, String instituteId,
             List<PackageSessionLearnerInvitationToPaymentOption> mappings) {
         EnrollInviteDTO dto = enrollInvite.toEnrollInviteDTO();
+        // Availability window / status, computed on the server clock so every consumer
+        // (learner enroll page, catalogue, admin) shares one definition.
+        dto.setAvailabilityStatus(EnrollInviteAvailabilityUtil.compute(enrollInvite));
         dto.setShortUrl(
                 shortUrlManagementService.getAbsoluteShortUrl(enrollInvite.getInstituteId(), dto.getShortUrl()));
 

@@ -136,6 +136,8 @@ export interface CreateCPOPayload {
     status: string;
     created_by: string | null;
     approved_by: string | null;
+    /** Mirrored onto payment_option.require_approval; gates enrollment behind admin approval. */
+    require_approval?: boolean;
     fee_types: CPOFeeTypePayload[];
     package_session_links: CPOPackageSessionLink[];
 }

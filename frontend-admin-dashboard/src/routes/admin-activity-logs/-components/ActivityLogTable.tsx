@@ -62,16 +62,44 @@ const formatRelativeTime = (iso: string | null | undefined) => {
     return d.toLocaleDateString();
 };
 
-// Patterns where we know the trailing portion is the entity name and should
-// be bolded. The first capture group is the verb-and-noun prefix; the second
-// is the name(s). Falls through to plain text if nothing matches — safe for
-// descriptions that don't have a distinct named target (e.g. "deleted 3
-// course(s)", "cancelled live session booking", "updated naming settings").
+// Patterns marking which parts of a description are names worth bolding.
+// Capture groups alternate: odd groups are connective text, even groups are
+// the names. That lets one sentence highlight more than one subject —
+// "enrolled learner |Amit Kumar| in |Physics 201|" bolds learner and course.
+// First match wins, so more specific patterns must precede looser ones.
+// Falls through to plain text when nothing matches — safe for descriptions
+// with no distinct named target ("deleted 3 course(s)", "updated naming
+// settings").
 const NAMED_DESCRIPTION_PATTERNS: RegExp[] = [
     /^((?:created|updated|deleted) course )(.+)$/i,
     /^(created booking )(.+)$/i,
     /^(scheduled live session )(.+)$/i,
+
+    // Enrollment — with and without a resolved course.
+    /^((?:re-)?enrolled learner )(.+?)( in )(.+)$/i,
     /^((?:re-)?enrolled learner )(.+)$/i,
+    /^(bulk enrolled learners from CSV into )(.+)$/i,
+    /^(enrolled )(.+?)( in )(.+)$/i,
+
+    // Removal from a course.
+    /^(terminated )(.+?)( from )(.+)$/i,
+    /^(cancelled enrollment of )(.+?)( in )(.+)$/i,
+    /^((?:deactivated|reactivated) )(.+?)( in )(.+)$/i,
+
+    // Batch move: "moved X from A to B".
+    /^(moved )(.+?)( from )(.+?)( to )(.+)$/i,
+
+    // Status / expiry changes, longest form first.
+    /^(changed (?:status|expiry date) of )(.+?)( in )(.+?)( to )(.+)$/i,
+    /^(changed (?:status|expiry date) of )(.+?)( in )(.+)$/i,
+
+    // Same actions where the course could not be resolved — still bold the
+    // learner(s). Must trail the "in <course>" forms above.
+    /^(enrolled )(.+)$/i,
+    /^(terminated )(.+)$/i,
+    /^(cancelled enrollment of )(.+)$/i,
+    /^((?:deactivated|reactivated) )(.+)$/i,
+
     /^(switched WhatsApp provider to )(.+)$/i,
     /^((?:updated|removed) WhatsApp credentials for )(.+)$/i,
 ];
@@ -86,14 +114,21 @@ const renderActivitySentence = (row: AdminActivityLog): React.ReactNode => {
 
     for (const re of NAMED_DESCRIPTION_PATTERNS) {
         const m = description.match(re);
-        if (m) {
-            return (
-                <>
-                    {m[1]}
-                    <span className="font-semibold text-gray-900">{m[2]}</span>
-                </>
-            );
-        }
+        if (!m) continue;
+        // Groups alternate connective / name, starting with connective.
+        return (
+            <>
+                {m.slice(1).map((part, i) =>
+                    i % 2 === 0 ? (
+                        <span key={i}>{part}</span>
+                    ) : (
+                        <span key={i} className="font-semibold text-gray-900">
+                            {part}
+                        </span>
+                    )
+                )}
+            </>
+        );
     }
     return description;
 };

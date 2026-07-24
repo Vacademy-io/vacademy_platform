@@ -15,6 +15,10 @@ import java.util.Optional;
 @Repository
 public interface AiCallResultRepository extends JpaRepository<AiCallResult, String> {
 
+    /** Recent results for one agent (campaign_id == agent id) — feedback grounding. */
+    java.util.List<AiCallResult> findTop12ByCampaignIdAndInstituteIdOrderByCreatedAtDesc(
+            String campaignId, String instituteId);
+
     /** Idempotency lookup: a re-POST of the same call updates the existing row. */
     Optional<AiCallResult> findByProviderAndCallUuid(String provider, String callUuid);
 

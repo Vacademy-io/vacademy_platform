@@ -72,5 +72,16 @@ public class MetaWhatsAppPayload {
     public static class Parameter {
         private String type;
         private String text;
+        private Image image;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public static class Image {
+        private String link;
+        private String id;
     }
 }

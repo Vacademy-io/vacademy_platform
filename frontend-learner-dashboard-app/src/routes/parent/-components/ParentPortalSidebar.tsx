@@ -10,6 +10,7 @@ import {
 import { useRouter, Link } from "@tanstack/react-router";
 import type { ChildProfile } from "@/types/parent-portal";
 import { type TabId, NAV_TABS } from "./navigation-config";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 interface ParentPortalSidebarProps {
   child: ChildProfile;
@@ -80,7 +81,12 @@ export function ParentPortalSidebar({
             isExpanded ? "items-stretch" : "items-center"
           }`}
         >
-          {NAV_TABS.map((tab, index) => {
+          {NAV_TABS.filter(
+            // Reader mode (native iOS): the "Payment" tab embeds an external
+            // Razorpay checkout — hide it (Apple 3.1.1). The route is also
+            // blocked in __root, so this just removes the now-dead tab.
+            (tab) => !(shouldHidePaidPurchaseUI() && tab.id === "payments"),
+          ).map((tab, index) => {
             const currentPath = router.state.location.pathname;
             const isActive =
               tab.id === activeTab ||

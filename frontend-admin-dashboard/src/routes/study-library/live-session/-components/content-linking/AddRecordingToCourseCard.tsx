@@ -35,6 +35,12 @@ interface Props {
     needsSaveToLibraryFirst: boolean;
     /** Save-to-S3 + refetch, reused from the page's existing handler. Resolves once the recording has a fileId. */
     onSaveToLibrary: () => Promise<void>;
+    /**
+     * When false, only the linked-chapter chips (with unlink) are rendered —
+     * no manual "Add to course" action. Used when the institute has
+     * auto-upload on but the manual add-to-course feature off.
+     */
+    showAddAction?: boolean;
 }
 
 export function AddRecordingToCourseCard({
@@ -45,6 +51,7 @@ export function AddRecordingToCourseCard({
     batches,
     needsSaveToLibraryFirst,
     onSaveToLibrary,
+    showAddAction = true,
 }: Props) {
     const [open, setOpen] = useState(false);
     const [title, setTitle] = useState(() => buildDefaultTitle(sessionTitle, recording.date));
@@ -98,16 +105,22 @@ export function AddRecordingToCourseCard({
     return (
         <Collapsible open={open} onOpenChange={setOpen} className="w-full">
             <div className="flex flex-wrap items-center gap-2">
-                <CollapsibleTrigger asChild>
-                    <button
-                        type="button"
-                        className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border bg-white px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
-                    >
-                        <FolderPlus className="size-3" />
-                        Add to course
-                        {open ? <CaretUp className="size-3" /> : <CaretDown className="size-3" />}
-                    </button>
-                </CollapsibleTrigger>
+                {showAddAction && (
+                    <CollapsibleTrigger asChild>
+                        <button
+                            type="button"
+                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border bg-white px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                        >
+                            <FolderPlus className="size-3" />
+                            Add to course
+                            {open ? (
+                                <CaretUp className="size-3" />
+                            ) : (
+                                <CaretDown className="size-3" />
+                            )}
+                        </button>
+                    </CollapsibleTrigger>
+                )}
                 {linkedChapters.map((link) => (
                     <UnlinkContentLinkButton
                         key={link.id}

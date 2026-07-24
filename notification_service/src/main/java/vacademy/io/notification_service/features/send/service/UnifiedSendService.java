@@ -230,7 +230,7 @@ public class UnifiedSendService implements SendChannelRouter {
                 }
             }
 
-            List<Map<String, Boolean>> waResults = whatsAppService.sendWhatsappMessagesExtended(
+            List<WhatsAppService.WhatsAppSendResult> waResults = whatsAppService.sendWhatsappMessagesDetailed(
                     request.getTemplateName(),
                     bodyParams,
                     headerParams.isEmpty() ? null : headerParams,
@@ -249,14 +249,16 @@ public class UnifiedSendService implements SendChannelRouter {
                     isEngagementEngineSend(request) ? request.getOptions().getSourceId() : null);
 
             if (waResults != null) {
-                for (Map<String, Boolean> resultMap : waResults) {
-                    for (Map.Entry<String, Boolean> entry : resultMap.entrySet()) {
-                        results.add(UnifiedSendResponse.RecipientResult.builder()
-                                .phone(entry.getKey())
-                                .success(Boolean.TRUE.equals(entry.getValue()))
-                                .status(Boolean.TRUE.equals(entry.getValue()) ? "SENT" : "FAILED")
-                                .build());
-                    }
+                for (WhatsAppService.WhatsAppSendResult r : waResults) {
+                    // Carry the provider's rejection reason through to the caller. Previously
+                    // this collapsed to a bare false and every failure surfaced as error:null,
+                    // making WhatsApp failures undiagnosable from the API response alone.
+                    results.add(UnifiedSendResponse.RecipientResult.builder()
+                            .phone(r.phone())
+                            .success(r.success())
+                            .status(r.success() ? "SENT" : "FAILED")
+                            .error(r.success() ? null : r.error())
+                            .build());
                 }
             }
         } catch (Exception e) {

@@ -17,6 +17,7 @@ import {
   cancelSubscription,
   type Subscription,
 } from "./subscription-services";
+import { shouldHidePaidPurchaseUI } from "@/utils/ios-iap-compliance";
 
 interface SubscriptionMandateListProps {
   instituteId: string;
@@ -41,6 +42,10 @@ const formatDate = (value?: string | null): string | null => {
 export const SubscriptionMandateList = ({
   instituteId,
 }: SubscriptionMandateListProps) => {
+  // Reader-mode (native iOS): autopay/subscription management is a paid-
+  // subscription surface Apple flags under Guideline 3.1.1. Constant per session.
+  if (shouldHidePaidPurchaseUI()) return null;
+
   const queryClient = useQueryClient();
   const [toCancel, setToCancel] = useState<Subscription | null>(null);
 

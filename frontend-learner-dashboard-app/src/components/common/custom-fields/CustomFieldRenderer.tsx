@@ -269,19 +269,38 @@ export const CustomFieldRenderer = ({
         />
       );
 
-    case FieldRenderType.CHECKBOX:
+    case FieldRenderType.CHECKBOX: {
+      // Optional section heading + long body (e.g. Terms & Conditions) shown
+      // above the checkbox. The heading stays pinned above; the body scrolls.
+      // `whitespace-pre-line` preserves the admin's line breaks.
+      const heading = parsedConfig?.heading;
+      const description = parsedConfig?.description;
       return (
-        <div className="flex items-center gap-2">
-          <Checkbox
-            checked={value === "true"}
-            onCheckedChange={(checked) =>
-              handleChange(checked === true ? "true" : "false")
-            }
-            disabled={disabled}
-          />
-          <Label className="text-sm">{name}</Label>
+        <div className="flex flex-col gap-2">
+          {heading && (
+            <h3 className="text-base font-semibold text-neutral-800">{heading}</h3>
+          )}
+          {description && (
+            <div className="max-h-72 overflow-y-auto whitespace-pre-line rounded-md border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-700">
+              {description}
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <Checkbox
+              checked={value === "true"}
+              onCheckedChange={(checked) =>
+                handleChange(checked === true ? "true" : "false")
+              }
+              disabled={disabled}
+            />
+            <Label className="text-sm">
+              {name}
+              {required && <span className="text-danger-600"> *</span>}
+            </Label>
+          </div>
         </div>
       );
+    }
 
     case FieldRenderType.DROPDOWN:
       return (

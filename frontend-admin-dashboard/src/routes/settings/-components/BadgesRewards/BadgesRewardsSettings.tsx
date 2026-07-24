@@ -22,6 +22,7 @@ import {
     ArrowCounterClockwise,
     FloppyDisk,
     UploadSimple,
+    Images,
     Medal as MedalHeader,
     type IconProps,
 } from '@phosphor-icons/react';
@@ -53,6 +54,14 @@ import {
 } from '../../-constants/badge-config';
 import { getBadgesRewardsConfig, saveBadgesSettings } from '../../-services/badges-settings';
 import { BadgeVisual, isBuiltInBadgeIcon } from '../../-constants/badge-icon-map';
+import {
+    isLibraryToken,
+    libraryThemeForTrigger,
+    buildLibraryToken,
+    TIER_ORDER,
+    type BadgeTier,
+} from '../../-constants/badge-library';
+import { BadgeLibraryPicker } from './BadgeLibraryPicker';
 import { UploadFileInS3 } from '@/services/upload_file';
 import { getUserId } from '@/utils/userDetails';
 
@@ -167,6 +176,54 @@ export default function BadgesRewardsSettings() {
     const resetDefaults = () => {
         setBadges(DEFAULT_BADGE_CONFIG.badges.map((b) => ({ ...b })));
         setHasChanges(true);
+    };
+
+    /** Any badge still on a plain icon that has matching ready-made artwork. */
+    const canApplyLibraryArt = badges.some(
+        (b) => !isLibraryToken(b.icon) && libraryThemeForTrigger(b.trigger)
+    );
+
+    /**
+     * Swap every plain-icon badge to matching library artwork, keyed off its trigger.
+     * Badges that share an achievement escalate through the tiers (by threshold) so no
+     * two land on the same image; badges already using library art are left untouched.
+     */
+    const applyLibraryArt = () => {
+        const themeGroups = new Map<string, number[]>();
+        badges.forEach((b, i) => {
+            if (isLibraryToken(b.icon)) return;
+            const theme = libraryThemeForTrigger(b.trigger);
+            if (!theme) return;
+            const arr = themeGroups.get(theme) ?? [];
+            arr.push(i);
+            themeGroups.set(theme, arr);
+        });
+        if (themeGroups.size === 0) return;
+
+        const tierByIndex = new Map<number, BadgeTier>();
+        themeGroups.forEach((idxs) => {
+            const sorted = [...idxs].sort(
+                (a, z) => (badges[a]?.threshold ?? 0) - (badges[z]?.threshold ?? 0)
+            );
+            sorted.forEach((idx, k) => {
+                const pos =
+                    sorted.length <= 1
+                        ? TIER_ORDER.indexOf('gold')
+                        : Math.round((k * (TIER_ORDER.length - 1)) / (sorted.length - 1));
+                tierByIndex.set(idx, TIER_ORDER[pos] ?? 'gold');
+            });
+        });
+
+        setBadges((prev) =>
+            prev.map((b, i) => {
+                const tier = tierByIndex.get(i);
+                const theme = libraryThemeForTrigger(b.trigger);
+                const token = tier && theme ? buildLibraryToken(theme, tier) : undefined;
+                return token ? { ...b, icon: token } : b;
+            })
+        );
+        setHasChanges(true);
+        toast.success('Switched badges to library artwork');
     };
 
     const handleSave = () => {
@@ -284,12 +341,13 @@ export default function BadgesRewardsSettings() {
                     <div className="flex items-start justify-between gap-4">
                         <div>
                             <h2 className="text-base font-semibold text-neutral-800">
-                                Public leaderboard names
+                                Show full names on leaderboards
                             </h2>
                             <p className="text-sm text-neutral-500">
-                                The shareable public link shows learners as anonymized initials
-                                (e.g. &quot;A.G.&quot;) by default. Turn this on to show full names —
-                                note that anyone with the link will then see real learner names.
+                                By default leaderboards show learners as anonymized initials
+                                (e.g. &quot;A.G.&quot;). Turn this on to show full names on both the
+                                shareable public link and the in-app leaderboard learners see. Each
+                                learner&apos;s own row always reads &quot;You&quot;.
                             </p>
                         </div>
                         <Switch
@@ -302,6 +360,31 @@ export default function BadgesRewardsSettings() {
                     </div>
                 </CardContent>
             </Card>
+
+            {canApplyLibraryArt && (
+                <div className="flex flex-col gap-3 rounded-lg border border-primary-100 bg-primary-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-start gap-3">
+                        <Images className="mt-0.5 size-5 shrink-0 text-primary-500" weight="fill" />
+                        <div>
+                            <p className="text-sm font-semibold text-neutral-800">
+                                Show ready-made artwork instead of plain icons
+                            </p>
+                            <p className="text-xs text-neutral-500">
+                                Give every badge a polished tiered look, matched to what unlocks it.
+                                You can still fine-tune any badge from the library.
+                            </p>
+                        </div>
+                    </div>
+                    <MyButton
+                        buttonType="secondary"
+                        onClick={applyLibraryArt}
+                        className="shrink-0"
+                    >
+                        <Images className="mr-2 size-4" />
+                        Use library artwork
+                    </MyButton>
+                </div>
+            )}
 
             {badges.length === 0 && (
                 <Card>
@@ -321,18 +404,75 @@ export default function BadgesRewardsSettings() {
             <div className="grid gap-4">
                 {badges.map((badge, index) => {
                     const meta = TRIGGER_META[badge.trigger];
+                    const triggerLabel =
+                        TRIGGER_OPTIONS.find((o) => o.value === badge.trigger)?.label ?? '';
                     return (
-                        <Card key={badge.id} className={cn(!badge.enabled && 'opacity-60')}>
-                            <CardContent className="space-y-4 p-4">
-                                <div className="flex items-start gap-4">
-                                    <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-50">
+                        <Card
+                            key={badge.id}
+                            className={cn(
+                                'overflow-hidden transition',
+                                !badge.enabled && 'opacity-70'
+                            )}
+                        >
+                            <CardContent className="p-0">
+                                {/* Live preview header — mirrors what the learner sees */}
+                                <div className="flex items-start gap-4 border-b border-neutral-100 bg-neutral-50 p-4">
+                                    <div className="flex size-20 shrink-0 items-center justify-center rounded-lg border border-neutral-200 bg-white p-2 shadow-sm">
                                         <BadgeVisual
                                             icon={badge.icon}
                                             fill
-                                            className="size-6 text-primary-500"
+                                            size={52}
+                                            className="text-primary-500"
                                         />
                                     </div>
-                                    <div className="grid flex-1 grid-cols-1 gap-4 md:grid-cols-2">
+                                    <div className="min-w-0 flex-1 pt-1">
+                                        <div className="flex items-center gap-2">
+                                            <p className="truncate text-base font-semibold text-neutral-800">
+                                                {badge.name.trim() || 'Untitled badge'}
+                                            </p>
+                                            {!badge.enabled && (
+                                                <span className="shrink-0 rounded-full bg-neutral-200 px-2 py-0.5 text-xs font-medium text-neutral-600">
+                                                    Hidden
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="truncate text-sm text-neutral-500">
+                                            {badge.description.trim() ||
+                                                'Add a short description below'}
+                                        </p>
+                                        {triggerLabel && (
+                                            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-primary-100 bg-primary-50 px-2.5 py-1 text-xs font-medium text-primary-600">
+                                                <Target className="size-3.5" weight="bold" />
+                                                {triggerLabel} · {badge.threshold} {meta.unit}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-1">
+                                        <div className="flex items-center gap-2 pr-1">
+                                            <Switch
+                                                checked={badge.enabled}
+                                                onCheckedChange={(v) =>
+                                                    updateBadge(index, { enabled: v })
+                                                }
+                                            />
+                                            <span className="w-6 text-xs text-neutral-500">
+                                                {badge.enabled ? 'On' : 'Off'}
+                                            </span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => removeBadge(index)}
+                                            className="rounded-md p-2 text-danger-500 hover:bg-danger-50"
+                                            aria-label="Delete badge"
+                                        >
+                                            <Trash className="size-4" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Editable fields */}
+                                <div className="space-y-4 p-4">
+                                    <div className="grid gap-4 md:grid-cols-2">
                                         <div className="space-y-2">
                                             <Label className="text-sm">Badge name</Label>
                                             <Input
@@ -375,6 +515,12 @@ export default function BadgesRewardsSettings() {
                                                         </SelectContent>
                                                     </Select>
                                                 </div>
+                                                <BadgeLibraryPicker
+                                                    value={badge.icon}
+                                                    onSelect={(token) =>
+                                                        updateBadge(index, { icon: token })
+                                                    }
+                                                />
                                                 <label
                                                     title="Upload a custom image"
                                                     className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-md border border-neutral-200 text-neutral-500 hover:bg-neutral-50"
@@ -393,87 +539,73 @@ export default function BadgesRewardsSettings() {
                                                     />
                                                 </label>
                                             </div>
-                                            {!isBuiltInBadgeIcon(badge.icon) && badge.icon && (
-                                                <p className="text-xs text-neutral-400">
-                                                    Custom image uploaded.
-                                                </p>
-                                            )}
+                                            <p className="text-xs text-neutral-400">
+                                                {isLibraryToken(badge.icon)
+                                                    ? 'Library badge selected.'
+                                                    : !isBuiltInBadgeIcon(badge.icon) && badge.icon
+                                                      ? 'Custom image uploaded.'
+                                                      : 'Pick an icon, choose from the library, or upload your own.'}
+                                            </p>
                                         </div>
                                     </div>
-                                    <div className="flex shrink-0 items-center gap-3 pt-7">
-                                        <div className="flex items-center gap-2">
-                                            <Switch
-                                                checked={badge.enabled}
-                                                onCheckedChange={(v) =>
-                                                    updateBadge(index, { enabled: v })
-                                                }
-                                            />
-                                            <span className="text-xs text-neutral-500">
-                                                {badge.enabled ? 'On' : 'Off'}
-                                            </span>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => removeBadge(index)}
-                                            className="rounded-md p-2 text-danger-500 hover:bg-danger-50"
-                                            aria-label="Delete badge"
-                                        >
-                                            <Trash className="size-4" />
-                                        </button>
-                                    </div>
-                                </div>
 
-                                <div className="space-y-2">
-                                    <Label className="text-sm">Description</Label>
-                                    <Input
-                                        value={badge.description}
-                                        placeholder="Shown on hover, e.g. Maintain a 7-day streak"
-                                        onChange={(e) =>
-                                            updateBadge(index, { description: e.target.value })
-                                        }
-                                    />
-                                </div>
-
-                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                     <div className="space-y-2">
-                                        <Label className="text-sm">Unlocks based on</Label>
-                                        <Select
-                                            value={badge.trigger}
-                                            onValueChange={(v) =>
-                                                updateBadge(index, {
-                                                    trigger: v as BadgeTriggerType,
-                                                })
-                                            }
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {TRIGGER_OPTIONS.map((opt) => (
-                                                    <SelectItem key={opt.value} value={opt.value}>
-                                                        {opt.label}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label className="text-sm">
-                                            Threshold ({meta.unit})
-                                        </Label>
+                                        <Label className="text-sm">Description</Label>
                                         <Input
-                                            type="number"
-                                            min={0}
-                                            value={badge.threshold}
+                                            value={badge.description}
+                                            placeholder="Shown on hover, e.g. Maintain a 7-day streak"
                                             onChange={(e) =>
                                                 updateBadge(index, {
-                                                    threshold: Number(e.target.value) || 0,
+                                                    description: e.target.value,
                                                 })
                                             }
                                         />
                                     </div>
+
+                                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label className="text-sm">Unlocks based on</Label>
+                                            <Select
+                                                value={badge.trigger}
+                                                onValueChange={(v) =>
+                                                    updateBadge(index, {
+                                                        trigger: v as BadgeTriggerType,
+                                                    })
+                                                }
+                                            >
+                                                <SelectTrigger>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {TRIGGER_OPTIONS.map((opt) => (
+                                                        <SelectItem
+                                                            key={opt.value}
+                                                            value={opt.value}
+                                                        >
+                                                            {opt.label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label className="text-sm">
+                                                Threshold ({meta.unit})
+                                            </Label>
+                                            <Input
+                                                type="number"
+                                                min={0}
+                                                value={badge.threshold}
+                                                onChange={(e) =>
+                                                    updateBadge(index, {
+                                                        threshold: Number(e.target.value) || 0,
+                                                    })
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-neutral-400">{meta.help}</p>
                                 </div>
-                                <p className="text-xs text-neutral-400">{meta.help}</p>
                             </CardContent>
                         </Card>
                     );

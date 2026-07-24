@@ -23,6 +23,12 @@ public interface LearnerBadgeRepository extends JpaRepository<LearnerBadge, Stri
                                            @Param("badgeId") String badgeId,
                                            @Param("instituteId") String instituteId);
 
+    /**
+     * Any row (ACTIVE or REVOKED) for this user+badge — used by the auto-unlock sync to
+     * skip badges already awarded, already synced, or explicitly revoked by an admin.
+     */
+    boolean existsByUserIdAndBadgeIdAndInstituteId(String userId, String badgeId, String instituteId);
+
     /** Count of active awarded badges per user, for the given users (leaderboard badge column). */
     @Query("SELECT lb.userId, COUNT(lb) FROM LearnerBadge lb WHERE lb.instituteId = :instituteId AND lb.userId IN :userIds AND lb.status = 'ACTIVE' GROUP BY lb.userId")
     List<Object[]> countActiveBadgesByUsers(@Param("instituteId") String instituteId,

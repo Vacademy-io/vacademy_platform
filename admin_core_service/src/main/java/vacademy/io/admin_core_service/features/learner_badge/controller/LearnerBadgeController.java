@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.learner_badge.dto.AwardBadgeRequest;
 import vacademy.io.admin_core_service.features.learner_badge.dto.LearnerBadgeDTO;
+import vacademy.io.admin_core_service.features.learner_badge.dto.SyncUnlocksRequest;
 import vacademy.io.admin_core_service.features.learner_badge.service.LearnerBadgeService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
@@ -58,5 +59,19 @@ public class LearnerBadgeController {
             @RequestParam String instituteId,
             @RequestAttribute("user") CustomUserDetails user) {
         return ResponseEntity.ok(learnerBadgeService.getActiveAwardsForUser(user.getUserId(), instituteId));
+    }
+
+    /**
+     * Learner: persist the authenticated learner's client-computed auto-unlock badges so
+     * they appear on the in-app and public leaderboards. The learner is ALWAYS taken from
+     * the JWT (never the body), so a caller cannot sync badges for anyone else.
+     */
+    @PostMapping("/learner/v1/sync-unlocks")
+    public ResponseEntity<Map<String, Integer>> syncUnlocks(
+            @Valid @RequestBody SyncUnlocksRequest request,
+            @RequestAttribute("user") CustomUserDetails user) {
+        int synced = learnerBadgeService.syncAutoUnlocks(
+                user.getUserId(), request.getInstituteId(), request.getBadges());
+        return ResponseEntity.ok(Map.of("synced", synced));
     }
 }

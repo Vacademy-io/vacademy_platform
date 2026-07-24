@@ -23,6 +23,8 @@ import { useStudentCredentialsStore } from '@/stores/students/students-list/useS
 import { useUsersCredentials } from '@/routes/manage-students/students-list/-services/usersCredentials';
 import { BatchPicker } from '../BatchPicker';
 import { cn } from '@/lib/utils';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import {
     ProfileSectionCard,
     ProfileFieldRow,
@@ -115,7 +117,9 @@ export const StudentSubOrg = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
         } catch (error) {
             console.error(error);
             setFetchError(true);
-            toast.error('Failed to fetch sub-organization details');
+            toast.error(
+                `Failed to fetch ${getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg).toLowerCase()} details`
+            );
         } finally {
             setIsLoading(false);
         }
@@ -125,12 +129,14 @@ export const StudentSubOrg = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
         loadDetails();
     }, [selectedStudent, userId, selectedPsId]);
 
+    const subOrgTerm = getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg);
+
     if (!selectedStudent?.sub_org_name) {
         return (
             <ProfileEmpty
                 icon={Buildings}
-                title="No Sub-Organization Associated"
-                hint="This learner is not linked to any sub-organization."
+                title={`No ${subOrgTerm} Associated`}
+                hint={`This learner is not linked to any ${subOrgTerm.toLowerCase()}.`}
             />
         );
     }
@@ -140,7 +146,7 @@ export const StudentSubOrg = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
             packageSessionIds={enrollmentPsIds}
             value={selectedPsId}
             onChange={setSelectedPsId}
-            label="Sub-org for"
+            label={`${subOrgTerm} for`}
         />
     );
 
@@ -157,8 +163,8 @@ export const StudentSubOrg = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
             <div className="flex flex-col gap-3">
                 {picker}
                 <ProfileError
-                    title="Couldn't load sub-org details"
-                    hint="Something went wrong while fetching this sub-organization. Please try again."
+                    title={`Couldn't load ${subOrgTerm.toLowerCase()} details`}
+                    hint={`Something went wrong while fetching this ${subOrgTerm.toLowerCase()}. Please try again.`}
                     onRetry={loadDetails}
                 />
             </div>
@@ -184,7 +190,7 @@ export const StudentSubOrg = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
 
             {/* Sub-org hero */}
             <ProfileHero
-                eyebrow="SUB-ORG"
+                eyebrow={subOrgTerm.toUpperCase()}
                 title={selectedStudent.sub_org_name}
                 subtitle={roleLabel}
                 icon={Buildings}
@@ -294,14 +300,14 @@ export const StudentSubOrg = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
                             <ProfileEmpty
                                 icon={Users}
                                 title="No members found"
-                                hint="No learners are currently managed under this sub-org."
+                                hint={`No learners are currently managed under this ${subOrgTerm.toLowerCase()}.`}
                             />
                         )}
                     </ProfileSectionCard>
                 </>
             ) : (
                 /* Sub-org admins card (member view) */
-                <ProfileSectionCard icon={ShieldCheck} heading="Sub-Org Admins">
+                <ProfileSectionCard icon={ShieldCheck} heading={`${subOrgTerm} Admins`}>
                     {admins && admins.length > 0 ? (
                         <div className="flex flex-col gap-2">
                             {admins.map((admin, idx) => (
@@ -330,7 +336,7 @@ export const StudentSubOrg = ({ isSubmissionTab }: { isSubmissionTab?: boolean }
                         <ProfileEmpty
                             icon={ShieldCheck}
                             title="No admins found"
-                            hint="No administrators are linked to this sub-organization."
+                            hint={`No administrators are linked to this ${subOrgTerm.toLowerCase()}.`}
                         />
                     )}
                 </ProfileSectionCard>

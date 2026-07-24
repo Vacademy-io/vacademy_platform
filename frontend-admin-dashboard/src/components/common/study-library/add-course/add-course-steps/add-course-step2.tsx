@@ -30,6 +30,15 @@ import { RoleTypeExceptStudent } from '@/constants/dummy-data';
 import { CourseSettingsData } from '@/types/course-settings';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import type { CourseCreationSettings } from '@/types/display-settings';
+import {
+    buildRenameShareWarning,
+    sessionKeyOf,
+    validateLevelRename,
+    validateSessionRename,
+    type RenameRowType,
+} from './rename-rules';
+import { InlineNameEditor } from './inline-name-editor';
+
 
 interface Subgroup {
     id?: string;
@@ -311,6 +320,7 @@ export const AddCourseStep2 = ({
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     settingsLoading = false,
     courseCreationDisplay,
+    courseId,
 }: {
     onBack: () => void;
     onSubmit: (data: Step2Data) => void;
@@ -321,6 +331,8 @@ export const AddCourseStep2 = ({
     courseSettings?: CourseSettingsData;
     settingsLoading?: boolean;
     courseCreationDisplay?: CourseCreationSettings;
+    /** Used to exclude this course when reporting which courses share a session/level row. */
+    courseId?: string;
 }) => {
     const { instituteDetails } = useInstituteDetailsStore();
     const existingBatches = instituteDetails?.batches_for_sessions || [];
@@ -659,6 +671,63 @@ export const AddCourseStep2 = ({
             newSet.delete(batchId);
             return newSet;
         });
+    };
+
+    const getRenameShareWarning = (rowType: RenameRowType, rowId?: string): string | null =>
+        buildRenameShareWarning(
+            existingBatches as ExistingBatch[],
+            courseId,
+            rowType,
+            rowId,
+            getTerminology(ContentTerms.Course, SystemTerms.Course)
+        );
+
+    const validateSessionName = (sessionKey: string, name: string): string | null =>
+        validateSessionRename({
+            sessions,
+            batches: existingBatches as ExistingBatch[],
+            courseId,
+            sessionKey,
+            name,
+            term: getTerminology(ContentTerms.Session, SystemTerms.Session),
+        });
+
+    const validateLevelName = (sessionKey: string, batchId: string, name: string): string | null =>
+        validateLevelRename({
+            sessions,
+            batches: existingBatches as ExistingBatch[],
+            courseId,
+            sessionKey,
+            batchId,
+            name,
+            term: getTerminology(ContentTerms.Level, SystemTerms.Level),
+        });
+
+    const renameSession = (sessionKey: string, name: string) => {
+        const trimmed = name.trim();
+        if (validateSessionName(sessionKey, trimmed)) return;
+        const updatedSessions = sessions.map((session) =>
+            sessionKeyOf(session) === sessionKey ? { ...session, name: trimmed } : session
+        );
+        setSessions(updatedSessions);
+        form.setValue('sessions', ensureNewSessionAndLevelFlags(updatedSessions));
+    };
+
+    const renameLevel = (sessionKey: string, batchId: string, name: string) => {
+        const trimmed = name.trim();
+        if (validateLevelName(sessionKey, batchId, trimmed)) return;
+        const updatedSessions = sessions.map((session) =>
+            sessionKeyOf(session) === sessionKey
+                ? {
+                      ...session,
+                      levels: session.levels.map((level) =>
+                          level.batchId === batchId ? { ...level, name: trimmed } : level
+                      ),
+                  }
+                : session
+        );
+        setSessions(updatedSessions);
+        form.setValue('sessions', ensureNewSessionAndLevelFlags(updatedSessions));
     };
 
     const handleSubmit = (data: Step2Data) => {
@@ -2730,6 +2799,11 @@ export const AddCourseStep2 = ({
                                                             (batchId || '').toString()
                                                         )
                                                     }
+                                                    onRenameSession={renameSession}
+                                                    onRenameLevel={renameLevel}
+                                                    onValidateSessionName={validateSessionName}
+                                                    onValidateLevelName={validateLevelName}
+                                                    onGetRenameShareWarning={getRenameShareWarning}
                                                     hasSessionsFlag={hasSessions === 'yes'}
                                                     containsSubgroupFlag={containsSubgroup}
                                                     enableSubgroupControlsFlag={enableSubgroupControls}
@@ -3089,9 +3163,32 @@ export const AddCourseStep2 = ({
                                                     key={level.batchId}
                                                     className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 p-2"
                                                 >
-                                                    <span className="text-sm font-medium text-gray-900">
-                                                        {level.name}
-                                                    </span>
+                                                    <InlineNameEditor
+                                                        value={level.name}
+                                                        onSave={(name) =>
+                                                            renameLevel(
+                                                                'DEFAULT',
+                                                                level.batchId,
+                                                                name
+                                                            )
+                                                        }
+                                                        validate={(name) =>
+                                                            validateLevelName(
+                                                                'DEFAULT',
+                                                                level.batchId,
+                                                                name
+                                                            )
+                                                        }
+                                                        warning={getRenameShareWarning(
+                                                            'level',
+                                                            level.id
+                                                        )}
+                                                        editLabel={`Rename ${getTerminology(
+                                                            ContentTerms.Level,
+                                                            SystemTerms.Level
+                                                        )}`}
+                                                        textClassName="text-sm font-medium text-gray-900"
+                                                    />
                                                     <MyButton
                                                         type="button"
                                                         buttonType="text"
@@ -4316,6 +4413,11 @@ const SessionCard: React.FC<{
     onRemoveSession: (sessionId: string, batchId?: string) => void;
     onAddLevel: (sessionId: string, levelName: string, levelId?: string) => void;
     onRemoveLevel: (sessionId: string, batchId: string) => void;
+    onRenameSession: (sessionId: string, name: string) => void;
+    onRenameLevel: (sessionId: string, batchId: string, name: string) => void;
+    onValidateSessionName: (sessionId: string, name: string) => string | null;
+    onValidateLevelName: (sessionId: string, batchId: string, name: string) => string | null;
+    onGetRenameShareWarning: (rowType: 'session' | 'level', rowId?: string) => string | null;
     hasSessionsFlag: boolean;
     containsSubgroupFlag: boolean;
     enableSubgroupControlsFlag: boolean;
@@ -4341,6 +4443,11 @@ const SessionCard: React.FC<{
     onRemoveSession,
     onAddLevel,
     onRemoveLevel,
+    onRenameSession,
+    onRenameLevel,
+    onValidateSessionName,
+    onValidateLevelName,
+    onGetRenameShareWarning,
     hasSessionsFlag,
     containsSubgroupFlag,
     enableSubgroupControlsFlag,
@@ -4397,11 +4504,21 @@ const SessionCard: React.FC<{
                 <div className="mb-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <Calendar className="size-4 text-[#3B82F6]" />
-                        <div>
-                            <span className="text-sm font-medium text-gray-900">
-                                {session.name}
-                            </span>
-                            <span className="ml-2 text-xs text-gray-500">
+                        <div className="flex items-center gap-2">
+                            <InlineNameEditor
+                                value={session.name}
+                                onSave={(name) => onRenameSession(sessionKeyOf(session), name)}
+                                validate={(name) =>
+                                    onValidateSessionName(sessionKeyOf(session), name)
+                                }
+                                warning={onGetRenameShareWarning('session', session.id)}
+                                editLabel={`Rename ${getTerminology(
+                                    ContentTerms.Session,
+                                    SystemTerms.Session
+                                )}`}
+                                textClassName="text-sm font-medium text-gray-900"
+                            />
+                            <span className="text-xs text-gray-500">
                                 {new Date(session.startDate).toLocaleDateString()}
                             </span>
                         </div>
@@ -4704,9 +4821,32 @@ const SessionCard: React.FC<{
                                             className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-2"
                                         >
                                             <div className="flex items-center justify-between">
-                                                <span className="text-sm font-medium text-gray-900">
-                                                    {level.name}
-                                                </span>
+                                                <InlineNameEditor
+                                                    value={level.name}
+                                                    onSave={(name) =>
+                                                        onRenameLevel(
+                                                            sessionKeyOf(session),
+                                                            level.batchId,
+                                                            name
+                                                        )
+                                                    }
+                                                    validate={(name) =>
+                                                        onValidateLevelName(
+                                                            sessionKeyOf(session),
+                                                            level.batchId,
+                                                            name
+                                                        )
+                                                    }
+                                                    warning={onGetRenameShareWarning(
+                                                        'level',
+                                                        level.id
+                                                    )}
+                                                    editLabel={`Rename ${getTerminology(
+                                                        ContentTerms.Level,
+                                                        SystemTerms.Level
+                                                    )}`}
+                                                    textClassName="text-sm font-medium text-gray-900"
+                                                />
                                                 <MyButton
                                                     type="button"
                                                     buttonType="text"

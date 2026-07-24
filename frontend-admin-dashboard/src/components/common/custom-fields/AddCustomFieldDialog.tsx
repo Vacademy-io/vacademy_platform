@@ -35,6 +35,8 @@ export interface CustomFieldConfig {
     countryCode?: string;
     allowedFileTypes?: string[];
     maxSizeMB?: number;
+    heading?: string;
+    description?: string;
 }
 
 interface AddCustomFieldDialogProps {
@@ -66,6 +68,8 @@ export const AddCustomFieldDialog = ({
     const [dropdownOptions, setDropdownOptions] = useState<DropdownOption[]>([]);
     const [defaultValue, setDefaultValue] = useState('');
     const [checkboxDefault, setCheckboxDefault] = useState(false);
+    const [checkboxHeading, setCheckboxHeading] = useState('');
+    const [checkboxDescription, setCheckboxDescription] = useState('');
     const [allowedFileTypes, setAllowedFileTypes] = useState<string[]>([]);
     const [maxSizeMB, setMaxSizeMB] = useState<number>(5);
 
@@ -114,6 +118,8 @@ export const AddCustomFieldDialog = ({
         setDropdownOptions([]);
         setDefaultValue('');
         setCheckboxDefault(false);
+        setCheckboxHeading('');
+        setCheckboxDescription('');
         setAllowedFileTypes([]);
         setMaxSizeMB(5);
     };
@@ -123,6 +129,12 @@ export const AddCustomFieldDialog = ({
 
         if (selectedType === 'checkbox') {
             config.defaultValue = checkboxDefault ? 'true' : 'false';
+            if (checkboxHeading.trim()) {
+                config.heading = checkboxHeading.trim();
+            }
+            if (checkboxDescription.trim()) {
+                config.description = checkboxDescription.trim();
+            }
         } else if (selectedType === 'file') {
             if (allowedFileTypes.length > 0) config.allowedFileTypes = allowedFileTypes;
             config.maxSizeMB = maxSizeMB;
@@ -335,18 +347,53 @@ export const AddCustomFieldDialog = ({
                 );
             case 'checkbox':
                 return (
-                    <div className="mt-2 flex items-center gap-2">
-                        <Label className="text-sm font-medium">Default Value:</Label>
-                        <div className="flex items-center gap-2">
-                            <Checkbox
-                                checked={checkboxDefault}
-                                onCheckedChange={(checked) =>
-                                    setCheckboxDefault(checked === true)
-                                }
+                    <div className="mt-2 flex flex-col gap-3">
+                        <div className="flex flex-col gap-1">
+                            <Label className="text-sm font-medium">
+                                Heading (Optional)
+                            </Label>
+                            <MyInput
+                                inputType="text"
+                                inputPlaceholder="e.g. Terms & Conditions"
+                                input={checkboxHeading}
+                                onChangeFunction={(e) => setCheckboxHeading(e.target.value)}
+                                size="large"
+                                className="w-full"
                             />
-                            <span className="text-sm">
-                                {checkboxDefault ? 'Checked' : 'Unchecked'}
-                            </span>
+                            <p className="text-caption text-neutral-500">
+                                Bold section title shown above the content.
+                            </p>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                            <Label className="text-sm font-medium">
+                                Description / Consent Text (Optional)
+                            </Label>
+                            <textarea
+                                placeholder="e.g. Terms & Conditions text shown above the checkbox. Line breaks are preserved."
+                                value={checkboxDescription}
+                                onChange={(e) => setCheckboxDescription(e.target.value)}
+                                className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+                                rows={5}
+                            />
+                            <p className="text-caption text-neutral-500">
+                                Shown as a scrollable block above the checkbox. Use the
+                                Field Name for the short consent label (e.g. &ldquo;Yes, I
+                                agree&rdquo;).
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Label className="text-sm font-medium">Default Value:</Label>
+                            <div className="flex items-center gap-2">
+                                <Checkbox
+                                    checked={checkboxDefault}
+                                    onCheckedChange={(checked) =>
+                                        setCheckboxDefault(checked === true)
+                                    }
+                                />
+                                <span className="text-sm">
+                                    {checkboxDefault ? 'Checked' : 'Unchecked'}
+                                </span>
+                            </div>
                         </div>
                     </div>
                 );
@@ -415,6 +462,8 @@ export const AddCustomFieldDialog = ({
                                 setDropdownOptions([]);
                                 setDefaultValue('');
                                 setCheckboxDefault(false);
+                                setCheckboxHeading('');
+                                setCheckboxDescription('');
                                 setAllowedFileTypes([]);
                             }}
                         >

@@ -6,8 +6,11 @@ style engine), so the composer never writes HTML/CSS: it emits a Page object
 against the checked-in schema catalog (app/data/catalogue_schema_catalog.json,
 regenerated from the editor's component templates via
 scripts/export-catalogue-schema-catalog.mjs). Output is validated/sanitized
-server-side — unknown component types are dropped, htmlBlock is forbidden, and
-image URLs are whitelisted to the assets the admin actually provided.
+server-side — unknown component types are dropped and image URLs are
+whitelisted to the assets the admin actually provided. htmlBlock is a governed
+ESCAPE HATCH for bespoke sections: its html/css pass through a strict nh3
+profile + CSS scrub here, and the renderers re-sanitize (DOMPurify) and render
+it inside a contained shadow root (see catalogue-html.ts in both frontends).
 
 Phase A scope: one page per run (wizard). Copilot ops come in Phase B.
 """
@@ -85,6 +88,87 @@ def _sanitize_html(value: str) -> str:
         return nh3.clean(value)
     except Exception:  # noqa: BLE001 — sanitizer unavailable: strip all tags
         return re.sub(r"<[^>]*>", "", value)
+
+
+# ─── Custom-HTML sections (htmlBlock escape hatch) ──────────────────────────
+# Contract mirrored by catalogue-html.ts in both frontends (defense in depth):
+# structural/text tags only, class-based styling via a separate scrubbed CSS
+# blob, images only from vetted URLs, no scripts/iframes/svg/forms/media.
+
+_CUSTOM_HTML_TAGS = {
+    "a", "article", "aside", "b", "blockquote", "br", "button", "caption",
+    "cite", "code", "dd", "div", "dl", "dt", "em", "figcaption", "figure",
+    "footer", "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "i", "img",
+    "li", "mark", "nav", "ol", "p", "pre", "s", "section", "small", "span",
+    "strong", "sub", "sup", "table", "tbody", "td", "tfoot", "th", "thead",
+    "time", "tr", "u", "ul",
+}
+_CUSTOM_HTML_ATTRS = {
+    "*": {"class", "id", "style", "title", "role", "aria-label", "aria-hidden"},
+    # NOTE: no "rel" here — nh3 REJECTS an explicit rel allowance when
+    # link_rel is set (it manages rel itself); allowing it raises ValueError,
+    # which the fallback would turn into "every htmlBlock dropped".
+    "a": {"href", "target"},
+    "img": {"src", "alt", "width", "height", "loading"},
+    "time": {"datetime"},
+    "th": {"colspan", "rowspan", "scope"},
+    "td": {"colspan", "rowspan"},
+}
+_MAX_CUSTOM_HTML = 30000
+_MAX_CUSTOM_CSS = 20000
+_MAX_HTML_BLOCKS_PER_PAGE = 3
+
+_CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.S)
+_CSS_URL_RE = re.compile(r"url\s*\([^)]*\)", re.I)
+_CSS_BANNED_RE = re.compile(r"@import\b|expression\s*\(|behavior\s*:|-moz-binding|javascript\s*:", re.I)
+_IMG_SRC_RE = re.compile(r'(<img\b[^>]*?\bsrc=")([^"]*)(")', re.I)
+
+
+def _scrub_css(css: str, warnings: List[str]) -> str:
+    """Scrub a custom-CSS blob: no imports, no url() (assets belong in vetted
+    <img> tags), no legacy script vectors, and no '</' so the blob can't break
+    out of the <style> tag the renderers inject it into."""
+    if len(css) > _MAX_CUSTOM_CSS:
+        warnings.append("Custom CSS truncated to size cap")
+        css = css[:_MAX_CUSTOM_CSS]
+    css = _CSS_COMMENT_RE.sub("", css)
+    if _CSS_URL_RE.search(css):
+        warnings.append("Removed url() from custom CSS")
+        css = _CSS_URL_RE.sub("none", css)
+    css = _CSS_BANNED_RE.sub("", css)
+    return css.replace("</", " ")
+
+
+def _sanitize_custom_html(html: str, allowed_urls: set, warnings: List[str]) -> str:
+    """nh3-clean an htmlBlock's markup with the custom-HTML profile, then
+    enforce the image allowlist and scrub style attributes (same banned
+    constructs as the CSS blob — inline styles pass through nh3 untouched)."""
+    if len(html) > _MAX_CUSTOM_HTML:
+        warnings.append("Custom HTML truncated to size cap")
+        html = html[:_MAX_CUSTOM_HTML]
+    try:
+        import nh3
+        cleaned = nh3.clean(
+            html,
+            tags=_CUSTOM_HTML_TAGS,
+            attributes=_CUSTOM_HTML_ATTRS,
+            url_schemes={"https", "mailto", "tel"},
+            link_rel="noopener noreferrer",
+        )
+    except Exception:  # noqa: BLE001 — sanitizer unavailable: refuse the block
+        warnings.append("HTML sanitizer unavailable — custom HTML dropped")
+        return ""
+
+    def _check_src(m: "re.Match[str]") -> str:
+        url = m.group(2)
+        if url and url not in allowed_urls:
+            warnings.append("Stripped unknown image URL from custom HTML")
+            return f'{m.group(1)}{m.group(3)}'
+        return m.group(0)
+
+    cleaned = _IMG_SRC_RE.sub(_check_src, cleaned)
+    # Neutralize banned CSS constructs that may sit inside style="" attributes.
+    return _CSS_BANNED_RE.sub("", _CSS_URL_RE.sub("none", cleaned))
 
 
 def _load_catalog() -> Dict[str, Any]:
@@ -465,6 +549,14 @@ _PREMIUM_DOCTRINE = [
     "Add tasteful depth: an ornaments glow-orb behind a feature section, a subtle backgroundLayers gradient on the CTA, atmosphere on the hero. Keep it restrained — one accent per section.",
     "Rhythm: exactly ONE hero; alternate section surface tints; place a live courseCatalog where offerings belong; end with a CTA (and contact if a contact page). 6–12 sections.",
     "Copy: concise, benefit-led, specific to THIS institute (use real course names + the provided stats/claims). Never lorem ipsum, never generic filler. Mirror the brief's language.",
+    "ESCAPE HATCH — htmlBlock: when a design idea genuinely cannot be expressed with the typed components (a bespoke bento grid, an unusual editorial "
+    "layout, decorative hero art), you may use AT MOST TWO htmlBlock components per page: props {html, css, prompt}. Hard rules: (1) style ONLY via the css "
+    "prop with class selectors — never <style> tags in the html; (2) ALL colors and fonts MUST come from the site theme variables — var(--primary-500), "
+    "var(--primary-400), var(--primary-50), var(--catalogue-text-primary), var(--catalogue-text-secondary), var(--catalogue-bg), var(--catalogue-border), "
+    "font-family: var(--catalogue-heading-font, inherit) for display text — NEVER literal hex colors, so re-theming still works; (3) MUST be responsive: "
+    "include @media (max-width: 640px) rules; (4) no scripts, iframes, svg, forms or external assets — <img> only with PROVIDED image URLs; animation via "
+    "CSS only (the section renders in a sandbox that strips everything else); (5) set props.prompt to a one-line brief of the section's intent so it can be "
+    "regenerated later; (6) include generous padding (the section renders full-bleed with no outer spacing of its own). Prefer typed components whenever they fit.",
 ]
 
 
@@ -472,8 +564,9 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
     parts: List[str] = []
     parts.append(
         "You are the page composer for Vacademy's catalogue website builder. You produce ONE page as "
-        "pure JSON against the component vocabulary below — you never write HTML or CSS, only the JSON "
-        "schema. Study the PREMIUM EXEMPLAR: match that level of polish and richness."
+        "pure JSON against the component vocabulary below. Typed components are the default for every "
+        "section; the htmlBlock escape hatch (see DESIGN RULES) exists for the rare bespoke section the "
+        "vocabulary cannot express. Study the PREMIUM EXEMPLAR: match that level of polish and richness."
     )
     vocab = catalog["components"]
     if not req.allow_chrome:
@@ -631,9 +724,6 @@ def sanitize_component(
     if not isinstance(comp, dict):
         return None
     ctype = comp.get("type")
-    if ctype == "htmlBlock":
-        warnings.append("Dropped forbidden htmlBlock component")
-        return None
     if ctype in ("header", "footer") and not allow_chrome:
         warnings.append(f"Dropped {ctype} (site provides global chrome)")
         return None
@@ -649,6 +739,28 @@ def sanitize_component(
     while cid in seen_ids:
         cid = f"{cid}-{uuid.uuid4().hex[:4]}"
     seen_ids.add(cid)
+    if ctype == "htmlBlock":
+        # Escape hatch: html/css get the dedicated custom-HTML pipeline INSTEAD
+        # of the generic string cleaner (whose default nh3 profile would strip
+        # the class attributes the section's CSS targets). Only the contract
+        # keys survive — anything else the model added is dropped.
+        html = props.get("html")
+        if not isinstance(html, str) or not html.strip():
+            warnings.append("Dropped htmlBlock with empty html")
+            return None
+        cleaned_html = _sanitize_custom_html(html, allowed_urls, warnings)
+        if not cleaned_html.strip():
+            warnings.append("Dropped htmlBlock — nothing survived sanitization")
+            return None
+        html_props: Dict[str, Any] = {"html": cleaned_html}
+        if isinstance(props.get("css"), str) and props["css"].strip():
+            html_props["css"] = _scrub_css(props["css"], warnings)
+        if isinstance(props.get("prompt"), str) and props["prompt"].strip():
+            html_props["prompt"] = _clean_string(props["prompt"])[:500]
+        cleaned_block: Dict[str, Any] = {"id": cid, "type": ctype, "enabled": True, "props": html_props}
+        if isinstance(comp.get("style"), dict) and comp["style"]:
+            cleaned_block["style"] = clean_urls(comp["style"], allowed_urls, warnings)
+        return cleaned_block
     cleaned_props = clean_urls(props, allowed_urls, warnings)
     # columnLayout nests component arrays in props.slots — recurse so the type
     # filter / htmlBlock ban can't be smuggled past via slots.
@@ -729,10 +841,17 @@ def _sanitize_page(
     seen_ids: set = set()
 
     components: List[Dict[str, Any]] = []
+    html_blocks = 0
     for comp in page["components"]:
         cleaned = sanitize_component(comp, allowed_types, req.allow_chrome, seen_ids, allowed_urls, warnings)
-        if cleaned is not None:
-            components.append(cleaned)
+        if cleaned is None:
+            continue
+        if cleaned["type"] == "htmlBlock":
+            html_blocks += 1
+            if html_blocks > _MAX_HTML_BLOCKS_PER_PAGE:
+                warnings.append(f"Dropped htmlBlock beyond the {_MAX_HTML_BLOCKS_PER_PAGE}-per-page cap")
+                continue
+        components.append(cleaned)
 
     if len(components) < 2:
         raise HTTPException(status_code=502, detail="Generation produced too few usable sections — please retry.")
@@ -980,11 +1099,13 @@ def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any], 
     # Ids that exist on the page (top-level + slot children) — ops may only
     # reference these (inserts bring their own new id).
     existing_ids: set = set()
+    type_by_id: Dict[str, str] = {}
 
     def collect(components: Any) -> None:
         for c in components if isinstance(components, list) else []:
             if isinstance(c, dict) and c.get("id"):
                 existing_ids.add(c["id"])
+                type_by_id[c["id"]] = str(c.get("type") or "")
                 slots = (c.get("props") or {}).get("slots")
                 if isinstance(slots, list):
                     for slot in slots:
@@ -1015,7 +1136,17 @@ def _sanitize_ops(raw_json: str, req: EditPageRequest, catalog: Dict[str, Any], 
                 continue
             entry: Dict[str, Any] = {"op": "update", "id": oid, "note": note}
             if isinstance(op.get("propsPatch"), dict):
-                patch = clean_urls(op["propsPatch"], allowed_urls, warnings)
+                raw_patch = dict(op["propsPatch"])
+                custom_html: Dict[str, Any] = {}
+                if type_by_id.get(oid) == "htmlBlock":
+                    # html/css take the custom-HTML pipeline, NOT the generic
+                    # cleaner (whose default nh3 profile strips class attrs).
+                    if isinstance(raw_patch.get("html"), str):
+                        custom_html["html"] = _sanitize_custom_html(raw_patch.pop("html"), allowed_urls, warnings)
+                    if isinstance(raw_patch.get("css"), str):
+                        custom_html["css"] = _scrub_css(raw_patch.pop("css"), warnings)
+                patch = clean_urls(raw_patch, allowed_urls, warnings)
+                patch.update(custom_html)
                 # A propsPatch may set columnLayout slots — type-filter nested
                 # components so htmlBlock/unknown types can't be smuggled in via
                 # an update (the insert path already recurses slots).

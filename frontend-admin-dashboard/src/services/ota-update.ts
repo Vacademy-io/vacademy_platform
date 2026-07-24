@@ -8,6 +8,32 @@ import { OTA_CHECK } from '@/constants/urls';
 // for this flavor, so we drive the whole lifecycle: check -> download -> set
 // (reload) -> notifyAppReady (crash-rollback guard).
 
+// How a native app surfaces an available OTA bundle. Two live modes:
+//   "auto"   — show a non-dismissible "Updating app…" loader dialog on launch,
+//              then download + apply the bundle in place (set → WebView reload).
+//              Runs at launch ONLY, so it never reloads mid-session.
+//   "banner" — dismissible "Update X available" banner (or a blocking "Update
+//              required" overlay for force updates); the user taps to apply.
+export type OtaUpdateMode = 'auto' | 'banner';
+
+// Fleet-wide default. Flip this one constant to change the default for every
+// self-hosted-OTA admin flavor; list an app id in BANNER_OTA_APP_IDS to send
+// that app back to the dismissible banner instead.
+const DEFAULT_OTA_MODE: OtaUpdateMode = 'auto';
+const BANNER_OTA_APP_IDS = new Set<string>([
+    // e.g. 'io.vacademy.admin.app',
+]);
+
+/**
+ * Resolve the OTA update mode for the currently running app. Returns the fleet
+ * default (DEFAULT_OTA_MODE) unless this app id is explicitly listed in
+ * BANNER_OTA_APP_IDS.
+ */
+export async function getOtaUpdateMode(): Promise<OtaUpdateMode> {
+    const appInfo = await App.getInfo();
+    return BANNER_OTA_APP_IDS.has(appInfo.id) ? 'banner' : DEFAULT_OTA_MODE;
+}
+
 export interface OtaCheckResponse {
     update_available: boolean;
     version?: string;

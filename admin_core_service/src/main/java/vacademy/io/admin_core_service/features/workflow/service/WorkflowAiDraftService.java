@@ -12,8 +12,12 @@ import vacademy.io.admin_core_service.features.workflow.controller.WorkflowAiCat
 import vacademy.io.admin_core_service.features.workflow.dto.WorkflowAiDraftRequest;
 import vacademy.io.admin_core_service.features.workflow.dto.WorkflowAiDraftResponse;
 import vacademy.io.admin_core_service.features.workflow.dto.WorkflowBuilderDTO;
+import vacademy.io.admin_core_service.features.workflow.dto.WorkflowDecisionDTO;
+import vacademy.io.admin_core_service.features.workflow.dto.WorkflowPlanDTO;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -46,12 +50,22 @@ public class WorkflowAiDraftService {
     private static final int MAX_ATTEMPTS = 3;
 
     public WorkflowAiDraftResponse draft(WorkflowAiDraftRequest request, String userId) {
-        if (request == null || request.getGoal() == null || request.getGoal().isBlank()) {
-            return WorkflowAiDraftResponse.builder().error("A non-empty 'goal' is required.").build();
-        }
-        if (request.getInstituteId() == null || request.getInstituteId().isBlank()) {
+        if (request == null || request.getInstituteId() == null || request.getInstituteId().isBlank()) {
             return WorkflowAiDraftResponse.builder().error("'instituteId' is required.").build();
         }
+        String mode = request.getMode();
+        // BUILD: deterministic assembly from the confirmed skeleton + answers — no LLM, no goal needed.
+        if ("BUILD".equalsIgnoreCase(mode)) {
+            return buildFromDecisions(request);
+        }
+        if (request.getGoal() == null || request.getGoal().isBlank()) {
+            return WorkflowAiDraftResponse.builder().error("A non-empty 'goal' is required.").build();
+        }
+        // PLAN: propose a skeleton + the decisions the admin must make (assistive path).
+        if ("PLAN".equalsIgnoreCase(mode)) {
+            return planWorkflow(request, userId);
+        }
+        // else: legacy single-shot draft (backward compatible).
 
         final String grounding;
         try {
@@ -182,6 +196,243 @@ public class WorkflowAiDraftService {
                 .build();
     }
 
+    // ---- PLAN: propose a skeleton + the decisions the admin must make --------
+
+    private WorkflowAiDraftResponse planWorkflow(WorkflowAiDraftRequest request, String userId) {
+        final String grounding;
+        try {
+            grounding = objectMapper.writeValueAsString(aiCatalogController.getAiCatalog().getBody());
+        } catch (Exception e) {
+            log.error("[WorkflowAiDraft] PLAN grounding failed", e);
+            return WorkflowAiDraftResponse.builder().error("Failed to assemble catalog grounding.").build();
+        }
+        List<ConversationSession.ChatMessage> history = new ArrayList<>();
+        history.add(ConversationSession.ChatMessage.system(planSystemPrompt(grounding)));
+        history.add(ConversationSession.ChatMessage.user(userPrompt(request)));
+
+        JsonNode root = null;
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            String raw;
+            String finishReason = null;
+            try {
+                ConversationSession session = ConversationSession.builder()
+                        .userId(userId)
+                        .instituteId(request.getInstituteId())
+                        .model(draftModel)
+                        .history(new ArrayList<>(history))
+                        .build();
+                LLMService.LLMResponse resp = llmService.generateChatCompletion(session);
+                raw = resp != null ? resp.getContent() : null;
+                finishReason = resp != null ? resp.getFinishReason() : null;
+            } catch (Exception e) {
+                log.error("[WorkflowAiDraft] PLAN LLM call failed on attempt {}", attempt, e);
+                return WorkflowAiDraftResponse.builder().error("AI planning failed: " + safe(e.getMessage())).build();
+            }
+            if (raw == null || raw.isBlank()) {
+                return WorkflowAiDraftResponse.builder().error("AI returned an empty response.").build();
+            }
+            if ("length".equalsIgnoreCase(finishReason)) {
+                if (attempt == MAX_ATTEMPTS) {
+                    return WorkflowAiDraftResponse.builder().error("The plan was too large. Try a simpler goal.").build();
+                }
+                history.add(ConversationSession.ChatMessage.assistant(raw));
+                history.add(ConversationSession.ChatMessage.user(
+                        "Your reply was cut off by the token limit. Produce a more COMPACT plan (fewer steps, short names) and re-emit the full JSON contract."));
+                continue;
+            }
+            try {
+                root = objectMapper.readTree(extractJson(raw));
+                break;
+            } catch (Exception e) {
+                if (attempt == MAX_ATTEMPTS) {
+                    return WorkflowAiDraftResponse.builder().error("AI plan was not valid JSON.").build();
+                }
+                history.add(ConversationSession.ChatMessage.assistant(raw));
+                history.add(ConversationSession.ChatMessage.user(
+                        "Your previous message was not valid JSON. Reply with ONLY the JSON object described in the contract."));
+            }
+        }
+        if (root == null) {
+            return WorkflowAiDraftResponse.builder().error("Could not produce a plan.").build();
+        }
+
+        WorkflowPlanDTO plan = null;
+        try {
+            if (root.hasNonNull("plan")) plan = objectMapper.treeToValue(root.get("plan"), WorkflowPlanDTO.class);
+        } catch (Exception e) {
+            log.warn("[WorkflowAiDraft] PLAN plan parse failed: {}", e.getMessage());
+        }
+        List<WorkflowDecisionDTO> decisions = new ArrayList<>();
+        JsonNode dNode = root.get("decisions");
+        if (dNode != null && dNode.isArray()) {
+            for (JsonNode d : dNode) {
+                try { decisions.add(objectMapper.treeToValue(d, WorkflowDecisionDTO.class)); }
+                catch (Exception ignored) { /* skip malformed decision */ }
+            }
+        }
+        WorkflowBuilderDTO skeleton = null;
+        try {
+            JsonNode skNode = root.get("skeleton");
+            if (skNode != null && !skNode.isNull()) {
+                skeleton = objectMapper.treeToValue(skNode, WorkflowBuilderDTO.class);
+                skeleton.setId(null);
+                skeleton.setInstituteId(request.getInstituteId());
+                skeleton.setStatus("DRAFT");
+            }
+        } catch (Exception e) {
+            log.warn("[WorkflowAiDraft] PLAN skeleton parse failed: {}", e.getMessage());
+        }
+        // Defensively clear any decision-target the model left filled — the skeleton the admin
+        // sees must never carry an AI-invented template/entity id; those come only from answers.
+        if (skeleton != null) stripDecisionTargets(skeleton, decisions);
+        if (plan == null && skeleton == null) {
+            return WorkflowAiDraftResponse.builder().error("The AI did not return a usable plan.").build();
+        }
+        return WorkflowAiDraftResponse.builder()
+                .turnType("PLAN_PROPOSAL")
+                .plan(plan)
+                .decisions(decisions)
+                .skeleton(skeleton)
+                .templateUsed(asText(root.get("templateUsed")))
+                .warnings(collectWarnings(root))
+                .build();
+    }
+
+    // ---- BUILD: deterministic assembly from confirmed skeleton + answers -----
+
+    @SuppressWarnings("unchecked")
+    private WorkflowAiDraftResponse buildFromDecisions(WorkflowAiDraftRequest request) {
+        WorkflowBuilderDTO wf = request.getSkeleton();
+        if (wf == null) {
+            return WorkflowAiDraftResponse.builder()
+                    .error("BUILD requires the 'skeleton' returned by the PLAN turn.").build();
+        }
+        List<WorkflowDecisionDTO> decisions = request.getDecisions() != null ? request.getDecisions() : List.of();
+        Map<String, Object> answered = new HashMap<>();
+        if (request.getDecisionAnswers() != null) {
+            for (WorkflowAiDraftRequest.DecisionAnswer a : request.getDecisionAnswers()) {
+                if (a != null && a.getId() != null) answered.put(a.getId(), a.getValue());
+            }
+        }
+        List<String> unresolvedRequired = new ArrayList<>();
+        for (WorkflowDecisionDTO d : decisions) {
+            if (d == null || d.getId() == null) continue;
+            Object val = answered.get(d.getId());
+            boolean blank = val == null
+                    || (val instanceof String && ((String) val).isBlank())
+                    || (val instanceof List && ((List<Object>) val).isEmpty())
+                    || (val instanceof Map && ((Map<Object, Object>) val).isEmpty());
+            if (blank) {
+                if (d.isRequired()) unresolvedRequired.add(d.getId());
+                continue;
+            }
+            try {
+                applyDecision(wf, d, val);
+            } catch (Exception e) {
+                log.warn("[WorkflowAiDraft] Failed to apply decision {}: {}", d.getId(), e.getMessage());
+            }
+        }
+        wf.setId(null);
+        wf.setInstituteId(request.getInstituteId());
+        wf.setStatus("DRAFT");
+
+        List<WorkflowValidationService.ValidationError> errors = safeValidate(wf);
+        List<String> warnings = new ArrayList<>();
+        if (!unresolvedRequired.isEmpty()) {
+            warnings.add("Unanswered required decisions (fill these in the builder before publishing): "
+                    + String.join(", ", unresolvedRequired));
+        }
+        return WorkflowAiDraftResponse.builder()
+                .turnType("FINAL_WORKFLOW")
+                .workflow(wf)
+                .validationErrors(errors)
+                .warnings(warnings)
+                .build();
+    }
+
+    /** Write a decision's answer onto the skeleton at (nodeId, field dot-path). */
+    @SuppressWarnings("unchecked")
+    private void applyDecision(WorkflowBuilderDTO wf, WorkflowDecisionDTO d, Object value) {
+        String field = d.getField();
+        if (field == null || field.isBlank()) return;
+        if (field.startsWith("trigger.")) {
+            if (wf.getTrigger() == null) return;
+            String sub = field.substring("trigger.".length());
+            if ("event_ids".equals(sub) || "eventIds".equals(sub)) {
+                wf.getTrigger().setEventIds(toStringList(value));
+            } else if ("event_id".equals(sub) || "eventId".equals(sub)) {
+                wf.getTrigger().setEventId(value == null ? null : String.valueOf(value));
+            }
+            return;
+        }
+        if (field.startsWith("config.")) {
+            Map<String, Object> cfg = nodeConfig(wf, d.getNodeId());
+            if (cfg == null) return;
+            String sub = field.substring("config.".length());
+            if (sub.startsWith("params.")) {
+                String p = sub.substring("params.".length());
+                Object paramsObj = cfg.get("params");
+                Map<String, Object> params = (paramsObj instanceof Map) ? (Map<String, Object>) paramsObj : new LinkedHashMap<>();
+                params.put(p, value);
+                cfg.put("params", params);
+            } else {
+                cfg.put(sub, value);
+            }
+        }
+    }
+
+    /** Locate a node's config map by id, creating an empty one if absent. */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> nodeConfig(WorkflowBuilderDTO wf, String nodeId) {
+        if (wf.getNodes() == null || nodeId == null) return null;
+        for (WorkflowBuilderDTO.NodeDTO n : wf.getNodes()) {
+            if (nodeId.equals(n.getId())) {
+                Object cfg = n.getConfig();
+                if (cfg instanceof Map) return (Map<String, Object>) cfg;
+                Map<String, Object> m = new LinkedHashMap<>();
+                n.setConfig(m);
+                return m;
+            }
+        }
+        return null;
+    }
+
+    /** Remove every decision-target field from the skeleton so it carries no AI-invented values. */
+    @SuppressWarnings("unchecked")
+    private void stripDecisionTargets(WorkflowBuilderDTO wf, List<WorkflowDecisionDTO> decisions) {
+        if (decisions == null) return;
+        for (WorkflowDecisionDTO d : decisions) {
+            if (d == null || d.getField() == null) continue;
+            String field = d.getField();
+            if (field.startsWith("trigger.")) {
+                if (wf.getTrigger() != null && field.substring("trigger.".length()).startsWith("event_id")) {
+                    wf.getTrigger().setEventIds(null);
+                    wf.getTrigger().setEventId(null);
+                }
+            } else if (field.startsWith("config.")) {
+                Map<String, Object> cfg = nodeConfig(wf, d.getNodeId());
+                if (cfg == null) continue;
+                String sub = field.substring("config.".length());
+                if (sub.startsWith("params.")) {
+                    Object po = cfg.get("params");
+                    if (po instanceof Map) ((Map<String, Object>) po).remove(sub.substring("params.".length()));
+                } else {
+                    cfg.remove(sub);
+                }
+            }
+        }
+    }
+
+    private List<String> toStringList(Object value) {
+        List<String> out = new ArrayList<>();
+        if (value instanceof List) {
+            for (Object o : (List<?>) value) if (o != null) out.add(String.valueOf(o));
+        } else if (value instanceof String) {
+            for (String s : ((String) value).split(",")) if (!s.isBlank()) out.add(s.trim());
+        }
+        return out;
+    }
+
     // ---- prompts ---------------------------------------------------------
 
     private String systemPrompt(String groundingJson) {
@@ -211,6 +462,65 @@ public class WorkflowAiDraftService {
               "rationale": [ { "nodeId": "...", "explains": "one plain-English sentence" } ],
               "clarifyingQuestions": [ { "id": "audienceId", "question": "Which audience?", "entityType": "AUDIENCE" } ],
               "templateUsed": "short pattern name or null"
+            }
+
+            CATALOG:
+            """ + groundingJson;
+    }
+
+    private String planSystemPrompt(String groundingJson) {
+        return """
+            You are the Vacademy workflow drafter in ASSISTIVE PLAN mode. Instead of dumping a \
+            finished workflow, you propose a plan and ask the admin to make the choices only a \
+            human can make (which template, which audience/batch, how to map template variables). \
+            You never activate anything.
+
+            APPROACH (template-first hybrid): map the goal onto a common pattern when possible. Obey \
+            every rule in catalog.generationRules. Never use catalog.avoidNodeTypes or \
+            catalog.mutatingQueryKeys. Reference query outputs by their real keys/fields from \
+            catalog.readQueries — casing matters.
+
+            Produce THREE things: a human-readable PLAN, a list of DECISIONS the admin must make, \
+            and a SKELETON workflow. In the skeleton, LEAVE OUT every value that is a decision \
+            (templateName, template variable maps, and entity ids like audienceId/batchId/ \
+            packageSessionIds and the trigger's event_ids) — those are elicited, never invented. \
+            DO fill in values you can safely infer: node graph + edges, trigger_event_name, \
+            workflow_type, DELAY config.delay.{value,unit}, and CONDITION predicates (the admin \
+            can tweak delays/conditions on the canvas afterward).
+
+            DECISION KINDS (Phase A — use ONLY these):
+            - ENTITY_PICKER  → field "trigger.event_ids" (multi=true) for the trigger scope, or \
+              "config.params.audienceId" / "config.params.batchId" / "config.params.packageSessionIds" \
+              for a QUERY node. optionSource {"hook":"EventEntityPicker","args":{"eventAppliedType":"AUDIENCE|PACKAGE_SESSION|LIVE_SESSION|ENROLL_INVITE"}}. \
+              Support multiple selections when the goal implies more than one (multi=true).
+            - EMAIL_TEMPLATE     → field "config.templateName". optionSource {"hook":"getTemplatesByType","args":{"type":"EMAIL"}}.
+            - WHATSAPP_TEMPLATE  → field "config.templateName". optionSource {"hook":"getTemplatesByType","args":{"type":"WHATSAPP"}}.
+            - TEMPLATE_VAR_MAP   → field "config.templateVars". No optionSource (the UI derives the \
+              placeholders from the chosen template). Set dependsOn:[<the template decision id>]. \
+              Add ONE of these per SEND_EMAIL/SEND_WHATSAPP node that uses a template.
+
+            Every decision's nodeId MUST match a node id in the skeleton (except trigger-scoped \
+            decisions, whose field starts with "trigger."). Batch ALL decisions the plan needs into \
+            the single "decisions" array.
+
+            OUTPUT: reply with ONLY this JSON object (no markdown, no prose):
+            {
+              "plan": {
+                "summary": "one line",
+                "workflowType": "EVENT_DRIVEN | SCHEDULED",
+                "templateUsed": "pattern name or null",
+                "steps": [ { "stepId": "s1", "nodeType": "TRIGGER", "title": "...", "detail": "...", "openDecisions": ["d_audience"] } ],
+                "warnings": []
+              },
+              "decisions": [
+                { "id": "d_audience", "kind": "ENTITY_PICKER", "prompt": "Which audience?", "stepId": "s1", "nodeId": null, "field": "trigger.event_ids", "multi": true, "required": true,
+                  "optionSource": {"hook":"EventEntityPicker","args":{"eventAppliedType":"AUDIENCE"}} },
+                { "id": "d_wa_tmpl", "kind": "WHATSAPP_TEMPLATE", "prompt": "Which WhatsApp template?", "stepId": "s4", "nodeId": "n_wa", "field": "config.templateName", "multi": false, "required": true,
+                  "optionSource": {"hook":"getTemplatesByType","args":{"type":"WHATSAPP"}} },
+                { "id": "d_wa_vars", "kind": "TEMPLATE_VAR_MAP", "prompt": "Map the template placeholders", "stepId": "s4", "nodeId": "n_wa", "field": "config.templateVars", "multi": false, "required": true, "dependsOn": ["d_wa_tmpl"] }
+              ],
+              "skeleton": { ...builder workflow JSON per catalog.workflowJsonShape, with the decision fields OMITTED... },
+              "templateUsed": "pattern name or null"
             }
 
             CATALOG:
@@ -250,7 +560,8 @@ public class WorkflowAiDraftService {
     private List<String> collectWarnings(JsonNode root) {
         List<String> warnings = new ArrayList<>();
         if (root == null) return warnings;
-        String wf = root.has("workflow") ? root.get("workflow").toString() : "";
+        String wf = (root.has("workflow") ? root.get("workflow").toString() : "")
+                + (root.has("skeleton") ? root.get("skeleton").toString() : "");
         if (wf.contains("INVITE_FORM_FILL")) {
             warnings.add("INVITE_FORM_FILL fires when the invite page is VIEWED, not when the form is submitted.");
         }

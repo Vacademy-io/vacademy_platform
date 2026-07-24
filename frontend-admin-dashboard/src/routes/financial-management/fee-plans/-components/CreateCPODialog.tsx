@@ -712,10 +712,23 @@ function ClassMultiSelect({
     onToggle: (id: string) => void;
 }) {
     const [open, setOpen] = useState(false);
+    const [search, setSearch] = useState('');
 
     const selectedLabels = batchOptions
         .filter((opt) => selectedIds.includes(opt.id))
         .map((opt) => opt.label);
+
+    const filteredOptions = React.useMemo(() => {
+        const q = search.trim().toLowerCase();
+        return q ? batchOptions.filter((opt) => opt.label.toLowerCase().includes(q)) : batchOptions;
+    }, [batchOptions, search]);
+
+    const toggleOpen = () => {
+        setOpen((v) => {
+            if (v) setSearch('');
+            return !v;
+        });
+    };
 
     return (
         <div className="relative">
@@ -724,7 +737,7 @@ function ClassMultiSelect({
             </Label>
             <button
                 type="button"
-                onClick={() => setOpen((v) => !v)}
+                onClick={toggleOpen}
                 className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left text-sm outline-none transition focus:border-primary-500 focus:ring-1 focus:ring-primary-200"
             >
                 <span className={selectedIds.length === 0 ? 'text-gray-400' : 'text-gray-700'}>
@@ -750,24 +763,41 @@ function ClassMultiSelect({
             </button>
 
             {open && (
-                <div className="absolute z-[1300] mt-1 max-h-[200px] w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
-                    {batchOptions.length === 0 && (
-                        <p className="px-3 py-2 text-sm text-gray-400">No classes available</p>
-                    )}
-                    {batchOptions.map((opt) => (
-                        <label
-                            key={opt.id}
-                            className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm transition hover:bg-gray-50"
-                        >
-                            <input
-                                type="checkbox"
-                                checked={selectedIds.includes(opt.id)}
-                                onChange={() => onToggle(opt.id)}
-                                className="h-4 w-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500"
-                            />
-                            <span className="text-gray-700">{opt.label}</span>
-                        </label>
-                    ))}
+                <div className="absolute z-[1300] mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg">
+                    <div className="border-b border-gray-100 p-2">
+                        <input
+                            type="text"
+                            autoFocus
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Search classes..."
+                            className="w-full rounded-md border border-gray-200 px-2 py-1.5 text-sm outline-none transition focus:border-primary-500 focus:ring-1 focus:ring-primary-200"
+                        />
+                    </div>
+                    <div className="max-h-[200px] overflow-y-auto">
+                        {batchOptions.length === 0 && (
+                            <p className="px-3 py-2 text-sm text-gray-400">No classes available</p>
+                        )}
+                        {batchOptions.length > 0 && filteredOptions.length === 0 && (
+                            <p className="px-3 py-2 text-sm text-gray-400">
+                                No classes match your search
+                            </p>
+                        )}
+                        {filteredOptions.map((opt) => (
+                            <label
+                                key={opt.id}
+                                className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm transition hover:bg-gray-50"
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={selectedIds.includes(opt.id)}
+                                    onChange={() => onToggle(opt.id)}
+                                    className="h-4 w-4 rounded border-gray-300 text-primary-500 focus:ring-primary-500"
+                                />
+                                <span className="text-gray-700">{opt.label}</span>
+                            </label>
+                        ))}
+                    </div>
                 </div>
             )}
 

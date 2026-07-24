@@ -76,6 +76,8 @@ import { AssistantLaunchBar } from '@/components/vacademy-assistant/AssistantLau
 import KpiBand from './-components/KpiBand';
 import FinanceSummaryWidget from './-components/FinanceSummaryWidget';
 import SubOrgOverviewWidget from './-components/SubOrgOverviewWidget';
+import SubOrgSelfStatsWidget from './-components/SubOrgSelfStatsWidget';
+import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
 import RecentTransactionsWidget from './-components/RecentTransactionsWidget';
 import FreshInstituteEmptyState from './-components/FreshInstituteEmptyState';
 import TrackedWidget from './-components/TrackedWidget';
@@ -409,6 +411,10 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
     const userRoles = getUserRoles(accessToken);
     const isAdmin = userRoles.includes('ADMIN');
+    // Sub-org admins also hold ADMIN on the parent institute, so the ADMIN role
+    // alone can't distinguish them — the FSPSSM-derived faculty-access data is the
+    // canonical fingerprint. Drives which sub-org card they see (own scope vs network).
+    const isSubOrgAdmin = isCallerSubOrgAdmin();
 
     // Non-blocking: each widget that depends on `data` handles its own
     // loading/empty state. Previously this was `useSuspenseQuery`, which
@@ -620,12 +626,22 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                         )}
                     </div>
                 )}
-                {/* Sub-org (VLE) network snapshot — which ROLES see it is controlled per-role
-                    from Settings → Display Settings → Dashboard Widgets (id: subOrgOverview);
-                    the widget itself hides for institutes with no sub-orgs. */}
-                {!isFreshTenant && isWidgetVisible('subOrgOverview') && (
+                {/* Sub-org (VLE) NETWORK snapshot — for the PARENT admin. Hidden for sub-org
+                    admins (they'd otherwise see the whole parent network, wrong scope); they
+                    get their own scoped card below instead. Per-role toggle:
+                    Settings → Display Settings → Dashboard Widgets (id: subOrgOverview);
+                    the widget itself also hides for institutes with no sub-orgs. */}
+                {!isFreshTenant && !isSubOrgAdmin && isWidgetVisible('subOrgOverview') && (
                     <TrackedWidget widgetId="subOrgOverview">
                         <SubOrgOverviewWidget />
+                    </TrackedWidget>
+                )}
+                {/* Sub-org admin's OWN stats (learners / seats / courses / outstanding),
+                    scoped to the sub-org they're in. Only ever for a sub-org admin; toggle
+                    id: subOrgSelfStats. */}
+                {!isFreshTenant && isSubOrgAdmin && isWidgetVisible('subOrgSelfStats') && (
+                    <TrackedWidget widgetId="subOrgSelfStats">
+                        <SubOrgSelfStatsWidget />
                     </TrackedWidget>
                 )}
                 {/* My Courses Widget - Only for Non-Admin Users */}

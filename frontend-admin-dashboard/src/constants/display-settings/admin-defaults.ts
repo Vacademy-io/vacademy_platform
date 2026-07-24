@@ -74,6 +74,7 @@ function defaultDashboardWidgetsAdmin(): DashboardWidgetConfig[] {
         'financeSummary',
         'recentTransactions',
         'subOrgOverview',
+        'subOrgSelfStats',
         // 5. Engagement signals
         'unresolvedDoubts',
         'recentNotifications',

@@ -49,7 +49,8 @@ export type DashboardWidgetId =
     | 'liveClasses'
     | 'aiFeaturesCard'
     | 'instituteOverview'
-    | 'subOrgOverview';
+    | 'subOrgOverview'
+    | 'subOrgSelfStats';
 
 export interface DashboardWidgetConfig {
     id: DashboardWidgetId;

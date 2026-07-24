@@ -51,4 +51,11 @@ public class PackageDetailV2DTO {
     private String currency;
     private Integer availableSlots;
     private Integer maxSeats;
+
+    /**
+     * Server-computed availability of the course's default enroll invite:
+     * AVAILABLE / EXPIRED / NOT_STARTED / INACTIVE (null when the course has no default invite).
+     * Drives the catalogue card's "Enrollment closed" / "Opens soon" badge.
+     */
+    private String enrollInviteAvailability;
 }

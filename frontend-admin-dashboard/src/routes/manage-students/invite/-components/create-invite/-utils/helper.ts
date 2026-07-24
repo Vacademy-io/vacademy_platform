@@ -10,6 +10,24 @@ interface DropdownOptionForConversion {
     disabled?: boolean;
 }
 
+/**
+ * Normalises an enroll_invite start_date/end_date (ISO string, 'YYYY-MM-DD', or epoch)
+ * into the 'YYYY-MM-DD' value an <input type="date"> expects. Empty/invalid → ''.
+ * Used to prefill the availability-window pickers when editing an invite.
+ */
+export const toDateInputValue = (value?: string | number | null): string => {
+    if (value === null || value === undefined || value === '') return '';
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value)) {
+        return value.slice(0, 10);
+    }
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
 interface CustomFieldForConversion {
     id: number | string;
     type: string;
@@ -374,8 +392,9 @@ export function convertInviteData(
     const convertedData = {
         id: inviteId || '',
         name: data.name,
-        start_date: '',
-        end_date: '',
+        // Invite-link availability window (enroll_invite.start_date / end_date). Empty = open-ended.
+        start_date: data.availabilityStartDate || '',
+        end_date: data.availabilityEndDate || '',
         invite_code: '',
         status: 'ACTIVE',
         institute_id: instituteId,
@@ -442,6 +461,23 @@ export function convertInviteData(
                 };
             } else if (next.setting?.AUTOPAY_SETTING) {
                 const { AUTOPAY_SETTING: _removedAutopay, ...restSetting } = next.setting;
+                next.setting = restSetting;
+            }
+            // Availability message → setting.AVAILABILITY_SETTING.UNAVAILABLE_MESSAGE (rich HTML,
+            // shown to learners when the link is expired / not-yet-started / deactivated). Written
+            // only when the admin entered text; removed when cleared. Spreads next.setting so any
+            // co-enabled SUB_ORG_SETTING / AUTOPAY_SETTING block is preserved.
+            const unavailableHtml = data.unavailableMessage || '';
+            const unavailableText = unavailableHtml.replace(/<[^>]*>/g, '').trim();
+            if (unavailableText) {
+                next.setting = {
+                    ...(next.setting || existing.setting || {}),
+                    AVAILABILITY_SETTING: {
+                        UNAVAILABLE_MESSAGE: unavailableHtml,
+                    },
+                };
+            } else if (next.setting?.AVAILABILITY_SETTING) {
+                const { AVAILABILITY_SETTING: _removedAvail, ...restSetting } = next.setting;
                 next.setting = restSetting;
             }
             return JSON.stringify(next);

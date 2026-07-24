@@ -34,6 +34,7 @@ import RestrictSameBatch from './-components/RestrictSameBatch';
 import CustomInviteFormCard from './-components/CustomInviteFormCard';
 import LearnerAccessDurationCard from './-components/LearnerAccessDurationCard';
 import CustomHTMLCard from './-components/CustomHTMLCard';
+import InviteAvailabilityCard from './-components/InviteAvailabilityCard';
 import PostFormFillConfigurationCard from './-components/PostFormFillConfigurationCard';
 import SubOrgSettingsCard from './-components/SubOrgSettingsCard';
 import { toast } from 'sonner';
@@ -53,6 +54,7 @@ import {
     getPaymentOptionBySessionId,
     ReTransformCustomFields,
     splitPlansByType,
+    toDateInputValue,
 } from './-utils/helper';
 import { handleGetReferralProgramDetails } from './-services/referral-services';
 import PreviewInviteLink from './PreviewInviteLink';
@@ -156,6 +158,9 @@ const GenerateInviteLinkDialog = ({
             selectedPlanForReferral: '',
             showPlanReferralDialog: false,
             restrictToSameBatch: false,
+            availabilityStartDate: '',
+            availabilityEndDate: '',
+            unavailableMessage: '',
             accessDurationType: 'define',
             accessDurationDays: '',
             inviteeEmail: '',
@@ -840,6 +845,11 @@ const GenerateInviteLinkDialog = ({
                 showRelatedCourses:
                     safeJsonParse(inviteLinkDetails?.web_page_meta_data_json, {})
                         ?.showRelatedCourses || false,
+                availabilityStartDate: toDateInputValue(inviteLinkDetails?.start_date),
+                availabilityEndDate: toDateInputValue(inviteLinkDetails?.end_date),
+                unavailableMessage:
+                    safeJsonParse(inviteLinkDetails?.setting_json, {})?.setting
+                        ?.AVAILABILITY_SETTING?.UNAVAILABLE_MESSAGE || '',
                 postformfillConfiguration: safeJsonParse(inviteLinkDetails?.setting_json, {})?.postformfillConfiguration || {
                     redirectPath: '',
                     showLoginButton: true,
@@ -982,6 +992,9 @@ const GenerateInviteLinkDialog = ({
                             {form.watch('selectedPlan')?.type === 'subscription' && (
                                 <LearnerAccessDurationCard form={form} />
                             )}
+
+                            {/* Availability window + unavailable message */}
+                            <InviteAvailabilityCard form={form} />
 
                             {/* Custom HTML Card */}
                             <CustomHTMLCard form={form} />

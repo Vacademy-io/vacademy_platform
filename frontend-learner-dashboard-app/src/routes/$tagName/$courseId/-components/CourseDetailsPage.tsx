@@ -12,6 +12,12 @@ import { CourseCatalogueService } from "../../-services/course-catalogue-service
 import { CourseCatalogueData } from "../../-types/course-catalogue-types";
 import { CourseStructureDetails } from "../../-components/CourseStructureDetails"; // Course structure component
 import { EnrollmentPaymentDialog } from "../../-components/EnrollmentPaymentDialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { InviteUnavailableMessage } from "@/components/common/enroll-by-invite/-components/InviteUnavailableMessage";
+import {
+  resolveInviteAvailability,
+  extractUnavailableMessageHtml,
+} from "@/lib/invite-availability";
 import { getBackendCourseDuration } from "@/utils/courseTime";
 import { PriceWithMrp } from "@/components/common/price-with-mrp";
 import {
@@ -338,6 +344,10 @@ interface CourseData {
   courseDepth: number;
   packageSessionId: string;
   enrollInviteId?: string;
+  // Server-computed availability of the course's default enroll invite + the admin's
+  // "unavailable" message (from the invite's setting_json). Drive the closed-state UI.
+  enrollInviteAvailability?: string;
+  unavailableMessageHtml?: string;
   levelId?: string;
   courseId?: string;
   course_banner_media_id?: string;
@@ -423,6 +433,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
     };
   }, [instituteId]);
   const [enrollmentDialogOpen, setEnrollmentDialogOpen] = useState(false);
+  // Shown when a learner tries to enroll through an expired / not-yet-started / deactivated invite.
+  const [showUnavailableDialog, setShowUnavailableDialog] = useState(false);
 
   // Fetch catalogue data for header and footer
   useEffect(() => {
@@ -578,6 +590,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             ? course.min_plan_elevated_price
             : undefined;
         let finalCurrency = course.currency || "USD";
+        // Availability window + admin "unavailable" message, read from the enroll-invite fetch below.
+        let fetchedInviteAvailability: string | undefined;
+        let fetchedInviteSettingJson: string | undefined;
 
         // Fetch enroll-invite API to get the correct price and currency from payment plans
         // This API contains the actual payment_plans with actual_price and currency
@@ -601,6 +616,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             );
 
             const enrollInviteData = enrollInviteResponse.data;
+            fetchedInviteAvailability = enrollInviteData?.availability_status;
+            fetchedInviteSettingJson = enrollInviteData?.setting_json;
 
             // Extract price and currency from payment_plans
             const paymentPlan =
@@ -809,6 +826,8 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
           packageSessionId:
             packageSessionId || course.package_session_id || courseId, // Use passed packageSessionId or fallback to API response
           enrollInviteId: enrollInviteId || course.enroll_invite_id, // Use passed enrollInviteId or fallback to API response
+          enrollInviteAvailability: fetchedInviteAvailability,
+          unavailableMessageHtml: extractUnavailableMessageHtml(fetchedInviteSettingJson),
           levelId: course.level_id, // Add levelId from API response
           courseId: course.course_id || courseId, // Add courseId from API response or use the route param
           course_banner_media_id: course.course_banner_media_id || "", // Explicitly pass the banner ID for BookDetailsComponent
@@ -976,6 +995,12 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
       </div>
     );
   }
+
+  // Enroll-invite availability (server-computed). When not AVAILABLE, every enroll CTA opens the
+  // admin's "unavailable" message instead of the payment/lead flow.
+  const inviteAvailability = resolveInviteAvailability(courseData.enrollInviteAvailability);
+  const isEnrollmentClosed = inviteAvailability !== "AVAILABLE";
+  const unavailableMessageHtml = courseData.unavailableMessageHtml ?? "";
 
   return (
     <div ref={themeRootRef} className="min-h-screen bg-white w-full">
@@ -1174,6 +1199,11 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                     <div className="pt-1 space-y-2">
                       <button
                         onClick={() => {
+                          // Invite expired / not-yet-started / deactivated → show the admin message.
+                          if (isEnrollmentClosed) {
+                            setShowUnavailableDialog(true);
+                            return;
+                          }
                           // Check if payment is disabled and lead collection is enabled
                           const globalSettings =
                             catalogueData?.globalSettings as any;
@@ -1360,6 +1390,11 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
                     <div className="pt-1 space-y-2">
                       <button
                         onClick={() => {
+                          // Invite expired / not-yet-started / deactivated → show the admin message.
+                          if (isEnrollmentClosed) {
+                            setShowUnavailableDialog(true);
+                            return;
+                          }
                           // Check if payment is disabled and lead collection is enabled
                           const globalSettings =
                             catalogueData?.globalSettings as any;
@@ -1437,6 +1472,20 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             tagName={tagName}
           />
         )}
+
+      {/* Enrollment unavailable (expired / not-yet-started / deactivated invite) */}
+      <Dialog open={showUnavailableDialog} onOpenChange={setShowUnavailableDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="sr-only">Enrollment unavailable</DialogTitle>
+          </DialogHeader>
+          <InviteUnavailableMessage
+            availability={inviteAvailability}
+            messageHtml={unavailableMessageHtml}
+            className="py-2"
+          />
+        </DialogContent>
+      </Dialog>
 
       {/* Lead Collection Modal */}
       {showLeadCollection && catalogueData?.globalSettings?.leadCollection && (
@@ -1617,6 +1666,11 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
             <div className="flex flex-col gap-1">
               <button
                 onClick={() => {
+                  // Invite expired / not-yet-started / deactivated → show the admin message.
+                  if (isEnrollmentClosed) {
+                    setShowUnavailableDialog(true);
+                    return;
+                  }
                   // Mirror the desktop CTA: enroll when payment is enabled,
                   // otherwise fall back to the lead-collection form.
                   if (catalogueData?.globalSettings?.payment?.enabled === true) {

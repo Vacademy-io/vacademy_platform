@@ -2963,6 +2963,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     SELECT
                         ps.id AS package_session_id,
                         ei.id AS enroll_invite_id,
+                        ei.status AS enroll_invite_status,
+                        ei.start_date AS enroll_invite_start_date,
+                        ei.end_date AS enroll_invite_end_date,
                         psli.id AS psli_id,
                         po.id AS payment_option_id,
                         po.type AS payment_option_type,
@@ -3016,6 +3019,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
 
                     -- Default invite -> recent psli -> its payment_option -> min price plan (row_num = 1)
                     payment_info.enroll_invite_id AS enrollInviteId,
+                    payment_info.enroll_invite_status AS enrollInviteStatus,
+                    payment_info.enroll_invite_start_date AS enrollInviteStartDate,
+                    payment_info.enroll_invite_end_date AS enrollInviteEndDate,
                     payment_info.psli_id AS psliId,
                     payment_info.payment_option_id AS paymentOptionId,
                     payment_info.payment_option_type AS paymentOptionType,
@@ -3125,6 +3131,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     s.session_name,
                     ps_read_time.total_read_time_minutes,
                     payment_info.enroll_invite_id,
+                    payment_info.enroll_invite_status,
+                    payment_info.enroll_invite_start_date,
+                    payment_info.enroll_invite_end_date,
                     payment_info.psli_id,
                     payment_info.payment_option_id,
                     payment_info.payment_option_type,
@@ -3195,6 +3204,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     SELECT
                         ps.id AS package_session_id,
                         e.id AS enroll_invite_id,
+                        e.status AS enroll_invite_status,
+                        e.start_date AS enroll_invite_start_date,
+                        e.end_date AS enroll_invite_end_date,
                         psli.id AS psli_id,
                         po.id AS payment_option_id,
                         po.type AS payment_option_type,
@@ -3270,6 +3282,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
 
                     -- Default invite -> recent psli -> its payment_option -> min price plan
                     payment_info.enroll_invite_id AS enrollInviteId,
+                    payment_info.enroll_invite_status AS enrollInviteStatus,
+                    payment_info.enroll_invite_start_date AS enrollInviteStartDate,
+                    payment_info.enroll_invite_end_date AS enrollInviteEndDate,
                     payment_info.psli_id AS psliId,
                     payment_info.payment_option_id AS paymentOptionId,
                     payment_info.payment_option_type AS paymentOptionType,
@@ -3377,6 +3392,9 @@ public interface PackageRepository extends JpaRepository<PackageEntity, String> 
                     s.session_name,
                     ps_read_time.total_read_time_minutes,
                     payment_info.enroll_invite_id,
+                    payment_info.enroll_invite_status,
+                    payment_info.enroll_invite_start_date,
+                    payment_info.enroll_invite_end_date,
                     payment_info.psli_id,
                     payment_info.payment_option_id,
                     payment_info.payment_option_type,

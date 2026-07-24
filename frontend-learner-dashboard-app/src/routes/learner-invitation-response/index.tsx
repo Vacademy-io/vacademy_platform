@@ -7,6 +7,12 @@ import { handleGetEnrollInviteData } from "@/components/common/enroll-by-invite/
 import { PaymentGatewayWrapper } from "@/components/common/enroll-by-invite/-components/payment-gateway-wrapper";
 import { getPaymentVendor } from "@/components/common/enroll-by-invite/-utils/payment-vendor-helper";
 import { LinkBreak, CreditCard, Warning, ClipboardText } from "@phosphor-icons/react";
+import { InviteUnavailableMessage } from "@/components/common/enroll-by-invite/-components/InviteUnavailableMessage";
+import {
+  resolveInviteAvailability,
+  extractUnavailableMessageHtml,
+  type InviteAvailability,
+} from "@/lib/invite-availability";
 
 const inviteParamsSchema = z.object({
   instituteId: z.string().uuid(),
@@ -135,6 +141,31 @@ function UnexpectedErrorPage() {
   );
 }
 
+function InviteUnavailablePage({
+  availability,
+  messageHtml,
+}: {
+  availability: InviteAvailability;
+  messageHtml: string;
+}) {
+  const router = useRouter();
+  return (
+    <div className="h-screen w-full bg-gray-50 flex flex-col justify-center items-center px-4">
+      <div className="max-w-md mx-auto w-full">
+        <InviteUnavailableMessage availability={availability} messageHtml={messageHtml} />
+        <div className="mt-8 flex justify-center">
+          <button
+            onClick={() => router.history.back()}
+            className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function InviteErrorComponent({ error }: { error: unknown }) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const axiosError = error as any;
@@ -175,6 +206,19 @@ function RouteComponent() {
   const { data: inviteData } = useSuspenseQuery(
     handleGetEnrollInviteData({ instituteId, inviteCode })
   );
+
+  // Guard: invite is expired / not-yet-started / deactivated. The backend now returns the
+  // invite (instead of a 510) for these states so we can render the admin's rich message from
+  // setting_json here. Enrollment itself is still blocked server-side.
+  const availability = resolveInviteAvailability(inviteData?.availability_status);
+  if (availability !== "AVAILABLE") {
+    return (
+      <InviteUnavailablePage
+        availability={availability}
+        messageHtml={extractUnavailableMessageHtml(inviteData?.setting_json)}
+      />
+    );
+  }
 
   // Guard: invite exists but has no payment plans attached. Without this, the
   // form would crash downstream trying to read payment_option_metadata_json off

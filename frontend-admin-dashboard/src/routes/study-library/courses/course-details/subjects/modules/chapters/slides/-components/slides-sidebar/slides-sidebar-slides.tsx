@@ -9,8 +9,8 @@ import {
     ClipboardText,
     ListChecks,
 } from '@phosphor-icons/react';
-import { Video, Sparkles } from 'lucide-react';
-import { ReactNode, useEffect, useMemo } from 'react';
+import { Video, Sparkle } from '@phosphor-icons/react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import {
     Slide,
     slideOrderPayloadType,
@@ -29,6 +29,7 @@ import {
     Package,
     Question,
 } from '@phosphor-icons/react';
+import { getDraftUserId, useSlideDrafts } from '../../-hooks/use-slide-drafts';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useLearnerViewStore } from '../../-stores/learner-view-store';
 import { getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
@@ -105,7 +106,7 @@ export const getIcon = (
         return (
             <div className="relative inline-block">
                 <Video className={`${iconClass} text-blue-500`} />
-                <Sparkles className={`absolute -right-0.5 -top-0.5 ${sparkleSize} text-blue-400`} />
+                <Sparkle className={`absolute -right-0.5 -top-0.5 ${sparkleSize} text-blue-400`} />
             </div>
         );
     }
@@ -154,6 +155,7 @@ const SlideItem = ({
     slide,
     index,
     isActive,
+    isDirty = false,
     onClick,
     assessmentOrdinal,
     showNumbering = true,
@@ -161,6 +163,8 @@ const SlideItem = ({
     slide: Slide;
     index: number;
     isActive: boolean;
+    /** Slide has a local (browser-only) unsaved draft — show the amber badge. */
+    isDirty?: boolean;
     onClick: () => void;
     /**
      * 1-indexed position of this slide among ASSESSMENT slides in the
@@ -249,7 +253,9 @@ const SlideItem = ({
                                 ? 'cursor-not-allowed border-red-200 bg-red-50/30 text-red-600 opacity-50'
                                 : isActive
                                   ? 'border-primary-300 bg-primary-50/80 text-primary-600 shadow-md shadow-primary-100/50'
-                                  : 'hover:bg-primary-25 border-neutral-100 bg-white/60 text-neutral-600 hover:border-primary-200 hover:text-primary-500 hover:shadow-sm'
+                                  : isDirty
+                                    ? 'border-warning-300 bg-warning-50/60 text-neutral-600 hover:border-warning-400 hover:shadow-sm'
+                                    : 'hover:bg-primary-25 border-neutral-100 bg-white/60 text-neutral-600 hover:border-primary-200 hover:text-primary-500 hover:shadow-sm'
                         }
                         ${slide.status !== 'DELETED' ? 'group-hover:shadow-md' : ''}
                     `}
@@ -298,8 +304,19 @@ const SlideItem = ({
                                         </p>
                                     </div>
 
-                                    {/* Status indicator */}
-                                    <div className="shrink-0">{getStatusBadge()}</div>
+                                    {/* Status indicator (+ amber dot while the slide has
+                                        unsaved local edits — shown alongside, never replacing,
+                                        the ✓/D/U badge; also readable on the ACTIVE row, whose
+                                        primary border overrides the amber dirty border) */}
+                                    <div className="flex shrink-0 items-center gap-1.5">
+                                        {isDirty && (
+                                            <span
+                                                title="Unsaved changes"
+                                                className="size-2 rounded-full bg-warning-500 ring-2 ring-warning-100"
+                                            />
+                                        )}
+                                        {getStatusBadge()}
+                                    </div>
                                 </div>
                             </TooltipTrigger>
                             <TooltipContent
@@ -357,6 +374,13 @@ export const ChapterSidebarSlides = ({
     const { chapterId, slideId, courseId, levelId, moduleId, subjectId, sessionId } = searchParams;
 
     const { slides, isLoading, refetch } = useSlidesQuery(chapterId || '');
+
+    // Local unsaved drafts (course-scoped) → amber border on dirty rows. The
+    // course-level rollup lives in CourseUnsavedBanner (sidebar top), and the
+    // DB status badge (✓/D/U) is deliberately left untouched — dirty is a
+    // separate fact from saved-status.
+    const [draftUserId] = useState<string>(() => getDraftUserId());
+    const { dirtySlideIds } = useSlideDrafts(draftUserId, courseId || '');
 
     // Memoize filtered slides to prevent infinite loops
     const filteredSlides = useMemo(() => {
@@ -524,6 +548,7 @@ export const ChapterSidebarSlides = ({
                                     slide={slide}
                                     index={index}
                                     isActive={slide.id === activeItem?.id}
+                                    isDirty={dirtySlideIds.has(slide.id)}
                                     onClick={() => handleSlideClick(slide)}
                                     assessmentOrdinal={assessmentOrdinal}
                                     showNumbering={showNumbering}

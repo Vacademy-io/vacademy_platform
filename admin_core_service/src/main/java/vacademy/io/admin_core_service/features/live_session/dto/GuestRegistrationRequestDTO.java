@@ -14,6 +14,9 @@ public class GuestRegistrationRequestDTO {
 
     private String sessionId;
     private String email;
+    // Optional second identity (phone-identity institutes); either email or
+    // mobileNumber must be present.
+    private String mobileNumber;
 
     private List<CustomFieldValueDTO> customFields;
 

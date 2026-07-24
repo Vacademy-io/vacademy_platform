@@ -1,18 +1,24 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useSessionCustomFields } from "../-hooks/useGetRegistrationFormData";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { toast } from "sonner";
 import {
   transformToCollectPublicUserDataDTO,
   transformToGuestRegistrationDTO,
+  transformToPaidRegistrationDTO,
 } from "../-utils/helper";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { AccessLevel } from "../-types/enum";
-import { RegistrationFormValues } from "../-types/type";
+import { LiveSessionPaymentInfo, RegistrationFormValues } from "../-types/type";
 import {
+  fetchLiveSessionPaymentInfo,
   useCollectPublicUserData,
   useLiveSessionGuestRegistration,
+  useLiveSessionRegisterAndPay,
 } from "../-hooks/useLiveSessionGuestRegistration";
+import { getCurrencySymbol } from "@/utils/currency";
+import { Button } from "@/components/ui/button";
+import { CreditCard } from "@phosphor-icons/react";
 import { useEarliestScheduleId } from "../-hooks/useEarliestScheduleId";
 import { fetchSessionDetails } from "@/routes/live-class-guest/-hooks/useSessionDetails";
 import { SessionDetailsResponse } from "@/routes/study-library/live-class/-types/types";
@@ -20,15 +26,23 @@ import { SessionStreamingServiceType } from "@/routes/register/live-class/-types
 import { getPublicFileUrl } from "../-hooks/getPublicUrl";
 import { useMarkAttendance } from "@/routes/live-class-guest/-hooks/useMarkAttendance";
 import axios from "axios";
-import { LIVE_SESSION_CHECK_EMAIL_REGISTRATION, urlInstituteDetails } from "@/constants/urls";
+import { urlInstituteDetails } from "@/constants/urls";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 
 // Import the separated components
-import EmailVerificationDialog from "./EmailVerificationDialog";
 import RegistrationForm from "./RegistrationForm";
 import SessionStatusCard from "./SessionStatusCard";
 import SessionInfo from "./SessionInfo";
-import { Preferences } from "@capacitor/preferences";
+import OtpVerificationDialog, {
+  type OtpChannel,
+} from "./OtpVerificationDialog";
+import {
+  getLegacyStoredEmail,
+  getRememberedEmails,
+  getStoredRegistration,
+  storeRegistration,
+  type GuestIdentity,
+} from "../-utils/guestSessionStorage";
 import { getCachedInstituteBranding } from "@/services/domain-routing";
 import { useTheme } from "@/providers/theme/theme-provider";
 
@@ -38,7 +52,6 @@ export interface InstituteBrandingInfo {
 }
 
 export default function LiveClassRegistrationPage() {
-  const [dialog, setDialog] = useState<boolean>(false);
   const [sessionDetails, setSessionDetails] =
     useState<SessionDetailsResponse | null>(null);
   const router = useRouter();
@@ -53,7 +66,11 @@ export default function LiveClassRegistrationPage() {
   const [instituteBranding, setInstituteBranding] =
     useState<InstituteBrandingInfo>({ instituteName: null, instituteLogoUrl: null });
   const [registrationResponse, setRegistrationResponse] = useState<string>("");
+  const [paymentInfo, setPaymentInfo] = useState<LiveSessionPaymentInfo | null>(
+    null
+  );
   const { mutateAsync: registerGuestUser } = useLiveSessionGuestRegistration();
+  const { mutateAsync: registerAndPay } = useLiveSessionRegisterAndPay();
   const { mutateAsync: collectPublicUserData } = useCollectPublicUserData();
   const [verifiedEmail, setVerifiedEmail] = useState<string>("");
   const [verifiedEmails, setVerifiedEmails] = useState<string[]>([]);
@@ -61,21 +78,24 @@ export default function LiveClassRegistrationPage() {
     useState<boolean>(false);
   const [alreadyRegisteredEmail, setAlreadyRegisteredEmail] =
     useState<string>("");
+  // True while the on-load "is this device already registered?" lookup runs,
+  // so a returning learner never sees the blank form flash before being
+  // routed into their class.
+  const [resolvingRegistration, setResolvingRegistration] =
+    useState<boolean>(true);
+
+  // OTP verification gate (per-session admin config): channels still awaiting
+  // verification for the submission parked in pendingSubmissionRef. Identities
+  // verified once this page-load are remembered so re-submits skip the OTP.
+  const [otpChannels, setOtpChannels] = useState<OtpChannel[]>([]);
+  const pendingSubmissionRef = useRef<RegistrationFormValues | null>(null);
+  const verifiedIdentitiesRef = useRef<Set<string>>(new Set());
 
   const { mutateAsync: markAttendance } = useMarkAttendance();
 
-  // Load verified emails from local storage
+  // Emails this device has used before — prefill only, no verification step.
   useEffect(() => {
-    const savedVerifiedEmails = JSON.parse(
-      localStorage.getItem("verifiedEmail") || "[]"
-    );
-    setVerifiedEmails(savedVerifiedEmails);
-
-    if (savedVerifiedEmails.length > 0) {
-      setVerifiedEmail(savedVerifiedEmails[0]);
-    } else {
-      setDialog(true);
-    }
+    setVerifiedEmails(getRememberedEmails());
   }, []);
 
   const fetchCoverFileUrl = useCallback(async () => {
@@ -163,6 +183,85 @@ export default function LiveClassRegistrationPage() {
     }
   }, [data, fetchCoverFileUrl, fetchInstituteBranding, router]);
 
+  const goToInvoicePayment = useCallback(
+    (invoiceId: string) => {
+      const redirect = `${window.location.pathname}${window.location.search}`;
+      navigate({
+        to: "/pay/invoice/$invoiceId",
+        params: { invoiceId },
+        search: { redirect },
+      });
+    },
+    [navigate]
+  );
+
+  // On load (refresh, closed tab, returning from the payment page): resolve
+  // whether this device's known email is already registered for THIS session —
+  // free and paid alike — so a returning learner is routed straight back into
+  // the class instead of seeing the registration form again.
+  useEffect(() => {
+    const resolveExistingRegistration = async () => {
+      if (isLoading) return;
+      if (!data?.sessionId) {
+        setResolvingRegistration(false);
+        return;
+      }
+      try {
+        const stored = getStoredRegistration(data.sessionId);
+        const candidateEmail =
+          stored?.email ||
+          (await getLegacyStoredEmail()) ||
+          getRememberedEmails()[0];
+        const candidatePhone = stored?.mobileNumber;
+        if (!candidateEmail && !candidatePhone) return; // brand-new visitor → show the form
+
+        if (candidateEmail) setVerifiedEmail(candidateEmail);
+        // payment-info doubles as the registration lookup for free sessions
+        // (registration_id is filled whenever the email/phone is registered).
+        const info = await fetchLiveSessionPaymentInfo(
+          data.sessionId,
+          candidateEmail,
+          candidatePhone
+        );
+        setPaymentInfo(info);
+        if (!info.registration_id) return; // known identity, not registered here
+
+        await storeRegistration(
+          data.sessionId,
+          { email: candidateEmail, mobileNumber: candidatePhone },
+          info.registration_id
+        );
+        setRegistrationResponse(info.registration_id);
+        setIsUserAlreadyRegistered(true);
+        setAlreadyRegisteredEmail(candidateEmail || candidatePhone || "");
+        if (!info.payment_required || info.payment_status === "PAID") {
+          // refetch with the registration id now persisted (paid access needs it)
+          fetchSessionDetail(earliestScheduleId || sessionId || "");
+        }
+      } catch (error) {
+        console.error("Failed to resolve live-session registration:", error);
+        // Offline/flaky lookup: trust the cached per-session record so the
+        // returning learner still lands on the join card instead of the form.
+        const cached = getStoredRegistration(data.sessionId);
+        if (cached) {
+          setRegistrationResponse(cached.registrationId);
+          setIsUserAlreadyRegistered(true);
+          setAlreadyRegisteredEmail(cached.email);
+          fetchSessionDetail(earliestScheduleId || sessionId || "");
+        }
+      } finally {
+        setResolvingRegistration(false);
+      }
+    };
+    resolveExistingRegistration();
+  }, [
+    isLoading,
+    data?.sessionId,
+    sessionId,
+    earliestScheduleId,
+    fetchSessionDetail,
+  ]);
+
   const onSubmit = async (formValues: RegistrationFormValues) => {
     let payload;
     let userPayload;
@@ -201,20 +300,117 @@ export default function LiveClassRegistrationPage() {
       console.error("DTO transformation error:", error);
       return;
     }
+    if (!email) {
+      email = payload.email || "";
+    }
+    const mobileNumber = payload.mobile_number || "";
+    const identity: GuestIdentity = {
+      email: email || undefined,
+      mobileNumber: mobileNumber || undefined,
+    };
+    // At least one identity is required; paid classes additionally need an
+    // email because the invoice is billed and mailed to it.
+    if (!email && !mobileNumber) {
+      toast.error("Please enter your email or mobile number");
+      return;
+    }
+    if (data?.paymentRequired && !email) {
+      toast.error("An email address is required for this paid live class");
+      return;
+    }
+
+    // Per-session OTP verification gate: park the submission and collect the
+    // channels the admin requires that haven't been verified yet this visit.
+    // onVerified releases the parked submission back through this function.
+    const channelsToVerify: OtpChannel[] = [];
+    if (data?.requireEmailVerification) {
+      if (!email) {
+        toast.error("An email address is required for this live class");
+        return;
+      }
+      if (!verifiedIdentitiesRef.current.has(`email:${email.toLowerCase()}`)) {
+        channelsToVerify.push({ type: "email", value: email });
+      }
+    }
+    if (data?.requirePhoneVerification) {
+      if (!mobileNumber) {
+        toast.error("A mobile number is required for this live class");
+        return;
+      }
+      const digits = mobileNumber.replace(/\D/g, "");
+      if (!verifiedIdentitiesRef.current.has(`phone:${digits}`)) {
+        channelsToVerify.push({ type: "phone", value: mobileNumber });
+      }
+    }
+    if (channelsToVerify.length > 0) {
+      pendingSubmissionRef.current = formValues;
+      setOtpChannels(channelsToVerify);
+      return;
+    }
+
+    // Paid live class: one call registers the guest AND raises the fee invoice,
+    // then we hand off to the shared /pay/invoice page. Joining stays locked
+    // until the invoice is settled (server-enforced).
+    if (data?.paymentRequired) {
+      try {
+        const paidPayload = transformToPaidRegistrationDTO(
+          formValues,
+          data?.sessionId || "",
+          data?.customFields || []
+        );
+        const payResponse = await registerAndPay(paidPayload);
+        setPaymentInfo(payResponse);
+        if (payResponse.registration_id) {
+          setRegistrationResponse(payResponse.registration_id);
+          await storeRegistration(
+            data?.sessionId || "",
+            identity,
+            payResponse.registration_id
+          );
+        }
+        try {
+          await collectPublicUserData({
+            payload: userPayload,
+            instituteId: data?.instituteId || "",
+          });
+        } catch (collectError) {
+          console.error("Failed to collect public user data:", collectError);
+        }
+        setIsUserAlreadyRegistered(true);
+        setAlreadyRegisteredEmail(email);
+        if (
+          payResponse.payment_status === "PAID" ||
+          !payResponse.payment_required
+        ) {
+          toast.success("Registration successful");
+          const sessionDetailResponse = await fetchSessionDetails(
+            earliestScheduleId || ""
+          );
+          if (sessionDetailResponse) {
+            await handlePostRegistrationNavigation(
+              sessionDetailResponse,
+              payResponse.registration_id || ""
+            );
+            setSessionDetails(sessionDetailResponse);
+          }
+        } else if (payResponse.invoice_id) {
+          toast.success(
+            "Registration saved — complete the payment to confirm your seat"
+          );
+          goToInvoicePayment(payResponse.invoice_id);
+        }
+      } catch (error) {
+        console.error("Paid registration failed:", error);
+      }
+      return;
+    }
 
     try {
       const registerResponse = await registerGuestUser(payload);
       setRegistrationResponse(registerResponse);
 
       if (registerResponse) {
-        await Preferences.set({
-          key: "live-session-email",
-          value: email,
-        });
-        await Preferences.set({
-          key: "live-session-guestId",
-          value: registerResponse,
-        });
+        await storeRegistration(data?.sessionId || "", identity, registerResponse);
         toast.success("Registration successful");
 
         const sessionDetailResponse = await fetchSessionDetails(
@@ -228,7 +424,7 @@ export default function LiveClassRegistrationPage() {
           );
           setSessionDetails(sessionDetailResponse);
           setIsUserAlreadyRegistered(true);
-          setAlreadyRegisteredEmail(email);
+          setAlreadyRegisteredEmail(email || mobileNumber);
         }
       }
 
@@ -243,25 +439,38 @@ export default function LiveClassRegistrationPage() {
     } catch (error: any) {
       console.error("Registration API call failed:", error);
 
+      // Legacy backend duplicate-registration error (the current backend is
+      // idempotent and returns the existing id instead). Recover by looking the
+      // registration up server-side — works even on a fresh device.
       if (error?.response?.status === 511 || error?.response?.data?.ex?.includes("already")) {
         setIsUserAlreadyRegistered(true);
-        setAlreadyRegisteredEmail(email);
-        const storedGuestId = await Preferences.get({
-          key: "live-session-guestId",
-        });
-        if (storedGuestId?.value) {
-          setRegistrationResponse(storedGuestId.value);
-          const sessionDetailResponse = await fetchSessionDetails(
-            earliestScheduleId || ""
+        setAlreadyRegisteredEmail(email || mobileNumber);
+        try {
+          const info = await fetchLiveSessionPaymentInfo(
+            data?.sessionId || "",
+            email,
+            mobileNumber
           );
-
-          if (sessionDetailResponse) {
-            await handlePostRegistrationNavigation(
-              sessionDetailResponse,
-              storedGuestId.value
+          if (info.registration_id) {
+            await storeRegistration(
+              data?.sessionId || "",
+              identity,
+              info.registration_id
             );
-            setSessionDetails(sessionDetailResponse);
+            setRegistrationResponse(info.registration_id);
+            const sessionDetailResponse = await fetchSessionDetails(
+              earliestScheduleId || ""
+            );
+            if (sessionDetailResponse) {
+              await handlePostRegistrationNavigation(
+                sessionDetailResponse,
+                info.registration_id
+              );
+              setSessionDetails(sessionDetailResponse);
+            }
           }
+        } catch (recoveryError) {
+          console.error("Failed to recover existing registration:", recoveryError);
         }
       }
     }
@@ -357,55 +566,43 @@ export default function LiveClassRegistrationPage() {
     console.log("Validation errors:", errors);
   };
 
-  const checkEmailRegistration = async (email: string) => {
+  // Called when the learner types/picks an email or mobile number in the form:
+  // silently look up whether that identity is already registered for this
+  // session and, if so, collapse the form into the registered state ("welcome
+  // back") instead of re-asking.
+  const checkIdentityRegistration = async (identity: GuestIdentity) => {
+    if (!data?.sessionId) return;
+    if (!identity.email && !identity.mobileNumber) return;
     try {
-      const response = await axios.get(LIVE_SESSION_CHECK_EMAIL_REGISTRATION, {
-        params: {
-          sessionId: data?.sessionId,
-          email: email,
-        },
-      });
-
-      if (response.data === true) {
+      const info = await fetchLiveSessionPaymentInfo(
+        data.sessionId,
+        identity.email,
+        identity.mobileNumber
+      );
+      setPaymentInfo(info);
+      if (info.registration_id) {
+        await storeRegistration(data.sessionId, identity, info.registration_id);
+        setRegistrationResponse(info.registration_id);
         setIsUserAlreadyRegistered(true);
-        setAlreadyRegisteredEmail(email);
-        const storedGuestId = await Preferences.get({
-          key: "live-session-guestId",
-        });
-        if (storedGuestId?.value) {
-          setRegistrationResponse(storedGuestId.value);
-        }
-        toast.success("Email already registered for this session");
-        if (sessionId) {
-          fetchSessionDetail(earliestScheduleId || "");
+        setAlreadyRegisteredEmail(identity.email || identity.mobileNumber || "");
+        toast.success("You're already registered for this session");
+        if (!info.payment_required || info.payment_status === "PAID") {
+          fetchSessionDetail(earliestScheduleId || sessionId || "");
         }
       } else {
         setIsUserAlreadyRegistered(false);
-        toast.success("Email verified successfully");
       }
     } catch (error) {
-      console.error("Failed to check email registration:", error);
+      console.error("Failed to check registration:", error);
     }
   };
 
-  const handleEmailVerified = (email: string) => {
-    setVerifiedEmail(email);
-    const existingEmails = JSON.parse(localStorage.getItem("verifiedEmail") || "[]");
-    if (!existingEmails.includes(email)) {
-      const updatedEmails = [...existingEmails, email];
-      localStorage.setItem("verifiedEmail", JSON.stringify(updatedEmails));
-      setVerifiedEmails(updatedEmails);
-    }
-    checkEmailRegistration(email);
-    setDialog(false);
+  const handleIdentityChange = (identity: GuestIdentity) => {
+    if (identity.email) setVerifiedEmail(identity.email);
+    checkIdentityRegistration(identity);
   };
 
-  const handleEmailChange = (email: string) => {
-    setVerifiedEmail(email);
-    checkEmailRegistration(email);
-  };
-
-  if (isLoading) return <DashboardLoader />;
+  if (isLoading || resolvingRegistration) return <DashboardLoader />;
 
   return (
     <>
@@ -427,7 +624,58 @@ export default function LiveClassRegistrationPage() {
           />
 
           <div className="w-full max-w-reg-420 lg:w-blob-sm flex-shrink-0">
-            {isUserAlreadyRegistered && sessionDetails ? (
+            {data?.paymentRequired && !isUserAlreadyRegistered && (
+              <div className="mb-3 flex items-center justify-between rounded-xl border border-primary-200 bg-primary-50 px-4 py-3">
+                <span className="text-body font-medium text-foreground">
+                  Live class fee
+                </span>
+                <span className="text-subtitle font-semibold text-primary-500">
+                  {getCurrencySymbol(data.currency || "")}
+                  {data.price}
+                </span>
+              </div>
+            )}
+            {isUserAlreadyRegistered &&
+            data?.paymentRequired &&
+            paymentInfo?.payment_status !== "PAID" ? (
+              <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
+                <div>
+                  <h2 className="text-subtitle font-semibold text-foreground">
+                    Payment pending
+                  </h2>
+                  <p className="mt-1 text-body text-muted-foreground">
+                    You are registered for this live class, but your seat is
+                    confirmed only after payment. You will receive an invoice by
+                    email once the payment is complete.
+                  </p>
+                </div>
+                <div className="flex items-center justify-between rounded-xl bg-primary-50 px-4 py-3">
+                  <span className="text-body text-muted-foreground">
+                    Amount due
+                  </span>
+                  <span className="text-subtitle font-semibold text-primary-500">
+                    {getCurrencySymbol(
+                      paymentInfo?.currency || data.currency || ""
+                    )}
+                    {paymentInfo?.total_amount ??
+                      paymentInfo?.price ??
+                      data.price}
+                  </span>
+                </div>
+                <Button
+                  size="lg"
+                  className="w-full gap-2"
+                  disabled={!paymentInfo?.invoice_id}
+                  onClick={() =>
+                    paymentInfo?.invoice_id &&
+                    goToInvoicePayment(paymentInfo.invoice_id)
+                  }
+                >
+                  <CreditCard size={18} weight="regular" />
+                  Complete Payment
+                </Button>
+              </div>
+            ) : isUserAlreadyRegistered && sessionDetails ? (
               <SessionStatusCard
                 sessionDetails={sessionDetails}
                 registrationResponse={registrationResponse}
@@ -439,20 +687,37 @@ export default function LiveClassRegistrationPage() {
                 customFields={data?.customFields || []}
                 verifiedEmail={verifiedEmail}
                 verifiedEmails={verifiedEmails}
+                paymentRequired={!!data?.paymentRequired}
                 onSubmit={onSubmit}
                 onError={onError}
-                onEmailChange={handleEmailChange}
+                onIdentityChange={handleIdentityChange}
               />
             )}
           </div>
         </div>
       </div>
 
-      <EmailVerificationDialog
-        open={dialog}
-        sessionId={data?.sessionId || ""}
+      <OtpVerificationDialog
+        open={otpChannels.length > 0}
+        channels={otpChannels}
         instituteId={data?.instituteId || ""}
-        onEmailVerified={handleEmailVerified}
+        onVerified={() => {
+          otpChannels.forEach((channel) => {
+            const key =
+              channel.type === "email"
+                ? `email:${channel.value.toLowerCase()}`
+                : `phone:${channel.value.replace(/\D/g, "")}`;
+            verifiedIdentitiesRef.current.add(key);
+          });
+          setOtpChannels([]);
+          const pending = pendingSubmissionRef.current;
+          pendingSubmissionRef.current = null;
+          if (pending) onSubmit(pending);
+        }}
+        onClose={() => {
+          setOtpChannels([]);
+          pendingSubmissionRef.current = null;
+        }}
       />
     </>
   );

@@ -53,6 +53,7 @@ The payment system has two parallel tracks:
 |-------|---------|--------------|
 | **Subscription / Plan** | Online course purchases, one-time payments, donations, free access | PaymentOption -> PaymentPlan -> UserPlan -> PaymentLog |
 | **Fee Management** | School/institute fee structures with installments, concessions, penalties | CPO -> FeeType -> AssignedFeeValue -> AftInstallment -> StudentFeePayment |
+| **Live Session Fees** | Paid live classes (public guests + private learners) | PaymentOption(LIVE_SESSION) -> SessionGuestRegistration -> Invoice(LIVE_SESSION) -> PaymentLog |
 
 Both tracks converge at `PaymentLog` (the actual money transaction) and `Invoice` (the generated receipt).
 
@@ -88,7 +89,7 @@ A **PaymentOption** represents a purchasable offering (e.g. "Annual Subscription
 | `id` | UUID | Primary key |
 | `name` | String | Display name (e.g. "Gold Plan") |
 | `status` | String | ACTIVE, DELETED |
-| `source` | String | Where this option lives (e.g. institute, package_session) |
+| `source` | String | Where this option lives: `INSTITUTE`, `PACKAGE_SESSION`, or `LIVE_SESSION` (paid live class fee, source_id = live_session.id) |
 | `source_id` | String | ID of the source entity |
 | `tag` | String | DEFAULT, etc. |
 | `type` | String | SUBSCRIPTION, ONE_TIME, FREE, DONATION |
@@ -497,6 +498,8 @@ Generated invoice after a successful payment.
 | `pdf_file_id` | String | S3 file reference for the PDF |
 | `invoice_data_json` | TEXT | Full invoice data as JSON |
 | `tax_included` | Boolean | Whether tax is included in prices |
+| `source` | String | What raised it: `USER_PLAN`, `STUDENT_FEE_PAYMENT`, `ADMIN_MANUAL`, `LIVE_SESSION` |
+| `source_id` | String | ID of the source entity (for LIVE_SESSION: the session_guest_registrations id) |
 
 ### 20. InvoiceLineItem
 
@@ -803,6 +806,56 @@ Best for: viral growth -- existing users refer new users, both get benefits.
 4. `ReferralMapping` links the two users
 5. `ReferralBenefitLogs` tracks benefit application
 6. Benefits can have vesting periods (`referrerVestingDays`)
+
+---
+
+### Flow 7: How a Paid Live Session Gets Charged (V397)
+
+Live classes reuse the legacy rails end-to-end — **no parallel payment system**. Both
+convergence points from the System Overview apply: money lands in `PaymentLog`, the
+receipt is an `Invoice`.
+
+**Fee configuration (admin wizard Step 2):**
+`Step2Service` -> `LiveSessionPaymentService.upsertPaymentConfig()` upserts a standard
+`PaymentOption` with `source = LIVE_SESSION`, `source_id = <live_session.id>`,
+`type = ONE_TIME`, holding exactly one `PaymentPlan` (price + currency). Disabling the
+toggle soft-deletes the option — the session becomes free again and all legacy
+behaviour is untouched.
+
+**Purchase flow:**
+
+```
+1. Registrant submits the public form (or an authenticated learner hits the paywall)
+   -> POST /admin-core-service/live-session/register-and-pay        (open, guests)
+   -> POST /admin-core-service/live-sessions/v1/payment/register-and-pay (JWT, learners)
+2. Backend guarantees an auth user for the payer (create-or-get via auth_service)
+   -- invoices require user_id, and the invoice email goes to that user
+3. SessionGuestRegistration row = the "bill" (live-session analogue of
+   StudentFeePayment): payment_status PENDING, payment_amount/currency snapshot,
+   plus FKs invoice_id + payment_log_id into the legacy tables
+4. InvoiceService.createLiveSessionInvoice() raises a standard Invoice:
+   source = LIVE_SESSION, source_id = registration id, one LIVE_SESSION line item,
+   institute tax settings (INVOICE_SETTING), standard invoice numbering, PDF,
+   ledger debit accrual (source type LIVE_SESSION)
+5. Payer settles it on the existing open /pay/invoice/{invoiceId} page ->
+   initiatePaymentForAdminInvoice(): PaymentLog created (user_id set,
+   user_plan_id = null -- the same sanctioned null-UserPlan track that donations and
+   admin invoices use), InvoicePaymentLogMapping links log -> invoice, institute's
+   default gateway charges via the normal PaymentServiceFactory strategies
+6. Gateway webhook marks the log PAID -> PaymentLogService.handlePostPaymentLogic
+   -> markAdminInvoicePaidByPaymentLog(): invoice -> PAID, ledger credit,
+   invoice email (force-sent for LIVE_SESSION regardless of the institute's
+   sendInvoiceEmail opt-in), and the registration flips to payment_status = PAID
+   (unlockLiveSessionRegistrationIfNeeded — same hook fires for offline
+   "mark paid manually" settlements)
+7. Join gating: LiveSessionJoinAuthorizer + the open guest endpoints refuse
+   non-host joins on a paid session until a PAID registration exists
+```
+
+**Why no UserPlan:** `applyOperationsOnFirstPayment()` activates package-session
+enrollment (SSIGM), which does not exist for a live class, and the UserPlan webhook
+branch would generate a second USER_PLAN-source invoice. Live sessions therefore use
+the established `user_plan = null` PaymentLog track (donations / admin invoices).
 
 ---
 

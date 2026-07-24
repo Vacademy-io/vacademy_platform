@@ -1,6 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
-import { useSessionDetails } from "../-hooks/useSessionDetails";
+import {
+  getStoredGuestRegistrationId,
+  useSessionDetails,
+} from "../-hooks/useSessionDetails";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
@@ -52,12 +55,14 @@ function GuestEmbedComponent() {
     setBbbJoining(true);
     setBbbError(null);
     try {
+      const registrationId = await getStoredGuestRegistrationId();
       const response = await axios.get(
         `${BASE_URL}/admin-core-service/live-session/guest/bbb-join`,
         {
           params: {
             scheduleId: sessionDetails.scheduleId,
             guestName: "Guest",
+            ...(registrationId ? { registrationId } : {}),
           },
         }
       );

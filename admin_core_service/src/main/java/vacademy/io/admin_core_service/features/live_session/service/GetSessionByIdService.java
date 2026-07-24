@@ -42,10 +42,18 @@ public class GetSessionByIdService {
     @Autowired
     private final PackageSessionRepository packageSessionRepository;
 
+    @Autowired
+    private final LiveSessionPaymentService liveSessionPaymentService;
+
     @Data
     public static class SessionDetailsResponse {
         private GetSessionByIdResponseDTO schedule;
         private GetSessionByIdResponseDTO.NotificationConfigResponse notifications;
+        // Paid live sessions: current fee config so the admin edit wizard can prefill it.
+        private vacademy.io.admin_core_service.features.live_session.dto.LiveSessionPaymentConfigDTO paymentConfig;
+        // Public-registration OTP verification toggles, for edit-wizard prefill.
+        private Boolean requireEmailVerification;
+        private Boolean requirePhoneVerification;
     }
 
     public SessionDetailsResponse getFullSessionDetails(String sessionId) {
@@ -55,6 +63,16 @@ public class GetSessionByIdService {
         SessionDetailsResponse response = new SessionDetailsResponse();
         response.setSchedule(schedule);
         response.setNotifications(notifications);
+        liveSessionPaymentService.findActivePlan(sessionId).ifPresent(plan -> response.setPaymentConfig(
+                vacademy.io.admin_core_service.features.live_session.dto.LiveSessionPaymentConfigDTO.builder()
+                        .enabled(true)
+                        .price(plan.getActualPrice())
+                        .currency(plan.getCurrency())
+                        .build()));
+        liveSessionRepository.findById(sessionId).ifPresent(session -> {
+            response.setRequireEmailVerification(session.getRequireEmailVerification());
+            response.setRequirePhoneVerification(session.getRequirePhoneVerification());
+        });
         return response;
     }
 

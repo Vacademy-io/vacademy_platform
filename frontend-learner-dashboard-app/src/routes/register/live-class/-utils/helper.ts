@@ -2,6 +2,9 @@ import { CustomField, RegistrationFormValues } from "../-types/type";
 export interface GuestRegistrationRequestDTO {
   session_id: string;
   email: string;
+  // Second identity for phone-identity institutes; either email or
+  // mobile_number must be non-empty.
+  mobile_number: string;
   custom_fields: {
     customFieldId: string;
     value: string;
@@ -61,9 +64,21 @@ export const transformToGuestRegistrationDTO = (
     }
   }
 
+  const mobileNumber =
+    extractFieldValue(
+      formValues,
+      customFields,
+      "mobile_number",
+      "phone_number",
+      "phone",
+      "mobile",
+      "contact_number"
+    ) || "";
+
   const dto: GuestRegistrationRequestDTO = {
     session_id: sessionId,
     email: email || "",
+    mobile_number: mobileNumber,
     custom_fields: [],
   };
 
@@ -80,6 +95,23 @@ export const transformToGuestRegistrationDTO = (
   }
 
   return dto;
+};
+
+// Paid live sessions: superset of the guest registration DTO carrying the
+// payer's display name (the backend creates the auth user invoices bill to).
+export interface PaidRegistrationRequestDTO extends GuestRegistrationRequestDTO {
+  full_name: string;
+}
+
+export const transformToPaidRegistrationDTO = (
+  formValues: RegistrationFormValues,
+  sessionId: string,
+  customFields: CustomField[]
+): PaidRegistrationRequestDTO => {
+  const base = transformToGuestRegistrationDTO(formValues, sessionId, customFields);
+  const fullName =
+    extractFieldValue(formValues, customFields, "full_name", "name") || "";
+  return { ...base, full_name: fullName };
 };
 
 // Normalize a label/key for loose comparison: lowercase, trim, and collapse

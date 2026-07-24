@@ -18,6 +18,17 @@ public interface SessionGuestRegistrationRepository extends JpaRepository<Sessio
 
     Optional<SessionGuestRegistration> findBySessionIdAndEmail(String sessionId, String email);
 
+    Optional<SessionGuestRegistration> findBySessionIdAndMobileNumber(String sessionId, String mobileNumber);
+
+    // ── Paid live-session lookups ────────────────────────────────────────────
+    Optional<SessionGuestRegistration> findFirstByInvoiceId(String invoiceId);
+
+    boolean existsBySessionIdAndUserIdAndPaymentStatus(String sessionId, String userId, String paymentStatus);
+
+    boolean existsBySessionIdAndEmailAndPaymentStatus(String sessionId, String email, String paymentStatus);
+
+    Optional<SessionGuestRegistration> findFirstBySessionIdAndUserId(String sessionId, String userId);
+
     @Query(value = """
             SELECT
                 sgr.id AS guestId,

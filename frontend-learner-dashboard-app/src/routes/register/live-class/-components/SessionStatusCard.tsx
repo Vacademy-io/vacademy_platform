@@ -120,19 +120,10 @@ export default function SessionStatusCard({
             to: "/live-class-guest/embed",
             search: { sessionId: earliestScheduleId || "" },
           });
-        } else if (
-          isInMainSession &&
-          sessionDetails?.defaultMeetLink &&
-          (streamingType ===
-            SessionStreamingServiceType.REDIRECT.toLowerCase() ||
-            !streamingType)
-        ) {
-          hasNavigated.current = true;
-          const joinLink =
-            sessionDetails.customMeetingLink ||
-            sessionDetails.defaultMeetLink;
-          window.open(joinLink, "_blank", "noopener,noreferrer");
         }
+        // Redirect-type sessions intentionally do NOT auto-open: window.open
+        // outside a user gesture is popup-blocked, so the learner joins via the
+        // one-click "Join Live" button below instead.
       };
 
       handleSessionNavigation();

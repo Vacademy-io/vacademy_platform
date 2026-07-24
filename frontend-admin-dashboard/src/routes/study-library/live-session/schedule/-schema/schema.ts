@@ -246,6 +246,15 @@ export const addParticipantsSchema = z.object({
             options: z.array(z.object({ label: z.string(), name: z.string() })).optional(),
         })
     ),
+    // Paid live class: one price for the whole session/series, charged before joining.
+    paymentEnabled: z.boolean().optional(),
+    paymentPrice: z.string().optional(),
+    paymentCurrency: z.string().optional(),
+    // Public registration: make the learner verify their contact info via OTP
+    // before registering (phone OTP goes over WhatsApp and needs the
+    // institute's approved template).
+    requireEmailVerification: z.boolean().optional(),
+    requirePhoneVerification: z.boolean().optional(),
     // "Auto-add recordings to course" (see docs/LIVE_SESSION_RECORDING_AUTO_LINK_PLAN.md).
     // Kept optional/untouched-tracking so the DTO transform can omit the field
     // entirely in edit mode when the admin never opened this section.
@@ -266,6 +275,24 @@ export const addParticipantsSchema = z.object({
             touched: z.boolean(),
         })
         .optional(),
+}).superRefine((data, ctx) => {
+    if (data.paymentEnabled) {
+        const price = parseFloat(data.paymentPrice ?? '');
+        if (!data.paymentPrice || isNaN(price) || price <= 0) {
+            ctx.addIssue({
+                code: 'custom',
+                message: 'Enter a price greater than 0 for a paid live class.',
+                path: ['paymentPrice'],
+            });
+        }
+        if (!data.paymentCurrency) {
+            ctx.addIssue({
+                code: 'custom',
+                message: 'Select a currency for the paid live class.',
+                path: ['paymentCurrency'],
+            });
+        }
+    }
 });
 
 export const addCustomFiledSchema = z.object({

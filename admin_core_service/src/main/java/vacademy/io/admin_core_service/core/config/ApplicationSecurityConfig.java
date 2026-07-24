@@ -49,6 +49,8 @@ public class ApplicationSecurityConfig {
             "/admin-core-service/live-session/get-earliest-schedule-id/**",
             "/admin-core-service/live-session/get-registration-data/**",
             "/admin-core-service/live-session/check-email-registration/**",
+            "/admin-core-service/live-session/register-and-pay/**",
+            "/admin-core-service/live-session/payment-info/**",
             "/admin-core-service/live-session/guest/**",
             // Public guest attendance marking (no JWT — called from the public
             // register/live-class + waiting-room pages). NOTE: this is a sibling of

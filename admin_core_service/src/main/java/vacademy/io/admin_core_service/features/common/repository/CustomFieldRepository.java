@@ -53,6 +53,10 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
     String getAccessLevel();
 
     String getCoverFileId();
+
+    Boolean getRequireEmailVerification();
+
+    Boolean getRequirePhoneVerification();
   }
 
   @Query(value = """
@@ -76,7 +80,9 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
         s.last_entry_time   AS lastEntryTime,
         s.access_level      AS accessLevel,
         s.subject           AS subject,
-        s.cover_file_id     AS coverFileId
+        s.cover_file_id     AS coverFileId,
+        s.require_email_verification AS requireEmailVerification,
+        s.require_phone_verification AS requirePhoneVerification
       FROM live_session s
       INNER JOIN institute_custom_fields icf
              ON icf.type     = 'SESSION'

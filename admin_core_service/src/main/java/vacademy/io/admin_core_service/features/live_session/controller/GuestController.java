@@ -43,8 +43,16 @@ public class GuestController {
     @Autowired
     private LiveSessionLogsRepository liveSessionLogsRepository;
 
+    @Autowired
+    private vacademy.io.admin_core_service.features.live_session.service.LiveSessionPaymentService liveSessionPaymentService;
+
     @GetMapping("/get-session-by-schedule-id")
-    ResponseEntity<GetSessionDetailsBySessionIdResponseDTO> getSessionByScheduleIdForGuestUser(@RequestParam("scheduleId") String scheduleId ){
+    ResponseEntity<GetSessionDetailsBySessionIdResponseDTO> getSessionByScheduleIdForGuestUser(
+            @RequestParam("scheduleId") String scheduleId,
+            @RequestParam(value = "registrationId", required = false) String registrationId) {
+        SessionSchedule schedule = scheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new VacademyException("Schedule not found: " + scheduleId));
+        ensurePaidAccess(schedule.getSessionId(), registrationId);
         return ResponseEntity.ok(getSessionByIdService.getSessionByScheduleIdForGuestUser(scheduleId));
     }
 
@@ -65,10 +73,12 @@ public class GuestController {
     @GetMapping("/bbb-join")
     public ResponseEntity<Map<String, String>> guestBbbJoin(
             @RequestParam String scheduleId,
-            @RequestParam(defaultValue = "Guest") String guestName) {
+            @RequestParam(defaultValue = "Guest") String guestName,
+            @RequestParam(value = "registrationId", required = false) String registrationId) {
 
         SessionSchedule schedule = scheduleRepository.findById(scheduleId)
                 .orElseThrow(() -> new VacademyException("Schedule not found: " + scheduleId));
+        ensurePaidAccess(schedule.getSessionId(), registrationId);
 
         String providerMeetingId = schedule.getProviderMeetingId();
 
@@ -97,6 +107,19 @@ public class GuestController {
         return ResponseEntity.ok(Map.of(
                 "joinUrl", joinUrl,
                 "meetingId", providerMeetingId));
+    }
+
+    /**
+     * Paid-session gate for the open guest endpoints: when the session carries a
+     * fee, the caller must present the registration id it received on
+     * register-and-pay, and that registration must be PAID. Free sessions are
+     * unaffected (registrationId stays optional for backward compatibility).
+     */
+    private void ensurePaidAccess(String sessionId, String registrationId) {
+        if (!liveSessionPaymentService.isRegistrationCleared(sessionId, registrationId)) {
+            throw new VacademyException(org.springframework.http.HttpStatus.FORBIDDEN,
+                    "This is a paid live class. Please complete the payment to join");
+        }
     }
 
     private void markGuestBbbAttendance(String sessionId, String scheduleId,

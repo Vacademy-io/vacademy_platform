@@ -159,6 +159,14 @@ export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID = `${BASE_URL}/admin-core-s
 export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID_FOR_GUEST = `${BASE_URL}/admin-core-service/live-session/guest/get-session-by-schedule-id`;
 export const LIVE_SESSION_CHECK_EMAIL_REGISTRATION = `${BASE_URL}/admin-core-service/live-session/check-email-registration`;
 export const LIVE_SESSION_REGISTER_GUEST_USER = `${BASE_URL}/admin-core-service/live-session/register-guest-user`;
+// Paid live sessions: registration + fee-invoice creation in one call, and payment state lookup
+export const LIVE_SESSION_REGISTER_AND_PAY = `${BASE_URL}/admin-core-service/live-session/register-and-pay`;
+// Gateway an invoice payment will charge through (open; same resolution the backend charge uses)
+export const GET_INSTITUTE_DEFAULT_VENDOR = `${BASE_URL}/admin-core-service/open/v1/institute/payment-setting/default-vendor`;
+export const LIVE_SESSION_PAYMENT_INFO = `${BASE_URL}/admin-core-service/live-session/payment-info`;
+// Authenticated learner variants (private paid sessions)
+export const LIVE_SESSION_PAYMENT_STATUS_AUTH = `${BASE_URL}/admin-core-service/live-sessions/v1/payment/status`;
+export const LIVE_SESSION_REGISTER_AND_PAY_AUTH = `${BASE_URL}/admin-core-service/live-sessions/v1/payment/register-and-pay`;
 export const LIVE_SESSION_MARK_ATTENDANCE = `${BASE_URL}/admin-core-service/live-session/mark-attendance`;
 export const LIVE_SESSION_MARK_ATTENDANCE_FOR_GUEST = `${BASE_URL}/admin-core-service/live-session/mark-guest-attendance`;
 export const LIVE_SESSION_GET_EARLIEST_SCHEDULE_ID = `${BASE_URL}/admin-core-service/live-session/get-earliest-schedule-id`;

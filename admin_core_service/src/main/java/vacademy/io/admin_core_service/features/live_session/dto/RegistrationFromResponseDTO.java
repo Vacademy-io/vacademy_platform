@@ -24,6 +24,16 @@ public class RegistrationFromResponseDTO {
     private String coverFileId;
     private List<CustomFieldDTO> customFields;
 
+    // Paid live sessions — set after construction; null/false for free sessions.
+    private Boolean paymentRequired;
+    private Double price;
+    private String currency;
+
+    // Contact verification the public form must run before registering
+    // (email OTP / WhatsApp OTP). Null/false = no verification.
+    private Boolean requireEmailVerification;
+    private Boolean requirePhoneVerification;
+
     @Data
     @AllArgsConstructor
     public static class CustomFieldDTO {

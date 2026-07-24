@@ -19,6 +19,7 @@ const paymentResultSearchSchema = z.object({
   status: z.enum(["success", "failed", "cancelled"]).optional(),
   source: z.string().optional(), // "invoice" skips gateway-specific status polling
   vendor: z.string().optional(), // "PHONEPE" routes to the PhonePe status endpoint
+  redirect: z.string().optional(), // in-app path to continue to after a successful payment
 });
 
 export const Route = createFileRoute("/payment-result/")({
@@ -40,7 +41,14 @@ function PaymentResultPage() {
     status: queryStatus,
     source,
     vendor: vendorParam,
+    redirect: redirectPath,
   } = search;
+
+  // Only allow in-app relative paths — never absolute URLs — as continue targets.
+  const safeRedirectPath =
+    redirectPath && redirectPath.startsWith("/") && !redirectPath.startsWith("//")
+      ? redirectPath
+      : undefined;
 
   const isPhonePeFlow = (vendorParam ?? "").toUpperCase() === "PHONEPE";
 
@@ -302,7 +310,18 @@ function PaymentResultPage() {
                 courses...
               </p>
             )}
-            {isInvoicePayment ? null : (
+            {isInvoicePayment && safeRedirectPath ? (
+              <a
+                href={
+                  typeof window !== "undefined"
+                    ? `${window.location.origin}${safeRedirectPath}`
+                    : `${BASE_URL_LEARNER_DASHBOARD}${safeRedirectPath}`
+                }
+                className="inline-flex items-center justify-center px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 font-medium"
+              >
+                Continue
+              </a>
+            ) : isInvoicePayment ? null : (
               <a
                 href={
                   typeof window !== "undefined"

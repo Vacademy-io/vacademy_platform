@@ -153,6 +153,12 @@ public class InvoiceService {
     @Autowired
     private vacademy.io.admin_core_service.features.user_account.service.UserAccountLedgerService userAccountLedgerService;
 
+    // Paid live sessions: when a LIVE_SESSION invoice settles we flip the linked
+    // registration's payment_status here. Repository-only dependency so the
+    // live_session service layer never forms a bean cycle with InvoiceService.
+    @Autowired
+    private vacademy.io.admin_core_service.features.live_session.repository.SessionGuestRegistrationRepository sessionGuestRegistrationRepository;
+
     @Value("${default.learner.portal.url:https://learner.vacademy.io}")
     private String learnerPortalUrl;
 
@@ -193,6 +199,9 @@ public class InvoiceService {
     }
     private static final String INVOICE_STATUS_PENDING_PAYMENT = "PENDING_PAYMENT";
     private static final String INVOICE_STATUS_PAID = "PAID";
+    // Invoice raised automatically for a paid live-session registration;
+    // source_id = session_guest_registrations.id.
+    private static final String INVOICE_SOURCE_LIVE_SESSION = "LIVE_SESSION";
     // Terminal "voided" status: the admin created the invoice in error (wrong amount,
     // wrong learner, …). The payment link stops working and it can never be marked
     // paid again; it stays in the list for record-keeping. See rejectInvoice().
@@ -2571,6 +2580,15 @@ public class InvoiceService {
      * When pdfBytes is provided, attaches the PDF to the email; otherwise includes a download link in the body.
      */
     private void sendInvoiceEmail(Invoice invoice, UserDTO user, String instituteId, byte[] pdfBytes) {
+        sendInvoiceEmail(invoice, user, instituteId, pdfBytes, false);
+    }
+
+    /**
+     * @param forceSend bypass the institute's sendInvoiceEmail opt-in — used for
+     *                  live-session fee invoices, where receiving the invoice is
+     *                  part of the product promise rather than an institute setting.
+     */
+    private void sendInvoiceEmail(Invoice invoice, UserDTO user, String instituteId, byte[] pdfBytes, boolean forceSend) {
         try {
             if (user == null || !StringUtils.hasText(user.getEmail())) {
                 log.warn("Cannot send invoice email: user or email is null for invoice: {}", invoice.getInvoiceNumber());
@@ -2584,7 +2602,7 @@ public class InvoiceService {
             Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
             Object sendFlag = invoiceSettings.get("sendInvoiceEmail");
             boolean sendInvoiceEmail = Boolean.TRUE.equals(sendFlag);
-            if (!sendInvoiceEmail) {
+            if (!sendInvoiceEmail && !forceSend) {
                 log.debug("Invoice email disabled by institute setting for institute: {}", instituteId);
                 return;
             }
@@ -3481,6 +3499,9 @@ public class InvoiceService {
         invoice.setStatus("PAID");
         invoice = invoiceRepository.save(invoice);
 
+        // Paid live session settled offline: unlock the registration too.
+        unlockLiveSessionRegistrationIfNeeded(invoice, paymentLogId);
+
         // 5. Ledger: credit payment for the manual settlement
         userAccountLedgerService.recordCreditPayment(
                 invoice.getUserId(), invoice.getInstituteId(),
@@ -3682,6 +3703,19 @@ public class InvoiceService {
     @Transactional
     public PaymentResponseDTO initiatePaymentForAdminInvoice(String invoiceId, String instituteId,
             CustomUserDetails userDetails) {
+        return initiatePaymentForAdminInvoice(invoiceId, instituteId, userDetails, null);
+    }
+
+    /**
+     * @param clientData optional vendor-specific payment data collected by the payment
+     *                   page (Stripe payment_method_id + return_url, eWay encrypted card,
+     *                   Cashfree/PhonePe return URLs, ...). Required for gateways whose
+     *                   initiation cannot run server-side alone (Stripe, eWay); ignored
+     *                   fields like amount/currency/vendor stay server-authoritative
+     *                   from the invoice + institute config.
+     */
+    public PaymentResponseDTO initiatePaymentForAdminInvoice(String invoiceId, String instituteId,
+            CustomUserDetails userDetails, PaymentInitiationRequestDTO clientData) {
         Invoice invoice = invoiceRepository.findById(invoiceId)
                 .orElseThrow(() -> new VacademyException("Invoice not found: " + invoiceId));
 
@@ -3714,6 +3748,18 @@ public class InvoiceService {
         UserDTO user = users.get(0);
         if (StringUtils.hasText(user.getEmail())) {
             paymentRequest.setEmail(user.getEmail());
+        }
+
+        // Merge the vendor-specific payloads the payment page collected (card /
+        // payment-method data). Amount, currency, vendor and email above remain
+        // server-authoritative — the client cannot override what is charged.
+        if (clientData != null) {
+            paymentRequest.setStripeRequest(clientData.getStripeRequest());
+            paymentRequest.setEwayRequest(clientData.getEwayRequest());
+            paymentRequest.setRazorpayRequest(clientData.getRazorpayRequest());
+            paymentRequest.setCashfreeRequest(clientData.getCashfreeRequest());
+            paymentRequest.setPhonePeRequest(clientData.getPhonePeRequest());
+            paymentRequest.setPayPalRequest(clientData.getPayPalRequest());
         }
 
         // Create PaymentLog with userPlan=null
@@ -3751,8 +3797,127 @@ public class InvoiceService {
         } catch (Exception ignored) {}
         paymentLogRepository.save(paymentLog);
 
+        // Synchronous confirmation (eWay always; Stripe when no 3DS challenge): NO
+        // webhook follows, so the paid-side effects must run here — invoice → PAID,
+        // ledger credit, invoice email, and the live-session registration unlock.
+        // Without this the money is captured but the invoice/registration stay
+        // PENDING forever. Webhook gateways still confirm asynchronously as before
+        // (markAdminInvoicePaidByPaymentLog is idempotent, so a late duplicate
+        // webhook is harmless).
+        if (vacademy.io.common.payment.enums.PaymentStatusEnum.PAID.name().equalsIgnoreCase(paymentStatus)) {
+            try {
+                markAdminInvoicePaidByPaymentLog(paymentLogId, instituteId);
+            } catch (Exception e) {
+                log.error("Sync-paid post-processing failed for invoice {} (paymentLog {}): {}",
+                        invoiceId, paymentLogId, e.getMessage(), e);
+            }
+        }
+
         response.setOrderId(paymentLogId);
         return response;
+    }
+
+    /**
+     * Raises a PENDING_PAYMENT invoice for a paid live-session registration
+     * (source=LIVE_SESSION, source_id=registration id). Reuses the admin-invoice
+     * plumbing end-to-end — numbering, institute tax settings, PDF, ledger — and is
+     * settled through the same open /pay/invoice flow; on PAID,
+     * {@link #markAdminInvoicePaidByPaymentLog} also flips the registration.
+     */
+    @Transactional
+    public Invoice createLiveSessionInvoice(String userId, String instituteId, String sessionTitle,
+            String registrationId, BigDecimal price, String currency) {
+        Institute institute = instituteRepository.findById(instituteId)
+                .orElseThrow(() -> new VacademyException("Institute not found: " + instituteId));
+        List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(userId));
+        if (users.isEmpty()) {
+            throw new VacademyException("User not found: " + userId);
+        }
+        UserDTO user = users.get(0);
+
+        Map<String, Object> invoiceSettings = getInvoiceSettings(institute);
+        BigDecimal subtotal = price.setScale(2, RoundingMode.HALF_UP);
+        EffectiveTax tax = computeEffectiveTax(invoiceSettings, subtotal, null, null);
+
+        Invoice invoice = new Invoice();
+        invoice.setInvoiceNumber(generateInvoiceNumber(instituteId));
+        invoice.setUserId(userId);
+        invoice.setInstituteId(instituteId);
+        invoice.setInvoiceDate(LocalDateTime.now());
+        // Payable immediately; the short due window only matters for display.
+        invoice.setDueDate(LocalDateTime.now().plusDays(2));
+        invoice.setSubtotal(subtotal);
+        invoice.setDiscountAmount(BigDecimal.ZERO);
+        invoice.setTaxAmount(tax.taxAmount());
+        invoice.setTotalAmount(tax.totalAmount());
+        invoice.setCurrency(currency);
+        invoice.setStatus(INVOICE_STATUS_PENDING_PAYMENT);
+        invoice.setTaxIncluded(tax.taxIncluded());
+        invoice.setSource(INVOICE_SOURCE_LIVE_SESSION);
+        invoice.setSourceId(registrationId);
+        invoice = invoiceRepository.save(invoice);
+
+        AdminInvoiceLineItemRequestDTO lineReq = new AdminInvoiceLineItemRequestDTO();
+        lineReq.setDescription("Live class: " + sessionTitle);
+        lineReq.setQuantity(1);
+        lineReq.setUnitPrice(subtotal);
+        lineReq.setItemType("LIVE_SESSION");
+
+        InvoiceLineItem lineItem = new InvoiceLineItem();
+        lineItem.setInvoice(invoice);
+        lineItem.setItemType("LIVE_SESSION");
+        lineItem.setDescription(lineReq.getDescription());
+        lineItem.setQuantity(1);
+        lineItem.setUnitPrice(subtotal);
+        lineItem.setAmount(subtotal);
+        invoiceLineItemRepository.save(lineItem);
+
+        userAccountLedgerService.recordDebitAccrual(
+                userId, instituteId, invoice.getTotalAmount(), currency,
+                invoice.getDueDate().toLocalDate(),
+                INVOICE_SOURCE_LIVE_SESSION, invoice.getId(),
+                invoice.getId(), "Live class fee invoice raised");
+
+        try {
+            String pdfFileId = generateAndUploadAdminInvoicePdf(invoice, user, institute,
+                    List.of(lineReq), subtotal, tax.taxAmount(), tax.totalAmount(),
+                    currency, tax.taxIncluded(), tax.taxRate(), tax.taxLabel(),
+                    null, Map.of());
+            invoice.setPdfFileId(pdfFileId);
+            invoice = invoiceRepository.save(invoice);
+        } catch (Exception e) {
+            log.error("Failed to generate PDF for live-session invoice {}: {}",
+                    invoice.getInvoiceNumber(), e.getMessage(), e);
+        }
+        return invoice;
+    }
+
+    /**
+     * Returns the invoice if it can still be settled for the expected charge —
+     * PENDING_PAYMENT with matching subtotal + currency. A stale pending invoice
+     * (the session's price/currency changed since it was raised) is voided so the
+     * caller can raise a fresh one. PAID/REJECTED/missing → null.
+     */
+    @Transactional
+    public Invoice findPayableInvoice(String invoiceId, BigDecimal expectedSubtotal, String expectedCurrency) {
+        Invoice invoice = invoiceRepository.findById(invoiceId).orElse(null);
+        if (invoice == null || !INVOICE_STATUS_PENDING_PAYMENT.equalsIgnoreCase(invoice.getStatus())) {
+            return null;
+        }
+        boolean matches = invoice.getSubtotal() != null
+                && expectedSubtotal != null
+                && invoice.getSubtotal().compareTo(expectedSubtotal) == 0
+                && expectedCurrency != null
+                && expectedCurrency.equalsIgnoreCase(invoice.getCurrency());
+        if (matches) {
+            return invoice;
+        }
+        invoice.setStatus(INVOICE_STATUS_REJECTED);
+        invoiceRepository.save(invoice);
+        log.info("Voided stale invoice {} — expected {} {}, invoice had {} {}",
+                invoice.getInvoiceNumber(), expectedSubtotal, expectedCurrency,
+                invoice.getSubtotal(), invoice.getCurrency());
+        return null;
     }
 
     /**
@@ -3793,13 +3958,19 @@ public class InvoiceService {
         invoiceRepository.saveAndFlush(invoice);
         log.info("Admin invoice {} marked as PAID via paymentLogId={}", invoice.getInvoiceNumber(), paymentLogId);
 
-        // Ledger: credit payment for gateway-settled admin invoice
+        boolean isLiveSessionInvoice = INVOICE_SOURCE_LIVE_SESSION.equals(invoice.getSource());
+
+        // Ledger: credit payment for the gateway-settled invoice, labeled by origin
+        // so it balances the matching debit accrual (ADMIN_INVOICE vs LIVE_SESSION).
         userAccountLedgerService.recordCreditPayment(
                 invoice.getUserId(), invoice.getInstituteId(),
                 invoice.getTotalAmount(),
                 StringUtils.hasText(invoice.getCurrency()) ? invoice.getCurrency() : "INR",
-                "ADMIN_INVOICE", invoice.getId(),
+                isLiveSessionInvoice ? INVOICE_SOURCE_LIVE_SESSION : "ADMIN_INVOICE", invoice.getId(),
                 paymentLogId, invoice.getId(), "Gateway payment received");
+
+        // Paid live session: unlock the registration this invoice was raised for.
+        unlockLiveSessionRegistrationIfNeeded(invoice, paymentLogId);
 
         try {
             List<UserDTO> users = authService.getUsersFromAuthServiceByUserIds(List.of(invoice.getUserId()));
@@ -3807,11 +3978,37 @@ public class InvoiceService {
                 byte[] pdfBytes = invoice.getPdfFileId() != null
                         ? fetchPdfBytesFromS3(invoice.getPdfFileId())
                         : null;
-                sendInvoiceEmail(invoice, users.get(0), instituteId, pdfBytes);
+                // Live-session payers must always receive their invoice — the feature
+                // promises it — so bypass the institute's sendInvoiceEmail opt-in there.
+                sendInvoiceEmail(invoice, users.get(0), instituteId, pdfBytes, isLiveSessionInvoice);
             }
         } catch (Exception e) {
             log.error("Failed to send paid invoice email for invoice {}: {}", invoice.getId(), e.getMessage(), e);
         }
+    }
+
+    /**
+     * Paid live sessions: an invoice with source=LIVE_SESSION going PAID (via
+     * gateway webhook, sync payment, or admin manual settlement) must also flip
+     * the linked session registration to PAID — that is what unlocks joining.
+     */
+    private void unlockLiveSessionRegistrationIfNeeded(Invoice invoice, String paymentLogId) {
+        if (!INVOICE_SOURCE_LIVE_SESSION.equals(invoice.getSource())) {
+            return;
+        }
+        sessionGuestRegistrationRepository.findFirstByInvoiceId(invoice.getId())
+                .or(() -> StringUtils.hasText(invoice.getSourceId())
+                        ? sessionGuestRegistrationRepository.findById(invoice.getSourceId())
+                        : Optional.empty())
+                .ifPresent(registration -> {
+                    registration.setPaymentStatus("PAID");
+                    registration.setPaymentLogId(paymentLogId);
+                    registration.setPaymentAmount(invoice.getTotalAmount());
+                    registration.setPaymentCurrency(invoice.getCurrency());
+                    sessionGuestRegistrationRepository.save(registration);
+                    log.info("Live-session registration {} marked PAID via invoice {}",
+                            registration.getId(), invoice.getInvoiceNumber());
+                });
     }
 
     private String createAdminInvoicePaymentLog(String userId, double amount, String vendor, String vendorId,

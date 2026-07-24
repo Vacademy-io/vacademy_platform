@@ -1,18 +1,26 @@
-import { useState } from 'react';
-import { Sparkle, CircleNotch, Warning, ArrowRight } from '@phosphor-icons/react';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Sparkle, CircleNotch, ArrowRight, Warning, CheckCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { draftWorkflowWithAi } from '@/services/workflow-service';
-import type { AiDraftResponse, WorkflowBuilderDTO } from '@/types/workflow/workflow-types';
+import { draftWorkflowWithAi, getTemplatesByTypeQuery } from '@/services/workflow-service';
+import type {
+    AiDraftResponse,
+    AiDecisionItem,
+    WorkflowBuilderDTO,
+} from '@/types/workflow/workflow-types';
+import { EventEntityPicker } from './event-entity-picker';
 import { useWorkflowBuilderStore } from '../-stores/workflow-builder-store';
 
+type TemplateItem = { id?: string; name: string; dynamic_parameters?: unknown };
+
 /**
- * "Describe your automation" — AI-assisted drafting entry (see WORKFLOW_AI_ASSIST_DESIGN.md).
- * The admin describes a goal in plain language; the backend returns a builder-shaped draft which
- * this panel loads straight into the canvas for review. Nothing is published here — the admin
- * still reviews every node and clicks Publish.
+ * "Describe your automation" — assistive AI workflow builder (WORKFLOW_AI_ASSISTIVE_DESIGN.md).
+ * Turn-based: PLAN (AI proposes a numbered skeleton) → decisions (admin chooses templates,
+ * audiences/batches, variable maps using the SAME pickers as the manual builder) → BUILD
+ * (backend assembles a properly-wired workflow) → loaded onto the canvas for review + Publish.
  */
 export function AiDraftPanel({
     instituteId,
@@ -22,9 +30,11 @@ export function AiDraftPanel({
     onComplete: () => void;
 }) {
     const [goal, setGoal] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [result, setResult] = useState<AiDraftResponse | null>(null);
-    const [answers, setAnswers] = useState<Record<string, string>>({});
+    const [stage, setStage] = useState<'idle' | 'plan' | 'decisions'>('idle');
+    const [planning, setPlanning] = useState(false);
+    const [building, setBuilding] = useState(false);
+    const [plan, setPlan] = useState<AiDraftResponse | null>(null);
+    const [answers, setAnswers] = useState<Record<string, unknown>>({});
 
     const {
         setNodes,
@@ -36,33 +46,100 @@ export function AiDraftPanel({
         setScheduleConfig,
     } = useWorkflowBuilderStore();
 
-    const runDraft = async (extraAnswers?: Record<string, string>) => {
+    const decisions = plan?.decisions ?? [];
+    const needsEmail = decisions.some((d) => d.kind === 'EMAIL_TEMPLATE');
+    const needsWhatsapp = decisions.some((d) => d.kind === 'WHATSAPP_TEMPLATE');
+
+    // Same hooks the manual builder uses to load real institute templates.
+    const emailTemplates = useQuery({
+        ...getTemplatesByTypeQuery(instituteId, 'EMAIL'),
+        enabled: !!instituteId && needsEmail,
+    });
+    const whatsappTemplates = useQuery({
+        ...getTemplatesByTypeQuery(instituteId, 'WHATSAPP'),
+        enabled: !!instituteId && needsWhatsapp,
+    });
+    const templatesFor = (kind: string): TemplateItem[] =>
+        (((kind === 'WHATSAPP_TEMPLATE' ? whatsappTemplates.data : emailTemplates.data) ?? []) as TemplateItem[]);
+
+    const resetFromGoal = () => {
+        setPlan(null);
+        setAnswers({});
+        setStage('idle');
+    };
+
+    const runPlan = async () => {
         if (!goal.trim()) return;
-        setLoading(true);
-        setResult(null);
+        setPlanning(true);
+        setPlan(null);
+        setAnswers({});
         try {
-            const answersList = extraAnswers
-                ? Object.entries(extraAnswers)
-                      .filter(([, value]) => value.trim().length > 0)
-                      .map(([id, value]) => ({ id, value }))
-                : undefined;
-            const res = await draftWorkflowWithAi({
-                goal: goal.trim(),
-                instituteId,
-                answers: answersList,
-            });
-            setResult(res);
+            const res = await draftWorkflowWithAi({ goal: goal.trim(), instituteId, mode: 'PLAN' });
             if (res.error) {
-                toast({ title: 'Could not draft', description: res.error, variant: 'destructive' });
+                toast({ title: 'Could not plan', description: res.error, variant: 'destructive' });
+                return;
             }
+            setPlan(res);
+            setStage('plan');
         } catch (e) {
             toast({
-                title: 'Drafting failed',
+                title: 'Planning failed',
                 description: e instanceof Error ? e.message : 'Unknown error',
                 variant: 'destructive',
             });
         } finally {
-            setLoading(false);
+            setPlanning(false);
+        }
+    };
+
+    const missingRequired = useMemo(
+        () =>
+            decisions
+                .filter((d) => d.required)
+                .filter((d) => {
+                    const v = answers[d.id];
+                    return (
+                        v == null ||
+                        (typeof v === 'string' && v.trim() === '') ||
+                        (Array.isArray(v) && v.length === 0) ||
+                        (typeof v === 'object' && !Array.isArray(v) && Object.keys(v as object).length === 0)
+                    );
+                })
+                .map((d) => d.id),
+        [decisions, answers]
+    );
+
+    const buildWorkflow = async () => {
+        if (!plan?.skeleton) return;
+        setBuilding(true);
+        try {
+            const res = await draftWorkflowWithAi({
+                instituteId,
+                mode: 'BUILD',
+                skeleton: plan.skeleton,
+                decisions: plan.decisions,
+                decisionAnswers: Object.entries(answers).map(([id, value]) => ({ id, value })),
+            });
+            if (res.error || !res.workflow) {
+                toast({
+                    title: 'Could not build',
+                    description: res.error ?? 'No workflow returned',
+                    variant: 'destructive',
+                });
+                return;
+            }
+            if (res.warnings?.length) {
+                toast({ title: 'Loaded with notes', description: res.warnings.join(' ') });
+            }
+            loadIntoBuilder(res.workflow);
+        } catch (e) {
+            toast({
+                title: 'Build failed',
+                description: e instanceof Error ? e.message : 'Unknown error',
+                variant: 'destructive',
+            });
+        } finally {
+            setBuilding(false);
         }
     };
 
@@ -87,7 +164,6 @@ export function AiDraftPanel({
             type: 'smoothstep' as const,
             animated: true,
         }));
-
         if (wf.name) setWorkflowName(wf.name);
         if (wf.description) setWorkflowDescription(wf.description);
         if (wf.workflow_type === 'EVENT_DRIVEN' || wf.workflow_type === 'SCHEDULED') {
@@ -99,6 +175,7 @@ export function AiDraftPanel({
                 description: wf.trigger.description ?? '',
                 eventAppliedType: wf.trigger.event_applied_type ?? '',
                 eventId: wf.trigger.event_id ?? undefined,
+                eventIds: wf.trigger.event_ids ?? undefined,
             });
         }
         if (wf.schedule) {
@@ -109,150 +186,276 @@ export function AiDraftPanel({
                 timezone: wf.schedule.timezone ?? 'Asia/Kolkata',
             });
         }
-
         setNodes(rfNodes);
         setEdges(rfEdges);
         onComplete();
     };
 
-    const questions = result?.clarifyingQuestions ?? [];
-    // If the model asks anything — even alongside a partial draft — resolve the questions first
-    // rather than silently loading an under-specified draft.
-    const needsAnswers = questions.length > 0;
-    const hasDraft = !!result?.workflow && questions.length === 0;
-
     return (
         <div className="rounded-lg border border-primary-100 bg-primary-50 p-4">
             <div className="mb-2 flex items-center gap-2">
                 <Sparkle size={18} weight="fill" className="text-primary-500" />
-                <h3 className="text-subtitle font-semibold text-neutral-700">
-                    Describe your automation
-                </h3>
-                <span className="rounded-full bg-primary-100 px-2 py-0.5 text-caption text-primary-600">
-                    AI
-                </span>
+                <h3 className="text-subtitle font-semibold text-neutral-700">Describe your automation</h3>
+                <span className="rounded-full bg-primary-100 px-2 py-0.5 text-caption text-primary-600">AI</span>
             </div>
             <p className="mb-3 text-body text-neutral-500">
-                Describe what you want in plain language and we&apos;ll draft a workflow you can
-                review and edit before publishing.
+                Tell me what you want. I&apos;ll propose a plan, then ask you to choose the templates,
+                audiences and variable mappings — so the workflow that lands is ready to publish.
             </p>
 
             <Textarea
                 value={goal}
                 onChange={(e) => {
                     setGoal(e.target.value);
-                    // Editing the goal invalidates any prior draft/questions.
-                    if (result) {
-                        setResult(null);
-                        setAnswers({});
-                    }
+                    if (plan) resetFromGoal();
                 }}
                 placeholder="e.g. 3 days after someone fills the JEE lead form, if they haven't enrolled, WhatsApp them the brochure."
                 className="min-h-20 bg-white text-body"
-                disabled={loading}
+                disabled={planning}
             />
 
             <div className="mt-3 flex justify-end">
-                <MyButton
-                    buttonType="primary"
-                    onClick={() => runDraft()}
-                    disabled={loading || !goal.trim()}
-                >
-                    {loading ? (
+                <MyButton buttonType="primary" onClick={runPlan} disabled={planning || !goal.trim()}>
+                    {planning ? (
                         <span className="flex items-center gap-2">
-                            <CircleNotch size={16} className="animate-spin" />
-                            Drafting…
+                            <CircleNotch size={16} className="animate-spin" /> Planning…
                         </span>
                     ) : (
                         <span className="flex items-center gap-2">
-                            <Sparkle size={16} weight="fill" />
-                            Draft with AI
+                            <Sparkle size={16} weight="fill" /> {plan ? 'Re-plan' : 'Draft with AI'}
                         </span>
                     )}
                 </MyButton>
             </div>
 
-            {needsAnswers && (
+            {/* ── PLAN card ── */}
+            {plan?.plan && (
                 <div className="mt-4 rounded-md border border-neutral-200 bg-white p-3">
-                    <p className="mb-2 text-body font-medium text-neutral-700">
-                        A couple of details so I can finish the draft:
+                    <p className="mb-1 text-body font-semibold text-neutral-700">
+                        {plan.plan.summary ?? 'Proposed workflow'}
                     </p>
-                    <div className="flex flex-col gap-3">
-                        {questions.map((q) => (
-                            <div key={q.id} className="flex flex-col gap-1">
-                                <label className="text-caption text-neutral-600">{q.question}</label>
-                                <input
-                                    type="text"
-                                    value={answers[q.id] ?? ''}
-                                    onChange={(e) =>
-                                        setAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))
-                                    }
-                                    placeholder={q.entityType ? `${q.entityType} id` : 'Your answer'}
-                                    className="rounded-md border border-neutral-300 bg-white px-3 py-2 text-body text-neutral-700 focus:border-primary-400 focus:outline-none"
-                                />
-                            </div>
+                    <ol className="mb-2 flex flex-col gap-1">
+                        {(plan.plan.steps ?? []).map((s, i) => (
+                            <li key={s.stepId ?? i} className="flex items-start gap-2 text-body text-neutral-600">
+                                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary-100 text-caption text-primary-600">
+                                    {i + 1}
+                                </span>
+                                <span>
+                                    <span className="font-medium text-neutral-700">{s.title}</span>
+                                    {s.detail ? ` — ${s.detail}` : ''}
+                                </span>
+                            </li>
                         ))}
-                    </div>
-                    <div className="mt-3 flex justify-end">
-                        <MyButton
-                            buttonType="primary"
-                            onClick={() => runDraft(answers)}
-                            disabled={loading}
-                        >
-                            Continue
-                        </MyButton>
-                    </div>
-                </div>
-            )}
-
-            {hasDraft && result?.workflow && (
-                <div className="mt-4 rounded-md border border-success-200 bg-white p-3">
-                    <div className="mb-2 flex items-center justify-between">
-                        <p className="text-body font-semibold text-neutral-700">
-                            Draft ready{result.templateUsed ? ` · ${result.templateUsed}` : ''}
-                        </p>
-                        <MyButton buttonType="primary" onClick={() => loadIntoBuilder(result.workflow!)}>
-                            <span className="flex items-center gap-2">
-                                Open in builder
-                                <ArrowRight size={16} />
-                            </span>
-                        </MyButton>
-                    </div>
-
-                    {result.rationale && result.rationale.length > 0 && (
-                        <ul className="mb-2 list-inside list-disc text-body text-neutral-600">
-                            {result.rationale.map((r, i) => (
-                                <li key={i}>{r.explains ?? ''}</li>
-                            ))}
-                        </ul>
-                    )}
-
-                    {result.warnings && result.warnings.length > 0 && (
+                    </ol>
+                    {plan.warnings?.length ? (
                         <div className="mb-2 flex flex-col gap-1">
-                            {result.warnings.map((w, i) => (
-                                <div
-                                    key={i}
-                                    className="flex items-start gap-2 text-caption text-warning-600"
-                                >
+                            {plan.warnings.map((w, i) => (
+                                <div key={i} className="flex items-start gap-2 text-caption text-warning-600">
                                     <Warning size={14} className="mt-0.5 shrink-0" />
                                     <span>{w}</span>
                                 </div>
                             ))}
                         </div>
-                    )}
-
-                    {result.validationErrors && result.validationErrors.length > 0 && (
-                        <div
-                            className={cn(
-                                'rounded-md border border-warning-200 bg-warning-50 p-2 text-caption text-warning-700'
-                            )}
-                        >
-                            {result.validationErrors.length} item(s) may need a look after opening —
-                            the builder will highlight them.
+                    ) : null}
+                    {stage === 'plan' && (
+                        <div className="flex justify-end">
+                            <MyButton buttonType="primary" onClick={() => setStage('decisions')}>
+                                <span className="flex items-center gap-2">
+                                    Looks good — choose details <ArrowRight size={16} />
+                                </span>
+                            </MyButton>
                         </div>
                     )}
                 </div>
             )}
+
+            {/* ── Decisions ── */}
+            {stage === 'decisions' && decisions.length > 0 && (
+                <div className="mt-4 flex flex-col gap-4 rounded-md border border-neutral-200 bg-white p-3">
+                    <p className="text-body font-medium text-neutral-700">A few choices only you can make:</p>
+                    {decisions.map((d) => (
+                        <DecisionControl
+                            key={d.id}
+                            decision={d}
+                            value={answers[d.id]}
+                            onChange={(v) => setAnswers((prev) => ({ ...prev, [d.id]: v }))}
+                            instituteId={instituteId}
+                            answers={answers}
+                            templatesFor={templatesFor}
+                        />
+                    ))}
+                    <div className="flex items-center justify-between">
+                        <span className="text-caption text-neutral-400">
+                            {missingRequired.length === 0
+                                ? 'All set'
+                                : `${missingRequired.length} choice(s) still needed`}
+                        </span>
+                        <MyButton
+                            buttonType="primary"
+                            onClick={buildWorkflow}
+                            disabled={building || missingRequired.length > 0}
+                        >
+                            {building ? (
+                                <span className="flex items-center gap-2">
+                                    <CircleNotch size={16} className="animate-spin" /> Building…
+                                </span>
+                            ) : (
+                                <span className="flex items-center gap-2">
+                                    <CheckCircle size={16} weight="fill" /> Build workflow
+                                </span>
+                            )}
+                        </MyButton>
+                    </div>
+                </div>
+            )}
         </div>
     );
+}
+
+/** Renders one decision using the same real pickers as the manual builder. */
+function DecisionControl({
+    decision,
+    value,
+    onChange,
+    instituteId,
+    answers,
+    templatesFor,
+}: {
+    decision: AiDecisionItem;
+    value: unknown;
+    onChange: (v: unknown) => void;
+    instituteId: string;
+    answers: Record<string, unknown>;
+    templatesFor: (kind: string) => TemplateItem[];
+}) {
+    const label = (
+        <label className="text-caption font-medium text-neutral-600">{decision.prompt ?? decision.id}</label>
+    );
+
+    if (decision.kind === 'ENTITY_PICKER') {
+        const type = String(decision.optionSource?.args?.eventAppliedType ?? 'AUDIENCE');
+        return (
+            <div className="flex flex-col gap-1">
+                {label}
+                {decision.multi ? (
+                    <EventEntityPicker
+                        eventAppliedType={type}
+                        instituteId={instituteId}
+                        multiValue={(value as string[]) ?? []}
+                        onMultiChange={(ids) => onChange(ids)}
+                    />
+                ) : (
+                    <EventEntityPicker
+                        eventAppliedType={type}
+                        instituteId={instituteId}
+                        value={value as string | undefined}
+                        onChange={(id) => onChange(id)}
+                    />
+                )}
+            </div>
+        );
+    }
+
+    if (decision.kind === 'EMAIL_TEMPLATE' || decision.kind === 'WHATSAPP_TEMPLATE') {
+        const templates = templatesFor(decision.kind);
+        return (
+            <div className="flex flex-col gap-1">
+                {label}
+                <select
+                    value={(value as string) ?? ''}
+                    onChange={(e) => onChange(e.target.value)}
+                    className="rounded-md border border-neutral-300 bg-white px-3 py-2 text-body text-neutral-700 focus:border-primary-400 focus:outline-none"
+                >
+                    <option value="">Select a template…</option>
+                    {templates.map((t) => (
+                        <option key={t.id ?? t.name} value={t.name}>
+                            {t.name}
+                        </option>
+                    ))}
+                </select>
+                {templates.length === 0 && (
+                    <span className="text-caption text-warning-600">
+                        No {decision.kind === 'WHATSAPP_TEMPLATE' ? 'WhatsApp' : 'email'} templates found — create one
+                        in Settings → Templates first.
+                    </span>
+                )}
+            </div>
+        );
+    }
+
+    if (decision.kind === 'TEMPLATE_VAR_MAP') {
+        // Placeholders come from the template chosen in the dependsOn decision.
+        const depId = decision.dependsOn?.[0];
+        const chosenName = depId ? (answers[depId] as string | undefined) : undefined;
+        const tmpl =
+            (chosenName &&
+                (templatesFor('WHATSAPP_TEMPLATE').find((t) => t.name === chosenName) ??
+                    templatesFor('EMAIL_TEMPLATE').find((t) => t.name === chosenName))) ||
+            undefined;
+        const params = parseParams(tmpl?.dynamic_parameters);
+        const current = (value as Record<string, string>) ?? {};
+        if (!chosenName) {
+            return (
+                <div className="flex flex-col gap-1">
+                    {label}
+                    <span className="text-caption text-neutral-400">Choose the template above first.</span>
+                </div>
+            );
+        }
+        const keys = Object.keys(params);
+        return (
+            <div className="flex flex-col gap-2">
+                {label}
+                {keys.length === 0 && (
+                    <span className="text-caption text-neutral-400">
+                        This template has no variables to map.
+                    </span>
+                )}
+                {keys.map((k) => (
+                    <div key={k} className="flex items-center gap-2">
+                        <span className="w-40 shrink-0 text-caption text-neutral-600">
+                            {params[k] || k}
+                        </span>
+                        <input
+                            type="text"
+                            value={current[k] ?? ''}
+                            onChange={(e) => onChange({ ...current, [k]: e.target.value })}
+                            placeholder="e.g. #item['full_name'] or a fixed value"
+                            className="flex-1 rounded-md border border-neutral-300 bg-white px-3 py-2 text-body text-neutral-700 focus:border-primary-400 focus:outline-none"
+                        />
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
+    // Fallback: a plain text input for any unhandled decision kind.
+    return (
+        <div className="flex flex-col gap-1">
+            {label}
+            <input
+                type="text"
+                value={(value as string) ?? ''}
+                onChange={(e) => onChange(e.target.value)}
+                className={cn(
+                    'rounded-md border border-neutral-300 bg-white px-3 py-2 text-body text-neutral-700',
+                    'focus:border-primary-400 focus:outline-none'
+                )}
+            />
+        </div>
+    );
+}
+
+function parseParams(dp: unknown): Record<string, string> {
+    if (!dp) return {};
+    if (typeof dp === 'string') {
+        try {
+            const parsed = JSON.parse(dp);
+            return parsed && typeof parsed === 'object' ? (parsed as Record<string, string>) : {};
+        } catch {
+            return {};
+        }
+    }
+    if (typeof dp === 'object') return dp as Record<string, string>;
+    return {};
 }

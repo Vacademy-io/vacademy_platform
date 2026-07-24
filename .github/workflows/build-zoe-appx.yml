@@ -32,8 +32,21 @@ jobs:
       run:
         working-directory: frontend-learner-dashboard-app
     steps:
-      - name: Checkout
+      # Windows MAX_PATH (260 char) workaround — this monorepo has very deep
+      # paths. Enable git long paths BEFORE checkout. (workspace root, since the
+      # job's default working-directory doesn't exist until after checkout.)
+      - name: Enable Git long paths
+        working-directory: ${{ github.workspace }}
+        run: git config --global core.longpaths true
+
+      - name: Checkout (learner app only)
         uses: actions/checkout@v4
+        with:
+          # Only need the learner app — skip frontend-admin-dashboard, whose
+          # extremely long filenames blow past MAX_PATH on Windows.
+          sparse-checkout: |
+            frontend-learner-dashboard-app
+          sparse-checkout-cone-mode: true
 
       - name: Setup Node 20
         uses: actions/setup-node@v4

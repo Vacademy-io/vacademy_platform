@@ -5,10 +5,22 @@ import { ScheduleTestTab } from '@/types/assessments/assessment-list';
 const ScheduleTestTabList = ({
     selectedTab,
     scheduleTestTabsData,
+    tabCounts,
 }: {
     selectedTab: string;
     scheduleTestTabsData: ScheduleTestTab[];
+    // Real per-tab counts, populated up front (independent of which tab is open).
+    // null = not fetched yet; fall back to the loaded list's total when present.
+    tabCounts?: Record<string, number | null>;
 }) => {
+    // Prefer the independently-fetched count; fall back to the tab's loaded list
+    // total, then 0. Keeps badges correct before a tab is ever opened.
+    const countFor = (tabValue: string, tabData: ScheduleTestTab | undefined) => {
+        const c = tabCounts?.[tabValue];
+        if (c !== null && c !== undefined) return c;
+        return tabData?.data?.content?.length ? tabData?.data?.total_elements ?? 0 : 0;
+    };
+
     return (
         <TabsList className="inline-flex h-auto justify-start gap-4 rounded-none border-b !bg-transparent p-0">
             <TabsTrigger
@@ -26,10 +38,7 @@ const ScheduleTestTabList = ({
                     className="rounded-[10px] bg-primary-500 p-0 px-2 text-[9px] text-white"
                     variant="outline"
                 >
-                    {scheduleTestTabsData[0]?.data?.content &&
-                    scheduleTestTabsData[0]?.data?.content.length > 0
-                        ? scheduleTestTabsData[0]?.data?.total_elements
-                        : 0}
+                    {countFor('liveTests', scheduleTestTabsData[0])}
                 </Badge>
             </TabsTrigger>
             <TabsTrigger
@@ -47,9 +56,7 @@ const ScheduleTestTabList = ({
                     className="rounded-[10px] bg-primary-500 p-0 px-2 text-[9px] text-white"
                     variant="outline"
                 >
-                    {scheduleTestTabsData[1]?.data?.content?.length
-                        ? scheduleTestTabsData[1]?.data?.total_elements ?? 0
-                        : 0}
+                    {countFor('upcomingTests', scheduleTestTabsData[1])}
                 </Badge>
             </TabsTrigger>
             <TabsTrigger
@@ -67,9 +74,7 @@ const ScheduleTestTabList = ({
                     className="rounded-[10px] bg-primary-500 p-0 px-2 text-[9px] text-white"
                     variant="outline"
                 >
-                    {scheduleTestTabsData[2]?.data?.content?.length
-                        ? scheduleTestTabsData[2]?.data?.total_elements ?? 0
-                        : 0}
+                    {countFor('previousTests', scheduleTestTabsData[2])}
                 </Badge>
             </TabsTrigger>
             <TabsTrigger
@@ -87,9 +92,7 @@ const ScheduleTestTabList = ({
                     className="rounded-[10px] bg-primary-500 p-0 px-2 text-[9px] text-white"
                     variant="outline"
                 >
-                    {scheduleTestTabsData[3]?.data?.content?.length
-                        ? scheduleTestTabsData[3]?.data?.total_elements ?? 0
-                        : 0}
+                    {countFor('draftTests', scheduleTestTabsData[3])}
                 </Badge>
             </TabsTrigger>
         </TabsList>

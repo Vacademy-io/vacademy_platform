@@ -13,7 +13,7 @@ import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtili
 import { TokenKey } from '@/constants/auth/tokens';
 import { FileType } from '@/types/common/file-upload';
 
-const ACCEPTED_FILE_TYPES: FileType[] = ['application/pdf', 'image/jpeg', 'image/png'];
+const ACCEPTED_FILE_TYPES: FileType[] = ['application/pdf'];
 
 interface UploadAnswerSheetDialogProps {
     attemptId: string;
@@ -163,7 +163,7 @@ export const UploadAnswerSheetDialog = ({
                                 <p className="text-sm font-medium text-neutral-700">
                                     Click to upload or drag &amp; drop
                                 </p>
-                                <p className="text-xs text-neutral-400">PDF, JPG or PNG</p>
+                                <p className="text-xs text-neutral-400">PDF only</p>
                             </div>
                         )}
                     </FileUploadComponent>

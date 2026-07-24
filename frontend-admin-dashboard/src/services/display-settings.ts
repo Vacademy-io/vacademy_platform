@@ -322,6 +322,10 @@ function mergeDisplayWithDefaults(
             incoming?.ui?.showSupportButton ?? defaults.ui?.showSupportButton ?? true,
         showSidebar: incoming?.ui?.showSidebar ?? defaults.ui?.showSidebar ?? true,
         showAiCredits: incoming?.ui?.showAiCredits ?? defaults.ui?.showAiCredits ?? true,
+        // Status link + Settings gear default to VISIBLE for every role; admins
+        // opt a role out per-role. Pass-through here or they're dropped on read.
+        showStatus: incoming?.ui?.showStatus ?? defaults.ui?.showStatus ?? true,
+        showSettings: incoming?.ui?.showSettings ?? defaults.ui?.showSettings ?? true,
         // Admin-only by default; other roles must be opted in explicitly.
         showAssistDock:
             incoming?.ui?.showAssistDock ??

@@ -164,6 +164,9 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         // Hidden by default for non-admin roles (custom roles inherit these
         // defaults too); enable per role from Display Settings → UI Options.
         showAssistDock: false,
+        // Status link + Settings gear default visible for every role.
+        showStatus: true,
+        showSettings: true,
     },
     contentTypes: {
         pdf: true,

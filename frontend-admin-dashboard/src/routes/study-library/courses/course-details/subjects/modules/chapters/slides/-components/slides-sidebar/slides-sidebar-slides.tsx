@@ -1,4 +1,5 @@
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
+import { truncateString } from '@/lib/reusable/truncateString';
 import { useContentStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/chapter-sidebar-store';
 import {
     DotsSixVertical,
@@ -293,14 +294,17 @@ const SlideItem = ({
                                         )}
                                     </div>
 
-                                    {/* Content area. No hard char cap — the CSS
-                                        `truncate` ellipsises to the real available
-                                        width, so names show as fully as they fit
-                                        (a fixed truncateString(…,18) cut them short
-                                        regardless of sidebar width). */}
+                                    {/* Content area. Hard char cap is a backstop: an
+                                        unbroken runaway title (no spaces) escapes the
+                                        flex min-w-0 chain and blows out the whole
+                                        sidebar width, so cap it here; the CSS
+                                        `truncate` still ellipsises normal titles to
+                                        the real available width. 28 shows full names
+                                        like "Portfolio Instructions" while stopping a
+                                        200-char string from breaking the layout. */}
                                     <div className="min-w-0 flex-1 text-left">
                                         <p className="truncate text-sm font-medium leading-tight">
-                                            {getSlideTitle()}
+                                            {truncateString(getSlideTitle(), 28)}
                                         </p>
                                         <p className="mt-0.5 text-xs capitalize leading-tight text-neutral-400">
                                             {getSlideTypeDisplay(slide)}

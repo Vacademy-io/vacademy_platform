@@ -96,7 +96,9 @@ const StatTile = ({
             <div className={cn('flex items-center', accentText)}>{icon}</div>
             <div className="flex flex-col">
                 <span className="whitespace-nowrap text-caption text-neutral-500">{label}</span>
-                <span className={cn('text-body font-semibold', accentText)}>{value}</span>
+                <span className={cn('whitespace-nowrap text-body font-semibold', accentText)}>
+                    {value}
+                </span>
             </div>
         </div>
     );
@@ -184,8 +186,6 @@ export const SubmissionsSummaryStrip = ({
 
     if (!stats || stats.submitted === 0) return null;
 
-    const fmt = (n: number | null) => (n === null ? '—' : `${n.toFixed(1)} / ${totalMarks}`);
-
     return (
         <div className="flex flex-wrap gap-3">
             {/* Manual evaluation: attempts vs answer-sheet files actually submitted. */}
@@ -224,11 +224,13 @@ export const SubmissionsSummaryStrip = ({
             />
             <StatTile
                 icon={<ChartBar size={18} weight="fill" />}
-                label="Avg / High / Low"
+                // Label carries the "Avg / High / Low" legend; keep the value a
+                // single compact line (out of / totalMarks) so it never wraps.
+                label={`Avg / High / Low  (/ ${totalMarks})`}
                 value={
                     stats.avgScore === null
                         ? '—'
-                        : `${fmt(stats.avgScore)}  ·  ↑${stats.highScore?.toFixed(1)}  ↓${stats.lowScore?.toFixed(1)}`
+                        : `${stats.avgScore.toFixed(1)} / ${stats.highScore?.toFixed(1)} / ${stats.lowScore?.toFixed(1)}`
                 }
                 accent="neutral"
             />

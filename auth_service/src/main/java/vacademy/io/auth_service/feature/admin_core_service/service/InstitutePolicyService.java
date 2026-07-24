@@ -2,6 +2,8 @@ package vacademy.io.auth_service.feature.admin_core_service.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpMethod;
@@ -15,6 +17,8 @@ import vacademy.io.common.core.internal_api_wrapper.InternalClientUtils;
 
 @Service
 public class InstitutePolicyService {
+
+    private static final Logger log = LoggerFactory.getLogger(InstitutePolicyService.class);
 
     @Autowired
     private InternalClientUtils internalClientUtils;
@@ -117,14 +121,19 @@ public class InstitutePolicyService {
             userDTO.setId(userId);
             userDTO.setEmail(email);
             userDTO.setPassword(password);
-            internalClientUtils.makeHmacRequest(
+            ResponseEntity<String> resp = internalClientUtils.makeHmacRequest(
                 applicationName,
                 HttpMethod.POST.name(),
                 adminCoreServiceBaseUrl,
                 "/admin-core-service/internal/learner/v1/sync-lms-password",
                 userDTO);
+            log.info("LMS password sync dispatched to admin-core for userId={}: HTTP {}",
+                userId, resp != null ? resp.getStatusCodeValue() : "no-response");
         } catch (Exception e) {
-            // best-effort: never surface an LMS-sync failure to the password change
+            // best-effort: never surface an LMS-sync failure to the password change,
+            // but log it — otherwise a rejected/undeployed internal call is invisible
+            // and the password silently fails to reach the LMS.
+            log.warn("LMS password sync to admin-core failed for userId={}: {}", userId, e.getMessage());
         }
     }
 }

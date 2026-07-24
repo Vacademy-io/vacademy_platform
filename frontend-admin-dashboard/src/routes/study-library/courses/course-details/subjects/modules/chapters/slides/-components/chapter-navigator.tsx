@@ -8,18 +8,25 @@
  * drafts get an amber dot; module headers show a rollup count. Prev/next walks
  * chapters ACROSS module boundaries.
  *
- * Modules/chapters/subjects are already client-side (stores). Slides are
- * lazy-fetched per chapter on first expand and cached in component state —
- * a separate lightweight fetch, NOT the ['slides', chapterId] react-query
- * cache, whose entries flow through use-slides' cleaning pipeline.
+ * The CURRENT subject's modules/chapters come from the store; picking another
+ * subject browses it IN PLACE (fetch its tree, repaint the list) instead of
+ * navigating away — see selectSubject. Slides are lazy-fetched per chapter on
+ * first expand and cached in component state — a separate lightweight fetch,
+ * NOT the ['slides', chapterId] react-query cache, whose entries flow through
+ * use-slides' cleaning pipeline.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useRouter } from '@tanstack/react-router';
+import { useQuery } from '@tanstack/react-query';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { GET_SLIDES } from '@/constants/urls';
+import { fetchModulesWithChapters } from '@/routes/study-library/courses/-services/getModulesWithChapters';
 import { getIcon } from './slides-sidebar/slides-sidebar-slides';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { useModulesWithChaptersStore } from '@/stores/study-library/use-modules-with-chapters-store';
+import {
+    useModulesWithChaptersStore,
+    type ModulesWithChapters,
+} from '@/stores/study-library/use-modules-with-chapters-store';
 import { useStudyLibraryStore } from '@/stores/study-library/use-study-library-store';
 import {
     CaretDown,
@@ -58,6 +65,18 @@ interface NavSlide {
 }
 type ChapterSlidesState = NavSlide[] | 'loading' | 'error';
 
+/** Live modules → ordered chapters, dropping deleted rows and empty modules. */
+const toModuleGroups = (data: ModulesWithChapters[] | null | undefined) =>
+    (data ?? [])
+        .filter((m) => m.module.status !== 'DELETED')
+        .map((m) => ({
+            module: m.module,
+            chapters: m.chapters
+                .filter((ch) => ch.chapter.status !== 'DELETED')
+                .sort((a, b) => a.chapter.chapter_order - b.chapter.chapter_order),
+        }))
+        .filter((g) => g.chapters.length > 0);
+
 export const ChapterNavigator = ({
     currentChapterId,
     currentModuleId,
@@ -71,7 +90,16 @@ export const ChapterNavigator = ({
     const [searchQuery, setSearchQuery] = useState('');
     const [isSubjectListOpen, setIsSubjectListOpen] = useState(false);
     const { modulesWithChaptersData } = useModulesWithChaptersStore();
-    const { studyLibraryData } = useStudyLibraryStore();
+    const { studyLibraryData, getPackageSessionId } = useStudyLibraryStore();
+
+    // Subject whose tree is listed below. Starts as the one you're in; picking
+    // another browses it without leaving the editor. Follows the URL again
+    // whenever you actually land in a new subject.
+    const [browsingSubjectId, setBrowsingSubjectId] = useState(subjectId);
+    useEffect(() => {
+        setBrowsingSubjectId(subjectId);
+    }, [subjectId]);
+    const isBrowsingOtherSubject = browsingSubjectId !== subjectId;
 
     // Local unsaved drafts of this course — amber dot per chapter/slide, rollup per module.
     const [draftUserId] = useState<string>(() => getDraftUserId());
@@ -80,6 +108,20 @@ export const ChapterNavigator = ({
     // Highlight the slide currently open in the editor.
     const router = useRouter();
     const currentSlideId: string = router.state.location.search.slideId || '';
+
+    // ---- browsed subject's tree (fetched, never stored) -------------------
+    // Deliberately component-local and under its own query key: the shared
+    // ['GET_MODULES_WITH_CHAPTERS', …] entries are written into
+    // useModulesWithChaptersStore by ModulesWithChaptersProvider, and that
+    // store is what the editor you HAVEN'T left yet reads. Browsing must not
+    // touch it.
+    const packageSessionId = getPackageSessionId({ courseId, sessionId, levelId }) ?? '';
+    const browsedTreeQuery = useQuery({
+        queryKey: ['NAVIGATOR_SUBJECT_MODULES', browsingSubjectId, packageSessionId],
+        queryFn: () => fetchModulesWithChapters(browsingSubjectId, packageSessionId),
+        staleTime: 60 * 60 * 1000,
+        enabled: isOpen && isBrowsingOtherSubject && !!browsingSubjectId && !!packageSessionId,
+    });
 
     // ---- per-chapter slides (lazy) ---------------------------------------
     const [expandedChapterIds, setExpandedChapterIds] = useState<Set<string>>(
@@ -151,25 +193,26 @@ export const ChapterNavigator = ({
     }, [isOpen, currentChapterId]);
 
     // ---- data shaping -----------------------------------------------------
-    const moduleGroups = useMemo(() => {
-        return (modulesWithChaptersData ?? [])
-            .filter((m) => m.module.status !== 'DELETED')
-            .map((m) => ({
-                module: m.module,
-                chapters: m.chapters
-                    .filter((ch) => ch.chapter.status !== 'DELETED')
-                    .sort((a, b) => a.chapter.chapter_order - b.chapter.chapter_order),
-            }))
-            .filter((g) => g.chapters.length > 0);
-    }, [modulesWithChaptersData]);
+    // The header (chapter name, N/M badge) and the prev/next arrows always
+    // describe WHERE YOU ARE — browsing another subject's tree is just looking,
+    // so they stay bound to the subject in the URL. Only the list below swaps.
+    const homeGroups = useMemo(
+        () => toModuleGroups(modulesWithChaptersData),
+        [modulesWithChaptersData]
+    );
+    const browsedGroups = useMemo(
+        () => toModuleGroups(browsedTreeQuery.data),
+        [browsedTreeQuery.data]
+    );
+    const moduleGroups = isBrowsingOtherSubject ? browsedGroups : homeGroups;
 
     // Flat chapter list across ALL modules — prev/next walks module boundaries.
     const flatChapters = useMemo(
         () =>
-            moduleGroups.flatMap((g) =>
+            homeGroups.flatMap((g) =>
                 g.chapters.map((ch) => ({ moduleId: g.module.id, entry: ch }))
             ),
-        [moduleGroups]
+        [homeGroups]
     );
     const currentFlatIndex = useMemo(
         () => flatChapters.findIndex((f) => f.entry.chapter.id === currentChapterId),
@@ -207,6 +250,17 @@ export const ChapterNavigator = ({
             return next;
         });
     }, [currentModuleId]);
+    // A browsed subject has no "module you're in" to anchor on — open its
+    // modules once when the tree arrives so its chapters are visible straight
+    // away. Collapsing afterwards still works normally.
+    useEffect(() => {
+        if (!isBrowsingOtherSubject || browsedGroups.length === 0) return;
+        setExpandedModuleIds((prev) => {
+            const next = new Set(prev);
+            browsedGroups.forEach((g) => next.add(g.module.id));
+            return next;
+        });
+    }, [isBrowsingOtherSubject, browsedGroups]);
     const toggleModule = (moduleId: string) => {
         setExpandedModuleIds((prev) => {
             const next = new Set(prev);
@@ -241,13 +295,16 @@ export const ChapterNavigator = ({
         return level?.subjects ?? [];
     }, [studyLibraryData, courseId, sessionId, levelId]);
     const showSubjectRow = subjects.length > 1;
-    const currentSubjectName = subjects.find((s) => s.id === subjectId)?.subject_name;
+    // The collapsed row names the subject listed BELOW it, not the one you're in.
+    const browsingSubjectName = subjects.find((s) => s.id === browsingSubjectId)?.subject_name;
 
     // ---- navigation -------------------------------------------------------
     const closePopover = () => {
         setIsOpen(false);
         setSearchQuery('');
         setIsSubjectListOpen(false);
+        // Snap back, so reopening always starts from the subject you're in.
+        setBrowsingSubjectId(subjectId);
     };
 
     const navigateToChapter = (targetModuleId: string, chapterId: string) => {
@@ -257,7 +314,9 @@ export const ChapterNavigator = ({
             search: {
                 courseId,
                 levelId,
-                subjectId,
+                // Committing to the browsed subject — this is the only place a
+                // subject change reaches the URL.
+                subjectId: browsingSubjectId,
                 moduleId: targetModuleId,
                 chapterId,
                 slideId: '',
@@ -266,7 +325,7 @@ export const ChapterNavigator = ({
         });
     };
 
-    // Direct jump to a specific slide, anywhere in the subject.
+    // Direct jump to a specific slide, anywhere in the browsed subject.
     const navigateToSlide = (targetModuleId: string, chapterId: string, slideId: string) => {
         closePopover();
         navigate({
@@ -274,7 +333,7 @@ export const ChapterNavigator = ({
             search: {
                 courseId,
                 levelId,
-                subjectId,
+                subjectId: browsingSubjectId,
                 moduleId: targetModuleId,
                 chapterId,
                 slideId,
@@ -288,19 +347,14 @@ export const ChapterNavigator = ({
         if (target) useContentStore.getState().setActiveItem(target);
     };
 
-    // Switching subject lands on that subject's module listing — its
-    // modules/chapters aren't loaded client-side, so the listing page is the
-    // natural entry point.
-    const navigateToSubject = (targetSubjectId: string) => {
-        if (targetSubjectId === subjectId) {
-            setIsSubjectListOpen(false);
-            return;
-        }
-        closePopover();
-        navigate({
-            to: '/study-library/courses/course-details/subjects/modules',
-            search: { courseId, levelId, subjectId: targetSubjectId, sessionId },
-        });
+    // Picking a subject BROWSES it — fetch its tree and repaint the list below.
+    // No navigation: nothing about where you are has changed until you click one
+    // of its chapters or slides. (It used to route to that subject's module
+    // listing, which threw you out of the editor.)
+    const selectSubject = (targetSubjectId: string) => {
+        setBrowsingSubjectId(targetSubjectId);
+        setIsSubjectListOpen(false);
+        setSearchQuery('');
     };
 
     const previous = currentFlatIndex > 0 ? flatChapters[currentFlatIndex - 1] : undefined;
@@ -318,7 +372,9 @@ export const ChapterNavigator = ({
         return counts.video_count + counts.pdf_count + counts.doc_count + counts.unknown_count;
     };
 
-    if (moduleGroups.length === 0) {
+    // Guard on the subject you're IN — a browsed subject with no chapters must
+    // not unmount the navigator you're standing in.
+    if (homeGroups.length === 0) {
         return null;
     }
 
@@ -351,6 +407,7 @@ export const ChapterNavigator = ({
                     if (!open) {
                         setSearchQuery('');
                         setIsSubjectListOpen(false);
+                        setBrowsingSubjectId(subjectId);
                     }
                 }}
             >
@@ -413,7 +470,7 @@ export const ChapterNavigator = ({
                                 >
                                     <span className="text-xs text-neutral-400">{subjectTerm}</span>
                                     <span className="min-w-0 flex-1 truncate text-xs font-semibold text-primary-600">
-                                        {currentSubjectName || '—'}
+                                        {browsingSubjectName || '—'}
                                     </span>
                                     <CaretDown
                                         className={cn(
@@ -425,13 +482,17 @@ export const ChapterNavigator = ({
                                 </button>
                                 {isSubjectListOpen && (
                                     <div className="flex flex-col gap-0.5 px-2 pb-2">
+                                        {/* Highlight = the tree shown below.
+                                            Check = the subject your open slide
+                                            belongs to, so you can find your way
+                                            back after browsing. */}
                                         {subjects.map((subject) => (
                                             <button
                                                 key={subject.id}
-                                                onClick={() => navigateToSubject(subject.id)}
+                                                onClick={() => selectSubject(subject.id)}
                                                 className={cn(
                                                     'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
-                                                    subject.id === subjectId
+                                                    subject.id === browsingSubjectId
                                                         ? 'bg-primary-100 font-semibold text-primary-700'
                                                         : 'text-neutral-600 hover:bg-neutral-100'
                                                 )}
@@ -457,7 +518,28 @@ export const ChapterNavigator = ({
                             becomes scrollable under a max-height root (the old
                             "popover doesn't scroll, page behind does" bug). */}
                         <div className="max-h-72 overflow-y-auto overscroll-contain p-1">
-                            {visibleGroups.length === 0 ? (
+                            {isBrowsingOtherSubject && browsedTreeQuery.isLoading ? (
+                                <div className="px-3 py-6 text-center text-sm text-neutral-400">
+                                    Loading…
+                                </div>
+                            ) : isBrowsingOtherSubject &&
+                              (browsedTreeQuery.isError || !packageSessionId) ? (
+                                <div className="flex flex-col items-center gap-1 px-3 py-6">
+                                    <p className="text-sm text-neutral-400">
+                                        {`Couldn't load this ${subjectTerm.toLowerCase()}`}
+                                    </p>
+                                    {/* Retry only helps a failed request — a missing
+                                        packageSessionId won't resolve on a refetch. */}
+                                    {browsedTreeQuery.isError && (
+                                        <button
+                                            onClick={() => browsedTreeQuery.refetch()}
+                                            className="text-xs font-medium text-primary-600 hover:underline"
+                                        >
+                                            Retry
+                                        </button>
+                                    )}
+                                </div>
+                            ) : visibleGroups.length === 0 ? (
                                 <div className="px-3 py-6 text-center text-sm text-neutral-400">
                                     {`No ${chapterTermPlural.toLowerCase()} found`}
                                 </div>

@@ -660,7 +660,7 @@ export const GET_ATTEMPT_DATA = `${BASE_URL}/assessment-service/assessment/manua
 // Batch lookup: attemptId -> submitted answer-sheet fileId for the submissions table badge.
 export const GET_ATTEMPTS_FILE_STATUS = `${BASE_URL}/assessment-service/assessment/manual-evaluation/attempts/file-status`;
 export const UPDATE_ATTEMPT = `${BASE_URL}/assessment-service/assessment/manual-evaluation/update/attempt`;
-export const SUBMIT_MARKS = `${BASE_URL}/asses  sment-service/assessment/manual-evaluation/submit/marks`;
+export const SUBMIT_MARKS = `${BASE_URL}/assessment-service/assessment/manual-evaluation/submit/marks`;
 // Server-side "save draft": pause manual evaluation and resume it later from any device.
 export const SAVE_EVALUATION_DRAFT = `${BASE_URL}/assessment-service/assessment/manual-evaluation/save/draft`;
 export const GET_EVALUATION_DRAFT = `${BASE_URL}/assessment-service/assessment/manual-evaluation/get/draft`;

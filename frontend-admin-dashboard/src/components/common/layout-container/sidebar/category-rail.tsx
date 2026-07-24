@@ -78,6 +78,11 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
     // Check if Settings should be shown (it exists in finalSidebarItems only for admins)
     const hasSettings = sidebarItems.some((item) => item.id === 'settings');
 
+    // Per-role Display Settings can hide the pinned Status link + Settings gear.
+    // Both default to VISIBLE — only an explicit `false` hides them.
+    const showStatusLink = roleDisplay?.ui?.showStatus !== false;
+    const showSettingsButton = hasSettings && roleDisplay?.ui?.showSettings !== false;
+
     // Sort categories by display settings order
     const sortedCategories = [...BASE_CATEGORIES].sort((a, b) => {
         const cfgA = roleDisplay?.sidebarCategories?.find((c) => c.id === a.id);
@@ -281,30 +286,32 @@ export const CategoryRail: React.FC<CategoryRailProps> = ({
             </div>
 
             {/* ─── Service health / status page (external, pinned above Settings) ──── */}
-            <a
-                href="https://status.vacademy.io"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={cn(
-                    'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
-                    'hover:bg-white/10'
-                )}
-                aria-label="Service status"
-                title="Service status"
-            >
-                <span className="relative z-10">
-                    <Heartbeat
-                        size={22}
-                        className="text-white/70 transition-colors duration-200"
-                    />
-                </span>
-                <span className="relative z-10 text-[10px] font-medium leading-tight text-white/70 transition-colors duration-200">
-                    Status
-                </span>
-            </a>
+            {showStatusLink && (
+                <a
+                    href="https://status.vacademy.io"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn(
+                        'relative flex w-14 flex-col items-center gap-0.5 rounded-xl px-1 py-2.5 transition-all duration-200',
+                        'hover:bg-white/10'
+                    )}
+                    aria-label="Service status"
+                    title="Service status"
+                >
+                    <span className="relative z-10">
+                        <Heartbeat
+                            size={22}
+                            className="text-white/70 transition-colors duration-200"
+                        />
+                    </span>
+                    <span className="relative z-10 text-[10px] font-medium leading-tight text-white/70 transition-colors duration-200">
+                        Status
+                    </span>
+                </a>
+            )}
 
             {/* ─── Settings (admin-only, pinned to bottom) ──── */}
-            {hasSettings && (
+            {showSettingsButton && (
                 <>
                     <div className="my-1 h-px w-8 bg-primary-400/50" />
                     <button

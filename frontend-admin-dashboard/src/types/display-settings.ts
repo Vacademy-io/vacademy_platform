@@ -366,6 +366,13 @@ export interface DisplaySettingsData {
         // Controls whether the left sidebar is shown for this role
         showSidebar?: boolean;
         showAiCredits?: boolean;
+        // Controls the "Status" (service health) link pinned in the sidebar
+        // rail. Defaults to VISIBLE; set false to hide it for this role.
+        showStatus?: boolean;
+        // Controls the "Settings" gear pinned at the bottom of the sidebar
+        // rail (admin-only surface). Defaults to VISIBLE; set false to hide it
+        // for this role.
+        showSettings?: boolean;
         // Controls the right-edge Assist Dock rail (Guides / Assist / Issues /
         // What's new / Explore / Admin App). Defaults to VISIBLE for the admin
         // role and HIDDEN for teacher/custom roles; admins can opt a specific

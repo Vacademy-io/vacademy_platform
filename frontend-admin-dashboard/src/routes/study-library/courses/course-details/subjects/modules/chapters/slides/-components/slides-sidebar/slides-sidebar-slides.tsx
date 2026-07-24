@@ -1,5 +1,4 @@
 import { Sortable, SortableDragHandle, SortableItem } from '@/components/ui/sortable';
-import { truncateString } from '@/lib/reusable/truncateString';
 import { useContentStore } from '@/routes/study-library/courses/course-details/subjects/modules/chapters/slides/-stores/chapter-sidebar-store';
 import {
     DotsSixVertical,
@@ -245,7 +244,7 @@ const SlideItem = ({
             >
                 <div
                     className={`
-                        flex w-full items-center gap-2.5 rounded-lg border px-3
+                        flex w-full items-center gap-2 rounded-lg border px-2
                         py-2 backdrop-blur-sm transition-all
                         duration-300 ease-in-out
                         ${
@@ -263,7 +262,7 @@ const SlideItem = ({
                     <TooltipProvider>
                         <Tooltip>
                             <TooltipTrigger className="w-full">
-                                <div className="flex flex-1 items-center gap-2.5">
+                                <div className="flex min-w-0 flex-1 items-center gap-2">
                                     {/* Slide Number with enhanced styling — hidden
                                         when the admin turns off content numbering */}
                                     {showNumbering && (
@@ -294,10 +293,14 @@ const SlideItem = ({
                                         )}
                                     </div>
 
-                                    {/* Content area */}
-                                    <div className="min-w-0 flex-1">
+                                    {/* Content area. No hard char cap — the CSS
+                                        `truncate` ellipsises to the real available
+                                        width, so names show as fully as they fit
+                                        (a fixed truncateString(…,18) cut them short
+                                        regardless of sidebar width). */}
+                                    <div className="min-w-0 flex-1 text-left">
                                         <p className="truncate text-sm font-medium leading-tight">
-                                            {truncateString(getSlideTitle(), 18)}
+                                            {getSlideTitle()}
                                         </p>
                                         <p className="mt-0.5 text-xs capitalize leading-tight text-neutral-400">
                                             {getSlideTypeDisplay(slide)}

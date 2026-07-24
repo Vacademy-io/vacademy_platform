@@ -416,10 +416,6 @@ export const SlideMaterial = ({
     // (vs. server content). Decides if "content returned to the load-time
     // baseline" may auto-clear the draft: only when the baseline IS the server
     // state — clearing on draft-baseline equality would delete real unsaved work.
-    const loadedDocFromDraftRef = useRef<{ slideId: string | null; fromDraft: boolean }>({
-        slideId: null,
-        fromDraft: false,
-    });
     // One blank-load re-apply attempt per slide (see captureInitialDocSnapshot).
     const blankLoadRetrySlideIdRef = useRef<string | null>(null);
     // Whether the last explicit SaveDraft run actually persisted to the DB.
@@ -1025,23 +1021,33 @@ export const SlideMaterial = ({
                                         initialForThisSlide !== null &&
                                         normalizeHtmlForDirtyCompare(serializedHtml) !==
                                             normalizeHtmlForDirtyCompare(initialForThisSlide);
-                                    // Content returned to the load-time baseline (e.g. the
-                                    // author deleted what they'd just added). If that baseline
-                                    // was SERVER content — not a restored draft — the stashed
-                                    // draft no longer represents an edit: drop it so the
-                                    // dirty badge clears again.
+                                    // Auto-clear the draft the moment the editor's content
+                                    // matches what's actually SAVED in the DB — there is then
+                                    // nothing to persist, regardless of whether the slide was
+                                    // loaded from a restored draft. Comparing against the DB
+                                    // (not the load-time baseline) is what keeps this in
+                                    // agreement with the bottom pill: when the slide loaded
+                                    // FROM a draft, the load baseline IS that draft, so the old
+                                    // baseline+fromDraft guard left the draft — and hence the
+                                    // course banner + amber dot — alive even after a full revert
+                                    // to the saved version. Guard on slide identity so we never
+                                    // compare slide A's editor against slide B's DB data.
                                     if (
-                                        !isRealEdit &&
-                                        initialForThisSlide !== null &&
                                         targetSlideId &&
-                                        !(
-                                            loadedDocFromDraftRef.current.slideId ===
-                                                targetSlideId &&
-                                            loadedDocFromDraftRef.current.fromDraft
-                                        ) &&
+                                        targetSlideId === activeItem?.id &&
                                         hasLocalDraft(currentUserId, targetSlideId)
                                     ) {
-                                        clearLocalDraft(targetSlideId);
+                                        const savedDbHtml =
+                                            (activeItem?.status === 'PUBLISHED'
+                                                ? activeItem?.document_slide?.published_data
+                                                : activeItem?.document_slide?.data ||
+                                                  activeItem?.document_slide?.published_data) || '';
+                                        if (
+                                            normalizeHtmlForDirtyCompare(serializedHtml) ===
+                                            normalizeHtmlForDirtyCompare(savedDbHtml)
+                                        ) {
+                                            clearLocalDraft(targetSlideId);
+                                        }
                                     }
                                     // Never stash a serialization that lost blocks relative to
                                     // the editor value. The stashed draft OUTRANKS server
@@ -1165,10 +1171,6 @@ export const SlideMaterial = ({
         // Restore an unsaved LOCAL draft (stashed on a previous switch/refresh) over
         // the server content so in-progress edits are never lost on reopen.
         const restorableLocalDraft = getRestorableLocalDraftHtml(activeItem);
-        loadedDocFromDraftRef.current = {
-            slideId: activeItem?.id ?? null,
-            fromDraft: restorableLocalDraft != null,
-        };
         const docData =
             restorableLocalDraft ??
             (activeItem?.status == 'PUBLISHED'

@@ -26,6 +26,7 @@ import {
 } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { type SlideDraft } from '../-utils/slide-draft-store';
+import { useContentStore } from '../-stores/chapter-sidebar-store';
 
 interface UnsavedDraftsDialogProps {
     open: boolean;
@@ -145,6 +146,14 @@ export const UnsavedDraftsDialog = ({
                 sessionId: ctx.sessionId || '',
             },
         });
+        // Same-chapter jump: the URL slideId changes but the sidebar's URL→active
+        // sync early-returns while the current slide still exists in the list, so
+        // it never switches. Set the target active directly (what a sidebar click
+        // does). Cross-chapter jumps refetch a fresh list and resolve via slideId.
+        const target = useContentStore
+            .getState()
+            .items.find((s) => s.id === draft.slideId);
+        if (target) useContentStore.getState().setActiveItem(target);
     };
 
     if (!open) return null;

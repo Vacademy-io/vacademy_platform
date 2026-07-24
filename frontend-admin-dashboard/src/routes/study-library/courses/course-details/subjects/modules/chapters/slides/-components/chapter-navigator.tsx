@@ -38,6 +38,7 @@ import {
 } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getDraftUserId, useSlideDrafts } from '../-hooks/use-slide-drafts';
+import { useContentStore } from '../-stores/chapter-sidebar-store';
 
 interface ChapterNavigatorProps {
     currentChapterId: string;
@@ -280,6 +281,11 @@ export const ChapterNavigator = ({
                 sessionId,
             },
         });
+        // Same-chapter jump: the sidebar's URL→active sync early-returns while the
+        // current slide still exists, so a slideId-only change won't switch. Set
+        // the target active directly (cross-chapter resolves via the fresh list).
+        const target = useContentStore.getState().items.find((s) => s.id === slideId);
+        if (target) useContentStore.getState().setActiveItem(target);
     };
 
     // Switching subject lands on that subject's module listing — its

@@ -155,6 +155,11 @@ export function LeadBulkImportDialog({
     const [submitProgress, setSubmitProgress] = useState<{ done: number; total: number } | null>(null);
     const [result, setResult] = useState<BulkSubmitLeadResponse | null>(null);
     const [showErrors, setShowErrors] = useState(false);
+    // Mandatory custom-field columns absent from the uploaded file. validateRow only inspects
+    // columns that exist, so a mandatory field whose column is missing entirely produces no row
+    // error — every row looks valid and the import lands with that field blank for all leads.
+    // Tracked here so it can block submission outright rather than only warning.
+    const [missingMandatoryCols, setMissingMandatoryCols] = useState<string[]>([]);
 
     // Counsellor + lead-status catalogs, refetched each time the dialog opens (staleTime 0 +
     // refetchOnMount) so a counsellor or status added moments ago resolves instead of erroring
@@ -211,6 +216,22 @@ export function LeadBulkImportDialog({
         [resolvedRows]
     );
 
+    // Hard gate on writing anything to the database, reserved for problems that no row survives.
+    //
+    // A missing mandatory column is file-level: there is no "good" subset to let through, because
+    // every lead would be written with that field empty (exactly how a whole list once imported
+    // nameless). So it blocks the import outright.
+    //
+    // Per-row problems deliberately do NOT block — a row that fails validation is skipped and the
+    // correct rows still import, which is the point of a bulk upload. Duplicates likewise: first
+    // occurrence wins and the rest are skipped.
+    const blockReason = useMemo<string | null>(() => {
+        if (missingMandatoryCols.length > 0) {
+            return `missing mandatory column${missingMandatoryCols.length > 1 ? 's' : ''}: ${missingMandatoryCols.join(', ')}`;
+        }
+        return null;
+    }, [missingMandatoryCols]);
+
     // Group failures by reason (text before the first ':') with counts, so the admin can see
     // *why* tens of thousands of rows failed at a glance instead of hovering each one.
     const errorSummary = useMemo(() => {
@@ -234,6 +255,7 @@ export function LeadBulkImportDialog({
         setSubmitProgress(null);
         setResult(null);
         setShowErrors(false);
+        setMissingMandatoryCols([]);
         if (fileInputRef.current) fileInputRef.current.value = '';
     }, []);
 
@@ -311,11 +333,14 @@ export function LeadBulkImportDialog({
                     setOwnerHeader(detectOwnerHeader(headers));
                     setStatusHeader(detectStatusHeader(headers));
 
-                    // Check for missing mandatory columns
+                    // Check for missing mandatory columns. This is a file-level (structural)
+                    // problem, not a per-row one, so it blocks the import entirely — importing
+                    // without a mandatory column silently writes every lead with it blank.
                     const missingCols = getMissingMandatoryColumns(fieldMap, customFields);
+                    setMissingMandatoryCols(missingCols);
                     if (missingCols.length > 0) {
-                        toast.warning(
-                            `Missing mandatory columns: ${missingCols.join(', ')}. Rows with these fields will show errors.`
+                        toast.error(
+                            `Missing mandatory columns: ${missingCols.join(', ')}. Add them to the file and re-upload.`
                         );
                     }
 
@@ -350,6 +375,12 @@ export function LeadBulkImportDialog({
 
     // --- Step 2: Submit ---
     const handleSubmit = useCallback(async () => {
+        // Mirrors the disabled state on the submit button. Kept as its own check so the import
+        // cannot be triggered while the file still has unresolved problems.
+        if (blockReason) {
+            toast.error(`Cannot import — ${blockReason}. Fix the file and re-upload.`);
+            return;
+        }
         if (validRows.length === 0) {
             toast.error('No valid rows to submit');
             return;
@@ -446,7 +477,7 @@ export function LeadBulkImportDialog({
         } finally {
             setIsSubmitting(false);
         }
-    }, [validRows, headerToFieldId, customFields, campaignId, queryClient, onSuccess]);
+    }, [blockReason, validRows, headerToFieldId, customFields, campaignId, queryClient, onSuccess]);
 
     return (
         <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(v) : handleClose())}>
@@ -637,6 +668,25 @@ export function LeadBulkImportDialog({
 
                         {/* Error breakdown — why rows failed (grouped) + downloadable report.
                             Critical for large files where failing rows aren't in the first 100. */}
+                        {blockReason && (
+                            <div className="rounded-md border border-danger-300 bg-danger-50 p-4">
+                                <p className="text-body font-semibold text-danger-700">
+                                    Import blocked — {blockReason}
+                                </p>
+                                <p className="mt-1.5 text-caption text-danger-600">
+                                    Your file has no column mapping to{' '}
+                                    <span className="font-semibold">
+                                        {missingMandatoryCols.join(', ')}
+                                    </span>
+                                    . This affects every row, so nothing can be imported — each lead
+                                    would be saved with{' '}
+                                    {missingMandatoryCols.length > 1 ? 'those fields' : 'that field'}{' '}
+                                    empty. Add the column to your CSV (the header must match the field
+                                    name) and upload again.
+                                </p>
+                            </div>
+                        )}
+
                         {invalidRows.length > 0 && (
                             <div className="rounded-md border border-danger-200 bg-danger-50 p-4">
                                 <div className="mb-3 flex items-center justify-between gap-3">
@@ -668,8 +718,9 @@ export function LeadBulkImportDialog({
                                     ))}
                                 </div>
                                 <p className="mt-3 text-caption text-danger-600">
-                                    The report lists every failing row with its reason — fix those
-                                    rows and re-upload. Valid rows can be submitted now.
+                                    These rows are skipped — the remaining valid rows import
+                                    normally. The report lists every skipped row with its reason, so
+                                    you can fix just those and upload them separately.
                                 </p>
                             </div>
                         )}
@@ -843,7 +894,7 @@ export function LeadBulkImportDialog({
                             <MyButton
                                 buttonType="primary"
                                 scale="medium"
-                                disable={validRows.length === 0 || isSubmitting}
+                                disable={validRows.length === 0 || isSubmitting || !!blockReason}
                                 onClick={handleSubmit}
                             >
                                 {isSubmitting ? (

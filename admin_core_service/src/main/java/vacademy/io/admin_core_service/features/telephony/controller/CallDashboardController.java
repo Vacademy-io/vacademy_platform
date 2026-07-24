@@ -6,12 +6,11 @@ import org.springframework.http.ResponseEntity;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.*;
-import vacademy.io.admin_core_service.features.telephony.core.CallDetailService;
 import vacademy.io.admin_core_service.features.telephony.core.CallDispositionService;
 import vacademy.io.admin_core_service.features.telephony.core.CallDispositionService.AppliedDisposition;
+import vacademy.io.admin_core_service.features.telephony.core.CallExportAiEnricher;
 import vacademy.io.admin_core_service.features.telephony.core.CallExportService;
 import vacademy.io.admin_core_service.features.telephony.core.CallSearchService;
-import vacademy.io.admin_core_service.features.telephony.core.dto.CallDetailDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallDispositionCatalogDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallDispositionRequestDTO;
 import vacademy.io.admin_core_service.features.telephony.core.dto.CallMetricsDTO;
@@ -52,7 +51,7 @@ public class CallDashboardController {
     private final CallSearchService callSearchService;
     private final CallDispositionService callDispositionService;
     private final CallExportService callExportService;
-    private final CallDetailService callDetailService;
+    private final CallExportAiEnricher callExportAiEnricher;
     private final InstituteAccessValidator instituteAccessValidator;
 
     @PostMapping("/search")
@@ -65,25 +64,6 @@ public class CallDashboardController {
         instituteAccessValidator.validateUserAccess(user, filter.getInstituteId());
         boolean unmask = hasAuthority(user, VIEW_CALL_NUMBERS);
         return ResponseEntity.ok(callSearchService.search(filter, user.getUserId(), unmask));
-    }
-
-    /**
-     * Deep detail for a single call — the "more details" popover on the Call Log,
-     * chiefly to explain a FAILED / BUSY / NO_ANSWER outcome. Surfaces the
-     * provider's own hangup/cause/error fields (mined from the stored webhook body),
-     * plus price and full timing that the paginated list omits.
-     */
-    @GetMapping("/{callLogId}/detail")
-    public ResponseEntity<CallDetailDTO> detail(
-            @PathVariable String callLogId,
-            @RequestParam("instituteId") String instituteId,
-            @RequestAttribute("user") CustomUserDetails user) {
-        if (instituteId == null || instituteId.isBlank()) {
-            throw new VacademyException("instituteId is required");
-        }
-        instituteAccessValidator.validateUserAccess(user, instituteId);
-        boolean unmask = hasAuthority(user, VIEW_CALL_NUMBERS);
-        return ResponseEntity.ok(callDetailService.detail(callLogId, instituteId, unmask));
     }
 
     /** Call-outcome catalog for the disposition picker + the dashboard's disposition filter. */
@@ -156,17 +136,19 @@ public class CallDashboardController {
         instituteAccessValidator.validateUserAccess(user, filter.getInstituteId());
         boolean unmask = hasAuthority(user, VIEW_CALL_NUMBERS);
         List<CallRowDTO> rows = callSearchService.exportRows(filter, user.getUserId(), unmask, EXPORT_CAP);
+        Map<String, CallExportAiEnricher.AiRow> ai =
+                callExportAiEnricher.forCalls(rows.stream().map(CallRowDTO::getId).toList());
         boolean xlsx = "xlsx".equalsIgnoreCase(format) || "excel".equalsIgnoreCase(format);
         try {
             if (xlsx) {
                 response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
                 response.setHeader("Content-Disposition", "attachment; filename=\"calls.xlsx\"");
-                callExportService.writeXlsx(rows, response.getOutputStream());
+                callExportService.writeXlsx(rows, ai, response.getOutputStream());
             } else {
                 response.setContentType("text/csv; charset=UTF-8");
                 response.setHeader("Content-Disposition", "attachment; filename=\"calls.csv\"");
                 OutputStreamWriter writer = new OutputStreamWriter(response.getOutputStream(), StandardCharsets.UTF_8);
-                callExportService.writeCsv(rows, writer);
+                callExportService.writeCsv(rows, ai, writer);
             }
         } catch (java.io.IOException e) {
             throw new UncheckedIOException("Failed to write call export", e);

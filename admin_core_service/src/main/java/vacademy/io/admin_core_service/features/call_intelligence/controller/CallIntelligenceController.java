@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.call_intelligence.core.CallIntell
 import vacademy.io.admin_core_service.features.call_intelligence.dto.CallIntelligenceAnalyticsDto;
 import vacademy.io.admin_core_service.features.call_intelligence.dto.CallIntelligenceCoachingDto;
 import vacademy.io.admin_core_service.features.call_intelligence.dto.CallIntelligenceDto;
+import vacademy.io.admin_core_service.features.call_intelligence.dto.CallTranscriptDto;
 import vacademy.io.common.auth.model.CustomUserDetails;
 
 import java.util.List;
@@ -30,6 +31,14 @@ public class CallIntelligenceController {
     @GetMapping("/call/{callLogId}")
     public ResponseEntity<CallIntelligenceDto> getByCall(@PathVariable String callLogId) {
         return queryService.getByCallLogId(callLogId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    /** Full transcript (source language + English) for a single call. */
+    @GetMapping("/call/{callLogId}/transcript")
+    public ResponseEntity<CallTranscriptDto> getTranscript(@PathVariable String callLogId) {
+        return queryService.getTranscript(callLogId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }

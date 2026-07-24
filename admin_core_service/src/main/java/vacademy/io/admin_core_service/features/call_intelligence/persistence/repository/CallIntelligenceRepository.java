@@ -18,6 +18,9 @@ public interface CallIntelligenceRepository extends JpaRepository<CallIntelligen
 
     boolean existsByCallLogId(String callLogId);
 
+    /** Bulk 1:1 lookup for export enrichment. Callers chunk large id sets. */
+    List<CallIntelligence> findByCallLogIdIn(java.util.Collection<String> callLogIds);
+
     List<CallIntelligence> findByResponseIdOrderByCallStartedAtDesc(String responseId);
 
     /**
@@ -88,22 +91,6 @@ public interface CallIntelligenceRepository extends JpaRepository<CallIntelligen
     List<Object[]> sentimentDistribution(@Param("ids") List<String> ids,
                                          @Param("from") java.sql.Timestamp from,
                                          @Param("to") java.sql.Timestamp to);
-
-    /**
-     * Every user who actually has analyzed calls in this institute.
-     *
-     * <p>An ADMIN's team view must cover all of them. Resolving an admin's cohort
-     * from the COUNSELLOR-role roster alone silently hides calls made by users who
-     * don't hold that role (admins themselves, or reps whose role was never granted
-     * / was revoked) — and returns nothing at all when the institute has granted no
-     * counsellor roles, which blanked the whole AI Intelligence page.
-     */
-    @Query("""
-            SELECT DISTINCT c.counsellorUserId
-            FROM CallIntelligence c
-            WHERE c.instituteId = :instituteId AND c.counsellorUserId IS NOT NULL
-            """)
-    List<String> findDistinctCounsellorUserIdsByInstituteId(@Param("instituteId") String instituteId);
 
     /** Per-counsellor breakdown: {counsellor_user_id, count, avgSelf, avgOutput}. */
     @Query("""

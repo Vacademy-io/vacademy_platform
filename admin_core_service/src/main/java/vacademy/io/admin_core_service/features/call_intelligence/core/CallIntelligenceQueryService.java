@@ -2,9 +2,11 @@ package vacademy.io.admin_core_service.features.call_intelligence.core;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 import vacademy.io.admin_core_service.features.call_intelligence.dto.CallIntelligenceAnalyticsDto;
 import vacademy.io.admin_core_service.features.call_intelligence.dto.CallIntelligenceCoachingDto;
 import vacademy.io.admin_core_service.features.call_intelligence.dto.CallIntelligenceDto;
+import vacademy.io.admin_core_service.features.call_intelligence.dto.CallTranscriptDto;
 import vacademy.io.admin_core_service.features.call_intelligence.persistence.entity.CallIntelligence;
 import vacademy.io.admin_core_service.features.call_intelligence.persistence.repository.CallIntelligenceRepository;
 import vacademy.io.admin_core_service.features.counsellor_workbench.service.CounsellorScopeService;
@@ -17,7 +19,6 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -39,8 +40,36 @@ public class CallIntelligenceQueryService {
     private final CounsellorScopeService counsellorScopeService;
     private final AuthService authService;
 
+    /** For fetching transcript artifacts from their stored S3 URLs. */
+    private final RestTemplate transcriptFetcher = new RestTemplate();
+
     public Optional<CallIntelligenceDto> getByCallLogId(String callLogId) {
         return repo.findByCallLogId(callLogId).map(CallIntelligenceDto::from);
+    }
+
+    /**
+     * Full transcript for one call, resolved server-side from the S3 text
+     * artifacts the pipeline wrote. Empty Optional when the call was never
+     * analyzed; a DTO with null texts when analysis ran but produced no
+     * transcript (e.g. skipped before transcription).
+     */
+    public Optional<CallTranscriptDto> getTranscript(String callLogId) {
+        return repo.findByCallLogId(callLogId).map(row -> CallTranscriptDto.builder()
+                .callLogId(callLogId)
+                .detectedLanguage(row.getDetectedLanguage())
+                .sourceText(fetchText(row.getSourceTextKey()))
+                .englishText(fetchText(row.getEnglishTextKey()))
+                .build());
+    }
+
+    private String fetchText(String url) {
+        if (url == null || url.isBlank()) return null;
+        try {
+            return transcriptFetcher.getForObject(url, String.class);
+        } catch (Exception e) {
+            // Artifact gone / unreachable — surface as "no transcript" rather than 500.
+            return null;
+        }
     }
 
     public List<CallIntelligenceDto> getByResponseId(String responseId) {
@@ -73,7 +102,9 @@ public class CallIntelligenceQueryService {
      */
     public CallIntelligenceCoachingDto teamCoachingInsights(String instituteId, String callerUserId,
                                                             Long fromMillis, Long toMillis) {
-        List<String> ids = teamScopeIds(instituteId, callerUserId);
+        // Scoped caller (COUNSELLOR role) → their reporting line; pure admin →
+        // every counsellor-role user of the institute.
+        List<String> ids = counsellorScopeService.visibleCounsellorUserIds(instituteId, callerUserId);
         List<CallIntelligence> rows = (ids == null || ids.isEmpty())
                 ? List.of()
                 : repo.findByCounsellorUserIdInAndStatusAndCallStartedAtBetweenOrderByCallStartedAtDesc(
@@ -234,38 +265,11 @@ public class CallIntelligenceQueryService {
     }
 
     /** A sales head's whole team (self + all reports) over the window;
-     *  pure admins get every user with analyzed calls in the institute. */
+     *  pure admins get the institute-wide counsellor roster. */
     public CallIntelligenceAnalyticsDto teamAnalytics(String instituteId, String callerUserId,
                                                       Long fromMillis, Long toMillis) {
-        List<String> ids = teamScopeIds(instituteId, callerUserId);
+        List<String> ids = counsellorScopeService.visibleCounsellorUserIds(instituteId, callerUserId);
         return aggregate(ids, from(fromMillis), to(toMillis), true);
-    }
-
-    /**
-     * The user ids a caller's TEAM view covers.
-     *
-     * <ul>
-     *   <li><b>Scoped caller</b> (non-admin COUNSELLOR): their reporting line
-     *       (self + reports) — unchanged.</li>
-     *   <li><b>Pure admin</b>: the counsellor roster UNION everyone who actually has
-     *       analyzed calls in the institute.</li>
-     * </ul>
-     *
-     * <p>The union matters: resolving an admin's cohort from the COUNSELLOR-role
-     * roster alone (as this did briefly) hides every call made by a user without
-     * that role — including admins themselves — and yields an EMPTY list when the
-     * institute has granted no counsellor roles. An empty list short-circuits to
-     * {@code totalAnalyzed = 0}, which silently blanked the AI Intelligence page and
-     * all team analytics/coaching even though the calls were analyzed fine.
-     */
-    private List<String> teamScopeIds(String instituteId, String callerUserId) {
-        if (counsellorScopeService.isScopedCaller(instituteId, callerUserId)) {
-            return counsellorScopeService.scopedCounsellorUserIds(instituteId, callerUserId);
-        }
-        LinkedHashSet<String> ids = new LinkedHashSet<>(
-                counsellorScopeService.allCounsellorUserIds(instituteId));
-        ids.addAll(repo.findDistinctCounsellorUserIdsByInstituteId(instituteId));
-        return new ArrayList<>(ids);
     }
 
     // -------------------------------------------------------------------------

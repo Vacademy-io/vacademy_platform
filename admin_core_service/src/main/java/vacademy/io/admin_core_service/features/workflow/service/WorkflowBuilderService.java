@@ -39,6 +39,7 @@ public class WorkflowBuilderService {
     private final WorkflowValidationService validationService;
     private final WorkflowScheduleService workflowScheduleService;
     private final ObjectMapper objectMapper;
+    private final vacademy.io.admin_core_service.features.workflow.service.idempotency.IdempotencyStrategyFactory idempotencyStrategyFactory;
 
     @Transactional
     public WorkflowBuilderDTO createWorkflow(WorkflowBuilderDTO dto, String userId) {
@@ -472,6 +473,7 @@ public class WorkflowBuilderService {
         String defaultIdempotencySettings = isPeriodicScanTrigger(trig.getTriggerEventName())
                 ? "{\"strategy\":\"EVENT_BASED\",\"includeTriggerId\":true,\"includeEventType\":true,\"includeEventId\":true}"
                 : "{\"strategy\":\"UUID\"}";
+        String idempotencySettings = resolveIdempotencySettings(trig, defaultIdempotencySettings);
         Workflow managedWorkflow = workflowRepository.findById(workflowId).orElseThrow();
 
         List<String> effectiveIds = trig.getEffectiveEventIds();
@@ -484,7 +486,7 @@ public class WorkflowBuilderService {
                     .status("ACTIVE")
                     .eventId(null)
                     .eventAppliedType(trig.getEventAppliedType())
-                    .idempotencyGenerationSetting(defaultIdempotencySettings)
+                    .idempotencyGenerationSetting(idempotencySettings)
                     .webhookUrlSlug(webhook != null ? webhook[0] : null)
                     .webhookSecret(webhook != null ? webhook[1] : null)
                     .build();
@@ -500,13 +502,35 @@ public class WorkflowBuilderService {
                         .status("ACTIVE")
                         .eventId(eid)
                         .eventAppliedType(trig.getEventAppliedType())
-                        .idempotencyGenerationSetting(defaultIdempotencySettings)
+                        .idempotencyGenerationSetting(idempotencySettings)
                         .webhookUrlSlug(webhook != null ? webhook[0] : null)
                         .webhookSecret(webhook != null ? webhook[1] : null)
                         .build();
                 trigger.setWorkflow(managedWorkflow);
                 triggerRepository.save(trigger);
             }
+        }
+    }
+
+    /**
+     * Honor caller-supplied idempotency settings (JSON object or string, per IdempotencySettings)
+     * after validating them; otherwise keep the per-event default. Invalid settings fall back to
+     * the default rather than failing the publish — the validation service surfaces the error to
+     * the builder/AI-repair loop before this point for anything user-visible.
+     */
+    private String resolveIdempotencySettings(WorkflowBuilderDTO.TriggerDTO trig, String fallback) {
+        Object provided = trig.getIdempotencyGenerationSetting();
+        if (provided == null) return fallback;
+        try {
+            String json = provided instanceof String s ? s : objectMapper.writeValueAsString(provided);
+            if (json.isBlank() || "null".equals(json)) return fallback;
+            vacademy.io.admin_core_service.features.workflow.dto.IdempotencySettings settings =
+                    objectMapper.readValue(json, vacademy.io.admin_core_service.features.workflow.dto.IdempotencySettings.class);
+            idempotencyStrategyFactory.validateSettings(settings);
+            return json;
+        } catch (Exception e) {
+            log.warn("Invalid trigger idempotency settings ({}) — falling back to default {}", e.getMessage(), fallback);
+            return fallback;
         }
     }
 

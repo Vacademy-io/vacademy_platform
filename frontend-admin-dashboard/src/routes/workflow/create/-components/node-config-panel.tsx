@@ -869,44 +869,128 @@ export function NodeConfigPanel() {
                     );
                 })()}
 
-                {/* Delay node config — saves as config.delay.value / config.delay.unit to match backend */}
+                {/* Delay node config — saves as config.delay.{value,unit} (fixed) or
+                    config.delay.{until:NEXT_DAY_OF_WEEK,dayOfWeek,time,timezone} to match backend */}
                 {data.nodeType === 'DELAY' && (() => {
-                    const delay = (data.config.delay as { value?: number; unit?: string }) ?? {};
+                    const delay =
+                        (data.config.delay as {
+                            value?: number;
+                            unit?: string;
+                            until?: string;
+                            dayOfWeek?: string;
+                            time?: string;
+                            timezone?: string;
+                        }) ?? {};
+                    const isUntilWeekday = delay.until === 'NEXT_DAY_OF_WEEK';
                     // Backward compat: read from flat keys if nested doesn't exist
                     const delayValue = delay.value ?? (data.config.delayValue as number) ?? 5;
                     const delayUnit = delay.unit ?? (data.config.delayUnit as string) ?? 'MINUTES';
                     const updateDelay = (field: string, val: unknown) => {
                         handleConfigChange('delay', { ...delay, value: delayValue, unit: delayUnit, [field]: val });
                     };
+                    const updateUntil = (field: string, val: unknown) => {
+                        handleConfigChange('delay', {
+                            until: 'NEXT_DAY_OF_WEEK',
+                            dayOfWeek: delay.dayOfWeek ?? 'MONDAY',
+                            time: delay.time ?? '09:00',
+                            timezone: delay.timezone ?? 'Asia/Kolkata',
+                            [field]: val,
+                        });
+                    };
                     return (
                         <>
                             <div>
-                                <Label className="text-xs">Wait for</Label>
-                                <div className="mt-1 flex items-center gap-2">
-                                    <Input
-                                        type="number"
-                                        value={delayValue}
-                                        onChange={(e) => updateDelay('value', parseInt(e.target.value) || 0)}
-                                        className="w-20"
-                                        min={0}
-                                    />
-                                    <select
-                                        className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
-                                        value={delayUnit}
-                                        onChange={(e) => updateDelay('unit', e.target.value)}
-                                    >
-                                        <option value="SECONDS">Seconds</option>
-                                        <option value="MINUTES">Minutes</option>
-                                        <option value="HOURS">Hours</option>
-                                        <option value="DAYS">Days</option>
-                                    </select>
-                                </div>
-                                {delayUnit === 'DAYS' && delayValue > 0 && (
-                                    <p className="mt-1.5 text-[10px] text-primary-500">
-                                        Workflow will pause and resume automatically after {delayValue} day{delayValue > 1 ? 's' : ''}.
-                                    </p>
-                                )}
+                                <Label className="text-xs">Wait mode</Label>
+                                <select
+                                    className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                    value={isUntilWeekday ? 'UNTIL_WEEKDAY' : 'FIXED'}
+                                    onChange={(e) => {
+                                        if (e.target.value === 'UNTIL_WEEKDAY') {
+                                            handleConfigChange('delay', {
+                                                until: 'NEXT_DAY_OF_WEEK',
+                                                dayOfWeek: delay.dayOfWeek ?? 'MONDAY',
+                                                time: delay.time ?? '09:00',
+                                                timezone: delay.timezone ?? 'Asia/Kolkata',
+                                            });
+                                        } else {
+                                            handleConfigChange('delay', { value: delayValue, unit: delayUnit });
+                                        }
+                                    }}
+                                >
+                                    <option value="FIXED">Fixed duration</option>
+                                    <option value="UNTIL_WEEKDAY">Until next weekday</option>
+                                </select>
                             </div>
+                            {!isUntilWeekday && (
+                                <div>
+                                    <Label className="text-xs">Wait for</Label>
+                                    <div className="mt-1 flex items-center gap-2">
+                                        <Input
+                                            type="number"
+                                            value={delayValue}
+                                            onChange={(e) => updateDelay('value', parseInt(e.target.value) || 0)}
+                                            className="w-20"
+                                            min={0}
+                                        />
+                                        <select
+                                            className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                            value={delayUnit}
+                                            onChange={(e) => updateDelay('unit', e.target.value)}
+                                        >
+                                            <option value="SECONDS">Seconds</option>
+                                            <option value="MINUTES">Minutes</option>
+                                            <option value="HOURS">Hours</option>
+                                            <option value="DAYS">Days</option>
+                                        </select>
+                                    </div>
+                                    {delayUnit === 'DAYS' && delayValue > 0 && (
+                                        <p className="mt-1.5 text-caption text-primary-500">
+                                            Workflow will pause and resume automatically after {delayValue} day{delayValue > 1 ? 's' : ''}.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                            {isUntilWeekday && (
+                                <>
+                                    <div>
+                                        <Label className="text-xs">Wait until next</Label>
+                                        <div className="mt-1 flex items-center gap-2">
+                                            <select
+                                                className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                                value={delay.dayOfWeek ?? 'MONDAY'}
+                                                onChange={(e) => updateUntil('dayOfWeek', e.target.value)}
+                                            >
+                                                <option value="MONDAY">Monday</option>
+                                                <option value="TUESDAY">Tuesday</option>
+                                                <option value="WEDNESDAY">Wednesday</option>
+                                                <option value="THURSDAY">Thursday</option>
+                                                <option value="FRIDAY">Friday</option>
+                                                <option value="SATURDAY">Saturday</option>
+                                                <option value="SUNDAY">Sunday</option>
+                                            </select>
+                                            <Input
+                                                type="time"
+                                                value={delay.time ?? '09:00'}
+                                                onChange={(e) => updateUntil('time', e.target.value)}
+                                                className="w-28"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <Label className="text-xs">Timezone</Label>
+                                        <Input
+                                            value={delay.timezone ?? 'Asia/Kolkata'}
+                                            onChange={(e) => updateUntil('timezone', e.target.value)}
+                                            className="mt-1"
+                                            placeholder="Asia/Kolkata"
+                                        />
+                                        <p className="mt-1.5 text-caption text-primary-500">
+                                            Pauses until the next {(delay.dayOfWeek ?? 'MONDAY').toLowerCase()} at{' '}
+                                            {delay.time ?? '09:00'}. An event on that same weekday waits a full week.
+                                        </p>
+                                    </div>
+                                </>
+                            )}
                         </>
                     );
                 })()}

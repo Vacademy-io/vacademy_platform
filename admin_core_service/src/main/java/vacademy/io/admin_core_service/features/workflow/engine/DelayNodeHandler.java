@@ -10,7 +10,13 @@ import vacademy.io.admin_core_service.features.workflow.entity.WorkflowExecution
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionStateRepository;
 import vacademy.io.admin_core_service.features.workflow.repository.WorkflowExecutionRepository;
 
+import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.temporal.TemporalAdjusters;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -43,19 +49,45 @@ public class DelayNodeHandler implements NodeHandler {
             long value = delayNode.path("value").asLong(0);
             String unit = delayNode.path("unit").asText("SECONDS").toUpperCase();
 
-            long delayMs = switch (unit) {
-                case "MINUTES" -> TimeUnit.MINUTES.toMillis(value);
-                case "HOURS" -> TimeUnit.HOURS.toMillis(value);
-                case "DAYS" -> TimeUnit.DAYS.toMillis(value);
-                default -> TimeUnit.SECONDS.toMillis(value);
-            };
+            long delayMs;
+            String delayDescription;
+            if ("NEXT_DAY_OF_WEEK".equalsIgnoreCase(delayNode.path("until").asText(null))) {
+                // "Wait until the next <weekday> at <time>" — e.g. a trial drip that must start
+                // on Monday regardless of which day the learner signed up. Default semantics are
+                // STRICTLY next: signing up on a Monday waits for the following Monday, unless
+                // includeSameDay=true and the target time today is still ahead.
+                DayOfWeek targetDay = DayOfWeek.valueOf(delayNode.path("dayOfWeek").asText("MONDAY").toUpperCase());
+                LocalTime targetTime = LocalTime.parse(delayNode.path("time").asText("09:00"));
+                ZoneId zone = ZoneId.of(delayNode.path("timezone").asText("Asia/Kolkata"));
+                boolean includeSameDay = delayNode.path("includeSameDay").asBoolean(false);
+
+                ZonedDateTime now = ZonedDateTime.now(zone);
+                ZonedDateTime target = now.with(TemporalAdjusters.next(targetDay)).with(targetTime);
+                if (includeSameDay && now.getDayOfWeek() == targetDay) {
+                    ZonedDateTime todayAtTime = now.with(targetTime);
+                    if (todayAtTime.isAfter(now)) {
+                        target = todayAtTime;
+                    }
+                }
+                delayMs = Duration.between(now, target).toMillis();
+                delayDescription = "until next " + targetDay + " " + targetTime + " " + zone + " (" + target + ")";
+                result.put("delayUntil", target.toString());
+            } else {
+                delayMs = switch (unit) {
+                    case "MINUTES" -> TimeUnit.MINUTES.toMillis(value);
+                    case "HOURS" -> TimeUnit.HOURS.toMillis(value);
+                    case "DAYS" -> TimeUnit.DAYS.toMillis(value);
+                    default -> TimeUnit.SECONDS.toMillis(value);
+                };
+                delayDescription = value + " " + unit;
+            }
 
             // H1 FIX: when the engine resumes a paused execution it re-enters at THIS delay node
             // (the one we paused on) and sets __skip_delay_once for this single execution. The wait
             // has already elapsed via WorkflowResumeJob's scheduling, so do not re-wait/re-pause —
             // just complete the node and let routing carry the workflow forward.
             if (Boolean.TRUE.equals(context.get("__skip_delay_once"))) {
-                log.info("DELAY node: resumed after persistent delay ({} {}). Skipping wait and continuing.", value, unit);
+                log.info("DELAY node: resumed after persistent delay ({}). Skipping wait and continuing.", delayDescription);
                 result.put("delayed", true);
                 result.put("delaySkippedOnResume", true);
                 return result;
@@ -63,7 +95,7 @@ public class DelayNodeHandler implements NodeHandler {
 
             Boolean dryRun = (Boolean) context.getOrDefault("dryRun", false);
             if (Boolean.TRUE.equals(dryRun)) {
-                log.info("[DRY RUN] DELAY node - would wait {} {} ({} ms)", value, unit, delayMs);
+                log.info("[DRY RUN] DELAY node - would wait {} ({} ms)", delayDescription, delayMs);
                 result.put("dryRun", true);
                 result.put("skipped", "delay");
                 result.put("delayMs", delayMs);
@@ -77,14 +109,14 @@ public class DelayNodeHandler implements NodeHandler {
 
             if (delayMs <= MAX_INLINE_DELAY_MS) {
                 // Short delay — inline Thread.sleep
-                log.info("DELAY node: waiting {} {} ({} ms) inline", value, unit, delayMs);
+                log.info("DELAY node: waiting {} ({} ms) inline", delayDescription, delayMs);
                 Thread.sleep(delayMs);
                 result.put("delayed", true);
                 result.put("delayMs", delayMs);
             } else {
                 // Long delay — persist state and pause workflow
-                log.info("DELAY node: {} {} ({} ms) exceeds inline limit. Persisting state for resume.",
-                        value, unit, delayMs);
+                log.info("DELAY node: {} ({} ms) exceeds inline limit. Persisting state for resume.",
+                        delayDescription, delayMs);
 
                 String executionId = (String) context.get("executionId");
                 String currentNodeId = (String) context.get("currentNodeId");
@@ -115,8 +147,8 @@ public class DelayNodeHandler implements NodeHandler {
                     executionRepository.save(execution);
                 });
 
-                log.info("DELAY node: workflow paused. Will resume at {} (in {} {})",
-                        resumeAt, value, unit);
+                log.info("DELAY node: workflow paused. Will resume at {} ({})",
+                        resumeAt, delayDescription);
 
                 // Signal engine to stop processing
                 result.put("__workflow_paused", true);

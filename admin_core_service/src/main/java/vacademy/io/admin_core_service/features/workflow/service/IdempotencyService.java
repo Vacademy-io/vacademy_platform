@@ -105,6 +105,14 @@ public class IdempotencyService {
 
     @Transactional
     public WorkflowExecution markAsCompleted(String idempotencyKey, Map<String, Object> result) {
+        // A run that hit a long DELAY returns normally with __workflow_paused — the execution
+        // row was just set to PAUSED by DelayNodeHandler and a WAITING resume-state row exists.
+        // Marking COMPLETED here would clobber that and show a mid-drip run as finished.
+        if (result != null && Boolean.TRUE.equals(result.get("__workflow_paused"))) {
+            log.info("Execution {} paused mid-run (persistent delay) — leaving status PAUSED", idempotencyKey);
+            return workflowExecutionRepository.findByIdempotencyKey(idempotencyKey).orElse(null);
+        }
+
         Optional<WorkflowExecution> executionOpt = workflowExecutionRepository.findByIdempotencyKey(idempotencyKey);
 
         if (executionOpt.isEmpty()) {

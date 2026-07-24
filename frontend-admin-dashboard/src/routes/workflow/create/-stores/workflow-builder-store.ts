@@ -27,6 +27,8 @@ export interface TriggerConfig {
     eventId?: string;
     /** Multiple event IDs for multi-select scope */
     eventIds?: string[];
+    /** Execution-dedup settings (backend IdempotencySettings shape) — carried through from AI drafts. */
+    idempotencyGenerationSetting?: unknown;
 }
 
 export interface WorkflowBuilderState {

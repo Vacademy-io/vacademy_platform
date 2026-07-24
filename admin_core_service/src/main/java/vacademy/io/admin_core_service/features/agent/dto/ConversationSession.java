@@ -26,6 +26,10 @@ public class ConversationSession {
     private String instituteId;
     private String model;
 
+    // Per-request completion budget. Null = LLMService default (4096). Large structured
+    // outputs (e.g. multi-node workflow drafts) set this higher to avoid truncation.
+    private Integer maxTokens;
+
     private SessionState state;
     private LocalDateTime createdAt;
     private LocalDateTime lastActivityAt;

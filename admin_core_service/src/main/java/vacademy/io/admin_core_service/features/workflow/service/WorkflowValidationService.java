@@ -1,9 +1,12 @@
 package vacademy.io.admin_core_service.features.workflow.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import vacademy.io.admin_core_service.features.workflow.dto.IdempotencySettings;
 import vacademy.io.admin_core_service.features.workflow.dto.WorkflowBuilderDTO;
+import vacademy.io.admin_core_service.features.workflow.service.idempotency.IdempotencyStrategyFactory;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -12,6 +15,9 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class WorkflowValidationService {
+
+    private final ObjectMapper objectMapper;
+    private final IdempotencyStrategyFactory idempotencyStrategyFactory;
 
     @lombok.Data
     @lombok.AllArgsConstructor
@@ -61,6 +67,10 @@ public class WorkflowValidationService {
             if (node.getName() == null || node.getName().isBlank()) {
                 errors.add(new ValidationError(node.getId(), "name", "Node name is required", "ERROR"));
             }
+
+            if ("DELAY".equalsIgnoreCase(node.getNodeType())) {
+                validateDelayConfig(node, errors);
+            }
         }
 
         // Check edges reference existing nodes
@@ -107,6 +117,88 @@ public class WorkflowValidationService {
             }
         }
 
+        if (dto.getTrigger() != null && dto.getTrigger().getIdempotencyGenerationSetting() != null) {
+            validateTriggerIdempotency(dto.getTrigger().getIdempotencyGenerationSetting(), errors);
+        }
+
         return errors;
+    }
+
+    /**
+     * Validate caller-supplied trigger idempotency settings (JSON object or string). The builder
+     * falls back to a safe default when these are invalid, so surface the problem here where the
+     * admin (or the AI drafter's repair loop) can actually fix it.
+     */
+    private void validateTriggerIdempotency(Object provided, List<ValidationError> errors) {
+        try {
+            String json = provided instanceof String s ? s : objectMapper.writeValueAsString(provided);
+            if (json.isBlank() || "null".equals(json)) return;
+            IdempotencySettings settings = objectMapper.readValue(json, IdempotencySettings.class);
+            idempotencyStrategyFactory.validateSettings(settings);
+        } catch (Exception e) {
+            errors.add(new ValidationError(null, "trigger.idempotency_generation_setting",
+                    "Invalid idempotency settings: " + e.getMessage(), "ERROR"));
+        }
+    }
+
+    /**
+     * DELAY has two shapes: fixed {@code delay.{value,unit}} and
+     * {@code delay.{until:NEXT_DAY_OF_WEEK,dayOfWeek,time,timezone}}. The engine silently runs a
+     * legacy flat {@code delayValue}/{@code delayUnit} config as a 0-delay, and a bad weekday /
+     * time / timezone would only fail at runtime — surface both at validation time (this also
+     * feeds the AI drafter's repair loop).
+     */
+    private void validateDelayConfig(WorkflowBuilderDTO.NodeDTO node, List<ValidationError> errors) {
+        if (!(node.getConfig() instanceof Map<?, ?> config)) {
+            return;
+        }
+        Object delayObj = config.get("delay");
+        if (delayObj == null) {
+            if (config.containsKey("delayValue") || config.containsKey("delayUnit")) {
+                errors.add(new ValidationError(node.getId(), "config.delay",
+                        "DELAY config must be nested under 'delay' ({value,unit} or {until:NEXT_DAY_OF_WEEK,...}); flat delayValue/delayUnit executes as a 0-delay", "ERROR"));
+            }
+            return;
+        }
+        if (!(delayObj instanceof Map<?, ?> delay)) {
+            errors.add(new ValidationError(node.getId(), "config.delay", "'delay' must be an object", "ERROR"));
+            return;
+        }
+        Object until = delay.get("until");
+        if (until == null) {
+            return; // fixed value/unit shape — value 0 already behaves as no-op, nothing fatal to check
+        }
+        if (!"NEXT_DAY_OF_WEEK".equalsIgnoreCase(String.valueOf(until))) {
+            errors.add(new ValidationError(node.getId(), "config.delay.until",
+                    "Unsupported delay 'until' mode: " + until + " (supported: NEXT_DAY_OF_WEEK)", "ERROR"));
+            return;
+        }
+        Object dayOfWeek = delay.get("dayOfWeek");
+        if (dayOfWeek != null) {
+            try {
+                java.time.DayOfWeek.valueOf(String.valueOf(dayOfWeek).toUpperCase());
+            } catch (IllegalArgumentException e) {
+                errors.add(new ValidationError(node.getId(), "config.delay.dayOfWeek",
+                        "Invalid dayOfWeek: " + dayOfWeek + " (use MONDAY..SUNDAY)", "ERROR"));
+            }
+        }
+        Object time = delay.get("time");
+        if (time != null) {
+            try {
+                java.time.LocalTime.parse(String.valueOf(time));
+            } catch (Exception e) {
+                errors.add(new ValidationError(node.getId(), "config.delay.time",
+                        "Invalid time: " + time + " (use HH:mm, e.g. 09:00)", "ERROR"));
+            }
+        }
+        Object timezone = delay.get("timezone");
+        if (timezone != null) {
+            try {
+                java.time.ZoneId.of(String.valueOf(timezone));
+            } catch (Exception e) {
+                errors.add(new ValidationError(node.getId(), "config.delay.timezone",
+                        "Invalid timezone: " + timezone + " (use an IANA id, e.g. Asia/Kolkata)", "ERROR"));
+            }
+        }
     }
 }

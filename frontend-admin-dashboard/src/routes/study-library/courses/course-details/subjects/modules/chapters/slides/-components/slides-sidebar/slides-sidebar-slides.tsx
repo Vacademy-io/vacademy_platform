@@ -245,8 +245,8 @@ const SlideItem = ({
             >
                 <div
                     className={`
-                        flex w-full items-center gap-2.5 rounded-lg border px-3
-                        py-2 backdrop-blur-sm transition-all
+                        flex w-full items-center gap-2 overflow-hidden rounded-lg border
+                        px-2 py-2 backdrop-blur-sm transition-all
                         duration-300 ease-in-out
                         ${
                             slide.status === 'DELETED'
@@ -262,8 +262,8 @@ const SlideItem = ({
                 >
                     <TooltipProvider>
                         <Tooltip>
-                            <TooltipTrigger className="w-full">
-                                <div className="flex flex-1 items-center gap-2.5">
+                            <TooltipTrigger className="w-full min-w-0">
+                                <div className="flex min-w-0 flex-1 items-center gap-2">
                                     {/* Slide Number with enhanced styling — hidden
                                         when the admin turns off content numbering */}
                                     {showNumbering && (
@@ -294,10 +294,16 @@ const SlideItem = ({
                                         )}
                                     </div>
 
-                                    {/* Content area */}
-                                    <div className="min-w-0 flex-1">
+                                    {/* Content area. Hard char cap is the reliable
+                                        containment: an unbroken runaway string (no spaces)
+                                        escapes the flex/overflow chain and widens the whole
+                                        sidebar, so cap the length here. 25 shows real names
+                                        in full ("Portfolio Instructions", "SamplePPTX-Dummy-
+                                        Text") while a 200-char string can never break the
+                                        layout. `truncate` stays as the width-level ellipsis. */}
+                                    <div className="min-w-0 flex-1 text-left">
                                         <p className="truncate text-sm font-medium leading-tight">
-                                            {truncateString(getSlideTitle(), 18)}
+                                            {truncateString(getSlideTitle(), 25)}
                                         </p>
                                         <p className="mt-0.5 text-xs capitalize leading-tight text-neutral-400">
                                             {getSlideTypeDisplay(slide)}

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Sparkle, CircleNotch, ArrowRight, Warning, CheckCircle } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
@@ -242,6 +242,7 @@ export function AiDraftPanel({
                                 </span>
                                 <span>
                                     <span className="font-medium text-neutral-700">{s.title}</span>
+                                    <ChannelChip nodeType={s.nodeType} />
                                     {s.detail ? ` — ${s.detail}` : ''}
                                 </span>
                             </li>
@@ -357,29 +358,14 @@ function DecisionControl({
     }
 
     if (decision.kind === 'EMAIL_TEMPLATE' || decision.kind === 'WHATSAPP_TEMPLATE') {
-        const templates = templatesFor(decision.kind);
         return (
-            <div className="flex flex-col gap-1">
-                {label}
-                <select
-                    value={(value as string) ?? ''}
-                    onChange={(e) => onChange(e.target.value)}
-                    className="rounded-md border border-neutral-300 bg-white px-3 py-2 text-body text-neutral-700 focus:border-primary-400 focus:outline-none"
-                >
-                    <option value="">Select a template…</option>
-                    {templates.map((t) => (
-                        <option key={t.id ?? t.name} value={t.name}>
-                            {t.name}
-                        </option>
-                    ))}
-                </select>
-                {templates.length === 0 && (
-                    <span className="text-caption text-warning-600">
-                        No {decision.kind === 'WHATSAPP_TEMPLATE' ? 'WhatsApp' : 'email'} templates found — create one
-                        in Settings → Templates first.
-                    </span>
-                )}
-            </div>
+            <TemplateSelect
+                label={label}
+                kind={decision.kind}
+                value={value as string | undefined}
+                onChange={onChange}
+                templates={templatesFor(decision.kind)}
+            />
         );
     }
 
@@ -442,6 +428,75 @@ function DecisionControl({
                     'focus:border-primary-400 focus:outline-none'
                 )}
             />
+        </div>
+    );
+}
+
+/** Channel badge so the admin can see at a glance whether a step sends Email or WhatsApp. */
+function ChannelChip({ nodeType }: { nodeType?: string }) {
+    if (nodeType === 'SEND_EMAIL') {
+        return (
+            <span className="ml-2 rounded-full bg-info-50 px-2 py-0.5 text-caption text-info-600">Email</span>
+        );
+    }
+    if (nodeType === 'SEND_WHATSAPP' || nodeType === 'COMBOT') {
+        return (
+            <span className="ml-2 rounded-full bg-success-50 px-2 py-0.5 text-caption text-success-600">
+                WhatsApp
+            </span>
+        );
+    }
+    return null;
+}
+
+/** Searchable template picker — real institute templates only, never a typed-in name. */
+function TemplateSelect({
+    label,
+    kind,
+    value,
+    onChange,
+    templates,
+}: {
+    label: ReactNode;
+    kind: string;
+    value?: string;
+    onChange: (v: unknown) => void;
+    templates: TemplateItem[];
+}) {
+    const [search, setSearch] = useState('');
+    const filtered = search.trim()
+        ? templates.filter((t) => t.name.toLowerCase().includes(search.trim().toLowerCase()))
+        : templates;
+    return (
+        <div className="flex flex-col gap-1">
+            {label}
+            {templates.length > 5 && (
+                <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search templates…"
+                    className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-1.5 text-caption text-neutral-600 focus:border-primary-400 focus:outline-none"
+                />
+            )}
+            <select
+                value={value ?? ''}
+                onChange={(e) => onChange(e.target.value)}
+                className="rounded-md border border-neutral-300 bg-white px-3 py-2 text-body text-neutral-700 focus:border-primary-400 focus:outline-none"
+            >
+                <option value="">Select a template…</option>
+                {filtered.map((t) => (
+                    <option key={t.id ?? t.name} value={t.name}>
+                        {t.name}
+                    </option>
+                ))}
+            </select>
+            {templates.length === 0 && (
+                <span className="text-caption text-warning-600">
+                    No {kind === 'WHATSAPP_TEMPLATE' ? 'WhatsApp' : 'email'} templates found — create one in
+                    Settings → Templates first.
+                </span>
+            )}
         </div>
     );
 }

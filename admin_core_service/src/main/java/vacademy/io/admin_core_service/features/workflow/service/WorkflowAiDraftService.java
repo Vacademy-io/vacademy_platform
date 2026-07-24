@@ -39,6 +39,7 @@ public class WorkflowAiDraftService {
     private final LLMService llmService;
     private final WorkflowValidationService validationService;
     private final ObjectMapper objectMapper;
+    private final vacademy.io.admin_core_service.features.institute.repository.TemplateRepository templateRepository;
 
     // NB: the OpenRouter account behind LLMService does NOT expose the legacy
     // anthropic/claude-3.5-sonnet slug (404s). Default to a current, verified slug;
@@ -161,6 +162,7 @@ public class WorkflowAiDraftService {
             workflow.setId(null); // never trust a model-invented workflow id — create flow assigns it
             workflow.setInstituteId(request.getInstituteId());
             workflow.setStatus("DRAFT");
+            ensureTriggerConsistency(workflow);
 
             errors = safeValidate(workflow);
             if (errors.isEmpty() || attempt == MAX_ATTEMPTS) {
@@ -186,13 +188,17 @@ public class WorkflowAiDraftService {
                     .build();
         }
 
+        List<WorkflowValidationService.ValidationError> finalErrors = new ArrayList<>(errors);
+        List<String> finalWarnings = collectWarnings(root);
+        verifyTemplates(workflow, request.getInstituteId(), finalErrors, finalWarnings);
+
         return WorkflowAiDraftResponse.builder()
                 .workflow(workflow)
                 .rationale(toListOfMaps(root != null ? root.get("rationale") : null))
                 .clarifyingQuestions(toListOfMaps(root != null ? root.get("clarifyingQuestions") : null))
                 .templateUsed(asText(root != null ? root.get("templateUsed") : null))
-                .validationErrors(errors)
-                .warnings(collectWarnings(root))
+                .validationErrors(finalErrors)
+                .warnings(finalWarnings)
                 .build();
     }
 
@@ -284,7 +290,10 @@ public class WorkflowAiDraftService {
         }
         // Defensively clear any decision-target the model left filled — the skeleton the admin
         // sees must never carry an AI-invented template/entity id; those come only from answers.
-        if (skeleton != null) stripDecisionTargets(skeleton, decisions);
+        if (skeleton != null) {
+            stripDecisionTargets(skeleton, decisions);
+            ensureTriggerConsistency(skeleton);
+        }
         if (plan == null && skeleton == null) {
             return WorkflowAiDraftResponse.builder().error("The AI did not return a usable plan.").build();
         }
@@ -335,9 +344,12 @@ public class WorkflowAiDraftService {
         wf.setId(null);
         wf.setInstituteId(request.getInstituteId());
         wf.setStatus("DRAFT");
+        ensureTriggerConsistency(wf);
 
-        List<WorkflowValidationService.ValidationError> errors = safeValidate(wf);
+        List<WorkflowValidationService.ValidationError> errors =
+                new ArrayList<>(safeValidate(wf));
         List<String> warnings = new ArrayList<>();
+        verifyTemplates(wf, request.getInstituteId(), errors, warnings);
         if (!unresolvedRequired.isEmpty()) {
             warnings.add("Unanswered required decisions (fill these in the builder before publishing): "
                     + String.join(", ", unresolvedRequired));
@@ -395,6 +407,78 @@ public class WorkflowAiDraftService {
             }
         }
         return null;
+    }
+
+    /**
+     * Backfill the workflow-level trigger from the TRIGGER node's config when the model set one
+     * but not the other. Testers hit "trigger type not set" workflows: the LLM sometimes emits
+     * config.triggerEvent on the TRIGGER node but leaves workflow.trigger null — and a published
+     * EVENT_DRIVEN workflow without a trigger row never fires.
+     */
+    @SuppressWarnings("unchecked")
+    private void ensureTriggerConsistency(WorkflowBuilderDTO wf) {
+        if (wf == null || !"EVENT_DRIVEN".equalsIgnoreCase(wf.getWorkflowType())) return;
+        String existing = wf.getTrigger() != null ? wf.getTrigger().getTriggerEventName() : null;
+        if (existing != null && !existing.isBlank()) return;
+        String fromNode = null;
+        if (wf.getNodes() != null) {
+            for (WorkflowBuilderDTO.NodeDTO n : wf.getNodes()) {
+                if ("TRIGGER".equalsIgnoreCase(n.getNodeType()) && n.getConfig() instanceof Map) {
+                    Object ev = ((Map<String, Object>) n.getConfig()).get("triggerEvent");
+                    if (ev instanceof String s && !s.isBlank() && !"SCHEDULED".equalsIgnoreCase(s)) {
+                        fromNode = s;
+                        break;
+                    }
+                }
+            }
+        }
+        if (fromNode == null) return;
+        if (wf.getTrigger() == null) wf.setTrigger(new WorkflowBuilderDTO.TriggerDTO());
+        wf.getTrigger().setTriggerEventName(fromNode);
+        log.info("[WorkflowAiDraft] Backfilled workflow.trigger from TRIGGER node config: {}", fromNode);
+    }
+
+    /**
+     * Verify every send node's templateName against the institute's real templates so typos /
+     * invented names are surfaced BEFORE publish (a missing email template silently skips the
+     * send at runtime). EMAIL missing → ERROR. WHATSAPP missing locally → WARNING only,
+     * because approved WhatsApp templates may live in notification-service.
+     */
+    @SuppressWarnings("unchecked")
+    private void verifyTemplates(WorkflowBuilderDTO wf, String instituteId,
+                                 List<WorkflowValidationService.ValidationError> errors,
+                                 List<String> warnings) {
+        if (wf == null || wf.getNodes() == null) return;
+        for (WorkflowBuilderDTO.NodeDTO n : wf.getNodes()) {
+            String type = n.getNodeType();
+            boolean isEmail = "SEND_EMAIL".equalsIgnoreCase(type);
+            boolean isWhatsapp = "SEND_WHATSAPP".equalsIgnoreCase(type) || "COMBOT".equalsIgnoreCase(type);
+            if (!isEmail && !isWhatsapp) continue;
+            if (!(n.getConfig() instanceof Map)) continue;
+            Object tn = ((Map<String, Object>) n.getConfig()).get("templateName");
+            if (!(tn instanceof String name) || name.isBlank()) continue;
+            try {
+                boolean found;
+                if (isEmail) {
+                    found = templateRepository.findByInstituteIdAndNameAndType(instituteId, name, "EMAIL").isPresent()
+                            || templateRepository.findByInstituteIdAndNameAndType(instituteId, name, "email").isPresent();
+                    if (!found) {
+                        errors.add(new WorkflowValidationService.ValidationError(
+                                n.getId(), "templateName",
+                                "Email template '" + name + "' does not exist for this institute — pick a real template or create it first.",
+                                "ERROR"));
+                    }
+                } else {
+                    found = templateRepository.findByInstituteIdAndNameAndType(instituteId, name, "WHATSAPP").isPresent();
+                    if (!found) {
+                        warnings.add("WhatsApp template '" + name
+                                + "' was not found in this institute's local templates — confirm it is an APPROVED WhatsApp template before publishing.");
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[WorkflowAiDraft] Template verification failed for '{}': {}", name, e.getMessage());
+            }
+        }
     }
 
     /** Remove every decision-target field from the skeleton so it carries no AI-invented values. */

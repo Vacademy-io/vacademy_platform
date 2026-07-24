@@ -261,7 +261,7 @@ const SlideItem = ({
                 >
                     <TooltipProvider>
                         <Tooltip>
-                            <TooltipTrigger className="w-full">
+                            <TooltipTrigger className="w-full min-w-0">
                                 <div className="flex min-w-0 flex-1 items-center gap-2">
                                     {/* Slide Number with enhanced styling — hidden
                                         when the admin turns off content numbering */}

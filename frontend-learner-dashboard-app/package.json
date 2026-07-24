@@ -23,7 +23,8 @@
     "electron:build:seven_cs:win": "electron-builder -c electron/electron-builder.seven_cs.json -w",
     "electron:build:seven_cs:mac": "electron-builder -c electron/electron-builder.seven_cs.json -m",
     "electron:build:ssdc:win": "electron-builder -c electron/electron-builder.ssdc.json -w",
-    "electron:build:ssdc:mac": "electron-builder -c electron/electron-builder.ssdc.json -m"
+    "electron:build:ssdc:mac": "electron-builder -c electron/electron-builder.ssdc.json -m",
+    "electron:build:zoe:store:win": "bash electron/build-windows-zoe.sh"
   },
   "dependencies": {
     "@amplitude/analytics-browser": "^2.19.0",

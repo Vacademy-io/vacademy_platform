@@ -72,6 +72,13 @@ public interface PackageDetailV2Projection {
 
     String getPaymentPlanId();
 
+    // Default enroll-invite availability window (drives the catalogue "Enrollment closed" badge)
+    String getEnrollInviteStatus();
+
+    java.sql.Date getEnrollInviteStartDate();
+
+    java.sql.Date getEnrollInviteEndDate();
+
     Double getMinPlanActualPrice();
 
     Double getMinPlanElevatedPrice();

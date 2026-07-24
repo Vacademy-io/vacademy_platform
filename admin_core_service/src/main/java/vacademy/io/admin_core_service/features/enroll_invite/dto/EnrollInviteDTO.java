@@ -33,6 +33,14 @@ public class EnrollInviteDTO {
     private SubOrgInfoDTO subOrg;
     private String gtmContainerId;
 
+    /**
+     * Server-computed availability of this invite link based on {@code status} + the
+     * {@code [startDate, endDate]} window: AVAILABLE / EXPIRED / NOT_STARTED / INACTIVE.
+     * The learner FE uses this to decide whether to render the enrollment form or the
+     * admin-authored "unavailable" message. See EnrollInviteAvailabilityUtil.
+     */
+    private String availabilityStatus;
+
     @Data
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public static class SubOrgInfoDTO {

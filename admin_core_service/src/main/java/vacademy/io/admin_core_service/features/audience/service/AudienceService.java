@@ -5380,6 +5380,14 @@ public class AudienceService {
         if (("PUSH".equals(channel) || "SYSTEM_ALERT".equals(channel)) && StringUtils.hasText(request.getSubject())) {
             optsBuilder.pushTitle(request.getSubject());
         }
+        // Media header for WhatsApp templates. Without this the provider rejects every
+        // recipient of an IMAGE/VIDEO/DOCUMENT-header template, so the whole blast fails.
+        if ("WHATSAPP".equals(channel) && StringUtils.hasText(request.getHeaderUrl())) {
+            optsBuilder.headerUrl(request.getHeaderUrl());
+            optsBuilder.headerType(StringUtils.hasText(request.getHeaderType())
+                    ? request.getHeaderType()
+                    : "image");
+        }
 
         UnifiedSendRequest sendRequest = UnifiedSendRequest.builder()
                 .instituteId(request.getInstituteId())
@@ -5622,12 +5630,23 @@ public class AudienceService {
             try {
                 String responseId = submitLead(row);
 
-                // submitLead returns the response ID on success, or an error message string
+                // submitLead is stringly-typed: it returns either the new response ID or a
+                // human-readable outcome message. Any message must be classified as
+                // SKIPPED/FAILED — reporting one as SUCCESS puts prose in audienceResponseId
+                // and tells the caller a lead was saved when none was.
+                String outcome = responseId != null ? responseId.toLowerCase() : "";
+                boolean alreadySubmitted = outcome.contains("already submitted");
+                // Institute dedup (LEAD_SETTING.data.dedup) hard-rejects the row before
+                // anything is persisted ("A lead with this phone number/email already
+                // exists ..."), so it is a skip, not a success.
+                boolean dedupRejected = outcome.contains("already exists");
+
                 boolean isSuccess = responseId != null
                         && !responseId.startsWith("Error")
-                        && !responseId.contains("already submitted");
+                        && !alreadySubmitted
+                        && !dedupRejected;
 
-                if (responseId != null && responseId.contains("already submitted")) {
+                if (alreadySubmitted || dedupRejected) {
                     skipped++;
                     results.add(BulkSubmitLeadResultItemDTO.builder()
                             .index(i)

@@ -1,0 +1,45 @@
+{
+  "appId": "com.zoeedtech.app",
+  "productName": "ZOE Edtech",
+  "directories": {
+    "buildResources": "resources",
+    "output": "dist-store"
+  },
+  "files": [
+    "assets/**/*",
+    "build/**/*",
+    "app/**/*",
+    "capacitor.config.*",
+    "electron-flavor.json",
+    "package.json"
+  ],
+  "asar": true,
+  "asarUnpack": [
+    "**/*.node",
+    "node_modules/node-notifier/**/*"
+  ],
+  "compression": "normal",
+  "nodeGypRebuild": false,
+  "buildDependenciesFromSource": false,
+  "npmRebuild": false,
+  "win": {
+    "target": [
+      {
+        "target": "appx",
+        "arch": ["x64", "ia32"]
+      }
+    ],
+    "icon": "assets/zoe.ico"
+  },
+  "appx": {
+    "identityName": "ShikshaNation.ZOEEdtech",
+    "publisher": "CN=86D745F8-F119-414C-B1CF-5361E8FE4A25",
+    "publisherDisplayName": "Shiksha Nation",
+    "applicationId": "ZOEEdtech",
+    "displayName": "ZOE Edtech",
+    "backgroundColor": "#131953",
+    "showNameOnTiles": true,
+    "setBuildNumber": false,
+    "languages": ["en-US"]
+  }
+}

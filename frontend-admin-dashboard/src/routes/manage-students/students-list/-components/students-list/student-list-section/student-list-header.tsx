@@ -377,19 +377,22 @@ export const StudentListHeader = ({
             {/* Compact professional action buttons */}
             <div className="flex flex-wrap items-center gap-1.5">
                 {resolvedButtons.map((button) => (
-                    <MyButton
+                    <button
                         key={button.id}
+                        type="button"
                         onClick={() => openCustomLink(button.href, button.openInNewTab)}
-                        scale="small"
-                        buttonType="secondary"
+                        title={button.label}
                         className={cn(
-                            "group flex items-center gap-1 border border-neutral-300 bg-white text-neutral-700 transition-all duration-200 hover:scale-100 hover:border-primary-300 hover:bg-primary-50",
-                            isCompact ? "px-2 py-0.5 text-xs" : "px-2.5 py-1 text-xs"
+                            "hover:bg-primary-600 group inline-flex items-center gap-2 rounded-lg bg-primary-500 font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
+                            isCompact ? "px-3 py-2 text-sm" : "px-5 py-2.5 text-sm"
                         )}
                     >
-                        <LinkSimple className={cn("transition-transform duration-200 group-hover:scale-110", isCompact ? "size-2.5" : "size-3")} />
+                        <LinkSimple
+                            weight="bold"
+                            className={cn("shrink-0", isCompact ? "size-4" : "size-5")}
+                        />
                         <span>{button.label}</span>
-                    </MyButton>
+                    </button>
                 ))}
 
                 {showInviteButton && (

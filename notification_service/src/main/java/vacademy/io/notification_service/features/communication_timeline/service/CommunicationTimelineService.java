@@ -346,6 +346,9 @@ public class CommunicationTimelineService {
             if (rendered.templateName != null) templateName = rendered.templateName;
             if (rendered.body != null) messageBody = rendered.body;
             if ("FAILED".equals(rendered.deliveryStatus)) status = "FAILED";
+            // Surface the header media (image/video/document) so the UI can display the attachment.
+            builder.headerType(rendered.headerType);
+            builder.headerMediaUrl(rendered.headerMediaUrl);
         }
 
         String title = templateName != null ? templateName : truncate(body, 60);

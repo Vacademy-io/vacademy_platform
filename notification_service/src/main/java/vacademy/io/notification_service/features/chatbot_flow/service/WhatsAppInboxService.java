@@ -82,6 +82,7 @@ public class WhatsAppInboxService {
                     .deliveryStatus(rm != null ? rm.deliveryStatus : null)
                     .error(rm != null ? rm.error : null)
                     .headerType(rm != null ? rm.headerType : null)
+                    .headerMediaUrl(rm != null ? rm.headerMediaUrl : null)
                     .build();
         }).collect(Collectors.toList());
     }

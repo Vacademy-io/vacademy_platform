@@ -28,6 +28,13 @@ export const DASHBOARD_WIDGET_LABELS: Record<DashboardWidgetId, string> = {
     instituteOverview: 'Institute overview',
     subOrgOverview: 'Sub-org overview',
     subOrgSelfStats: 'My sub-org stats (sub-org admin)',
+    subOrgGeography: 'Sub-orgs by location (state/city/pincode)',
+    revenueTrends: 'Amount collected (time filter)',
+    subOrgRevenueTrends: 'My sub-org amount collected (sub-org admin)',
+    vleAnalytics: 'Sub-org insights (plans / seats / growth)',
+    topVles: 'Top sub-orgs (by seats used)',
+    subOrgSeatCourses: 'My learners & courses (sub-org admin)',
+    subOrgActivityDues: 'My plan & dues (sub-org admin)',
 };
 
 export const widgetLabel = (id: DashboardWidgetId): string =>

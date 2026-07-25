@@ -18,6 +18,8 @@ const CSV_SAMPLE_ROWS = [
     'What is 2 + 2?,MCQS,1,2,4,8,C,2 + 2 equals 4 by basic arithmetic.',
     'Is the Earth flat?,TRUE_FALSE,True,False,,,B,The Earth is an oblate spheroid.',
     'Which planet is closest to the Sun?,MCQS,Venus,Mercury,Mars,Earth,B,Mercury is the closest planet to the Sun.',
+    'Which of these are prime numbers?,MCQM,2,3,4,6,"A,B",Both 2 and 3 are prime numbers.',
+    'Which are primary colours?,,Red,Green,Blue,Orange,"A,B,C","Red, green and blue are all primary colours."',
 ];
 
 const EXCEL_TEMPLATE_HEADERS = [
@@ -33,18 +35,63 @@ const EXCEL_TEMPLATE_HEADERS = [
 
 const EXCEL_TEMPLATE_DATA = [
     ['What is 2 + 2?', 'MCQS', '1', '2', '4', '8', 'C', '2 + 2 equals 4 by basic arithmetic.'],
-    ['Is the Earth flat?', 'TRUE_FALSE', 'True', 'False', '', '', 'B', 'The Earth is an oblate spheroid.'],
-    ['Which planet is closest to the Sun?', 'MCQS', 'Venus', 'Mercury', 'Mars', 'Earth', 'B', 'Mercury is the closest planet to the Sun.'],
+    [
+        'Is the Earth flat?',
+        'TRUE_FALSE',
+        'True',
+        'False',
+        '',
+        '',
+        'B',
+        'The Earth is an oblate spheroid.',
+    ],
+    [
+        'Which planet is closest to the Sun?',
+        'MCQS',
+        'Venus',
+        'Mercury',
+        'Mars',
+        'Earth',
+        'B',
+        'Mercury is the closest planet to the Sun.',
+    ],
+    [
+        'Which of these are prime numbers?',
+        'MCQM',
+        '2',
+        '3',
+        '4',
+        '6',
+        'A,B',
+        'Both 2 and 3 are prime numbers.',
+    ],
+    [
+        'Which are primary colours?',
+        '',
+        'Red',
+        'Green',
+        'Blue',
+        'Orange',
+        'A,B,C',
+        'Red, green and blue are primary colours.',
+    ],
 ];
 
 const OPTION_HEADER_REGEX = /^option_([a-z])$/;
+
+// correct_answer may list several letters: "A,C" / "A;C" / "A|C" / "A C"
+const ANSWER_SEPARATOR_REGEX = /[,;|/\s]+/;
 
 interface ParseError {
     row: number;
     message: string;
 }
 
-const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddViaCSVDialogProps) => {
+const QuizAddViaCSVDialog = ({
+    open,
+    onOpenChange,
+    onQuestionsReady,
+}: QuizAddViaCSVDialogProps) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [parseErrors, setParseErrors] = useState<ParseError[]>([]);
@@ -89,12 +136,83 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
         return rows.map((row) => row.map((cell) => String(cell).trim()));
     };
 
+    // Quote-aware CSV parser — a quoted field may itself contain commas ("A,C" for
+    // multi-correct answers) or line breaks, so we cannot simply split on ','.
     const parseCSVText = (text: string): string[][] => {
-        const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
-        return lines.map((line) => line.split(',').map((col) => col.trim()));
+        const rows: string[][] = [];
+        let row: string[] = [];
+        let field = '';
+        let inQuotes = false;
+
+        const pushField = () => {
+            row.push(field.trim());
+            field = '';
+        };
+        const pushRow = () => {
+            pushField();
+            if (row.some((c) => c !== '')) rows.push(row);
+            row = [];
+        };
+
+        for (let i = 0; i < text.length; i++) {
+            const ch = text[i]!;
+
+            if (inQuotes) {
+                if (ch === '"') {
+                    if (text[i + 1] === '"') {
+                        field += '"'; // escaped quote
+                        i++;
+                    } else {
+                        inQuotes = false;
+                    }
+                } else {
+                    field += ch;
+                }
+                continue;
+            }
+
+            if (ch === '"' && field.trim() === '') {
+                inQuotes = true;
+                field = '';
+            } else if (ch === ',') {
+                pushField();
+            } else if (ch === '\n') {
+                pushRow();
+            } else if (ch !== '\r') {
+                field += ch;
+            }
+        }
+
+        if (field !== '' || row.length > 0) pushRow();
+        return rows;
     };
 
-    const parseRows = (rows: string[][]): { questions: UploadQuestionPaperFormType['questions']; errors: ParseError[] } => {
+    // Recovery for hand-written CSVs where the multi-answer cell was left unquoted
+    // (…,option_d,A,C,explanation). The row then has more cells than the header, and the
+    // surplus cells sitting right after correct_answer are all bare option letters.
+    const mergeUnquotedAnswerCells = (
+        cols: string[],
+        headerLength: number,
+        correctIdx: number,
+        validLetters: string[]
+    ): string[] => {
+        const surplus = cols.length - headerLength;
+        if (surplus <= 0) return cols;
+
+        const slice = cols.slice(correctIdx, correctIdx + surplus + 1);
+        const isBareLetter = (v: string) => validLetters.includes((v || '').trim().toUpperCase());
+        if (slice.length !== surplus + 1 || !slice.every(isBareLetter)) return cols;
+
+        return [
+            ...cols.slice(0, correctIdx),
+            slice.map((v) => v.trim()).join(','),
+            ...cols.slice(correctIdx + surplus + 1),
+        ];
+    };
+
+    const parseRows = (
+        rows: string[][]
+    ): { questions: UploadQuestionPaperFormType['questions']; errors: ParseError[] } => {
         const questions: UploadQuestionPaperFormType['questions'] = [];
         const errors: ParseError[] = [];
 
@@ -134,7 +252,12 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
         if (optionColumns.length === 0) {
             return {
                 questions,
-                errors: [{ row: 1, message: 'No option columns found. Add option_a, option_b, ... at minimum.' }],
+                errors: [
+                    {
+                        row: 1,
+                        message: 'No option columns found. Add option_a, option_b, ... at minimum.',
+                    },
+                ],
             };
         }
 
@@ -146,15 +269,19 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
 
         for (let i = 1; i < rows.length; i++) {
             const rowNum = i + 1; // 1-based for display
-            const cols = rows[i]!;
+            const cols = mergeUnquotedAnswerCells(
+                rows[i]!,
+                headerRow.length,
+                correctIdx!,
+                validLetters
+            );
 
             // Skip fully empty rows
             if (cols.every((c) => !c)) continue;
 
             const questionText = (cols[qTextIdx!] || '').trim();
-            const questionType = (cols[qTypeIdx!] || '').trim().toUpperCase();
+            const declaredType = (cols[qTypeIdx!] || '').trim().toUpperCase();
             const correctAnswerRaw = (cols[correctIdx!] || '').trim();
-            const correctAnswer = correctAnswerRaw.toUpperCase();
             const explanation = explIdx !== undefined ? (cols[explIdx] || '').trim() : '';
 
             if (!questionText) {
@@ -162,63 +289,107 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
                 continue;
             }
 
-            if (questionType !== 'MCQS' && questionType !== 'TRUE_FALSE') {
+            // "A,C" (or "A;C" / "A|C" / "A C") means several correct options.
+            const answerLetters = [
+                ...new Set(
+                    correctAnswerRaw
+                        .split(ANSWER_SEPARATOR_REGEX)
+                        .map((token) => token.trim().toUpperCase())
+                        .filter(Boolean)
+                ),
+            ];
+
+            // question_type may be left blank — infer it from how many answers were given.
+            // An explicit MCQS with several correct answers is upgraded to MCQM.
+            let questionType = declaredType;
+            if (!questionType) {
+                questionType = answerLetters.length > 1 ? 'MCQM' : 'MCQS';
+            } else if (questionType === 'MCQS' && answerLetters.length > 1) {
+                questionType = 'MCQM';
+            }
+
+            if (
+                questionType !== 'MCQS' &&
+                questionType !== 'MCQM' &&
+                questionType !== 'TRUE_FALSE'
+            ) {
                 errors.push({
                     row: rowNum,
-                    message: `Unsupported question_type "${(cols[qTypeIdx!] || '').trim()}". Only MCQS and TRUE_FALSE are allowed.`,
+                    message: `Unsupported question_type "${(cols[qTypeIdx!] || '').trim()}". Only MCQS, MCQM and TRUE_FALSE are allowed.`,
                 });
                 continue;
             }
 
-            if (questionType === 'MCQS') {
-                const answerIndex = correctAnswerMap[correctAnswer];
-                if (answerIndex === undefined) {
+            if (questionType === 'MCQS' || questionType === 'MCQM') {
+                const invalidLetters = answerLetters.filter(
+                    (l) => correctAnswerMap[l] === undefined
+                );
+                if (answerLetters.length === 0 || invalidLetters.length > 0) {
                     errors.push({
                         row: rowNum,
-                        message: `Invalid correct_answer "${correctAnswerRaw}". Use ${validLetters.join(', ')}.`,
+                        message: `Invalid correct_answer "${correctAnswerRaw}". Use ${validLetters.join(', ')} (comma-separate for multiple correct answers).`,
                     });
                     continue;
                 }
 
+                const answerIndexes = answerLetters
+                    .map((l) => correctAnswerMap[l]!)
+                    .sort((a, b) => a - b);
+
                 const rawOptions = optionColumns.map((c) => (cols[c.index] || '').trim());
 
-                if (!rawOptions[answerIndex]) {
+                const emptyAnswerLetters = answerIndexes
+                    .filter((idx) => !rawOptions[idx])
+                    .map((idx) => validLetters[idx]!);
+                if (emptyAnswerLetters.length > 0) {
+                    const emptyColumns = emptyAnswerLetters
+                        .map((l) => `option_${l.toLowerCase()}`)
+                        .join(', ');
                     errors.push({
                         row: rowNum,
-                        message: `correct_answer is "${correctAnswer}" but option_${correctAnswer.toLowerCase()} is empty.`,
+                        message: `correct_answer references ${emptyAnswerLetters.join(', ')} but ${emptyColumns} ${emptyAnswerLetters.length > 1 ? 'are' : 'is'} empty.`,
                     });
                     continue;
                 }
 
                 const options = rawOptions
-                    .map((name, i) => ({ id: '', name, isSelected: i === answerIndex }))
+                    .map((name, idx) => ({ id: '', name, isSelected: answerIndexes.includes(idx) }))
                     .filter((opt) => opt.name !== '');
 
                 if (options.length < 2) {
-                    errors.push({ row: rowNum, message: 'MCQS requires at least 2 options (option_a and option_b).' });
+                    errors.push({
+                        row: rowNum,
+                        message: `${questionType} requires at least 2 options (option_a and option_b).`,
+                    });
                     continue;
                 }
 
-                const filteredAnswerIndex = options.findIndex((opt) => opt.isSelected);
+                // Indexes must be re-derived after empty option columns are dropped.
+                const validAnswers = options
+                    .map((opt, idx) => (opt.isSelected ? idx : -1))
+                    .filter((idx) => idx >= 0);
 
                 questions.push({
                     questionName: questionText,
-                    questionType: 'MCQS',
+                    questionType,
                     questionMark: '1',
                     questionPenalty: '0',
                     questionDuration: { hrs: '0', min: '0' },
                     explanation,
                     tags: [],
                     canSkip: false,
-                    validAnswers: [filteredAnswerIndex >= 0 ? filteredAnswerIndex : answerIndex],
+                    validAnswers,
                     parentRichTextContent: '',
                     subjectiveAnswerText: '',
                     decimals: 0,
                     numericType: '',
-                    singleChoiceOptions: options,
+                    ...(questionType === 'MCQM'
+                        ? { multipleChoiceOptions: options }
+                        : { singleChoiceOptions: options }),
                 });
             } else {
-                // TRUE_FALSE
+                // TRUE_FALSE — exactly one answer, no multi-correct upgrade.
+                const correctAnswer = answerLetters.length === 1 ? answerLetters[0]! : '';
                 if (correctAnswer !== 'A' && correctAnswer !== 'B') {
                     errors.push({
                         row: rowNum,
@@ -308,9 +479,11 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
                     {/* Template downloads */}
                     <div className="flex items-center justify-between rounded-lg border border-neutral-200 bg-neutral-50 px-4 py-3">
                         <div>
-                            <p className="text-sm font-medium text-neutral-700">Download Template</p>
+                            <p className="text-sm font-medium text-neutral-700">
+                                Download Template
+                            </p>
                             <p className="text-xs text-neutral-500">
-                                Supports MCQS and TRUE_FALSE question types
+                                Supports MCQS, MCQM and TRUE_FALSE question types
                             </p>
                         </div>
                         <div className="flex gap-2">
@@ -345,7 +518,19 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
                             correct_answer, explanation
                         </code>
                         <p className="mt-2 text-neutral-400">
-                            For MCQS, add more options as needed (option_e, option_f, ...) — correct_answer must match an option letter (A, B, C, ...). For TRUE_FALSE, use A (True) or B (False).
+                            Add more options as needed (option_e, option_f, ...) — correct_answer
+                            must match an option letter (A, B, C, ...). For TRUE_FALSE, use A (True)
+                            or B (False).
+                        </p>
+                        <p className="mt-2 text-neutral-400">
+                            <span className="font-medium text-neutral-500">
+                                Multiple correct answers:
+                            </span>{' '}
+                            list every correct letter in correct_answer, e.g.{' '}
+                            <code className="text-neutral-500">&quot;A,C&quot;</code> — the question
+                            is imported as MCQ (Multiple correct). In a CSV, wrap it in double
+                            quotes so the comma is not read as a new column. question_type can be
+                            left blank and it will be detected automatically.
                         </p>
                     </div>
 
@@ -372,7 +557,9 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
                                 <p className="text-sm font-medium text-neutral-700">
                                     Click to select a file
                                 </p>
-                                <p className="text-xs text-neutral-400">.csv, .xlsx, or .xls files are supported</p>
+                                <p className="text-xs text-neutral-400">
+                                    .csv, .xlsx, or .xls files are supported
+                                </p>
                             </div>
                         )}
                         <input
@@ -388,7 +575,8 @@ const QuizAddViaCSVDialog = ({ open, onOpenChange, onQuestionsReady }: QuizAddVi
                     {parsedCount !== null && parsedCount > 0 && parseErrors.length > 0 && (
                         <div className="rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2">
                             <p className="text-sm font-medium text-yellow-700">
-                                {parsedCount} question(s) added successfully, {parseErrors.length} row(s) skipped.
+                                {parsedCount} question(s) added successfully, {parseErrors.length}{' '}
+                                row(s) skipped.
                             </p>
                         </div>
                     )}

@@ -30,6 +30,7 @@ import vacademy.io.admin_core_service.features.institute.enums.SettingKeyEnums;
 import vacademy.io.admin_core_service.features.institute.service.setting.InstituteSettingService;
 import vacademy.io.admin_core_service.features.slide.dto.SlideMetadataProjection;
 import vacademy.io.admin_core_service.features.slide.service.SlideMetaDataService;
+import vacademy.io.admin_core_service.features.suborg.service.SubOrgStaffLookupService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.standard_classes.ListService;
 import vacademy.io.common.exceptions.VacademyException;
@@ -68,6 +69,9 @@ public class DoubtsManager {
 
     @Autowired
     vacademy.io.admin_core_service.features.workflow.service.WorkflowTriggerService workflowTriggerService;
+
+    @Autowired
+    SubOrgStaffLookupService subOrgStaffLookupService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -264,37 +268,62 @@ public class DoubtsManager {
         Doubts savedDoubt = doubtService.updateOrCreateDoubt(doubts);
         List<String> finalAssigneeIds = new ArrayList<>();
         if (savedDoubt.getParentId() == null) {
-            // Resolve the assignee list via per-type routing (DOUBT_MANAGEMENT_SETTING.queryTypes):
-            // each type may route to subject/batch teacher, a role, or specific staff. Types with no
-            // config fall back to the global defaultAssigneeSource cascade. Resolution is best-effort:
-            // a transient failure here (e.g. slide-metadata / faculty lookup) must NOT leave the doubt
-            // with zero recipients — that silently drops BOTH the email and the bell alert. We fall
-            // back to the institute admin below so every raised doubt notifies at least one person.
             Set<String> assigneeIds = new LinkedHashSet<>();
-            boolean resolutionFailed = false;
-            try {
-                String subjectId = resolveSubjectIdForDoubt(savedDoubt);
-                DoubtManagementSettingDataDto setting = loadDoubtManagementSettingByInstitute(instituteId);
-                assigneeIds.addAll(resolveAssigneesForDoubt(savedDoubt, subjectId, instituteId, setting));
-                // Overlay any explicit ids the client asked for (e.g. admin picked someone from
-                // the dropdown at creation time).
-                if (request.getDoubtAssigneeRequestUserIds() != null) {
-                    request.getDoubtAssigneeRequestUserIds().stream()
-                            .filter(id -> id != null && !id.isEmpty())
-                            .forEach(assigneeIds::add);
+            DoubtManagementSettingDataDto setting = loadDoubtManagementSettingByInstitute(instituteId);
+
+            // Resolve the sub-org routing up front — it decides whether the PARENT institute's
+            // cascade even runs. A doubt from a sub-org learner can be handled by the sub-org
+            // exclusively (parent staff not notified) or additively (parent staff notified too).
+            SubOrgRouting subOrg = resolveSubOrgRouting(savedDoubt, instituteId, setting);
+
+            if (subOrg.isSubOrgLearner() && subOrg.exclusive()) {
+                // EXCLUSIVE sub-org handling: notify ONLY the sub-org's own staff. The parent
+                // institute's teachers/admins are deliberately NOT added as assignees, so they get
+                // no email/push/bell — but the doubt still surfaces in their Doubt Management inbox
+                // because inbox visibility is scoped by institute/batch, not by assignee. Explicit
+                // admin-picked ids at creation time are still honored.
+                assigneeIds.addAll(subOrg.staff());
+                addExplicitAssignees(request, assigneeIds);
+                // Never drop the doubt on the floor: if the sub-org resolved to nobody (e.g. a
+                // sub-org with no admin/team yet), fall back to the parent admin so at least one
+                // person is notified rather than zero.
+                if (assigneeIds.isEmpty() && instituteId != null) {
+                    log.info("Doubt {} is sub-org-exclusive but resolved 0 sub-org staff — "
+                            + "falling back to parent admin so it isn't dropped", savedDoubt.getId());
+                    assigneeIds.addAll(resolveAdminFallback(instituteId));
                 }
-            } catch (Exception e) {
-                resolutionFailed = true;
-                log.error("Failed to resolve doubt assignees for doubt {}: {}", savedDoubt.getId(), e.getMessage());
-            }
-            // Safety net: if assignee routing *threw* before returning, fall back to the institute
-            // admin(s) so a transient failure (slide-metadata / faculty lookup) never silently drops
-            // the raise notification — no email AND no bell. A deliberate empty result (e.g. per-type
-            // NONE routing = manual triage from the admin inbox) is respected: we only backfill when
-            // resolution errored out, since the faculty cascade already appends the admin fallback on
-            // its own genuinely-empty results.
-            if (resolutionFailed && assigneeIds.isEmpty() && instituteId != null) {
-                assigneeIds.addAll(resolveAdminFallback(instituteId));
+            } else {
+                // ADDITIVE / non-sub-org: resolve the assignee list via per-type routing
+                // (DOUBT_MANAGEMENT_SETTING.queryTypes): each type may route to subject/batch
+                // teacher, a role, or specific staff. Types with no config fall back to the global
+                // defaultAssigneeSource cascade. Resolution is best-effort: a transient failure here
+                // (e.g. slide-metadata / faculty lookup) must NOT leave the doubt with zero
+                // recipients — that silently drops BOTH the email and the bell alert. We fall back to
+                // the institute admin below so every raised doubt notifies at least one person.
+                boolean resolutionFailed = false;
+                try {
+                    String subjectId = resolveSubjectIdForDoubt(savedDoubt);
+                    assigneeIds.addAll(resolveAssigneesForDoubt(savedDoubt, subjectId, instituteId, setting));
+                    addExplicitAssignees(request, assigneeIds);
+                } catch (Exception e) {
+                    resolutionFailed = true;
+                    log.error("Failed to resolve doubt assignees for doubt {}: {}", savedDoubt.getId(), e.getMessage());
+                }
+                // Safety net: if assignee routing *threw* before returning, fall back to the institute
+                // admin(s) so a transient failure (slide-metadata / faculty lookup) never silently drops
+                // the raise notification — no email AND no bell. A deliberate empty result (e.g. per-type
+                // NONE routing = manual triage from the admin inbox) is respected: we only backfill when
+                // resolution errored out, since the faculty cascade already appends the admin fallback on
+                // its own genuinely-empty results.
+                if (resolutionFailed && assigneeIds.isEmpty() && instituteId != null) {
+                    assigneeIds.addAll(resolveAdminFallback(instituteId));
+                }
+                // Sub-org staff are ADDITIVE here, on top of the parent cascade: none of the
+                // institute-level routes can reach them — batch-teacher lookups exclude sub-org
+                // access rows and role lookups run against the PARENT institute — so a sub-org
+                // learner's doubt would otherwise land only on the parent institute's desk. Keyed on
+                // the raiser's own sub-org linkage, so parent-institute learners are unaffected.
+                assigneeIds.addAll(subOrg.staff());
             }
             // Persist the assignee rows best-effort. A transient save failure must not drop the
             // notification — we keep the resolved ids and still notify below.
@@ -370,6 +399,89 @@ public class DoubtsManager {
         // No per-type routing for this type → institute-wide default cascade.
         return resolveImplicitAssignees(parseAssigneeSource(setting), doubt.getPackageSessionId(),
                 subjectId, instituteId, setting);
+    }
+
+    /**
+     * Outcome of resolving how a doubt should be routed with respect to the raiser's sub-org.
+     *
+     * @param isSubOrgLearner whether the raiser belongs to a sub-org at all (drives whether the
+     *                        exclusive branch is even considered).
+     * @param exclusive       when true, ONLY {@link #staff()} are notified — the parent institute's
+     *                        cascade is skipped so its staff get no notification (they still see the
+     *                        doubt in Doubt Management). When false, {@link #staff()} are additive on
+     *                        top of the parent cascade.
+     * @param staff           the sub-org's own recipients (admins, optionally + team), raiser removed.
+     */
+    private record SubOrgRouting(boolean isSubOrgLearner, boolean exclusive, List<String> staff) {
+        static SubOrgRouting none() { return new SubOrgRouting(false, false, List.of()); }
+    }
+
+    /**
+     * Resolves the sub-org recipients for a doubt and whether they handle it exclusively.
+     *
+     * <p>Why the sub-org can't fall out of the normal cascade: a sub-org shares the parent
+     * institute's id, courses and batches. {@code findRealTeachersByPackageSessionId} deliberately
+     * skips rows carrying a {@code suborg_id} (they are access grants, not teachers of the batch) and
+     * {@code resolveUsersByRole} asks auth-service about the PARENT institute — so every existing
+     * route resolves to parent-institute staff only, and the people actually responsible for that
+     * learner never hear about the query.
+     *
+     * <p>Governed by {@code DOUBT_MANAGEMENT_SETTING.sub_org_notifications}: {@code enabled=false}
+     * disables sub-org routing entirely; {@code notify_parent_staff=false} makes it exclusive
+     * (parent staff not notified). Returns {@link SubOrgRouting#none()} for guest doubts (no user
+     * id), learners with no sub-org linkage, and on any lookup failure.
+     */
+    private SubOrgRouting resolveSubOrgRouting(Doubts doubt, String instituteId,
+                                               DoubtManagementSettingDataDto setting) {
+        if (doubt == null || !StringUtils.hasText(doubt.getUserId())) return SubOrgRouting.none();
+        try {
+            DoubtManagementSettingDataDto effective = setting != null
+                    ? setting
+                    : loadDoubtManagementSettingByInstitute(instituteId);
+            DoubtManagementSettingDataDto.SubOrgNotificationPrefs prefs =
+                    effective == null ? null : effective.getSubOrgNotifications();
+            if (prefs != null && Boolean.FALSE.equals(prefs.getEnabled())) return SubOrgRouting.none();
+
+            List<String> subOrgIds = subOrgStaffLookupService.resolveLearnerSubOrgIds(
+                    doubt.getUserId(), instituteId, doubt.getPackageSessionId());
+            if (subOrgIds.isEmpty()) return SubOrgRouting.none(); // not a sub-org learner
+
+            SubOrgStaffLookupService.Audience audience =
+                    parseSubOrgAudience(prefs == null ? null : prefs.getRecipients());
+            List<String> staff = new ArrayList<>(
+                    subOrgStaffLookupService.resolveStaffUserIds(subOrgIds, audience));
+            staff.remove(doubt.getUserId()); // never notify a learner about their own doubt
+            // Additive by default; only an explicit notify_parent_staff=false makes it exclusive.
+            boolean exclusive = prefs != null && Boolean.FALSE.equals(prefs.getNotifyParentStaff());
+            if (!staff.isEmpty()) {
+                log.info("Doubt {} raised by sub-org learner {} — {} sub-org staff recipient(s), exclusive={}",
+                        doubt.getId(), doubt.getUserId(), staff.size(), exclusive);
+            }
+            return new SubOrgRouting(true, exclusive, staff);
+        } catch (Exception e) {
+            log.warn("Sub-org routing resolution failed for doubt {}: {}", doubt.getId(), e.getMessage());
+            return SubOrgRouting.none();
+        }
+    }
+
+    /** Overlay any explicit ids the client asked for (e.g. an admin picked someone from the
+     *  dropdown at creation time). Blank ids are skipped. */
+    private void addExplicitAssignees(DoubtsDto request, Set<String> assigneeIds) {
+        if (request.getDoubtAssigneeRequestUserIds() == null) return;
+        request.getDoubtAssigneeRequestUserIds().stream()
+                .filter(id -> id != null && !id.isEmpty())
+                .forEach(assigneeIds::add);
+    }
+
+    /** Unknown/blank values default to ALL_TEAM (admins + team members), the documented default. */
+    private SubOrgStaffLookupService.Audience parseSubOrgAudience(String raw) {
+        if (!StringUtils.hasText(raw)) return SubOrgStaffLookupService.Audience.ALL_TEAM;
+        try {
+            return SubOrgStaffLookupService.Audience.valueOf(raw.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            log.warn("Unknown sub_org_notifications.recipients '{}', falling back to ALL_TEAM", raw);
+            return SubOrgStaffLookupService.Audience.ALL_TEAM;
+        }
     }
 
     private DoubtManagementSettingDataDto.QueryTypeConfig findTypeConfig(

@@ -299,6 +299,20 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                         }
                     }
                     
+                    // Resolve dynamic templateVars values the same way SEND_EMAIL does:
+                    // '#...' → SpEL against the item context (with #item bound), plain
+                    // string that matches an item field → that field's value, else literal.
+                    // Previously values were passed through VERBATIM, so an AI-drafted
+                    // "#item['full_name']" reached Meta as literal text in the message.
+                    if (templateVars != null && !templateVars.isEmpty()) {
+                        Map<String, String> resolvedVars = new HashMap<>();
+                        for (Map.Entry<String, String> varEntry : templateVars.entrySet()) {
+                            resolvedVars.put(varEntry.getKey(),
+                                    resolveTemplateVarValue(varEntry.getValue(), messageData, itemContext));
+                        }
+                        templateVars = resolvedVars;
+                    }
+
                     // NEW: Extract COMBOT-specific fields
                     log.debug("messageData keys for template {}: {}", templateName, messageData.keySet());
                     String headerImage = (String) messageData.get("headerImage");
@@ -671,6 +685,35 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
      * Used to handle both camelCase and snake_case shapes (e.g. mobileNumber vs mobile_number)
      * when the iteration item came from a bean serialized via a SnakeCase ObjectMapper.
      */
+    /**
+     * Resolve one templateVars value for the current item. Mirrors SEND_EMAIL's
+     * substitution order: SpEL (value starts with '#', evaluated with both
+     * {@code #ctx} and {@code #item} bound) → item-field lookup by name → literal.
+     * A failed SpEL evaluation resolves to "" (and logs) rather than leaking the
+     * raw expression text into the outbound message.
+     */
+    private String resolveTemplateVarValue(String value, Map<String, Object> item,
+                                           Map<String, Object> itemContext) {
+        if (value == null) {
+            return "";
+        }
+        String trimmed = value.trim();
+        if (trimmed.startsWith("#")) {
+            try {
+                Object out = spelEvaluator.evaluate(trimmed, itemContext, Map.of("item", item));
+                return out != null ? String.valueOf(out) : "";
+            } catch (Exception e) {
+                log.warn("templateVars SpEL '{}' failed to resolve: {} — sending empty value", trimmed, e.getMessage());
+                return "";
+            }
+        }
+        Object fieldValue = item.get(trimmed);
+        if (fieldValue != null) {
+            return String.valueOf(fieldValue);
+        }
+        return value;
+    }
+
     private static String firstNonBlank(Map<String, Object> messageData, String... keys) {
         for (String key : keys) {
             Object value = messageData.get(key);

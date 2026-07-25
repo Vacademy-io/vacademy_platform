@@ -32,6 +32,15 @@ public class SpelEvaluator {
      * @throws SpelEvaluationError if evaluation fails (for error tracking)
      */
     public Object evaluate(String expressionString, Map<String, Object> contextVars) {
+        return evaluate(expressionString, contextVars, null);
+    }
+
+    /**
+     * Evaluate with additional named SpEL variables (e.g. {@code item} so per-item
+     * expressions can use {@code #item['field']} in addition to {@code #ctx['item']}).
+     */
+    public Object evaluate(String expressionString, Map<String, Object> contextVars,
+                           Map<String, Object> extraVars) {
         if (expressionString == null || expressionString.isBlank()) {
             return null;
         }
@@ -47,6 +56,9 @@ public class SpelEvaluator {
         // in a node AFTER a multi-day delay would throw EL1008 and drop/abort the run.
         context.addPropertyAccessor(new MapAccessor());
         context.setVariable("ctx", contextVars);
+        if (extraVars != null) {
+            extraVars.forEach(context::setVariable);
+        }
 
         try {
             Expression expr = parser.parseExpression(exprStr);

@@ -45,7 +45,14 @@ const SYSTEM_ROLE_NAMES = new Set([
     'ASSESSMENT CREATOR',
 ]);
 
-export default function ContentProtectionSettings() {
+interface ContentProtectionSettingsProps {
+    /** Rendered inside the quick-access popup rather than the full /settings page. */
+    embedded?: boolean;
+}
+
+export default function ContentProtectionSettings({
+    embedded = false,
+}: ContentProtectionSettingsProps = {}) {
     const [selectedKey, setSelectedKey] = useState<string>('ADMIN');
 
     const { data: customRoles } = useQuery({
@@ -69,6 +76,7 @@ export default function ContentProtectionSettings() {
             title="Content Protection"
             description="Control, per role, which slide types can be downloaded and whether right-click, copy and view-source are blocked on slides. These are best-effort, client-side deterrents — they hide our own controls and cannot stop every browser-level save."
             maxWidth="max-w-3xl"
+            embedded={embedded}
             actions={
                 <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-neutral-700">Role</span>

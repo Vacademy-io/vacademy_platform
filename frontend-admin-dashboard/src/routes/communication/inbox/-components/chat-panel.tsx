@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useInboxStore } from '../-stores/inbox-store';
 import { ReplyBox } from './reply-box';
-import { ChatCircle, User, Robot, ArrowUp, ArrowLeft } from '@phosphor-icons/react';
+import { ChatCircle, User, Robot, ArrowUp, ArrowLeft, FileText } from '@phosphor-icons/react';
 
 interface Props {
     onLoadOlder: () => void;
@@ -101,8 +101,20 @@ export function ChatPanel({ onLoadOlder }: Props) {
                                 </p>
                             )}
 
+                            {/* Template header media (image / video / document) actually sent */}
+                            {msg.headerMediaUrl && (
+                                <MessageHeaderMedia
+                                    type={msg.headerType}
+                                    url={msg.headerMediaUrl}
+                                />
+                            )}
+
                             {/* Message body — the actual template text the recipient received */}
-                            <p className="whitespace-pre-wrap break-words text-gray-800">{msg.body}</p>
+                            {msg.body && (
+                                <p className="whitespace-pre-wrap break-words text-gray-800">
+                                    {msg.body}
+                                </p>
+                            )}
 
                             {/* Template context: which template it came from + any send failure */}
                             {msg.templateName && (
@@ -154,4 +166,48 @@ function formatTime(timestamp: string): string {
     } catch {
         return '';
     }
+}
+
+/** Renders the template header attachment (image/video/document) actually sent with the message. */
+function MessageHeaderMedia({ type, url }: { type?: string; url: string }) {
+    const t = (type || 'IMAGE').toUpperCase();
+
+    if (t === 'VIDEO') {
+        return (
+            <video
+                src={url}
+                controls
+                className="mb-1.5 max-h-64 w-full rounded-md bg-black/5"
+            />
+        );
+    }
+
+    if (t === 'DOCUMENT') {
+        return (
+            <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mb-1.5 flex items-center gap-1.5 rounded-md bg-black/5 px-2 py-1.5 text-caption text-blue-600 hover:underline"
+            >
+                <FileText size={14} /> View document
+            </a>
+        );
+    }
+
+    // IMAGE (default) — clickable to open full size; hides itself if the URL is dead/expired.
+    return (
+        <a href={url} target="_blank" rel="noopener noreferrer">
+            <img
+                src={url}
+                alt="attachment"
+                loading="lazy"
+                onError={(e) => {
+                    const anchor = e.currentTarget.closest('a');
+                    if (anchor) anchor.style.display = 'none';
+                }}
+                className="mb-1.5 max-h-64 w-full rounded-md bg-black/5 object-contain"
+            />
+        </a>
+    );
 }

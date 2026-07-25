@@ -53,6 +53,8 @@ import { WaitingRoomType } from '@/routes/study-library/live-session/-constants/
 import { ZoomIntegrationCard } from './zoom/ZoomIntegrationCard';
 import { GoogleMeetIntegrationCard } from './google/GoogleMeetIntegrationCard';
 import { DefaultRecordingDestinationPicker } from './DefaultRecordingDestinationPicker';
+import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
+import { SettingsTabs } from '../-constants/terms';
 
 const PLATFORM_LABELS: Record<PlatformKey, string> = {
     youtube: 'YouTube',
@@ -102,7 +104,12 @@ const SettingRow = ({
     </div>
 );
 
-export default function LiveSessionSettings() {
+interface LiveSessionSettingsProps {
+    /** Rendered inside the quick-access popup rather than the full /settings page. */
+    embedded?: boolean;
+}
+
+export default function LiveSessionSettings({ embedded = false }: LiveSessionSettingsProps = {}) {
     const queryClient = useQueryClient();
     const [settings, setSettings] = useState<LiveSessionSettingsType>(
         DEFAULT_LIVE_SESSION_SETTINGS
@@ -209,21 +216,34 @@ export default function LiveSessionSettings() {
 
     return (
         <div className="flex flex-col gap-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <h2 className="text-xl font-semibold text-neutral-800">Live Session Settings</h2>
-                    <p className="text-sm text-neutral-500">
-                        Control which scheduling modes, platforms and features are available to
-                        admins when creating live classes.
-                    </p>
-                </div>
+            <div
+                className={cn(
+                    'flex flex-wrap items-center gap-3',
+                    embedded ? 'justify-end' : 'justify-between'
+                )}
+            >
+                {!embedded && (
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <h2 className="text-xl font-semibold text-neutral-800">
+                                Live Session Settings
+                            </h2>
+                            {/* DEMO ONLY — proves the quick-access popup end-to-end;
+                                remove once a real consumer (e.g. a Live Classes page)
+                                exists and links here instead. */}
+                            <SettingsQuickAccessButton
+                                settingsKey={SettingsTabs.LiveSession}
+                                label="Preview in quick-access popup (demo)"
+                            />
+                        </div>
+                        <p className="text-sm text-neutral-500">
+                            Control which scheduling modes, platforms and features are available to
+                            admins when creating live classes.
+                        </p>
+                    </div>
+                )}
                 <div className="flex gap-2">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={reset}
-                        disabled={!dirty || saving}
-                    >
+                    <Button variant="outline" size="sm" onClick={reset} disabled={!dirty || saving}>
                         Reset
                     </Button>
                     <Button
@@ -246,8 +266,8 @@ export default function LiveSessionSettings() {
                     <div className="flex-1">
                         <CardTitle className="text-base">Default Timezone</CardTitle>
                         <CardDescription>
-                            Pre-fills the timezone field on every new live-class form. Admins
-                            can still change it per class while scheduling.
+                            Pre-fills the timezone field on every new live-class form. Admins can
+                            still change it per class while scheduling.
                         </CardDescription>
                     </div>
                 </CardHeader>
@@ -297,8 +317,8 @@ export default function LiveSessionSettings() {
                     <div className="flex-1">
                         <CardTitle className="text-base">Allowed Streaming Platforms</CardTitle>
                         <CardDescription>
-                            Hidden platforms won&apos;t appear in the Live Stream Platform
-                            dropdown when admins schedule a class.
+                            Hidden platforms won&apos;t appear in the Live Stream Platform dropdown
+                            when admins schedule a class.
                         </CardDescription>
                     </div>
                     <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600">
@@ -345,8 +365,8 @@ export default function LiveSessionSettings() {
                         </span>
                         <span className="text-xs text-neutral-500">
                             Pre-selected in the &quot;Live Stream Platform&quot; dropdown when
-                            admins schedule a class (single and bulk). Admins can still change
-                            it per class.
+                            admins schedule a class (single and bulk). Admins can still change it
+                            per class.
                         </span>
                         <Select
                             value={settings.defaultPlatform}
@@ -427,9 +447,8 @@ export default function LiveSessionSettings() {
                     <div className="flex-1">
                         <CardTitle className="text-base">Recurring Attendance Default</CardTitle>
                         <CardDescription>
-                            Pre-fills the per-session "Daily attendance" toggle on every newly
-                            added session in a recurring schedule. Admins can still flip it per
-                            session.
+                            Pre-fills the per-session "Daily attendance" toggle on every newly added
+                            session in a recurring schedule. Admins can still flip it per session.
                         </CardDescription>
                     </div>
                 </CardHeader>
@@ -852,7 +871,9 @@ export default function LiveSessionSettings() {
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="cloud">Record to Zoom cloud</SelectItem>
-                                <SelectItem value="local">Local recording (host machine)</SelectItem>
+                                <SelectItem value="local">
+                                    Local recording (host machine)
+                                </SelectItem>
                                 <SelectItem value="none">Don&apos;t record</SelectItem>
                             </SelectContent>
                         </Select>
@@ -1000,8 +1021,8 @@ export default function LiveSessionSettings() {
                         <CardDescription>
                             Generates a searchable transcript and English translation from each
                             Vacademy Meet recording using Whisper. Costs compute per minute of
-                            audio, so this is off by default — turn on when you&apos;re ready to
-                            use transcripts for assessment generation or study notes.
+                            audio, so this is off by default — turn on when you&apos;re ready to use
+                            transcripts for assessment generation or study notes.
                         </CardDescription>
                     </div>
                 </CardHeader>
@@ -1083,7 +1104,8 @@ export default function LiveSessionSettings() {
 
             <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3 text-xs text-neutral-500">
                 <CursorClick size={14} className="-mt-0.5 mr-1 inline" />
-                Changes apply only to <strong>new</strong> live classes scheduled after saving. Existing classes are unaffected.
+                Changes apply only to <strong>new</strong> live classes scheduled after saving.
+                Existing classes are unaffected.
             </div>
         </div>
     );

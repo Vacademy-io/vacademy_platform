@@ -51,8 +51,11 @@ import {
     Megaphone,
     YoutubeLogo,
     Tag,
+    MagnifyingGlass,
+    CaretDown,
     type IconProps,
 } from '@phosphor-icons/react';
+import { MyInput } from '@/components/design-system/input';
 import { SupportPanel } from '@/components/common/support/SupportPanel';
 import { useSupportConfig } from '@/services/support';
 import { getRecentTabs, type RecentTabEntry } from './recent-tabs-store';
@@ -449,20 +452,78 @@ const SettingsTabsList: React.FC<SettingsTabsListProps> = ({ tabs, activeTab, on
         return byDomain;
     }, [tabs]);
 
+    // The domain containing the currently active tab starts expanded; every
+    // other domain starts collapsed to just its header, so the resting view
+    // is 7 short lines instead of a full 37-item scroll.
+    const activeDomain = React.useMemo(
+        () => tabs.find((t) => t.tab === activeTab)?.domain,
+        [tabs, activeTab]
+    );
+    const [expandedDomains, setExpandedDomains] = React.useState<Set<string>>(
+        () => new Set(activeDomain ? [activeDomain] : [])
+    );
+    const toggleDomain = (domain: string) => {
+        setExpandedDomains((prev) => {
+            const next = new Set(prev);
+            if (next.has(domain)) next.delete(domain);
+            else next.add(domain);
+            return next;
+        });
+    };
+
+    const [query, setQuery] = React.useState('');
+    const trimmedQuery = query.trim().toLowerCase();
+    const isSearching = trimmedQuery.length > 0;
+    const matchesQuery = (tab: SettingsTabEntry, domain: string) =>
+        tab.value.toLowerCase().includes(trimmedQuery) ||
+        tab.group.toLowerCase().includes(trimmedQuery) ||
+        domain.toLowerCase().includes(trimmedQuery);
+
     return (
         <div className="flex flex-col gap-0.5">
+            <div className="relative px-2 pb-2 pt-1">
+                <MyInput
+                    inputType="text"
+                    input={query}
+                    onChangeFunction={(e) => setQuery(e.target.value)}
+                    inputPlaceholder="Search settings"
+                    className="h-8 pl-8 text-caption"
+                />
+                <MagnifyingGlass className="absolute left-4 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
+            </div>
             {SETTINGS_DOMAIN_ORDER.map((domain) => {
                 const groups = groupedByDomain.get(domain);
                 if (!groups) return null;
+
+                const groupEntries = (SETTINGS_GROUP_ORDER[domain] || [])
+                    .map((group) => ({
+                        group,
+                        items: (groups.get(group) || []).filter(
+                            (tab) => !isSearching || matchesQuery(tab, domain)
+                        ),
+                    }))
+                    .filter(({ items }) => items.length > 0);
+                if (isSearching && groupEntries.length === 0) return null;
+
+                const isExpanded = isSearching || expandedDomains.has(domain);
+
                 return (
                     <div key={domain}>
-                        <p className="px-3 pb-1 pt-3 text-caption font-semibold uppercase tracking-wider text-neutral-400">
-                            {domain}
-                        </p>
-                        {(SETTINGS_GROUP_ORDER[domain] || []).map((group) => {
-                            const items = groups.get(group);
-                            if (!items || items.length === 0) return null;
-                            return (
+                        <button
+                            type="button"
+                            onClick={() => toggleDomain(domain)}
+                            className="flex w-full items-center justify-between px-3 pb-1 pt-3 text-caption font-semibold uppercase tracking-wider text-neutral-400 hover:text-neutral-600"
+                        >
+                            <span>{domain}</span>
+                            <CaretDown
+                                className={cn(
+                                    'size-3 shrink-0 transition-transform',
+                                    !isExpanded && '-rotate-90'
+                                )}
+                            />
+                        </button>
+                        {isExpanded &&
+                            groupEntries.map(({ group, items }) => (
                                 <div key={group} className="mb-0.5">
                                     {(SETTINGS_GROUP_ORDER[domain]?.length ?? 0) > 1 && (
                                         <p className="px-3 pb-0.5 pt-1 text-caption font-medium text-neutral-400">
@@ -500,8 +561,7 @@ const SettingsTabsList: React.FC<SettingsTabsListProps> = ({ tabs, activeTab, on
                                         );
                                     })}
                                 </div>
-                            );
-                        })}
+                            ))}
                     </div>
                 );
             })}

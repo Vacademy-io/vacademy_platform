@@ -48,8 +48,8 @@ const uploadFile = async (file: File) => {
 const uploadCSV = (rows: string[], name = 'quiz.csv') =>
     uploadFile(new File([[HEADER, ...rows].join('\n')], name, { type: 'text/csv' }));
 
-const selected = (opts?: Array<{ name: string; isSelected: boolean }>) =>
-    (opts ?? []).filter((o) => o.isSelected).map((o) => o.name);
+const selected = (opts?: Array<{ name?: string; isSelected?: boolean }>) =>
+    (opts ?? []).filter((o) => o.isSelected).map((o) => o.name ?? '');
 
 afterEach(cleanup);
 

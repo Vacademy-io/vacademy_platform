@@ -157,6 +157,9 @@ export const LIVE_SESSION_GET_LIVE_AND_UPCOMING = `${BASE_URL}/admin-core-servic
 export const LIVE_SESSION_GET_PAST = `${BASE_URL}/admin-core-service/get-sessions/learner/past`;
 export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID = `${BASE_URL}/admin-core-service/get-sessions/by-schedule-id`;
 export const LIVE_SESSION_GET_SESSION_BY_SCHEDULE_ID_FOR_GUEST = `${BASE_URL}/admin-core-service/live-session/guest/get-session-by-schedule-id`;
+// Open schedule→session resolution, used to bounce unidentified guests from a
+// 403'd embed/waiting-room deep link back to the registration page.
+export const LIVE_SESSION_GET_SESSION_ID_BY_SCHEDULE_ID = `${BASE_URL}/admin-core-service/live-session/guest/session-id-by-schedule-id`;
 export const LIVE_SESSION_CHECK_EMAIL_REGISTRATION = `${BASE_URL}/admin-core-service/live-session/check-email-registration`;
 export const LIVE_SESSION_REGISTER_GUEST_USER = `${BASE_URL}/admin-core-service/live-session/register-guest-user`;
 // Paid live sessions: registration + fee-invoice creation in one call, and payment state lookup

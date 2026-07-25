@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import { useEffect, useState } from "react";
 import { useSessionDetails } from "../-hooks/useSessionDetails";
+import { useGuestAccessRecovery } from "../-hooks/useGuestAccessRecovery";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { CountdownTimer } from "@/routes/study-library/live-class/waiting-room/-components/CountdownTimer";
 import { getPublicUrl } from "@/services/upload_file";
@@ -33,6 +34,9 @@ function GuestWaitingRoomComponent() {
     isLoading,
     error,
   } = useSessionDetails(sessionId);
+  // Paid session opened without a local registration (new browser): bounce to
+  // the registration page to recover identity instead of showing a 403 error.
+  useGuestAccessRecovery(sessionId, error);
 
   useEffect(() => {
     const fetchThumbnail = async () => {

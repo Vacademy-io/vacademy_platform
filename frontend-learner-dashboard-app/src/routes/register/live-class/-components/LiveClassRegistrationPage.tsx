@@ -89,6 +89,13 @@ export default function LiveClassRegistrationPage() {
   // verified once this page-load are remembered so re-submits skip the OTP.
   const [otpChannels, setOtpChannels] = useState<OtpChannel[]>([]);
   const pendingSubmissionRef = useRef<RegistrationFormValues | null>(null);
+  // New-device resume parked behind OTP: someone typed an already-registered
+  // identity, but this session requires verification — prove ownership before
+  // handing over the registration (a paid one especially).
+  const pendingResumeRef = useRef<{
+    identity: GuestIdentity;
+    info: LiveSessionPaymentInfo;
+  } | null>(null);
   const verifiedIdentitiesRef = useRef<Set<string>>(new Set());
 
   const { mutateAsync: markAttendance } = useMarkAttendance();
@@ -599,10 +606,29 @@ export default function LiveClassRegistrationPage() {
     console.log("Validation errors:", errors);
   };
 
+  // Finishes a typed-identity resume: persist the registration locally and
+  // collapse the form into the registered state.
+  const completeIdentityResume = async (
+    identity: GuestIdentity,
+    info: LiveSessionPaymentInfo
+  ) => {
+    if (!data?.sessionId || !info.registration_id) return;
+    await storeRegistration(data.sessionId, identity, info.registration_id);
+    setRegistrationResponse(info.registration_id);
+    setIsUserAlreadyRegistered(true);
+    setAlreadyRegisteredEmail(identity.email || identity.mobileNumber || "");
+    toast.success("You're already registered for this session");
+    if (!info.payment_required || info.payment_status === "PAID") {
+      fetchSessionDetail(earliestScheduleId || sessionId || "");
+    }
+  };
+
   // Called when the learner types/picks an email or mobile number in the form:
   // silently look up whether that identity is already registered for this
-  // session and, if so, collapse the form into the registered state ("welcome
-  // back") instead of re-asking.
+  // session. On a match, collapse into the registered state — but when the
+  // session requires OTP verification, prove ownership of the typed identity
+  // first (this is the new-device path; without it anyone who knows a payer's
+  // email could take over their seat).
   const checkIdentityRegistration = async (identity: GuestIdentity) => {
     if (!data?.sessionId) return;
     if (!identity.email && !identity.mobileNumber) return;
@@ -614,14 +640,34 @@ export default function LiveClassRegistrationPage() {
       );
       setPaymentInfo(info);
       if (info.registration_id) {
-        await storeRegistration(data.sessionId, identity, info.registration_id);
-        setRegistrationResponse(info.registration_id);
-        setIsUserAlreadyRegistered(true);
-        setAlreadyRegisteredEmail(identity.email || identity.mobileNumber || "");
-        toast.success("You're already registered for this session");
-        if (!info.payment_required || info.payment_status === "PAID") {
-          fetchSessionDetail(earliestScheduleId || sessionId || "");
+        const channelsToVerify: OtpChannel[] = [];
+        if (
+          data?.requireEmailVerification &&
+          identity.email &&
+          !verifiedIdentitiesRef.current.has(
+            `email:${identity.email.toLowerCase()}`
+          )
+        ) {
+          channelsToVerify.push({ type: "email", value: identity.email });
         }
+        if (
+          data?.requirePhoneVerification &&
+          identity.mobileNumber &&
+          !verifiedIdentitiesRef.current.has(
+            `phone:${identity.mobileNumber.replace(/\D/g, "")}`
+          )
+        ) {
+          channelsToVerify.push({
+            type: "phone",
+            value: identity.mobileNumber,
+          });
+        }
+        if (channelsToVerify.length > 0) {
+          pendingResumeRef.current = { identity, info };
+          setOtpChannels(channelsToVerify);
+          return;
+        }
+        await completeIdentityResume(identity, info);
       } else {
         setIsUserAlreadyRegistered(false);
       }
@@ -741,13 +787,20 @@ export default function LiveClassRegistrationPage() {
             verifiedIdentitiesRef.current.add(key);
           });
           setOtpChannels([]);
-          const pending = pendingSubmissionRef.current;
+          const pendingSubmit = pendingSubmissionRef.current;
+          const pendingResume = pendingResumeRef.current;
           pendingSubmissionRef.current = null;
-          if (pending) onSubmit(pending);
+          pendingResumeRef.current = null;
+          if (pendingSubmit) {
+            onSubmit(pendingSubmit);
+          } else if (pendingResume) {
+            completeIdentityResume(pendingResume.identity, pendingResume.info);
+          }
         }}
         onClose={() => {
           setOtpChannels([]);
           pendingSubmissionRef.current = null;
+          pendingResumeRef.current = null;
         }}
       />
     </>

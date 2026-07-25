@@ -8,6 +8,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
 import { extractYouTubeVideoId, isYouTubeUrl } from "@/utils/youtube";
+import { useGuestAccessRecovery } from "../-hooks/useGuestAccessRecovery";
 import ZoomEmbedPlayer from "@/routes/study-library/live-class/embed/-components/ZoomEmbedPlayer";
 import ZohoEmbedPlayer from "@/routes/study-library/live-class/embed/-components/ZohoEmbedPlayer";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
@@ -36,6 +37,9 @@ function GuestEmbedComponent() {
     isLoading,
     error,
   } = useSessionDetails(sessionId);
+  // Paid session opened without a local registration (new browser): bounce to
+  // the registration page to recover identity instead of showing a 403 error.
+  useGuestAccessRecovery(sessionId, error);
   // If safety modal is disabled, we are "verified" by default.
   const [isSafetyVerified, setIsSafetyVerified] = useState(!ENABLE_LIVE_CLASS_SAFETY_MODAL);
 

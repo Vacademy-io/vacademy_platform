@@ -48,6 +48,16 @@ public class UnifiedCommunicationDTO {
     private String templateName;
 
     /**
+     * WhatsApp template header type: NONE, TEXT, IMAGE, VIDEO, DOCUMENT
+     */
+    private String headerType;
+
+    /**
+     * Actual media URL for an IMAGE/VIDEO/DOCUMENT header, so the UI can display the attachment
+     */
+    private String headerMediaUrl;
+
+    /**
      * Current status: PENDING, SENT, DELIVERED, READ, FAILED, BOUNCED
      */
     private String status;

@@ -25,6 +25,8 @@ export interface InboxMessage {
     deliveryStatus?: 'SUCCESS' | 'FAILED';
     error?: string;
     headerType?: string;
+    /** Media URL for an IMAGE/VIDEO/DOCUMENT template header. */
+    headerMediaUrl?: string;
 }
 
 export async function getConversations(

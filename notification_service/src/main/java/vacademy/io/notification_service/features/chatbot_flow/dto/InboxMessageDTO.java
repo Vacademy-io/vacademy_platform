@@ -34,4 +34,6 @@ public class InboxMessageDTO {
     private String error;
     /** Template header type: NONE, TEXT, IMAGE, VIDEO, DOCUMENT. */
     private String headerType;
+    /** Actual media URL for an IMAGE/VIDEO/DOCUMENT header, so the UI can display the attachment. */
+    private String headerMediaUrl;
 }

@@ -15,6 +15,10 @@ export interface CommunicationItem {
     bodyPreview: string;
     fullBody?: string;
     templateName?: string;
+    /** WhatsApp template header type: NONE, TEXT, IMAGE, VIDEO, DOCUMENT. */
+    headerType?: string;
+    /** Media URL for an IMAGE/VIDEO/DOCUMENT template header. */
+    headerMediaUrl?: string;
     status: string;
     statusTimeline: StatusEvent[];
     senderInfo: string;

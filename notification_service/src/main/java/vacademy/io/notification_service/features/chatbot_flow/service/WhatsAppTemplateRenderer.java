@@ -39,6 +39,12 @@ public class WhatsAppTemplateRenderer {
     /** Matches {{1}} / {{ name }} placeholders (token filled in per-call). */
     private static final String PLACEHOLDER_FMT = "\\{\\{\\s*%s\\s*\\}\\}";
 
+    // Used to pull a media URL out of a template's header_sample_url, which is sometimes stored as
+    // raw HTML (e.g. <a href="..."><img src="..."></a>) rather than a plain URL.
+    private static final Pattern IMG_SRC = Pattern.compile("<img[^>]*\\ssrc=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+    private static final Pattern HREF = Pattern.compile("href=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ANY_URL = Pattern.compile("https?://[^\\s\"'<>]+");
+
     /** Result of rebuilding a template message. */
     public static class Rendered {
         /** Rebuilt message text, or {@code null} when the template is no longer on file. */
@@ -51,6 +57,8 @@ public class WhatsAppTemplateRenderer {
         public String error;
         /** Template header type: NONE, TEXT, IMAGE, VIDEO, DOCUMENT. */
         public String headerType;
+        /** Actual media URL for an IMAGE/VIDEO/DOCUMENT header, so the UI can display it. */
+        public String headerMediaUrl;
     }
 
     /** Create a fresh per-request template cache (institute id → its templates). */
@@ -95,8 +103,22 @@ public class WhatsAppTemplateRenderer {
                     ? nl.getInstituteId() : fallbackInstituteId;
 
             NotificationTemplate tmpl = lookupTemplate(instituteId, rm.templateName, language, cache);
+
+            // Header type: prefer the per-send payload value (WATI/Meta store it lowercase, e.g.
+            // "image"), else the template's header_type. Normalised to upper case for the UI.
+            String headerType = asString(payload.get("headerType"));
+            if ((headerType == null || headerType.isBlank()) && tmpl != null) {
+                headerType = tmpl.getHeaderType();
+            }
+            rm.headerType = (headerType != null && !headerType.isBlank()) ? headerType.toUpperCase() : null;
+
+            // Media header (image/video/document): resolve the real media URL so the UI can render
+            // the actual attachment instead of an "[Image]" placeholder.
+            if (isMediaHeader(rm.headerType)) {
+                rm.headerMediaUrl = resolveHeaderMediaUrl(bodyParams, headerParams, tmpl);
+            }
+
             if (tmpl != null) {
-                rm.headerType = tmpl.getHeaderType();
                 rm.body = composeMessage(tmpl, bodyParams, headerParams);
             }
             return rm;
@@ -120,13 +142,12 @@ public class WhatsAppTemplateRenderer {
                                   Map<String, String> headerParams) {
         StringBuilder sb = new StringBuilder();
 
+        // TEXT header becomes a bold-ish first line; media headers (IMAGE/VIDEO/DOCUMENT) are NOT
+        // inlined as text here — they're surfaced as a real media URL for the UI to render.
         String headerType = tmpl.getHeaderType();
         if ("TEXT".equalsIgnoreCase(headerType) && isNotBlank(tmpl.getHeaderText())) {
             String header = substitute(tmpl.getHeaderText(), null, headerParams).trim();
             if (!header.isEmpty()) sb.append(header).append("\n\n");
-        } else if (isMediaHeader(headerType)) {
-            sb.append("[").append(headerType.substring(0, 1).toUpperCase())
-                    .append(headerType.substring(1).toLowerCase()).append("]\n\n");
         }
 
         String body = substitute(tmpl.getBodyText(), tmpl.getBodyVariableNames(), bodyParams);
@@ -221,6 +242,65 @@ public class WhatsAppTemplateRenderer {
         return "IMAGE".equalsIgnoreCase(headerType)
                 || "VIDEO".equalsIgnoreCase(headerType)
                 || "DOCUMENT".equalsIgnoreCase(headerType);
+    }
+
+    // ==================== Media header URL resolution ====================
+
+    /**
+     * Resolves the real media URL for an image/video/document header. Prefers the per-send dynamic
+     * URL (WATI stores it as {@code bodyParams._headerUrl} / {@code headerParams.link}; Meta passes
+     * it in {@code headerParams}), then falls back to the template's static {@code header_sample_url}
+     * (which is sometimes stored as HTML). Returns {@code null} when no usable URL is found — the UI
+     * then simply shows the message text without a media attachment.
+     */
+    private String resolveHeaderMediaUrl(Map<String, String> bodyParams, Map<String, String> headerParams,
+                                         NotificationTemplate tmpl) {
+        String url = firstUrl(
+                bodyParams.get("_headerUrl"),
+                headerParams.get("link"),
+                headerParams.get("header"),
+                headerParams.get("url"),
+                headerParams.get("image"),
+                headerParams.get("video"),
+                headerParams.get("document"));
+        if (url == null) {
+            // Any header-param value that looks like a URL (covers provider-specific key names).
+            for (String v : headerParams.values()) {
+                if (isUrl(v)) { url = v.trim(); break; }
+            }
+        }
+        if (url == null && tmpl != null) {
+            url = extractUrl(tmpl.getHeaderSampleUrl());
+        }
+        return url;
+    }
+
+    private String firstUrl(String... candidates) {
+        for (String c : candidates) {
+            if (isUrl(c)) return c.trim();
+        }
+        return null;
+    }
+
+    private boolean isUrl(String s) {
+        if (s == null) return false;
+        String t = s.trim();
+        return t.startsWith("http://") || t.startsWith("https://");
+    }
+
+    /** Pulls a media URL out of a header_sample_url that may be a plain URL or raw HTML. */
+    private String extractUrl(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        String s = raw.trim();
+        if (isUrl(s) && !s.contains("<")) return s;
+        // Prefer <img src="..."> (the direct media) over <a href="..."> (a landing page).
+        Matcher img = IMG_SRC.matcher(s);
+        if (img.find()) return img.group(1);
+        Matcher href = HREF.matcher(s);
+        if (href.find()) return href.group(1);
+        Matcher any = ANY_URL.matcher(s);
+        if (any.find()) return any.group();
+        return null;
     }
 
     // ==================== Template lookup (cached per institute) ====================

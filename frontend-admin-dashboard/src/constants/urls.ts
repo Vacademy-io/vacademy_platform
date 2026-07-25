@@ -79,6 +79,8 @@ export const TRANSLATION_STATUS_URL = `${BASE_URL}/admin-core-service/translatio
 export const TRANSLATION_ITEMS_URL = `${BASE_URL}/admin-core-service/translations/v1/items`;
 export const TRANSLATION_ITEM_STATE_URL = `${BASE_URL}/admin-core-service/translations/v1/item/state`;
 
+export const COURSE_PULSE_SUMMARY = `${'http://localhost:8072'}/admin-core-service/course-pulse/summary`;
+
 // Institute AI Settings APIs
 export const GET_INSTITUTE_AI_SETTINGS = (instituteId: string) =>
     `${AI_SERVICE_BASE_URL}/institute/ai-settings/v1/get?institute_id=${instituteId}`;

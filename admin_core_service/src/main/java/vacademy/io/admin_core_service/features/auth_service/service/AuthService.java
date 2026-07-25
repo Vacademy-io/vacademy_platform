@@ -683,6 +683,31 @@ public class AuthService {
     }
 
     /**
+     * Bulk username/password lookup. Used when re-sharing an ALREADY-created
+     * guardian's credentials (the create-time flows get the password back
+     * inline, but a later "share credentials" action has to fetch it).
+     */
+    public List<vacademy.io.common.auth.dto.UserCredentials> getUsersCredentials(List<String> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            ResponseEntity<String> response = hmacClientUtils.makeHmacRequest(
+                    clientName,
+                    HttpMethod.POST.name(),
+                    authServerBaseUrl,
+                    AuthServiceRoutes.USERS_CREDENTIALS,
+                    userIds);
+            return objectMapper.readValue(response.getBody(),
+                    new TypeReference<List<vacademy.io.common.auth.dto.UserCredentials>>() {
+                    });
+        } catch (Exception e) {
+            throw new VacademyException("Failed to fetch user credentials: " + e.getMessage());
+        }
+    }
+
+    /**
      * Institute-wide guardian backfill: creates a synthetic parent for each
      * item whose child does not already have one linked.
      */

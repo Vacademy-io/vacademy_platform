@@ -317,6 +317,8 @@ export const CREATE_TIMELINE_EVENT = `${BASE_URL}/admin-core-service/timeline/v1
 // Guardian-student linking — student side-view "Guardian" tab.
 export const GET_PARENT_LINK_PARENT = `${BASE_URL}/admin-core-service/parent-link/v1/parent`;
 export const GET_PARENT_LINK_CHILDREN = `${BASE_URL}/admin-core-service/parent-link/v1/children`;
+export const SHARE_GUARDIAN_CREDENTIALS = `${BASE_URL}/admin-core-service/parent-link/v1/share-credentials`;
+export const EXPORT_GUARDIAN_CREDENTIALS = `${BASE_URL}/admin-core-service/parent-link/v1/export-credentials`;
 export const GET_LEAD_JOURNEY = `${BASE_URL}/admin-core-service/timeline/v1/journey`;
 export const GET_ALL_LEAD_EVENTS = (studentUserId: string) =>
     `${BASE_URL}/admin-core-service/timeline/v1/student/${studentUserId}/all`;

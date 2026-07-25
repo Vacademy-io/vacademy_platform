@@ -83,4 +83,6 @@ public class AuthServiceRoutes {
     public static final String LINK_PARENT_CHILD = "/auth-service/v1/user/internal/link-parent-child";
     public static final String CHILDREN_OF_PARENT = "/auth-service/v1/user/internal/children-of-parent";
     public static final String BACKFILL_PARENTS = "/auth-service/v1/user/internal/backfill-parents";
+    /** Bulk username/password lookup — used to re-share an existing guardian's credentials. */
+    public static final String USERS_CREDENTIALS = "/auth-service/v1/user/internal/users-credential";
 }

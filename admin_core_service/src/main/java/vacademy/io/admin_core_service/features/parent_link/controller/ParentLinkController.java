@@ -10,6 +10,7 @@ import vacademy.io.admin_core_service.features.parent_link.dto.NewGuardianLinkRe
 import vacademy.io.admin_core_service.features.parent_link.dto.ParentLinkActionRequestDTO;
 import vacademy.io.admin_core_service.features.parent_link.dto.ParentLinkActionResponseDTO;
 import vacademy.io.admin_core_service.features.parent_link.dto.PendingGuardianStudentDTO;
+import vacademy.io.admin_core_service.features.parent_link.dto.ShareCredentialsResultDTO;
 import vacademy.io.admin_core_service.features.parent_link.service.ParentLinkService;
 import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.auth.model.CustomUserDetails;
@@ -98,6 +99,48 @@ public class ParentLinkController {
     public ResponseEntity<BackfillSummaryDTO> backfillLeads(@RequestAttribute("user") CustomUserDetails userDetails,
             @RequestParam("instituteId") String instituteId) {
         return ResponseEntity.ok(parentLinkService.backfillLeadGuardians(instituteId));
+    }
+
+    /**
+     * Explicit "share guardian credentials" action from the student side-view,
+     * so a guardian can be onboarded to the Parent Portal after the fact.
+     * {@code recipient} optionally overrides the institute's configured
+     * STUDENT/GUARDIAN choice for this one send.
+     */
+    @PostMapping("/share-credentials")
+    @Auditable(
+            entityType = "GUARDIAN_LINK",
+            action = "SHARE_CREDENTIALS",
+            entityIdExpr = "#studentUserId",
+            descriptionExpr = "'shared guardian credentials'")
+    public ResponseEntity<ShareCredentialsResultDTO> shareCredentials(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestParam("instituteId") String instituteId,
+            @RequestParam("studentUserId") String studentUserId,
+            @RequestParam(name = "recipient", required = false) String recipient) {
+        return ResponseEntity.ok(
+                parentLinkService.shareGuardianCredentials(instituteId, studentUserId, recipient));
+    }
+
+    /**
+     * Institute-wide guardian credential export (one row per guardian) for
+     * distributing Parent Portal logins — notably for backfilled guardians
+     * whose synthetic address can't receive the credential email.
+     */
+    @GetMapping("/export-credentials")
+    @Auditable(
+            entityType = "GUARDIAN_LINK",
+            action = "EXPORT_CREDENTIALS",
+            entityIdExpr = "#instituteId",
+            descriptionExpr = "'exported guardian credentials'")
+    public ResponseEntity<byte[]> exportCredentials(@RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestParam("instituteId") String instituteId) {
+        byte[] body = parentLinkService.exportGuardianCredentialsCsv(instituteId)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return ResponseEntity.ok()
+                .header("Content-Type", "text/csv; charset=UTF-8")
+                .header("Content-Disposition", "attachment; filename=\"guardian-credentials.csv\"")
+                .body(body);
     }
 
     @GetMapping("/credential-template")

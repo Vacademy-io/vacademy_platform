@@ -27,6 +27,8 @@ import vacademy.io.admin_core_service.features.parent_link.dto.NewGuardianLinkRe
 import vacademy.io.admin_core_service.features.parent_link.dto.ParentLinkActionRequestDTO;
 import vacademy.io.admin_core_service.features.parent_link.dto.ParentLinkActionResponseDTO;
 import vacademy.io.admin_core_service.features.parent_link.dto.PendingGuardianStudentDTO;
+import vacademy.io.admin_core_service.features.parent_link.dto.ShareCredentialsResultDTO;
+import vacademy.io.common.auth.dto.UserCredentials;
 import vacademy.io.common.auth.dto.BackfillCreatedPairDTO;
 import vacademy.io.common.auth.dto.BackfillParentItemDTO;
 import vacademy.io.common.auth.dto.BackfillParentsResultDTO;
@@ -34,9 +36,13 @@ import vacademy.io.common.auth.dto.UserDTO;
 import vacademy.io.common.exceptions.VacademyException;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class ParentLinkService {
@@ -498,6 +504,156 @@ public class ParentLinkService {
         config.setTemplateName(null);
         config.setIsActive(true);
         notificationEventConfigRepository.save(config);
+    }
+
+    /**
+     * Explicit admin action: (re)send an ALREADY-created guardian's
+     * credentials so they can onboard to the Parent Portal.
+     *
+     * <p>Deliberately NOT gated on {@code PARENT_SETTING.sendCredentialEmail} —
+     * that flag governs the AUTOMATIC send at creation time, whereas here an
+     * admin is explicitly asking for the mail. The configured recipient is
+     * still honoured (so behaviour matches the automatic path) unless the
+     * caller overrides it.
+     *
+     * <p>The guardian's password isn't held locally, so it's re-fetched from
+     * auth_service — the create-time flows get it back inline, a later share
+     * has to look it up.
+     */
+    public ShareCredentialsResultDTO shareGuardianCredentials(String instituteId, String studentUserId,
+            String recipientOverride) {
+        if (!StringUtils.hasText(instituteId) || !StringUtils.hasText(studentUserId)) {
+            throw new VacademyException("instituteId and studentUserId are required");
+        }
+        UserDTO guardian = getParentOfStudent(studentUserId);
+        if (guardian == null) {
+            throw new VacademyException("No guardian is linked to this student");
+        }
+        UserDTO student = firstOrNull(authService.getUsersFromAuthServiceByUserIds(List.of(studentUserId)));
+
+        String recipient = StringUtils.hasText(recipientOverride)
+                ? recipientOverride
+                : readCredentialEmailConfig(instituteId).recipient();
+        boolean toGuardian = "GUARDIAN".equalsIgnoreCase(recipient);
+        String recipientEmail = toGuardian
+                ? guardian.getEmail()
+                : (student != null ? student.getEmail() : null);
+
+        // Pre-validate rather than letting the notification silently no-op —
+        // a backfilled guardian's synthetic @vacademy.com address is exactly
+        // the case an admin needs told about.
+        if (!StringUtils.hasText(recipientEmail)) {
+            return ShareCredentialsResultDTO.builder()
+                    .sent(false)
+                    .recipient(recipient)
+                    .reason(toGuardian
+                            ? "This guardian has no email address on file."
+                            : "This student has no email address on file.")
+                    .build();
+        }
+
+        UserCredentials guardianCreds = firstOrNullCreds(
+                authService.getUsersCredentials(List.of(guardian.getId())));
+
+        dynamicNotificationService.sendGuardianAccountCreatedNotification(
+                instituteId,
+                guardian.getFullName(),
+                guardianCreds != null ? guardianCreds.getUsername() : guardian.getUsername(),
+                guardian.getEmail(),
+                guardianCreds != null ? guardianCreds.getPassword() : null,
+                student != null ? student.getFullName() : null,
+                student != null ? student.getEmail() : null,
+                recipient);
+
+        return ShareCredentialsResultDTO.builder()
+                .sent(true)
+                .recipient(recipient)
+                .recipientEmail(recipientEmail)
+                .build();
+    }
+
+    private static UserCredentials firstOrNullCreds(List<UserCredentials> creds) {
+        return (creds == null || creds.isEmpty()) ? null : creds.get(0);
+    }
+
+    /**
+     * Institute-wide guardian credential export — one row PER GUARDIAN (not
+     * per student), since a guardian can cover several children; their linked
+     * students are collapsed into one column rather than duplicating the
+     * guardian's password across N rows.
+     *
+     * <p>Scope matches the enrolled-students backfill (active SSIGM rows +
+     * a locally-stamped {@code guardian_user_id}), so "who appears here" is
+     * consistent with "who the backfill created".
+     *
+     * <p>Contains PLAINTEXT passwords by design — this is the delivery
+     * mechanism for backfilled guardians whose synthetic @vacademy.com address
+     * can't receive the credential email. The caller is expected to gate this
+     * on the same {@code allowViewPassword} setting that guards credential
+     * reveal elsewhere.
+     */
+    public String exportGuardianCredentialsCsv(String instituteId) {
+        List<String> studentUserIds = getEnrolledStudentUserIds(instituteId);
+        StringBuilder csv = new StringBuilder();
+        csv.append("Guardian Name,Guardian Username,Guardian Password,Guardian Email,Linked Students,Student Emails\n");
+        if (studentUserIds.isEmpty()) {
+            return csv.toString();
+        }
+
+        // guardianUserId -> the students they're linked to (within this institute)
+        Map<String, List<String>> guardianToStudents = new LinkedHashMap<>();
+        for (Student student : studentRepository.findByUserIdInAndGuardianUserIdIsNotNull(studentUserIds)) {
+            guardianToStudents
+                    .computeIfAbsent(student.getGuardianUserId(), k -> new ArrayList<>())
+                    .add(student.getUserId());
+        }
+        if (guardianToStudents.isEmpty()) {
+            return csv.toString();
+        }
+
+        List<String> guardianIds = new ArrayList<>(guardianToStudents.keySet());
+        Map<String, UserDTO> guardiansById = new HashMap<>();
+        for (UserDTO guardian : authService.getUsersFromAuthServiceByUserIds(guardianIds)) {
+            guardiansById.put(guardian.getId(), guardian);
+        }
+        Map<String, UserCredentials> credsById = new HashMap<>();
+        for (UserCredentials cred : authService.getUsersCredentials(guardianIds)) {
+            credsById.put(cred.getUserId(), cred);
+        }
+        List<String> linkedStudentIds = guardianToStudents.values().stream().flatMap(List::stream).distinct().toList();
+        Map<String, UserDTO> studentsById = new HashMap<>();
+        for (UserDTO student : authService.getUsersFromAuthServiceByUserIds(linkedStudentIds)) {
+            studentsById.put(student.getId(), student);
+        }
+
+        for (Map.Entry<String, List<String>> entry : guardianToStudents.entrySet()) {
+            UserDTO guardian = guardiansById.get(entry.getKey());
+            UserCredentials cred = credsById.get(entry.getKey());
+            List<UserDTO> children = entry.getValue().stream()
+                    .map(studentsById::get)
+                    .filter(java.util.Objects::nonNull)
+                    .toList();
+
+            csv.append(csvCell(guardian != null ? guardian.getFullName() : null)).append(',')
+                    .append(csvCell(cred != null ? cred.getUsername()
+                            : (guardian != null ? guardian.getUsername() : null)))
+                    .append(',')
+                    .append(csvCell(cred != null ? cred.getPassword() : null)).append(',')
+                    .append(csvCell(guardian != null ? guardian.getEmail() : null)).append(',')
+                    .append(csvCell(children.stream().map(UserDTO::getFullName)
+                            .filter(StringUtils::hasText).collect(Collectors.joining("; "))))
+                    .append(',')
+                    .append(csvCell(children.stream().map(UserDTO::getEmail)
+                            .filter(StringUtils::hasText).collect(Collectors.joining("; "))))
+                    .append('\n');
+        }
+        return csv.toString();
+    }
+
+    /** RFC-4180 cell: always quoted, embedded quotes doubled — safe for names/emails containing commas. */
+    private static String csvCell(String value) {
+        String safe = value == null ? "" : value;
+        return "\"" + safe.replace("\"", "\"\"") + "\"";
     }
 
     /**

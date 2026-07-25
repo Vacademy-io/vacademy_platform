@@ -98,7 +98,7 @@ public class LiveSessionJoinAuthorizer {
         if (paymentService.isPaymentPending(session.getId(), user.getUserId(), user.getEmail())) {
             log.warn("live.join.denied scheduleId={} userId={} reason=payment_pending", scheduleId, user.getUserId());
             throw new VacademyException(HttpStatus.FORBIDDEN,
-                    "This is a paid live class. Please complete the payment to join");
+                    "This session requires payment. Please complete your payment to join");
         }
 
         return new JoinAuthorization(JoinRole.PARTICIPANT, instituteId);

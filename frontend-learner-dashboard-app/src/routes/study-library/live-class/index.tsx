@@ -214,7 +214,7 @@ function RouteComponent() {
     try {
       const payStatus = await fetchLiveSessionPaymentStatus(session.session_id);
       if (payStatus.payment_required && payStatus.payment_status !== "PAID") {
-        toast.info("This is a paid live class. Complete the payment to join.");
+        toast.info("This session requires payment. Complete your payment to join.");
         const registration = await registerAndPayForLiveSession(
           session.session_id
         );

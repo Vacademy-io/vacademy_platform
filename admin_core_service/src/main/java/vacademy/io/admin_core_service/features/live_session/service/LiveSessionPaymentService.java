@@ -140,13 +140,13 @@ public class LiveSessionPaymentService {
             created.setRequireApproval(false);
             return created;
         });
-        option.setName("Live class fee - " + (StringUtils.hasText(session.getTitle()) ? session.getTitle() : session.getId()));
+        option.setName("Live session access - " + (StringUtils.hasText(session.getTitle()) ? session.getTitle() : session.getId()));
         option = paymentOptionRepository.save(option);
 
         PaymentPlan plan = option.getPaymentPlans() != null && !option.getPaymentPlans().isEmpty()
                 ? option.getPaymentPlans().get(0)
                 : new PaymentPlan();
-        plan.setName("Live class fee");
+        plan.setName("Live session access");
         plan.setStatus(STATUS_ACTIVE);
         plan.setActualPrice(config.getPrice());
         plan.setElevatedPrice(config.getPrice());
@@ -294,7 +294,7 @@ public class LiveSessionPaymentService {
         // user and sends the invoice by email — phone-only registration is only
         // possible for free sessions.
         if (planOpt.isPresent() && email == null) {
-            throw new VacademyException("This is a paid live class — an email address is required to register");
+            throw new VacademyException("This is a paid session — an email address is required to register");
         }
         Optional<SessionGuestRegistration> existingOpt =
                 findRegistrationByIdentity(session.getId(), email, request.getMobileNumber());

@@ -118,7 +118,7 @@ public class GuestController {
     private void ensurePaidAccess(String sessionId, String registrationId) {
         if (!liveSessionPaymentService.isRegistrationCleared(sessionId, registrationId)) {
             throw new VacademyException(org.springframework.http.HttpStatus.FORBIDDEN,
-                    "This is a paid live class. Please complete the payment to join");
+                    "This session requires payment. Please complete your payment to join");
         }
     }
 

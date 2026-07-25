@@ -3858,7 +3858,7 @@ public class InvoiceService {
         invoice = invoiceRepository.save(invoice);
 
         AdminInvoiceLineItemRequestDTO lineReq = new AdminInvoiceLineItemRequestDTO();
-        lineReq.setDescription("Live class: " + sessionTitle);
+        lineReq.setDescription(sessionTitle);
         lineReq.setQuantity(1);
         lineReq.setUnitPrice(subtotal);
         lineReq.setItemType("LIVE_SESSION");

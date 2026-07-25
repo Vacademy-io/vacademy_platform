@@ -424,10 +424,13 @@ export default function LiveClassRegistrationPage() {
             setSessionDetails(sessionDetailResponse);
           }
         } else if (payResponse.invoice_id) {
+          // Stay on this page: the render below swaps the form for the
+          // "Payment pending" card with the Pay & Confirm button, exactly what
+          // a returning visitor sees. Payment navigation only ever happens
+          // from that explicit click — never automatically.
           toast.success(
             "Spot reserved — complete your payment to confirm your registration"
           );
-          goToInvoicePayment(payResponse.invoice_id);
         }
       } catch (error) {
         console.error("Paid registration failed:", error);

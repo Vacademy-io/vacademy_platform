@@ -3,7 +3,8 @@ import { cn } from '@/lib/utils';
 import { UnsavedChangesBar } from '@/components/common/unsaved-changes-bar';
 
 interface SettingsPageShellProps {
-    /** Page title — rendered as the single `h1` for the settings tab. */
+    /** Page title — rendered as the single `h1` for the settings tab, or used
+     * only for a11y (Dialog title/aria-label) when `embedded` is true. */
     title: string;
     /** Optional one-line description under the title. */
     description?: string;
@@ -24,6 +25,16 @@ interface SettingsPageShellProps {
     onSave?: () => void;
     onDiscard?: () => void;
     saveLabel?: string;
+
+    /**
+     * Set when this settings page is rendered inside the quick-access popup
+     * instead of the full /settings page. Suppresses the title/description
+     * (the popup's own Dialog already shows a heading) and the save bar
+     * (it's viewport-fixed and would visually escape the popup) — but keeps
+     * `actions` visible, since it can be functionally required (e.g. a role
+     * selector), not just decorative chrome.
+     */
+    embedded?: boolean;
 }
 
 /**
@@ -44,6 +55,7 @@ export function SettingsPageShell({
     onSave,
     onDiscard,
     saveLabel,
+    embedded = false,
 }: SettingsPageShellProps) {
     return (
         <div
@@ -53,23 +65,27 @@ export function SettingsPageShell({
                 className
             )}
         >
-            <header className="mb-6 flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="space-y-1">
-                    <h1 className="text-h3-semibold text-neutral-700">{title}</h1>
-                    {description && (
-                        <p className="text-body text-neutral-500">{description}</p>
-                    )}
-                </div>
-                {actions && (
-                    <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {embedded ? (
+                actions && (
+                    <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
                         {actions}
                     </div>
-                )}
-            </header>
+                )
+            ) : (
+                <header className="mb-6 flex flex-col gap-4 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-1">
+                        <h1 className="text-h3-semibold text-neutral-700">{title}</h1>
+                        {description && <p className="text-body text-neutral-500">{description}</p>}
+                    </div>
+                    {actions && (
+                        <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>
+                    )}
+                </header>
+            )}
 
             {children}
 
-            {onSave && (
+            {!embedded && onSave && (
                 <UnsavedChangesBar
                     dirty={!!dirty}
                     saving={!!saving}

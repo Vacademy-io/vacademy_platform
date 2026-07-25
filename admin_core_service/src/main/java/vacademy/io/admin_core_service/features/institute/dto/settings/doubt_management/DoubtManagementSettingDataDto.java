@@ -61,6 +61,46 @@ public class DoubtManagementSettingDataDto {
      */
     private List<QueryTypeConfig> queryTypes;
 
+    /**
+     * Additionally route a sub-org learner's doubt to that sub-org's own staff. {@code null} ⇒
+     * defaults apply (enabled, ALL_TEAM) — see {@link SubOrgNotificationPrefs}.
+     */
+    private SubOrgNotificationPrefs subOrgNotifications;
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public static class SubOrgNotificationPrefs {
+        /**
+         * Default true. When a doubt is raised by a learner who belongs to a sub-org, the sub-org's
+         * staff are added to the assignee list on top of whatever {@link #defaultAssigneeSource} /
+         * per-type routing resolved. Without this the sub-org never hears about it: every other
+         * cascade is keyed on the PARENT institute (batch teachers exclude sub-org access rows, and
+         * role lookups run against the parent), so a sub-org learner's query lands only on the
+         * parent's desk. Only an explicit {@code false} disables it.
+         */
+        private Boolean enabled;
+        /**
+         * {@code ADMINS_ONLY} (sub-org ADMIN/ROOT_ADMIN only) or {@code ALL_TEAM} (admins + every
+         * active sub-org team member). Default {@code ALL_TEAM}. String rather than enum so an
+         * unknown value from an older/newer frontend can't break the settings blob.
+         */
+        private String recipients;
+
+        /**
+         * Whether the PARENT institute's own staff are also notified about a sub-org learner's
+         * doubt. {@code null}/true (default) = additive: the normal batch-teacher/role/admin cascade
+         * still runs and those people get the email/push/bell too. Explicit {@code false} = the
+         * sub-org handles it exclusively: parent-institute staff are NOT added as assignees, so they
+         * receive no doubt notification — but the doubt still appears in their Doubt Management inbox
+         * (inbox visibility is scoped by institute/batch, not by assignee), so nothing is hidden from
+         * them. Only meaningful for sub-org learners; parent-institute learners are unaffected.
+         */
+        private Boolean notifyParentStaff;
+    }
+
     @Data
     @Builder
     @AllArgsConstructor

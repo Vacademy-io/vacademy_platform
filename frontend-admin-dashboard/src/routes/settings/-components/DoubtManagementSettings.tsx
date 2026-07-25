@@ -16,6 +16,8 @@ import {
     useInstituteAssignees,
     type AssigneeOption,
 } from '@/routes/dashboard/-hooks/useInstituteAssignees';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { OtherTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 
 type DoubtAssigneeSource = 'SUBJECT_TEACHER' | 'BATCH_TEACHER' | 'BOTH' | 'NONE';
 
@@ -63,12 +65,27 @@ interface DoubtNotificationPrefs {
     on_doubt_resolved: NotificationChannelPrefs;
 }
 
+type SubOrgNotifyRecipients = 'ADMINS_ONLY' | 'ALL_TEAM';
+
+interface SubOrgNotificationPrefs {
+    /** Also route a sub-org learner's doubt to that sub-org's own staff. */
+    enabled: boolean;
+    recipients: SubOrgNotifyRecipients;
+    /**
+     * When true (default), the parent institute's own staff are notified too (additive). When
+     * false, only the sub-org is emailed — the parent team gets no notification but still sees the
+     * doubt in Doubt Management.
+     */
+    notify_parent_staff: boolean;
+}
+
 interface DoubtManagementSettingsData {
     default_assignee_source: DoubtAssigneeSource;
     fallback_to_batch_when_no_subject_teacher: boolean;
     notifications: DoubtNotificationPrefs;
     learner_query: LearnerQueryPrefs;
     query_types: QueryTypeConfig[];
+    sub_org_notifications: SubOrgNotificationPrefs;
 }
 
 const DEFAULT_CHANNEL_PREFS: NotificationChannelPrefs = {
@@ -76,6 +93,15 @@ const DEFAULT_CHANNEL_PREFS: NotificationChannelPrefs = {
     email_enabled: true,
     system_alert_enabled: true,
     email_template_id: null,
+};
+
+// Mirrors the backend default in DoubtManagementSettingDataDto.SubOrgNotificationPrefs: on, and
+// the whole sub-org team. A sub-org learner's doubt is otherwise invisible to the sub-org — every
+// other route resolves to the parent institute's staff.
+const DEFAULT_SUB_ORG_NOTIFICATIONS: SubOrgNotificationPrefs = {
+    enabled: true,
+    recipients: 'ALL_TEAM',
+    notify_parent_staff: true,
 };
 
 const DEFAULT_LEARNER_QUERY: LearnerQueryPrefs = {
@@ -143,6 +169,7 @@ const DEFAULT_SETTINGS: DoubtManagementSettingsData = {
     },
     learner_query: { ...DEFAULT_LEARNER_QUERY },
     query_types: DEFAULT_QUERY_TYPES.map((t) => ({ ...t })),
+    sub_org_notifications: { ...DEFAULT_SUB_ORG_NOTIFICATIONS },
 };
 
 const SETTING_KEY = 'DOUBT_MANAGEMENT_SETTING';
@@ -172,6 +199,27 @@ const OPTIONS: { value: DoubtAssigneeSource; title: string; description: string 
         value: 'NONE',
         title: 'None (manual)',
         description: 'No auto-assign. Admins assign each doubt manually.',
+    },
+];
+
+// Labels take the institute's own word for a sub-org (Franchise / Center / ...) so the copy reads
+// correctly wherever NamingSettings has been customised.
+const SUB_ORG_RECIPIENT_OPTIONS: {
+    value: SubOrgNotifyRecipients;
+    title: (label: string) => string;
+    description: (label: string) => string;
+}[] = [
+    {
+        value: 'ALL_TEAM',
+        title: (label) => `${label} admins and team`,
+        description: (label) =>
+            `Everyone with active access to the learner's ${label.toLowerCase()} — its admins plus every team member added under it.`,
+    },
+    {
+        value: 'ADMINS_ONLY',
+        title: (label) => `${label} admins only`,
+        description: (label) =>
+            `Just the admins of the learner's ${label.toLowerCase()}. Quieter, but team members won't see the doubt unless an admin assigns it.`,
     },
 ];
 
@@ -230,6 +278,10 @@ function mergeWithDefaults(
         },
         learner_query: { ...DEFAULT_LEARNER_QUERY, ...(raw.learner_query ?? {}) },
         query_types,
+        sub_org_notifications: {
+            ...DEFAULT_SUB_ORG_NOTIFICATIONS,
+            ...(raw.sub_org_notifications ?? {}),
+        },
     };
 }
 
@@ -377,6 +429,7 @@ export default function DoubtManagementSettings() {
     };
 
     const showFallbackToggle = settings.default_assignee_source === 'SUBJECT_TEACHER';
+    const subOrgLabel = getTerminology(OtherTerms.SubOrg, SystemTerms.SubOrg);
 
     // Email can be turned on without explicitly picking a template — the backend resolves through
     // three layers: admin-configured id → institute-specific override row → global DEFAULT row
@@ -498,6 +551,135 @@ export default function DoubtManagementSettings() {
                     </CardContent>
                 </Card>
             )}
+
+            <Card>
+                <CardHeader>
+                    <CardTitle>{subOrgLabel} routing</CardTitle>
+                    <CardDescription>
+                        Applies only to doubts raised by a learner who belongs to a{' '}
+                        {subOrgLabel.toLowerCase()}. Their {subOrgLabel.toLowerCase()} shares this
+                        institute&rsquo;s courses and batches, so none of the rules above can reach
+                        its staff — batch-teacher matching skips {subOrgLabel.toLowerCase()} access
+                        rows and role lookups run against this institute. Turn this on to notify
+                        them as well.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="flex items-start gap-3">
+                        <Switch
+                            id="sub-org-notify"
+                            checked={settings.sub_org_notifications.enabled}
+                            onCheckedChange={(v) =>
+                                update({
+                                    sub_org_notifications: {
+                                        ...settings.sub_org_notifications,
+                                        enabled: v,
+                                    },
+                                })
+                            }
+                        />
+                        <div>
+                            <Label
+                                htmlFor="sub-org-notify"
+                                className="cursor-pointer text-sm font-medium text-neutral-800"
+                            >
+                                Also notify the learner&rsquo;s {subOrgLabel.toLowerCase()}
+                            </Label>
+                            <p className="mt-0.5 text-xs text-neutral-600">
+                                They are added as assignees on top of whoever the rules above
+                                picked, so they get the email, push and bell alert and the doubt
+                                shows up in their inbox.
+                            </p>
+                        </div>
+                    </div>
+
+                    {settings.sub_org_notifications.enabled && (
+                        <div className="space-y-2 border-t border-neutral-200 pt-4">
+                            <Label className="text-sm font-medium text-neutral-800">
+                                Who receives it
+                            </Label>
+                            {SUB_ORG_RECIPIENT_OPTIONS.map((opt) => {
+                                const selected =
+                                    settings.sub_org_notifications.recipients === opt.value;
+                                return (
+                                    <button
+                                        key={opt.value}
+                                        type="button"
+                                        onClick={() =>
+                                            update({
+                                                sub_org_notifications: {
+                                                    ...settings.sub_org_notifications,
+                                                    recipients: opt.value,
+                                                },
+                                            })
+                                        }
+                                        className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                                            selected
+                                                ? 'border-primary-400 bg-primary-50'
+                                                : 'border-neutral-200 hover:border-neutral-300'
+                                        }`}
+                                    >
+                                        <div className="flex items-start gap-3">
+                                            <span
+                                                aria-hidden
+                                                className={`mt-1 flex size-4 shrink-0 items-center justify-center rounded-full border ${
+                                                    selected
+                                                        ? 'border-primary-500 bg-primary-500'
+                                                        : 'border-neutral-300 bg-white'
+                                                }`}
+                                            >
+                                                {selected && (
+                                                    <span className="size-1.5 rounded-full bg-white" />
+                                                )}
+                                            </span>
+                                            <div>
+                                                <div className="text-sm font-medium text-neutral-800">
+                                                    {opt.title(subOrgLabel)}
+                                                </div>
+                                                <p className="mt-0.5 text-xs text-neutral-600">
+                                                    {opt.description(subOrgLabel)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+
+                    {settings.sub_org_notifications.enabled && (
+                        <div className="space-y-3 border-t border-neutral-200 pt-4">
+                            <div className="flex items-start gap-3">
+                                <Switch
+                                    id="sub-org-notify-parent"
+                                    checked={settings.sub_org_notifications.notify_parent_staff}
+                                    onCheckedChange={(v) =>
+                                        update({
+                                            sub_org_notifications: {
+                                                ...settings.sub_org_notifications,
+                                                notify_parent_staff: v,
+                                            },
+                                        })
+                                    }
+                                />
+                                <div>
+                                    <Label
+                                        htmlFor="sub-org-notify-parent"
+                                        className="cursor-pointer text-sm font-medium text-neutral-800"
+                                    >
+                                        Also email this institute&rsquo;s own team
+                                    </Label>
+                                    <p className="mt-0.5 text-xs text-neutral-600">
+                                        {settings.sub_org_notifications.notify_parent_staff
+                                            ? `On: your teachers/admins are notified alongside the ${subOrgLabel.toLowerCase()}, exactly as they are for a normal doubt.`
+                                            : `Off: only the ${subOrgLabel.toLowerCase()} is emailed. Your own team gets no email, push or bell for these doubts — but they still appear in your Doubt Management inbox, so nothing is hidden.`}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
 
             <Card>
                 <CardHeader>

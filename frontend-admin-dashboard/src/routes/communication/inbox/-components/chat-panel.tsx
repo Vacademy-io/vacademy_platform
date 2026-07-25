@@ -101,8 +101,28 @@ export function ChatPanel({ onLoadOlder }: Props) {
                                 </p>
                             )}
 
-                            {/* Message body */}
+                            {/* Message body — the actual template text the recipient received */}
                             <p className="whitespace-pre-wrap break-words text-gray-800">{msg.body}</p>
+
+                            {/* Template context: which template it came from + any send failure */}
+                            {msg.templateName && (
+                                <p className="text-caption text-gray-500 mt-1 flex flex-wrap items-center gap-1">
+                                    <span className="italic">via template “{msg.templateName}”</span>
+                                    {msg.provider && (
+                                        <span className="px-1 py-px rounded bg-black/5 uppercase tracking-wide">
+                                            {msg.provider}
+                                        </span>
+                                    )}
+                                    {msg.deliveryStatus === 'FAILED' && (
+                                        <span className="px-1 py-px rounded bg-red-100 text-red-600 font-medium">
+                                            Failed
+                                        </span>
+                                    )}
+                                </p>
+                            )}
+                            {msg.deliveryStatus === 'FAILED' && msg.error && (
+                                <p className="text-caption text-red-500 mt-0.5 break-words">{msg.error}</p>
+                            )}
 
                             {/* Timestamp + status */}
                             <p className={`text-[10px] mt-1 text-right ${

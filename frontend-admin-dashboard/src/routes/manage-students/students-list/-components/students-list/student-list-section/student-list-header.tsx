@@ -3,7 +3,7 @@ import { EnrollStudentsButton } from '../../../../../../components/common/studen
 import { useRouter } from '@tanstack/react-router';
 import { BulkDialogProvider } from '../../../-providers/bulk-dialog-provider';
 import { MyDialog } from '@/components/design-system/dialog';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DropdownItemType } from '@/components/common/students/enroll-manually/dropdownTypesForPackageItems';
 import { useGetBatchesQuery } from '@/routes/manage-institute/batches/-services/get-batches';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -13,7 +13,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { NoCourseDialog } from '@/components/common/students/no-course-dialog';
 import { cn } from '@/lib/utils';
 import { UserPlus, ArrowRight, Users, GraduationCap, Calendar, LinkSimple } from '@phosphor-icons/react';
-import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { getDisplaySettingsFromCache, DISPLAY_SETTINGS_UPDATED_EVENT } from '@/services/display-settings';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import type { StudentHeaderCustomButton } from '@/types/display-settings';
 import { useQuery } from '@tanstack/react-query';
@@ -226,6 +226,16 @@ export const StudentListHeader = ({
     const { instituteDetails } = useInstituteDetailsStore();
     const [isOpen, setIsOpen] = useState(false);
     const { isCompact } = useCompactMode();
+
+    // Re-read display settings live when they're saved from the Settings panel,
+    // so hiding a built-in button / adding a custom button reflects here without
+    // a page reload (saveDisplaySettings fires this after writing the cache).
+    const [, bumpSettings] = useState(0);
+    useEffect(() => {
+        const onUpdate = () => bumpSettings((v) => v + 1);
+        window.addEventListener(DISPLAY_SETTINGS_UPDATED_EVENT, onUpdate);
+        return () => window.removeEventListener(DISPLAY_SETTINGS_UPDATED_EVENT, onUpdate);
+    }, []);
 
     // Per-role Display Settings → "Learner Management Buttons": hide the built-in
     // Enroll / Invite buttons and surface custom link buttons (manual URL, the

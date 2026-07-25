@@ -12,7 +12,10 @@ import { InviteLink } from '@/routes/manage-students/-components/InviteLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { NoCourseDialog } from '@/components/common/students/no-course-dialog';
 import { cn } from '@/lib/utils';
-import { UserPlus, ArrowRight, Users, GraduationCap, Calendar } from '@phosphor-icons/react';
+import { UserPlus, ArrowRight, Users, GraduationCap, Calendar, LinkSimple } from '@phosphor-icons/react';
+import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import type { StudentHeaderCustomButton } from '@/types/display-settings';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import CreateInvite from '@/routes/manage-students/invite/-components/create-invite/CreateInvite';
@@ -218,6 +221,27 @@ export const StudentListHeader = ({
     const [isOpen, setIsOpen] = useState(false);
     const { isCompact } = useCompactMode();
 
+    // Per-role Display Settings → "Learner Management Buttons": hide the built-in
+    // Enroll / Invite buttons and surface custom link buttons (invite link or
+    // sub-org learner registration link) in this header.
+    const actionSettings = getDisplaySettingsFromCache(
+        getActiveRoleDisplaySettingsKey()
+    )?.studentManagementActions;
+    const showEnrollButton = actionSettings?.showEnrollButton !== false;
+    const showInviteButton = actionSettings?.showInviteButton !== false;
+    const customButtons = (actionSettings?.customButtons ?? []).filter(
+        (b) => b.url?.trim() && b.label?.trim()
+    );
+
+    const openCustomLink = (button: StudentHeaderCustomButton) => {
+        if (!button.url) return;
+        if (button.openInNewTab === false) {
+            window.location.href = button.url;
+        } else {
+            window.open(button.url, '_blank', 'noopener,noreferrer');
+        }
+    };
+
     const handleOpenChange = () => {
         setOpenInviteLinksDialog(!openInviteLinksDialog);
     };
@@ -256,20 +280,39 @@ export const StudentListHeader = ({
             </div>
 
             {/* Compact professional action buttons */}
-            <div className="flex items-center gap-1.5">
-                <MyButton
-                    onClick={() => setOpenInviteLinksDialog(true)}
-                    scale="small"
-                    buttonType="secondary"
-                    className={cn(
-                        "group flex items-center gap-1 border border-blue-200 bg-white text-blue-700 transition-all duration-200 hover:scale-100 hover:border-blue-300 hover:bg-blue-50",
-                        isCompact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-xs"
-                    )}
-                >
-                    <UserPlus className={cn("transition-transform duration-200 group-hover:scale-110", isCompact ? "size-2.5" : "size-3")} />
-                    <span className="hidden sm:inline">Invite</span>
-                </MyButton>
+            <div className="flex flex-wrap items-center gap-1.5">
+                {customButtons.map((button) => (
+                    <MyButton
+                        key={button.id}
+                        onClick={() => openCustomLink(button)}
+                        scale="small"
+                        buttonType="secondary"
+                        className={cn(
+                            "group flex items-center gap-1 border border-neutral-300 bg-white text-neutral-700 transition-all duration-200 hover:scale-100 hover:border-primary-300 hover:bg-primary-50",
+                            isCompact ? "px-2 py-0.5 text-xs" : "px-2.5 py-1 text-xs"
+                        )}
+                    >
+                        <LinkSimple className={cn("transition-transform duration-200 group-hover:scale-110", isCompact ? "size-2.5" : "size-3")} />
+                        <span>{button.label}</span>
+                    </MyButton>
+                ))}
 
+                {showInviteButton && (
+                    <MyButton
+                        onClick={() => setOpenInviteLinksDialog(true)}
+                        scale="small"
+                        buttonType="secondary"
+                        className={cn(
+                            "group flex items-center gap-1 border border-blue-200 bg-white text-blue-700 transition-all duration-200 hover:scale-100 hover:border-blue-300 hover:bg-blue-50",
+                            isCompact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-xs"
+                        )}
+                    >
+                        <UserPlus className={cn("transition-transform duration-200 group-hover:scale-110", isCompact ? "size-2.5" : "size-3")} />
+                        <span className="hidden sm:inline">Invite</span>
+                    </MyButton>
+                )}
+
+                {showEnrollButton && (
                 <BulkDialogProvider>
                     {!instituteDetails?.batches_for_sessions.length ? (
                         <NoCourseDialog
@@ -294,6 +337,7 @@ export const StudentListHeader = ({
                         <EnrollStudentsButton initialPackageSessionId={packageSessionId} />
                     )}
                 </BulkDialogProvider>
+                )}
             </div>
 
             <InviteLinksDialog

@@ -240,6 +240,11 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         allowSendResetPasswordMail: true,
         showApprovalToggle: true,
     },
+    studentManagementActions: {
+        showEnrollButton: true,
+        showInviteButton: true,
+        customButtons: [],
+    },
     leadsFilterCustomFields: [],
     postLoginRedirectRoute: '/dashboard',
 };

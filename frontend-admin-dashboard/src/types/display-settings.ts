@@ -80,6 +80,7 @@ export type CourseDetailsTabId =
     | 'LIVE_SESSION'
     | 'PLANNING'
     | 'ACTIVITY'
+    | 'PULSE'
     | 'SETTINGS';
 
 export interface CourseDetailsTabConfig {

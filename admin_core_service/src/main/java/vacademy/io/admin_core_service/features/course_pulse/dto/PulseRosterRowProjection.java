@@ -18,4 +18,10 @@ public interface PulseRosterRowProjection {
 
     /** Seconds since the learner's most recent write (now() - last_seen_at). Drives presence state. */
     Long getLastSeenAgoSeconds();
+
+    /** Wrong answers on the current slide (INCORRECT question + quiz attempts). Struggle signal. */
+    Long getWrongCount();
+
+    /** Failing code submissions on the current slide (not all tests passed). Struggle signal. */
+    Long getFailedCodeCount();
 }

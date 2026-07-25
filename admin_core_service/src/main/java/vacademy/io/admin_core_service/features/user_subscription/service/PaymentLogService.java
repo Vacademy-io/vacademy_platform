@@ -13,6 +13,9 @@ import org.springframework.util.CollectionUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService;
+import vacademy.io.admin_core_service.features.user_subscription.dto.CollectionSummaryProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.CollectionSummaryRequestDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.CollectionSummaryResponseDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogFilterRequestDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogWithUserPlanDTO;
@@ -882,6 +885,54 @@ public class PaymentLogService {
     }
 
     @Transactional(readOnly = true)
+    /**
+     * Aggregated PAID collection for an institute (optionally one sub-org) over a
+     * UTC date window. Returns the grand total + a per-day series for charting.
+     * Omitting the dates yields the all-time total (epoch -> now).
+     */
+    public CollectionSummaryResponseDTO getCollectionSummary(CollectionSummaryRequestDTO request) {
+        LocalDateTime startDate = request.getStartDateInUtc() != null
+                ? request.getStartDateInUtc()
+                : LocalDateTime.of(1970, 1, 1, 0, 0);
+        LocalDateTime endDate = request.getEndDateInUtc() != null
+                ? request.getEndDateInUtc()
+                : LocalDateTime.now();
+        boolean noSubOrg = !StringUtils.hasText(request.getSubOrgId());
+
+        List<CollectionSummaryProjection> rows = paymentLogRepository.getCollectionSummary(
+                request.getInstituteId(),
+                noSubOrg ? "__none__" : request.getSubOrgId(),
+                noSubOrg,
+                startDate,
+                endDate);
+
+        double total = 0d;
+        long count = 0L;
+        String currency = null;
+        List<CollectionSummaryResponseDTO.DailyPoint> daily = new ArrayList<>();
+        for (CollectionSummaryProjection row : rows) {
+            double amount = row.getAmount() != null ? row.getAmount() : 0d;
+            long dayCount = row.getCnt() != null ? row.getCnt() : 0L;
+            total += amount;
+            count += dayCount;
+            if (currency == null && StringUtils.hasText(row.getCurrency())) {
+                currency = row.getCurrency();
+            }
+            daily.add(CollectionSummaryResponseDTO.DailyPoint.builder()
+                    .date(row.getDay())
+                    .amount(amount)
+                    .count(dayCount)
+                    .build());
+        }
+
+        return CollectionSummaryResponseDTO.builder()
+                .totalAmount(total)
+                .totalCount(count)
+                .currency(currency)
+                .daily(daily)
+                .build();
+    }
+
     public Page<PaymentLogWithUserPlanDTO> getPaymentLogsForInstitute(
             PaymentLogFilterRequestDTO filterDTO,
             int pageNo,

@@ -73,6 +73,9 @@ function defaultDashboardWidgetsTeacher(): DashboardWidgetConfig[] {
         // every role — a sub-org admin resolving to teacher/custom settings
         // should still get it without an admin flipping a hidden default.
         'subOrgSelfStats',
+        'subOrgRevenueTrends',
+        'subOrgSeatCourses',
+        'subOrgActivityDues',
     ]);
 
     const orderedIds: DashboardWidgetConfig['id'][] = [
@@ -84,9 +87,16 @@ function defaultDashboardWidgetsTeacher(): DashboardWidgetConfig[] {
         'pendingActions',
         // 4. Operational health (finance)
         'financeSummary',
+        'revenueTrends',
         'recentTransactions',
         'subOrgOverview',
         'subOrgSelfStats',
+        'subOrgRevenueTrends',
+        'subOrgGeography',
+        'vleAnalytics',
+        'topVles',
+        'subOrgSeatCourses',
+        'subOrgActivityDues',
         // 5. Engagement signals
         'unresolvedDoubts',
         'recentNotifications',

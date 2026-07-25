@@ -3,7 +3,7 @@ import { EnrollStudentsButton } from '../../../../../../components/common/studen
 import { useRouter } from '@tanstack/react-router';
 import { BulkDialogProvider } from '../../../-providers/bulk-dialog-provider';
 import { MyDialog } from '@/components/design-system/dialog';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DropdownItemType } from '@/components/common/students/enroll-manually/dropdownTypesForPackageItems';
 import { useGetBatchesQuery } from '@/routes/manage-institute/batches/-services/get-batches';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -13,7 +13,7 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { NoCourseDialog } from '@/components/common/students/no-course-dialog';
 import { cn } from '@/lib/utils';
 import { UserPlus, ArrowRight, Users, GraduationCap, Calendar, LinkSimple } from '@phosphor-icons/react';
-import { getDisplaySettingsFromCache } from '@/services/display-settings';
+import { getDisplaySettingsFromCache, DISPLAY_SETTINGS_UPDATED_EVENT } from '@/services/display-settings';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import type { StudentHeaderCustomButton } from '@/types/display-settings';
 import { useQuery } from '@tanstack/react-query';
@@ -21,7 +21,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getInstituteId } from '@/constants/helper';
 import { GET_INVITE_LINKS, GET_DEFAULT_INVITE } from '@/constants/urls';
 import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
-import { getValidSelectedSubOrgId } from '@/lib/auth/facultyAccessUtils';
+import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import CreateInvite from '@/routes/manage-students/invite/-components/create-invite/CreateInvite';
@@ -227,6 +227,16 @@ export const StudentListHeader = ({
     const [isOpen, setIsOpen] = useState(false);
     const { isCompact } = useCompactMode();
 
+    // Re-read display settings live when they're saved from the Settings panel,
+    // so hiding a built-in button / adding a custom button reflects here without
+    // a page reload (saveDisplaySettings fires this after writing the cache).
+    const [, bumpSettings] = useState(0);
+    useEffect(() => {
+        const onUpdate = () => bumpSettings((v) => v + 1);
+        window.addEventListener(DISPLAY_SETTINGS_UPDATED_EVENT, onUpdate);
+        return () => window.removeEventListener(DISPLAY_SETTINGS_UPDATED_EVENT, onUpdate);
+    }, []);
+
     // Per-role Display Settings → "Learner Management Buttons": hide the built-in
     // Enroll / Invite buttons and surface custom link buttons (manual URL, the
     // sub-org learner invite link, or the course learner invite link) in this header.
@@ -240,9 +250,14 @@ export const StudentListHeader = ({
     const needsSubOrgInvite = rawButtons.some((b) => b.kind === 'suborg_learner_invite');
     const needsCourseInvite = rawButtons.some((b) => b.kind === 'course_invite');
 
-    // Sub-org context signal — same one the navbar/sidebar/Students tab use. Null
-    // for the parent institute admin, so sub-org invite buttons stay hidden there.
-    const selectedSubOrgId = getValidSelectedSubOrgId();
+    // Is the viewer a sub-org admin? Use the faculty-access signal (has any
+    // sub-orgs) rather than the localStorage "selected sub-org" — that key is
+    // cleared on login and only re-set when a sub-org is explicitly picked, so a
+    // legitimately-logged-in sub-org admin often has it null, which wrongly hid
+    // the sub-org invite button. False for the parent institute admin, so the
+    // button stays hidden there. The get-enroll-invite query below is FSPSSM-
+    // scoped to the caller, so it still resolves only THIS admin's own invite.
+    const isSubOrgAdmin = isCallerSubOrgAdmin();
     const instituteId = getInstituteId();
     const learnerBase = instituteDetails?.learner_portal_base_url;
 
@@ -251,7 +266,7 @@ export const StudentListHeader = ({
     // returns only THEIR sub-org's learner invite for this package session — a
     // learner who enrolls through it lands in the sub-org admin's learner list.
     const { data: subOrgInviteCode } = useQuery({
-        queryKey: ['suborg-learner-invite-code', packageSessionId, selectedSubOrgId, instituteId],
+        queryKey: ['suborg-learner-invite-code', packageSessionId, instituteId],
         queryFn: async (): Promise<string | null> => {
             const res = await authenticatedAxiosInstance.post(
                 `${GET_INVITE_LINKS}?instituteId=${instituteId}&pageNo=0&pageSize=20`,
@@ -268,7 +283,7 @@ export const StudentListHeader = ({
                 | undefined;
             return row?.invite_code ?? row?.inviteCode ?? null;
         },
-        enabled: needsSubOrgInvite && !!packageSessionId && !!selectedSubOrgId && !!instituteId,
+        enabled: needsSubOrgInvite && !!packageSessionId && isSubOrgAdmin && !!instituteId,
         staleTime: 5 * 60 * 1000,
     });
 
@@ -294,7 +309,7 @@ export const StudentListHeader = ({
         const kind = button.kind ?? 'url';
         if (kind === 'url') return button.url?.trim() || null;
         if (kind === 'suborg_learner_invite') {
-            if (!selectedSubOrgId || !packageSessionId || !subOrgInviteCode) return null;
+            if (!isSubOrgAdmin || !packageSessionId || !subOrgInviteCode) return null;
             return createInviteLink(subOrgInviteCode, learnerBase);
         }
         if (kind === 'course_invite') {
@@ -362,19 +377,22 @@ export const StudentListHeader = ({
             {/* Compact professional action buttons */}
             <div className="flex flex-wrap items-center gap-1.5">
                 {resolvedButtons.map((button) => (
-                    <MyButton
+                    <button
                         key={button.id}
+                        type="button"
                         onClick={() => openCustomLink(button.href, button.openInNewTab)}
-                        scale="small"
-                        buttonType="secondary"
+                        title={button.label}
                         className={cn(
-                            "group flex items-center gap-1 border border-neutral-300 bg-white text-neutral-700 transition-all duration-200 hover:scale-100 hover:border-primary-300 hover:bg-primary-50",
-                            isCompact ? "px-2 py-0.5 text-xs" : "px-2.5 py-1 text-xs"
+                            "hover:bg-primary-600 group inline-flex items-center gap-2 rounded-lg bg-primary-500 font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
+                            isCompact ? "px-3 py-2 text-sm" : "px-5 py-2.5 text-sm"
                         )}
                     >
-                        <LinkSimple className={cn("transition-transform duration-200 group-hover:scale-110", isCompact ? "size-2.5" : "size-3")} />
+                        <LinkSimple
+                            weight="bold"
+                            className={cn("shrink-0", isCompact ? "size-4" : "size-5")}
+                        />
                         <span>{button.label}</span>
-                    </MyButton>
+                    </button>
                 ))}
 
                 {showInviteButton && (

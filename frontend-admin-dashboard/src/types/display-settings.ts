@@ -50,7 +50,14 @@ export type DashboardWidgetId =
     | 'aiFeaturesCard'
     | 'instituteOverview'
     | 'subOrgOverview'
-    | 'subOrgSelfStats';
+    | 'subOrgSelfStats'
+    | 'subOrgGeography'
+    | 'revenueTrends'
+    | 'subOrgRevenueTrends'
+    | 'vleAnalytics'
+    | 'topVles'
+    | 'subOrgSeatCourses'
+    | 'subOrgActivityDues';
 
 export interface DashboardWidgetConfig {
     id: DashboardWidgetId;

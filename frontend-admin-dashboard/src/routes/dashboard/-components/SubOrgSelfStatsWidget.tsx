@@ -4,19 +4,17 @@ import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
     ArrowRight,
-    BookOpen,
     CaretRight,
+    Coins,
     CurrencyInr,
     GraduationCap,
     UsersThree,
     type Icon,
 } from '@phosphor-icons/react';
-import {
-    getScopedInvites,
-    getSubOrgFinanceDetail,
-} from '@/routes/manage-custom-teams/-services/custom-team-services';
+import { getSubOrgFinanceDetail } from '@/routes/manage-custom-teams/-services/custom-team-services';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
-import { getValidSelectedSubOrgId } from '@/lib/auth/facultyAccessUtils';
+import { getValidSelectedSubOrgId, getFacultyAccessData } from '@/lib/auth/facultyAccessUtils';
+import { fetchCollectionSummary } from '../-services/collection-summary-service';
 
 interface StatVisual {
     Icon: Icon;
@@ -48,21 +46,6 @@ const inr = (n: number): string => {
 
 const nfmt = (n: number) => n.toLocaleString('en-IN');
 
-/** Distinct package sessions across a sub-org's scoped invites = its course count. */
-const courseCountFromInvites = (invites: unknown): number => {
-    if (!Array.isArray(invites)) return 0;
-    const ids = new Set<string>();
-    invites.forEach((inv) => {
-        const pss = (inv as { package_sessions?: { id?: string }[] })?.package_sessions;
-        if (Array.isArray(pss)) {
-            pss.forEach((ps) => {
-                if (ps?.id) ids.add(ps.id);
-            });
-        }
-    });
-    return ids.size;
-};
-
 /**
  * Self-scoped stats for a SUB-ORG ADMIN's dashboard: their own sub-org's
  * learners, seats used/total, courses and outstanding fees — as KPI stat cards
@@ -80,7 +63,12 @@ const courseCountFromInvites = (invites: unknown): number => {
 export default function SubOrgSelfStatsWidget() {
     const navigate = useNavigate();
     const instituteId = getCurrentInstituteId();
-    const subOrgId = getValidSelectedSubOrgId();
+    // Prefer the validated selected sub-org, else fall back to the caller's first
+    // faculty-access sub-org — the selected id is cleared on login, so a freshly
+    // logged-in sub-org admin often has it null, which used to hide this whole
+    // widget (no learner/seat/revenue KPIs shown at all).
+    const subOrgId =
+        getValidSelectedSubOrgId() ?? getFacultyAccessData()?.subOrgs?.[0]?.subOrgId ?? null;
 
     const { data: finance, isLoading: financeLoading, isError } = useQuery({
         queryKey: ['sub-org-self-finance', subOrgId, instituteId],
@@ -90,10 +78,13 @@ export default function SubOrgSelfStatsWidget() {
         retry: false,
     });
 
-    const { data: scopedInvites } = useQuery({
-        queryKey: ['sub-org-self-scoped-invites', subOrgId],
-        queryFn: () => getScopedInvites(subOrgId || ''),
-        enabled: !!subOrgId,
+    // All-time collected fees for this sub-org (needs the collection-summary
+    // backend deployed; shows ₹0 until then).
+    const { data: collection } = useQuery({
+        queryKey: ['sub-org-self-collection', subOrgId, instituteId],
+        queryFn: () =>
+            fetchCollectionSummary({ institute_id: instituteId || '', sub_org_id: subOrgId || '' }),
+        enabled: !!subOrgId && !!instituteId,
         staleTime: 60_000,
         retry: false,
     });
@@ -109,7 +100,7 @@ export default function SubOrgSelfStatsWidget() {
     const remaining = seat?.remaining ?? null;
     const learners = finance?.totals?.learner_count ?? 0;
     const outstanding = finance?.totals?.total_outstanding ?? 0;
-    const courses = courseCountFromInvites(scopedInvites);
+    const collected = collection?.total_amount ?? 0;
     const heading = finance?.sub_org_name?.trim() || 'My organization';
 
     const stats: Stat[] = [
@@ -141,12 +132,12 @@ export default function SubOrgSelfStatsWidget() {
             },
         },
         {
-            key: 'courses',
-            label: 'Courses',
-            value: nfmt(courses),
-            subtitle: 'Assigned courses',
+            key: 'collected',
+            label: 'Collected',
+            value: inr(collected),
+            subtitle: 'Fees received',
             visual: {
-                Icon: BookOpen,
+                Icon: Coins,
                 iconBg: 'bg-emerald-100',
                 iconColor: 'text-emerald-600',
                 cardBg: 'bg-gradient-to-br from-emerald-50/60 to-white',
@@ -171,17 +162,15 @@ export default function SubOrgSelfStatsWidget() {
     return (
         <section className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-                <div className="flex min-w-0 items-center gap-2">
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
-                        <UsersThree size={14} weight="duotone" />
+                <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600">
+                        <UsersThree size={18} weight="duotone" />
                     </span>
                     <div className="min-w-0">
-                        <h3 className="line-clamp-1 text-sm font-semibold text-neutral-900">
+                        <p className="text-xs font-medium text-neutral-400">Welcome back</p>
+                        <h3 className="line-clamp-1 text-base font-semibold text-neutral-900">
                             {heading}
                         </h3>
-                        <p className="line-clamp-1 text-xs text-neutral-500">
-                            Your organization at a glance
-                        </p>
                     </div>
                 </div>
                 <button

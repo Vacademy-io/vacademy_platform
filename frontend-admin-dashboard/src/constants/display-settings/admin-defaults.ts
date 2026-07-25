@@ -72,9 +72,16 @@ function defaultDashboardWidgetsAdmin(): DashboardWidgetConfig[] {
         'pendingActions',
         // 4. Operational health (finance)
         'financeSummary',
+        'revenueTrends',
         'recentTransactions',
         'subOrgOverview',
         'subOrgSelfStats',
+        'subOrgRevenueTrends',
+        'subOrgGeography',
+        'vleAnalytics',
+        'topVles',
+        'subOrgSeatCourses',
+        'subOrgActivityDues',
         // 5. Engagement signals
         'unresolvedDoubts',
         'recentNotifications',

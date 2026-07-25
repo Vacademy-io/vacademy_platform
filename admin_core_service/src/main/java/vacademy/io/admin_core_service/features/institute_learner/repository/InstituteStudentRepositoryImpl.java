@@ -169,13 +169,43 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         }
     }
 
+    /**
+     * Scopes the list to a sub-org using CANONICAL membership: a learner belongs
+     * to a sub-org if they are tagged to it (ssigm.sub_org_id) OR they enrolled
+     * through one of that sub-org's invites (up.enroll_invite_id -> an enroll
+     * invite whose sub_org_id matches). SUBORG_LEARNER self-enrollees have a NULL
+     * ssigm.sub_org_id but their user_plan points at the sub-org invite, so a plain
+     * `ssigm.sub_org_id IN (:subOrgIds)` dropped them from the Students tab while
+     * the dashboard / seat-count (which use this same union) counted them. This
+     * aligns the two. Only emitted when subOrgIds is present (parent-admin lists,
+     * which send none, are unchanged).
+     */
+    private void appendSubOrgMembershipFilter(StringBuilder whereClause, Map<String, Object> parameters,
+            List<String> subOrgIds) {
+        if (subOrgIds != null && !subOrgIds.isEmpty()) {
+            whereClause.append("AND (ssigm.sub_org_id IN (:subOrgIds) ");
+            whereClause.append("  OR up.enroll_invite_id IN (SELECT ei_so.id FROM enroll_invite ei_so WHERE ei_so.sub_org_id IN (:subOrgIds))) ");
+            parameters.put("subOrgIds", subOrgIds);
+        }
+    }
+
     private void appendEnrollInviteFilter(StringBuilder whereClause, Map<String, Object> parameters,
-            List<String> enrollInviteIds, List<String> enrollInvitePackageSessionIds) {
+            List<String> enrollInviteIds, List<String> enrollInvitePackageSessionIds,
+            List<String> subOrgIds) {
         if (enrollInviteIds != null && !enrollInviteIds.isEmpty()
                 && enrollInvitePackageSessionIds != null && !enrollInvitePackageSessionIds.isEmpty()) {
             whereClause.append("AND ( ");
             whereClause.append("  (ssigm.package_session_id IN (:enrollInvitePsIds) AND up.enroll_invite_id IN (:enrollInviteIds)) ");
             whereClause.append("  OR ssigm.package_session_id NOT IN (:enrollInvitePsIds) ");
+            // Canonical sub-org membership arm: a learner tagged to the sub-org
+            // (ssigm.sub_org_id) belongs to it even if they enrolled via a host/
+            // DEFAULT invite — the same UNION the seat-count / finance-detail
+            // queries use. Without this the sub-org admin's Students tab dropped
+            // such learners while the dashboard counted them. :subOrgIds is
+            // already bound by addListFilter when the FE sends sub_org_ids.
+            if (subOrgIds != null && !subOrgIds.isEmpty()) {
+                whereClause.append("  OR ssigm.sub_org_id IN (:subOrgIds) ");
+            }
             whereClause.append(") ");
             parameters.put("enrollInviteIds", enrollInviteIds);
             parameters.put("enrollInvitePsIds", enrollInvitePackageSessionIds);
@@ -277,7 +307,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         addListFilter(whereClause, parameters, "typeIds", "ssigm.type_id", typeIds);
         addListFilter(whereClause, parameters, "destinationPackageSessionIds", "ssigm.destination_package_session_id", destinationPackageSessionIds);
         addListFilter(whereClause, parameters, "levelIds", "ssigm.desired_level_id", levelIds);
-        addListFilter(whereClause, parameters, "subOrgIds", "ssigm.sub_org_id", subOrgIds);
+        appendSubOrgMembershipFilter(whereClause, parameters, subOrgIds);
 
         // Date range filter
         if (startDate != null && endDate != null) {
@@ -323,7 +353,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         appendTypedCustomFieldFilter(whereClause, parameters, cfTypedMatchedUserIds, cfTypedExcludedUserIds);
 
         // Enroll invite filter
-        appendEnrollInviteFilter(whereClause, parameters, enrollInviteIds, enrollInvitePackageSessionIds);
+        appendEnrollInviteFilter(whereClause, parameters, enrollInviteIds, enrollInvitePackageSessionIds, subOrgIds);
 
         // Build main query
         String mainQuery = BASE_SELECT + whereClause.toString() + GROUP_BY
@@ -392,7 +422,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         addListFilter(whereClause, parameters, "typeIds", "ssigm.type_id", typeIds);
         addListFilter(whereClause, parameters, "destinationPackageSessionIds", "ssigm.destination_package_session_id", destinationPackageSessionIds);
         addListFilter(whereClause, parameters, "levelIds", "ssigm.desired_level_id", levelIds);
-        addListFilter(whereClause, parameters, "subOrgIds", "ssigm.sub_org_id", subOrgIds);
+        appendSubOrgMembershipFilter(whereClause, parameters, subOrgIds);
 
         // Date range filter
         if (startDate != null && endDate != null) {
@@ -438,7 +468,7 @@ public class InstituteStudentRepositoryImpl implements InstituteStudentRepositor
         appendTypedCustomFieldFilter(whereClause, parameters, cfTypedMatchedUserIds, cfTypedExcludedUserIds);
 
         // Enroll invite filter
-        appendEnrollInviteFilter(whereClause, parameters, enrollInviteIds, enrollInvitePackageSessionIds);
+        appendEnrollInviteFilter(whereClause, parameters, enrollInviteIds, enrollInvitePackageSessionIds, subOrgIds);
 
         // Build main query
         String mainQuery = BASE_SELECT + whereClause.toString() + GROUP_BY

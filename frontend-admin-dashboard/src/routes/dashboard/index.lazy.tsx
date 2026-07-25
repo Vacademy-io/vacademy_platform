@@ -77,7 +77,17 @@ import KpiBand from './-components/KpiBand';
 import FinanceSummaryWidget from './-components/FinanceSummaryWidget';
 import SubOrgOverviewWidget from './-components/SubOrgOverviewWidget';
 import SubOrgSelfStatsWidget from './-components/SubOrgSelfStatsWidget';
-import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
+import SubOrgGeographyWidget from './-components/SubOrgGeographyWidget';
+import RevenueTrendsWidget from './-components/RevenueTrendsWidget';
+import VLEInsightsWidget from './-components/VLEInsightsWidget';
+import TopVlesWidget from './-components/TopVlesWidget';
+import SubOrgSeatCoursesWidget from './-components/SubOrgSeatCoursesWidget';
+import SubOrgActivityDuesWidget from './-components/SubOrgActivityDuesWidget';
+import {
+    isCallerSubOrgAdmin,
+    getValidSelectedSubOrgId,
+    getFacultyAccessData,
+} from '@/lib/auth/facultyAccessUtils';
 import RecentTransactionsWidget from './-components/RecentTransactionsWidget';
 import FreshInstituteEmptyState from './-components/FreshInstituteEmptyState';
 import TrackedWidget from './-components/TrackedWidget';
@@ -415,6 +425,11 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
     // alone can't distinguish them — the FSPSSM-derived faculty-access data is the
     // canonical fingerprint. Drives which sub-org card they see (own scope vs network).
     const isSubOrgAdmin = isCallerSubOrgAdmin();
+    // The sub-org this admin belongs to — prefer the validated selected id, else
+    // fall back to their first faculty-access sub-org (the selected id is cleared
+    // on login, so it's often null for a freshly-logged-in sub-org admin).
+    const callerSubOrgId =
+        getValidSelectedSubOrgId() ?? getFacultyAccessData()?.subOrgs?.[0]?.subOrgId ?? null;
 
     // Non-blocking: each widget that depends on `data` handles its own
     // loading/empty state. Previously this was `useSuspenseQuery`, which
@@ -626,6 +641,14 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                         )}
                     </div>
                 )}
+                {/* Institute-wide amount collected with a 3d/7d/24d/All time filter.
+                    Parent admin only (sub-org admins get their own scoped version below);
+                    toggle id: revenueTrends. */}
+                {isAdmin && !isSubOrgAdmin && !isFreshTenant && isWidgetVisible('revenueTrends') && (
+                    <TrackedWidget widgetId="revenueTrends">
+                        <RevenueTrendsWidget />
+                    </TrackedWidget>
+                )}
                 {/* Sub-org (VLE) NETWORK snapshot — for the PARENT admin. Hidden for sub-org
                     admins (they'd otherwise see the whole parent network, wrong scope); they
                     get their own scoped card below instead. Per-role toggle:
@@ -636,12 +659,52 @@ export function DashboardComponent({ onOpenAllAlerts }: { onOpenAllAlerts?: () =
                         <SubOrgOverviewWidget />
                     </TrackedWidget>
                 )}
+                {/* Where the parent institute's sub-orgs are located (state/city/pincode).
+                    Parent admin only; self-hides when there are no sub-orgs. Toggle id:
+                    subOrgGeography. */}
+                {!isFreshTenant && !isSubOrgAdmin && isWidgetVisible('subOrgGeography') && (
+                    <TrackedWidget widgetId="subOrgGeography">
+                        <SubOrgGeographyWidget />
+                    </TrackedWidget>
+                )}
+                {/* VLE network analytics (plans/seats/growth) — parent admin. Toggle id: vleAnalytics. */}
+                {!isFreshTenant && !isSubOrgAdmin && isWidgetVisible('vleAnalytics') && (
+                    <TrackedWidget widgetId="vleAnalytics">
+                        <VLEInsightsWidget />
+                    </TrackedWidget>
+                )}
+                {/* Top VLEs by seats used — parent admin. Toggle id: topVles. */}
+                {!isFreshTenant && !isSubOrgAdmin && isWidgetVisible('topVles') && (
+                    <TrackedWidget widgetId="topVles">
+                        <TopVlesWidget />
+                    </TrackedWidget>
+                )}
                 {/* Sub-org admin's OWN stats (learners / seats / courses / outstanding),
                     scoped to the sub-org they're in. Only ever for a sub-org admin; toggle
                     id: subOrgSelfStats. */}
                 {!isFreshTenant && isSubOrgAdmin && isWidgetVisible('subOrgSelfStats') && (
                     <TrackedWidget widgetId="subOrgSelfStats">
                         <SubOrgSelfStatsWidget />
+                    </TrackedWidget>
+                )}
+                {/* Sub-org admin's OWN amount collected with a 3d/7d/24d/All time filter,
+                    scoped to their sub-org. Only for a sub-org admin; toggle id:
+                    subOrgRevenueTrends. */}
+                {!isFreshTenant && isSubOrgAdmin && callerSubOrgId && isWidgetVisible('subOrgRevenueTrends') && (
+                    <TrackedWidget widgetId="subOrgRevenueTrends">
+                        <RevenueTrendsWidget subOrgId={callerSubOrgId} title="Amount collected — my organization" />
+                    </TrackedWidget>
+                )}
+                {/* Sub-org admin: seat utilization + course catalogue. Toggle id: subOrgSeatCourses. */}
+                {!isFreshTenant && isSubOrgAdmin && callerSubOrgId && isWidgetVisible('subOrgSeatCourses') && (
+                    <TrackedWidget widgetId="subOrgSeatCourses">
+                        <SubOrgSeatCoursesWidget />
+                    </TrackedWidget>
+                )}
+                {/* Sub-org admin: recent enrollments + plan/dues. Toggle id: subOrgActivityDues. */}
+                {!isFreshTenant && isSubOrgAdmin && callerSubOrgId && isWidgetVisible('subOrgActivityDues') && (
+                    <TrackedWidget widgetId="subOrgActivityDues">
+                        <SubOrgActivityDuesWidget />
                     </TrackedWidget>
                 )}
                 {/* My Courses Widget - Only for Non-Admin Users */}

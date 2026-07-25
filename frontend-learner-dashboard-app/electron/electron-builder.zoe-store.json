@@ -2,7 +2,7 @@
   "appId": "com.zoeedtech.app",
   "productName": "ZOE Edtech",
   "directories": {
-    "buildResources": "resources",
+    "buildResources": "resources-zoe",
     "output": "dist-store"
   },
   "files": [

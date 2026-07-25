@@ -251,13 +251,29 @@ export interface LearnerManagementSettings {
     showApprovalToggle: boolean;
 }
 
+// What a custom header button links to.
+//  - 'url' (default): opens the manually-entered `url`.
+//  - 'suborg_learner_invite': auto-resolves the VIEWER's sub-org SUBORG_LEARNER
+//     invite link for the course being viewed. Only renders for a sub-org admin
+//     on a course Student tab (needs a selected sub-org + a package session).
+//     Learners who enrol through it appear in the sub-org admin's learner list.
+//  - 'course_invite': auto-resolves the course's DEFAULT learner invite link for
+//     the package session being viewed.
+export type StudentHeaderButtonKind = 'url' | 'suborg_learner_invite' | 'course_invite';
+
 // A custom link button rendered in the Learner Management header (the Student
 // tab on Course Details + the standalone learner lists). Lets an admin surface
-// an invite link or a sub-org learner registration link as a one-click action.
+// a manual link, the sub-org learner invite link, or the course invite link as
+// a one-click action.
 export interface StudentHeaderCustomButton {
     id: string;
     label: string;
-    url: string;
+    // Link source. Missing/undefined = 'url' (backwards-compatible with buttons
+    // saved before kinds existed).
+    kind?: StudentHeaderButtonKind;
+    // Manual URL — used only when kind is 'url'/undefined; ignored for the auto
+    // (invite-resolving) kinds.
+    url?: string;
     // Open the URL in a new browser tab. Default (undefined/true) = new tab.
     openInNewTab?: boolean;
 }

@@ -10,6 +10,7 @@ import { type CodingTestCase, effectiveAccepted } from '../utils/code-editor-typ
 interface Props {
     testCases: CodingTestCase[];
     onChange: (next: CodingTestCase[]) => void;
+    maxPoints?: number;
     disabled?: boolean;
 }
 
@@ -26,7 +27,7 @@ function newCase(idx: number, visible: boolean): CodingTestCase {
     };
 }
 
-export function TestCaseList({ testCases, onChange, disabled }: Props) {
+export function TestCaseList({ testCases, onChange, maxPoints, disabled }: Props) {
     const add = useCallback(
         (visible: boolean) => {
             const sameKind = testCases.filter((t) => t.visible === visible).length;
@@ -51,9 +52,37 @@ export function TestCaseList({ testCases, onChange, disabled }: Props) {
 
     const sampleCount = testCases.filter((t) => t.visible).length;
     const hiddenCount = testCases.length - sampleCount;
+    const perHiddenMark =
+        maxPoints && hiddenCount > 0 ? Number((maxPoints / hiddenCount).toFixed(2)) : null;
+    const perSampleMark =
+        maxPoints && sampleCount > 0 ? Number((maxPoints / sampleCount).toFixed(2)) : null;
 
     return (
         <div className="space-y-3">
+            {testCases.length > 0 &&
+                (hiddenCount > 0 ? (
+                    <div className="rounded-md border border-primary-100 bg-primary-50 p-3 text-xs text-neutral-600">
+                        <span className="font-semibold text-primary-600">How this is graded: </span>
+                        Marks are awarded on the {hiddenCount} hidden test case
+                        {hiddenCount === 1 ? '' : 's'}
+                        {perHiddenMark !== null
+                            ? ` — ${maxPoints} marks ÷ ${hiddenCount} = ${perHiddenMark} per hidden test passed`
+                            : ' — full marks split equally across hidden tests'}
+                        . Sample tests only let learners check their output format and do not affect
+                        the score.
+                    </div>
+                ) : (
+                    <div className="rounded-md border border-warning-200 bg-warning-50 p-3 text-xs text-warning-700">
+                        <span className="font-semibold">⚠ No hidden test cases. </span>
+                        Marks will fall back to your {sampleCount} sample test
+                        {sampleCount === 1 ? '' : 's'}
+                        {perSampleMark !== null
+                            ? ` (${maxPoints} marks ÷ ${sampleCount} = ${perSampleMark} each)`
+                            : ''}
+                        {' '}— but learners can see sample expected outputs, so they can score full
+                        marks without solving the problem. Add a hidden test case.
+                    </div>
+                ))}
             <div className="flex items-center justify-between">
                 <div className="text-sm text-muted-foreground">
                     {sampleCount} sample · {hiddenCount} hidden · {testCases.length} total

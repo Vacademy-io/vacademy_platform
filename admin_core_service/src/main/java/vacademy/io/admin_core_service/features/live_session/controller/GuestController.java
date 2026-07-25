@@ -46,6 +46,21 @@ public class GuestController {
     @Autowired
     private vacademy.io.admin_core_service.features.live_session.service.LiveSessionPaymentService liveSessionPaymentService;
 
+    /**
+     * Open schedule → session resolution. Lets a guest page that only knows the
+     * scheduleId (embed / waiting-room deep links) find the parent session so it
+     * can bounce an unidentified visitor to the public registration page — the
+     * place that recovers identity (email/phone + OTP) — instead of dead-ending
+     * on the paid-access 403. Returns only the id, no gated details.
+     */
+    @GetMapping("/session-id-by-schedule-id")
+    ResponseEntity<Map<String, String>> getSessionIdByScheduleId(
+            @RequestParam("scheduleId") String scheduleId) {
+        SessionSchedule schedule = scheduleRepository.findById(scheduleId)
+                .orElseThrow(() -> new VacademyException("Schedule not found: " + scheduleId));
+        return ResponseEntity.ok(Map.of("sessionId", schedule.getSessionId()));
+    }
+
     @GetMapping("/get-session-by-schedule-id")
     ResponseEntity<GetSessionDetailsBySessionIdResponseDTO> getSessionByScheduleIdForGuestUser(
             @RequestParam("scheduleId") String scheduleId,

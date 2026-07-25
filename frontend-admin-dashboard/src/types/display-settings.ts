@@ -251,6 +251,29 @@ export interface LearnerManagementSettings {
     showApprovalToggle: boolean;
 }
 
+// A custom link button rendered in the Learner Management header (the Student
+// tab on Course Details + the standalone learner lists). Lets an admin surface
+// an invite link or a sub-org learner registration link as a one-click action.
+export interface StudentHeaderCustomButton {
+    id: string;
+    label: string;
+    url: string;
+    // Open the URL in a new browser tab. Default (undefined/true) = new tab.
+    openInNewTab?: boolean;
+}
+
+// Per-role control of the action buttons in the Learner Management header.
+export interface StudentManagementActionSettings {
+    // Show the built-in "Enroll" button. Default (undefined/true) = shown.
+    showEnrollButton?: boolean;
+    // Show the built-in "Invite" button. Default (undefined/true) = shown.
+    showInviteButton?: boolean;
+    // Custom link buttons rendered alongside the built-in buttons. Missing/empty
+    // = none. Each is a label + URL an admin pastes (invite link, sub-org learner
+    // registration link, or any other link).
+    customButtons?: StudentHeaderCustomButton[];
+}
+
 // Per-role column visibility on the manage-students learner-list. Holds the
 // set of column accessors (system field accessorKey, e.g. 'mobile_number', or
 // a custom-field UUID) this role must NOT see. Missing/empty list = role
@@ -489,6 +512,12 @@ export interface DisplaySettingsData {
 
     // 13) Learner management permissions for admins/teachers
     learnerManagement?: LearnerManagementSettings;
+
+    // 13a) Learner Management header action buttons — hide the built-in
+    //      Enroll/Invite buttons per role and add custom link buttons (e.g. an
+    //      invite link or sub-org learner registration link). Missing = defaults
+    //      (both built-in buttons shown, no custom buttons).
+    studentManagementActions?: StudentManagementActionSettings;
 
     // 13b) Live class scheduling controls. Role-level overlay on top of the
     //      institute-level Live Session Settings — admin can hide bulk

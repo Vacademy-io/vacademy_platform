@@ -32,6 +32,7 @@ import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/adm
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { LearnerListColumnsCard } from './LearnerListColumnsCard';
 import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
+import { StudentManagementActionsCard } from './StudentManagementActionsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { toast } from 'sonner';
 import {
@@ -2214,6 +2215,16 @@ export default function AdminDisplaySettings() {
                     ))}
                 </CardContent>
             </Card>
+
+            <StudentManagementActionsCard
+                settings={settings.studentManagementActions}
+                onChange={(next) =>
+                    updateSettings((prev) => ({
+                        ...prev,
+                        studentManagementActions: next,
+                    }))
+                }
+            />
             </section>
 
             <section id="grp-access" className="space-y-6">

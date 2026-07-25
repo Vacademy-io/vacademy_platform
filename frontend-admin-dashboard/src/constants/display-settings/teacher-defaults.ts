@@ -260,6 +260,11 @@ export const DEFAULT_TEACHER_DISPLAY_SETTINGS: DisplaySettingsData = {
         allowSendResetPasswordMail: true,
         showApprovalToggle: false,
     },
+    studentManagementActions: {
+        showEnrollButton: true,
+        showInviteButton: true,
+        customButtons: [],
+    },
     leadsFilterCustomFields: [],
     postLoginRedirectRoute: '/dashboard',
 };

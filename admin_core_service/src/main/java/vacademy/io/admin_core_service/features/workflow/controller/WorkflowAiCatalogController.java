@@ -118,8 +118,10 @@ public class WorkflowAiCatalogController {
                 "{\"templateName\":\"...\",\"on\":\"#ctx['students']\",\"forEach\":{\"operation\":\"SEND_EMAIL\",\"eval\":\"#ctx['item']\"},\"recipientField\":\"email\",\"templateVars\":{\"fullName\":\"fullName\"},\"routing\":[{\"type\":\"end\"}]}",
                 "'on' must be a List. Recipient resolved from recipientField then to/email/... Rate-limited."));
         nodes.add(node("SEND_WHATSAPP", "Like SEND_EMAIL for WhatsApp; mobile-based recipients.", true, false,
-                "{\"templateName\":\"...\",\"on\":\"#ctx['leads']\",\"forEach\":{\"operation\":\"SEND_WHATSAPP\",\"eval\":\"#ctx['item']\"},\"templateVars\":{},\"routing\":[{\"type\":\"end\"}]}",
-                "'on' must be a List. Mobile from mobileNumber/mobile/phone/to. Rate-limited."));
+                "{\"templateName\":\"...\",\"on\":\"#ctx['leads']\",\"forEach\":{\"operation\":\"SEND_WHATSAPP\",\"eval\":\"#ctx['item']\"},\"templateVars\":{\"1\":\"full_name\"},\"routing\":[{\"type\":\"end\"}]}",
+                "'on' must be a List. Mobile from mobileNumber/mobile_number/mobile/phone/to. Rate-limited. "
+                        + "templateVars values resolve per item: '#'-prefixed SpEL (both #ctx and #item bound, e.g. \"#item['full_name']\"), "
+                        + "else an item field name (preferred — e.g. \"full_name\"), else sent as a literal. Keys are the Meta template's positional placeholders (\"1\", \"2\", ...)."));
         nodes.add(node("HTTP_REQUEST", "Generic HTTP call; response namespaced under resultKey.", true, false,
                 "{\"resultKey\":\"httpResult\",\"config\":{\"requestType\":\"EXTERNAL\",\"method\":\"POST\",\"url\":\"...\",\"body\":{}},\"routing\":[{\"type\":\"end\"}]}",
                 "Response at #ctx['<resultKey>']['body']. Optional SpEL 'condition' to skip."));

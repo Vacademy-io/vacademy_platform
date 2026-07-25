@@ -7,7 +7,7 @@ export const userRoleSchema = z.object({
 
 export const adminProfileSchema = z.object({
     profilePictureUrl: z.string(),
-    profilePictureId: z.union([z.string(), z.undefined()]),
+    profilePictureId: z.union([z.string(), z.undefined(), z.null()]),
     name: z.string().min(1, 'Name is required'),
     roleType: z.array(z.string()),
     email: z

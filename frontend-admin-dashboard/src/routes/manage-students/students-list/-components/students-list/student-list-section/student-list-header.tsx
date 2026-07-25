@@ -21,7 +21,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { getInstituteId } from '@/constants/helper';
 import { GET_INVITE_LINKS, GET_DEFAULT_INVITE } from '@/constants/urls';
 import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
-import { getValidSelectedSubOrgId } from '@/lib/auth/facultyAccessUtils';
+import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import CreateInvite from '@/routes/manage-students/invite/-components/create-invite/CreateInvite';
@@ -240,9 +240,14 @@ export const StudentListHeader = ({
     const needsSubOrgInvite = rawButtons.some((b) => b.kind === 'suborg_learner_invite');
     const needsCourseInvite = rawButtons.some((b) => b.kind === 'course_invite');
 
-    // Sub-org context signal — same one the navbar/sidebar/Students tab use. Null
-    // for the parent institute admin, so sub-org invite buttons stay hidden there.
-    const selectedSubOrgId = getValidSelectedSubOrgId();
+    // Is the viewer a sub-org admin? Use the faculty-access signal (has any
+    // sub-orgs) rather than the localStorage "selected sub-org" — that key is
+    // cleared on login and only re-set when a sub-org is explicitly picked, so a
+    // legitimately-logged-in sub-org admin often has it null, which wrongly hid
+    // the sub-org invite button. False for the parent institute admin, so the
+    // button stays hidden there. The get-enroll-invite query below is FSPSSM-
+    // scoped to the caller, so it still resolves only THIS admin's own invite.
+    const isSubOrgAdmin = isCallerSubOrgAdmin();
     const instituteId = getInstituteId();
     const learnerBase = instituteDetails?.learner_portal_base_url;
 
@@ -251,7 +256,7 @@ export const StudentListHeader = ({
     // returns only THEIR sub-org's learner invite for this package session — a
     // learner who enrolls through it lands in the sub-org admin's learner list.
     const { data: subOrgInviteCode } = useQuery({
-        queryKey: ['suborg-learner-invite-code', packageSessionId, selectedSubOrgId, instituteId],
+        queryKey: ['suborg-learner-invite-code', packageSessionId, instituteId],
         queryFn: async (): Promise<string | null> => {
             const res = await authenticatedAxiosInstance.post(
                 `${GET_INVITE_LINKS}?instituteId=${instituteId}&pageNo=0&pageSize=20`,
@@ -268,7 +273,7 @@ export const StudentListHeader = ({
                 | undefined;
             return row?.invite_code ?? row?.inviteCode ?? null;
         },
-        enabled: needsSubOrgInvite && !!packageSessionId && !!selectedSubOrgId && !!instituteId,
+        enabled: needsSubOrgInvite && !!packageSessionId && isSubOrgAdmin && !!instituteId,
         staleTime: 5 * 60 * 1000,
     });
 
@@ -294,7 +299,7 @@ export const StudentListHeader = ({
         const kind = button.kind ?? 'url';
         if (kind === 'url') return button.url?.trim() || null;
         if (kind === 'suborg_learner_invite') {
-            if (!selectedSubOrgId || !packageSessionId || !subOrgInviteCode) return null;
+            if (!isSubOrgAdmin || !packageSessionId || !subOrgInviteCode) return null;
             return createInviteLink(subOrgInviteCode, learnerBase);
         }
         if (kind === 'course_invite') {

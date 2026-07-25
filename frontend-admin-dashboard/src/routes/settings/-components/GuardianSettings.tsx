@@ -22,8 +22,15 @@ import { createMessageTemplate, getMessageTemplate } from '@/services/message-te
 import { buildSampleGuardianCredentialsTemplate } from './sample-guardian-credentials-template';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { BASE_URL, GET_INSITITUTE_SETTINGS } from '@/constants/urls';
-import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
+import { BASE_URL, GET_INSITITUTE_SETTINGS, EXPORT_GUARDIAN_CREDENTIALS } from '@/constants/urls';
+import {
+    getCurrentInstituteId,
+    getActiveRoleDisplaySettingsKey,
+} from '@/lib/auth/instituteUtils';
+import {
+    getDisplaySettingsWithFallback,
+    getDisplaySettingsFromCache,
+} from '@/services/display-settings';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -538,6 +545,9 @@ export default function GuardianSettings() {
                     emptyStateLabel="Every lead already has a guardian linked. Nothing to backfill."
                     awaitingLabel="awaiting a guardian (leads)"
                 />
+
+                {/* ── Export guardian credentials ── */}
+                {settings.enabled && <GuardianCredentialsExport />}
             </div>
         </div>
     );
@@ -676,6 +686,94 @@ function BackfillSection({
                 heading={dialogHeading}
             />
         </>
+    );
+}
+
+// ─── Guardian credentials export ──────────────────────────────────────────────
+
+/**
+ * Downloads a CSV of every linked guardian's login credentials — the delivery
+ * mechanism for backfilled guardians, whose synthetic @vacademy.com address
+ * can't receive the credential email. Contains plaintext passwords, so it's
+ * gated on the same `allowViewPassword` role setting that guards credential
+ * reveal in the student side-view.
+ */
+function GuardianCredentialsExport() {
+    const [allowViewPassword, setAllowViewPassword] = useState<boolean | null>(null);
+    const [exporting, setExporting] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            const roleKey = getActiveRoleDisplaySettingsKey();
+            const cached = getDisplaySettingsFromCache(roleKey);
+            const settings =
+                cached?.learnerManagement ??
+                (await getDisplaySettingsWithFallback(roleKey)).learnerManagement;
+            if (!cancelled) setAllowViewPassword(settings?.allowViewPassword ?? false);
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    const handleExport = async () => {
+        setExporting(true);
+        try {
+            const instituteId = getCurrentInstituteId();
+            const response = await authenticatedAxiosInstance({
+                method: 'GET',
+                url: EXPORT_GUARDIAN_CREDENTIALS,
+                params: { instituteId },
+                responseType: 'blob',
+            });
+            const url = window.URL.createObjectURL(new Blob([response.data as BlobPart]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'guardian-credentials.csv');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success('Guardian credentials exported');
+        } catch {
+            toast.error('Failed to export guardian credentials');
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    if (allowViewPassword === false) {
+        return null;
+    }
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Export Guardian Credentials</CardTitle>
+                <CardDescription>
+                    Download a CSV of every linked guardian&apos;s login details (one row per
+                    guardian, with their linked students). Useful for distributing parent-portal
+                    logins in bulk — especially for backfilled guardians, whose placeholder email
+                    address can&apos;t receive the credential email.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+                <p className="text-caption text-warning-600">
+                    This file contains plaintext passwords. Handle and share it carefully.
+                </p>
+                <div>
+                    <MyButton
+                        buttonType="secondary"
+                        scale="medium"
+                        onClick={handleExport}
+                        disable={exporting || allowViewPassword === null}
+                    >
+                        {exporting ? 'Exporting…' : 'Export Credentials CSV'}
+                    </MyButton>
+                </div>
+            </CardContent>
+        </Card>
     );
 }
 

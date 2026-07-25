@@ -143,6 +143,18 @@ function PaymentResultPage() {
   // Invoice payments: just show the success screen, no enrollment redirect.
   // The invoice page is public; the learner may not have a dashboard session.
 
+  // Invoice payment with an in-app continue target (e.g. a paid live class):
+  // hand the user straight back — the target page resumes into the session.
+  useEffect(() => {
+    if (!isPaid || !isInvoicePayment || !safeRedirectPath) return;
+    if (hasRedirectedRef.current) return;
+    hasRedirectedRef.current = true;
+    const timer = setTimeout(() => {
+      window.location.href = `${window.location.origin}${safeRedirectPath}`;
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [isPaid, isInvoicePayment, safeRedirectPath]);
+
   // When payment is successful: auto-login via tokens from status API, or fallback to stored creds + login API
   useEffect(() => {
     if (!isPaid || hasRedirectedRef.current || isInvoicePayment) return;
@@ -311,16 +323,21 @@ function PaymentResultPage() {
               </p>
             )}
             {isInvoicePayment && safeRedirectPath ? (
-              <a
-                href={
-                  typeof window !== "undefined"
-                    ? `${window.location.origin}${safeRedirectPath}`
-                    : `${BASE_URL_LEARNER_DASHBOARD}${safeRedirectPath}`
-                }
-                className="inline-flex items-center justify-center px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 font-medium"
-              >
-                Continue
-              </a>
+              <>
+                <p className="text-gray-600 mb-2">
+                  Taking you to your live class…
+                </p>
+                <a
+                  href={
+                    typeof window !== "undefined"
+                      ? `${window.location.origin}${safeRedirectPath}`
+                      : `${BASE_URL_LEARNER_DASHBOARD}${safeRedirectPath}`
+                  }
+                  className="inline-flex items-center justify-center px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 font-medium"
+                >
+                  Continue now
+                </a>
+              </>
             ) : isInvoicePayment ? null : (
               <a
                 href={

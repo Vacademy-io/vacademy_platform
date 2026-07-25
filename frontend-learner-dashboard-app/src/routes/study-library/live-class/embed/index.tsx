@@ -13,6 +13,7 @@ import ZoomMeetingSdkPlayer from "./-components/ZoomMeetingSdkPlayer";
 import ZohoEmbedPlayer from "./-components/ZohoEmbedPlayer";
 import GoogleMeetLauncher from "./-components/GoogleMeetLauncher";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
+import { extractYouTubeVideoId, isYouTubeUrl } from "@/utils/youtube";
 import { useServerTime, getServerTime } from "@/hooks/use-server-time";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -233,15 +234,6 @@ function EmbedComponent() {
     return () => clearInterval(checkInterval);
   }, [fetchedSessionDetails, serverTimeData, navigate, sessionId]);
 
-  // Helper to safely extract a YouTube video ID from various URL formats
-  const extractYouTubeVideoId = (url: string): string | null => {
-    if (!url) return null;
-    const regExp =
-      /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|live\/))([a-zA-Z0-9_-]{11})/;
-    const match = url.match(regExp);
-    return match ? match[1] : null;
-  };
-
   const renderEmbeddedSession = () => {
     console.log("[LearnerEmbed] Session details:", sessionDetails);
     // Check link type first — BBB sessions may not have a defaultMeetLink.
@@ -312,13 +304,17 @@ function EmbedComponent() {
     if (!sessionDetails?.defaultMeetLink) return null;
 
     // --- YouTube & recorded YouTube links ---
+    // Detect by URL as well as by declared link type: a pasted youtu.be/shorts
+    // link stored with link_type "other" must still use the embedded player
+    // (a raw YouTube page refuses to load inside an iframe).
+    const youTubeCandidateLink =
+      sessionDetails.customMeetingLink ?? sessionDetails.defaultMeetLink;
     if (
       linkType === LinkType.YOUTUBE ||
-      linkType === LinkType.YOUTUBE_RECORDED
+      linkType === LinkType.YOUTUBE_RECORDED ||
+      isYouTubeUrl(youTubeCandidateLink)
     ) {
-      const videoId = extractYouTubeVideoId(
-        sessionDetails.customMeetingLink ?? sessionDetails.defaultMeetLink
-      );
+      const videoId = extractYouTubeVideoId(youTubeCandidateLink);
 
       // Handle case where video ID extraction fails
       if (!videoId) {

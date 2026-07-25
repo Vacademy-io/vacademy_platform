@@ -7,6 +7,7 @@ import {
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LinkType } from "@/routes/register/live-class/-types/enum";
 import YouTubePlayerWrapper from "@/components/common/study-library/level-material/subject-material/module-material/chapter-material/slide-material/youtube-player";
+import { extractYouTubeVideoId, isYouTubeUrl } from "@/utils/youtube";
 import ZoomEmbedPlayer from "@/routes/study-library/live-class/embed/-components/ZoomEmbedPlayer";
 import ZohoEmbedPlayer from "@/routes/study-library/live-class/embed/-components/ZohoEmbedPlayer";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
@@ -37,15 +38,6 @@ function GuestEmbedComponent() {
   } = useSessionDetails(sessionId);
   // If safety modal is disabled, we are "verified" by default.
   const [isSafetyVerified, setIsSafetyVerified] = useState(!ENABLE_LIVE_CLASS_SAFETY_MODAL);
-
-  // Utility: extract the 11-character YouTube ID from any common URL form
-  const extractYouTubeVideoId = (url: string): string | null => {
-    if (!url) return null;
-    const regExp =
-      /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|live\/))([a-zA-Z0-9_-]{11})/;
-    const match = url.match(regExp);
-    return match ? match[1] : null;
-  };
 
   const [bbbJoining, setBbbJoining] = useState(false);
   const [bbbError, setBbbError] = useState<string | null>(null);
@@ -127,13 +119,18 @@ function GuestEmbedComponent() {
     }
 
     // ----- YouTube (live or recorded) -----
+    // Detect by URL as well as by declared link type: admins paste
+    // youtu.be/shorts links with the platform dropdown on "other", and those
+    // must still render in the embedded player (a raw YouTube page refuses to
+    // load inside an iframe).
+    const meetingLink =
+      sessionDetails.customMeetingLink ?? sessionDetails.defaultMeetLink;
     if (
       linkType === LinkType.YOUTUBE ||
-      linkType === LinkType.YOUTUBE_RECORDED
+      linkType === LinkType.YOUTUBE_RECORDED ||
+      isYouTubeUrl(meetingLink)
     ) {
-      const videoId = extractYouTubeVideoId(
-        sessionDetails.customMeetingLink ?? sessionDetails.defaultMeetLink
-      );
+      const videoId = extractYouTubeVideoId(meetingLink);
       if (!videoId) {
         return (
           <div className="p-4 border border-red-200 rounded-lg bg-red-50 text-red-700">

@@ -185,6 +185,13 @@ export default function LiveClassRegistrationPage() {
 
   const goToInvoicePayment = useCallback(
     (invoiceId: string) => {
+      // Mark that we're leaving for payment so the return visit auto-resumes
+      // straight into the class instead of parking on the status card.
+      try {
+        sessionStorage.setItem(`live-session-paying:${sessionId ?? ""}`, "1");
+      } catch {
+        /* storage blocked — return flow just shows the join card instead */
+      }
       const redirect = `${window.location.pathname}${window.location.search}`;
       navigate({
         to: "/pay/invoice/$invoiceId",
@@ -192,7 +199,7 @@ export default function LiveClassRegistrationPage() {
         search: { redirect },
       });
     },
-    [navigate]
+    [navigate, sessionId]
   );
 
   // On load (refresh, closed tab, returning from the payment page): resolve
@@ -235,6 +242,29 @@ export default function LiveClassRegistrationPage() {
         setIsUserAlreadyRegistered(true);
         setAlreadyRegisteredEmail(candidateEmail || candidatePhone || "");
         if (!info.payment_required || info.payment_status === "PAID") {
+          // Fresh return from the payment page: don't park on the status card —
+          // take the payer directly into the class (waiting room / live join).
+          let cameFromPayment = false;
+          try {
+            const justPaidKey = `live-session-paying:${data.sessionId}`;
+            cameFromPayment = sessionStorage.getItem(justPaidKey) === "1";
+            if (cameFromPayment) sessionStorage.removeItem(justPaidKey);
+          } catch {
+            /* ignore */
+          }
+          if (cameFromPayment && info.payment_status === "PAID") {
+            const details = await fetchSessionDetails(
+              earliestScheduleId || sessionId || ""
+            );
+            if (details) {
+              setSessionDetails(details);
+              await handlePostRegistrationNavigation(
+                details,
+                info.registration_id
+              );
+              return;
+            }
+          }
           // refetch with the registration id now persisted (paid access needs it)
           fetchSessionDetail(earliestScheduleId || sessionId || "");
         }
@@ -395,7 +425,7 @@ export default function LiveClassRegistrationPage() {
           }
         } else if (payResponse.invoice_id) {
           toast.success(
-            "Registration saved — complete the payment to confirm your seat"
+            "Spot reserved — complete your payment to confirm your registration"
           );
           goToInvoicePayment(payResponse.invoice_id);
         }
@@ -627,7 +657,7 @@ export default function LiveClassRegistrationPage() {
             {data?.paymentRequired && !isUserAlreadyRegistered && (
               <div className="mb-3 flex items-center justify-between rounded-xl border border-primary-200 bg-primary-50 px-4 py-3">
                 <span className="text-body font-medium text-foreground">
-                  Live class fee
+                  Price
                 </span>
                 <span className="text-subtitle font-semibold text-primary-500">
                   {getCurrencySymbol(data.currency || "")}
@@ -641,18 +671,16 @@ export default function LiveClassRegistrationPage() {
               <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 shadow-sm">
                 <div>
                   <h2 className="text-subtitle font-semibold text-foreground">
-                    Payment pending
+                    Complete your registration
                   </h2>
                   <p className="mt-1 text-body text-muted-foreground">
-                    You are registered for this live class, but your seat is
-                    confirmed only after payment. You will receive an invoice by
-                    email once the payment is complete.
+                    Your spot is reserved. Complete your payment to confirm it —
+                    you&apos;ll get a receipt by email and can join once
+                    it&apos;s time.
                   </p>
                 </div>
                 <div className="flex items-center justify-between rounded-xl bg-primary-50 px-4 py-3">
-                  <span className="text-body text-muted-foreground">
-                    Amount due
-                  </span>
+                  <span className="text-body text-muted-foreground">Total</span>
                   <span className="text-subtitle font-semibold text-primary-500">
                     {getCurrencySymbol(
                       paymentInfo?.currency || data.currency || ""
@@ -672,7 +700,7 @@ export default function LiveClassRegistrationPage() {
                   }
                 >
                   <CreditCard size={18} weight="regular" />
-                  Complete Payment
+                  Pay & Confirm
                 </Button>
               </div>
             ) : isUserAlreadyRegistered && sessionDetails ? (

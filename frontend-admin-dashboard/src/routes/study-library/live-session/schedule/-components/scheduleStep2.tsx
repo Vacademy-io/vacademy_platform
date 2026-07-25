@@ -1314,7 +1314,7 @@ export default function ScheduleStep2() {
                     <SectionCard
                         icon={<CurrencyCircleDollar size={18} />}
                         title="Payment"
-                        description="Charge a one-time fee for this live class. Attendees must pay before they can register and join, and receive an invoice by email."
+                        description="Sell access to this session. Attendees pay a one-time price to register, get a receipt by email, and can only join once payment is complete."
                     >
                         <div className="flex flex-col gap-4">
                             <FormField

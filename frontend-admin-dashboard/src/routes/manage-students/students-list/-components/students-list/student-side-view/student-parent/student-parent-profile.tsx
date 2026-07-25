@@ -26,11 +26,15 @@
  * changes and no risk to other tabs.
  */
 import { useEffect, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
-import { GET_PARENT_LINK_PARENT, GET_PARENT_LINK_CHILDREN } from '@/constants/urls';
-import { Users, Plus, ArrowLeft, Key } from '@phosphor-icons/react';
+import {
+    GET_PARENT_LINK_PARENT,
+    GET_PARENT_LINK_CHILDREN,
+    SHARE_GUARDIAN_CREDENTIALS,
+} from '@/constants/urls';
+import { Users, Plus, ArrowLeft, Key, PaperPlaneTilt } from '@phosphor-icons/react';
 import { useStudentCredentails } from '@/services/student-list-section/getStudentCredentails';
 import { getCurrentInstituteId, getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import { getDisplaySettingsWithFallback, getDisplaySettingsFromCache } from '@/services/display-settings';
@@ -257,6 +261,33 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
         ? credentialsQuery.data?.password || (credentialsQuery.isLoading ? 'Loading...' : 'Password not found')
         : null;
 
+    // Emails the guardian's credentials so they can onboard to the Parent
+    // Portal. The backend picks the recipient (student vs guardian) from the
+    // institute's Guardian Setting — a backfilled guardian's own address is a
+    // synthetic placeholder, so it usually routes to the student's real email.
+    const { mutate: shareCredentials, isPending: sharingCredentials } = useMutation({
+        mutationFn: async () => {
+            const response = await authenticatedAxiosInstance.post(SHARE_GUARDIAN_CREDENTIALS, null, {
+                params: { instituteId, studentUserId: currentId },
+            });
+            return response.data as { sent: boolean; recipient_email?: string; reason?: string };
+        },
+        onSuccess: (result) => {
+            if (result.sent) {
+                toast.success(
+                    result.recipient_email
+                        ? `Guardian credentials sent to ${result.recipient_email}`
+                        : 'Guardian credentials sent'
+                );
+            } else {
+                toast.warning(result.reason || 'Could not send guardian credentials');
+            }
+        },
+        onError: () => {
+            toast.error('Failed to send guardian credentials');
+        },
+    });
+
     const submitLink = async (
         direction: 'PARENT_ADDS_STUDENT' | 'STUDENT_ADDS_PARENT',
         person: ParentLinkPersonInput
@@ -480,16 +511,28 @@ export function StudentParentProfile({ userId }: StudentParentProfileProps) {
                 icon={Users}
                 heading="Guardian"
                 action={
-                    <button
-                        type="button"
-                        onClick={() =>
-                            goInto({ id: guardian.id, name: guardian.full_name || guardian.email || 'this guardian' })
-                        }
-                        className="text-caption font-medium text-primary-500 hover:text-primary-700 hover:underline"
-                        title="View this guardian's own profile"
-                    >
-                        View guardian's profile →
-                    </button>
+                    <div className="flex items-center gap-3">
+                        <button
+                            type="button"
+                            onClick={() => shareCredentials()}
+                            disabled={sharingCredentials}
+                            className="flex items-center gap-1 text-caption font-medium text-primary-500 hover:text-primary-700 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                            title="Email these credentials so the guardian can log in to the parent portal"
+                        >
+                            <PaperPlaneTilt className="size-3.5" />
+                            {sharingCredentials ? 'Sending…' : 'Share credentials'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() =>
+                                goInto({ id: guardian.id, name: guardian.full_name || guardian.email || 'this guardian' })
+                            }
+                            className="text-caption font-medium text-primary-500 hover:text-primary-700 hover:underline"
+                            title="View this guardian's own profile"
+                        >
+                            View guardian's profile →
+                        </button>
+                    </div>
                 }
             >
                 <dl>

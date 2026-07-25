@@ -171,6 +171,19 @@ public class WorkflowAiDraftService {
             // If the drafter needs entity resolution, return the questions immediately.
             List<Map<String, Object>> questions = toListOfMaps(root.get("clarifyingQuestions"));
             JsonNode wfNode = root.get("workflow");
+            // Over-asking guard: a burst of questions means the model is bouncing back values the
+            // admin already provided (e.g. per-day template vars) instead of using them. Push it
+            // to self-serve rather than surfacing dozens of free-text boxes.
+            if (questions.size() > 4 && attempt < MAX_ATTEMPTS) {
+                history.add(ConversationSession.ChatMessage.assistant(raw));
+                history.add(ConversationSession.ChatMessage.user(
+                        "You asked " + questions.size() + " clarifying questions. Every value already stated in "
+                                + "the goal (template variable values, times, links, template names, message copy) must be "
+                                + "filled into the workflow config directly — do NOT ask the admin to re-enter it. Re-emit "
+                                + "the full JSON contract with the workflow populated and AT MOST 2 questions, only for "
+                                + "genuinely missing entity ids."));
+                continue;
+            }
             if (!questions.isEmpty() && (wfNode == null || wfNode.isNull())) {
                 return WorkflowAiDraftResponse.builder()
                         .clarifyingQuestions(questions)
@@ -594,6 +607,12 @@ public class WorkflowAiDraftService {
             ENTITY IDS: never invent an audienceId, batchId, inviteId, or templateName. If the goal \
             needs one you were not given (see the user's provided answers), return it as a \
             clarifyingQuestions entry instead and leave workflow null.
+
+            NEVER ask about information already present in the goal. If the admin supplied concrete \
+            values — template variable values (even per-day lists), times, links, message copy, \
+            template names — bake them into the node configs VERBATIM instead of asking the admin \
+            to re-enter them. Clarifying questions are only for genuinely missing entity ids, and \
+            at most 2 total.
 
             OUTPUT: reply with ONLY a JSON object (no markdown, no prose) of this exact shape:
             {

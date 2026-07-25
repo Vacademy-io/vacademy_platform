@@ -16,6 +16,12 @@ import { UserPlus, ArrowRight, Users, GraduationCap, Calendar, LinkSimple } from
 import { getDisplaySettingsFromCache } from '@/services/display-settings';
 import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
 import type { StudentHeaderCustomButton } from '@/types/display-settings';
+import { useQuery } from '@tanstack/react-query';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { getInstituteId } from '@/constants/helper';
+import { GET_INVITE_LINKS, GET_DEFAULT_INVITE } from '@/constants/urls';
+import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
+import { getValidSelectedSubOrgId } from '@/lib/auth/facultyAccessUtils';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import CreateInvite from '@/routes/manage-students/invite/-components/create-invite/CreateInvite';
@@ -222,23 +228,97 @@ export const StudentListHeader = ({
     const { isCompact } = useCompactMode();
 
     // Per-role Display Settings → "Learner Management Buttons": hide the built-in
-    // Enroll / Invite buttons and surface custom link buttons (invite link or
-    // sub-org learner registration link) in this header.
+    // Enroll / Invite buttons and surface custom link buttons (manual URL, the
+    // sub-org learner invite link, or the course learner invite link) in this header.
     const actionSettings = getDisplaySettingsFromCache(
         getActiveRoleDisplaySettingsKey()
     )?.studentManagementActions;
     const showEnrollButton = actionSettings?.showEnrollButton !== false;
     const showInviteButton = actionSettings?.showInviteButton !== false;
-    const customButtons = (actionSettings?.customButtons ?? []).filter(
-        (b) => b.url?.trim() && b.label?.trim()
-    );
+    const rawButtons = actionSettings?.customButtons ?? [];
 
-    const openCustomLink = (button: StudentHeaderCustomButton) => {
-        if (!button.url) return;
-        if (button.openInNewTab === false) {
-            window.location.href = button.url;
+    const needsSubOrgInvite = rawButtons.some((b) => b.kind === 'suborg_learner_invite');
+    const needsCourseInvite = rawButtons.some((b) => b.kind === 'course_invite');
+
+    // Sub-org context signal — same one the navbar/sidebar/Students tab use. Null
+    // for the parent institute admin, so sub-org invite buttons stay hidden there.
+    const selectedSubOrgId = getValidSelectedSubOrgId();
+    const instituteId = getInstituteId();
+    const learnerBase = instituteDetails?.learner_portal_base_url;
+
+    // The sub-org's SUBORG_LEARNER invite for the viewed course. get-enroll-invite
+    // is FSPSSM-scoped to the caller, so for a sub-org admin `tags:['SUBORG_LEARNER']`
+    // returns only THEIR sub-org's learner invite for this package session — a
+    // learner who enrolls through it lands in the sub-org admin's learner list.
+    const { data: subOrgInviteCode } = useQuery({
+        queryKey: ['suborg-learner-invite-code', packageSessionId, selectedSubOrgId, instituteId],
+        queryFn: async (): Promise<string | null> => {
+            const res = await authenticatedAxiosInstance.post(
+                `${GET_INVITE_LINKS}?instituteId=${instituteId}&pageNo=0&pageSize=20`,
+                {
+                    search_name: '',
+                    package_session_ids: [packageSessionId],
+                    payment_option_ids: [],
+                    sort_columns: {},
+                    tags: ['SUBORG_LEARNER'],
+                }
+            );
+            const row = (res.data?.content ?? [])[0] as
+                | { invite_code?: string; inviteCode?: string }
+                | undefined;
+            return row?.invite_code ?? row?.inviteCode ?? null;
+        },
+        enabled: needsSubOrgInvite && !!packageSessionId && !!selectedSubOrgId && !!instituteId,
+        staleTime: 5 * 60 * 1000,
+    });
+
+    // The course's DEFAULT learner invite for the viewed package session.
+    const { data: courseInviteCode } = useQuery({
+        queryKey: ['course-default-invite-code', packageSessionId, instituteId],
+        queryFn: async (): Promise<string | null> => {
+            const res = await authenticatedAxiosInstance.get(
+                GET_DEFAULT_INVITE(instituteId ?? '', packageSessionId ?? '')
+            );
+            const d = (res.data ?? {}) as { invite_code?: string; inviteCode?: string };
+            return d.invite_code ?? d.inviteCode ?? null;
+        },
+        enabled: needsCourseInvite && !!packageSessionId && !!instituteId,
+        staleTime: 5 * 60 * 1000,
+        retry: false,
+    });
+
+    // Resolve each configured button to a concrete href; drop the ones that can't
+    // resolve in this context (missing label/URL, or an auto invite that has no
+    // sub-org / package session / matching invite here).
+    const resolveHref = (button: StudentHeaderCustomButton): string | null => {
+        const kind = button.kind ?? 'url';
+        if (kind === 'url') return button.url?.trim() || null;
+        if (kind === 'suborg_learner_invite') {
+            if (!selectedSubOrgId || !packageSessionId || !subOrgInviteCode) return null;
+            return createInviteLink(subOrgInviteCode, learnerBase);
+        }
+        if (kind === 'course_invite') {
+            if (!packageSessionId || !courseInviteCode) return null;
+            return createInviteLink(courseInviteCode, learnerBase);
+        }
+        return null;
+    };
+
+    type ResolvedButton = { id: string; label: string; href: string; openInNewTab?: boolean };
+    const resolvedButtons: ResolvedButton[] = rawButtons
+        .map((button): ResolvedButton | null => {
+            const label = button.label?.trim();
+            const href = resolveHref(button);
+            if (!label || !href) return null;
+            return { id: button.id, label, href, openInNewTab: button.openInNewTab };
+        })
+        .filter((b): b is ResolvedButton => b !== null);
+
+    const openCustomLink = (href: string, openInNewTab?: boolean) => {
+        if (openInNewTab === false) {
+            window.location.href = href;
         } else {
-            window.open(button.url, '_blank', 'noopener,noreferrer');
+            window.open(href, '_blank', 'noopener,noreferrer');
         }
     };
 
@@ -281,10 +361,10 @@ export const StudentListHeader = ({
 
             {/* Compact professional action buttons */}
             <div className="flex flex-wrap items-center gap-1.5">
-                {customButtons.map((button) => (
+                {resolvedButtons.map((button) => (
                     <MyButton
                         key={button.id}
-                        onClick={() => openCustomLink(button)}
+                        onClick={() => openCustomLink(button.href, button.openInNewTab)}
                         scale="small"
                         buttonType="secondary"
                         className={cn(

@@ -1149,9 +1149,10 @@ export default function TeacherDisplaySettings() {
                             'LIVE_SESSION',
                             'PLANNING',
                             'ACTIVITY',
+                            'PULSE',
                         ];
                         // Tabs that stay OFF unless explicitly enabled per role.
-                        const hiddenByDefault = new Set<string>(['LIVE_SESSION']);
+                        const hiddenByDefault = new Set<string>([]);
                         const sorted = allIds
                             .map((id) => {
                                 const cfg = settings.courseDetails?.tabs.find((t) => t.id === id) || {
@@ -1200,6 +1201,7 @@ export default function TeacherDisplaySettings() {
                                                         LIVE_SESSION: 6,
                                                         PLANNING: 7,
                                                         ACTIVITY: 8,
+                                                        PULSE: 9,
                                                     };
                                                     const tabs = exists
                                                         ? prevTabs.map((t) =>

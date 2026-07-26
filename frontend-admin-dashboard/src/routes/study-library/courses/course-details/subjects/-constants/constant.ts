@@ -10,6 +10,7 @@ export enum TabType {
     LIVE_SESSION = 'LIVE_SESSION',
     PLANNING = 'PLANNING',
     ACTIVITY = 'ACTIVITY',
+    PULSE = 'PULSE',
     SETTINGS = 'SETTINGS',
     DISCUSSION = 'DISCUSSION',
     // ASSIGNMENT = 'ASSIGNMENT',
@@ -28,6 +29,7 @@ export const tabs = [
     },
     { label: 'Planning', value: 'PLANNING' },
     { label: 'Activity', value: 'ACTIVITY' },
+    { label: 'Pulse', value: 'PULSE' },
     { label: 'Settings', value: 'SETTINGS' },
     { label: 'Discussion', value: 'DISCUSSION' },
     // { label: 'Assignment ', value: 'ASSIGNMENT' },
@@ -38,8 +40,8 @@ export const tabs = [
 /**
  * Course-details tabs that stay hidden unless a role's display settings
  * explicitly turn them on. Unlike the other tabs (which default to visible when
- * a role config doesn't mention them), these default to OFF — so pre-existing
- * saved configs that predate the tab don't suddenly surface it. Enable per role
- * in Settings → Display → Course Details Tabs.
+ * a role config doesn't mention them), these default to OFF. Currently empty —
+ * every tab (including Live Sessions and Pulse) defaults to visible; admins can
+ * still hide any of them per role in Settings → Display → Course Details Tabs.
  */
-export const DEFAULT_HIDDEN_COURSE_DETAILS_TABS = new Set<string>([TabType.LIVE_SESSION]);
+export const DEFAULT_HIDDEN_COURSE_DETAILS_TABS = new Set<string>([]);

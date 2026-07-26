@@ -1,6 +1,8 @@
 import EmptyInvitePage from '@/assets/svgs/empty-invite-page.svg';
 import { usePaginationState } from '@/hooks/pagination';
 import { Button } from '@/components/ui/button';
+import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
+import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useState, useMemo, useEffect } from 'react';
 import { CreateCampaignDialog } from '../create-campaign-dialog/CreateCampaignDialog';
@@ -274,15 +276,21 @@ export const AudienceInvite = () => {
                         Manage and share your {audienceTermPlural.toLowerCase()} across campaigns.
                     </p>
                 </div>
-                <Button
-                    onClick={() => {
-                        setCampaignBeingEdited(null);
-                        setIsDialogOpen(true);
-                    }}
-                    className={cn('w-full shrink-0 sm:w-auto', PRIMARY_BTN)}
-                >
-                    <Plus className="mr-2 size-4" /> Add {audienceTerm}
-                </Button>
+                <div className="flex items-center gap-2">
+                    <SettingsQuickAccessButton
+                        settingsKey={SettingsTabs.LeadSettings}
+                        label="Audience settings"
+                    />
+                    <Button
+                        onClick={() => {
+                            setCampaignBeingEdited(null);
+                            setIsDialogOpen(true);
+                        }}
+                        className={cn('w-full shrink-0 sm:w-auto', PRIMARY_BTN)}
+                    >
+                        <Plus className="mr-2 size-4" /> Add {audienceTerm}
+                    </Button>
+                </div>
             </div>
 
             {/* Compact clickable KPI strip — click to filter, click again to clear. */}

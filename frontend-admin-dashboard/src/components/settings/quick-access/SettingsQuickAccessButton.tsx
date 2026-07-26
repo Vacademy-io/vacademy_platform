@@ -1,6 +1,7 @@
 import { GearSix } from '@phosphor-icons/react';
 import { MyButton } from '@/components/design-system/button';
 import { useQuickSettingsStore } from '@/stores/settings/useQuickSettingsStore';
+import { isUserAdmin } from '@/utils/userDetails';
 
 interface SettingsQuickAccessButtonProps {
     /** SettingsTabs key of the setting to pop open (e.g. SettingsTabs.LiveSession). */
@@ -21,6 +22,11 @@ export function SettingsQuickAccessButton({
     className,
 }: SettingsQuickAccessButtonProps) {
     const openQuickSettings = useQuickSettingsStore((s) => s.openQuickSettings);
+
+    // Quick access to settings is admin-only for now. Gating here means every
+    // placement across the app is admin-only at once; widen later by swapping
+    // this check without touching any call site.
+    if (!isUserAdmin()) return null;
 
     return (
         <MyButton

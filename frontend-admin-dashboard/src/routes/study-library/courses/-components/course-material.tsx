@@ -3,6 +3,8 @@ import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore
 import { useEffect, useState, useMemo } from 'react';
 import { AddCourseButton } from '@/components/common/study-library/add-course/add-course-button';
 import { MyButton } from '@/components/design-system/button';
+import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
+import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { Sparkles } from 'lucide-react';
 // import useIntroJsTour from '@/hooks/use-intro';
 // import { StudyLibraryIntroKey } from '@/constants/storage/introKey';
@@ -767,6 +769,10 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                     Try adding a new {getTerminology(ContentTerms.Course, SystemTerms.Course)}.
                 </div>
                 <div className="flex flex-wrap items-center justify-center gap-2">
+                    <SettingsQuickAccessButton
+                        settingsKey={SettingsTabs.Course}
+                        label="Course settings"
+                    />
                     {canShowCreateCourse && <AddCourseButton />}
                     {canShowCreateCourse && roleDisplay?.courseCreation?.showCreateCourseWithAI && (
                         <MyButton
@@ -798,6 +804,10 @@ export const CourseMaterial = ({ initialSelectedTab, initialAction }: CourseMate
                     </div>
                 </div>
                 <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
+                    <SettingsQuickAccessButton
+                        settingsKey={SettingsTabs.Course}
+                        label="Course settings"
+                    />
                     {canShowCreateCourse && <AddCourseButton />}
                     {canShowCreateCourse && roleDisplay?.courseCreation?.showCreateCourseWithAI && (
                         <MyButton

@@ -53,8 +53,6 @@ import { WaitingRoomType } from '@/routes/study-library/live-session/-constants/
 import { ZoomIntegrationCard } from './zoom/ZoomIntegrationCard';
 import { GoogleMeetIntegrationCard } from './google/GoogleMeetIntegrationCard';
 import { DefaultRecordingDestinationPicker } from './DefaultRecordingDestinationPicker';
-import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
-import { SettingsTabs } from '../-constants/terms';
 
 const PLATFORM_LABELS: Record<PlatformKey, string> = {
     youtube: 'YouTube',
@@ -224,18 +222,9 @@ export default function LiveSessionSettings({ embedded = false }: LiveSessionSet
             >
                 {!embedded && (
                     <div>
-                        <div className="flex items-center gap-2">
-                            <h2 className="text-xl font-semibold text-neutral-800">
-                                Live Session Settings
-                            </h2>
-                            {/* DEMO ONLY — proves the quick-access popup end-to-end;
-                                remove once a real consumer (e.g. a Live Classes page)
-                                exists and links here instead. */}
-                            <SettingsQuickAccessButton
-                                settingsKey={SettingsTabs.LiveSession}
-                                label="Preview in quick-access popup (demo)"
-                            />
-                        </div>
+                        <h2 className="text-xl font-semibold text-neutral-800">
+                            Live Session Settings
+                        </h2>
                         <p className="text-sm text-neutral-500">
                             Control which scheduling modes, platforms and features are available to
                             admins when creating live classes.

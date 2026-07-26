@@ -155,7 +155,7 @@ export const ContactFilters = ({ filters }: ContactFiltersProps) => {
                                 />
                             )
                         )}
-                        <ManageListFiltersLink />
+                        <ManageListFiltersLink surface="CONTACTS" />
                     </div>
 
                     {(columnFilters.length > 0 || getActiveFiltersState()) && (

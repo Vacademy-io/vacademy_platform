@@ -1056,7 +1056,7 @@ const CampaignUsersContent = ({
                             />
                         )
                     )}
-                    <ManageListFiltersLink />
+                    <ManageListFiltersLink surface="LEADS" />
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button variant="outline" size="sm" className="h-10">

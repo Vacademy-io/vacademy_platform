@@ -8,6 +8,8 @@ import { PaymentFilters } from './-components/PaymentFilters';
 import { PaymentLogsTable } from './-components/PaymentLogsTable';
 import { ActiveFiltersDisplay } from '@/components/common/filters/ActiveFiltersDisplay';
 import { fetchPaymentLogs, getPaymentLogsQueryKey } from '@/services/payment-logs';
+import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
+import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import type { SelectOption } from '@/components/design-system/SelectChips';
 import type {
@@ -40,7 +42,15 @@ function ManagePaymentsLayoutPage() {
     const [selectedUserPlanStatuses, setSelectedUserPlanStatuses] = useState<SelectOption[]>([]);
     const [selectedPaymentSources, setSelectedPaymentSources] = useState<SelectOption[]>([]); // New filter
     const [packageSessionFilter, setPackageSessionFilter] = useState<PackageSessionFilter>({}); useEffect(() => {
-        setNavHeading(<h1 className="text-lg">Manage Payments</h1>);
+        setNavHeading(
+            <div className="flex items-center gap-2">
+                <h1 className="text-lg">Manage Payments</h1>
+                <SettingsQuickAccessButton
+                    settingsKey={SettingsTabs.PaymentGateways}
+                    label="Payment settings"
+                />
+            </div>
+        );
     }, [setNavHeading]);    // Get institute details from Zustand store (already loaded on app init)
     const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
 

@@ -20,6 +20,13 @@ interface ListCustomFieldControlsCardProps {
     /** Bubbles the next controls up to the parent display-settings state so
      *  the shared unsaved-changes bar persists it. */
     onChange: (next: ListCustomFieldControls) => void;
+    /** Which surface tab to open on. Defaults to LEADS (the full-settings
+     *  behaviour); the focused "Manage filters" popup passes the current list's
+     *  surface so it lands on the right tab. */
+    initialSurface?: ListCustomFieldSurface;
+    /** Suppress the card's own title/description when a host (e.g. the
+     *  "Manage filters" dialog) already provides a heading. */
+    hideHeading?: boolean;
 }
 
 const SURFACES: Array<{ id: ListCustomFieldSurface; label: string; pages: string }> = [
@@ -43,10 +50,12 @@ export const ListCustomFieldControlsCard = ({
     value,
     legacyLeadsFields,
     onChange,
+    initialSurface,
+    hideHeading = false,
 }: ListCustomFieldControlsCardProps) => {
     const instituteId = getCurrentInstituteId();
     const { data: fields, isLoading } = useCustomFieldSetup(instituteId ?? undefined);
-    const [surface, setSurface] = useState<ListCustomFieldSurface>('LEADS');
+    const [surface, setSurface] = useState<ListCustomFieldSurface>(initialSurface ?? 'LEADS');
 
     const sortedFields = useMemo(
         () => [...(fields ?? [])].sort((a, b) => (a.form_order ?? 0) - (b.form_order ?? 0)),
@@ -95,15 +104,17 @@ export const ListCustomFieldControlsCard = ({
 
     return (
         <Card>
-            <CardHeader>
-                <CardTitle>List Filters &amp; Sorting — Custom Fields</CardTitle>
-                <CardDescription>
-                    Choose which custom fields appear as filters on each list page (applies to
-                    everyone). Each enabled field adds a searchable multi-select to that page&apos;s
-                    filter bar; turning it off hides the filter and stops loading its values.
-                    Sortable applies where custom-field column sorting is available.
-                </CardDescription>
-            </CardHeader>
+            {!hideHeading && (
+                <CardHeader>
+                    <CardTitle>List Filters &amp; Sorting — Custom Fields</CardTitle>
+                    <CardDescription>
+                        Choose which custom fields appear as filters on each list page (applies to
+                        everyone). Each enabled field adds a searchable multi-select to that
+                        page&apos;s filter bar; turning it off hides the filter and stops loading
+                        its values. Sortable applies where custom-field column sorting is available.
+                    </CardDescription>
+                </CardHeader>
+            )}
             <CardContent>
                 <Tabs
                     value={surface}

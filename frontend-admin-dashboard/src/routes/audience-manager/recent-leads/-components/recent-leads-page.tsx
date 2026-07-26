@@ -75,6 +75,8 @@ import { MyDropdown } from '@/components/design-system/dropdown';
 import type { LeadCardVM } from '@/components/shared/leads/lead-view-model';
 import { MyButton } from '@/components/design-system/button';
 import { isAdminForInstitute } from '@/lib/auth/roleUtils';
+import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
+import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { DeleteLeadsDialog } from '@/components/shared/leads/delete-leads-dialog';
 import { restoreAudienceLeads } from '@/routes/audience-manager/list/-services/delete-audience-lead';
 import {
@@ -1171,7 +1173,7 @@ const RecentLeadsContent = () => {
                             />
                         )
                     )}
-                    <ManageListFiltersLink />
+                    <ManageListFiltersLink surface="LEADS" />
                     <Select value={rangeDays} onValueChange={setDateRange}>
                         <SelectTrigger className="h-10 w-40">
                             <CalendarBlank className="mr-1.5 size-4 text-neutral-400" />
@@ -1229,6 +1231,10 @@ const RecentLeadsContent = () => {
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
+                    <SettingsQuickAccessButton
+                        settingsKey={SettingsTabs.LeadSettings}
+                        label="Lead settings"
+                    />
                     {/* Deleted leads are hidden from every view by default; this is the only
                         place they surface, and the only route back for one (Restore). Admin-only,
                         matching the delete/restore endpoints' own check. */}

@@ -6,10 +6,58 @@
     width: 100%;
 }
 
+/* Positioned wrapper the drag-handle plugin portals its grip + drop line into
+   and measures block offsets against. Must stay position:relative. */
+.lexical-doc-editor .lexical-editor-anchor {
+    position: relative;
+    width: 100%;
+}
+
 .lexical-doc-editor .lexical-content-editable {
     min-height: 200px;
     outline: none;
-    padding: 4px 0 120px;
+    /* left padding = drag-handle gutter (matches the plugin's 28px text-box
+       padding assumption so the grip sits left of the text, not over it). */
+    padding: 4px 0 120px 28px;
+}
+
+/* ---- Drag-to-reorder (DragHandlePlugin) ---- */
+/* The plugin toggles display/opacity and sets transform inline; these rules
+   provide the resting appearance. */
+.lexical-doc-editor .lex-drag-handle-floating {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 24px;
+    padding: 0;
+    opacity: 0;
+    color: #9ca3af;
+    border-radius: 4px;
+    cursor: grab;
+    will-change: transform;
+    transition: background-color 0.12s ease, color 0.12s ease;
+}
+.lexical-doc-editor .lex-drag-handle-floating:hover {
+    background-color: #f3f4f6;
+    color: #4b5563;
+}
+.lexical-doc-editor .lex-drag-handle-floating:active {
+    cursor: grabbing;
+}
+.lexical-doc-editor .lex-drag-target-line {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 4px;
+    background-color: hsl(var(--primary-500));
+    border-radius: 2px;
+    opacity: 0;
+    pointer-events: none;
+    will-change: transform;
 }
 
 /* Check-list items (CheckListPlugin toggles via the theme classes) */

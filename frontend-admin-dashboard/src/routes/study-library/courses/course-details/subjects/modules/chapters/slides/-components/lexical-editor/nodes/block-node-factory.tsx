@@ -12,6 +12,7 @@ import {
     type Spread,
 } from 'lexical';
 import type { JSX } from 'react';
+import { BlockChrome } from './BlockChrome';
 
 /**
  * Factory for custom document blocks (flashcard, quiz, tabs, math, …).
@@ -148,6 +149,7 @@ export function createBlockNode<T>(config: BlockNodeConfig<T>): BlockNodeClass<T
         decorate(editor: LexicalEditor): JSX.Element {
             const nodeKey = this.getKey();
             const payload = this.getPayload();
+            const readOnly = !editor.isEditable();
             const setPayload = (next: T) => {
                 editor.update(() => {
                     const self = $getNodeByKey(nodeKey);
@@ -155,12 +157,14 @@ export function createBlockNode<T>(config: BlockNodeConfig<T>): BlockNodeClass<T
                 });
             };
             return (
-                <Component
-                    payload={payload}
-                    setPayload={setPayload}
-                    readOnly={!editor.isEditable()}
-                    nodeKey={nodeKey}
-                />
+                <BlockChrome nodeKey={nodeKey} readOnly={readOnly}>
+                    <Component
+                        payload={payload}
+                        setPayload={setPayload}
+                        readOnly={readOnly}
+                        nodeKey={nodeKey}
+                    />
+                </BlockChrome>
             );
         }
     }

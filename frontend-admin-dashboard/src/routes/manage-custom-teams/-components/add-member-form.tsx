@@ -305,7 +305,16 @@ export function AddMemberForm({ open, onOpenChange, onSuccess, mode = 'institute
             if (onSuccess) onSuccess();
         },
         onError: (error: any) => {
-            toast.error(error?.response?.data?.message || 'Failed to add member');
+            // Backend VacademyException surfaces its message in `data.ex`; older/other
+            // errors use `data.message`. Prefer the real backend text so the user sees
+            // e.g. "Role with this name already exists in this institute." instead of a
+            // generic failure.
+            toast.error(
+                error?.response?.data?.ex ||
+                    error?.response?.data?.message ||
+                    error?.message ||
+                    'Failed to add member'
+            );
         },
     });
 

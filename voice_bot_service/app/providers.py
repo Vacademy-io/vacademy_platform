@@ -15,6 +15,10 @@ from pipecat.utils.text.simple_text_aggregator import SimpleTextAggregator
 
 from .config import get_settings
 
+import logging
+
+logger = logging.getLogger("voice_bot")
+
 
 class ClauseFlushAggregator(SimpleTextAggregator):
     """Sentence aggregation with Devanagari-danda + length fallbacks.
@@ -69,21 +73,29 @@ def build_stt(sample_rate: int, language: str | None = None, bias: str | None = 
     # skipped (the language pin, which matters more, still applies).
     allow_bias = bool(bias) and "saaras" in (s.sarvam_stt_model or "").lower()
     params = None
-    if tag or allow_bias:
-        try:
-            from pipecat.transcriptions.language import Language
-            kwargs = {}
-            if tag:
+    if tag or allow_bias or s.sarvam_stt_high_vad:
+        # Field-by-field: a single bad value (e.g. an unknown language tag) must
+        # not silently discard the OTHER params — the old blanket except dropped
+        # high_vad_sensitivity (+0.7s/turn) and the language pin together
+        # (deep-review B2; Odia's wrong tag triggered exactly this).
+        kwargs = {}
+        if tag:
+            try:
+                from pipecat.transcriptions.language import Language
                 kwargs["language"] = Language(tag)
-            if allow_bias:
-                kwargs["prompt"] = bias[:200]
-            if s.sarvam_stt_high_vad:
-                # Sarvam-side fast endpointing: measured (48h of live turns) as the
-                # binding latency constraint — the server takes ~0.65-0.76s after end
-                # of speech to finalize. High sensitivity finalizes sooner.
-                kwargs["high_vad_sensitivity"] = True
+            except Exception:
+                logger.warning("build_stt: unknown language tag %r — auto-detect", tag)
+        if allow_bias:
+            kwargs["prompt"] = bias[:200]
+        if s.sarvam_stt_high_vad:
+            # Sarvam-side fast endpointing: measured (48h of live turns) as the
+            # binding latency constraint — the server takes ~0.65-0.76s after end
+            # of speech to finalize. High sensitivity finalizes sooner.
+            kwargs["high_vad_sensitivity"] = True
+        try:
             params = SarvamSTTService.InputParams(**kwargs)
         except Exception:
+            logger.warning("build_stt: InputParams rejected %r — using defaults", kwargs)
             params = None
     return ResilientSarvamSTTService(
         api_key=s.sarvam_api_key,
@@ -242,6 +254,9 @@ class ResilientSarvamSTTService(SarvamSTTService):
             if t and t.strip():
                 self._synth_armed = True
                 self._last_real_final_t = _time.monotonic()
+                pending = getattr(self, "_synth_task", None)
+                if pending is not None and not pending.done():
+                    pending.cancel()   # real words beat the debounced synth
                 return
             gate = self._backchannel_gate
             if gate is None or not gate():
@@ -250,10 +265,36 @@ class ResilientSarvamSTTService(SarvamSTTService):
                 return
             if _time.monotonic() - getattr(self, "_last_real_final_t", 0.0) < 2.5:
                 return
+            # DEBOUNCE 1.2s: Sarvam can emit the empty final (breath tail) 100-300ms
+            # BEFORE the real final of the same utterance — an immediate synth then
+            # produced TWO back-to-back LLM turns (deep-review A8). The pending task
+            # is cancelled the moment a real final arrives.
+            pending = getattr(self, "_synth_task", None)
+            if pending is not None and not pending.done():
+                return
+            import asyncio as _asyncio
+            self._synth_task = _asyncio.create_task(self._delayed_backchannel())
+        except Exception:
+            pass
+
+    async def _delayed_backchannel(self):
+        import asyncio as _asyncio
+        try:
+            await _asyncio.sleep(1.2)
+            gate = self._backchannel_gate
+            if gate is None or not gate():
+                return
             self._synth_armed = False
             from pipecat.frames.frames import TranscriptionFrame
             from pipecat.utils.time import time_now_iso8601
-            await self.push_frame(TranscriptionFrame("Hmm.", self._user_id, time_now_iso8601(), None))
+            # Bracketed cue, NOT "Hmm." — prompt rule 7 reads a spoken 'hmm' as
+            # CONSENT, so a cough/breath was auto-agreeing to demos (deep-review
+            # A8 "phantom consent"). A cue can't be read as a yes, and the
+            # transcript honestly records an unclear sound.
+            await self.push_frame(TranscriptionFrame(
+                "[unclear sound from the caller]", self._user_id, time_now_iso8601(), None))
+        except _asyncio.CancelledError:
+            pass
         except Exception:
             pass
 
@@ -331,6 +372,21 @@ class ResilientSarvamTTSService(SarvamTTSService):
                 pass
         async for frame in super().run_tts(text):
             yield frame
+
+    async def process_frame(self, frame, direction):
+        await super().process_frame(frame, direction)
+        # Stock 0.0.95 sends Sarvam's {"type":"flush"} BEFORE super() reads the
+        # aggregator remainder — so a short unpunctuated response TAIL is sent
+        # post-flush and sits unsynthesized in Sarvam's server buffer until the
+        # NEXT turn (or is discarded on reconnect). ClauseFlushAggregator makes
+        # short tails frequent → "last words of a reply never play" (deep-review
+        # A4). Re-flushing AFTER super() pushes the tail out immediately.
+        from pipecat.frames.frames import LLMFullResponseEndFrame as _EndF
+        if isinstance(frame, _EndF):
+            try:
+                await self.flush_audio()
+            except Exception as e:
+                logger.warning("post-remainder flush failed: %s", e)
 
     def __init__(self, *args, pace_override: float | None = None, **kwargs):
         super().__init__(*args, **kwargs)

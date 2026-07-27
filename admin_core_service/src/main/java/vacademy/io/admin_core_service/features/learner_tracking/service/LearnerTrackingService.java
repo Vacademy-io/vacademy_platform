@@ -1,10 +1,12 @@
 package vacademy.io.admin_core_service.features.learner_tracking.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.learner_operation.service.LearnerOperationService;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.DocumentActivityLogDTO;
@@ -22,6 +24,7 @@ import java.sql.Timestamp;
 import java.util.List;
 import java.util.Objects;
 
+@Slf4j
 @Service
 public class LearnerTrackingService {
 
@@ -58,7 +61,12 @@ public class LearnerTrackingService {
         validateActivityLogDTO(activityLogDTO, true); // Validate for documents
         ActivityLog activityLog = activityLogDTO.isNewActivity()
                 ? saveActivityLog(activityLogDTO, slideId, user.getUserId())
-                : updateActivityLog(activityLogDTO, activityLogDTO.getUserId());
+                // getId(), not getUserId() — the latter looked up an activity by
+                // the user's id, which never matches, so every non-new document
+                // update threw "Activity Log not found". Latent only because the
+                // web viewer always sends new_activity=true; any client that
+                // doesn't would lose its page tracking entirely.
+                : updateActivityLog(activityLogDTO, activityLogDTO.getId());
         saveDocumentTracking(activityLogDTO, activityLog);
         recomputeEngagedMsFromBreadcrumbs(activityLog);
         learnerTrackingAsyncService.updateLearnerOperationsForDocument(user.getUserId(), slideId, chapterId, moduleId,
@@ -99,7 +107,29 @@ public class LearnerTrackingService {
         return activityLog.toActivityLogDTO();
     }
 
+    // Clients send new_activity=true with an id they generated, so this save()
+    // is an upsert: an id that already exists is merged, not inserted. That is
+    // intended (it lets a viewer extend one activity as the learner reads), but
+    // it also means a request carrying the wrong slideId would silently move an
+    // existing row to another slide — taking its document_tracked page views
+    // with it, since those hang off activity_id. The victim slide is then left
+    // with no evidence to recompute from while the receiving slide is credited
+    // with pages it never had.
+    //
+    // An activity belongs to the slide it was opened on. If a later request
+    // disagrees, keep the original binding rather than re-parenting the row.
     private ActivityLog saveActivityLog(ActivityLogDTO activityLogDTO, String slideId, String userId) {
+        if (StringUtils.hasText(activityLogDTO.getId())) {
+            ActivityLog existing = activityLogRepository.findById(activityLogDTO.getId()).orElse(null);
+            if (existing != null && StringUtils.hasText(existing.getSlideId())
+                    && !existing.getSlideId().equals(slideId)) {
+                log.warn("Refusing to re-parent activity {} from slide {} to slide {} (user {}). "
+                        + "Keeping the original slide; the client sent a stale slideId.",
+                        existing.getId(), existing.getSlideId(), slideId, userId);
+                updateActivityFields(existing, activityLogDTO);
+                return activityLogRepository.save(existing);
+            }
+        }
         return activityLogRepository.save(new ActivityLog(activityLogDTO, userId, slideId));
     }
 

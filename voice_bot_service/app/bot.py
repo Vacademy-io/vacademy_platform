@@ -54,6 +54,9 @@ from pipecat.audio.interruptions.min_words_interruption_strategy import (
 )
 
 from . import admin_core
+from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
+                        apply_decision, NONE, CANCEL_STARVED, REISSUE_STOP,
+                        CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP)
 from .config import get_settings
 from .providers import build_llm, build_stt, build_tts
 
@@ -886,27 +889,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # clock only escalates while the bot is NOT speaking (TTS playout is real-time
     # and much slower than token generation), and only USER activity re-arms the
     # nudge — otherwise the nudge's own audio resets it and hangup never escalates.
-    flags = {"t": time.time(), "nudged": False, "bot_speaking": False,
-             "user_speaking": False, "stopping_since": None,
-             # REAL WORDS only (final transcripts) — the greet's callee-spoke-first
-             # check keys on this, NOT on flags["t"]: since the idle clock re-arms on
-             # bare VAD activity, pickup noise/breath was making the greet think the
-             # callee had spoken → scripted opening skipped → the model improvised
-             # bare "Hello."s (observed live).
-             "transcript_t": 0.0,
-             # When the caller last STOPPED speaking (VAD) + the last orphan we
-             # handled — Sarvam sometimes swallows a short utterance ENTIRELY (no
-             # data message, not even an empty one), leaving the turn machinery
-             # with nothing to react to. The watchdog compares these to detect
-             # "spoke but no transcript ever came" and continues the conversation.
-             "user_stopped_t": 0.0, "user_started_t": 0.0, "bot_stopped_t": 0.0,
-             "orphan_used": False, "bot_spoke_once": False,
-             # Audio-stall watchdog: stamped when a TTS generation begins, cleared
-             # the moment bot audio actually starts. If it stays pending >3.5s the
-             # reply was generated but never heard (Sarvam TTS first-byte stalls of
-             # 1.4-7s observed live) — force-reconnect TTS + regenerate.
-             "tts_gen_t": 0.0, "stall_recoveries": 0, "nudge_count": 0,
-             "last_stop_reissue": 0.0}
+    # Explicit state machine (see app/callstate.py — field docs + transition
+    # contract live there; dict-style access kept for the frame callbacks).
+    flags = CallState(t=time.time())
 
     def on_activity(user: bool = True):
         # VAD blips reset the idle CLOCK but no longer re-arm the nudge: on lines
@@ -1129,53 +1114,42 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     sentinel.set_arm_stop(_begin_stop)
 
     async def watchdog():
-        """Idle nudge → idle hangup; hard call-duration cap; graceful-stop deadline."""
+        """1-second tick: PURE decision (callstate.watchdog_decide — fully covered
+        by the timeline harness) + bookkeeping + I/O execution here."""
+        cfg = WatchdogConfig(
+            connected_at=outcome.connected_at,
+            cap_secs=cap_secs,
+            idle_timeout_secs=settings.idle_timeout_secs,
+            stall_recovery_enabled=settings.stall_recovery_enabled,
+            graceful_stop_deadline_secs=_GRACEFUL_STOP_DEADLINE_SECS,
+        )
+        repeat_line = ("Sorry, I missed that — could you say that again?" if eng else
+                       "Maaf kijiye, main sun nahi paayi — ek baar phir boliye?")
         while True:
             await asyncio.sleep(1.0)
+            now = time.time()
+            d = watchdog_decide(flags, now, cfg)
+            apply_decision(flags, d, now)
 
-            # Graceful-stop deadline: stop_when_done can be starved by new turns.
-            if flags["stopping_since"] is not None:
-                if time.time() - flags["stopping_since"] > _GRACEFUL_STOP_DEADLINE_SECS:
-                    logger.warning("graceful stop starved — cancelling corr=%s", corr)
-                    await task.cancel()
-                    return
-                # A barge-in DRAINS queued frames including the EndFrame — without
-                # re-issuing, an interrupted farewell left a zombie call until the
-                # hard-cancel (deep-review A7). Re-queue every ~3s while stopping.
-                if time.time() - flags["last_stop_reissue"] > 3.0:
-                    flags["last_stop_reissue"] = time.time()
-                    await task.stop_when_done()
+            if d.kind == NONE:
                 continue
-
-            # Hard per-call ceiling (telephony + vendor spend bound).
-            if time.time() - outcome.connected_at >= cap_secs:
+            if d.kind == CANCEL_STARVED:
+                logger.warning("graceful stop starved — cancelling corr=%s", corr)
+                await task.cancel()
+                return
+            if d.kind == REISSUE_STOP:
+                # A barge-in DRAINS queued frames including the EndFrame (A7).
+                await task.stop_when_done()
+                continue
+            if d.kind == CAP_FAREWELL:
                 logger.info("max call duration reached corr=%s (%.0fs)", corr, cap_secs)
                 outcome.end_requested = True
                 await task.queue_frames([TTSSpeakFrame(cap_farewell)])
                 await _begin_stop()
                 continue
-
-            # Idle handling — clock paused while the bot is speaking AND while the
-            # CALLER is speaking (VAD-armed): Sarvam STT emits finals only, so during a
-            # long caller utterance no transcript arrives and the clock used to go
-            # stale — the nudge fired at the caller mid-sentence.
-            if flags["bot_speaking"] or flags["user_speaking"]:
-                continue
-
-            # AUDIO-STALL RECOVERY: a reply was generated but its audio never
-            # started (TTS websocket stalled — 7s first-byte observed live; the
-            # caller heard permanent silence while the model kept "answering").
-            # Force a fresh TTS connection and have the model re-answer; capped
-            # at 3 recoveries per call so a hard provider outage can't loop.
-            gen_t = flags["tts_gen_t"]
-            if (settings.stall_recovery_enabled
-                    and gen_t > 0 and not flags["bot_speaking"]
-                    and time.time() - gen_t > 3.5
-                    and flags["stall_recoveries"] < 3):
-                flags["tts_gen_t"] = 0.0
-                flags["stall_recoveries"] += 1
+            if d.kind == STALL_RECOVER:
                 logger.error("tts audio stall corr=%s (%.1fs since generation, recovery %d) — "
-                             "reconnecting TTS + regenerating", corr, time.time() - gen_t,
+                             "reconnecting TTS + regenerating", corr, d.detail,
                              flags["stall_recoveries"])
                 try:
                     await tts._disconnect()
@@ -1188,55 +1162,23 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                         "Answer their last message again, briefly — do not mention the glitch.]"}],
                     run_llm=True)])
                 continue
-
-            # VAD-orphan: the caller audibly spoke but NO transcript arrived for
-            # that utterance ("Yeah, I'm Shreyash" produced no STT data message at
-            # all → dead air). PRECISION MATTERS — the first version armed on
-            # `stopped_t > transcript_t`, but Sarvam's finals land WHILE the caller
-            # is still speaking, so that test was true after every normal utterance
-            # and the bot steamrolled ("Thank you" to a consent question the caller
-            # never answered, 6 mis-fires in one call). Correct discriminator: no
-            # final has arrived SINCE THE UTTERANCE BEGAN. And the reaction is to
-            # ASK, not assume — a human who missed words says "sorry, say that
-            # again?", they don't act as if they heard a yes. One-shot until real
-            # words arrive; only after the bot has been quiet ≥2s (never steal the
-            # caller's turn at bot-stop).
-            now = time.time()
-            ust, usta = flags["user_stopped_t"], flags["user_started_t"]
-            if (ust > 0 and not flags["orphan_used"]
-                    and usta > flags["transcript_t"]          # nothing captured since speech began
-                    and usta > 0 and ust - usta >= 0.4        # a real utterance, not a blip
-                    and 2.5 <= now - ust <= 10.0
-                    and now - flags["bot_stopped_t"] >= 2.0
-                    and now - outcome.connected_at > 6.0):
-                flags["orphan_used"] = True
-                flags["t"] = now
+            if d.kind == ORPHAN_ASK:
                 logger.info("vad-orphan ask-repeat corr=%s (no transcript %.1fs after speech)",
-                            corr, now - ust)
-                repeat_line = ("Sorry, I missed that — could you say that again?" if eng else
-                               "Maaf kijiye, main sun nahi paayi — ek baar phir boliye?")
+                            corr, d.detail)
                 await task.queue_frames([
                     LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": repeat_line}]),
                     TTSSpeakFrame(repeat_line)])
                 continue
-
-            idle = time.time() - flags["t"]
-            if idle < settings.idle_timeout_secs:
-                continue
-            if not flags["nudged"] and flags["nudge_count"] < 2:
-                flags["nudged"] = True
-                flags["nudge_count"] += 1
-                flags["t"] = time.time()
-                # Context-append too: TTSSpeakFrame text never reaches the LLM context,
-                # so without this the model doesn't know it asked and can't react to
-                # the caller's "haan sun raha hoon" coherently.
+            if d.kind == NUDGE:
+                # Context-append too: TTSSpeakFrame text never reaches the LLM
+                # context — without it the model can't react to "haan sun raha hoon".
                 await task.queue_frames([
                     LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": nudge_text}]),
                     TTSSpeakFrame(nudge_text)])
-            else:
-                # Speak a brief closing BEFORE dropping — a silent hangup felt like the
-                # call "disconnected without a proper close" (live feedback). _begin_stop's
-                # graceful-stop deadline lets the farewell play out (same as cap_farewell).
+                continue
+            if d.kind == IDLE_HANGUP:
+                # Speak a brief closing BEFORE dropping — a silent hangup read as
+                # "disconnected without a proper close" (live feedback).
                 logger.info("idle hangup corr=%s", corr)
                 outcome.end_requested = True
                 await task.queue_frames([TTSSpeakFrame(idle_farewell)])

@@ -159,10 +159,14 @@ def test_greet_has_extended_vad_wait():
 # ── A10: nudge is capped and transcript-gated ────────────────────────────────
 
 def test_nudge_cap_and_gating():
+    # Nudge cap/escalation now lives in callstate.watchdog_decide (covered by
+    # tests/test_timeline.py). Here: the CALLBACK contract — VAD blips must not
+    # re-arm the nudge; real transcripts must.
     import inspect
     src = inspect.getsource(b.run_bot)
-    assert 'flags["nudge_count"]' in src
     on_act = src.split("def on_activity")[1].split("def set_bot_speaking")[0]
     assert 'flags["nudged"] = False' not in on_act  # VAD blips no longer re-arm
     on_tr = src.split("def on_transcript")[1].split("transcript = TranscriptCollector")[0]
     assert 'flags["nudged"] = False' in on_tr       # real words do
+    # and the decision engine is actually wired in
+    assert "watchdog_decide" in src and "apply_decision" in src

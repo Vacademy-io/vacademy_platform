@@ -450,6 +450,17 @@ const sectionText = (customBg?: string) =>
 const sectionBg = (customBg?: string): React.CSSProperties | undefined =>
   customBg ? { backgroundColor: customBg } : undefined;
 
+/** True when a #rrggbb color is dark enough to need light text on top. */
+const isHexDark = (hex?: string): boolean => {
+  const raw = (hex || '').trim().replace(/^#/, '');
+  if (!/^[0-9a-fA-F]{6}$/.test(raw)) return false;
+  const r = parseInt(raw.slice(0, 2), 16);
+  const g = parseInt(raw.slice(2, 4), 16);
+  const b = parseInt(raw.slice(4, 6), 16);
+  // Rec. 601 relative luminance; < 0.55 reads as "dark".
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.55;
+};
+
 /** Curated icon set for featureGrid/steps — 'iconName' values map here;
  *  anything else falls back to the legacy emoji/text `icon` field. */
 const FEATURE_ICON_MAP: Record<string, React.ComponentType<any>> = {
@@ -1096,6 +1107,96 @@ const FeatureGridRenderer: React.FC<any> = ({
   // gradient-border/tinted) have their own token surface.
   const cardOnSection = style === 'plain' || style === 'minimal' || style === 'bordered';
   const isLeft = align === 'left';
+
+  // "panel" — a tinted-header division/comparison card: a colored header band
+  // (badge + serif title + description) over a body of brand-bulleted rows.
+  // Each feature may set headerColor (hex) or headerVariant 'solid'|'tint'.
+  if (style === 'panel') {
+    const panelCols = Math.min(Math.max(Number(columns) || 2, 1), 3);
+    return (
+      <section style={sectionBg(backgroundColor)} className="py-16 px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
+        <div className="mx-auto max-w-6xl">
+          {headerText && <h2 className={`mb-2 text-center text-3xl font-bold ${txt.heading}`}>{headerText}</h2>}
+          {subheading && <p className={`mb-10 text-center text-lg ${txt.muted}`}>{subheading}</p>}
+          <div className={`grid gap-6 grid-cols-1 ${panelCols >= 2 ? 'md:grid-cols-2' : ''} ${panelCols >= 3 ? 'lg:grid-cols-3' : ''}`}>
+            {features.map((f: any, i: number) => {
+              const IconComp = f.iconName ? FEATURE_ICON_MAP[f.iconName] : undefined;
+              const bullets: string[] = (f.bullets || []).filter(Boolean);
+              const badge: string = f.badge || (f.chips || []).filter(Boolean)[0] || '';
+              const solid = f.headerColor ? isHexDark(f.headerColor) : f.headerVariant === 'solid';
+              const headerStyle: React.CSSProperties = f.headerColor
+                ? { backgroundColor: f.headerColor }
+                : solid
+                  ? { backgroundColor: 'hsl(var(--primary-500))' }
+                  : { backgroundColor: 'hsl(var(--primary-50))' };
+              return (
+                <div
+                  key={i}
+                  data-stagger-item
+                  style={{ ['--stagger-i' as any]: i }}
+                  className="catalogue-card-elevated overflow-hidden !p-0 text-start"
+                >
+                  <div className="p-6 sm:p-8" style={headerStyle}>
+                    {(badge || IconComp) && (
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        {badge ? (
+                          <span
+                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider ${
+                              solid ? 'bg-white/15 text-white' : 'bg-primary-100 text-primary-600'
+                            }`}
+                          >
+                            {badge}
+                          </span>
+                        ) : <span />}
+                        {IconComp && (
+                          <span
+                            className={`inline-flex items-center justify-center rounded-xl p-2.5 ${
+                              solid ? 'bg-white/15 text-white' : 'bg-primary-100 text-primary-500'
+                            }`}
+                          >
+                            <IconComp size={26} weight="duotone" aria-hidden="true" />
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <h3 className={`catalogue-h3 text-2xl font-bold ${solid ? 'text-white' : 'text-catalogue-text-primary'}`}>
+                      {f.title}
+                    </h3>
+                    {f.description && (
+                      <p className={`mt-2 text-sm leading-relaxed ${solid ? 'text-white/75' : 'text-catalogue-text-secondary'}`}>
+                        {f.description}
+                      </p>
+                    )}
+                  </div>
+                  {(bullets.length > 0 || (f.link?.text && f.link?.url)) && (
+                    <div className="p-6 sm:p-8">
+                      {bullets.length > 0 && (
+                        <ul className="space-y-2.5 text-sm text-catalogue-text-secondary">
+                          {bullets.map((b: string, j: number) => (
+                            <li key={j} className="flex items-start gap-2.5">
+                              <Check size={16} weight="bold" className="mt-0.5 shrink-0 text-primary-500" aria-hidden="true" />
+                              <span>{b}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {f.link?.text && f.link?.url && (
+                        <div className="mt-4">
+                          <CatalogueLink to={f.link.url} className="text-sm font-semibold text-primary-500 hover:underline">
+                            {f.link.text} →
+                          </CatalogueLink>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section style={sectionBg(backgroundColor)} className="py-16 px-4 sm:px-6 lg:px-8 bg-catalogue-bg">

@@ -3902,11 +3902,17 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
             <div>
                 <Label className="text-xs">Style</Label>
                 <div className="flex flex-wrap gap-1 mt-1">
-                    {['cards', 'minimal', 'bordered', 'glass', 'gradient-border', 'tinted'].map((s) => (
+                    {['cards', 'minimal', 'bordered', 'glass', 'gradient-border', 'tinted', 'panel'].map((s) => (
                         <button key={s} onClick={() => updateProp('style', s)}
                             className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s.replace('-', ' ')}</button>
                     ))}
                 </div>
+                {props.style === 'panel' && (
+                    <p className="mt-1 text-caption text-gray-400">
+                        Panel = tinted-header division cards. Per card, set a Badge and a Header
+                        color/style below.
+                    </p>
+                )}
             </div>
             <div>
                 <Label className="text-xs">Text Alignment</Label>
@@ -3956,6 +3962,19 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                                     </select>
                                     <Input value={f.title || ''} onChange={(e) => updateFeature(i, 'title', e.target.value)} placeholder="Title" />
                                     <Textarea value={f.description || ''} onChange={(e) => updateFeature(i, 'description', e.target.value)} placeholder="Description" rows={2} />
+                                    {props.style === 'panel' && (
+                                        <div className="space-y-2 rounded border border-dashed border-gray-200 p-2">
+                                            <p className="text-caption font-medium text-gray-500">Panel header</p>
+                                            <Input value={f.badge || ''} onChange={(e) => updateFeature(i, 'badge', e.target.value)} placeholder="Badge (e.g. Training Division)" />
+                                            <div className="flex gap-1">
+                                                {['tint', 'solid'].map((v) => (
+                                                    <button key={v} onClick={() => updateFeature(i, 'headerVariant', v)}
+                                                        className={`rounded px-3 py-1 text-caption font-medium capitalize ${(f.headerVariant || 'tint') === v && !f.headerColor ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{v}</button>
+                                                ))}
+                                            </div>
+                                            <ColorPickerField label="Header color (optional override)" value={f.headerColor || ''} onChange={(c) => updateFeature(i, 'headerColor', c || undefined)} />
+                                        </div>
+                                    )}
                                     <ListField
                                         value={f.chips}
                                         onCommit={(items) => updateFeature(i, 'chips', items)}

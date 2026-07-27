@@ -175,6 +175,12 @@ class Settings:
     # mid-utterance (VAD-armed — see bot.py). 10s: at 7s the nudge kept firing while a
     # slow-thinking caller was composing an answer (observed live).
     idle_timeout_secs: float = field(default_factory=lambda: float(_env("IDLE_TIMEOUT_SECS", "8.0")))
+    # Audio-stall auto-recovery: DEFAULT OFF. The 2026-07-27 v1 false-fired after every
+    # multi-clause reply (stale pending-stamp) and made agents REPEAT themselves 3x —
+    # worse than the rare Sarvam stall it was built to fix. Re-enable only after the
+    # stamp semantics are covered by the call-timeline test harness.
+    stall_recovery_enabled: bool = field(
+        default_factory=lambda: _env("STALL_RECOVERY_ENABLED", "false").lower() == "true")
 
     # Hard per-call ceiling when the agent config doesn't set maxCallMinutes —
     # bounds telephony + STT/LLM/TTS spend on a runaway conversation.

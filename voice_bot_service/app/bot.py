@@ -1088,7 +1088,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # Force a fresh TTS connection and have the model re-answer; capped
             # at 3 recoveries per call so a hard provider outage can't loop.
             gen_t = flags["tts_gen_t"]
-            if (gen_t > 0 and not flags["bot_speaking"]
+            if (settings.stall_recovery_enabled
+                    and gen_t > 0 and not flags["bot_speaking"]
                     and time.time() - gen_t > 3.5
                     and flags["stall_recoveries"] < 3):
                 flags["tts_gen_t"] = 0.0

@@ -1584,3 +1584,206 @@ async def generate_site(
     if not pages:
         raise HTTPException(status_code=502, detail="Site generation produced no pages — please retry.")
     return GenerateSiteResponse(pages=pages, global_settings=shared_global, model=model_used, warnings=warnings)
+
+
+# ─── Assistive intake (chat-style website interview) ────────────────────────
+# The wizard's conversational mode: instead of one brief textarea, the
+# assistant interviews the admin turn by turn — asking for facts, proof
+# points, tone, and REQUESTING uploads (logo / photos / inspiration
+# screenshots) when they would lift the result — then assembles a rich,
+# composer-ready brief. Uploaded images ride along as vision attachments so
+# the assistant can react to what it was given.
+
+_INTAKE_TOOL_KEY = "page_intake"
+_INTAKE_UPLOAD_KINDS = {"logo", "photo", "inspiration"}
+_MAX_INTAKE_TURNS = 40
+
+
+class IntakeTurn(BaseModel):
+    role: str  # 'user' | 'assistant'
+    content: str = ""
+    # Images the admin uploaded WITH this turn (already on our S3).
+    image_urls: List[str] = Field(default_factory=list)
+
+
+class IntakeRequest(BaseModel):
+    history: List[IntakeTurn]
+    institute_name: Optional[str] = None
+    courses: List[CourseSnapshotItem] = Field(default_factory=list)
+    terminology: Optional[Dict[str, str]] = None
+    preferred_model: Optional[str] = None
+
+
+class IntakeResponse(BaseModel):
+    reply: str
+    chips: List[str] = Field(default_factory=list)
+    # When set, the FE opens the matching uploader inline: logo|photo|inspiration
+    request_upload: Optional[str] = None
+    ready: bool = False
+    # Composer-ready brief — final when ready=true, best-effort draft before.
+    brief: Optional[str] = None
+    page_type: Optional[str] = None
+    whole_site: bool = False
+    run_id: str
+    model: str
+
+
+def _build_intake_prompt(req: IntakeRequest) -> str:
+    parts: List[str] = []
+    parts.append(
+        "You are the website-creation assistant for Vacademy: you interview an education-institute "
+        "admin (often non-technical) and gather everything needed to build them a world-class website. "
+        "You do NOT build the page yourself — a separate composer will receive your final brief.\n"
+        "STYLE: warm, plain language, ONE question per turn, never a form. Mirror the admin's language "
+        "(Hindi in → Hindi out). Keep replies to 1–3 short sentences.\n"
+        "WHAT TO LEARN (adapt order, skip what you already know): 1) what the site is for + what makes "
+        "this institute different; 2) concrete PROOF (results, years, student counts, toppers, records — "
+        "numbers make pages persuasive); 3) tone/style direction and any sites they admire — ask them to "
+        "upload SCREENSHOTS of sites they like (request_upload='inspiration'); 4) their LOGO "
+        "(request_upload='logo') and real photos of campus/classes/students (request_upload='photo') — "
+        "real photos beat stock; 5) whether they want one homepage or a whole site (home+about+contact).\n"
+        "UPLOAD REQUESTS: set request_upload to logo|photo|inspiration ONLY when that is what you are "
+        "asking for this turn; the admin sees an upload button. If they upload, the images appear as "
+        "attachments — react to them specifically (e.g. comment on the logo's colors) and use them to "
+        "sharpen the design direction. Never demand uploads; offering to skip is fine.\n"
+        "PACE: aim to be ready within 5–8 of your turns. The admin can say 'just build it' at any time — "
+        "then set ready=true immediately with the best brief you can.\n"
+        "WHEN READY (ready=true): write `brief` as a RICH composer brief in the admin's language: "
+        "identity + differentiators, every real number/proof point gathered, the section plan, tone, "
+        "color/style direction (including anything learned from uploaded logo/inspiration), and which "
+        "uploaded photos exist. Be specific — the composer only knows what the brief says.\n"
+        "ALWAYS return `brief` as your best current draft even before ready (the admin can jump ahead)."
+    )
+    if req.institute_name:
+        parts.append(f"## INSTITUTE\nName: {req.institute_name}")
+    if req.courses:
+        parts.append(
+            "## REAL COURSES (already known — do not ask for a course list again)\n"
+            + json.dumps([c.model_dump(exclude_none=True) for c in req.courses], ensure_ascii=False)
+        )
+    if req.terminology:
+        parts.append("## TERMINOLOGY\n" + json.dumps(req.terminology, ensure_ascii=False))
+    parts.append(
+        "## OUTPUT CONTRACT\nReturn ONLY a JSON object (no markdown fences):\n"
+        '{"reply": "<your next message>", "chips": ["<2-4 short tap-to-answer suggestions>"], '
+        '"request_upload": "logo"|"photo"|"inspiration"|null, "ready": true|false, '
+        '"brief": "<current composer brief draft>", "page_type": "homepage"|"course-landing"|"about"|'
+        '"admissions"|"contact", "whole_site": true|false}'
+    )
+    return "\n\n".join(parts)
+
+
+def _parse_intake_json(raw: str) -> Dict[str, Any]:
+    """Tolerant parse: strip code fences / leading prose around the JSON."""
+    text = raw.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```[a-zA-Z]*\s*|\s*```$", "", text)
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end <= start:
+        raise ValueError("no JSON object in intake reply")
+    return json.loads(text[start:end + 1])
+
+
+@router.post("/v1/intake", response_model=IntakeResponse)
+async def intake_turn(
+    body: IntakeRequest,
+    db: Session = Depends(db_dependency),
+    current_user=Depends(get_current_user),
+) -> IntakeResponse:
+    from ..services.chat_llm_client import ChatLLMClient
+    from ..services.api_key_resolver import ApiKeyResolver
+
+    if not current_user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required.")
+    institute_id = getattr(current_user, "institute_id", None)
+    if not institute_id:
+        raise HTTPException(status_code=400, detail="No institute context on this session.")
+    actor_user_id = getattr(current_user, "user_id", None)
+    if len(body.history) > _MAX_INTAKE_TURNS:
+        raise HTTPException(status_code=400, detail="This conversation is too long — please generate or start over.")
+
+    estimate = preflight_tool_credits(db, tool_key=_INTAKE_TOOL_KEY, tool_params={}, institute_id=institute_id)
+    if estimate.get("sufficient") is False:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Insufficient credits (balance {estimate.get('current_balance')}).",
+        )
+
+    # Conversation → chat messages. Uploaded images ride as vision attachments
+    # on their own turn (capped: last 4 image-bearing references).
+    messages: List[Dict[str, Any]] = [{"role": "system", "content": _build_intake_prompt(body)}]
+    attach_budget = 4
+    for turn in body.history[-16:]:
+        role = "assistant" if turn.role == "assistant" else "user"
+        msg: Dict[str, Any] = {"role": role, "content": (turn.content or "")[:4000]}
+        if role == "user" and turn.image_urls and attach_budget > 0:
+            urls = [u for u in turn.image_urls if isinstance(u, str) and u.startswith("https://")][:attach_budget]
+            if urls:
+                attach_budget -= len(urls)
+                msg["attachments"] = [{"type": "image", "url": u} for u in urls]
+                msg["content"] = (msg["content"] + f"\n[uploaded {len(urls)} image(s)]").strip()
+        messages.append(msg)
+    if len(messages) == 1:
+        messages.append({"role": "user", "content": "Hi — I want to build a website for my institute."})
+
+    primary, fallbacks = resolve_models(
+        db, "page_builder", preferred_model=body.preferred_model, hard_fallback=_DEFAULT_MODEL
+    )
+    client = ChatLLMClient(ApiKeyResolver(db))
+    run_id = uuid.uuid4().hex
+    data: Optional[Dict[str, Any]] = None
+    model_used = primary
+    usage: Dict[str, Any] = {}
+    last_err: Optional[Exception] = None
+    for model in [primary, *fallbacks][:2]:
+        try:
+            resp = await client.chat_completion(
+                messages, temperature=0.5, max_tokens=1200,
+                institute_id=institute_id, user_id=actor_user_id, model=model,
+            )
+            data = _parse_intake_json(resp.get("content") or "")
+            model_used = resp.get("model") or model
+            usage = resp.get("usage") or {}
+            break
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+            logger.warning("[page-intake] turn failed on %s: %s", model, e)
+    if data is None:
+        raise HTTPException(status_code=502, detail=f"Assistant turn failed: {last_err}")
+
+    chips = [_clean_string(str(c))[:60] for c in data.get("chips") or [] if str(c).strip()][:4]
+    req_upload = data.get("request_upload")
+    if req_upload not in _INTAKE_UPLOAD_KINDS:
+        req_upload = None
+    page_type = data.get("page_type")
+    if page_type not in {"homepage", "course-landing", "about", "admissions", "contact"}:
+        page_type = "homepage"
+
+    try:
+        record_tool_billing(
+            tool_key=_INTAKE_TOOL_KEY,
+            tool_params={},
+            request_type=RequestType.CONTENT,
+            model=model_used,
+            prompt_tokens=int((usage or {}).get("prompt_tokens") or 0),
+            completion_tokens=int((usage or {}).get("completion_tokens") or 0),
+            institute_id=institute_id,
+            user_id=actor_user_id,
+            user_role=None,
+            idempotency_key=f"{_INTAKE_TOOL_KEY}:{run_id}",
+            usage_markup=_USAGE_MARKUP,
+        )
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-intake] billing skipped: %s", e)
+
+    return IntakeResponse(
+        reply=_clean_string(str(data.get("reply") or "")).strip()[:2000] or "Tell me about your institute!",
+        chips=chips,
+        request_upload=req_upload,
+        ready=bool(data.get("ready")),
+        brief=(_clean_string(str(data.get("brief"))) if data.get("brief") else None),
+        page_type=page_type,
+        whole_site=bool(data.get("whole_site")),
+        run_id=run_id,
+        model=model_used,
+    )

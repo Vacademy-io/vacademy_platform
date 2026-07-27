@@ -6,6 +6,7 @@ import {
     AI_PAGE_BUILDER_BRAND_KIT,
     AI_PAGE_BUILDER_IMAGE,
     AI_PAGE_BUILDER_SITE,
+    AI_PAGE_BUILDER_INTAKE,
 } from '@/constants/urls';
 import { CatalogueConfig, Component, Page } from '../-types/editor-types';
 import { CATALOGUE_FONTS } from '../-utils/catalogue-fonts';
@@ -179,6 +180,41 @@ export const generateAiImage = async (payload: {
         AI_PAGE_BUILDER_IMAGE(),
         payload,
         { timeout: 150000 } // image gen can take a while
+    );
+    return response.data;
+};
+
+/* ─── Assistive intake (chat-style website interview) ─────────────────── */
+
+export interface IntakeTurn {
+    role: 'user' | 'assistant';
+    content: string;
+    /** Images the admin uploaded WITH this turn (already on our S3). */
+    image_urls?: string[];
+}
+
+export interface IntakeResponse {
+    reply: string;
+    chips: string[];
+    request_upload: 'logo' | 'photo' | 'inspiration' | null;
+    ready: boolean;
+    brief: string | null;
+    page_type: string;
+    whole_site: boolean;
+    run_id: string;
+    model: string;
+}
+
+export const intakeAiTurn = async (payload: {
+    history: IntakeTurn[];
+    institute_name?: string;
+    courses?: AiCourseSnapshotItem[];
+    terminology?: Record<string, string>;
+}): Promise<IntakeResponse> => {
+    const response = await authenticatedAxiosInstance.post<IntakeResponse>(
+        AI_PAGE_BUILDER_INTAKE(),
+        payload,
+        { timeout: 90000 }
     );
     return response.data;
 };

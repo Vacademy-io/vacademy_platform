@@ -179,6 +179,16 @@ DEFAULT_TOOL_PRICING: Dict[str, Dict[str, Any]] = {
         "unit_field": "flat",
         "params": {},
     },
+    # AI Page Builder assistive intake — one chat turn of the website
+    # interview (small vision-capable call). Cheap so a 6-8 turn interview
+    # costs less than the generate it feeds.
+    "page_intake": {
+        "request_type": "content",
+        "flat_base_credits": Decimal("1"),
+        "per_unit_credits": Decimal("0"),
+        "unit_field": "flat",
+        "params": {},
+    },
     # AI Page Builder brand kit — one small LLM call proposing 2-3 ThemePacks
     # (color/atmosphere/fonts) from the institute's brand. Cheap.
     "page_brand_kit": {

@@ -442,7 +442,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
 
     @Query(value = """
                 WITH filtered_activity_log AS (
-                    SELECT DISTINCT al.id, al.user_id, al.start_time, al.end_time
+                    SELECT DISTINCT al.id, al.user_id, al.start_time, al.end_time, al.engaged_ms
                     FROM activity_log al
                     JOIN slide s ON s.id = al.slide_id
                     JOIN chapter_to_slides cs ON cs.slide_id = s.id
@@ -1307,6 +1307,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     al.slide_id,
                     al.start_time,
                     al.end_time,
+                    al.engaged_ms,
                     al.user_id
                 FROM activity_log al
                 JOIN Slides s ON al.slide_id = s.slide_id
@@ -1634,6 +1635,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     al.slide_id,
                     al.start_time,
                     al.end_time,
+                    al.engaged_ms,
                     al.user_id
                 FROM activity_log al
                 JOIN Slides s ON al.slide_id = s.slide_id

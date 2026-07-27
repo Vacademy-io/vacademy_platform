@@ -246,11 +246,40 @@ export function effectiveAccepted(tc: {
 }
 
 /**
+ * SHA-256 hex of a string. Used to compare against hidden test cases whose
+ * expected outputs the backend redacts to hashes (see `hashed` below) so the
+ * answer key never reaches the learner in plaintext.
+ */
+async function sha256Hex(s: string): Promise<string> {
+  const bytes = new TextEncoder().encode(s);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
  * Returns the index of the first accepted output that matches `actual`
  * (after normalization), or -1 if none match.
+ *
+ * When `hashed` is true, `accepted` holds SHA-256 hex digests of the
+ * normalized expected outputs (the backend redacts hidden tests this way).
+ * We then hash the normalized actual output and compare digests. Normalization
+ * MUST be identical on both sides — the backend hashes the trimmed value.
  */
-export function matchAccepted(actual: string, accepted: string[]): number {
+export async function matchAccepted(
+  actual: string,
+  accepted: string[],
+  hashed = false,
+): Promise<number> {
   const a = normalizeOutput(actual);
+  if (hashed) {
+    const actualHash = await sha256Hex(a);
+    for (let i = 0; i < accepted.length; i++) {
+      if ((accepted[i] ?? "") === actualHash) return i;
+    }
+    return -1;
+  }
   for (let i = 0; i < accepted.length; i++) {
     if (normalizeOutput(accepted[i]) === a) return i;
   }
@@ -268,6 +297,7 @@ export async function runTestCase(
   testStdin: string,
   accepted: string[],
   options: RunOptions = {},
+  hashed = false,
 ): Promise<{
   passed: boolean;
   matchedIndex: number;
@@ -282,7 +312,9 @@ export async function runTestCase(
 }> {
   try {
     const r = await runCode(code, language, { ...options, stdin: testStdin });
-    const matchedIndex = r.hasError ? -1 : matchAccepted(r.stdout ?? "", accepted);
+    const matchedIndex = r.hasError
+      ? -1
+      : await matchAccepted(r.stdout ?? "", accepted, hashed);
     return {
       passed: !r.hasError && matchedIndex >= 0,
       matchedIndex,

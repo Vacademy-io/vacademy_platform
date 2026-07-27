@@ -13,6 +13,11 @@ export interface CodingTestCase {
   // Invariant maintained by authoring: acceptedOutputs[0] === expectedStdout.
   acceptedOutputs?: string[];
   visible: boolean;
+  // Set by the backend for hidden tests served during a live attempt: the
+  // expectedStdout / acceptedOutputs above are SHA-256 hex digests of the
+  // normalized expected values, not plaintext, so the answer key is never
+  // exposed. The grader hashes the learner's output before comparing.
+  outputsHashed?: boolean;
 }
 
 export interface CodingPerRunLimits {

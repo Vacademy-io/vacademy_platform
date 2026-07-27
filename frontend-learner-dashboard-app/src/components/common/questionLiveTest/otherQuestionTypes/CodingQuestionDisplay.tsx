@@ -166,10 +166,16 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
             let errored = false;
             let timedOut = false;
             for (const tc of tests) {
-                const r = await runTestCase(code, language, tc.stdin, effectiveAccepted(tc), {
-                    cpuSeconds,
-                    memoryKb,
-                });
+                const r = await runTestCase(
+                    code,
+                    language,
+                    tc.stdin,
+                    effectiveAccepted(tc),
+                    { cpuSeconds, memoryKb },
+                    // Hidden tests are served with hashed expected outputs; grade
+                    // by hashing the learner's output and comparing digests.
+                    tc.outputsHashed ?? false,
+                );
                 fresh.push({
                     id: tc.id,
                     label: tc.label,

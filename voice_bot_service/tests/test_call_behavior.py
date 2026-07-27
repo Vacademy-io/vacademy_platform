@@ -332,3 +332,348 @@ def test_tts_connect_lock_and_stall_reenabled():
     import inspect as _i
     csrc = _i.getsource(cfg)
     assert 'STALL_RECOVERY_ENABLED", "true"' in csrc
+
+
+# ═══ Wave 3 ═══════════════════════════════════════════════════════════════════
+
+import inspect
+import json as _json
+import os
+
+import app.main as m
+import app.report as rpt
+import app.admin_core as ac
+
+
+class _W3Settings:
+    """Minimal settings stub for token/spool/cache tests."""
+
+    internal_client_secret = "sekrit"
+
+    def __init__(self, tmp=""):
+        self.tts_cache_dir = str(tmp)
+        self.tts_cache_max_files = 4000
+        self.tts_cache_max_bytes = 500 * 1024 * 1024
+
+    @property
+    def report_spool_dir(self):
+        return os.path.join(self.tts_cache_dir, "_report_spool")
+
+
+# ── B4: /ws admission token ──────────────────────────────────────────────────
+
+def test_ws_token_roundtrip_and_rejections(monkeypatch):
+    monkeypatch.setattr(m, "get_settings", lambda: _W3Settings())
+    tok = m._mint_ws_token("corr-1")
+    assert m._verify_ws_token("corr-1", tok)
+    # Bound to the corr — a token for one call cannot admit another.
+    assert not m._verify_ws_token("corr-2", tok)
+    assert not m._verify_ws_token("corr-1", "garbage")
+    assert not m._verify_ws_token("corr-1", "")
+    assert not m._verify_ws_token("corr-1", "123.deadbeef")
+    # Expired token (minted in the past beyond TTL).
+    old = m._mint_ws_token("corr-1", now=time.time() - m._WS_TOKEN_TTL_SECS - 60)
+    assert not m._verify_ws_token("corr-1", old)
+
+
+def test_ws_token_open_when_secret_unset(monkeypatch):
+    s = _W3Settings()
+    s.internal_client_secret = ""
+    monkeypatch.setattr(m, "get_settings", lambda: s)
+    # Unconfigured dev box: don't brick, the context fetch gates anything real.
+    assert m._verify_ws_token("corr-1", "")
+    assert m._consume_ws_token("corr-1", "")  # single-use is a no-op without a secret
+
+
+def test_ws_token_is_single_use(monkeypatch):
+    # The DoS-relevant property (deep-review W3): a captured token admits exactly
+    # ONE socket. First consume passes; every replay of the same corr+token fails.
+    monkeypatch.setattr(m, "get_settings", lambda: _W3Settings())
+    m._spent_ws_tokens.clear()
+    tok = m._mint_ws_token("corr-1")
+    assert m._consume_ws_token("corr-1", tok)          # first use admitted
+    assert not m._consume_ws_token("corr-1", tok)      # replay rejected
+    assert not m._consume_ws_token("corr-1", tok)      # …and stays rejected
+    # A genuinely different token (minted in a later second → different exp) for the
+    # same corr is still fine. NB tokens are deterministic in (corr, exp-second), so
+    # a real call — which mints once — is never self-blocked.
+    tok2 = m._mint_ws_token("corr-1", now=time.time() + 5)
+    assert tok2 != tok
+    assert m._consume_ws_token("corr-1", tok2)
+    # A forged/expired token never consumes.
+    assert not m._consume_ws_token("corr-1", "garbage")
+    m._spent_ws_tokens.clear()
+
+
+def test_ws_route_gates_token_and_decouples_slot_from_handshake():
+    src = inspect.getsource(m.ws_endpoint)
+    # Single-use consume (not bare verify) gates the socket.
+    assert "_consume_ws_token(corr" in src
+    # Pending-handshake bucket is entered BEFORE the handshake; the real call slot
+    # (_active_calls) is claimed only AFTER it — a stalled handshake never holds a
+    # running-call slot (deep-review W3 DoS fix).
+    assert "_inflight_handshakes += 1" in src
+    assert src.index("_inflight_handshakes += 1") < src.index("asyncio.wait_for")
+    assert src.index("asyncio.wait_for") < src.index("_active_calls += 1")
+    # Both buckets are released in the finally via held-flags.
+    assert "_inflight_held" in src and "_active_slot" in src
+    assert "outcome.crashed = True" in src
+    answer_src = inspect.getsource(m.answer)
+    assert "_mint_ws_token(corr)" in answer_src      # /answer actually mints it
+
+
+# ── B4: public TTS cache is bounded ──────────────────────────────────────────
+
+def test_tts_cache_eviction_previews_then_oldest(tmp_path):
+    d = str(tmp_path)
+    now = time.time()
+    # f0 oldest … f4 newest; f4 is a PREVIEW (pv-*) — despite being newest it
+    # must evict before any IVR prompt file (previews re-synthesize freely,
+    # a deleted prompt 404s on live IVR calls until re-saved).
+    for i in range(5):
+        name = "pv-f4.mp3" if i == 4 else f"f{i}.mp3"
+        p = os.path.join(d, name)
+        with open(p, "wb") as f:
+            f.write(b"x" * 10)
+        os.utime(p, (now - 1000 + i, now - 1000 + i))
+    assert m._evict_tts_cache(d, max_files=3, max_bytes=10**9) == 2
+    left = sorted(n for n in os.listdir(d) if n.endswith(".mp3"))
+    assert left == ["f1.mp3", "f2.mp3", "f3.mp3"]  # pv- went first, then oldest
+    # Byte cap: 30 bytes on disk, cap 25 → one more (now the oldest prompt) goes.
+    assert m._evict_tts_cache(d, max_files=100, max_bytes=25) == 1
+    assert sorted(os.listdir(d))[0] == "f2.mp3"
+    # Under caps → no-op; missing dir → no-op.
+    assert m._evict_tts_cache(d, max_files=100, max_bytes=10**9) == 0
+    assert m._evict_tts_cache(os.path.join(d, "nope"), 1, 1) == 0
+
+
+def test_tts_cache_eviction_is_true_lru_via_serve_touch(tmp_path):
+    # The play route bumps mtime on serve so a live IVR prompt survives eviction
+    # while write-once junk ages out — the fix for "eviction deletes live prompts"
+    # (deep-review W3). Model it: prompt written oldest, then SERVED (touched).
+    d = str(tmp_path)
+    old = time.time() - 1000
+    prompt = os.path.join(d, "prompt.mp3")
+    junk = os.path.join(d, "junk.mp3")
+    for p in (prompt, junk):
+        with open(p, "wb") as f:
+            f.write(b"x" * 10)
+    os.utime(prompt, (old, old))          # prompt is the OLDER file by creation
+    os.utime(junk, (old + 1, old + 1))
+    # Serving the prompt bumps its mtime (touch=True) → now it's the NEWER file.
+    m._serve_mp3(prompt, touch=True)
+    # Cap of 1 file → the un-served junk evicts, the served prompt stays.
+    assert m._evict_tts_cache(d, max_files=1, max_bytes=10**9) == 1
+    assert os.path.exists(prompt) and not os.path.exists(junk)
+
+
+def test_serve_mp3_missing_file_is_404_not_500(tmp_path):
+    # TOCTOU: eviction can unlink between the caller's exists-check and the open.
+    # _serve_mp3 must return 404 (Plivo falls back to <Speak>), never raise → 500.
+    resp = m._serve_mp3(os.path.join(str(tmp_path), "gone.mp3"), touch=True)
+    assert resp.status_code == 404
+
+
+def test_serve_mp3_touch_failure_still_serves(tmp_path, monkeypatch):
+    # A readable file on a degraded volume (utime raises EROFS/EPERM/EIO) must
+    # STILL play — the LRU touch is best-effort, never a new 500 path (round-2 P2).
+    p = os.path.join(str(tmp_path), "prompt.mp3")
+    with open(p, "wb") as f:
+        f.write(b"audio")
+
+    def boom(*a, **k):
+        raise PermissionError("read-only volume")
+
+    monkeypatch.setattr(m.os, "utime", boom)
+    resp = m._serve_mp3(p, touch=True)
+    assert resp.status_code == 200 and resp.body == b"audio"
+
+
+# ── B5: report status honesty ────────────────────────────────────────────────
+
+class _W3Outcome:
+    def __init__(self, transcript, crashed=False):
+        self.transcript = transcript
+        self.crashed = crashed
+
+
+def test_status_synthetic_turns_do_not_count_as_spoken():
+    # Dead-air pickup where only the backchannel cue landed → no-answer, so the
+    # classifier retries instead of resuming the workflow on a phantom connect.
+    o = _W3Outcome([{"role": "user", "text": "[unclear sound from the caller]"}])
+    assert rpt._status(o) == "no-answer"
+    o2 = _W3Outcome([{"role": "user", "text": "  [unclear sound from the caller]"}])
+    assert rpt._status(o2) == "no-answer"
+
+
+def test_status_crash_is_failed_not_no_answer():
+    assert rpt._status(_W3Outcome([], crashed=True)) == "failed"
+    # But a crash AFTER a real conversation keeps the honest "completed".
+    o = _W3Outcome([{"role": "user", "text": "haan boliye"}], crashed=True)
+    assert rpt._status(o) == "completed"
+    assert rpt._status(_W3Outcome([{"role": "assistant", "text": "hello"}])) == "no-answer"
+
+
+# ── B5: failed-report spool + sweeper ────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_spool_write_then_sweep_delivers_and_cleans(tmp_path, monkeypatch):
+    s = _W3Settings(tmp_path)
+    monkeypatch.setattr(rpt, "get_settings", lambda: s)
+    path = rpt.spool_report("inst-1", "tok", {"correlationId": "c/1 weird"})
+    assert path and os.path.exists(path)
+    assert os.path.dirname(path) == s.report_spool_dir
+
+    calls = []
+
+    async def post_fail(*a):
+        calls.append(a)
+        return False
+
+    async def post_ok(*a):
+        calls.append(a)
+        return True
+
+    monkeypatch.setattr(rpt.admin_core, "post_report", post_fail)
+    assert await rpt.sweep_report_spool() == (0, 1)
+    assert os.path.exists(path)              # retained for the next sweep
+    monkeypatch.setattr(rpt.admin_core, "post_report", post_ok)
+    assert await rpt.sweep_report_spool() == (1, 0)
+    assert not os.path.exists(path)          # delivered → removed
+    assert calls[-1][0] == "inst-1" and calls[-1][1] == "tok"
+
+
+@pytest.mark.asyncio
+async def test_spool_parks_dead_after_max_age(tmp_path, monkeypatch):
+    s = _W3Settings(tmp_path)
+    monkeypatch.setattr(rpt, "get_settings", lambda: s)
+    path = rpt.spool_report("inst-1", None, {"correlationId": "old-1"})
+    rec = _json.load(open(path))
+    rec["spooledAt"] = time.time() - rpt._SPOOL_MAX_AGE_SECS - 60
+    with open(path, "w") as f:
+        _json.dump(rec, f)
+
+    async def post_fail(*a):
+        return False
+
+    monkeypatch.setattr(rpt.admin_core, "post_report", post_fail)
+    assert await rpt.sweep_report_spool() == (0, 0)
+    assert not os.path.exists(path) and os.path.exists(path + ".dead")
+    # Unreadable spool entry parks as .dead too instead of wedging the sweep.
+    bad = os.path.join(s.report_spool_dir, "bad.json")
+    with open(bad, "w") as f:
+        f.write("{not json")
+    assert await rpt.sweep_report_spool() == (0, 0)
+    assert os.path.exists(bad + ".dead")
+
+
+def test_report_failure_spools(monkeypatch):
+    src = inspect.getsource(rpt.build_and_post_report)
+    assert "spool_report(" in src and "if not ok" in src
+    # Inline post has a beat between its two attempts (deploy-window blips).
+    ac_src = inspect.getsource(ac.post_report)
+    assert "asyncio.sleep" in ac_src
+
+
+@pytest.mark.asyncio
+async def test_spool_sweeps_oldest_call_first(tmp_path, monkeypatch):
+    # Out-of-order clobber guard (deep-review W3): several queued reports must be
+    # delivered oldest-call-first (by spooledAt), NOT by filename (= random corr),
+    # so a stale outcome can't land after a newer one and regress the lead.
+    s = _W3Settings(tmp_path)
+    monkeypatch.setattr(rpt, "get_settings", lambda: s)
+    now = time.time()
+    # zzz sorts LAST by filename but is the OLDER call; aaa sorts first but newer.
+    p_old = rpt.spool_report("i", "t", {"correlationId": "zzz-old"})
+    p_new = rpt.spool_report("i", "t", {"correlationId": "aaa-new"})
+    for p, ts in ((p_old, now - 300), (p_new, now - 10)):
+        rec = _json.load(open(p))
+        rec["spooledAt"] = ts
+        with open(p, "w") as f:
+            _json.dump(rec, f)
+
+    order = []
+
+    async def post_ok(inst, tok, payload):
+        order.append(payload.get("correlationId"))
+        return True
+
+    monkeypatch.setattr(rpt.admin_core, "post_report", post_ok)
+    assert await rpt.sweep_report_spool() == (2, 0)
+    assert order == ["zzz-old", "aaa-new"]  # oldest call delivered first
+
+
+@pytest.mark.asyncio
+async def test_report_carries_generated_at_for_late_delivery(monkeypatch):
+    # Every report stamps reportGeneratedAt so a spool-delivered-late report tells
+    # admin_core when the call actually ended (forward-compat recency guard).
+    posted = {}
+
+    async def capture(inst, tok, payload):
+        posted.update(payload)
+        return True
+
+    monkeypatch.setattr(rpt.admin_core, "post_report", capture)
+
+    async def fake_analyze(o):
+        return {"disposition": "Interested"}
+
+    monkeypatch.setattr(rpt, "_analyze", fake_analyze)
+
+    class _Ctx(dict):
+        pass
+
+    class _Outcome:
+        corr = "c1"
+        context = {"agent": {"dispositions": ["Interested"]}, "instituteId": "i"}
+        connected_at = time.time() - 30
+        ended_at = time.time()
+        transcript = [{"role": "user", "text": "haan"}]
+        transfer_requested = False
+        transfer_registered = False
+        crashed = False
+
+        def duration_seconds(self):
+            return 30
+
+    assert await rpt.build_and_post_report(_Outcome(), "cu1") is True
+    assert posted["systemError"] is False
+    assert "reportGeneratedAt" in posted["metadata"]
+    assert posted["metadata"]["reportGeneratedAt"].endswith("Z")
+
+
+# ── B6/B7: setup off-loop + teardown hygiene ─────────────────────────────────
+
+def test_run_bot_setup_and_teardown_structure():
+    src = inspect.getsource(b.run_bot)
+    # Vertex SA OAuth must not block the event loop (other live calls glitch).
+    assert "await asyncio.to_thread(build_llm)" in src
+    # Greet task is tracked; watchdog + greet cancels are AWAITED.
+    assert "_bg_tasks.append(asyncio.create_task(_greet_when_ready()))" in src
+    tail = src[src.index("watchdog_task = asyncio.create_task"):]
+    assert "_t.cancel()" in tail and "await _t" in tail
+    # Sarvam SDK httpx client close is attempted defensively.
+    assert "_client_wrapper" in tail and "aclose" in tail
+
+
+def test_lifespan_starts_sweeper_and_prewarm():
+    src = inspect.getsource(m.lifespan)
+    assert "report_spool_sweeper()" in src and "asyncio.create_task" in src
+    assert "_warm_llm" in src
+    warm = inspect.getsource(m._warm_llm)
+    assert "build_llm" in warm
+
+
+def test_stt_sdk_close_chain_resolves_on_pinned_wheel():
+    # The teardown in run_bot closes _sarvam_client._client_wrapper.httpx_client
+    # .httpx_client — assert that chain actually resolves on the installed wheel
+    # so an SDK upgrade that moves it fails HERE, not silently in production.
+    try:
+        stt = pv.build_stt(8000)
+    except Exception as ex:  # pragma: no cover - env without Sarvam config
+        pytest.skip(f"STT not constructible here: {ex}")
+    sdk = getattr(stt, "_sarvam_client", None)
+    assert sdk is not None, "SarvamSTTService no longer stores _sarvam_client"
+    h = getattr(getattr(sdk, "_client_wrapper", None), "httpx_client", None)
+    inner = getattr(h, "httpx_client", h)
+    assert callable(getattr(inner, "aclose", None))

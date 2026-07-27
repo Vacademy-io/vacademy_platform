@@ -87,6 +87,9 @@ class CallOutcome:
     transfer_requested: bool = False
     transfer_registered: bool = False
     end_requested: bool = False
+    # Set by main.py when run_bot raises: the report must say "failed", not
+    # "no-answer" — a crash is our fault and must never read as the lead's.
+    crashed: bool = False
 
     def duration_seconds(self) -> int:
         end = self.ended_at or time.time()
@@ -1020,7 +1023,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     if hasattr(stt, "set_backchannel_gate"):
         stt.set_backchannel_gate(
             lambda: not flags["bot_speaking"] and time.time() - _call_t0 > 6.0)
-    llm = build_llm()
+    # to_thread: on Vertex the constructor performs a SYNCHRONOUS service-account
+    # OAuth round-trip (~1-2s). Run per-call setup off the event loop so other
+    # LIVE calls' audio doesn't glitch while this one dials (part of the measured
+    # 3.2s StartFrame gap; lifespan pre-warm covers the import cost).
+    llm = await asyncio.to_thread(build_llm)
     tts = build_tts(settings.sample_rate, voice=agent.get("voice"),
                     aiohttp_session=aiohttp_session,
                     pace=_as_float(agent.get("pace")),
@@ -1163,9 +1170,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                            "specify — do not just say 'hello'.]"}],
                 run_llm=True)])
 
+    # Tracked so run_bot's finally can cancel it — an orphaned greet task on a
+    # pipeline that died during setup would queue frames into a cancelled task
+    # (noisy) and hold its closure alive.
+    _bg_tasks: list = []
+
     @transport.event_handler("on_client_connected")
     async def _on_connected(_transport, _client):
-        asyncio.create_task(_greet_when_ready())
+        _bg_tasks.append(asyncio.create_task(_greet_when_ready()))
 
     @transport.event_handler("on_client_disconnected")
     async def _on_disconnected(_transport, _client):
@@ -1262,7 +1274,35 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     corr, time.time() - _run_bot_t0)
         await runner.run(task)
     finally:
-        watchdog_task.cancel()
         outcome.ended_at = time.time()
+        # AWAITED cancellation (not fire-and-forget): retrieves the task result so
+        # a watchdog crash is logged instead of vanishing as a pending-task warning.
+        for _t in [watchdog_task, *_bg_tasks]:
+            _t.cancel()
+            try:
+                await _t
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.exception("teardown: background task died corr=%s", corr)
+        # Best-effort SDK teardown: STT holds a per-call AsyncSarvamAI whose
+        # underlying httpx.AsyncClient the pipeline never closes — leaked per
+        # call. (TTS reuses the app-level aiohttp session; its websocket is
+        # closed by the pipeline's own End/Cancel path.) Shape verified against
+        # the pinned wheels 2026-07-27: _sarvam_client._client_wrapper
+        # .httpx_client (fern AsyncHttpClient, NO aclose) .httpx_client (the
+        # real httpx.AsyncClient, has aclose). Every step is defensive.
+        for _svc in (stt, tts):
+            _sdk = getattr(_svc, "_sarvam_client", None) or getattr(_svc, "_client", None)
+            _httpx = getattr(getattr(_sdk, "_client_wrapper", None), "httpx_client", None)
+            _inner = getattr(_httpx, "httpx_client", _httpx)
+            _close = getattr(_inner, "aclose", None)
+            if _close is not None:
+                try:
+                    _res = _close()
+                    if asyncio.iscoroutine(_res):
+                        await _res
+                except Exception:
+                    pass
 
     return outcome

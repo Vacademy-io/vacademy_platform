@@ -16,6 +16,7 @@ import asyncio
 import base64
 import contextlib
 import hashlib
+import hmac
 import logging
 import os
 import re
@@ -30,7 +31,7 @@ from fastapi.responses import PlainTextResponse
 from . import admin_core
 from .bot import CallOutcome, run_bot
 from .config import get_settings
-from .report import build_and_post_report
+from .report import build_and_post_report, report_spool_sweeper
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -40,10 +41,25 @@ logger = logging.getLogger("voice_bot")
 # read+increment with no intervening await is atomic — the /ws gate below relies
 # on that. Tracks active /ws pipelines (the CPU-heavy resource), not /answer hits.
 _active_calls = 0
+# Sockets accepted but still in the telephony handshake (pre-pipeline). Counted
+# SEPARATELY from _active_calls so a flood of stalled handshakes (an attacker who
+# connects and never sends the Plivo start event) is bounded on its own and can't
+# consume the running-call budget legit calls need (deep-review W3).
+_inflight_handshakes = 0
 
 
 def _capacity_left() -> bool:
     return _active_calls < get_settings().max_concurrent_calls
+
+
+def _warm_llm() -> None:
+    """Import + construct the LLM service once at startup, OFF the event loop.
+    On Vertex the constructor performs a synchronous service-account OAuth
+    (~1-2s of pure loop blocking when done per-call at answer time — audible as
+    garble on concurrent calls). Runs in a thread so /health stays responsive
+    while the heavy pipecat/google-auth imports load."""
+    from .providers import build_llm
+    build_llm()
 
 
 @contextlib.asynccontextmanager
@@ -51,9 +67,25 @@ async def lifespan(app: FastAPI):
     # One shared HTTP session for the process — SarvamTTSService requires an
     # aiohttp session (keyword-only, no default in the pinned pipecat).
     app.state.http_session = aiohttp.ClientSession()
+
+    async def _warm():
+        try:
+            await asyncio.to_thread(_warm_llm)
+            logger.info("lifespan: LLM provider pre-warmed")
+        except Exception:
+            logger.exception("lifespan: LLM pre-warm failed (non-fatal)")
+
+    # Background on purpose: pre-warm and the spool sweeper must not delay
+    # startup (the probe window) or block /answer for live traffic.
+    app.state.warm_task = asyncio.create_task(_warm())
+    app.state.spool_task = asyncio.create_task(report_spool_sweeper())
     try:
         yield
     finally:
+        for t in (app.state.warm_task, app.state.spool_task):
+            t.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await t
         await app.state.http_session.close()
 
 
@@ -166,15 +198,32 @@ async def _ensure_cached(text: str, voice: str, lang: str) -> str | None:
     except Exception:
         logger.exception("tts: disk cache write failed")
         return None
+    await _evict_tts_cache_async()
     return path
 
 
-def _serve_mp3(path: str) -> Response:
+def _serve_mp3(path: str, *, touch: bool = False) -> Response:
     # Plain 200 with the FULL body (NOT FileResponse/206): FreeSWITCH's mod_httapi
     # fetches the whole file and plays SILENCE on a 206 partial response. Content is a
     # 44.1 kHz MPEG-1 MP3 (the only profile Plivo's decoder plays).
-    with open(path, "rb") as f:
-        body = f.read()
+    # touch=True bumps mtime so the eviction sweep is a TRUE LRU: a prompt played
+    # on live IVR calls stays "recent" and outlives write-once junk — without this
+    # the oldest files ARE the warmed IVR prompts, which eviction would delete
+    # first, 404-ing the play route with no re-synthesis path (deep-review W3).
+    if touch:
+        # Best-effort LRU bump — NEVER fail the serve on it: a readable file on a
+        # read-only/ownership-degraded volume (EROFS/EPERM/EIO) must still play,
+        # not 500 (that would reintroduce the outage the 404 guard below removes,
+        # exactly in the disk-trouble conditions eviction exists for — round-2).
+        with contextlib.suppress(OSError):
+            os.utime(path, None)
+    try:
+        with open(path, "rb") as f:
+            body = f.read()
+    except FileNotFoundError:
+        # Raced by the eviction thread between the caller's exists-check and here;
+        # a 404 lets Plivo fall through to its <Speak> fallback rather than 500.
+        return Response(status_code=404)
     return Response(content=body, media_type="audio/mpeg",
                     headers={"Cache-Control": "public, max-age=31536000",
                              "Content-Length": str(len(body))})
@@ -191,7 +240,8 @@ async def tts_by_token(request: Request, token: str):
     path = os.path.join(get_settings().tts_cache_dir, os.path.basename(token) + ".mp3")
     if not os.path.exists(path):
         return Response(status_code=404)
-    return _serve_mp3(path)
+    # touch: this is the LIVE IVR play route — every serve marks the prompt recent.
+    return _serve_mp3(path, touch=True)
 
 
 # By-text route: used by warm-on-save (and on-demand). Caches under sha1(text) so the
@@ -274,7 +324,127 @@ async def preview(
         except Exception:
             logger.exception("preview: cache write failed")
             return Response(content=raw, media_type="audio/mpeg")
+        await _evict_tts_cache_async()
     return _serve_mp3(path)
+
+
+# ── /ws admission token ──────────────────────────────────────────────────────
+# /answer authors the wss URL Plivo connects to, so /answer mints a short-lived
+# HMAC token that /ws verifies. This RAISES the bar on the open-socket hole
+# (anyone who knew the path could hold all MAX_CONCURRENT_CALLS slots and burn
+# Sarvam/LLM spend) with no admin_core change (key = VOICE_BOT_CLIENT_SECRET,
+# already provisioned). It is NOT a complete DoS shield: /answer is public
+# (Plivo must reach it) so an attacker can still mint tokens. Two further guards
+# in /ws bound the residual: tokens are SINGLE-USE (one token → one socket, no
+# replay amplification), and the capacity slot is claimed only AFTER a
+# successful telephony handshake, with stalled pre-handshake sockets bounded by
+# a SEPARATE cap so they can't starve the running-call budget (deep-review W3).
+# Edge rate-limiting (Cloudflare/nginx on /answer + /ws) remains the real fix
+# for a determined flood and is tracked as a follow-up.
+_WS_TOKEN_TTL_SECS = 900.0  # Plivo connects within seconds of fetching the XML
+# Signatures already spent, so a captured token can't be replayed across many
+# sockets. Single-process service (the _active_calls int is relied on as atomic),
+# so an in-memory set is authoritative; it resets on deploy (fine — tokens are
+# minted seconds before use). Pruned opportunistically so it can't grow unbounded.
+_spent_ws_tokens: dict = {}
+
+
+def _mint_ws_token(corr: str, now: float | None = None) -> str:
+    secret = get_settings().internal_client_secret
+    exp = int((now if now is not None else time.time()) + _WS_TOKEN_TTL_SECS)
+    sig = hmac.new(secret.encode(), f"{corr}|{exp}".encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{exp}.{sig}"
+
+
+def _verify_ws_token(corr: str, token: str, now: float | None = None) -> bool:
+    secret = get_settings().internal_client_secret
+    if not secret:
+        # Unconfigured secret = the service can't fetch call context either, so
+        # nothing real runs; don't brick dev setups, just log once per connect.
+        logger.warning("ws-token: VOICE_BOT_CLIENT_SECRET unset — token check skipped")
+        return True
+    try:
+        exp_s, sig = token.split(".", 1)
+        exp = int(exp_s)
+    except (ValueError, AttributeError):
+        return False
+    if (now if now is not None else time.time()) > exp:
+        return False
+    want = hmac.new(secret.encode(), f"{corr}|{exp}".encode(), hashlib.sha256).hexdigest()[:32]
+    return hmac.compare_digest(want, sig)
+
+
+def _consume_ws_token(corr: str, token: str, now: float | None = None) -> bool:
+    """Verify the token AND spend it — a second /ws carrying the same token is
+    rejected, so one /answer fetch admits exactly one socket. No-op single-use
+    when the secret is unset (dev)."""
+    now = now if now is not None else time.time()
+    if not _verify_ws_token(corr, token, now):
+        return False
+    if not get_settings().internal_client_secret:
+        return True  # dev: verify already logged + returned True; nothing to spend
+    key = f"{corr}|{token}"
+    if key in _spent_ws_tokens:
+        logger.warning("ws-token: replay rejected corr=%s", corr)
+        return False
+    # Opportunistic prune of expired signatures (bounded memory).
+    if len(_spent_ws_tokens) > 2048:
+        for k, exp in list(_spent_ws_tokens.items()):
+            if exp < now:
+                _spent_ws_tokens.pop(k, None)
+    _spent_ws_tokens[key] = now + _WS_TOKEN_TTL_SECS
+    return True
+
+
+def _evict_tts_cache(cache_dir: str, max_files: int, max_bytes: int) -> int:
+    """Bound the public-endpoint disk cache. Eviction order: voice-preview files
+    ("pv-*", freely re-synthesizable) first, then least-recently-SERVED within
+    each class — the play route bumps mtime on every serve (_serve_mp3 touch=True)
+    so a live IVR prompt outlives write-once junk. IVR prompts have no re-synth
+    path (the /tts/{token}.mp3 URL 404s until an admin re-saves), so protecting
+    the actively-served ones is essential. Runs in a thread. Returns count."""
+    try:
+        scan = list(os.scandir(cache_dir))
+    except FileNotFoundError:
+        return 0  # cache dir not created yet — nothing to evict
+    entries = []
+    for e in scan:
+        try:
+            if e.is_file() and e.name.endswith(".mp3"):
+                st = e.stat()
+                entries.append((not e.name.startswith("pv-"), st.st_mtime, st.st_size, e.path))
+        except FileNotFoundError:
+            # A concurrent eviction/write unlinked this entry between scandir and
+            # stat — skip it, do NOT abort the whole pass (a blanket except around
+            # the loop mistook this for a missing dir and skipped eviction under
+            # exactly the write pressure it defends against — deep-review W3).
+            continue
+    total = sum(sz for _, _, sz, _ in entries)
+    if len(entries) <= max_files and total <= max_bytes:
+        return 0
+    entries.sort()
+    evicted = 0
+    while entries and (len(entries) > max_files or total > max_bytes):
+        _, _, sz, path = entries.pop(0)
+        try:
+            os.remove(path)
+            total -= sz
+            evicted += 1
+        except OSError:
+            pass
+    if evicted:
+        logger.warning("tts cache: evicted %d oldest files (cap %d files / %d bytes)",
+                       evicted, max_files, max_bytes)
+    return evicted
+
+
+async def _evict_tts_cache_async() -> None:
+    s = get_settings()
+    try:
+        await asyncio.to_thread(
+            _evict_tts_cache, s.tts_cache_dir, s.tts_cache_max_files, s.tts_cache_max_bytes)
+    except Exception:
+        logger.exception("tts cache: eviction failed")
 
 
 @router.api_route("/answer", methods=["GET", "POST"], response_class=PlainTextResponse)
@@ -307,8 +477,10 @@ async def answer(
         return PlainTextResponse(busy_xml, media_type="application/xml")
 
     # urlencode: agent/inst are institute-typed free text — '&'/'=' must not
-    # inject query params into the wss URL Plivo will connect to.
-    ws_url = s.wss_url(urlencode({"corr": corr, "agent": agent, "inst": inst}))
+    # inject query params into the wss URL Plivo will connect to. `tok` gates
+    # /ws: only a socket carrying a fresh /answer-minted HMAC may run a pipeline.
+    ws_url = s.wss_url(urlencode(
+        {"corr": corr, "agent": agent, "inst": inst, "tok": _mint_ws_token(corr)}))
 
     record_el = (
         f'<Record recordSession="true" redirect="false" maxLength="3600" '
@@ -344,7 +516,7 @@ async def ws_endpoint(websocket: WebSocket):
         FastAPIWebsocketTransport,
     )
 
-    global _active_calls
+    global _active_calls, _inflight_handshakes
     await websocket.accept()
 
     corr = websocket.query_params.get("corr") or ""
@@ -354,22 +526,54 @@ async def ws_endpoint(websocket: WebSocket):
         await websocket.close()
         return
 
-    # Admission control (authoritative backstop; /answer already turns most excess
-    # away). The check + increment are adjacent with NO await between them, so on
-    # the single-threaded event loop concurrent handshakes cannot both pass. Every
-    # exit path below is inside the try/finally that releases the slot.
-    s = get_settings()
-    if _active_calls >= s.max_concurrent_calls:
-        logger.warning("ws: at capacity (%d/%d) — closing corr=%s",
-                       _active_calls, s.max_concurrent_calls, corr)
+    # Single-use admission token minted by /answer (see _mint_ws_token). A socket
+    # without a fresh, unspent token never reaches the handshake, the context
+    # fetch, or a capacity slot — and a captured token admits exactly one socket.
+    if not _consume_ws_token(corr, websocket.query_params.get("tok") or ""):
+        logger.warning("ws: bad/missing/replayed admission token corr=%s — closing", corr)
         await websocket.close()
         return
-    _active_calls += 1
+
+    s = get_settings()
+    # Pre-handshake admission: bound stalled handshakes separately from running
+    # calls. Check + increment are adjacent (no await between) → atomic on the
+    # single-threaded loop. The cap is generous (3× the call cap) so bursts of
+    # real calls are never turned away here; it exists to cap a stall flood.
+    pending_cap = s.max_concurrent_calls * 3 + 5
+    if _inflight_handshakes >= pending_cap:
+        logger.warning("ws: too many pending handshakes (%d/%d) — closing corr=%s",
+                       _inflight_handshakes, pending_cap, corr)
+        await websocket.close()
+        return
+    _inflight_handshakes += 1
 
     call_uuid = None
+    _inflight_held = True
+    _active_slot = False
     try:
         # Provider handshake first (Plivo sends a start event with stream/call ids).
-        transport_type, call_data = await parse_telephony_websocket(websocket)
+        # Bounded: a client that connects and never sends the start event is dropped
+        # here without ever consuming a running-call slot.
+        try:
+            transport_type, call_data = await asyncio.wait_for(
+                parse_telephony_websocket(websocket), timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.warning("ws: telephony handshake timeout corr=%s — closing", corr)
+            await websocket.close()
+            return
+
+        # Handshake done → hand off from the pending bucket to a real call slot.
+        # Adjacent check + increment (no await) keeps the slot count exact.
+        _inflight_handshakes -= 1
+        _inflight_held = False
+        if _active_calls >= s.max_concurrent_calls:
+            logger.warning("ws: at capacity (%d/%d) — closing corr=%s",
+                           _active_calls, s.max_concurrent_calls, corr)
+            await websocket.close()
+            return
+        _active_calls += 1
+        _active_slot = True
+
         stream_id = (call_data or {}).get("stream_id")
         call_uuid = (call_data or {}).get("call_id")
         logger.info("ws connected corr=%s transport=%s call=%s active=%d",
@@ -417,6 +621,11 @@ async def ws_endpoint(websocket: WebSocket):
             await run_bot(transport, corr, context, outcome,
                           aiohttp_session=websocket.app.state.http_session)
         except Exception:
+            # Marked on the outcome so the report is HONEST: a crash with no real
+            # conversation must reach admin_core as "failed", not "no-answer" —
+            # mapStatus stamps unknown/absent statuses COMPLETED on the call log
+            # and the classifier would count a phantom connect (verified 2026-07-27).
+            outcome.crashed = True
             logger.exception("ws: pipeline crashed corr=%s", corr)
         finally:
             if outcome.ended_at is None:  # crash before run_bot's own finally ran
@@ -428,9 +637,14 @@ async def ws_endpoint(websocket: WebSocket):
             except Exception:
                 logger.exception("ws: report failed corr=%s", corr)
     finally:
-        # Release the admission slot on EVERY exit (context-fetch return, crash,
-        # normal end, cancellation) — a leak here would silently shrink capacity.
-        _active_calls -= 1
+        # Release whichever bucket this socket still holds on EVERY exit
+        # (handshake timeout, capacity reject, context-fetch return, crash, normal
+        # end, cancellation) — a leak here would silently shrink capacity. Exactly
+        # one of the two is held at any point after the pending increment.
+        if _inflight_held:
+            _inflight_handshakes -= 1
+        if _active_slot:
+            _active_calls -= 1
 
 
 app.include_router(router)

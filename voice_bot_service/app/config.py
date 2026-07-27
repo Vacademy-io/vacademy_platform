@@ -212,6 +212,23 @@ class Settings:
         default_factory=lambda: int(_env("TTS_PROMPT_SAMPLE_RATE", "44100"))
     )
 
+    # /tts and /preview are PUBLIC endpoints (Plivo has to fetch them) that write
+    # synthesized audio to disk — unbounded, an attacker filling the volume kills
+    # deploys on this box (observed failure mode: disk-full → silent stale-image
+    # deploys). Oldest-mtime .mp3 files are evicted past either bound.
+    tts_cache_max_files: int = field(
+        default_factory=lambda: int(_env("TTS_CACHE_MAX_FILES", "4000")))
+    tts_cache_max_bytes: int = field(
+        default_factory=lambda: int(_env("TTS_CACHE_MAX_BYTES", str(500 * 1024 * 1024))))
+
+    # Failed end-of-call reports spool here and a background sweeper retries them.
+    # Lives UNDER the tts-cache dir on purpose: that's the one mounted volume, so
+    # spooled reports survive container restarts. A lost report strands the paused
+    # CALL_AI workflow until its safety timeout and lies to the retry engine.
+    @property
+    def report_spool_dir(self) -> str:
+        return os.path.join(self.tts_cache_dir, "_report_spool")
+
     def wss_url(self, query: str) -> str:
         base = self.public_base.replace("https://", "wss://").replace("http://", "ws://")
         return f"{base}/ws?{query}"

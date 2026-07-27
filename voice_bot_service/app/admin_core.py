@@ -15,6 +15,7 @@ VOICE_BOT_CLIENT_NAME / VOICE_BOT_CLIENT_SECRET on this service.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Dict, Optional
 
@@ -86,4 +87,9 @@ async def post_report(institute_id: str, webhook_token: Optional[str], payload: 
         except Exception:
             logger.exception("report POST failed (attempt %s) corr=%s",
                              attempt, payload.get("correlationId"))
+            if attempt == 1:
+                # Beat: back-to-back retries die on the same transient (LB blip,
+                # rolling-deploy gap). Longer outages are the spool sweeper's job
+                # (report.py) — this inline path must not hold a capacity slot.
+                await asyncio.sleep(2.0)
     return False

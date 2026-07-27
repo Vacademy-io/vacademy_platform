@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.chapter.enums.ChapterStatus;
 import vacademy.io.admin_core_service.features.common.enums.StatusEnum;
 import vacademy.io.admin_core_service.features.institute_learner.enums.LearnerSessionStatusEnum;
@@ -456,8 +457,26 @@ public class LearnerTrackingAsyncService {
 
         // ==== Chapter-Level Tracking ====
 
+        // Every id here arrives from the client request. A missing one used to
+        // mean the corresponding rollup quietly computed null and was dropped,
+        // so the learner's slide went to 100% while the chapter (and everything
+        // above it) kept its old value — indistinguishable, in the data, from
+        // "nothing has happened yet". The assignment submit path sent none of
+        // them at all. Log what's missing so a stuck percentage is diagnosable
+        // from the service logs instead of a database forensics session.
         public void updateLearnerOperationsForChapter(String userId, String chapterId, String moduleId,
                         String subjectId, String packageSessionId) {
+                if (!StringUtils.hasText(chapterId) || !StringUtils.hasText(moduleId)
+                                || !StringUtils.hasText(subjectId) || !StringUtils.hasText(packageSessionId)) {
+                        log.warn("Progress rollup for user {} is missing ids (chapterId={}, moduleId={}, "
+                                        + "subjectId={}, packageSessionId={}). Levels without an id keep their "
+                                        + "previous percentage.",
+                                        userId, chapterId, moduleId, subjectId, packageSessionId);
+                }
+                if (!StringUtils.hasText(chapterId)) {
+                        return;
+                }
+
                 learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,
                                 LearnerOperationSourceEnum.CHAPTER.name(), chapterId,
                                 LearnerOperationEnum.LAST_SLIDE_VIEWED.name());
@@ -539,12 +558,37 @@ public class LearnerTrackingAsyncService {
 
         // ==== Package Session-Level Tracking ====
 
+        // This is the number the learner's home page shows for the course, so a
+        // silent no-op here is the most visible failure in the whole cascade:
+        // the chapter/module/subject percentages move, the course percentage
+        // doesn't, and the learner reports "I finished the chapter but my
+        // progress is stuck". Two ways that happened before the guards below:
+        // a blank packageSessionId (client couldn't resolve the batch), or a
+        // batch the learner isn't studying (multi-batch learners sent the one
+        // id cached at login). Either way the query matches no subject_session
+        // rows, returns null, and addOrUpdatePercentageOperation drops it —
+        // leaving the previous value in place with nothing logged. Now it's
+        // logged loudly enough to find in support triage.
         public void updatePackageSessionCompletionPercentage(String userId, String packageSessionId) {
+                if (!StringUtils.hasText(packageSessionId)) {
+                        log.warn("Skipping course-progress rollup for user {}: no packageSessionId supplied. "
+                                        + "The course percentage on the learner home page will keep its previous value.",
+                                        userId);
+                        return;
+                }
+
                 Double percentage = activityLogRepository.getPackageSessionCompletionPercentage(
                                 userId,
                                 List.of(LearnerOperationEnum.PERCENTAGE_SUBJECT_COMPLETED.name()),
                                 packageSessionId,
                                 List.of(SubjectStatusEnum.ACTIVE.name()));
+
+                if (percentage == null) {
+                        log.warn("Course-progress rollup produced no value for user {} / packageSession {} "
+                                        + "(no active subject_session rows matched). Previous course percentage retained.",
+                                        userId, packageSessionId);
+                        return;
+                }
 
                 addOrUpdatePercentageOperation(
                                 userId,

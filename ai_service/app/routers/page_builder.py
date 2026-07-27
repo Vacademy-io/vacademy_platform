@@ -1833,20 +1833,16 @@ async def intake_turn(
         nonlocal last_err
         for model in [primary, *fallbacks][:2]:
             try:
-                # Anthropic models honor assistant prefill — starting the reply
-                # at "{" pins JSON mode even on image turns.
-                prefill = model.startswith("anthropic/")
-                call_msgs = msgs + ([{"role": "assistant", "content": "{"}] if prefill else [])
+                # NOTE: no assistant-prefill here — OpenRouter 400s on a
+                # trailing assistant message for these models (live-tested).
                 # max_tokens must fit reply+chips+the FULL draft brief the
                 # model echoes each turn — 1200 truncated big-brief turns into
                 # unparseable JSON (field bug).
                 resp = await client.chat_completion(
-                    call_msgs, temperature=0.5, max_tokens=3000,
+                    msgs, temperature=0.5, max_tokens=3000,
                     institute_id=institute_id, user_id=actor_user_id, model=model,
                 )
                 content = resp.get("content") or ""
-                if prefill and not content.lstrip().startswith("{"):
-                    content = "{" + content
                 try:
                     parsed = _parse_intake_json(content)
                 except Exception:

@@ -837,6 +837,18 @@ def sanitize_component(
     }
     if isinstance(comp.get("style"), dict) and comp["style"]:
         cleaned["style"] = clean_urls(comp["style"], allowed_urls, warnings)
+    # Surface color belongs on the STYLE layer when a section shell is used:
+    # props.backgroundColor only paints the inner content column, so a shell
+    # section would render as an inset card with page-color gutters. Copy it
+    # up so the full-bleed canvas owns the color (field bug, Edzumo hero).
+    style = cleaned.get("style")
+    if isinstance(style, dict) and isinstance(style.get("layout"), dict):
+        prop_bg = cleaned_props.get("backgroundColor")
+        if (
+            isinstance(prop_bg, str) and prop_bg
+            and not any(style.get(k) for k in ("backgroundColor", "background", "backgroundImage", "backgroundLayers"))
+        ):
+            style["backgroundColor"] = prop_bg
     return cleaned
 
 

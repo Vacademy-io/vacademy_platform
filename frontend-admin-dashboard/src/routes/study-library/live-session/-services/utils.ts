@@ -273,11 +273,13 @@ export interface SessionBySessionIdResponse {
         enabled?: boolean;
         price?: number;
         currency?: string;
+        vendor?: string | null;
     } | null;
     // Public-registration OTP verification toggles (camelCase wrapper keys,
     // same as paymentConfig).
     requireEmailVerification?: boolean | null;
     requirePhoneVerification?: boolean | null;
+    whatsappOtpTemplateName?: string | null;
 }
 
 export const getLiveSessions = async (instituteId: string) => {

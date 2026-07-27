@@ -25,6 +25,9 @@ export const Route = createFileRoute("/live-class-guest/waiting-room/")({
 
 function GuestWaitingRoomComponent() {
   const [thumbnail, setThumbnail] = useState<string | null>(null);
+  // Hero backdrop: the per-schedule waiting-room media wins, then the session
+  // cover; without either the page keeps its plain theme background.
+  const [heroUrl, setHeroUrl] = useState<string | null>(null);
   const { sessionId, guestId } = Route.useSearch();
   const navigate = useNavigate();
   const { data: serverTimeData } = useServerTime();
@@ -48,6 +51,14 @@ function GuestWaitingRoomComponent() {
 
     if (sessionDetails?.thumbnailFileId) {
       fetchThumbnail();
+    }
+
+    const heroFileId =
+      sessionDetails?.customWaitingRoomMediaId || sessionDetails?.coverFileId;
+    if (heroFileId) {
+      getPublicUrl(heroFileId)
+        .then((url) => setHeroUrl(url))
+        .catch(() => setHeroUrl(null));
     }
   }, [sessionDetails]);
 
@@ -153,12 +164,28 @@ function GuestWaitingRoomComponent() {
   }
 
   return (
-    <div className="w-screen h-screen bg-primary-50 p-20">
-      <div className="flex flex-col items-center w-full justify-center p-1 gap-4">
-        <h1 className="text-2xl font-bold text-center mb-6">
+    <div className="relative w-screen min-h-screen overflow-hidden bg-primary-50 flex items-center justify-center p-4 sm:p-8">
+      {/* Hero backdrop (waiting-room media or session cover) with a dark
+          gradient for contrast; the content sits on a frosted card. */}
+      {heroUrl && (
+        <>
+          <img
+            src={heroUrl}
+            alt=""
+            aria-hidden
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/70" />
+        </>
+      )}
+
+      <div className="relative z-10 flex w-full max-w-xl flex-col items-center gap-5 rounded-2xl bg-white/90 p-6 shadow-xl backdrop-blur-md sm:p-10">
+        <h1 className="text-2xl sm:text-3xl font-bold text-center text-gray-900">
           {sessionDetails?.title || getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession)}
         </h1>
-        <div>Get ready to flow! The session will begin in:</div>
+        <div className="text-gray-600">
+          Get ready! The session will begin in:
+        </div>
         <div className="space-y-6">
           {sessionDetails && (
             <CountdownTimer
@@ -220,7 +247,7 @@ function GuestWaitingRoomComponent() {
           <img
             src={thumbnail}
             alt="Session Thumbnail"
-            className="w-full max-h-72 rounded-lg object-contain bg-gray-50"
+            className="w-full max-h-72 rounded-xl object-contain bg-gray-50"
           />
         )}
         {sessionDetails && (

@@ -33,6 +33,8 @@ public class RegistrationFromResponseDTO {
     // (email OTP / WhatsApp OTP). Null/false = no verification.
     private Boolean requireEmailVerification;
     private Boolean requirePhoneVerification;
+    // WhatsApp template for the phone OTP; null = institute default template.
+    private String whatsappOtpTemplateName;
 
     @Data
     @AllArgsConstructor

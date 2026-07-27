@@ -24,4 +24,7 @@ public class AuthRequestDto {
     private String phoneNumber;
     private String deviceType; // NEW: "WEB", "MOBILE", "TABLET" — optional, defaults to "WEB" in session
                                // creation
+    // Optional WhatsApp template override for generic OTP sends (e.g. a live
+    // session's configured OTP template). Null = institute default template.
+    private String templateName;
 }

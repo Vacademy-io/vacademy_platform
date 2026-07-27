@@ -131,6 +131,8 @@ export interface LiveSessionStep2RequestDTO {
     // unchecking turns verification off server-side.
     require_email_verification?: boolean;
     require_phone_verification?: boolean;
+    // WhatsApp template for the phone OTP; empty string clears (institute default).
+    whatsapp_otp_template_name?: string;
 
     /**
      * "Auto-add recordings to course" config. Omitted entirely (not even
@@ -145,6 +147,8 @@ export interface LiveSessionPaymentConfigDTO {
     enabled: boolean;
     price: number | null;
     currency: string | null;
+    // Gateway charging this fee; null = institute default (latest ACTIVE mapping).
+    vendor?: string | null;
 }
 
 export interface NotificationActionDTO {
@@ -471,8 +475,10 @@ export function transformFormToDTOStep2(
         paymentEnabled,
         paymentPrice,
         paymentCurrency,
+        paymentVendor,
         requireEmailVerification,
         requirePhoneVerification,
+        whatsappOtpTemplateName,
         recordingAutoLink,
     } = formData;
 
@@ -582,9 +588,13 @@ export function transformFormToDTOStep2(
             enabled: !!paymentEnabled,
             price: paymentEnabled ? parseFloat(paymentPrice ?? '') || null : null,
             currency: paymentEnabled ? (paymentCurrency ?? null) : null,
+            vendor: paymentEnabled ? paymentVendor || null : null,
         },
         require_email_verification: !!requireEmailVerification,
         require_phone_verification: !!requirePhoneVerification,
+        whatsapp_otp_template_name: requirePhoneVerification
+            ? (whatsappOtpTemplateName ?? '')
+            : '',
     };
 
     // Add individual user IDs if individual selection is used

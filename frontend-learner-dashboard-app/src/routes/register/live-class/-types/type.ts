@@ -29,6 +29,8 @@ export interface SessionCustomFieldsResponse {
   // config). Phone OTP is delivered over WhatsApp.
   requireEmailVerification?: boolean | null;
   requirePhoneVerification?: boolean | null;
+  // WhatsApp template for the phone OTP; null = institute default template.
+  whatsappOtpTemplateName?: string | null;
 }
 
 // Response of register-and-pay / payment-info (snake_case from backend)

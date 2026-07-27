@@ -26,6 +26,8 @@ interface OtpVerificationDialogProps {
   open: boolean;
   channels: OtpChannel[];
   instituteId: string;
+  /** Per-session WhatsApp template for the phone OTP (null = institute default). */
+  whatsappTemplateName?: string | null;
   onVerified: () => void;
   onClose: () => void;
 }
@@ -42,6 +44,7 @@ export default function OtpVerificationDialog({
   open,
   channels,
   instituteId,
+  whatsappTemplateName,
   onVerified,
   onClose,
 }: OtpVerificationDialogProps) {
@@ -74,6 +77,11 @@ export default function OtpVerificationDialog({
           await axios.post(REQUEST_WHATSAPP_OTP, {
             phone_number: phoneDigits(channel.value),
             institute_id: instituteId,
+            // Session-configured template; backend falls back to the
+            // institute default when absent.
+            ...(whatsappTemplateName
+              ? { template_name: whatsappTemplateName }
+              : {}),
           });
           toast.success("OTP sent on WhatsApp");
         }
@@ -88,7 +96,7 @@ export default function OtpVerificationDialog({
         setSending(false);
       }
     },
-    [instituteId]
+    [instituteId, whatsappTemplateName]
   );
 
   // Reset + auto-send whenever the dialog opens or moves to the next channel.

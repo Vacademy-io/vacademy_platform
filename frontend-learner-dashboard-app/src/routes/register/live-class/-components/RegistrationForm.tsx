@@ -12,7 +12,9 @@ import {
 import { generateZodSchema } from "../-types/registrationFormSchema";
 import { RegistrationFormValues, CustomField } from "../-types/type";
 import { type GuestIdentity } from "../-utils/guestSessionStorage";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 import { CustomFieldRenderer } from "@/components/common/custom-fields/CustomFieldRenderer";
 import {
   getFieldRenderType,
@@ -34,7 +36,8 @@ interface RegistrationFormProps {
   paymentRequired: boolean;
   onSubmit: (formValues: RegistrationFormValues) => void;
   onError: (errors: FieldErrors) => void;
-  onIdentityChange: (identity: GuestIdentity) => void;
+  /** Resolves to true when a registration was found for the identity. */
+  onIdentityChange: (identity: GuestIdentity) => Promise<boolean>;
 }
 
 /**
@@ -98,6 +101,40 @@ export default function RegistrationForm({
   );
   const injectStandaloneEmail =
     emailFieldKeys.length === 0 && (paymentRequired || !hasMandatoryPhone);
+
+  // "Already registered?" quick lookup: instead of the full form, ask only for
+  // the session's identity field (phone for phone-identity forms, email
+  // otherwise) and resolve the existing registration server-side. A payer on a
+  // new device types one field and is back in — never the whole form.
+  const lookupChannel: "email" | "phone" =
+    hasMandatoryPhone && emailFieldKeys.length === 0 ? "phone" : "email";
+  const [lookupMode, setLookupMode] = useState(false);
+  const [lookupValue, setLookupValue] = useState("");
+  const [lookupBusy, setLookupBusy] = useState(false);
+  const [lookupNotFound, setLookupNotFound] = useState(false);
+
+  const runLookup = async () => {
+    const raw = lookupValue.trim();
+    if (lookupChannel === "email") {
+      if (!EMAIL_REGEX.test(raw)) {
+        toast.error("Please enter a valid email address");
+        return;
+      }
+    } else if (raw.replace(/\D/g, "").length < 8) {
+      toast.error("Please enter a valid mobile number");
+      return;
+    }
+    setLookupBusy(true);
+    setLookupNotFound(false);
+    try {
+      const found = await onIdentityChange(
+        lookupChannel === "phone" ? { mobileNumber: raw } : { email: raw }
+      );
+      if (!found) setLookupNotFound(true);
+    } finally {
+      setLookupBusy(false);
+    }
+  };
   const form = useForm({
     resolver: zodResolver(schema),
     defaultValues: emailFieldKeys.reduce<Record<string, string>>(
@@ -167,6 +204,73 @@ export default function RegistrationForm({
     };
   }, [form, emailFieldKeys, phoneFieldKeys, onIdentityChange]);
 
+  if (lookupMode) {
+    return (
+      <Card className="w-full border-primary-100/60 shadow-lg">
+        <CardHeader className="pb-2 pt-6 px-6">
+          <CardTitle className="text-xl font-bold text-gray-900">
+            Find your registration
+          </CardTitle>
+          <CardDescription className="text-gray-500">
+            {lookupChannel === "phone"
+              ? "Enter the mobile number you registered with"
+              : "Enter the email you registered with"}
+          </CardDescription>
+        </CardHeader>
+
+        <Separator className="mx-6 w-auto" />
+
+        <CardContent className="pt-5 px-6 pb-6">
+          <div className="flex flex-col gap-4">
+            <Input
+              type={lookupChannel === "phone" ? "tel" : "email"}
+              inputMode={lookupChannel === "phone" ? "tel" : "email"}
+              placeholder={
+                lookupChannel === "phone"
+                  ? "Mobile number (with country code)"
+                  : "you@example.com"
+              }
+              value={lookupValue}
+              onChange={(e) => {
+                setLookupValue(e.target.value);
+                setLookupNotFound(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !lookupBusy) runLookup();
+              }}
+            />
+            {lookupNotFound && (
+              <p className="text-sm text-red-500">
+                No registration found with this{" "}
+                {lookupChannel === "phone" ? "mobile number" : "email"}. Please
+                check it, or fill the registration form instead.
+              </p>
+            )}
+            <MyButton
+              buttonType="primary"
+              type="button"
+              className="w-full h-11 text-sm font-semibold rounded-lg"
+              disable={lookupBusy}
+              onClick={runLookup}
+            >
+              {lookupBusy ? "Checking..." : "Continue"}
+            </MyButton>
+            <button
+              type="button"
+              className="text-sm text-gray-500 underline-offset-2 hover:underline"
+              onClick={() => {
+                setLookupMode(false);
+                setLookupNotFound(false);
+              }}
+            >
+              New here? Fill the registration form
+            </button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="w-full border-primary-100/60 shadow-lg">
       <CardHeader className="pb-2 pt-6 px-6">
@@ -181,6 +285,18 @@ export default function RegistrationForm({
       <Separator className="mx-6 w-auto" />
 
       <CardContent className="pt-5 px-6 pb-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary-100 bg-primary-50 px-4 py-3">
+          <span className="text-sm text-gray-700">Already registered?</span>
+          <button
+            type="button"
+            className="text-sm font-semibold text-primary-500 underline-offset-2 hover:underline"
+            onClick={() => setLookupMode(true)}
+          >
+            {lookupChannel === "phone"
+              ? "Continue with your mobile number"
+              : "Continue with your email"}
+          </button>
+        </div>
         <FormProvider {...form}>
           <form
             onSubmit={handleSubmit(onSubmit, onError)}

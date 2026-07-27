@@ -54,6 +54,8 @@ public class GetSessionByIdService {
         // Public-registration OTP verification toggles, for edit-wizard prefill.
         private Boolean requireEmailVerification;
         private Boolean requirePhoneVerification;
+        // WhatsApp template used for the phone-verification OTP (null = default).
+        private String whatsappOtpTemplateName;
     }
 
     public SessionDetailsResponse getFullSessionDetails(String sessionId) {
@@ -68,10 +70,12 @@ public class GetSessionByIdService {
                         .enabled(true)
                         .price(plan.getActualPrice())
                         .currency(plan.getCurrency())
+                        .vendor(liveSessionPaymentService.getConfiguredVendor(sessionId).orElse(null))
                         .build()));
         liveSessionRepository.findById(sessionId).ifPresent(session -> {
             response.setRequireEmailVerification(session.getRequireEmailVerification());
             response.setRequirePhoneVerification(session.getRequirePhoneVerification());
+            response.setWhatsappOtpTemplateName(session.getWhatsappOtpTemplateName());
         });
         return response;
     }

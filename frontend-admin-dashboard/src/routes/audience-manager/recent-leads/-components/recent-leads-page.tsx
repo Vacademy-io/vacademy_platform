@@ -82,6 +82,7 @@ import { restoreAudienceLeads } from '@/routes/audience-manager/list/-services/d
 import {
     ArrowCounterClockwise,
     CaretDown,
+    CircleNotch,
     Phone,
     Trash,
     UserMinus,
@@ -1062,9 +1063,17 @@ const RecentLeadsContent = () => {
 
     return (
         <div className="flex w-full flex-col gap-4">
-            {/* Heading */}
-            <h1 className="text-2xl font-semibold text-neutral-900">
-                {totalElements.toLocaleString()} {totalElements === 1 ? 'Lead' : 'Leads'}
+            {/* Heading — while a (re)filtered query is in flight there is no count yet;
+                a spinner avoids flashing a misleading "0 Leads". */}
+            <h1 className="flex items-center gap-2 text-2xl font-semibold text-neutral-900">
+                {isLoading ? (
+                    <>
+                        <CircleNotch className="size-5 animate-spin text-neutral-400" />
+                        Loading leads…
+                    </>
+                ) : (
+                    `${totalElements.toLocaleString()} ${totalElements === 1 ? 'Lead' : 'Leads'}`
+                )}
             </h1>
 
             {/* Toolbar — left filters, right actions (search lives in its own row below) */}
@@ -1340,7 +1349,7 @@ const RecentLeadsContent = () => {
                             ))}
                         </SelectContent>
                     </Select>
-                    <span>of {totalElements.toLocaleString()} results</span>
+                    <span>of {isLoading ? '…' : totalElements.toLocaleString()} results</span>
                 </div>
             </div>
 

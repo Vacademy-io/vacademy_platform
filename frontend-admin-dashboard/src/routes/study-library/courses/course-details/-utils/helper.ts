@@ -83,6 +83,57 @@ function isJson(str: string): boolean {
     }
 }
 
+// Detect whether a resolved media URL points at a video, so a legacy bare
+// file-id (stored by flows that saved a plain id instead of the {type,id}
+// JSON) still renders in the correct player on edit. Defaults to image.
+function isVideoUrl(url: string): boolean {
+    return /\.(mp4|mov|m4v|webm|avi|ogg|ogv|mkv)(\?|#|$)/i.test(url);
+}
+
+function isYouTubeUrl(url: string): boolean {
+    return /(?:youtube\.com|youtu\.be)/i.test(url);
+}
+
+// Normalize course_media_id into the {type,id} shape the edit dialog expects.
+// The stored value is inconsistent across historical flows, so tolerate all of:
+//   - {"type":"...","id":"..."} JSON  (AddCourseStep1 — the canonical shape)
+//   - a bare YouTube watch/share URL   (older youtube saves)
+//   - a JSON-quoted or raw media URL   (AI/bulk flows: "https://.../foo.jpg")
+//   - a bare uploaded file id          (package edit, bulk create)
+// Without this, any non-{type,id} value collapses to {type:'',id:''} and the
+// media shows an empty upload box on edit; worse, a bare YouTube URL would be
+// treated as an image and render as a broken <img>. We map each to the right
+// type so the dialog renders the correct player (iframe / video / img).
+function resolveCourseMediaId(
+    rawCourseMediaId: string | null | undefined,
+    resolvedPreviewUrl: string
+): { type: string; id: string } {
+    let raw = (rawCourseMediaId ?? '').trim();
+    if (!raw || raw === 'null' || raw === 'undefined') return { type: '', id: '' };
+
+    // Canonical {type,id} JSON.
+    if (isJson(raw)) {
+        const parsed = JSON.parse(raw);
+        return { type: parsed?.type ?? '', id: parsed?.id ?? '' };
+    }
+
+    // Bare value. Strip any surrounding quotes (JSON-encoded string) so the id
+    // round-trips cleanly — getPublicUrl / extractYouTubeVideoId do the same.
+    if (
+        (raw.startsWith('"') && raw.endsWith('"')) ||
+        (raw.startsWith("'") && raw.endsWith("'"))
+    ) {
+        raw = raw.slice(1, -1);
+    }
+    if (!raw || raw === 'null' || raw === 'undefined') return { type: '', id: '' };
+
+    if (isYouTubeUrl(raw)) return { type: 'youtube', id: raw };
+    return {
+        type: isVideoUrl(raw) || isVideoUrl(resolvedPreviewUrl) ? 'video' : 'image',
+        id: raw,
+    };
+}
+
 export const transformApiDataToCourseData = async (apiData: CourseWithSessionsType) => {
     if (!apiData) return null;
 
@@ -143,10 +194,10 @@ export const transformApiDataToCourseData = async (apiData: CourseWithSessionsTy
             isCoursePublishedToCatalaouge: apiData.course.is_course_published_to_catalaouge,
             coursePreviewImageMediaId: apiData.course.course_preview_image_media_id,
             courseBannerMediaId: apiData.course.course_banner_media_id,
-            courseMediaId: {
-                type: isJson(apiData.course.course_media_id) ? courseMediaImage.type : '',
-                id: isJson(apiData.course.course_media_id) ? courseMediaImage.id : '',
-            },
+            courseMediaId: resolveCourseMediaId(
+                apiData.course.course_media_id,
+                courseMediaPreview
+            ),
             coursePreviewImageMediaPreview: coursePreviewImageMediaId,
             courseBannerMediaPreview: courseBannerMediaId,
             courseMediaPreview: courseMediaPreview ?? '',
@@ -261,10 +312,10 @@ export const transformApiDataToCourseDataForInvite = async (apiData: CourseWithS
             packageName: apiData.course.package_name,
             coursePreviewImageMediaId: apiData.course.course_preview_image_media_id,
             courseBannerMediaId: apiData.course.course_banner_media_id,
-            courseMediaId: {
-                type: isJson(apiData.course.course_media_id) ? courseMediaImage.type : '',
-                id: isJson(apiData.course.course_media_id) ? courseMediaImage.id : '',
-            },
+            courseMediaId: resolveCourseMediaId(
+                apiData.course.course_media_id,
+                courseMediaPreview
+            ),
             coursePreviewImageMediaPreview: coursePreviewImageMediaId,
             courseBannerMediaPreview: courseBannerMediaId,
             courseMediaPreview: courseMediaPreview ?? '',

@@ -692,20 +692,36 @@ export default function LiveClassRegistrationPage() {
   return (
     <>
       <div className="w-screen min-h-screen bg-gradient-to-b from-primary-50/80 via-white to-primary-50/40 relative overflow-hidden">
-        {/* Decorative background elements */}
-        <div className="absolute top-0 end-0 w-blob-lg h-blob-lg bg-primary-100/30 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
-        <div className="absolute bottom-0 start-0 w-blob-md h-blob-md bg-primary-100/20 rounded-full blur-3xl translate-y-1/2 -translate-x-1/3 pointer-events-none" />
+        {/* Hero background: the admin-uploaded cover becomes a full-bleed
+            backdrop with a dark gradient for contrast; the content sits on
+            frosted cards. Without a cover, keep the soft theme gradient. */}
+        {coverFileUrl ? (
+          <>
+            <img
+              src={coverFileUrl}
+              alt=""
+              aria-hidden
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/70" />
+          </>
+        ) : (
+          <>
+            {/* Decorative background elements */}
+            <div className="absolute top-0 end-0 w-blob-lg h-blob-lg bg-primary-100/30 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
+            <div className="absolute bottom-0 start-0 w-blob-md h-blob-md bg-primary-100/20 rounded-full blur-3xl translate-y-1/2 -translate-x-1/3 pointer-events-none" />
+          </>
+        )}
 
         <div className="relative z-10 w-full min-h-screen p-4 sm:p-8 lg:p-12 flex flex-col lg:flex-row gap-8 lg:gap-14 justify-center items-center max-w-7xl mx-auto">
           <SessionInfo
             sessionTitle={data?.sessionTitle}
             startTime={data?.startTime}
             lastEntryTime={data?.lastEntryTime}
-            subject={data?.subject}
-            coverFileUrl={coverFileUrl}
             sessionDetails={sessionDetails}
             instituteName={instituteBranding.instituteName}
             instituteLogoUrl={instituteBranding.instituteLogoUrl}
+            glass={!!coverFileUrl}
           />
 
           <div className="w-full max-w-reg-420 lg:w-blob-sm flex-shrink-0">

@@ -1717,7 +1717,8 @@ def _build_intake_prompt(req: IntakeRequest) -> str:
         "WHEN READY (ready=true): write `brief` as a RICH composer brief in the admin's language: "
         "identity + differentiators, every real number/proof point gathered, the section plan, tone, "
         "color/style direction (including anything learned from uploaded logo/inspiration), and which "
-        "uploaded photos exist. Be specific — the composer only knows what the brief says.\n"
+        "uploaded photos exist. Be specific — the composer only knows what the brief says. Keep the "
+        "brief under 350 words — dense, no filler.\n"
         "ALWAYS return `brief` as your best current draft even before ready (the admin can jump ahead)."
     )
     if req.institute_name:
@@ -1832,11 +1833,31 @@ async def intake_turn(
         nonlocal last_err
         for model in [primary, *fallbacks][:2]:
             try:
+                # Anthropic models honor assistant prefill — starting the reply
+                # at "{" pins JSON mode even on image turns.
+                prefill = model.startswith("anthropic/")
+                call_msgs = msgs + ([{"role": "assistant", "content": "{"}] if prefill else [])
+                # max_tokens must fit reply+chips+the FULL draft brief the
+                # model echoes each turn — 1200 truncated big-brief turns into
+                # unparseable JSON (field bug).
                 resp = await client.chat_completion(
-                    msgs, temperature=0.5, max_tokens=1200,
+                    call_msgs, temperature=0.5, max_tokens=3000,
                     institute_id=institute_id, user_id=actor_user_id, model=model,
                 )
-                return _parse_intake_json(resp.get("content") or ""), (resp.get("model") or model), (resp.get("usage") or {})
+                content = resp.get("content") or ""
+                if prefill and not content.lstrip().startswith("{"):
+                    content = "{" + content
+                try:
+                    parsed = _parse_intake_json(content)
+                except Exception:
+                    # Contract break but a real reply — salvage the prose so
+                    # the turn (and anything the model SAW) isn't lost.
+                    text = re.sub(r"^```[a-zA-Z]*\s*|\s*```$", "", content.strip()).strip("{} \n")
+                    if len(text) < 10:
+                        raise
+                    intake_warnings.append(f"{model} broke the JSON contract — salvaged prose reply")
+                    parsed = {"reply": text[:1500]}
+                return parsed, (resp.get("model") or model), (resp.get("usage") or {})
             except Exception as e:  # noqa: BLE001
                 last_err = e
                 # Surfaced in response warnings — pod logs are hard to reach

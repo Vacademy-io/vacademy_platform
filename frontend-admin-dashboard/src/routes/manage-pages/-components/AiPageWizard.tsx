@@ -265,7 +265,7 @@ export const AiPageWizard = ({
 
     return (
         <Dialog open={open} onOpenChange={handleClose}>
-            <DialogContent className="max-w-xl">
+            <DialogContent className={step === 'chat' ? 'max-w-2xl' : 'max-w-xl'}>
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Sparkle className="size-4 text-primary-500" weight="duotone" />

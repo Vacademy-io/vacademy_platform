@@ -30,6 +30,48 @@ const UPLOAD_LABELS: Record<string, string> = {
     inspiration: 'Upload a screenshot of a site you like',
 };
 
+/** One chat bubble; long pasted briefs collapse so they don't wall the chat. */
+const Bubble = ({ turn }: { turn: IntakeTurn }) => {
+    const [expanded, setExpanded] = useState(false);
+    const isUser = turn.role === 'user';
+    const long = turn.content.length > 360;
+    return (
+        <div className={`flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+            {!isUser && (
+                <div className="mb-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-50">
+                    <Sparkle className="size-4 text-primary-500" weight="duotone" />
+                </div>
+            )}
+            <div
+                className={`max-w-md rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                    isUser
+                        ? 'rounded-br-sm bg-primary-500 text-white'
+                        : 'rounded-bl-sm border border-gray-100 bg-gray-50 text-gray-800'
+                }`}
+            >
+                <p className={`whitespace-pre-wrap ${long && !expanded ? 'line-clamp-6' : ''}`}>
+                    {turn.content}
+                </p>
+                {long && (
+                    <button
+                        onClick={() => setExpanded((e) => !e)}
+                        className={`mt-1 text-xs font-medium underline ${isUser ? 'text-white' : 'text-primary-500'}`}
+                    >
+                        {expanded ? 'Show less' : 'Show more'}
+                    </button>
+                )}
+                {turn.image_urls && turn.image_urls.length > 0 && (
+                    <div className="mt-2 flex gap-2">
+                        {turn.image_urls.map((u, j) => (
+                            <img key={j} src={u} alt="" className="size-16 rounded-md border border-white/30 object-cover" />
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
 export const AiIntakeChat = ({
     instituteName,
     courses,
@@ -162,30 +204,16 @@ export const AiIntakeChat = ({
     return (
         <div className="flex h-96 flex-col">
             {/* Transcript */}
-            <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto pr-1">
+            <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto border-y border-gray-100 py-3 pr-1">
                 {messages.map((m, i) => (
-                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div
-                            className={`max-w-sm rounded-lg px-3 py-2 text-sm ${
-                                m.role === 'user'
-                                    ? 'bg-primary-500 text-white'
-                                    : 'border border-gray-200 bg-gray-50 text-gray-800'
-                            }`}
-                        >
-                            <p className="whitespace-pre-wrap">{m.content}</p>
-                            {m.image_urls && m.image_urls.length > 0 && (
-                                <div className="mt-2 flex gap-1.5">
-                                    {m.image_urls.map((u, j) => (
-                                        <img key={j} src={u} alt="" className="size-12 rounded object-cover" />
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                    <Bubble key={i} turn={m} />
                 ))}
                 {turnMutation.isPending && (
-                    <div className="flex justify-start">
-                        <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-400">
+                    <div className="flex items-end gap-2">
+                        <div className="mb-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-50">
+                            <Sparkle className="size-4 text-primary-500" weight="duotone" />
+                        </div>
+                        <div className="flex items-center gap-2 rounded-2xl rounded-bl-sm border border-gray-100 bg-gray-50 px-4 py-2.5 text-sm text-gray-400">
                             <CircleNotch className="size-4 animate-spin" /> thinking…
                         </div>
                     </div>
@@ -262,7 +290,7 @@ export const AiIntakeChat = ({
                         }
                     }}
                     placeholder={askingUpload ? 'Upload above, or reply here…' : 'Type your answer…'}
-                    disabled={turnMutation.isPending && messages.length === 0}
+                    autoFocus
                 />
                 <Button
                     type="button"

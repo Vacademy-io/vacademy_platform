@@ -1096,7 +1096,7 @@ const FeatureGridRenderer: React.FC<any> = ({
   const sizeMap: Record<string, string> = { small: 'text-xl', medium: 'text-2xl', large: 'text-3xl' };
   const txt = sectionText(backgroundColor);
   const cardClass =
-    style === 'cards' ? 'rounded-xl border border-catalogue-border-subtle bg-catalogue-bg p-6 shadow-sm hover:shadow-md transition-shadow' :
+    style === 'cards' ? 'catalogue-card-elevated group p-6 sm:p-7' :
     style === 'bordered' ? 'rounded-xl border-2 border-catalogue-border p-6' :
     style === 'glass' ? 'catalogue-card-glass p-6' :
     style === 'gradient-border' ? 'catalogue-card-gradient-border p-6' :
@@ -1216,21 +1216,21 @@ const FeatureGridRenderer: React.FC<any> = ({
                 {f.image ? (
                   <img src={f.image} alt={f.title || ''} className={`${isLeft ? '' : 'mx-auto'} w-full max-w-40 h-auto rounded-lg object-cover`} style={{ aspectRatio: '1/1' }} />
                 ) : IconComp ? (
-                  <span className={`inline-flex items-center justify-center rounded-xl bg-primary-50 p-3 text-primary-500 ${isLeft ? '' : 'mx-auto'}`}>
-                    <IconComp size={iconSize === 'small' ? 20 : iconSize === 'medium' ? 26 : 32} weight="duotone" aria-hidden="true" />
+                  <span className={`inline-flex items-center justify-center rounded-2xl bg-gradient-to-br from-primary-50 to-primary-100 ring-1 ring-primary-100 text-primary-500 transition-transform duration-300 ease-out group-hover:scale-105 ${iconSize === 'small' ? 'size-11 p-2.5' : iconSize === 'medium' ? 'size-12 p-3' : 'size-14 p-3.5'} ${isLeft ? '' : 'mx-auto'}`}>
+                    <IconComp size={iconSize === 'small' ? 20 : iconSize === 'medium' ? 26 : 30} weight="duotone" aria-hidden="true" />
                   </span>
                 ) : (
                   <span className={sizeMap[iconSize] || 'text-3xl'}>{f.icon || '⭐'}</span>
                 )}
               </div>
               {chips.length > 0 && (
-                <div className={`mb-2 flex flex-wrap gap-1.5 ${isLeft ? '' : 'justify-center'}`}>
+                <div className={`mb-3 flex flex-wrap gap-1.5 ${isLeft ? '' : 'justify-center'}`}>
                   {chips.map((c: string, j: number) => (
-                    <span key={j} className="catalogue-badge catalogue-badge-primary rounded-full">{c}</span>
+                    <span key={j} className="inline-flex items-center rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-500 ring-1 ring-primary-100">{c}</span>
                   ))}
                 </div>
               )}
-              <h4 className={`mb-2 text-lg font-semibold ${cardOnSection ? txt.heading : 'text-catalogue-text-primary'}`}>{f.title}</h4>
+              <h4 className={`mb-2 text-xl font-semibold tracking-tight ${cardOnSection ? txt.heading : 'text-catalogue-text-primary'}`}>{f.title}</h4>
               <p className={`text-sm leading-relaxed ${cardOnSection ? txt.muted : 'text-catalogue-text-muted'}`}>{f.description}</p>
               {bullets.length > 0 && (
                 <ul className={`mt-3 space-y-1.5 text-sm ${cardOnSection ? txt.body : 'text-catalogue-text-secondary'} ${isLeft ? '' : 'inline-block text-start'}`}>

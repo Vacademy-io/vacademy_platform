@@ -976,7 +976,7 @@ export const renderComponentPreview = (
             // Style buttons (glass / gradient-border / tinted) show on canvas
             const fgStyle = props.style || 'cards';
             const cardClass =
-                fgStyle === 'cards' ? 'rounded-xl border border-gray-100 bg-white p-5 shadow-sm' :
+                fgStyle === 'cards' ? 'catalogue-card-elevated group p-6' :
                 fgStyle === 'bordered' ? 'rounded-xl border-2 border-gray-200 p-5' :
                 fgStyle === 'glass' ? 'catalogue-card-glass p-5' :
                 fgStyle === 'gradient-border' ? 'catalogue-card-gradient-border p-5' :
@@ -994,9 +994,9 @@ export const renderComponentPreview = (
                             const bullets: string[] = (f.bullets || []).filter(Boolean);
                             return (
                                 <div key={i} className={`${fgLeft ? 'text-left' : 'text-center'} ${cardClass}`}>
-                                    <div className="mb-3">
+                                    <div className={`mb-3 flex ${fgLeft ? '' : 'justify-center'}`}>
                                         {IconComp ? (
-                                            <span className="inline-flex items-center justify-center rounded-xl bg-primary-50 p-2.5 text-primary-500">
+                                            <span className="inline-flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-50 to-primary-100 p-3 text-primary-500 ring-1 ring-primary-100 transition-transform duration-300 group-hover:scale-105">
                                                 <IconComp size={props.iconSize === 'small' ? 18 : props.iconSize === 'medium' ? 24 : 28} weight="duotone" aria-hidden="true" />
                                             </span>
                                         ) : (
@@ -1006,7 +1006,7 @@ export const renderComponentPreview = (
                                     {chips.length > 0 && (
                                         <div className={`mb-2 flex flex-wrap gap-1.5 ${fgLeft ? '' : 'justify-center'}`}>
                                             {chips.map((c, j) => (
-                                                <span key={j} className="catalogue-badge catalogue-badge-primary rounded-full">{c}</span>
+                                                <span key={j} className="inline-flex items-center rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-500 ring-1 ring-primary-100">{c}</span>
                                             ))}
                                         </div>
                                     )}

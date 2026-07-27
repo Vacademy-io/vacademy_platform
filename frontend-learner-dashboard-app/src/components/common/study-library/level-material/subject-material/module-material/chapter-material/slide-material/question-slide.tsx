@@ -16,7 +16,7 @@ import { v4 as uuidv4 } from "uuid";
 import { getUserId } from "@/constants/getUserId";
 import { Textarea } from "@/components/ui/textarea";
 import { useRouter } from "@tanstack/react-router";
-import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
+import { useResolvedPackageSessionId } from "@/hooks/study-library/useResolvedPackageSessionId";
 import { refreshProgressAfterSubmit } from "@/utils/study-library/tracking/refreshProgressAfterSubmit";
 
 interface Option {
@@ -74,6 +74,10 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
     const router = useRouter();
     const queryClient = useQueryClient();
     const { chapterId, moduleId, subjectId } = router.state.location.search;
+    // Resolve the batch from the course being studied, not the single id cached
+    // at login — otherwise a multi-batch learner's submission updates the wrong
+    // package_session and their course progress never moves.
+    const resolvePackageSessionId = useResolvedPackageSessionId();
     // const { activeItem } = useContentStore();
     const [selectedOptionsMap, setSelectedOptionsMap] = useState<
         Record<string, SelectedOption | null>
@@ -189,7 +193,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
         }) => {
             const userId = await getUserId();
 
-            const packageSessionId = await getPackageSessionId();
+            const packageSessionId = await resolvePackageSessionId();
 
             if (!slideId || !userId || !packageSessionId) {
                 throw new Error(

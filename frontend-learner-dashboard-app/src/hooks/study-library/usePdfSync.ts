@@ -3,11 +3,11 @@ import { ActivitySchema } from "@/schemas/study-library/pdf-tracking-schema";
 import { useAddDocumentActivity } from "@/services/study-library/tracking-api/add-document-activity";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { TrackingDataType } from "@/types/tracking-data-type";
-import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { calculateAndUpdatePageViews } from "@/utils/study-library/tracking/calculateAndUpdatePageViews";
 import { Preferences } from "@capacitor/preferences";
 import { useRouter } from "@tanstack/react-router";
 import { z } from "zod";
+import { useResolvedPackageSessionId } from "./useResolvedPackageSessionId";
 import { useSlidesRefresh } from "./useSlidesRefresh";
 
 const STORAGE_KEY = "pdf_tracking_data";
@@ -25,6 +25,7 @@ export const usePDFSync = () => {
     const { activeItem } = useContentStore();
     const router = useRouter();
     const { chapterId, moduleId, subjectId } = router.state.location.search;
+    const resolvePackageSessionId = useResolvedPackageSessionId();
 
     const { refreshSlides } = useSlidesRefresh();
 
@@ -35,7 +36,7 @@ export const usePDFSync = () => {
                 ? JSON.parse(userDetailsStr.value)
                 : null;
             const userId = userDetails?.user_id;
-            const packageSessionId = await getPackageSessionId();
+            const packageSessionId = await resolvePackageSessionId();
 
             if (!userId) {
                 throw new Error("User ID not found in storage");

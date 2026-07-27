@@ -5,7 +5,7 @@ import { useFileUpload } from '@/hooks/use-file-upload';
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { BASE_URL } from '@/constants/urls';
 import { Slide, ScormSlide } from '@/hooks/study-library/use-slides';
-import { getPackageSessionId } from '@/utils/study-library/get-list-from-stores/getPackageSessionId';
+import { useResolvedPackageSessionId } from '@/hooks/study-library/useResolvedPackageSessionId';
 import { refreshProgressAfterSubmit } from '@/utils/study-library/tracking/refreshProgressAfterSubmit';
 
 // SCORM Tracking endpoints
@@ -72,14 +72,19 @@ const ScormSlideComponent = ({
 
     const scormSlide = slide.scorm_slide as ScormSlide | undefined;
 
-    // Fetch packageSessionId if not provided
+    // Resolve the batch if the parent didn't pass one (slide-material doesn't).
+    // Must come from the course being studied, not the single id cached at
+    // login — a multi-batch learner would otherwise report SCORM completion
+    // against the wrong package_session and their course progress would sit
+    // still. See useResolvedPackageSessionId.
+    const resolvePackageSessionId = useResolvedPackageSessionId();
     useEffect(() => {
         if (!propPackageSessionId) {
-            getPackageSessionId().then((id) => {
+            resolvePackageSessionId().then((id) => {
                 if (id) setResolvedPackageSessionId(id);
             });
         }
-    }, [propPackageSessionId]);
+    }, [propPackageSessionId, resolvePackageSessionId]);
 
     // Reset state when switching slides
     useEffect(() => {

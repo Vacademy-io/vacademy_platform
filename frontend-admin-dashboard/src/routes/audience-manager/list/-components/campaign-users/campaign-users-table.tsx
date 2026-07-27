@@ -33,6 +33,8 @@ import {
     Clock,
     CaretDown,
     Trash,
+    Phone,
+    CircleNotch,
 } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -1056,13 +1058,34 @@ const CampaignUsersContent = ({
                             />
                         )
                     )}
+                    <Select
+                        value={callHistoryFilter || 'ANY'}
+                        onValueChange={(v) => {
+                            setCallHistoryFilter(v === 'ANY' ? '' : v);
+                            setPage(0);
+                        }}
+                    >
+                        <SelectTrigger className="h-10 w-44">
+                            <Phone className="mr-1.5 size-4 shrink-0 text-neutral-400" />
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="ANY">Call history</SelectItem>
+                            <SelectItem value="NOT_CALLED">Not called</SelectItem>
+                            <SelectItem value="CALLED">Called (any)</SelectItem>
+                            <SelectItem value="CALLED_ONCE">Called once</SelectItem>
+                            <SelectItem value="CALLED_TWICE_PLUS">Called 2+ times</SelectItem>
+                            <SelectItem value="AI_CALLED">AI called</SelectItem>
+                            <SelectItem value="MANUAL_CALLED">Manually called</SelectItem>
+                        </SelectContent>
+                    </Select>
                     <ManageListFiltersLink />
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button variant="outline" size="sm" className="h-10">
                                 <Funnel className="mr-1.5 size-4" />
                                 More filters
-                                {(isDateFilterActive || !!callHistoryFilter) && (
+                                {isDateFilterActive && (
                                     <span className="ml-1.5 size-1.5 rounded-full bg-primary-500" />
                                 )}
                             </Button>
@@ -1091,33 +1114,6 @@ const CampaignUsersContent = ({
                             <Button size="sm" className="w-full" onClick={handleApplyDate}>
                                 Apply dates
                             </Button>
-                            <div className="space-y-1.5">
-                                <Label className="text-xs text-neutral-600">Call history</Label>
-                                <Select
-                                    value={callHistoryFilter || 'ANY'}
-                                    onValueChange={(v) => {
-                                        setCallHistoryFilter(v === 'ANY' ? '' : v);
-                                        setPage(0);
-                                    }}
-                                >
-                                    <SelectTrigger className="h-9 w-full">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="ANY">Any</SelectItem>
-                                        <SelectItem value="NOT_CALLED">Not called</SelectItem>
-                                        <SelectItem value="CALLED">Called (any)</SelectItem>
-                                        <SelectItem value="CALLED_ONCE">Called once</SelectItem>
-                                        <SelectItem value="CALLED_TWICE_PLUS">
-                                            Called 2+ times
-                                        </SelectItem>
-                                        <SelectItem value="AI_CALLED">AI called</SelectItem>
-                                        <SelectItem value="MANUAL_CALLED">
-                                            Manually called
-                                        </SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
                         </PopoverContent>
                     </Popover>
                 </div>
@@ -1218,8 +1214,17 @@ const CampaignUsersContent = ({
                     />
                 </div>
                 <div className="text-sm text-neutral-500">
-                    Showing {tableRows.length.toLocaleString()} of {totalElements.toLocaleString()}{' '}
-                    results
+                    {isLoading ? (
+                        <span className="flex items-center gap-1.5">
+                            <CircleNotch className="size-3.5 animate-spin" />
+                            Loading results…
+                        </span>
+                    ) : (
+                        <>
+                            Showing {tableRows.length.toLocaleString()} of{' '}
+                            {totalElements.toLocaleString()} results
+                        </>
+                    )}
                 </div>
             </div>
 

@@ -34,7 +34,9 @@ from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
     Frame,
+    InterruptionFrame,
     LLMFullResponseEndFrame,
+    LLMFullResponseStartFrame,
     LLMMessagesAppendFrame,
     LLMTextFrame,
     TranscriptionFrame,
@@ -235,6 +237,14 @@ class SentinelGate(FrameProcessor):
         self._utterance = ""       # current assistant utterance (one transcript entry)
         self._spoke_this_response = False
         self._response_active = False  # LLM tokens still streaming for this response
+        # A2 shield: a barge-in DURING streaming cancels the LLM task, but its
+        # finally-block still emits an orphan LLMFullResponseEndFrame. Downstream,
+        # pipecat 0.0.95's assistant aggregator decrements its _started counter
+        # for EVERY End it sees — the interruption already reset it to 0, so the
+        # orphan End underflows it to -1 and ALL later assistant text is silently
+        # dropped from the model's context (verbatim repeats / re-asking, deep-
+        # review A2, verified against the wheel). Swallow exactly that one End.
+        self._swallow_next_end = False
 
     def set_task(self, task: PipelineTask):
         self._task = task
@@ -244,6 +254,26 @@ class SentinelGate(FrameProcessor):
 
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
+
+        if isinstance(frame, InterruptionFrame):
+            if self._response_active:
+                # The LLM task is being cancelled mid-stream; its finally will
+                # still emit one orphan End — mark it for swallowing (A2).
+                self._swallow_next_end = True
+            # Stale hold-back/utterance from the aborted response must not bleed
+            # into the next one (deep-review B6).
+            self._buffer = ""
+            self._response_active = False
+            await self.push_frame(frame, direction)
+            return
+
+        if isinstance(frame, LLMFullResponseStartFrame):
+            # A NEW response begins — any expected orphan End never arrived (or
+            # was consumed upstream); swallowing this response's End instead
+            # would corrupt the aggregator bracket the OTHER way.
+            self._swallow_next_end = False
+            await self.push_frame(frame, direction)
+            return
 
         if isinstance(frame, LLMTextFrame):
             self._on_activity(user=False)
@@ -278,6 +308,16 @@ class SentinelGate(FrameProcessor):
                 self._buffer = ""
             self._response_active = False
             self._flush_utterance()
+            if self._swallow_next_end:
+                # The orphan End of an interrupted stream — local bookkeeping done
+                # above; do NOT push it downstream (A2 underflow shield). An
+                # interrupted response must also never drive the marker-only
+                # close, and its spoke-flag must not leak into the next response.
+                self._swallow_next_end = False
+                self._spoke_this_response = False
+                logger.info("sentinel: swallowed orphan response-End after interruption corr=%s",
+                            self._outcome.corr)
+                return
             await self.push_frame(frame, direction)
             # Marker-only response (nothing spoken): no BotStoppedSpeakingFrame
             # will ever arrive, so speak a short close to drive the stop path.

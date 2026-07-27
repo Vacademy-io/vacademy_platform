@@ -170,3 +170,82 @@ def test_nudge_cap_and_gating():
     assert 'flags["nudged"] = False' in on_tr       # real words do
     # and the decision engine is actually wired in
     assert "watchdog_decide" in src and "apply_decision" in src
+
+
+# ── A2: orphan response-End after interruption must be SWALLOWED ─────────────
+# (pipecat 0.0.95 assistant aggregator underflows its _started counter on the
+# orphan End of a cancelled stream → ALL later assistant text dropped from
+# context → verbatim repeats. The sentinel shields it.)
+
+@pytest.mark.asyncio
+async def test_sentinel_swallows_orphan_end_after_interruption():
+    from pipecat.frames.frames import (
+        InterruptionFrame, LLMFullResponseEndFrame, LLMFullResponseStartFrame,
+        LLMTextFrame,
+    )
+    from pipecat.processors.frame_processor import FrameDirection
+
+    sg = b.SentinelGate(FakeOutcome(), lambda user=True: None, lambda s: None)
+    pushed = []
+
+    async def fake_push(frame, direction=FrameDirection.DOWNSTREAM):
+        pushed.append(frame)
+    sg.push_frame = fake_push
+
+    async def fake_super(self, frame, direction):
+        return
+
+    async def drive(frame):
+        # call SentinelGate.process_frame but stub the super() call chain by
+        # patching the base class method for the duration
+        import unittest.mock as um
+        with um.patch.object(b.FrameProcessor, "process_frame", new=fake_super):
+            await sg.process_frame(frame, FrameDirection.DOWNSTREAM)
+
+    # Interrupted stream: text → interruption → orphan End
+    await drive(LLMTextFrame("Hello there"))
+    await drive(InterruptionFrame())
+    await drive(LLMFullResponseEndFrame())
+    end_frames = [f for f in pushed if isinstance(f, LLMFullResponseEndFrame)]
+    assert len(end_frames) == 0, "orphan End must be swallowed"
+
+    # Healthy next response: Start → text → End must pass through
+    await drive(LLMFullResponseStartFrame())
+    await drive(LLMTextFrame("Next reply."))
+    await drive(LLMFullResponseEndFrame())
+    end_frames = [f for f in pushed if isinstance(f, LLMFullResponseEndFrame)]
+    assert len(end_frames) == 1, "healthy End must pass"
+
+
+@pytest.mark.asyncio
+async def test_sentinel_new_start_clears_pending_swallow():
+    """If the expected orphan End never arrives, a NEW response's Start must
+    clear the pending swallow so the healthy End isn't eaten instead."""
+    from pipecat.frames.frames import (
+        InterruptionFrame, LLMFullResponseEndFrame, LLMFullResponseStartFrame,
+        LLMTextFrame,
+    )
+    from pipecat.processors.frame_processor import FrameDirection
+    import unittest.mock as um
+
+    sg = b.SentinelGate(FakeOutcome(), lambda user=True: None, lambda s: None)
+    pushed = []
+
+    async def fake_push(frame, direction=FrameDirection.DOWNSTREAM):
+        pushed.append(frame)
+    sg.push_frame = fake_push
+
+    async def fake_super(self, frame, direction):
+        return
+
+    async def drive(frame):
+        with um.patch.object(b.FrameProcessor, "process_frame", new=fake_super):
+            await sg.process_frame(frame, FrameDirection.DOWNSTREAM)
+
+    await drive(LLMTextFrame("partial"))
+    await drive(InterruptionFrame())          # pending swallow armed
+    await drive(LLMFullResponseStartFrame())  # new response begins first
+    await drive(LLMTextFrame("healthy reply"))
+    await drive(LLMFullResponseEndFrame())    # must NOT be swallowed
+    end_frames = [f for f in pushed if isinstance(f, LLMFullResponseEndFrame)]
+    assert len(end_frames) == 1

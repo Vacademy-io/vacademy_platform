@@ -4,6 +4,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -66,7 +67,7 @@ public class LearnerTrackingService {
                 // update threw "Activity Log not found". Latent only because the
                 // web viewer always sends new_activity=true; any client that
                 // doesn't would lose its page tracking entirely.
-                : updateActivityLog(activityLogDTO, activityLogDTO.getId());
+                : updateActivityLog(activityLogDTO, activityLogDTO.getId(), user.getUserId());
         saveDocumentTracking(activityLogDTO, activityLog);
         recomputeEngagedMsFromBreadcrumbs(activityLog);
         learnerTrackingAsyncService.updateLearnerOperationsForDocument(user.getUserId(), slideId, chapterId, moduleId,
@@ -81,7 +82,7 @@ public class LearnerTrackingService {
         validateActivityLogDTO(activityLogDTO, false); // Validate for videos
         ActivityLog activityLog = activityLogDTO.isNewActivity()
                 ? saveActivityLog(activityLogDTO, slideId, user.getUserId())
-                : updateActivityLog(activityLogDTO, activityLogDTO.getId());
+                : updateActivityLog(activityLogDTO, activityLogDTO.getId(), user.getUserId());
 
         saveVideoTracking(activityLogDTO, activityLog);
         recomputeEngagedMsFromBreadcrumbs(activityLog);
@@ -97,7 +98,7 @@ public class LearnerTrackingService {
         validateActivityLogDTO(activityLogDTO, false); // Reuse validation for videos
         ActivityLog activityLog = activityLogDTO.isNewActivity()
                 ? saveActivityLog(activityLogDTO, slideId, user.getUserId())
-                : updateActivityLog(activityLogDTO, activityLogDTO.getId());
+                : updateActivityLog(activityLogDTO, activityLogDTO.getId(), user.getUserId());
 
         saveVideoTracking(activityLogDTO, activityLog); // Reuse VideoTracking entity
         recomputeEngagedMsFromBreadcrumbs(activityLog);
@@ -121,6 +122,15 @@ public class LearnerTrackingService {
     private ActivityLog saveActivityLog(ActivityLogDTO activityLogDTO, String slideId, String userId) {
         if (StringUtils.hasText(activityLogDTO.getId())) {
             ActivityLog existing = activityLogRepository.findById(activityLogDTO.getId()).orElse(null);
+            // Same reasoning as updateActivityLog: because this save() merges on a
+            // client-supplied id, an id belonging to another learner would be
+            // rewritten here — and the merge would set user_id to the caller,
+            // silently transferring ownership of the row.
+            if (existing != null && !Objects.equals(existing.getUserId(), userId)) {
+                log.warn("User {} attempted to write activity {} owned by {}", userId, existing.getId(),
+                        existing.getUserId());
+                throw new VacademyException(HttpStatus.FORBIDDEN, "Activity Log does not belong to this user");
+            }
             if (existing != null && StringUtils.hasText(existing.getSlideId())
                     && !existing.getSlideId().equals(slideId)) {
                 log.warn("Refusing to re-parent activity {} from slide {} to slide {} (user {}). "
@@ -133,9 +143,21 @@ public class LearnerTrackingService {
         return activityLogRepository.save(new ActivityLog(activityLogDTO, userId, slideId));
     }
 
-    private ActivityLog updateActivityLog(ActivityLogDTO activityLogDTO, String activityId) {
+    // activityId is client-supplied, so the row it resolves to must be checked
+    // against the caller before it is mutated — otherwise any authenticated
+    // learner can rewrite another learner's start/end time and percentage
+    // watched (which feed engaged time and the leaderboard) just by sending
+    // their activity id. The document path could not reach this before because
+    // it passed the user id as the activity id and always threw; the video and
+    // audio paths always could.
+    private ActivityLog updateActivityLog(ActivityLogDTO activityLogDTO, String activityId, String userId) {
         ActivityLog activityLog = activityLogRepository.findById(activityId)
-                .orElseThrow(() -> new VacademyException("Activity Log not found"));
+                .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND, "Activity Log not found"));
+        if (!Objects.equals(activityLog.getUserId(), userId)) {
+            log.warn("User {} attempted to update activity {} owned by {}", userId, activityId,
+                    activityLog.getUserId());
+            throw new VacademyException(HttpStatus.FORBIDDEN, "Activity Log does not belong to this user");
+        }
         updateActivityFields(activityLog, activityLogDTO);
         return activityLogRepository.save(activityLog);
     }
@@ -226,7 +248,7 @@ public class LearnerTrackingService {
         validateAudioActivityLogDTO(activityLogDTO);
         ActivityLog activityLog = activityLogDTO.isNewActivity()
                 ? saveActivityLog(activityLogDTO, slideId, user.getUserId())
-                : updateActivityLog(activityLogDTO, activityLogDTO.getId());
+                : updateActivityLog(activityLogDTO, activityLogDTO.getId(), user.getUserId());
 
         saveAudioTracking(activityLogDTO, activityLog);
         recomputeEngagedMsFromBreadcrumbs(activityLog);

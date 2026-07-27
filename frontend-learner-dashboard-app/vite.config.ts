@@ -72,6 +72,15 @@ export default defineConfig({
         sourcemap: false,
         rollupOptions: {
             output: {
+                // Cloudflare Pages serves /assets with immutable caching, and we
+                // have shipped builds where a bundle KEPT its filename while its
+                // content changed — browsers then hold the stale bundle forever
+                // (no refresh helps). Stamp the deploy commit into every filename
+                // so each deploy gets fresh URLs. CF_PAGES_COMMIT_SHA is set by
+                // Cloudflare Pages; local builds are unaffected.
+                entryFileNames: `assets/[name]-[hash]${process.env.CF_PAGES_COMMIT_SHA ? '-' + process.env.CF_PAGES_COMMIT_SHA.slice(0, 8) : ''}.js`,
+                chunkFileNames: `assets/[name]-[hash]${process.env.CF_PAGES_COMMIT_SHA ? '-' + process.env.CF_PAGES_COMMIT_SHA.slice(0, 8) : ''}.js`,
+                assetFileNames: `assets/[name]-[hash]${process.env.CF_PAGES_COMMIT_SHA ? '-' + process.env.CF_PAGES_COMMIT_SHA.slice(0, 8) : ''}[extname]`,
                 // Conservative chunking strategy - only split truly independent heavy libs
                 manualChunks: (id) => {
 

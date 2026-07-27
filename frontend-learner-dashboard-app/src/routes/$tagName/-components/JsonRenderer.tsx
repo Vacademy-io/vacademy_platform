@@ -1500,6 +1500,14 @@ const ComponentStyleWrapper: React.FC<{
   // column. Opt-in via style.layout; legacy configs never reach this branch.
   if (shell) {
     const { canvasStyle, contentStyle } = buildSectionShellStyles(component.style);
+    // Components like heroSection carry their surface color as a PROP
+    // (props.backgroundColor). On a section shell the full-bleed canvas must
+    // own that color — otherwise the band renders as an inset card with
+    // page-color gutters left and right.
+    if (!canvasStyle.backgroundColor && !canvasStyle.background && !canvasStyle.backgroundImage) {
+      const propBg = (component.props as Record<string, unknown> | undefined)?.backgroundColor;
+      if (typeof propBg === 'string' && propBg) canvasStyle.backgroundColor = propBg;
+    }
     return (
       <div
         ref={ref}

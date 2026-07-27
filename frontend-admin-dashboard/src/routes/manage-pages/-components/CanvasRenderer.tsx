@@ -359,6 +359,19 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                             const isDisabled = component.enabled === false;
                             const shell = hasSectionShell(component.style);
                             const shellStyles = shell ? buildSectionShellStyles(component.style!) : null;
+                            // Mirror the learner renderer: a shell canvas with no
+                            // background of its own adopts props.backgroundColor
+                            // (hero and friends carry their surface color as a prop)
+                            // so the band paints full-bleed, not as an inset card.
+                            if (
+                                shellStyles &&
+                                !shellStyles.canvasStyle.backgroundColor &&
+                                !shellStyles.canvasStyle.background &&
+                                !shellStyles.canvasStyle.backgroundImage
+                            ) {
+                                const propBg = (component.props as Record<string, unknown> | undefined)?.backgroundColor;
+                                if (typeof propBg === 'string' && propBg) shellStyles.canvasStyle.backgroundColor = propBg;
+                            }
                             const componentStyle = shellStyles
                                 ? shellStyles.canvasStyle
                                 : buildComponentStyle(component.style);

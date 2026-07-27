@@ -5,6 +5,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
+import { buildPrimaryScaleVars } from "../-utils/style-utils";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
@@ -309,6 +310,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
       data-catalogue-atmosphere={themeSettings?.atmosphere?.canvas || "flat"}
       data-catalogue-motion={(catalogueData?.globalSettings as any)?.motion?.personality}
       data-catalogue-intensity={themeSettings?.atmosphere?.intensity || "subtle"}
+      style={buildPrimaryScaleVars(themeSettings?.primaryColor) as React.CSSProperties}
     >
       {/* Intro Page - Show first if enabled and not completed */}
       {showIntroPage && catalogueData?.introPage && (

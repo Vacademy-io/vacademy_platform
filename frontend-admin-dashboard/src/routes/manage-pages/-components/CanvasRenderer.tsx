@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { useEditorStore } from '../-stores/editor-store';
 import { renderComponentPreview } from './ComponentPreviews';
 import { CATALOGUE_EDITOR_CONFIG } from '@/constants/catalogue-editor';
-import { buildComponentStyle, hasSectionShell, buildSectionShellStyles } from '../-utils/style-utils';
+import { buildComponentStyle, hasSectionShell, buildSectionShellStyles, buildPrimaryScaleVars } from '../-utils/style-utils';
 import { ensureFontsLoaded, collectConfigFontFamilies } from '../-utils/catalogue-fonts';
 import { SectionDecorations, hasDecorations } from '../-utils/catalogue-decorations';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
@@ -288,6 +288,9 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                     data-catalogue-motion={config?.globalSettings?.motion?.personality}
                     data-catalogue-intensity={config?.globalSettings?.theme?.atmosphere?.intensity || 'subtle'}
                     style={{
+                        // Custom brand color override — inline vars beat the
+                        // preset stylesheet, mirroring the learner renderers.
+                        ...(buildPrimaryScaleVars(config?.globalSettings?.theme?.primaryColor) as React.CSSProperties),
                         width: canvasWidth,
                         maxWidth: '100%',
                         minHeight: '100%',

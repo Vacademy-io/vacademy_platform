@@ -302,6 +302,61 @@ async def _autogen_images(page: Any, db, institute_id: Optional[str], user_id: O
     return generated
 
 
+def _is_public_http_host(target: str) -> bool:
+    """SSRF guard shared by site-import and image-inlining: only public
+    http(s) hosts — blocks localhost / .local / private / link-local ranges."""
+    try:
+        import ipaddress
+        import socket
+        from urllib.parse import urlparse
+        if not target.startswith(("http://", "https://")):
+            return False
+        host = (urlparse(target).hostname or "").lower()
+        if not host or host == "localhost" or host.endswith(".local") or host.endswith(".internal"):
+            return False
+        for info in socket.getaddrinfo(host, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return False
+        return True
+    except Exception:  # noqa: BLE001 — guard failure = treat as non-public
+        return False
+
+
+_MAX_INLINE_IMAGE_BYTES = 6_000_000
+
+
+async def _inline_image_data_url(url: str) -> Optional[str]:
+    """Fetch an admin-uploaded image OURSELVES and inline it as a data: URL,
+    so the LLM provider never has to fetch it — media-service links can be
+    presigned/short-lived or served with non-image content types, which
+    providers reject. SSRF-guarded; returns None on any failure."""
+    if not isinstance(url, str) or not _is_public_http_host(url):
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=12.0, follow_redirects=False) as client:
+            resp = await client.get(url)
+        if resp.status_code != 200 or not resp.content or len(resp.content) > _MAX_INLINE_IMAGE_BYTES:
+            return None
+        ctype = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
+        if not ctype.startswith("image/"):
+            head = resp.content[:12]
+            if head.startswith(b"\x89PNG"):
+                ctype = "image/png"
+            elif head.startswith(b"\xff\xd8"):
+                ctype = "image/jpeg"
+            elif head[:6] in (b"GIF87a", b"GIF89a"):
+                ctype = "image/gif"
+            elif head[:4] == b"RIFF" and resp.content[8:12] == b"WEBP":
+                ctype = "image/webp"
+            else:
+                return None
+        return f"data:{ctype};base64,{base64.b64encode(resp.content).decode()}"
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-builder] image inline failed for %s: %s", url[:120], e)
+        return None
+
+
 async def _import_site(url: str) -> str:
     """Best-effort fetch of the institute's own site → a compact text corpus
     (title, headings, paragraphs) so the rebuilt page keeps their REAL copy.
@@ -1619,6 +1674,10 @@ class IntakeResponse(BaseModel):
     chips: List[str] = Field(default_factory=list)
     # When set, the FE opens the matching uploader inline: logo|photo|inspiration
     request_upload: Optional[str] = None
+    # How the assistant classified images in the admin's LATEST message —
+    # the FE routes them into content images vs inspiration accordingly
+    # (an unprompted website screenshot must land in inspiration, not on the page).
+    received_image_kind: Optional[str] = None
     ready: bool = False
     # Composer-ready brief — final when ready=true, best-effort draft before.
     brief: Optional[str] = None
@@ -1645,7 +1704,10 @@ def _build_intake_prompt(req: IntakeRequest) -> str:
         "UPLOAD REQUESTS: set request_upload to logo|photo|inspiration ONLY when that is what you are "
         "asking for this turn; the admin sees an upload button. If they upload, the images appear as "
         "attachments — react to them specifically (e.g. comment on the logo's colors) and use them to "
-        "sharpen the design direction. Never demand uploads; offering to skip is fine.\n"
+        "sharpen the design direction. Never demand uploads; offering to skip is fine. Whenever the "
+        "admin's LATEST message includes an image, ALSO set received_image_kind: a screenshot of a "
+        "website/app they want to look like = 'inspiration'; their brand mark = 'logo'; a real "
+        "campus/class/people photo = 'photo'.\n"
         "PACE: aim to be ready within 5–8 of your turns. The admin can say 'just build it' at any time — "
         "then set ready=true immediately with the best brief you can.\n"
         "WHEN READY (ready=true): write `brief` as a RICH composer brief in the admin's language: "
@@ -1666,7 +1728,8 @@ def _build_intake_prompt(req: IntakeRequest) -> str:
     parts.append(
         "## OUTPUT CONTRACT\nReturn ONLY a JSON object (no markdown fences):\n"
         '{"reply": "<your next message>", "chips": ["<2-4 short tap-to-answer suggestions>"], '
-        '"request_upload": "logo"|"photo"|"inspiration"|null, "ready": true|false, '
+        '"request_upload": "logo"|"photo"|"inspiration"|null, '
+        '"received_image_kind": "logo"|"photo"|"inspiration"|null, "ready": true|false, '
         '"brief": "<current composer brief draft>", "page_type": "homepage"|"course-landing"|"about"|'
         '"admissions"|"contact", "whole_site": true|false}'
     )
@@ -1709,9 +1772,11 @@ async def intake_turn(
             detail=f"Insufficient credits (balance {estimate.get('current_balance')}).",
         )
 
-    # Conversation → chat messages. Uploaded images ride as vision attachments
-    # on their own turn (capped: last 4 image-bearing references).
+    # Conversation → chat messages. Uploaded images are fetched by US and
+    # inlined as data: URLs (capped: last 4 image-bearing references) — the
+    # provider never fetches admin URLs itself.
     messages: List[Dict[str, Any]] = [{"role": "system", "content": _build_intake_prompt(body)}]
+    pending_attach: List[tuple] = []  # (msg, urls)
     attach_budget = 4
     for turn in body.history[-16:]:
         role = "assistant" if turn.role == "assistant" else "user"
@@ -1720,9 +1785,20 @@ async def intake_turn(
             urls = [u for u in turn.image_urls if isinstance(u, str) and u.startswith("https://")][:attach_budget]
             if urls:
                 attach_budget -= len(urls)
-                msg["attachments"] = [{"type": "image", "url": u} for u in urls]
-                msg["content"] = (msg["content"] + f"\n[uploaded {len(urls)} image(s)]").strip()
+                pending_attach.append((msg, urls))
         messages.append(msg)
+    if pending_attach:
+        flat_urls = [u for _, urls in pending_attach for u in urls]
+        inlined = await asyncio.gather(*(_inline_image_data_url(u) for u in flat_urls))
+        pos = 0
+        for msg, urls in pending_attach:
+            datas = [d for d in inlined[pos:pos + len(urls)] if d]
+            pos += len(urls)
+            if datas:
+                msg["attachments"] = [{"type": "image", "url": d} for d in datas]
+                msg["content"] = (str(msg["content"]) + f"\n[uploaded {len(datas)} image(s)]").strip()
+            else:
+                msg["content"] = (str(msg["content"]) + "\n[uploaded an image, but it could not be loaded]").strip()
     if len(messages) == 1:
         messages.append({"role": "user", "content": "Hi — I want to build a website for my institute."})
     # Vision turns pull chat models into prose mode ("Nice logo! …") — restate
@@ -1776,6 +1852,9 @@ async def intake_turn(
     req_upload = data.get("request_upload")
     if req_upload not in _INTAKE_UPLOAD_KINDS:
         req_upload = None
+    recv_kind = data.get("received_image_kind")
+    if recv_kind not in _INTAKE_UPLOAD_KINDS:
+        recv_kind = None
     page_type = data.get("page_type")
     if page_type not in {"homepage", "course-landing", "about", "admissions", "contact"}:
         page_type = "homepage"
@@ -1801,6 +1880,7 @@ async def intake_turn(
         reply=_clean_string(str(data.get("reply") or "")).strip()[:2000] or "Tell me about your institute!",
         chips=chips,
         request_upload=req_upload,
+        received_image_kind=recv_kind,
         ready=bool(data.get("ready")),
         brief=(_clean_string(str(data.get("brief"))) if data.get("brief") else None),
         page_type=page_type,

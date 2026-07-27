@@ -71,6 +71,11 @@ export const AiIntakeChat = ({
     // Everything collected across the conversation, handed to the generator.
     const collectedImages = useRef<AiPageImage[]>([]);
     const collectedInspiration = useRef<string[]>([]);
+    // Images from the message in flight — classified once the assistant
+    // replies (it SEES them): a website screenshot must land in inspiration,
+    // not as a content photo the composer could place on the page.
+    const inFlightImages = useRef<string[]>([]);
+    const inFlightKindHint = useRef<string | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
 
     const turnMutation = useMutation({
@@ -84,6 +89,18 @@ export const AiIntakeChat = ({
         onSuccess: (res) => {
             setLast(res);
             setMessages((m) => [...m, { role: 'assistant', content: res.reply }]);
+            // Route the just-sent images using the assistant's classification,
+            // falling back to whatever it had asked for.
+            const kind = res.received_image_kind || inFlightKindHint.current || 'photo';
+            for (const url of inFlightImages.current) {
+                if (kind === 'inspiration') {
+                    if (!collectedInspiration.current.includes(url)) collectedInspiration.current.push(url);
+                } else if (!collectedImages.current.some((i) => i.url === url)) {
+                    collectedImages.current.push({ url, kind: kind as AiPageImage['kind'] });
+                }
+            }
+            inFlightImages.current = [];
+            inFlightKindHint.current = null;
         },
         onError: (err: any) => {
             const detail = err?.response?.data?.detail;
@@ -102,15 +119,10 @@ export const AiIntakeChat = ({
     const send = (text: string) => {
         const content = text.trim();
         if ((!content && pendingImages.length === 0) || turnMutation.isPending) return;
-        // Uploads are classified by what the assistant asked for this turn.
-        const kind = last?.request_upload || 'photo';
-        for (const url of pendingImages) {
-            if (kind === 'inspiration') {
-                if (!collectedInspiration.current.includes(url)) collectedInspiration.current.push(url);
-            } else if (!collectedImages.current.some((i) => i.url === url)) {
-                collectedImages.current.push({ url, kind: kind as AiPageImage['kind'] });
-            }
-        }
+        // Hold uploads unclassified until the assistant (which sees them)
+        // tells us what they are in its reply.
+        inFlightImages.current = pendingImages;
+        inFlightKindHint.current = last?.request_upload || null;
         const turn: IntakeTurn = {
             role: 'user',
             content: content || '(uploaded an image)',

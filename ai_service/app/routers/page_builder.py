@@ -1839,6 +1839,9 @@ async def intake_turn(
                 return _parse_intake_json(resp.get("content") or ""), (resp.get("model") or model), (resp.get("usage") or {})
             except Exception as e:  # noqa: BLE001
                 last_err = e
+                # Surfaced in response warnings — pod logs are hard to reach
+                # in the field and this class of failure is content-dependent.
+                intake_warnings.append(f"attempt failed on {model}: {str(e)[:220]}")
                 logger.warning("[page-intake] turn failed on %s: %s", model, e)
         return None
 

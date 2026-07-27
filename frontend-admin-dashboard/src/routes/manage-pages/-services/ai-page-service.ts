@@ -216,7 +216,7 @@ export const intakeAiTurn = async (payload: {
     const response = await authenticatedAxiosInstance.post<IntakeResponse>(
         AI_PAGE_BUILDER_INTAKE(),
         payload,
-        { timeout: 90000 }
+        { timeout: 180000 } // vision turns with big screenshots can run long
     );
     return response.data;
 };

@@ -76,6 +76,7 @@ export const AiIntakeChat = ({
     // not as a content photo the composer could place on the page.
     const inFlightImages = useRef<string[]>([]);
     const inFlightKindHint = useRef<string | null>(null);
+    const inFlightText = useRef('');
     const scrollRef = useRef<HTMLDivElement>(null);
 
     const turnMutation = useMutation({
@@ -105,10 +106,18 @@ export const AiIntakeChat = ({
         onError: (err: any) => {
             const detail = err?.response?.data?.detail;
             toast({
-                title: 'Assistant unavailable',
-                description: typeof detail === 'string' ? detail : 'Please try again.',
+                title: 'That message didn’t go through',
+                description: typeof detail === 'string' ? detail : 'Your message is back in the box — just send it again.',
                 variant: 'destructive',
             });
+            // Put the failed turn back in the composer so one tap retries it —
+            // otherwise a long pasted brief + image would strand the chat.
+            setMessages((m) => (m[m.length - 1]?.role === 'user' ? m.slice(0, -1) : m));
+            setInput(inFlightText.current);
+            setPendingImages(inFlightImages.current);
+            inFlightImages.current = [];
+            inFlightKindHint.current = null;
+            inFlightText.current = '';
         },
     });
 
@@ -123,6 +132,7 @@ export const AiIntakeChat = ({
         // tells us what they are in its reply.
         inFlightImages.current = pendingImages;
         inFlightKindHint.current = last?.request_upload || null;
+        inFlightText.current = content;
         const turn: IntakeTurn = {
             role: 'user',
             content: content || '(uploaded an image)',

@@ -910,11 +910,6 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # of dead-airing (see ResilientSarvamSTTService._handle_message). Only while
     # the bot is quiet, and never in the opening seconds (greet owns those).
     _call_t0 = time.time()
-    if hasattr(tts, "set_generate_callback"):
-        def _stamp_generate():
-            if flags["tts_gen_t"] == 0.0:
-                flags["tts_gen_t"] = time.time()
-        tts.set_generate_callback(_stamp_generate)
     if hasattr(stt, "set_backchannel_gate"):
         stt.set_backchannel_gate(
             lambda: not flags["bot_speaking"] and time.time() - _call_t0 > 6.0)
@@ -923,6 +918,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     aiohttp_session=aiohttp_session,
                     pace=_as_float(agent.get("pace")),
                     temperature=_as_float(agent.get("temperature")))
+    # Audio-stall watchdog stamp: run_tts marks "audio pending"; BotStartedSpeaking
+    # clears it. MUST be wired after tts exists (a pre-assignment hasattr(tts, …)
+    # here crashed EVERY call with UnboundLocalError on 2026-07-27).
+    if hasattr(tts, "set_generate_callback"):
+        def _stamp_generate():
+            if flags["tts_gen_t"] == 0.0:
+                flags["tts_gen_t"] = time.time()
+        tts.set_generate_callback(_stamp_generate)
 
     llm_context = LLMContext(
         messages=[{"role": "system", "content": build_system_prompt(context)}]

@@ -4,7 +4,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -19,7 +18,9 @@ import vacademy.io.admin_core_service.features.learner_tracking.repository.Docum
 import vacademy.io.admin_core_service.features.learner_tracking.repository.VideoTrackedRepository;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.AudioTrackedRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.exceptions.ActivityLogAccessDeniedException;
+import vacademy.io.common.exceptions.InvalidRequestException;
+import vacademy.io.common.exceptions.ResourceNotFoundException;
 
 import java.sql.Timestamp;
 import java.util.List;
@@ -129,7 +130,7 @@ public class LearnerTrackingService {
             if (existing != null && !Objects.equals(existing.getUserId(), userId)) {
                 log.warn("User {} attempted to write activity {} owned by {}", userId, existing.getId(),
                         existing.getUserId());
-                throw new VacademyException(HttpStatus.FORBIDDEN, "Activity Log does not belong to this user");
+                throw new ActivityLogAccessDeniedException(existing.getId());
             }
             if (existing != null && StringUtils.hasText(existing.getSlideId())
                     && !existing.getSlideId().equals(slideId)) {
@@ -152,11 +153,11 @@ public class LearnerTrackingService {
     // audio paths always could.
     private ActivityLog updateActivityLog(ActivityLogDTO activityLogDTO, String activityId, String userId) {
         ActivityLog activityLog = activityLogRepository.findById(activityId)
-                .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND, "Activity Log not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Activity log " + activityId + " not found"));
         if (!Objects.equals(activityLog.getUserId(), userId)) {
             log.warn("User {} attempted to update activity {} owned by {}", userId, activityId,
                     activityLog.getUserId());
-            throw new VacademyException(HttpStatus.FORBIDDEN, "Activity Log does not belong to this user");
+            throw new ActivityLogAccessDeniedException(activityId);
         }
         updateActivityFields(activityLog, activityLogDTO);
         return activityLogRepository.save(activityLog);
@@ -219,13 +220,13 @@ public class LearnerTrackingService {
 
     private void validateActivityLogDTO(ActivityLogDTO dto, boolean isDocument) {
         if (Objects.isNull(dto)) {
-            throw new VacademyException("Invalid request. Activity Log cannot be null.");
+            throw new InvalidRequestException("Activity log payload cannot be null.");
         }
         if (isDocument && Objects.isNull(dto.getDocuments())) {
-            throw new VacademyException("Invalid request. Documents cannot be null.");
+            throw new InvalidRequestException("Documents cannot be null for a document activity.");
         }
         if (!isDocument && Objects.isNull(dto.getVideos())) {
-            throw new VacademyException("Invalid request. Videos cannot be null.");
+            throw new InvalidRequestException("Videos cannot be null for a video activity.");
         }
     }
 
@@ -270,10 +271,10 @@ public class LearnerTrackingService {
 
     private void validateAudioActivityLogDTO(ActivityLogDTO dto) {
         if (Objects.isNull(dto)) {
-            throw new VacademyException("Invalid request. Activity Log cannot be null.");
+            throw new InvalidRequestException("Activity log payload cannot be null.");
         }
         if (Objects.isNull(dto.getAudios())) {
-            throw new VacademyException("Invalid request. Audios cannot be null.");
+            throw new InvalidRequestException("Audios cannot be null for an audio activity.");
         }
     }
 

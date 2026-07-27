@@ -4,7 +4,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.AssignmentSlideActivityLogDTO;
@@ -21,7 +20,8 @@ import vacademy.io.admin_core_service.features.slide.entity.Slide;
 import vacademy.io.admin_core_service.features.slide.repository.AssignmentSlideRepository;
 import vacademy.io.admin_core_service.features.slide.repository.SlideRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.exceptions.ForbiddenException;
+import vacademy.io.common.exceptions.ResourceNotFoundException;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -75,14 +75,12 @@ public class AssignmentSlideActivityLogService {
         // referenced via slide.sourceId. (Don't trust DTO.source_id — client
         // could spoof to point at a different, still-open assignment.)
         Slide parentSlide = slideRepository.findById(slideId)
-                .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND,
-                        "Slide not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Slide " + slideId + " not found"));
         AssignmentSlide slide = assignmentSlideRepository.findById(parentSlide.getSourceId())
-                .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND,
-                        "Assignment slide not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Assignment slide not found for slide " + slideId));
         Instant now = Instant.now();
         if (slide.getLiveDate() != null && now.isBefore(slide.getLiveDate())) {
-            throw new VacademyException(HttpStatus.FORBIDDEN,
+            throw new ForbiddenException(
                     "Assignment opens on " + HUMAN_DATE_TIME.format(slide.getLiveDate()));
         }
         boolean late = slide.getEndDate() != null && now.isAfter(slide.getEndDate());

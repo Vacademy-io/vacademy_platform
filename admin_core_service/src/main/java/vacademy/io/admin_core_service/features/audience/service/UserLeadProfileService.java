@@ -66,6 +66,7 @@ public class UserLeadProfileService {
     private final LeadTriggerContextBuilder leadTriggerContextBuilder;
     private final AuthService authService;
     private final LeadSlaConfigService leadSlaConfigService;
+    private final LeadStatusMirrorService leadStatusMirrorService;
 
     /**
      * @Lazy breaks the cycle with LeadScoringService (which already injects this
@@ -209,14 +210,20 @@ public class UserLeadProfileService {
         // the counsellor took to log their first activity (timeline_event by the assigned
         // counsellor) — status changes by admins don't count toward TAT.
 
-        UserLeadProfile saved = userLeadProfileRepository.save(profile);
+        // Flush the primary write now (rather than letting it flush lazily during a later read):
+        // if it ever fails, the real DataAccessException surfaces here and propagates cleanly,
+        // instead of being deferred into one of the best-effort catches below and resurfacing at
+        // commit as an opaque "Transaction silently rolled back … marked as rollback-only".
+        UserLeadProfile saved = userLeadProfileRepository.saveAndFlush(profile);
 
         // Mirror onto the user's audience_response.lead_status_id so the leads list — which
         // resolves its status as COALESCE(lead_status_id -> key, conversion_status), i.e.
-        // prefers the per-response id — reflects this side-view change. Best-effort: a
-        // cascade failure must never break the status update the admin actually requested.
+        // prefers the per-response id — reflects this side-view change. Runs in its own
+        // REQUIRES_NEW transaction (see LeadStatusMirrorService) so it is genuinely best-effort:
+        // a cascade failure rolls back only the mirror, never the status update the admin
+        // actually requested.
         try {
-            syncResponsesLeadStatus(userId, instituteId, status, actorUserId);
+            leadStatusMirrorService.syncResponsesLeadStatus(userId, instituteId, status, actorUserId);
         } catch (Exception e) {
             log.warn("Failed to mirror conversion_status onto audience responses for user={} institute={}",
                     userId, instituteId, e);
@@ -251,58 +258,6 @@ public class UserLeadProfileService {
             profile.setUpdatedAt(now);
             userLeadProfileRepository.save(profile);
         });
-    }
-
-    /**
-     * Push the user's chosen conversion status down onto every audience_response they own
-     * within the institute, by resolving the matching lead_status catalog row and stamping
-     * its id on audience_response.lead_status_id. This is what keeps the leads list (which
-     * reads lead_status_id first) in sync with a side-view status change.
-     *
-     * <p>Also creates a {@code lead_status_history} record for each updated response so that
-     * side-view status changes are counted in the disposition report — previously they were
-     * invisible because only the list-inline path (LeadStatusService.changeLeadStatus) wrote
-     * history rows. Per-response triggers are NOT re-emitted; the profile-level
-     * LEAD_STATUS_CHANGED event already records this change at the correct grain.</p>
-     */
-    private void syncResponsesLeadStatus(String userId, String instituteId, String statusKey, String actorUserId) {
-        LeadStatus target = leadStatusRepository.findByInstituteIdAndStatusKey(instituteId, statusKey).orElse(null);
-        if (target == null) return;
-
-        List<AudienceResponse> responses = audienceResponseRepository.findByUserIdOrStudentUserId(userId, userId);
-        if (responses.isEmpty()) return;
-
-        // Responses carry audienceId, not instituteId — resolve the institute per response so
-        // we only touch rows belonging to THIS institute (a user can be a lead in several).
-        Set<String> audienceIds = responses.stream()
-                .map(AudienceResponse::getAudienceId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        Map<String, String> audienceToInstitute = audienceIds.isEmpty() ? Collections.emptyMap()
-                : audienceRepository.findAllById(audienceIds).stream()
-                        .collect(Collectors.toMap(Audience::getId, Audience::getInstituteId, (a, b) -> a));
-
-        List<AudienceResponse> toUpdate = responses.stream()
-                .filter(r -> instituteId.equals(audienceToInstitute.get(r.getAudienceId())))
-                .filter(r -> !target.getId().equals(r.getLeadStatusId()))
-                .collect(Collectors.toList());
-
-        if (toUpdate.isEmpty()) return;
-
-        List<LeadStatusHistory> historyRecords = toUpdate.stream()
-                .map(r -> LeadStatusHistory.builder()
-                        .audienceResponseId(r.getId())
-                        .instituteId(instituteId)
-                        .fromStatusId(r.getLeadStatusId())
-                        .toStatusId(target.getId())
-                        .changedByUserId(actorUserId)
-                        .source("MANUAL")
-                        .build())
-                .collect(Collectors.toList());
-
-        toUpdate.forEach(r -> r.setLeadStatusId(target.getId()));
-        audienceResponseRepository.saveAll(toUpdate);
-        leadStatusHistoryRepository.saveAll(historyRecords);
     }
 
     /**

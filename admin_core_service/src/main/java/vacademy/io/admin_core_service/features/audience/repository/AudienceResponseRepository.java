@@ -323,15 +323,24 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
                               AND (COALESCE(:customFieldExcludedIdsCsv, '') = ''
                                    OR NOT (ar.id = ANY(STRING_TO_ARRAY(:customFieldExcludedIdsCsv, ','))))
+                              -- Keep response_id and subject_id lookups in SEPARATE EXISTS blocks:
+                              -- one EXISTS with an OR across both columns defeats both indexes and
+                              -- seq-scans the whole call log per candidate lead (statement timeout).
                               AND (COALESCE(:callHistoryFilter, '') = ''
-                                   OR (:callHistoryFilter = 'NOT_CALLED' AND NOT EXISTS (
-                                         SELECT 1 FROM telephony_call_log tcl
-                                          WHERE tcl.response_id = ar.id
-                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
-                                   OR (:callHistoryFilter = 'CALLED' AND EXISTS (
-                                         SELECT 1 FROM telephony_call_log tcl
-                                          WHERE tcl.response_id = ar.id
-                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'NOT_CALLED'
+                                       AND NOT EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.response_id = ar.id)
+                                       AND NOT EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                   OR (:callHistoryFilter = 'CALLED'
+                                       AND (EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.response_id = ar.id)
+                                         OR EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
                                    OR (:callHistoryFilter = 'CALLED_ONCE' AND (
                                          SELECT COUNT(*) FROM telephony_call_log tcl
                                           WHERE tcl.response_id = ar.id
@@ -340,16 +349,24 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                          SELECT COUNT(*) FROM telephony_call_log tcl
                                           WHERE tcl.response_id = ar.id
                                              OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) >= 2)
-                                   OR (:callHistoryFilter = 'AI_CALLED' AND EXISTS (
-                                         SELECT 1 FROM telephony_call_log tcl
-                                          WHERE (tcl.response_id = ar.id
-                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
-                                            AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR')))
-                                   OR (:callHistoryFilter = 'MANUAL_CALLED' AND EXISTS (
-                                         SELECT 1 FROM telephony_call_log tcl
-                                          WHERE (tcl.response_id = ar.id
-                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
-                                            AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK'))))
+                                   OR (:callHistoryFilter = 'AI_CALLED'
+                                       AND (EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.response_id = ar.id
+                                                AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR'))
+                                         OR EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'
+                                                AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR'))))
+                                   OR (:callHistoryFilter = 'MANUAL_CALLED'
+                                       AND (EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.response_id = ar.id
+                                                AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK'))
+                                         OR EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'
+                                                AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK')))))
                             ORDER BY
                               CASE WHEN :sortBy = 'SUBMITTED_AT' AND :sortDirection = 'ASC'
                                    THEN ar.submitted_at END ASC,
@@ -539,15 +556,24 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
                               AND (COALESCE(:customFieldExcludedIdsCsv, '') = ''
                                    OR NOT (ar.id = ANY(STRING_TO_ARRAY(:customFieldExcludedIdsCsv, ','))))
+                              -- Keep response_id and subject_id lookups in SEPARATE EXISTS blocks:
+                              -- one EXISTS with an OR across both columns defeats both indexes and
+                              -- seq-scans the whole call log per candidate lead (statement timeout).
                               AND (COALESCE(:callHistoryFilter, '') = ''
-                                   OR (:callHistoryFilter = 'NOT_CALLED' AND NOT EXISTS (
-                                         SELECT 1 FROM telephony_call_log tcl
-                                          WHERE tcl.response_id = ar.id
-                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
-                                   OR (:callHistoryFilter = 'CALLED' AND EXISTS (
-                                         SELECT 1 FROM telephony_call_log tcl
-                                          WHERE tcl.response_id = ar.id
-                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'NOT_CALLED'
+                                       AND NOT EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.response_id = ar.id)
+                                       AND NOT EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                   OR (:callHistoryFilter = 'CALLED'
+                                       AND (EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.response_id = ar.id)
+                                         OR EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
                                    OR (:callHistoryFilter = 'CALLED_ONCE' AND (
                                          SELECT COUNT(*) FROM telephony_call_log tcl
                                           WHERE tcl.response_id = ar.id
@@ -556,16 +582,24 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                          SELECT COUNT(*) FROM telephony_call_log tcl
                                           WHERE tcl.response_id = ar.id
                                              OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) >= 2)
-                                   OR (:callHistoryFilter = 'AI_CALLED' AND EXISTS (
-                                         SELECT 1 FROM telephony_call_log tcl
-                                          WHERE (tcl.response_id = ar.id
-                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
-                                            AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR')))
-                                   OR (:callHistoryFilter = 'MANUAL_CALLED' AND EXISTS (
-                                         SELECT 1 FROM telephony_call_log tcl
-                                          WHERE (tcl.response_id = ar.id
-                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
-                                            AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK'))))
+                                   OR (:callHistoryFilter = 'AI_CALLED'
+                                       AND (EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.response_id = ar.id
+                                                AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR'))
+                                         OR EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'
+                                                AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR'))))
+                                   OR (:callHistoryFilter = 'MANUAL_CALLED'
+                                       AND (EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.response_id = ar.id
+                                                AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK'))
+                                         OR EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'
+                                                AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK')))))
                         """, nativeQuery = true)
         Page<AudienceResponse> findLeadsWithFilters(
                         @Param("audienceId") String audienceId,
@@ -764,15 +798,24 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
                               AND (COALESCE(:customFieldExcludedIdsCsv, '') = ''
                                    OR NOT (ar.id = ANY(STRING_TO_ARRAY(:customFieldExcludedIdsCsv, ','))))
+                              -- Keep response_id and subject_id lookups in SEPARATE EXISTS blocks:
+                              -- one EXISTS with an OR across both columns defeats both indexes and
+                              -- seq-scans the whole call log per candidate lead (statement timeout).
                               AND (COALESCE(:callHistoryFilter, '') = ''
-                                   OR (:callHistoryFilter = 'NOT_CALLED' AND NOT EXISTS (
-                                         SELECT 1 FROM telephony_call_log tcl
-                                          WHERE tcl.response_id = ar.id
-                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
-                                   OR (:callHistoryFilter = 'CALLED' AND EXISTS (
-                                         SELECT 1 FROM telephony_call_log tcl
-                                          WHERE tcl.response_id = ar.id
-                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'NOT_CALLED'
+                                       AND NOT EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.response_id = ar.id)
+                                       AND NOT EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                   OR (:callHistoryFilter = 'CALLED'
+                                       AND (EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.response_id = ar.id)
+                                         OR EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
                                    OR (:callHistoryFilter = 'CALLED_ONCE' AND (
                                          SELECT COUNT(*) FROM telephony_call_log tcl
                                           WHERE tcl.response_id = ar.id
@@ -781,16 +824,24 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                          SELECT COUNT(*) FROM telephony_call_log tcl
                                           WHERE tcl.response_id = ar.id
                                              OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) >= 2)
-                                   OR (:callHistoryFilter = 'AI_CALLED' AND EXISTS (
-                                         SELECT 1 FROM telephony_call_log tcl
-                                          WHERE (tcl.response_id = ar.id
-                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
-                                            AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR')))
-                                   OR (:callHistoryFilter = 'MANUAL_CALLED' AND EXISTS (
-                                         SELECT 1 FROM telephony_call_log tcl
-                                          WHERE (tcl.response_id = ar.id
-                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
-                                            AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK'))))
+                                   OR (:callHistoryFilter = 'AI_CALLED'
+                                       AND (EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.response_id = ar.id
+                                                AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR'))
+                                         OR EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'
+                                                AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR'))))
+                                   OR (:callHistoryFilter = 'MANUAL_CALLED'
+                                       AND (EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.response_id = ar.id
+                                                AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK'))
+                                         OR EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'
+                                                AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK')))))
                             ORDER BY
                               CASE WHEN :sortBy = 'SUBMITTED_AT' AND :sortDirection = 'ASC'
                                    THEN ar.submitted_at END ASC,
@@ -976,15 +1027,24 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
                               AND (COALESCE(:customFieldExcludedIdsCsv, '') = ''
                                    OR NOT (ar.id = ANY(STRING_TO_ARRAY(:customFieldExcludedIdsCsv, ','))))
+                              -- Keep response_id and subject_id lookups in SEPARATE EXISTS blocks:
+                              -- one EXISTS with an OR across both columns defeats both indexes and
+                              -- seq-scans the whole call log per candidate lead (statement timeout).
                               AND (COALESCE(:callHistoryFilter, '') = ''
-                                   OR (:callHistoryFilter = 'NOT_CALLED' AND NOT EXISTS (
-                                         SELECT 1 FROM telephony_call_log tcl
-                                          WHERE tcl.response_id = ar.id
-                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
-                                   OR (:callHistoryFilter = 'CALLED' AND EXISTS (
-                                         SELECT 1 FROM telephony_call_log tcl
-                                          WHERE tcl.response_id = ar.id
-                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
+                                   OR (:callHistoryFilter = 'NOT_CALLED'
+                                       AND NOT EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.response_id = ar.id)
+                                       AND NOT EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
+                                   OR (:callHistoryFilter = 'CALLED'
+                                       AND (EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.response_id = ar.id)
+                                         OR EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')))
                                    OR (:callHistoryFilter = 'CALLED_ONCE' AND (
                                          SELECT COUNT(*) FROM telephony_call_log tcl
                                           WHERE tcl.response_id = ar.id
@@ -993,16 +1053,24 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                          SELECT COUNT(*) FROM telephony_call_log tcl
                                           WHERE tcl.response_id = ar.id
                                              OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD')) >= 2)
-                                   OR (:callHistoryFilter = 'AI_CALLED' AND EXISTS (
-                                         SELECT 1 FROM telephony_call_log tcl
-                                          WHERE (tcl.response_id = ar.id
-                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
-                                            AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR')))
-                                   OR (:callHistoryFilter = 'MANUAL_CALLED' AND EXISTS (
-                                         SELECT 1 FROM telephony_call_log tcl
-                                          WHERE (tcl.response_id = ar.id
-                                             OR (tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'))
-                                            AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK'))))
+                                   OR (:callHistoryFilter = 'AI_CALLED'
+                                       AND (EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.response_id = ar.id
+                                                AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR'))
+                                         OR EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'
+                                                AND tcl.provider_type IN ('VACADEMY_AI', 'AAVTAAR'))))
+                                   OR (:callHistoryFilter = 'MANUAL_CALLED'
+                                       AND (EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.response_id = ar.id
+                                                AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK'))
+                                         OR EXISTS (
+                                             SELECT 1 FROM telephony_call_log tcl
+                                              WHERE tcl.subject_id = ar.id AND tcl.subject_type = 'LEAD'
+                                                AND tcl.provider_type NOT IN ('VACADEMY_AI', 'AAVTAAR', 'MOCK')))))
                         """, nativeQuery = true)
         Page<AudienceResponse> findInstituteLeadsWithFilters(
                         @Param("instituteId") String instituteId,

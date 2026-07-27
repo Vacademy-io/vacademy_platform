@@ -273,6 +273,9 @@ module.exports = {
           "interactive-hover": "hsl(var(--catalogue-interactive-hover))",
           border: "hsl(var(--catalogue-border))",
           "border-subtle": "hsl(var(--catalogue-border-subtle))",
+          // Brand-colored TEXT (primary-500 is tuned as a fill and fails AA
+          // as ink on white for most presets).
+          "brand-ink": "hsl(var(--catalogue-brand-ink))",
         },
         // WhatsApp brand (contact CTA).
         whatsapp: "#25D366",
@@ -412,6 +415,15 @@ module.exports = {
         "struct-chapter": "calc(16px + 0.5rem + 16px + 0.5rem + 1.5rem + 1.5rem)",
       },
       borderRadius: {
+        // Catalogue radius bridge — honours data-catalogue-radius
+        // (sharp/rounded/pill). Hard rounded-xl etc. ignore that setting.
+        "catalogue-xs": "var(--catalogue-radius-xs)",
+        "catalogue-sm": "var(--catalogue-radius-sm)",
+        "catalogue-md": "var(--catalogue-radius-md)",
+        "catalogue-lg": "var(--catalogue-radius-lg)",
+        "catalogue-xl": "var(--catalogue-radius-xl)",
+        "catalogue-2xl": "var(--catalogue-radius-2xl)",
+        "catalogue-full": "var(--catalogue-radius-full)",
         lg: "var(--radius)",
         md: "calc(var(--radius))",
         sm: "calc(var(--radius) - 2px)",

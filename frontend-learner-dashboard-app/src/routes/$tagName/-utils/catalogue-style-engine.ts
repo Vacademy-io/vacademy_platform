@@ -524,6 +524,15 @@ export function buildResponsiveCSS(componentId: string, style?: ComponentStyle):
         }
     }
 
+    // Viewport-relative minHeight is a DESKTOP art-direction device. On a phone
+    // an 80vh section with centred content wastes most of the screen (measured:
+    // an 884px-tall hero holding 480px of content, ~400px of dead space). Relax
+    // it below the tablet breakpoint so the section sizes to its content. Applies
+    // retroactively to every already-published page.
+    if (typeof style.minHeight === 'string' && /\d\s*(?:vh|svh|dvh|lvh|%)/.test(style.minHeight)) {
+        lines.push(`@media (max-width: 768px) { ${selector} { min-height: 0 !important; } }`);
+    }
+
     if (style.visibility) {
         if (style.visibility.tablet === false) {
             lines.push(`@media (max-width: 768px) { ${selector} { display: none !important; } }`);

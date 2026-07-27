@@ -425,31 +425,6 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
 
 /* ─── Inline renderers for new component types ───────────────────────────── */
 
-/**
- * Text classes for section copy. Token-driven when the section sits on a
- * THEME surface (adapts to dark mode / presets); fixed neutrals when the
- * author set a custom section background — author-colored surfaces must keep
- * a readable pairing in BOTH light and dark mode (token text goes near-white
- * in dark and would vanish on an author-picked light color).
- */
-const sectionText = (customBg?: string) =>
-  customBg
-    ? {
-        heading: 'text-gray-900', // design-lint-ignore: fixed neutrals over author-colored surface
-        body: 'text-gray-600', // design-lint-ignore: fixed neutrals over author-colored surface
-        muted: 'text-gray-500', // design-lint-ignore: fixed neutrals over author-colored surface
-      }
-    : {
-        heading: 'text-catalogue-text-primary',
-        body: 'text-catalogue-text-secondary',
-        muted: 'text-catalogue-text-muted',
-      };
-
-/** Inline style for an author-set section background (undefined otherwise,
- *  letting the token fallback class on the element show through). */
-const sectionBg = (customBg?: string): React.CSSProperties | undefined =>
-  customBg ? { backgroundColor: customBg } : undefined;
-
 /** True when a #rrggbb color is dark enough to need light text on top. */
 const isHexDark = (hex?: string): boolean => {
   const raw = (hex || '').trim().replace(/^#/, '');
@@ -460,6 +435,38 @@ const isHexDark = (hex?: string): boolean => {
   // Rec. 601 relative luminance; < 0.55 reads as "dark".
   return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.55;
 };
+
+/**
+ * Text classes for section copy. Three cases, because an author-colored
+ * surface can be anything:
+ *   no background  → theme tokens (adapt to presets + dark mode)
+ *   DARK author bg → light ink (near-black tokens/greys measured 1.32:1 on the
+ *                    deep-green bands the AI composer likes — invisible copy)
+ *   LIGHT author bg → fixed dark neutrals (token text goes near-white in dark
+ *                     mode and would vanish on an author-picked light color)
+ */
+const sectionText = (customBg?: string) => {
+  if (!customBg) {
+    return {
+      heading: 'text-catalogue-text-primary',
+      body: 'text-catalogue-text-secondary',
+      muted: 'text-catalogue-text-muted',
+    };
+  }
+  if (isHexDark(customBg)) {
+    return { heading: 'text-white', body: 'text-white/85', muted: 'text-white/70' };
+  }
+  return {
+    heading: 'text-gray-900', // design-lint-ignore: fixed neutrals over author-colored surface
+    body: 'text-gray-600', // design-lint-ignore: fixed neutrals over author-colored surface
+    muted: 'text-gray-600', // design-lint-ignore: fixed neutrals over author-colored surface
+  };
+};
+
+/** Inline style for an author-set section background (undefined otherwise,
+ *  letting the token fallback class on the element show through). */
+const sectionBg = (customBg?: string): React.CSSProperties | undefined =>
+  customBg ? { backgroundColor: customBg } : undefined;
 
 /** Curated icon set for featureGrid/steps — 'iconName' values map here;
  *  anything else falls back to the legacy emoji/text `icon` field. */
@@ -475,7 +482,7 @@ const FaqSectionRenderer: React.FC<any> = ({ headerText, subheading, faqs = [], 
   return (
     <section style={sectionBg(backgroundColor)} className="py-16 px-4 bg-catalogue-bg-subtle">
       <div className="mx-auto max-w-3xl">
-        {headerText && <h2 className={`mb-2 text-center text-3xl font-bold ${txt.heading}`}>{headerText}</h2>}
+        {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
         {subheading && <p className={`mb-10 text-center ${txt.muted}`}>{subheading}</p>}
         <div className="space-y-3">
           {faqs.map((faq: any, i: number) => (
@@ -539,7 +546,7 @@ const CtaBannerRenderer: React.FC<any> = ({ heading, subheading, backgroundColor
     <section style={{ backgroundColor }} className="py-14 px-4">
       <div className={`mx-auto max-w-5xl flex ${isSplit ? 'items-center justify-between gap-8 flex-wrap' : 'flex-col items-center text-center'}`}>
         <div className={isSplit ? 'flex-1' : ''}>
-          {heading && <h2 style={{ color: textColor }} className="text-3xl font-bold">{heading}</h2>}
+          {heading && <h2 style={{ color: textColor }} className="catalogue-h2">{heading}</h2>}
           {subheading && <p style={{ color: textColor, opacity: 0.85 }} className="mt-2 text-lg">{subheading}</p>}
         </div>
         {button?.enabled && (
@@ -555,7 +562,7 @@ const CtaBannerRenderer: React.FC<any> = ({ heading, subheading, backgroundColor
 const PricingTableRenderer: React.FC<any> = ({ headerText, subheading, plans = [] }) => (
   <section className="py-16 px-4 bg-catalogue-bg">
     <div className="mx-auto max-w-5xl">
-      {headerText && <h2 className="mb-2 text-center text-3xl font-bold text-catalogue-text-primary">{headerText}</h2>}
+      {headerText && <h2 className="mb-2 text-center catalogue-h2 text-catalogue-text-primary">{headerText}</h2>}
       {subheading && <p className="mb-12 text-center text-catalogue-text-muted">{subheading}</p>}
       <div className={`grid gap-6 ${plans.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
         {plans.map((plan: any, i: number) => (
@@ -594,7 +601,7 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
   return (
     <section style={sectionBg(backgroundColor)} className="py-16 px-4 bg-catalogue-bg">
       <div className="mx-auto max-w-2xl">
-        {heading && <h2 className={`mb-2 text-center text-3xl font-bold ${txt.heading}`}>{heading}</h2>}
+        {heading && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{heading}</h2>}
         {subheading && <p className={`mb-10 text-center ${txt.muted}`}>{subheading}</p>}
         {submitted ? (
           <div className="rounded-xl border border-green-200 bg-green-50 p-8 text-center text-green-700 font-medium">
@@ -625,7 +632,7 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
 const TeamSectionRenderer: React.FC<any> = ({ headerText, subheading, members = [], columns = 3 }) => (
   <section className="py-16 px-4 bg-catalogue-bg">
     <div className="mx-auto max-w-6xl">
-      {headerText && <h2 className="mb-2 text-center text-3xl font-bold text-catalogue-text-primary">{headerText}</h2>}
+      {headerText && <h2 className="mb-2 text-center catalogue-h2 text-catalogue-text-primary">{headerText}</h2>}
       {subheading && <p className="mb-12 text-center text-catalogue-text-muted">{subheading}</p>}
       <div className={`grid gap-8 ${columns === 2 ? 'sm:grid-cols-2' : columns === 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-3'}`}>
         {members.map((m: any, i: number) => (
@@ -633,12 +640,12 @@ const TeamSectionRenderer: React.FC<any> = ({ headerText, subheading, members = 
             {m.avatar ? (
               <img src={m.avatar} alt={m.name} className="mb-4 size-24 rounded-full object-cover shadow-md" />
             ) : (
-              <div className="mb-4 flex size-16 sm:size-20 items-center justify-center rounded-full bg-primary-100 text-2xl font-bold text-primary-600">
+              <div className="mb-4 flex size-16 sm:size-20 items-center justify-center rounded-full bg-primary-100 text-2xl font-bold text-catalogue-brand-ink">
                 {m.name?.[0] || '?'}
               </div>
             )}
             <h3 className="text-lg font-semibold text-catalogue-text-primary">{m.name}</h3>
-            <p className="text-sm font-medium text-primary-600">{m.role}</p>
+            <p className="text-sm font-medium text-catalogue-brand-ink">{m.role}</p>
             {m.bio && <p className="mt-2 text-sm text-catalogue-text-muted">{m.bio}</p>}
           </div>
         ))}
@@ -650,14 +657,14 @@ const TeamSectionRenderer: React.FC<any> = ({ headerText, subheading, members = 
 const AnnouncementFeedRenderer: React.FC<any> = ({ headerText, subheading, announcements = [], layout = 'list', showDate = true, showTag = true, backgroundColor }) => (
   <section style={sectionBg(backgroundColor)} className="py-16 px-4 bg-catalogue-bg">
     <div className="mx-auto max-w-4xl">
-      {headerText && <h2 className={`mb-2 text-center text-3xl font-bold ${sectionText(backgroundColor).heading}`}>{headerText}</h2>}
+      {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${sectionText(backgroundColor).heading}`}>{headerText}</h2>}
       {subheading && <p className={`mb-10 text-center ${sectionText(backgroundColor).muted}`}>{subheading}</p>}
       <div className={layout === 'grid' ? 'grid gap-6 sm:grid-cols-2' : 'space-y-4'}>
         {announcements.map((a: any, i: number) => (
           <div key={i} data-stagger-item style={{ ['--stagger-i' as any]: i }} className={`rounded-xl border border-catalogue-border bg-catalogue-bg p-6 shadow-sm ${layout === 'list' ? 'flex items-start gap-4' : ''}`}>
             <div className="flex-1">
               <div className="mb-2 flex flex-wrap items-center gap-3">
-                {showTag && a.tag && <span className="rounded-full bg-primary-100 px-3 py-0.5 text-xs font-semibold text-primary-700">{a.tag}</span>}
+                {showTag && a.tag && <span className="rounded-full bg-primary-100 px-3 py-0.5 text-xs font-semibold text-catalogue-brand-ink">{a.tag}</span>}
                 {showDate && a.date && <span className="text-xs text-catalogue-text-muted">{new Date(a.date).toLocaleDateString('en-IN', { year: 'numeric', month: 'short', day: 'numeric' })}</span>}
               </div>
               <h3 className="text-base font-semibold text-catalogue-text-primary">{a.title}</h3>
@@ -673,7 +680,7 @@ const AnnouncementFeedRenderer: React.FC<any> = ({ headerText, subheading, annou
 const ImageGalleryRenderer: React.FC<any> = ({ headerText, images = [], columns = 3, showCaptions = false }) => (
   <section className="py-12 px-4 bg-catalogue-bg">
     <div className="mx-auto max-w-6xl">
-      {headerText && <h2 className="mb-8 text-center text-3xl font-bold text-catalogue-text-primary">{headerText}</h2>}
+      {headerText && <h2 className="mb-8 text-center catalogue-h2 text-catalogue-text-primary">{headerText}</h2>}
       <div className={`grid gap-4 ${columns === 2 ? 'sm:grid-cols-2' : columns === 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-3'}`}>
         {images.map((img: any, i: number) => (
           <div key={i} data-stagger-item style={{ ['--stagger-i' as any]: i }} className="group overflow-hidden rounded-xl">
@@ -810,7 +817,7 @@ const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defau
         <div className="flex border-b border-catalogue-border">
           {items.map((item: any, i: number) => (
             <button key={i} onClick={() => setActiveTab(i)}
-              className={`px-5 py-3 text-sm font-medium transition-colors ${i === activeTab ? 'border-b-2 border-primary-500 text-primary-600' : 'text-catalogue-text-muted hover:text-catalogue-text-secondary'}`}>
+              className={`px-5 py-3 text-sm font-medium transition-colors ${i === activeTab ? 'border-b-2 border-primary-500 text-catalogue-brand-ink' : 'text-catalogue-text-muted hover:text-catalogue-text-secondary'}`}>
               {item.title}
             </button>
           ))}
@@ -1116,8 +1123,8 @@ const FeatureGridRenderer: React.FC<any> = ({
     return (
       <section style={sectionBg(backgroundColor)} className="py-16 px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
         <div className="mx-auto max-w-6xl">
-          {headerText && <h2 className={`mb-2 text-center text-3xl font-bold ${txt.heading}`}>{headerText}</h2>}
-          {subheading && <p className={`mb-10 text-center text-lg ${txt.muted}`}>{subheading}</p>}
+          {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
+          {subheading && <p className={`catalogue-lead catalogue-measure mb-10 text-center ${txt.muted}`}>{subheading}</p>}
           <div className={`grid gap-6 grid-cols-1 ${panelCols >= 2 ? 'md:grid-cols-2' : ''} ${panelCols >= 3 ? 'lg:grid-cols-3' : ''}`}>
             {features.map((f: any, i: number) => {
               const IconComp = f.iconName ? FEATURE_ICON_MAP[f.iconName] : undefined;
@@ -1142,7 +1149,7 @@ const FeatureGridRenderer: React.FC<any> = ({
                         {badge ? (
                           <span
                             className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider ${
-                              solid ? 'bg-white/15 text-white' : 'bg-primary-100 text-primary-600'
+                              solid ? 'bg-white/15 text-white' : 'bg-primary-100 text-catalogue-brand-ink'
                             }`}
                           >
                             {badge}
@@ -1201,8 +1208,8 @@ const FeatureGridRenderer: React.FC<any> = ({
   return (
     <section style={sectionBg(backgroundColor)} className="py-16 px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
       <div className="mx-auto max-w-6xl">
-        {headerText && <h2 className={`mb-2 text-center text-3xl font-bold ${txt.heading}`}>{headerText}</h2>}
-        {subheading && <p className={`mb-10 text-center text-lg ${txt.muted}`}>{subheading}</p>}
+        {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
+        {subheading && <p className={`catalogue-lead catalogue-measure mb-10 text-center ${txt.muted}`}>{subheading}</p>}
         <div
           className={`grid gap-6 grid-cols-1 sm:grid-cols-2 ${columns >= 3 ? 'lg:grid-cols-3' : ''} ${columns >= 4 ? 'xl:grid-cols-4' : ''} ${columns >= 5 ? '2xl:grid-cols-5' : ''}`}
         >
@@ -1410,8 +1417,8 @@ const StepsProcessRenderer: React.FC<any> = ({ headerText, subheading, layout = 
     return (
       <section style={sectionBg(backgroundColor)} className="py-16 px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
         <div className="mx-auto max-w-4xl">
-          {headerText && <h2 className={`mb-2 text-center text-3xl font-bold ${txt.heading}`}>{headerText}</h2>}
-          {subheading && <p className={`mb-10 text-center text-lg ${txt.muted}`}>{subheading}</p>}
+          {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
+          {subheading && <p className={`catalogue-lead catalogue-measure mb-10 text-center ${txt.muted}`}>{subheading}</p>}
           <div className="relative">
             {/* Rail: left on mobile/timeline, centered on desktop alternating */}
             <div
@@ -1474,8 +1481,8 @@ const StepsProcessRenderer: React.FC<any> = ({ headerText, subheading, layout = 
   return (
     <section style={sectionBg(backgroundColor)} className="py-16 px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
       <div className="mx-auto max-w-5xl">
-        {headerText && <h2 className={`mb-2 text-center text-3xl font-bold ${txt.heading}`}>{headerText}</h2>}
-        {subheading && <p className={`mb-10 text-center text-lg ${txt.muted}`}>{subheading}</p>}
+        {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
+        {subheading && <p className={`catalogue-lead catalogue-measure mb-10 text-center ${txt.muted}`}>{subheading}</p>}
         <div className={isHorizontal ? 'flex flex-col sm:flex-row items-start justify-center' : 'flex flex-col'}>
           {steps.map((step: any, i: number) => (
             <React.Fragment key={i}>

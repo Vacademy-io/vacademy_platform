@@ -139,6 +139,9 @@
   --primary-400: 198 93% 60%;
   --primary-500: 199 89% 48%;
   --primary-foreground: 0 0% 100%;
+  /* Brand ink (TEXT on surface). primary-500 is only 2.85:1 on white, so ink darkens to AA. */
+  --brand-ink-l: 199 89% 36.8%;
+  --brand-ink-d: 199 89% 74%;
 }
 
 /* =============================================
@@ -152,6 +155,9 @@
   --primary-400: 142 69% 58%;
   --primary-500: 142 71% 45%;
   --primary-foreground: 0 0% 100%;
+  /* Brand ink (TEXT on surface). primary-500 is only 2.30:1 on white, so ink darkens to AA. */
+  --brand-ink-l: 142 71% 30.9%;
+  --brand-ink-d: 142 71% 73%;
 }
 
 /* =============================================
@@ -165,6 +171,9 @@
   --primary-400: 24 95% 64%;
   --primary-500: 24 95% 53%;
   --primary-foreground: 0 0% 100%;
+  /* Brand ink (TEXT on surface). primary-500 is only 2.85:1 on white, so ink darkens to AA. */
+  --brand-ink-l: 24 95% 39.5%;
+  --brand-ink-d: 24 95% 72%;
 }
 
 /* =============================================
@@ -188,6 +197,9 @@
   --catalogue-badge-bg: 270 100% 97%;
   --catalogue-badge-text: 263 70% 50%;
   --catalogue-badge-border: 269 80% 88%;
+  /* Brand ink (TEXT on surface). primary-500 already passes AA as text, so ink keeps it. */
+  --brand-ink-l: 263 70% 50%;
+  --brand-ink-d: 263 70% 76%;
 }
 
 /* =============================================
@@ -201,6 +213,9 @@
   --primary-400: 351 95% 71%;
   --primary-500: 347 77% 50%;
   --primary-foreground: 0 0% 100%;
+  /* Brand ink (TEXT on surface). primary-500 already passes AA as text, so ink keeps it. */
+  --brand-ink-l: 347 77% 50%;
+  --brand-ink-d: 347 77% 82%;
 }
 
 /* =============================================
@@ -214,6 +229,9 @@
   --primary-400: 255 92% 76%;
   --primary-500: 258 90% 66%;
   --primary-foreground: 0 0% 100%;
+  /* Brand ink (TEXT on surface). primary-500 is only 4.31:1 on white, so ink darkens to AA. */
+  --brand-ink-l: 258 90% 64.5%;
+  --brand-ink-d: 258 90% 85%;
 }
 
 /* =============================================
@@ -228,6 +246,9 @@
   --primary-400: 43 96% 56%;
   --primary-500: 38 92% 50%;
   --primary-foreground: 20 14% 10%;
+  /* Brand ink (TEXT on surface). primary-500 is only 2.14:1 on white, so ink darkens to AA. */
+  --brand-ink-l: 38 92% 33%;
+  --brand-ink-d: 38 92% 65%;
 }
 
 /* =============================================
@@ -241,6 +262,9 @@
   --primary-400: 215 25% 50%;
   --primary-500: 222 47% 30%;
   --primary-foreground: 0 0% 100%;
+  /* Brand ink (TEXT on surface). primary-500 already passes AA as text, so ink keeps it. */
+  --brand-ink-l: 222 47% 30%;
+  --brand-ink-d: 222 47% 84%;
 }
 
 

@@ -29,6 +29,21 @@
     --space-24: 6rem;     /* 96px */
 
     /* =============================================
+       SECTION RHYTHM + CONTENT MEASURE
+       One fluid scale so every section breathes the same and steps down on
+       phones (the renderers used 25 different hardcoded py-* values, none of
+       which reduced below the md breakpoint).
+       ============================================= */
+    --catalogue-section-py: clamp(2.5rem, 5.5vw, 5rem);
+    --catalogue-section-py-tight: clamp(1.75rem, 3.5vw, 3rem);
+    --catalogue-section-py-loose: clamp(3.5rem, 7vw, 7rem);
+    --catalogue-section-header-mb: var(--space-10);
+    /* Content column: matches today's max-w-6xl so no published page reflows. */
+    --catalogue-content-max: 72rem;
+    --catalogue-content-prose: 48rem;
+    --catalogue-measure: 68ch;
+
+    /* =============================================
        CATALOGUE-SPECIFIC COLORS
        Theme-aware colors for catalogue pages
        ============================================= */
@@ -45,9 +60,12 @@
 
     /* Text colors */
     --catalogue-text-primary: 222.2 47.4% 11.2%;
-    --catalogue-text-secondary: 215.4 16.3% 40%;
-    --catalogue-text-muted: 215.4 16.3% 56%;
-    --catalogue-text-placeholder: 215.4 16.3% 66%;
+    /* Contrast-audited (2026-07): AA on white, bg-subtle and warm author
+       creams. secondary 7.5:1, muted 5.09:1; placeholder is UI text, not
+       content, and lands at 3.97:1. */
+    --catalogue-text-secondary: 215.4 16.3% 34%;
+    --catalogue-text-muted: 215.4 16.3% 45%;
+    --catalogue-text-placeholder: 215.4 16.3% 52%;
 
     /* Border colors */
     --catalogue-border: 0 0% 90%;
@@ -57,7 +75,7 @@
     /* Price colors */
     --catalogue-price-primary: 142 56% 36%;
     --catalogue-price-discount: 0 72% 50%;
-    --catalogue-price-original: 215.4 16.3% 56%;
+    --catalogue-price-original: var(--catalogue-text-muted);
 
     /* Status colors */
     --catalogue-status-available: 142 56% 36%;
@@ -73,6 +91,12 @@
     --catalogue-interactive-hover: 0 0% 97%;
     --catalogue-interactive-active: 0 0% 95%;
     --catalogue-interactive-focus-ring: 222.2 47.4% 11.2%;
+
+    /* NOTE: --catalogue-brand-ink is intentionally NOT declared here. The
+       stops it references (--brand-ink-l / --primary-500) live on the theme
+       WRAPPER, and var() substitution resolves against the element that
+       DECLARES the property — declaring it on :root yields an invalid value
+       and paints black. It is declared on [data-catalogue-theme] below. */
 
     /* =============================================
        SIZING TOKENS
@@ -208,6 +232,9 @@
 
     --catalogue-interactive-hover: 217.2 32.6% 14%;
     --catalogue-interactive-active: 217.2 32.6% 18%;
+    /* Near-black focus rings are invisible on the dark canvas. */
+    --catalogue-interactive-focus-ring: 210 40% 98%;
+
 
     /* Deepen elevation on the dark canvas (pure-black tint reads better). */
     --catalogue-shadow-color: 0 0% 0%;
@@ -586,10 +613,35 @@
     border-radius: var(--catalogue-radius-md);
     transition: background-color var(--catalogue-transition-fast),
                 border-color var(--catalogue-transition-fast),
-                color var(--catalogue-transition-fast);
+                color var(--catalogue-transition-fast),
+                transform var(--catalogue-transition-fast);
     cursor: pointer;
     outline: none;
     border: 1px solid transparent;
+  }
+
+  /* Pressed feedback — the only signal a touch user gets that a tap landed. */
+  .catalogue-btn:active {
+    transform: scale(0.98);
+  }
+
+  /* Disabled: NOT pointer-events:none, which would suppress the tooltip/title
+     that explains WHY a control is unavailable. */
+  .catalogue-btn:disabled,
+  .catalogue-btn[aria-disabled="true"] {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .catalogue-btn:disabled:active,
+  .catalogue-btn[aria-disabled="true"]:active {
+    transform: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .catalogue-btn:active {
+      transform: none;
+    }
   }
 
   .catalogue-btn:focus-visible {
@@ -1052,6 +1104,8 @@
 
   /* Type-scale utilities — size + personality in one class. */
   .catalogue-display {
+    /* Even ragging on multi-line headings; degrades to normal wrapping. */
+    text-wrap: balance;
     font-size: var(--catalogue-display);
     font-weight: var(--catalogue-display-weight);
     letter-spacing: var(--catalogue-display-tracking);
@@ -1059,6 +1113,8 @@
   }
 
   .catalogue-h1 {
+    /* Even ragging on multi-line headings; degrades to normal wrapping. */
+    text-wrap: balance;
     font-size: var(--catalogue-h1);
     font-weight: var(--catalogue-display-weight);
     letter-spacing: var(--catalogue-display-tracking);
@@ -1066,6 +1122,8 @@
   }
 
   .catalogue-h2 {
+    /* Even ragging on multi-line headings; degrades to normal wrapping. */
+    text-wrap: balance;
     font-size: var(--catalogue-h2);
     font-weight: var(--catalogue-heading-weight);
     letter-spacing: var(--catalogue-heading-tracking);
@@ -1073,6 +1131,8 @@
   }
 
   .catalogue-h3 {
+    /* Even ragging on multi-line headings; degrades to normal wrapping. */
+    text-wrap: balance;
     font-size: var(--catalogue-h3);
     font-weight: var(--catalogue-heading-weight);
     letter-spacing: var(--catalogue-heading-tracking);
@@ -1082,6 +1142,19 @@
   .catalogue-lead {
     font-size: var(--catalogue-lead);
     line-height: var(--catalogue-line-relaxed);
+    /* `pretty` only prevents orphans; it never reflows the whole block. */
+    text-wrap: pretty;
+  }
+
+  /* Caps the line length of body/lead copy. Long measures (89-105ch at
+     1440px) are the single most common "looks unedited" tell. */
+  .catalogue-measure {
+    max-width: var(--catalogue-measure);
+    margin-inline: auto;
+  }
+
+  .catalogue-measure-start {
+    max-width: var(--catalogue-measure);
   }
 
   /* Optional separate heading font — a serif/display face for headings over a
@@ -1089,10 +1162,162 @@
      the catalogue wrapper only when globalSettings.fonts.headingFamily is
      configured; when unset the `inherit` fallback keeps headings on the body
      font, byte-identical to before. Scoped to catalogue wrappers. */
+  /* Brand-colored TEXT. primary-500 is tuned as a FILL and fails AA as ink on
+     white for most presets (amber 2.14:1, forest 2.30:1), so ink gets its own
+     stop per preset. Declared on the wrapper because that is where
+     --brand-ink-l / --primary-* are in scope. A custom brand color supplies
+     --brand-ink-l inline via buildPrimaryScaleVars. */
+  [data-catalogue-theme] {
+    --catalogue-brand-ink: var(--brand-ink-l, var(--primary-500, var(--catalogue-text-primary)));
+  }
+
+  /* On a dark canvas ink must go LIGHTER, not darker. */
+  [data-catalogue-theme].dark,
+  .dark [data-catalogue-theme] {
+    --catalogue-brand-ink: var(--brand-ink-d, var(--primary-300, var(--catalogue-text-primary)));
+  }
+
   [data-catalogue-theme] :is(h1, h2, h3),
   [data-catalogue-theme] :is(.catalogue-display, .catalogue-h1, .catalogue-h2, .catalogue-h3) {
     font-family: var(--catalogue-heading-font, inherit);
   }
+  /* =============================================
+     SECTION RHYTHM
+     One vertical scale for every section. Replaces 25 hardcoded py-* values
+     that never stepped down on mobile (a phone page measured 8781px tall).
+     NOTE: adopting these means DELETING the Tailwind padding utilities on the same
+     element — catalogue-tokens.css is imported before `@tailwind utilities`
+     and both live in @layer utilities, so at equal specificity Tailwind wins
+     on source order.
+     ============================================= */
+  .catalogue-section {
+    padding-block: var(--catalogue-section-py);
+  }
+
+  .catalogue-section-tight {
+    padding-block: var(--catalogue-section-py-tight);
+  }
+
+  .catalogue-section-loose {
+    padding-block: var(--catalogue-section-py-loose);
+  }
+
+  /* A standalone section heading belongs to the block BELOW it, so its
+     bottom padding is deliberately tighter than its top. */
+  .catalogue-section-heading {
+    padding-block: clamp(2rem, 6vw, 3.5rem) var(--space-4);
+  }
+
+  /* Heading + subheading pair above a section's content. */
+  .catalogue-section-header {
+    margin-bottom: var(--catalogue-section-header-mb);
+  }
+
+  .catalogue-section-header > * + * {
+    margin-top: var(--space-3);
+  }
+
+  /* Density — makes globalSettings.compactness actually do something. Placed
+     after :root so equal-specificity source order wins. */
+  [data-catalogue-density="small"] {
+    --catalogue-section-py: clamp(1.75rem, 4vw, 3.25rem);
+    --catalogue-section-py-tight: clamp(1.25rem, 2.5vw, 2rem);
+    --catalogue-section-py-loose: clamp(2.5rem, 5vw, 4.5rem);
+    --catalogue-section-header-mb: var(--space-6);
+  }
+
+  [data-catalogue-density="large"] {
+    --catalogue-section-py: clamp(3.25rem, 7vw, 6.5rem);
+    --catalogue-section-py-tight: clamp(2.25rem, 4.5vw, 4rem);
+    --catalogue-section-py-loose: clamp(4.5rem, 9vw, 9rem);
+    --catalogue-section-header-mb: var(--space-12);
+  }
+
+  /* =============================================
+     CONTENT SHELL
+     One content edge for the whole page. Sections previously mixed
+     max-w-4xl/5xl/6xl/7xl, so stacked section content never aligned.
+     ============================================= */
+  .catalogue-shell {
+    width: 100%;
+    margin-inline: auto;
+    max-width: var(--catalogue-content-max);
+    padding-inline: var(--space-4);
+  }
+
+  .catalogue-shell-prose {
+    width: 100%;
+    margin-inline: auto;
+    max-width: var(--catalogue-content-prose);
+    padding-inline: var(--space-4);
+  }
+
+  @media (min-width: 640px) {
+    .catalogue-shell,
+    .catalogue-shell-prose {
+      padding-inline: var(--space-6);
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .catalogue-shell,
+    .catalogue-shell-prose {
+      padding-inline: var(--space-8);
+    }
+  }
+
+  /* =============================================
+     TOUCH TARGETS + SAFE AREA
+     ============================================= */
+  @media (max-width: 767px) {
+    .catalogue-btn {
+      min-height: 2.75rem; /* 44px — WCAG 2.5.8 / Apple HIG */
+    }
+
+    .catalogue-btn-sm {
+      min-height: 2.25rem;
+    }
+  }
+
+  /* Grows an inline control's hit box without changing its visual size. */
+  .catalogue-tap {
+    position: relative;
+  }
+
+  .catalogue-tap::after {
+    content: "";
+    position: absolute;
+    inset: 50% 50%;
+    width: 2.75rem;
+    height: 2.75rem;
+    transform: translate(-50%, -50%);
+  }
+
+  /* Bottom-pinned mobile CTA: clears the home indicator. */
+  .catalogue-mobile-cta {
+    padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* =============================================
+     MOTION PERSONALITY "none" — full suppression
+     The duration tokens alone left ~85% of motion running, because most
+     motion is authored with literal Tailwind durations.
+     ============================================= */
+  [data-catalogue-motion="none"] {
+    --catalogue-transition-fast: 0.01ms linear;
+    --catalogue-transition-base: 0.01ms linear;
+    --catalogue-transition-slow: 0.01ms linear;
+  }
+
+  [data-catalogue-motion="none"] *,
+  [data-catalogue-motion="none"] *::before,
+  [data-catalogue-motion="none"] *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+
   /* Custom-HTML section host (htmlBlock escape hatch). The shadow root scopes
      the section's CSS in; this class scopes its layout OUT: translateZ creates
      a containing block so position:fixed inside the section can never overlay

@@ -121,6 +121,18 @@ module.exports = {
                 semibold: '500',
             },
             colors: {
+        catalogue: {
+          "text-primary": "hsl(var(--catalogue-text-primary))",
+          "text-secondary": "hsl(var(--catalogue-text-secondary))",
+          "text-muted": "hsl(var(--catalogue-text-muted))",
+          bg: "hsl(var(--catalogue-bg))",
+          "bg-subtle": "hsl(var(--catalogue-bg-subtle))",
+          "bg-muted": "hsl(var(--catalogue-bg-muted))",
+          "interactive-hover": "hsl(var(--catalogue-interactive-hover))",
+          border: "hsl(var(--catalogue-border))",
+          "border-subtle": "hsl(var(--catalogue-border-subtle))",
+          "brand-ink": "hsl(var(--catalogue-brand-ink))",
+        },
                 border: 'hsl(var(--border))',
                 input: 'hsl(var(--input))',
                 ring: 'hsl(var(--ring))',
@@ -210,7 +222,19 @@ module.exports = {
                     700: 'hsl(var(--danger-700))',
                 },
             },
+            // Catalogue design tokens — MUST mirror the learner app's group
+            // (frontend-learner-dashboard-app/tailwind.config.js). Without these the
+            // editor canvas silently drops every text-catalogue-*/bg-catalogue-* class.
+            // Tailwind configs are hand-mirrored, NOT byte-synced.
+
             borderRadius: {
+        "catalogue-xs": "var(--catalogue-radius-xs)",
+        "catalogue-sm": "var(--catalogue-radius-sm)",
+        "catalogue-md": "var(--catalogue-radius-md)",
+        "catalogue-lg": "var(--catalogue-radius-lg)",
+        "catalogue-xl": "var(--catalogue-radius-xl)",
+        "catalogue-2xl": "var(--catalogue-radius-2xl)",
+        "catalogue-full": "var(--catalogue-radius-full)",
                 lg: 'var(--radius)',
                 md: 'calc(var(--radius) - 2px)',
                 sm: 'calc(var(--radius) - 4px)',

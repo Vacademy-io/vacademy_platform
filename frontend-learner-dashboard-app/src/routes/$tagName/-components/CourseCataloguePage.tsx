@@ -390,6 +390,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       data-catalogue-atmosphere={themeSettings?.atmosphere?.canvas || 'flat'}
       data-catalogue-motion={(catalogueData?.globalSettings as any)?.motion?.personality}
       data-catalogue-intensity={themeSettings?.atmosphere?.intensity || 'subtle'}
+      data-catalogue-density={(catalogueData?.globalSettings as any)?.compactness || 'medium'}
       style={buildPrimaryScaleVars(themeSettings?.primaryColor) as React.CSSProperties}
     >
       <Helmet>

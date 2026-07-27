@@ -287,6 +287,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                     data-catalogue-atmosphere={config?.globalSettings?.theme?.atmosphere?.canvas || 'flat'}
                     data-catalogue-motion={config?.globalSettings?.motion?.personality}
                     data-catalogue-intensity={config?.globalSettings?.theme?.atmosphere?.intensity || 'subtle'}
+                    data-catalogue-density={config?.globalSettings?.compactness || 'medium'}
                     style={{
                         // Custom brand color override — inline vars beat the
                         // preset stylesheet, mirroring the learner renderers.

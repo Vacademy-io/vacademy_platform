@@ -15,7 +15,9 @@ import { ImageSquare, PencilSimpleLine } from '@phosphor-icons/react';
 import { TokenKey } from '@/constants/auth/tokens';
 import { getTokenDecodedData, getTokenFromCookie } from '@/lib/auth/sessionUtility';
 import { Info } from '@phosphor-icons/react';
-import MultiEmailInput from '../audience-invite/components/MultiEmailInput';
+import MultiEmailInput, {
+    MultiEmailInputHandle,
+} from '../audience-invite/components/MultiEmailInput';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import CampaignTypeDropdown from './CampaignTypeDropdown';
@@ -256,6 +258,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
     const [emails, setEmails] = useState<string[]>(() =>
         parseEmailsFromCsv((campaignData?.to_notify as string) || '')
     );
+    const multiEmailRef = useRef<MultiEmailInputHandle>(null);
     const [latestCampaignShareLink, setLatestCampaignShareLink] = useState<string | null>(null);
     const { form, handleDateChange, handleSubmit, handleReset, isSubmitting } =
         useAudienceCampaignForm(initialFormValues);
@@ -832,6 +835,12 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             return;
         }
 
+        // Flush any half-typed email in the Team Notifications box into the
+        // committed list before building the payload. Returns the final list
+        // synchronously so we don't depend on React state having re-rendered
+        // (the `emails` closure below could otherwise be one keystroke stale).
+        const notifyEmails = multiEmailRef.current?.flush() ?? emails;
+
         let parsedCustomFields: unknown = undefined;
         if (data.institute_custom_fields) {
             try {
@@ -892,7 +901,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
             campaign_type: data.campaign_type.trim(),
             description: data.description?.trim() || '',
             campaign_objective: data.campaign_objective?.trim() || '',
-            to_notify: emails.join(', '),
+            to_notify: notifyEmails.join(', '),
             send_respondent_email: Boolean(data.send_respondent_email),
             json_web_metadata: data.json_web_metadata?.trim() || '',
             created_by_user_id: userId,
@@ -1079,6 +1088,7 @@ export const CreateCampaignForm: React.FC<CreateCampaignFormProps> = ({ onSucces
                     </TooltipProvider>
                 </div>
                 <MultiEmailInput
+                    ref={multiEmailRef}
                     value={emails}
                     onChange={setEmails}
                     placeholder="Enter email addresses"

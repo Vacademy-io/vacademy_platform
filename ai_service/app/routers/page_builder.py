@@ -326,18 +326,21 @@ def _is_public_http_host(target: str) -> bool:
 _MAX_INLINE_IMAGE_BYTES = 6_000_000
 
 
-async def _inline_image_data_url(url: str) -> Optional[str]:
+async def _inline_image_data_url(url: str) -> tuple[Optional[str], Optional[str]]:
     """Fetch an admin-uploaded image OURSELVES and inline it as a data: URL,
     so the LLM provider never has to fetch it — media-service links can be
     presigned/short-lived or served with non-image content types, which
-    providers reject. SSRF-guarded; returns None on any failure."""
+    providers reject. SSRF-guarded. Returns (data_url, None) on success or
+    (None, reason) on failure."""
     if not isinstance(url, str) or not _is_public_http_host(url):
-        return None
+        return None, "blocked non-public host"
     try:
         async with httpx.AsyncClient(timeout=12.0, follow_redirects=False) as client:
             resp = await client.get(url)
-        if resp.status_code != 200 or not resp.content or len(resp.content) > _MAX_INLINE_IMAGE_BYTES:
-            return None
+        if resp.status_code != 200:
+            return None, f"http {resp.status_code}"
+        if not resp.content or len(resp.content) > _MAX_INLINE_IMAGE_BYTES:
+            return None, f"bad size {len(resp.content)}"
         ctype = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
         if not ctype.startswith("image/"):
             head = resp.content[:12]
@@ -350,11 +353,11 @@ async def _inline_image_data_url(url: str) -> Optional[str]:
             elif head[:4] == b"RIFF" and resp.content[8:12] == b"WEBP":
                 ctype = "image/webp"
             else:
-                return None
-        return f"data:{ctype};base64,{base64.b64encode(resp.content).decode()}"
+                return None, f"not an image ({ctype or 'no content-type'})"
+        return f"data:{ctype};base64,{base64.b64encode(resp.content).decode()}", None
     except Exception as e:  # noqa: BLE001
         logger.warning("[page-builder] image inline failed for %s: %s", url[:120], e)
-        return None
+        return None, f"fetch error: {type(e).__name__}"
 
 
 async def _import_site(url: str) -> str:
@@ -1685,6 +1688,7 @@ class IntakeResponse(BaseModel):
     whole_site: bool = False
     run_id: str
     model: str
+    warnings: List[str] = Field(default_factory=list)
 
 
 def _build_intake_prompt(req: IntakeRequest) -> str:
@@ -1787,18 +1791,25 @@ async def intake_turn(
                 attach_budget -= len(urls)
                 pending_attach.append((msg, urls))
         messages.append(msg)
+    intake_warnings: List[str] = []
     if pending_attach:
         flat_urls = [u for _, urls in pending_attach for u in urls]
         inlined = await asyncio.gather(*(_inline_image_data_url(u) for u in flat_urls))
         pos = 0
         for msg, urls in pending_attach:
-            datas = [d for d in inlined[pos:pos + len(urls)] if d]
+            chunk = inlined[pos:pos + len(urls)]
             pos += len(urls)
-            if datas:
-                msg["attachments"] = [{"type": "image", "url": d} for d in datas]
-                msg["content"] = (str(msg["content"]) + f"\n[uploaded {len(datas)} image(s)]").strip()
-            else:
-                msg["content"] = (str(msg["content"]) + "\n[uploaded an image, but it could not be loaded]").strip()
+            atts = []
+            for u, (data_url, err) in zip(urls, chunk):
+                if data_url:
+                    atts.append({"type": "image", "url": data_url})
+                else:
+                    # Fall back to the raw URL — the provider may still be able
+                    # to fetch it; the no-attachment retry covers it if not.
+                    intake_warnings.append(f"image inline failed ({err}) — passed URL through")
+                    atts.append({"type": "image", "url": u})
+            msg["attachments"] = atts
+            msg["content"] = (str(msg["content"]) + f"\n[uploaded {len(atts)} image(s)]").strip()
     if len(messages) == 1:
         messages.append({"role": "user", "content": "Hi — I want to build a website for my institute."})
     # Vision turns pull chat models into prose mode ("Nice logo! …") — restate
@@ -1887,4 +1898,5 @@ async def intake_turn(
         whole_site=bool(data.get("whole_site")),
         run_id=run_id,
         model=model_used,
+        warnings=intake_warnings,
     )

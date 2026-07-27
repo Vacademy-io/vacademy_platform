@@ -1131,6 +1131,7 @@ export const AI_PAGE_BUILDER_EDIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v
 export const AI_PAGE_BUILDER_BRAND_KIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/brand-kit`;
 export const AI_PAGE_BUILDER_IMAGE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/image`;
 export const AI_PAGE_BUILDER_SITE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site`;
+export const AI_PAGE_BUILDER_INTAKE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/intake`;
 // Course field AI assist (ai_service) — inline generate on the Add Course form
 export const AI_COURSE_ASSIST_TEXT = () => `${AI_SERVICE_BASE_URL}/course/assist/v1/text`;
 export const AI_COURSE_ASSIST_IMAGE = () => `${AI_SERVICE_BASE_URL}/course/assist/v1/image`;

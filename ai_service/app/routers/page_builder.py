@@ -1735,21 +1735,34 @@ async def intake_turn(
     model_used = primary
     usage: Dict[str, Any] = {}
     last_err: Optional[Exception] = None
-    for model in [primary, *fallbacks][:2]:
-        try:
-            resp = await client.chat_completion(
-                messages, temperature=0.5, max_tokens=1200,
-                institute_id=institute_id, user_id=actor_user_id, model=model,
-            )
-            data = _parse_intake_json(resp.get("content") or "")
-            model_used = resp.get("model") or model
-            usage = resp.get("usage") or {}
-            break
-        except Exception as e:  # noqa: BLE001
-            last_err = e
-            logger.warning("[page-intake] turn failed on %s: %s", model, e)
-    if data is None:
+    async def _try(msgs: List[Dict[str, Any]]) -> Optional[tuple]:
+        nonlocal last_err
+        for model in [primary, *fallbacks][:2]:
+            try:
+                resp = await client.chat_completion(
+                    msgs, temperature=0.5, max_tokens=1200,
+                    institute_id=institute_id, user_id=actor_user_id, model=model,
+                )
+                return _parse_intake_json(resp.get("content") or ""), (resp.get("model") or model), (resp.get("usage") or {})
+            except Exception as e:  # noqa: BLE001
+                last_err = e
+                logger.warning("[page-intake] turn failed on %s: %s", model, e)
+        return None
+
+    out = await _try(messages)
+    if out is None and any("attachments" in m for m in messages):
+        # A dead/unfetchable image URL makes the provider reject the whole
+        # call — degrade to text-only rather than failing the conversation.
+        logger.warning("[page-intake] retrying without attachments: %s", last_err)
+        stripped = [{k: v for k, v in m.items() if k != "attachments"} for m in messages]
+        stripped.append({
+            "role": "user",
+            "content": "(note: my uploaded image could not be loaded — please continue without it)",
+        })
+        out = await _try(stripped)
+    if out is None:
         raise HTTPException(status_code=502, detail=f"Assistant turn failed: {last_err}")
+    data, model_used, usage = out
 
     chips = [_clean_string(str(c))[:60] for c in data.get("chips") or [] if str(c).strip()][:4]
     req_upload = data.get("request_upload")

@@ -575,6 +575,7 @@ export const SlideMaterial = ({
                       videoUrl={videoUrl}
                       onTimeUpdate={handleVideoTimeUpdate}
                       ref={playerRef}
+                      questions={videoSlide?.questions || []}
                       concentrationSettings={concentrationSettings}
                     />
                   </div>

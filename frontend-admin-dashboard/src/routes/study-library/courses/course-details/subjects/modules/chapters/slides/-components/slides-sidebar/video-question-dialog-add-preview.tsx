@@ -9,6 +9,11 @@ import { MyButton } from '@/components/design-system/button';
 import { UploadQuestionPaperFormType } from '@/routes/assessment/question-papers/-components/QuestionPaperUpload';
 import { VideoPlayerTimeFormType } from '../../-form-schemas/video-player-time-schema';
 import { useContentStore } from '../../-stores/chapter-sidebar-store';
+import { useSlides } from '../../-hooks/use-slides';
+import { converDataToVideoFormat } from '../../-helper/helper';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { Route } from '../..';
+import { toast } from 'sonner';
 type QuestionPaperForm = z.infer<ReturnType<typeof uploadQuestionPaperFormSchema>>;
 
 const VideoQuestionDialogAddPreview = ({
@@ -39,6 +44,20 @@ const VideoQuestionDialogAddPreview = ({
     isAddQuestionTypeRef: React.RefObject<HTMLButtonElement>;
 }) => {
     const { activeItem, setActiveItem } = useContentStore();
+    // Slide context + save mutation so a newly added question persists to the
+    // backend right away (same wiring edit/delete already use).
+    const { courseId, levelId, chapterId, moduleId, subjectId, sessionId } = Route.useSearch();
+    const { getPackageSessionId } = useInstituteDetailsStore();
+    const { addUpdateVideoSlide } = useSlides(
+        chapterId || '',
+        moduleId || '',
+        subjectId || '',
+        getPackageSessionId({
+            courseId: courseId || '',
+            levelId: levelId || '',
+            sessionId: sessionId || '',
+        }) || ''
+    );
     const handleClose = () => {
         setCurrentQuestionIndex(0);
         videoQuestionForm.reset({
@@ -66,7 +85,7 @@ const VideoQuestionDialogAddPreview = ({
         isAddTimeFrameRef.current?.click();
         isAddQuestionTypeRef.current?.click();
     };
-    const handleAddQuestionInAddedForm = () => {
+    const handleAddQuestionInAddedForm = async () => {
         // Clone the questions properly to avoid reference issues
         const videoQuestions = JSON.parse(JSON.stringify(videoQuestionForm.getValues('questions')));
 
@@ -88,15 +107,31 @@ const VideoQuestionDialogAddPreview = ({
             questions: [...prevData.questions, ...videoQuestions],
         }));
 
-        setActiveItem({
+        const updatedSlide: any = {
             ...activeItem,
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            // @ts-expect-error
             video_slide: {
                 ...activeItem?.video_slide,
                 questions: [...formData.questions, ...videoQuestions],
             },
-        });
+        };
+        setActiveItem(updatedSlide);
+
+        // Persist the new question to the backend immediately, keeping the
+        // slide's current status — same as the edit/delete flows. Without this
+        // the question only lived in memory until a manual Save/Publish.
+        try {
+            const payload = converDataToVideoFormat({
+                activeItem: updatedSlide,
+                status: activeItem?.status || 'DRAFT',
+                notify: false,
+                newSlide: false,
+            });
+            await addUpdateVideoSlide(payload);
+            toast.success('Question saved');
+        } catch (err) {
+            console.error('Failed to save video question:', err);
+            toast.error('Failed to save question');
+        }
 
         // Close after data is properly updated
         handleClose();

@@ -144,6 +144,7 @@ export const SplitScreenVideoSlide: React.FC<SplitScreenVideoSlideProps> = ({
             videoUrl={videoUrl}
             onTimeUpdate={onTimeUpdate}
             ref={playerRef}
+            questions={(videoSlide.questions as any) || []}
           />
         </div>
       );

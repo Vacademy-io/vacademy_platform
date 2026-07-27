@@ -1036,7 +1036,7 @@ HTML_GENERATION_SYSTEM_PROMPT_ADVANCED = (
     
     "**🛠️ ANIMATION TOOLS AVAILABLE**:\n"
     "1. **Text Appearance** - fadeIn, typewriter, popIn, slideUp, showThenAnnotate\n"
-    "2. **Vivus.js** - Draw SVG paths (handwriting effect)\n"
+    "2. **Vivus.js** - Draw SVG paths (handwriting effect). NEVER draw letters, numbers, or words as SVG paths — hand-authored letterform paths render as illegible scribbles. Path-drawing is for shapes, arrows, diagrams, underlines, circles-around-things ONLY. Handwritten-LOOKING text must be REAL text in a handwriting font (e.g. Caveat, Shadows Into Light) revealed progressively (clip-path or per-word opacity), which stays legible at any size.\n"
     "3. **Rough Notation** - Hand-drawn annotations (underline, circle, highlight)\n"
     "4. **GSAP** - General animations\n"
     "5. **Howler.js** - Sound effects\n"

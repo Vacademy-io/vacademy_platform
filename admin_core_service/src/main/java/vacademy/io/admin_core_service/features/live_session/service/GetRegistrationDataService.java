@@ -56,7 +56,8 @@ public class GetRegistrationDataService {
                                 customFields,
                                 null, null, null,
                                 first.getRequireEmailVerification(),
-                                first.getRequirePhoneVerification());
+                                first.getRequirePhoneVerification(),
+                                first.getWhatsappOtpTemplateName());
 
                 // Paid session: surface the fee so the public form can show the price
                 // and route the registrant through the payment step.

@@ -88,6 +88,18 @@ public class LiveSessionStep2RequestDTO {
     private Boolean requirePhoneVerification;
 
     /**
+     * WhatsApp template for the phone-verification OTP. Null = don't touch;
+     * empty string = clear (fall back to the institute default template).
+     */
+    private String whatsappOtpTemplateName;
+
+    /**
+     * WhatsApp template for the phone-verification OTP. Null = don't touch
+     * (older clients); empty string clears back to the institute default.
+     */
+    private String whatsappOtpTemplateName;
+
+    /**
      * Optional "auto-add recordings to course" config. Omitting this field on
      * update leaves the stored config unchanged; sending {"enabled": false, ...}
      * disables auto-linking. See RecordingAutoLinkConfigDTO.

@@ -125,8 +125,10 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
    * PostgreSQL cannot determine the type of a NULL List parameter in "? IS NULL" checks, so we use
    * typed boolean flags instead: when a filter flag is true the corresponding IN clause is skipped,
    * and the list param is always a non-null sentinel (e.g. "__none__") so the JDBC binding succeeds.
-   * includeInvoiceLogs is false whenever any user-plan-specific filter is active (those filters don't
-   * apply to invoice-path logs).
+   * includeInvoiceLogs is false whenever a user-plan-only filter (plan status, enroll-invite,
+   * package-session) is active — those cannot apply to invoice-path logs. A `sources` filter is
+   * honored inside the invoice arm against invoice.source (LIVE_SESSION, ADMIN_INVOICE, ...), so
+   * live-session payments stay visible/filterable.
    */
   @Query(value = """
       SELECT combined.id FROM (
@@ -163,6 +165,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
           AND pl.created_at >= :startDate
           AND pl.created_at <= :endDate
           AND (:noPaymentStatusFilter = true OR pl.payment_status IN (:paymentStatuses))
+          AND (:noSourceFilter = true OR i.source IN (:sources))
           AND (:userId IS NULL OR i.user_id = :userId)
       ) combined
       ORDER BY combined.created_at DESC
@@ -202,6 +205,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
           AND pl.created_at >= :startDate
           AND pl.created_at <= :endDate
           AND (:noPaymentStatusFilter = true OR pl.payment_status IN (:paymentStatuses))
+          AND (:noSourceFilter = true OR i.source IN (:sources))
           AND (:userId IS NULL OR i.user_id = :userId)
       ) count_q
       """,

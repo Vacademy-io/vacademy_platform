@@ -21,4 +21,10 @@ public class LiveSessionPaymentConfigDTO {
     private Boolean enabled;
     private Double price;
     private String currency;
+    /**
+     * Payment gateway charging this session's fee. Null/blank = the institute
+     * default (latest ACTIVE mapping). Stored in the session's
+     * payment_option.payment_option_metadata_json, honored at invoice initiation.
+     */
+    private String vendor;
 }

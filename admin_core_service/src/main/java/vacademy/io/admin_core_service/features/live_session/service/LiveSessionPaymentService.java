@@ -111,15 +111,17 @@ public class LiveSessionPaymentService {
         String currency = config.getCurrency().trim().toUpperCase();
 
         // Fail at config time, not at the payer's checkout: the fee is charged through
-        // the institute's configured gateway, so the chosen currency must be one that
-        // gateway supports (e.g. Razorpay cannot charge AUD).
+        // the chosen gateway (or the institute default), so the currency must be one
+        // that gateway supports (e.g. Razorpay cannot charge AUD).
         try {
-            InstitutePaymentGatewayMappingService.VendorInfo vendorInfo =
-                    institutePaymentGatewayMappingService.getLatestVendorInfoForInstitute(session.getInstituteId());
-            PaymentGateway gateway = PaymentGateway.fromString(vendorInfo.getVendor());
+            String vendorToValidate = StringUtils.hasText(config.getVendor())
+                    ? config.getVendor().trim().toUpperCase()
+                    : institutePaymentGatewayMappingService
+                            .getLatestVendorInfoForInstitute(session.getInstituteId()).getVendor();
+            PaymentGateway gateway = PaymentGateway.fromString(vendorToValidate);
             if (!CurrencyGatewaySupport.isSupported(gateway, currency)) {
-                throw new VacademyException("Currency " + currency + " is not supported by your institute's payment gateway ("
-                        + gateway.name() + "). Choose a supported currency or switch the gateway in payment settings.");
+                throw new VacademyException("Currency " + currency + " is not supported by the selected payment gateway ("
+                        + gateway.name() + "). Choose a supported currency or a different gateway.");
             }
         } catch (VacademyException validationFailure) {
             throw validationFailure;
@@ -141,6 +143,7 @@ public class LiveSessionPaymentService {
             return created;
         });
         option.setName("Live session access - " + (StringUtils.hasText(session.getTitle()) ? session.getTitle() : session.getId()));
+        writeVendorMetadata(option, config.getVendor());
         option = paymentOptionRepository.save(option);
 
         PaymentPlan plan = option.getPaymentPlans() != null && !option.getPaymentPlans().isEmpty()
@@ -158,6 +161,55 @@ public class LiveSessionPaymentService {
     public Optional<PaymentOption> findActivePaymentOption(String sessionId) {
         return paymentOptionRepository.findFirstBySourceAndSourceIdAndStatusOrderByCreatedAtDesc(
                 PaymentOptionSource.LIVE_SESSION.name(), sessionId, STATUS_ACTIVE);
+    }
+
+    /**
+     * Gateway explicitly chosen for this session's fee (wizard Step 2), read
+     * from the payment option's metadata JSON. Empty = charge via the
+     * institute default.
+     */
+    public Optional<String> getConfiguredVendor(String sessionId) {
+        return findActivePaymentOption(sessionId)
+                .map(option -> readVendorMetadata(option.getPaymentOptionMetadataJson()))
+                .filter(StringUtils::hasText);
+    }
+
+    private static final com.fasterxml.jackson.databind.ObjectMapper METADATA_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    private String readVendorMetadata(String metadataJson) {
+        if (!StringUtils.hasText(metadataJson)) {
+            return null;
+        }
+        try {
+            return METADATA_MAPPER.readTree(metadataJson).path("vendor").asText(null);
+        } catch (Exception e) {
+            log.warn("Unreadable payment_option_metadata_json: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** Merge the chosen vendor into the option's metadata JSON (preserving other keys). */
+    private void writeVendorMetadata(PaymentOption option, String vendor) {
+        if (!StringUtils.hasText(vendor)) {
+            return; // not chosen — keep whatever is stored (institute default applies)
+        }
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode node;
+            if (StringUtils.hasText(option.getPaymentOptionMetadataJson())) {
+                com.fasterxml.jackson.databind.JsonNode parsed =
+                        METADATA_MAPPER.readTree(option.getPaymentOptionMetadataJson());
+                node = parsed instanceof com.fasterxml.jackson.databind.node.ObjectNode objectNode
+                        ? objectNode
+                        : METADATA_MAPPER.createObjectNode();
+            } else {
+                node = METADATA_MAPPER.createObjectNode();
+            }
+            node.put("vendor", vendor.trim().toUpperCase());
+            option.setPaymentOptionMetadataJson(METADATA_MAPPER.writeValueAsString(node));
+        } catch (Exception e) {
+            log.warn("Could not write vendor metadata for payment option: {}", e.getMessage());
+        }
     }
 
     public Optional<PaymentPlan> findActivePlan(String sessionId) {

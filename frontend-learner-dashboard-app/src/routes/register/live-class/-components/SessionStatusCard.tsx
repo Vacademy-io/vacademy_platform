@@ -242,7 +242,7 @@ export default function SessionStatusCard({
         <div className="space-y-3">
           <Badge className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100">
             <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            {getTerminology(ContentTerms.Session, SystemTerms.Session)} is Live
+            Live now
           </Badge>
           <MyButton
             buttonType="primary"

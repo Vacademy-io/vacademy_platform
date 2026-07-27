@@ -104,6 +104,13 @@ public class LiveSession {
     @Column(name = "require_phone_verification")
     private Boolean requirePhoneVerification;
 
+    /**
+     * WhatsApp template used for the phone-verification OTP (V403). NULL falls
+     * back to the institute/platform default OTP template.
+     */
+    @Column(name = "whatsapp_otp_template_name")
+    private String whatsappOtpTemplateName;
+
     /** JSON config for BBB meetings (record, muteOnStart, webcamsOnlyForModerator, guestPolicy) */
     @Column(name = "bbb_config_json", columnDefinition = "text")
     private String bbbConfigJson;

@@ -906,8 +906,12 @@ public class PaymentLogService {
         boolean noSourceFilter = sources.isEmpty();
         boolean noEnrollInviteFilter = enrollInviteIds.isEmpty();
         boolean noPackageSessionFilter = packageSessionIds.isEmpty();
-        // Invoice-path logs only appear when no user-plan-specific filter is active.
-        boolean includeInvoiceLogs = noUserPlanStatusFilter && noSourceFilter && noEnrollInviteFilter && noPackageSessionFilter;
+        // Invoice-path logs (admin invoices, paid LIVE_SESSION registrations) only
+        // disappear under filters that genuinely cannot apply to them (user-plan
+        // status, enroll-invite, package-session). A `sources` filter is honored
+        // inside the invoice arm against invoice.source instead of suppressing it —
+        // previously any source filter silently hid every live-session payment.
+        boolean includeInvoiceLogs = noUserPlanStatusFilter && noEnrollInviteFilter && noPackageSessionFilter;
 
         List<String> SENTINEL = List.of("__none__");
         List<String> paymentStatusesBound = noPaymentStatusFilter ? SENTINEL : paymentStatuses;

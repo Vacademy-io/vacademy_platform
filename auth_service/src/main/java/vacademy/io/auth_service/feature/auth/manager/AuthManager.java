@@ -509,11 +509,18 @@ public class AuthManager {
         NotificationTemplateConfigDTO templateConfig = notificationService
                 .getTemplateConfig("OTP_REQUEST", authRequestDTO.getInstituteId(), "WHATSAPP");
 
+        // Caller-supplied override (e.g. a live session's configured OTP
+        // template) wins over the institute default.
+        String templateName = authRequestDTO.getTemplateName() != null
+                && !authRequestDTO.getTemplateName().isBlank()
+                        ? authRequestDTO.getTemplateName().trim()
+                        : templateConfig.getTemplateName();
+
         // Send WhatsApp OTP via notification service (same as login flow)
         WhatsAppOTPRequest whatsAppOTPRequest = WhatsAppOTPRequest.builder()
                 .phoneNumber(authRequestDTO.getPhoneNumber())
                 .instituteId(authRequestDTO.getInstituteId())
-                .templateName(templateConfig.getTemplateName())
+                .templateName(templateName)
                 .languageCode(templateConfig.getLanguageCode())
                 .settingJson(templateConfig.getSettingJson())
                 .build();

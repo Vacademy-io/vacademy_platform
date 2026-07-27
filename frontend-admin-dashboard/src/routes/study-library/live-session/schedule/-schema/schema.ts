@@ -250,11 +250,15 @@ export const addParticipantsSchema = z.object({
     paymentEnabled: z.boolean().optional(),
     paymentPrice: z.string().optional(),
     paymentCurrency: z.string().optional(),
+    // Gateway charging this session's fee; '' = institute default.
+    paymentVendor: z.string().optional(),
     // Public registration: make the learner verify their contact info via OTP
     // before registering (phone OTP goes over WhatsApp and needs the
     // institute's approved template).
     requireEmailVerification: z.boolean().optional(),
     requirePhoneVerification: z.boolean().optional(),
+    // WhatsApp template for the phone OTP; '' = institute default template.
+    whatsappOtpTemplateName: z.string().optional(),
     // "Auto-add recordings to course" (see docs/LIVE_SESSION_RECORDING_AUTO_LINK_PLAN.md).
     // Kept optional/untouched-tracking so the DTO transform can omit the field
     // entirely in edit mode when the admin never opened this section.

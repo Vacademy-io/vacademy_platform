@@ -58,7 +58,7 @@ const CountdownTimer: React.FC<TimerProps> = ({ startTime }) => {
     return (
       <div className="inline-flex items-center gap-2 bg-green-50 text-green-700 px-5 py-2.5 rounded-full text-sm font-semibold border border-green-200 shadow-sm">
         <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-        Class is Live
+        Live now
       </div>
     );
   }
@@ -66,7 +66,7 @@ const CountdownTimer: React.FC<TimerProps> = ({ startTime }) => {
   return (
     <div className="flex flex-col items-center gap-4">
       <p className="text-sm text-gray-500 font-medium tracking-wide">
-        Class starts in
+        Starts in
       </p>
       <div className="flex items-center gap-2 sm:gap-3">
         {timeLeft.days > 0 && (

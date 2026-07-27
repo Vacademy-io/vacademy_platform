@@ -800,6 +800,7 @@ export default function LiveClassRegistrationPage() {
         open={otpChannels.length > 0}
         channels={otpChannels}
         instituteId={data?.instituteId || ""}
+        whatsappTemplateName={data?.whatsappOtpTemplateName}
         onVerified={() => {
           otpChannels.forEach((channel) => {
             const key =

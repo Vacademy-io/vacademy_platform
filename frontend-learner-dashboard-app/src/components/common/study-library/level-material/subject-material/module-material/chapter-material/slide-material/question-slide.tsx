@@ -116,6 +116,9 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
     // double-click race where two clicks both fire before React re-renders and
     // sees the (async) isSubmitting=true — which would POST the answer twice.
     const submitInFlightRef = useRef<Record<string, boolean>>({});
+    // Real time the learner has had this slide open (mount → submit) so the
+    // reported "Time Spent" reflects actual engagement, not a fake 1 minute.
+    const activityStartRef = useRef<number>(Date.now());
     // const [questionResponses, setQuestionResponses] =
     useState<QuestionResponseMap>({});
 
@@ -207,7 +210,7 @@ const QuestionSlide = ({ questionData, onSubmit }: QuestionSlideProps) => {
                 source_type: "QUESTION",
                 user_id: userId,
                 slide_id: slideId,
-                start_time_in_millis: Date.now() - 60000,
+                start_time_in_millis: activityStartRef.current,
                 end_time_in_millis: Date.now(),
                 percentage_watched: 100,
                 videos: [],

@@ -201,6 +201,19 @@ export default function TimelineReports({
         }
     }, [sessionList]);
 
+    // Auto-select the level whenever the list resolves to exactly one (real)
+    // level and none is chosen yet. The [selectedSession] handler above already
+    // does this, but on the batch tab the session is itself auto-selected one
+    // render later (in the [sessionList] effect), so this guarantees the level
+    // fills in too instead of being left on "Select a Level".
+    useEffect(() => {
+        if (isBatchFixed) return;
+        if (!selectedLevel && levelList.length === 1 && levelList[0]) {
+            setValue('level', levelList[0].id);
+            clearErrors('level');
+        }
+    }, [levelList, selectedLevel]);
+
     // Paging the leaderboard. Only meaningful once a report has been generated —
     // before that there is no applied range to page through.
     useEffect(() => {

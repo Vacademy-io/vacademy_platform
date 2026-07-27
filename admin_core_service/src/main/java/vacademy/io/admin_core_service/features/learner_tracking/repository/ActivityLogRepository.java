@@ -691,6 +691,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     SELECT
                         smm.subject_id,
                         smm.module_id,
+                        smm.module_order,
                         s.subject_name,
                         m.module_name
                     FROM subject_session ss
@@ -813,6 +814,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                             'module_completion_percentage', COALESCE(fmc.module_completion_percentage, 0),
                             'avg_time_spent_minutes', COALESCE(ats.avg_time_per_user_minutes, 0)
                         )
+                        ORDER BY sm.module_order ASC NULLS LAST, sm.module_name ASC
                     ) AS modules
                 FROM SubjectModules sm
                 LEFT JOIN FinalModuleCompletion fmc
@@ -1150,6 +1152,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     SELECT
                         smm.subject_id,
                         smm.module_id,
+                        smm.module_order,
                         s.subject_name,
                         m.module_name
                     FROM subject_session ss
@@ -1259,6 +1262,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                             'module_completion_percentage_by_batch', COALESCE(bc.batch_completion, 0),
                             'avg_time_spent_minutes_by_batch', COALESCE(ba.batch_time, 0)
                         )
+                        ORDER BY sm.module_order ASC NULLS LAST, sm.module_name ASC
                     ) AS modules_json
                 FROM SubjectModules sm
                 LEFT JOIN LearnerCompletion lc ON sm.subject_id = lc.subject_id AND sm.module_id = lc.module_id
@@ -1364,6 +1368,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     SELECT
                         smm.subject_id AS subject_id,
                         smm.module_id AS module_id,
+                        smm.module_order AS module_order,
                         s.subject_name AS subject_name,
                         m.module_name AS module_name
                     FROM subject_session ss
@@ -1380,6 +1385,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         sm.subject_name AS subject_name,
                         sm.module_id AS module_id,
                         sm.module_name AS module_name,
+                        sm.module_order AS module_order,
                         mcm.chapter_id AS chapter_id
                     FROM SubjectModules sm
                     JOIN module_chapter_mapping mcm ON sm.module_id = mcm.module_id
@@ -1395,7 +1401,10 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         mc.chapter_id AS chapter_id,
                         c.chapter_name AS chapter_name,
                         cts.slide_id AS slide_id,
-                        s.title AS slide_title
+                        s.title AS slide_title,
+                        mc.module_order AS module_order,
+                        cpsm.chapter_order AS chapter_order,
+                        cts.slide_order AS slide_order
                     FROM ModuleChapters mc
                     JOIN chapter_to_slides cts ON mc.chapter_id = cts.chapter_id
                     JOIN slide s ON cts.slide_id = s.id
@@ -1416,6 +1425,9 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         cs.chapter_name AS chapter_name,
                         cs.slide_id AS slide_id,
                         cs.slide_title AS slide_title,
+                        cs.module_order AS module_order,
+                        cs.chapter_order AS chapter_order,
+                        cs.slide_order AS slide_order,
                         DATE(al.created_at) AS activity_date,
                         COALESCE(SUM(
                             CASE
@@ -1428,7 +1440,8 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     WHERE al.user_id = :userId
                     AND al.created_at BETWEEN :startDate AND :endDate
                     GROUP BY al.id, cs.subject_id, cs.subject_name, cs.module_id, cs.module_name,
-                             cs.chapter_id, cs.chapter_name, cs.slide_id, cs.slide_title, DATE(al.created_at)
+                             cs.chapter_id, cs.chapter_name, cs.slide_id, cs.slide_title, DATE(al.created_at),
+                             cs.module_order, cs.chapter_order, cs.slide_order
                 ),
                 SlideConcentration AS (
                     SELECT
@@ -1457,6 +1470,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                                 'concentration_score', COALESCE(sc.avg_concentration_score, 0),
                                 'time_spent', COALESCE(sa.time_spent_minutes, 0)
                             )
+                            ORDER BY sa.module_order NULLS LAST, sa.chapter_order NULLS LAST, sa.slide_order NULLS LAST, sa.slide_title
                         ) AS TEXT
                     ) AS slide_details
                 FROM SlideActivity sa

@@ -104,6 +104,20 @@ export const ViewDetails = ({ row }: { row: Row<SubjectOverviewColumnType> }) =>
     };
     const isExporting = getLearnersReportDataPDF.isPending;
 
+    // Courses shallower than the full Subject → Module → Chapter structure come
+    // back with the literal "DEFAULT" placeholder for the missing level(s).
+    // Skip rendering a level's label/heading when it is that placeholder so we
+    // don't surface "Subjects: DEFAULT" / a "Chapters: DEFAULT" heading.
+    const isDefaultLevel = (value: unknown) =>
+        (value ?? '').toString().trim().toUpperCase() === 'DEFAULT';
+
+    // Module/Chapter names usually already carry their term (e.g. "MODULE 1 …",
+    // "Unit 4 …"), and the content structure shows those bare names with no term
+    // prefix. Mirror that: only prepend the term label when the name doesn't
+    // already start with it — avoids "Module: MODULE 1" / "Unit  Unit 4".
+    const nameHasTermPrefix = (name: unknown, term: string) =>
+        (name ?? '').toString().trim().toLowerCase().startsWith(term.trim().toLowerCase());
+
     return (
         <div
             className="cursor-pointer text-primary-500"
@@ -150,30 +164,51 @@ export const ViewDetails = ({ row }: { row: Row<SubjectOverviewColumnType> }) =>
                         <div>
                             {getTerminology(ContentTerms.Level, SystemTerms.Level)}: {level}
                         </div>
-                        <div>
-                            {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}:{' '}
-                            {row.getValue('subject')}
-                        </div>
-                        <div>
-                            {getTerminology(ContentTerms.Modules, SystemTerms.Modules)}:{' '}
-                            {row.getValue('module')}
-                        </div>
+                        {!isDefaultLevel(row.getValue('subject')) && (
+                            <div>
+                                {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}:{' '}
+                                {row.getValue('subject')}
+                            </div>
+                        )}
+                        {!isDefaultLevel(row.getValue('module')) && (
+                            <div>
+                                {nameHasTermPrefix(
+                                    row.getValue('module'),
+                                    getTerminology(ContentTerms.Module, SystemTerms.Module)
+                                )
+                                    ? (row.getValue('module') as string)
+                                    : `${getTerminology(
+                                          ContentTerms.Modules,
+                                          SystemTerms.Modules
+                                      )}: ${row.getValue('module')}`}
+                            </div>
+                        )}
                     </div>
                     {(isChapterPending || isLearnerPending) && <DashboardLoader />}
                     {chapterReportData &&
                         chapterReportData.map((chapter) => (
                             <div key={chapter.chapter_id} className="flex flex-col gap-6">
-                                <div className="flex flex-row gap-4">
-                                    <div className="text-h3 font-[600]">
-                                        {getTerminology(
-                                            ContentTerms.Chapters,
-                                            SystemTerms.Chapters
+                                {!isDefaultLevel(chapter.chapter_name) && (
+                                    <div className="flex flex-row gap-4">
+                                        {!nameHasTermPrefix(
+                                            chapter.chapter_name,
+                                            getTerminology(
+                                                ContentTerms.Chapter,
+                                                SystemTerms.Chapter
+                                            )
+                                        ) && (
+                                            <div className="text-h3 font-[600]">
+                                                {getTerminology(
+                                                    ContentTerms.Chapters,
+                                                    SystemTerms.Chapters
+                                                )}
+                                            </div>
                                         )}
+                                        <div className="text-h3 text-primary-500">
+                                            {chapter.chapter_name}
+                                        </div>
                                     </div>
-                                    <div className="text-h3 text-primary-500">
-                                        {chapter.chapter_name}
-                                    </div>
-                                </div>
+                                )}
                                 <MyTable
                                     key={chapter.chapter_id} // Unique key for React list rendering
                                     data={{

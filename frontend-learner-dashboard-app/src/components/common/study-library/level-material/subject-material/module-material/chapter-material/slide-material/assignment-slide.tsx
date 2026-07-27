@@ -524,6 +524,9 @@ const HtmlWithKatex = ({
 }) => {
   const ref = useRef<HTMLDivElement>(null);
   const previewRef = useRef(onPreviewPdf);
+  // Real time the learner has had this slide open (mount → submit) so the
+  // reported "Time Spent" reflects actual engagement, not a fake 1 minute.
+  const activityStartRef = useRef<number>(Date.now());
   useEffect(() => {
     previewRef.current = onPreviewPdf;
   }, [onPreviewPdf]);
@@ -1008,7 +1011,7 @@ const AssignmentSlide = ({
         source_type: activeItem.source_type || "",
         user_id: "current-user-id",
         slide_id: activeItem.id || "",
-        start_time_in_millis: Date.now() - 60000,
+        start_time_in_millis: activityStartRef.current,
         end_time_in_millis: Date.now(),
         percentage_watched: 100,
         videos: [],

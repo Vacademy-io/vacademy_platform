@@ -18,6 +18,10 @@ export interface ChapterWithProgress {
 
 export interface ModulesWithChaptersProgressType {
     module: Module;
+    // Canonical stored module completion (learner_operation PERCENTAGE_MODULE_COMPLETED,
+    // COALESCE 0 when untracked). Present on the /subject/learner/v1/subjects response;
+    // used to reproduce the backend course rollup so the admin number matches the learner's.
+    percentage_completed?: number;
     chapters: ChapterWithProgress[];
 }
 

@@ -342,6 +342,14 @@ public class AudienceService {
         // Sub-org link: set unconditionally so the edit form can set, change, or clear it
         // (this PUT is only called from the full campaign edit form, which sends the whole DTO).
         audience.setSubOrgId(audienceDTO.getSubOrgId());
+        // Team notification / respondent settings and objective were previously NOT copied
+        // here, so any campaign that was *edited* (rather than freshly created) silently
+        // dropped these fields — most visibly to_notify, which left the new-lead admin
+        // notification with no recipients and never fired. Set unconditionally so the edit
+        // form can add, change, or clear them (same single-caller reasoning as subOrgId).
+        audience.setToNotify(audienceDTO.getToNotify());
+        audience.setSendRespondentEmail(audienceDTO.getSendRespondentEmail());
+        audience.setCampaignObjective(audienceDTO.getCampaignObjective());
 
         Audience updated = audienceRepository.save(audience);
 

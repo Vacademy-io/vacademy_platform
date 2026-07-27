@@ -787,7 +787,10 @@ export const SlideMaterial = ({
             setContent(
               <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200">
-                  <PDFViewer pdfUrl={url} />
+                  {/* Keyed by slide so moving between two PDF slides mounts a
+                      fresh viewer instead of reusing one carrying the previous
+                      slide's activity id and page-view buffer. */}
+                  <PDFViewer key={activeItem.id} pdfUrl={url} />
                 </div>
               </div>
             );

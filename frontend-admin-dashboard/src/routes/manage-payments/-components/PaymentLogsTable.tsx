@@ -16,7 +16,6 @@ import {
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { formatDistanceToNow } from 'date-fns';
-import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { PencilSimple, FloppyDisk, X } from '@phosphor-icons/react';
 import { updatePaymentLogTracking } from '@/services/payment-logs';
 import { useToast } from '@/hooks/use-toast';
@@ -36,7 +35,7 @@ const ORDER_STATUS_LABEL_MAP: Record<string, string> = Object.fromEntries(
 );
 
 const ORDER_STATUS_COLOR_MAP: Record<string, string> = {
-    ORDERED: 'bg-gray-100 text-gray-700 border-gray-300',
+    ORDERED: 'bg-gray-100 text-neutral-600 border-gray-300',
     PREPARING_TO_SHIP: 'bg-amber-50 text-amber-700 border-amber-300',
     SHIPPED: 'bg-blue-50 text-blue-700 border-blue-300',
     IN_TRANSIT: 'bg-orange-50 text-orange-700 border-orange-300',
@@ -110,7 +109,7 @@ function TrackingIdCell({ entry }: { entry: PaymentLogEntry }) {
     }
 
     return (
-        <div className="font-mono text-xs text-gray-600">
+        <div className="font-mono text-xs text-neutral-600">
             {entry.payment_log.tracking_id || '—'}
         </div>
     );
@@ -135,7 +134,7 @@ function TrackingSourceCell({ entry }: { entry: PaymentLogEntry }) {
     }
 
     return (
-        <div className="text-xs text-gray-600">
+        <div className="text-xs text-neutral-600">
             {entry.payment_log.tracking_source || '—'}
         </div>
     );
@@ -170,11 +169,11 @@ function OrderStatusCell({ entry }: { entry: PaymentLogEntry }) {
 
     const status = entry.payment_log.order_status;
     if (!status) {
-        return <span className="text-xs text-gray-400">—</span>;
+        return <span className="text-xs text-neutral-400">—</span>;
     }
 
     const colorClasses =
-        ORDER_STATUS_COLOR_MAP[status] || 'bg-gray-100 text-gray-700 border-gray-300';
+        ORDER_STATUS_COLOR_MAP[status] || 'bg-gray-100 text-neutral-600 border-gray-300';
     const label = ORDER_STATUS_LABEL_MAP[status] || status.replace(/_/g, ' ');
 
     return (
@@ -192,7 +191,7 @@ function ActionsCell({ entry }: { entry: PaymentLogEntry }) {
     const isEditing = editing?.rowId === entry.payment_log.id;
 
     if (!isPaid) {
-        return <span className="text-xs text-gray-300">—</span>;
+        return <span className="text-xs text-neutral-300">—</span>;
     }
 
     if (isEditing && editing) {
@@ -211,7 +210,7 @@ function ActionsCell({ entry }: { entry: PaymentLogEntry }) {
                 <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 w-7 p-0 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                    className="h-7 w-7 p-0 text-neutral-500 hover:bg-gray-100 hover:text-neutral-600"
                     onClick={onCancel}
                     disabled={editing.isSaving}
                     title="Cancel"
@@ -226,7 +225,7 @@ function ActionsCell({ entry }: { entry: PaymentLogEntry }) {
         <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+            className="h-7 w-7 p-0 text-neutral-500 hover:bg-gray-100 hover:text-neutral-600"
             onClick={() => onStartEdit(entry)}
             title="Edit tracking info"
         >
@@ -445,8 +444,8 @@ export function PaymentLogsTable({
                     const date = row.original?.payment_log?.date;
                     return (
                         <div className="space-y-1">
-                            <div className="font-medium text-gray-900">{formatDate(date)}</div>
-                            <div className="text-xs text-gray-500">{formatRelativeTime(date)}</div>
+                            <div className="font-medium text-neutral-700">{formatDate(date)}</div>
+                            <div className="text-xs text-neutral-500">{formatRelativeTime(date)}</div>
                         </div>
                     );
                 },
@@ -463,10 +462,10 @@ export function PaymentLogsTable({
                               const user = row.original?.user;
                               return (
                                   <div className="space-y-1">
-                                      <div className="font-medium text-gray-900">
+                                      <div className="font-medium text-neutral-700">
                                           {user?.full_name || '-'}
                                       </div>
-                                      <div className="text-xs text-gray-500">{user?.email || '-'}</div>
+                                      <div className="text-xs text-neutral-500">{user?.email || '-'}</div>
                                   </div>
                               );
                           },
@@ -490,11 +489,11 @@ export function PaymentLogsTable({
                                   if (orgDetails?.name) {
                                       return (
                                           <div className="space-y-1">
-                                              <div className="font-medium text-gray-900">
+                                              <div className="font-medium text-neutral-700">
                                                   {orgDetails.name}
                                               </div>
                                               {orgDetails.address && (
-                                                  <div className="text-xs text-gray-500">
+                                                  <div className="text-xs text-neutral-500">
                                                       {orgDetails.address}
                                                   </div>
                                               )}
@@ -503,7 +502,7 @@ export function PaymentLogsTable({
                                   }
                               }
                               return (
-                                  <div className="text-xs text-gray-500 italic">N/A</div>
+                                  <div className="text-xs text-neutral-500 italic">N/A</div>
                               );
                           },
                           size: 200,
@@ -518,7 +517,7 @@ export function PaymentLogsTable({
                     const amount = row.original?.payment_log?.payment_amount || 0;
                     const currency = row.original?.payment_log?.currency || 'USD';
                     return (
-                        <div className="font-semibold text-gray-900">
+                        <div className="font-semibold text-neutral-700">
                             {formatCurrency(amount, currency)}
                         </div>
                     );
@@ -547,7 +546,7 @@ export function PaymentLogsTable({
                     const vendor = row.original?.payment_log?.vendor;
                     return (
                         <div className="flex items-center gap-2">
-                            <span className="text-sm text-gray-700">{vendor || '-'}</span>
+                            <span className="text-sm text-neutral-600">{vendor || '-'}</span>
                         </div>
                     );
                 },
@@ -575,10 +574,10 @@ export function PaymentLogsTable({
                     const enrollInvite = row.original?.user_plan?.enroll_invite;
                     return (
                         <div className="space-y-1">
-                            <div className="font-medium text-gray-900">
+                            <div className="font-medium text-neutral-700">
                                 {enrollInvite?.name || '-'}
                             </div>
-                            <div className="text-xs text-gray-500">
+                            <div className="text-xs text-neutral-500">
                                 Code: {enrollInvite?.invite_code || '-'}
                             </div>
                         </div>
@@ -593,7 +592,7 @@ export function PaymentLogsTable({
                 cell: ({ row }) => {
                     const transactionId = row.original?.payment_log?.transaction_id;
                     return (
-                        <div className="font-mono text-xs text-gray-500">
+                        <div className="font-mono text-xs text-neutral-500">
                             {transactionId || '-'}
                         </div>
                     );
@@ -615,8 +614,8 @@ export function PaymentLogsTable({
                     const paymentPlan = row.original?.user_plan?.payment_plan_dto;
                     return (
                         <div className="space-y-1">
-                            <div className="text-sm text-gray-900">{paymentPlan?.name || '-'}</div>
-                            <div className="text-xs text-gray-500">
+                            <div className="text-sm text-neutral-700">{paymentPlan?.name || '-'}</div>
+                            <div className="text-xs text-neutral-500">
                                 {paymentPlan?.validity_in_days
                                     ? `${paymentPlan.validity_in_days} days`
                                     : ''}
@@ -630,71 +629,51 @@ export function PaymentLogsTable({
         [hasOrgAssociatedBatches, hideUserColumn]
     );
 
-    if (isLoading) {
-        return (
-            <div className="flex h-64 items-center justify-center">
-                <DashboardLoader />
-            </div>
-        );
-    }
-
     if (error) {
         return (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-8 text-center">
-                <p className="text-red-800">Error loading payment logs</p>
-                <p className="mt-2 text-sm text-red-600">
+            <div className="rounded-lg border border-danger-200 bg-danger-50 p-8 text-center">
+                <p className="font-medium text-danger-700">Error loading payment logs</p>
+                <p className="mt-2 text-body text-danger-600">
                     {error instanceof Error ? error.message : 'Unknown error occurred'}
                 </p>
             </div>
         );
     }
 
-    if (!tableData) {
-        return null;
-    }
-
-    if (tableData.content.length === 0) {
-        return (
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-12 text-center">
-                <p className="text-lg font-medium text-gray-600">No payment records found</p>
-                <p className="mt-2 text-sm text-gray-500">
-                    Try adjusting your filters to see more results
-                </p>
-            </div>
-        );
-    }
+    const isEmpty = !isLoading && !!tableData && tableData.content.length === 0;
 
     return (
         <EditingContext.Provider value={editingContextValue}>
             <div className="space-y-4">
-                <div className="rounded-lg border border-gray-200 bg-white shadow-sm">
+                {isEmpty ? (
+                    <div className="rounded-lg border border-border bg-card p-12 text-center">
+                        <p className="text-title font-medium text-neutral-700">
+                            No payment records found
+                        </p>
+                        <p className="mt-2 text-body text-neutral-500">
+                            Try adjusting your filters to see more results
+                        </p>
+                    </div>
+                ) : (
                     <MyTable
                         data={tableData}
                         columns={columns}
-                        isLoading={false}
+                        isLoading={isLoading}
                         error={null}
                         currentPage={currentPage}
                         scrollable={true}
                         enableColumnResizing={true}
                         enableColumnPinning={false}
                     />
-                </div>
+                )}
 
-                <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3">
-                    <div className="text-sm text-gray-600">
-                        Showing {tableData.page_no * tableData.page_size + 1} -{' '}
-                        {Math.min(
-                            (tableData.page_no + 1) * tableData.page_size,
-                            tableData.total_elements
-                        )}{' '}
-                        of {tableData.total_elements} payments
-                    </div>
+                {tableData && tableData.total_pages > 1 && (
                     <MyPagination
                         currentPage={currentPage}
                         totalPages={tableData.total_pages}
                         onPageChange={onPageChange}
                     />
-                </div>
+                )}
             </div>
         </EditingContext.Provider>
     );

@@ -30,6 +30,7 @@ export interface SelectChipsProps {
     disabled?: boolean;
     clearable?: boolean; // New prop to allow clearing selections for multi-select
     hasClearFilter?: boolean; // New prop to control if filter can be cleared
+    fullWidth?: boolean; // Stretch the trigger to fill its container (for grid/form layouts)
 }
 
 const SelectChips = ({
@@ -42,6 +43,7 @@ const SelectChips = ({
     disabled = false,
     clearable = true,
     hasClearFilter = true, // Default to true, existing behavior
+    fullWidth = false,
 }: SelectChipsProps) => {
     const [open, setOpen] = useState(false);
 
@@ -89,10 +91,16 @@ const SelectChips = ({
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild disabled={disabled}>
-                <button role="combobox" aria-expanded={open} className="w-auto" disabled={disabled}>
+                <button
+                    role="combobox"
+                    aria-expanded={open}
+                    className={cn(fullWidth ? 'w-full' : 'w-auto')}
+                    disabled={disabled}
+                >
                     <ChipsWrapper
                         className={cn(
-                            'w-auto justify-between',
+                            'justify-between',
+                            fullWidth ? 'w-full' : 'w-auto',
                             disabled && 'border-neutral-100 text-neutral-300',
                             className
                         )}

@@ -137,6 +137,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
         FROM payment_log pl
         JOIN user_plan up ON pl.user_plan_id = up.id
         JOIN enroll_invite ei ON up.enroll_invite_id = ei.id
+        LEFT JOIN payment_option po ON up.payment_option_id = po.id
         WHERE ei.institute_id = :instituteId
           AND pl.created_at >= :startDate
           AND pl.created_at <= :endDate
@@ -149,6 +150,17 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                 WHERE psli.enroll_invite_id = ei.id AND psli.status = 'ACTIVE'
                   AND psli.package_session_id IN (:packageSessionIds)))
           AND (:userId IS NULL OR up.user_id = :userId)
+          AND (:noSearchFilter = true
+                OR (:noSearchUserIds = false AND pl.user_id IN (:searchUserIds))
+                OR (:searchNumeric = true AND CAST(pl.payment_amount AS TEXT) LIKE CONCAT('%', :searchString, '%')))
+          AND (:noPaymentTypeFilter = true OR (
+                (:typeSubOrgAdmin = true AND ei.tag = 'SUB_ORG')
+                OR (:typeSubOrgLearner = true AND ei.tag = 'SUBORG_LEARNER')
+                OR (:typeLiveClass = true AND po.source = 'LIVE_SESSION')
+                OR (:typeCourse = true AND po.source = 'PACKAGE_SESSION')
+                OR (:typeCpo = true AND po.type = 'CPO')
+                OR (:typeEnrollInvite = true AND ei.tag = 'DEFAULT')
+          ))
           AND NOT EXISTS (
                 SELECT 1 FROM package_session_learner_invitation_to_payment_option psli_int
                 WHERE psli_int.enroll_invite_id = ei.id
@@ -168,6 +180,10 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
           AND (:noPaymentStatusFilter = true OR pl.payment_status IN (:paymentStatuses))
           AND (:noSourceFilter = true OR i.source IN (:sources))
           AND (:userId IS NULL OR i.user_id = :userId)
+          AND (:typeUserInvoice = false OR i.source = 'ADMIN_MANUAL')
+          AND (:noSearchFilter = true
+                OR (:noSearchUserIds = false AND i.user_id IN (:searchUserIds))
+                OR (:searchNumeric = true AND CAST(pl.payment_amount AS TEXT) LIKE CONCAT('%', :searchString, '%')))
       ) combined
       ORDER BY combined.created_at DESC
       """,
@@ -177,6 +193,7 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
         FROM payment_log pl
         JOIN user_plan up ON pl.user_plan_id = up.id
         JOIN enroll_invite ei ON up.enroll_invite_id = ei.id
+        LEFT JOIN payment_option po ON up.payment_option_id = po.id
         WHERE ei.institute_id = :instituteId
           AND pl.created_at >= :startDate
           AND pl.created_at <= :endDate
@@ -189,6 +206,17 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
                 WHERE psli.enroll_invite_id = ei.id AND psli.status = 'ACTIVE'
                   AND psli.package_session_id IN (:packageSessionIds)))
           AND (:userId IS NULL OR up.user_id = :userId)
+          AND (:noSearchFilter = true
+                OR (:noSearchUserIds = false AND pl.user_id IN (:searchUserIds))
+                OR (:searchNumeric = true AND CAST(pl.payment_amount AS TEXT) LIKE CONCAT('%', :searchString, '%')))
+          AND (:noPaymentTypeFilter = true OR (
+                (:typeSubOrgAdmin = true AND ei.tag = 'SUB_ORG')
+                OR (:typeSubOrgLearner = true AND ei.tag = 'SUBORG_LEARNER')
+                OR (:typeLiveClass = true AND po.source = 'LIVE_SESSION')
+                OR (:typeCourse = true AND po.source = 'PACKAGE_SESSION')
+                OR (:typeCpo = true AND po.type = 'CPO')
+                OR (:typeEnrollInvite = true AND ei.tag = 'DEFAULT')
+          ))
           AND NOT EXISTS (
                 SELECT 1 FROM package_session_learner_invitation_to_payment_option psli_int
                 WHERE psli_int.enroll_invite_id = ei.id
@@ -208,6 +236,10 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
           AND (:noPaymentStatusFilter = true OR pl.payment_status IN (:paymentStatuses))
           AND (:noSourceFilter = true OR i.source IN (:sources))
           AND (:userId IS NULL OR i.user_id = :userId)
+          AND (:typeUserInvoice = false OR i.source = 'ADMIN_MANUAL')
+          AND (:noSearchFilter = true
+                OR (:noSearchUserIds = false AND i.user_id IN (:searchUserIds))
+                OR (:searchNumeric = true AND CAST(pl.payment_amount AS TEXT) LIKE CONCAT('%', :searchString, '%')))
       ) count_q
       """,
       nativeQuery = true)
@@ -227,6 +259,19 @@ public interface PaymentLogRepository extends JpaRepository<PaymentLog, String> 
       @Param("noPackageSessionFilter") boolean noPackageSessionFilter,
       @Param("userId") String userId,
       @Param("includeInvoiceLogs") boolean includeInvoiceLogs,
+      @Param("noPaymentTypeFilter") boolean noPaymentTypeFilter,
+      @Param("typeSubOrgAdmin") boolean typeSubOrgAdmin,
+      @Param("typeSubOrgLearner") boolean typeSubOrgLearner,
+      @Param("typeLiveClass") boolean typeLiveClass,
+      @Param("typeCourse") boolean typeCourse,
+      @Param("typeCpo") boolean typeCpo,
+      @Param("typeEnrollInvite") boolean typeEnrollInvite,
+      @Param("typeUserInvoice") boolean typeUserInvoice,
+      @Param("noSearchFilter") boolean noSearchFilter,
+      @Param("noSearchUserIds") boolean noSearchUserIds,
+      @Param("searchUserIds") List<String> searchUserIds,
+      @Param("searchNumeric") boolean searchNumeric,
+      @Param("searchString") String searchString,
       Pageable pageable);
 
   /**

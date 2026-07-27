@@ -88,12 +88,6 @@ public class LiveSessionStep2RequestDTO {
     private Boolean requirePhoneVerification;
 
     /**
-     * WhatsApp template for the phone-verification OTP. Null = don't touch;
-     * empty string = clear (fall back to the institute default template).
-     */
-    private String whatsappOtpTemplateName;
-
-    /**
      * WhatsApp template for the phone-verification OTP. Null = don't touch
      * (older clients); empty string clears back to the institute default.
      */

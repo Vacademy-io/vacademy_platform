@@ -107,6 +107,25 @@ function useEmailTemplateOptions() {
     });
 }
 
+function useWhatsappTemplateOptions() {
+    return useQuery({
+        queryKey: ['wizard-whatsapp-templates'],
+        queryFn: async () => {
+            const result = await getMessageTemplates('WHATSAPP', 0, 100);
+            const seen = new Set<string>();
+            const options: Array<{ value: string; label: string }> = [];
+            for (const t of (result.templates ?? []) as Array<{ name?: string; id?: string }>) {
+                const value = t.name ?? t.id ?? '';
+                if (!value || seen.has(value)) continue;
+                seen.add(value);
+                options.push({ value, label: t.name ?? 'Untitled' });
+            }
+            return options;
+        },
+        staleTime: 5 * 60 * 1000,
+    });
+}
+
 // ─── Question renderer ───
 
 function QuestionField({
@@ -126,6 +145,7 @@ function QuestionField({
     const { data: packageOptions = [], isLoading: packageLoading } = usePackageOptions(instituteId);
     const { data: audienceOptions = [], isLoading: audienceLoading } = useAudienceOptions(instituteId);
     const { data: templateOptions = [], isLoading: templateLoading } = useEmailTemplateOptions();
+    const { data: waTemplateOptions = [], isLoading: waTemplateLoading } = useWhatsappTemplateOptions();
     const [creatingSample, setCreatingSample] = useState(false);
     const queryClient = useQueryClient();
 
@@ -340,6 +360,16 @@ function QuestionField({
                 </div>
                 );
             })()}
+            {question.type === 'whatsapp_template_select' && (
+                <div className="space-y-1">
+                    {renderDropdown(waTemplateOptions, waTemplateLoading, '-- Select a WhatsApp template --')}
+                    {!waTemplateLoading && waTemplateOptions.length === 0 && (
+                        <p className="text-caption text-gray-400">
+                            No WhatsApp templates found. Create one in Settings → Templates (type WHATSAPP) first.
+                        </p>
+                    )}
+                </div>
+            )}
             {question.type === 'live_session_select' && renderDropdown([], false, '-- Select a live session --', !question.required)}
             {question.type === 'invite_select' && renderDropdown([], false, '-- Select an invite --', !question.required)}
 
@@ -662,6 +692,7 @@ export function UseCaseWizardStep({
                             TRIGGER: 'bg-green-100 text-green-700',
                             QUERY: 'bg-cyan-100 text-cyan-700',
                             SEND_EMAIL: 'bg-purple-100 text-purple-700',
+                            SEND_WHATSAPP: 'bg-emerald-100 text-emerald-700',
                             DELAY: 'bg-slate-100 text-slate-700',
                             CONDITION: 'bg-yellow-100 text-yellow-700',
                             FILTER: 'bg-teal-100 text-teal-700',

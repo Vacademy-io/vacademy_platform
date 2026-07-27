@@ -28,6 +28,12 @@ import vacademy.io.common.logging.SentryLogger;
 import vacademy.io.admin_core_service.features.workflow.service.NotificationRateLimitService;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 @Slf4j
 @Service
@@ -44,6 +50,22 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
 
     // Cache for templates (InstituteID:TemplateName -> Template)
     private final Map<String, Template> templateCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    // Throttling defaults — mirror SendEmailNodeHandler. Workflows that fan out to
+    // many recipients can overwhelm notification-service / the WhatsApp provider if
+    // dispatched as one giant request. Overridable per-node via config:
+    //   "chunkSize": 100, "throttleMs": 500, "chunkTimeoutMs": 60000
+    private static final int DEFAULT_CHUNK_SIZE = 50;
+    private static final long DEFAULT_THROTTLE_MS = 200L;
+    private static final long DEFAULT_CHUNK_TIMEOUT_MS = 30_000L;
+
+    // Daemon pool so a hung notification call can be abandoned via Future.cancel()
+    // without blocking the workflow thread indefinitely.
+    private final ExecutorService chunkExecutor = Executors.newCachedThreadPool(r -> {
+        Thread t = new Thread(r, "send-whatsapp-chunk");
+        t.setDaemon(true);
+        return t;
+    });
 
     @Override
     public boolean supports(String nodeType) {
@@ -149,6 +171,10 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
             String nodeLevelTemplateName = null;
             Map<String, Object> nodeLevelTemplateVars = null;
             String nodeLevelLanguageCode = null;
+            String nodeLevelRecipientField = null; // which item field holds the phone (e.g. "parentMobile", "Phone Number")
+            int chunkSize = DEFAULT_CHUNK_SIZE;
+            long throttleMs = DEFAULT_THROTTLE_MS;
+            long chunkTimeoutMs = DEFAULT_CHUNK_TIMEOUT_MS;
             try {
                 com.fasterxml.jackson.databind.JsonNode configRoot = objectMapper.readTree(nodeConfigJson);
                 if (configRoot.has("templateName") && !configRoot.get("templateName").asText("").isBlank()) {
@@ -159,6 +185,21 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                 }
                 if (configRoot.has("languageCode") && !configRoot.get("languageCode").asText("").isBlank()) {
                     nodeLevelLanguageCode = configRoot.get("languageCode").asText();
+                }
+                if (configRoot.has("recipientField") && !configRoot.get("recipientField").asText("").isBlank()) {
+                    nodeLevelRecipientField = configRoot.get("recipientField").asText();
+                }
+                if (configRoot.has("chunkSize") && configRoot.get("chunkSize").isInt()) {
+                    int cs = configRoot.get("chunkSize").asInt();
+                    if (cs > 0) chunkSize = cs;
+                }
+                if (configRoot.has("throttleMs") && configRoot.get("throttleMs").canConvertToLong()) {
+                    long t = configRoot.get("throttleMs").asLong();
+                    if (t >= 0) throttleMs = t;
+                }
+                if (configRoot.has("chunkTimeoutMs") && configRoot.get("chunkTimeoutMs").canConvertToLong()) {
+                    long t = configRoot.get("chunkTimeoutMs").asLong();
+                    if (t > 0) chunkTimeoutMs = t;
                 }
             } catch (Exception e) {
                 log.warn("Failed to parse node-level WhatsApp template config", e);
@@ -242,13 +283,12 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                         nodeDTO.getForEach(), itemContext);
 
                 for (Map<String, Object> messageData : messagesToSend) {
-                    // BACKWARD COMPATIBLE: Accept camelCase, snake_case, and COMBOT 'to'.
-                    // UserDTO is serialized with snake_case keys (mobile_number) by the
-                    // shared ObjectMapper, so we have to look at both forms — mirrors the
-                    // IteratorProcessorStrategy.extractMobileNumber lookup order.
-                    String mobileNumber = firstNonBlank(messageData,
-                            "mobileNumber", "mobile_number", "mobile",
-                            "phoneNumber", "phone_number", "phone", "to");
+                    // Recipient extraction — mirrors SendEmailNodeHandler.extractEmailAddress:
+                    // 1. Node-level recipientField (explicit choice, supports parent numbers and
+                    //    audience custom-field names like "Phone Number")
+                    // 2. Known key aliases (camelCase, snake_case, COMBOT 'to', parent/guardian)
+                    // 3. Last-resort scan for a phone-shaped value on the item
+                    String mobileNumber = extractMobileNumber(messageData, nodeLevelRecipientField);
                     
                     String templateName = (String) messageData.get("templateName");
                     String languageCode = (String) messageData.get("languageCode");
@@ -413,7 +453,8 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                                 }
                             }
                             if (template != null) {
-                                finalParamMap = buildValidatedParams(template, templateVars, userId);
+                                finalParamMap = buildValidatedParams(template, templateVars, userId,
+                                        messageData, itemContext);
                             } else {
                                 log.warn(
                                         "Admin-core Template row not found for institute {} name {} — proceeding without param validation (notification-service will resolve from whatsapp_templates).",
@@ -513,10 +554,13 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
                 }
 
                 try {
-                    // Call the batch method ONCE
-                    notificationService.sendWhatsappViaUnified(finalBatchList, instituteId);
-                    log.info("Successfully dispatched {} WhatsApp batches for {} total users.", finalBatchList.size(),
-                            processedCount);
+                    // Chunked dispatch — mirrors SendEmailNodeHandler: split each batch's
+                    // userDetails into chunks, throttle between chunks, and bound each
+                    // chunk send with a timeout so a hung provider call can't block the
+                    // workflow thread forever.
+                    dispatchBatchesChunked(finalBatchList, instituteId, chunkSize, throttleMs, chunkTimeoutMs);
+                    log.info("Successfully dispatched {} WhatsApp batches for {} total users (chunkSize={}, throttleMs={}, chunkTimeoutMs={}).",
+                            finalBatchList.size(), processedCount, chunkSize, throttleMs, chunkTimeoutMs);
                     results.add("SUCCESS: Dispatched " + finalBatchList.size() + " batches for " + processedCount
                             + " users.");
                 } catch (Exception e) {
@@ -654,30 +698,119 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
 
     /**
      * Validates template variables against the template's dynamic parameters.
-     * This logic is extracted from the old buildValidatedRequest.
+     * Mirrors SendEmailNodeHandler's "all item fields become placeholders" behavior:
+     * a required parameter missing from the configured templateVars is auto-resolved
+     * from the item's fields (camelCase/snake_case variants), then the workflow
+     * context, then customFields — throwing only when nothing at all resolves.
+     * This lets a WhatsApp template with params like fullName work with zero
+     * manual mapping when the iterated items already carry those fields.
      */
     private Map<String, String> buildValidatedParams(Template template, Map<String, String> templateVarsFromAutomation,
-            String userId) {
+            String userId, Map<String, Object> item, Map<String, Object> itemContext) {
         // Parse template's required parameters
         Map<String, String> dynamicParams = parseDynamicParameters(template.getDynamicParameters());
+        Map<String, String> configuredVars = templateVarsFromAutomation != null
+                ? templateVarsFromAutomation
+                : Map.of();
         Map<String, String> finalParamMap = new HashMap<>();
 
         // Validate and build final parameters
         if (dynamicParams != null && !dynamicParams.isEmpty()) {
             for (String requiredKey : dynamicParams.keySet()) {
-                if (!templateVarsFromAutomation.containsKey(requiredKey)) {
-                    throw new RuntimeException("Missing required template variable '" + requiredKey +
-                            "' for template: " + template.getName() + ", user: " + userId);
+                if (configuredVars.containsKey(requiredKey)) {
+                    String value = configuredVars.get(requiredKey);
+                    finalParamMap.put(requiredKey, value != null ? value : "");
+                    continue;
                 }
-                String value = templateVarsFromAutomation.get(requiredKey);
-                finalParamMap.put(requiredKey, value != null ? value : "");
+                // Auto-fill: item field (with case-style variants) → context → customFields
+                String autoResolved = autoResolveParam(requiredKey, item, itemContext);
+                if (autoResolved != null) {
+                    finalParamMap.put(requiredKey, autoResolved);
+                    continue;
+                }
+                throw new RuntimeException("Missing required template variable '" + requiredKey +
+                        "' for template: " + template.getName() + ", user: " + userId);
             }
         } else {
             log.warn("No dynamic_parameters JSON found for template: {}. Proceeding without validation.",
                     template.getName());
-            finalParamMap.putAll(templateVarsFromAutomation); // Send all vars if no dynamic params defined
+            finalParamMap.putAll(configuredVars); // Send all vars if no dynamic params defined
         }
         return finalParamMap;
+    }
+
+    /**
+     * Resolve a template parameter that wasn't explicitly mapped, in the same order
+     * SendEmailNodeHandler enriches placeholders: item field (including
+     * camelCase/snake_case variants of the key) → workflow context → customFields.
+     * Returns null when nothing resolves.
+     */
+    private String autoResolveParam(String key, Map<String, Object> item, Map<String, Object> itemContext) {
+        Object fromItem = lookupFieldVariants(item, key);
+        if (fromItem != null) {
+            return String.valueOf(fromItem);
+        }
+        if (itemContext != null) {
+            Object fromContext = itemContext.get(key);
+            if (fromContext != null && isScalar(fromContext)) {
+                return String.valueOf(fromContext);
+            }
+            Object customFieldsObj = itemContext.get("customFields");
+            if (customFieldsObj instanceof Map) {
+                Object fromCustom = lookupFieldVariants((Map<String, Object>) customFieldsObj, key);
+                if (fromCustom != null) {
+                    return String.valueOf(fromCustom);
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Look up a key on a map trying the exact key first, then its snake_case and
+     * camelCase variants (queries return either style depending on the source —
+     * fetch_ssigm_by_package emits full_name while fetch_students_by_batch emits
+     * fullName). Only scalar values are returned — nested objects/collections are
+     * never useful as a message parameter.
+     */
+    private static Object lookupFieldVariants(Map<String, Object> map, String key) {
+        if (map == null || key == null) {
+            return null;
+        }
+        Object exact = map.get(key);
+        if (exact != null && isScalar(exact)) {
+            return exact;
+        }
+        String snake = key.replaceAll("([a-z0-9])([A-Z])", "$1_$2").toLowerCase();
+        if (!snake.equals(key)) {
+            Object v = map.get(snake);
+            if (v != null && isScalar(v)) {
+                return v;
+            }
+        }
+        StringBuilder camelBuilder = new StringBuilder();
+        boolean upperNext = false;
+        for (char c : key.toCharArray()) {
+            if (c == '_' || c == ' ') {
+                upperNext = true;
+            } else {
+                camelBuilder.append(upperNext ? Character.toUpperCase(c) : c);
+                upperNext = false;
+            }
+        }
+        String camel = camelBuilder.toString();
+        if (!camel.equals(key)) {
+            Object v = map.get(camel);
+            if (v != null && isScalar(v)) {
+                return v;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isScalar(Object value) {
+        return value instanceof String || value instanceof Number || value instanceof Boolean
+                || value instanceof Character || value instanceof Enum;
     }
 
     /**
@@ -688,9 +821,10 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
     /**
      * Resolve one templateVars value for the current item. Mirrors SEND_EMAIL's
      * substitution order: SpEL (value starts with '#', evaluated with both
-     * {@code #ctx} and {@code #item} bound) → item-field lookup by name → literal.
-     * A failed SpEL evaluation resolves to "" (and logs) rather than leaking the
-     * raw expression text into the outbound message.
+     * {@code #ctx} and {@code #item} bound) → item-field lookup by name (with
+     * camelCase/snake_case variants) → workflow-context lookup → customFields
+     * lookup → literal. A failed SpEL evaluation resolves to "" (and logs)
+     * rather than leaking the raw expression text into the outbound message.
      */
     private String resolveTemplateVarValue(String value, Map<String, Object> item,
                                            Map<String, Object> itemContext) {
@@ -711,7 +845,166 @@ public class SendWhatsAppNodeHandler implements NodeHandler {
         if (fieldValue != null) {
             return String.valueOf(fieldValue);
         }
+        // Same enrichment chain SEND_EMAIL applies: item variants → context → customFields.
+        String resolved = autoResolveParam(trimmed, item, itemContext);
+        if (resolved != null) {
+            return resolved;
+        }
         return value;
+    }
+
+    /**
+     * Extract the recipient phone from a message map. Mirrors
+     * SendEmailNodeHandler.extractEmailAddress:
+     * 1. explicit node-level recipientField (also supports audience custom-field
+     *    names like "Phone Number");
+     * 2. known key aliases — camelCase, snake_case, COMBOT 'to', parent/guardian
+     *    variants (UserDTO serializes snake_case via the shared ObjectMapper, so
+     *    both forms must be checked — mirrors IteratorProcessorStrategy);
+     * 3. last-resort scan over all values for a phone-shaped string (covers
+     *    audience custom fields named "Phone Number", "WhatsApp Number", etc.).
+     */
+    private static String extractMobileNumber(Map<String, Object> messageData, String recipientField) {
+        if (StringUtils.hasText(recipientField)) {
+            Object v = messageData.get(recipientField);
+            if (v != null && StringUtils.hasText(String.valueOf(v))) {
+                return String.valueOf(v);
+            }
+        }
+        String fromKnownKeys = firstNonBlank(messageData,
+                "mobileNumber", "mobile_number", "mobile",
+                "phoneNumber", "phone_number", "phone", "to",
+                "whatsappNumber", "whatsapp_number",
+                "parentMobile", "parent_mobile", "parentsMobile", "parents_mobile",
+                "guardianMobile", "guardian_mobile", "contactNumber", "contact_number");
+        if (fromKnownKeys != null) {
+            return fromKnownKeys;
+        }
+        // Defensive fallback scan — only values that LOOK like phone numbers
+        // (10-15 digits, phone punctuation only) are accepted, so emails, ids,
+        // pincodes and free text never match.
+        for (Object value : messageData.values()) {
+            if (value instanceof String && looksLikePhoneNumber((String) value)) {
+                return (String) value;
+            }
+        }
+        return null;
+    }
+
+    private static boolean looksLikePhoneNumber(String raw) {
+        if (raw == null) {
+            return false;
+        }
+        String s = raw.trim();
+        if (s.isEmpty() || !s.matches("[+\\d()\\s.-]+")) {
+            return false;
+        }
+        long digits = s.chars().filter(Character::isDigit).count();
+        return digits >= 10 && digits <= 15;
+    }
+
+    /**
+     * Chunked batch dispatch — mirrors SendEmailNodeHandler.sendRegularBatchesChunked.
+     * Splits each WhatsappRequest's userDetails into {@code chunkSize} slices (the
+     * per-phone header/button maps are filtered down to each slice's phones),
+     * throttles between sends, and bounds each send with a per-chunk timeout.
+     * A single-chunk batch reuses the original request object unchanged.
+     */
+    private void dispatchBatchesChunked(List<WhatsappRequest> batches, String instituteId,
+            int chunkSize, long throttleMs, long chunkTimeoutMs) {
+        boolean firstSend = true;
+        for (WhatsappRequest batch : batches) {
+            List<Map<String, Map<String, String>>> users = batch.getUserDetails();
+            if (users == null || users.isEmpty()) {
+                continue;
+            }
+            int total = users.size();
+            for (int i = 0; i < total; i += chunkSize) {
+                if (!firstSend) sleepQuiet(throttleMs);
+                int end = Math.min(i + chunkSize, total);
+                WhatsappRequest chunkRequest;
+                if (i == 0 && end == total) {
+                    chunkRequest = batch; // single-chunk batch: reuse as-is
+                } else {
+                    chunkRequest = buildChunkRequest(batch, users.subList(i, end));
+                }
+                int chunkUserCount = end - i;
+                runWithTimeout(
+                        () -> notificationService.sendWhatsappViaUnified(List.of(chunkRequest), instituteId),
+                        chunkTimeoutMs,
+                        "WhatsApp chunk (template=" + batch.getTemplateName() + ", users=" + chunkUserCount + ")");
+                firstSend = false;
+            }
+        }
+    }
+
+    private static WhatsappRequest buildChunkRequest(WhatsappRequest batch,
+            List<Map<String, Map<String, String>>> chunkUsers) {
+        WhatsappRequest chunk = new WhatsappRequest();
+        chunk.setTemplateName(batch.getTemplateName());
+        chunk.setLanguageCode(batch.getLanguageCode());
+        chunk.setHeaderType(batch.getHeaderType());
+        chunk.setUserDetails(new ArrayList<>(chunkUsers));
+        Set<String> phones = new HashSet<>();
+        for (Map<String, Map<String, String>> user : chunkUsers) {
+            phones.addAll(user.keySet());
+        }
+        chunk.setHeaderParams(filterByPhones(batch.getHeaderParams(), phones));
+        chunk.setHeaderVideoParams(filterByPhones(batch.getHeaderVideoParams(), phones));
+        chunk.setButtonUrlParams(filterByPhones(batch.getButtonUrlParams(), phones));
+        chunk.setButtonIndexParams(filterByPhones(batch.getButtonIndexParams(), phones));
+        return chunk;
+    }
+
+    private static <V> Map<String, V> filterByPhones(Map<String, V> source, Set<String> phones) {
+        if (source == null || source.isEmpty()) {
+            return source;
+        }
+        Map<String, V> filtered = new HashMap<>();
+        for (Map.Entry<String, V> entry : source.entrySet()) {
+            if (phones.contains(entry.getKey())) {
+                filtered.put(entry.getKey(), entry.getValue());
+            }
+        }
+        return filtered;
+    }
+
+    /**
+     * Same contract as SendEmailNodeHandler.runWithTimeout: timeout → warn and
+     * continue to the next chunk; other exceptions → propagate so the caller's
+     * catch marks the batch failed; interrupt → restore flag and propagate.
+     */
+    private void runWithTimeout(Runnable task, long timeoutMs, String description) {
+        if (timeoutMs <= 0) {
+            task.run();
+            return;
+        }
+        CompletableFuture<Void> future = CompletableFuture.runAsync(task, chunkExecutor);
+        try {
+            future.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            future.cancel(true);
+            log.warn("Send timed out after {}ms — {}. Continuing to next chunk.", timeoutMs, description);
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            if (cause instanceof RuntimeException) {
+                throw (RuntimeException) cause;
+            }
+            throw new RuntimeException("Send failed for " + description, cause);
+        } catch (InterruptedException e) {
+            future.cancel(true);
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Send interrupted for " + description, e);
+        }
+    }
+
+    private static void sleepQuiet(long ms) {
+        if (ms <= 0) return;
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private static String firstNonBlank(Map<String, Object> messageData, String... keys) {

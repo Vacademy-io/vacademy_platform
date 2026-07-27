@@ -15,7 +15,7 @@ export interface WizardQuestion {
     id: string;
     label: string;
     helpText?: string;
-    type: 'batch_select' | 'batch_multi_select' | 'template_select' | 'audience_select' | 'live_session_select' | 'invite_select' | 'package_select' | 'number' | 'select' | 'text' | 'json_payload';
+    type: 'batch_select' | 'batch_multi_select' | 'template_select' | 'whatsapp_template_select' | 'audience_select' | 'live_session_select' | 'invite_select' | 'package_select' | 'number' | 'select' | 'text' | 'json_payload';
     required?: boolean;
     options?: Array<{ value: string; label: string }>; // for 'select' type
     defaultValue?: string | number;
@@ -82,6 +82,104 @@ function makeEdge(source: string, target: string, label = ''): Edge {
         type: 'smoothstep',
         animated: true,
     };
+}
+
+// ─── Channel (Email / WhatsApp / Both) helpers ───
+//
+// Every messaging use case offers a channel choice. Default stays EMAIL so
+// existing behavior is unchanged; picking WhatsApp swaps (or adds) a
+// SEND_WHATSAPP node that iterates the same list. The SEND_WHATSAPP handler
+// extracts the phone from mobileNumber/mobile_number/phone/parentMobile/etc.
+// (plus a phone-shaped fallback scan) and auto-resolves the WhatsApp
+// template's variables from each item's fields, the workflow context, and
+// customFields — the same resolution order SEND_EMAIL uses.
+
+/** showIf for questions that only apply when email is part of the channel. */
+const EMAIL_CHANNEL_SHOWIF = { questionId: 'channel', values: ['EMAIL', 'BOTH'] };
+
+function channelQuestion(): WizardQuestion {
+    return {
+        id: 'channel',
+        label: 'Send via',
+        helpText: 'Reach recipients over email, WhatsApp, or both.',
+        type: 'select',
+        required: true,
+        defaultValue: 'EMAIL',
+        options: [
+            { value: 'EMAIL', label: 'Email only' },
+            { value: 'WHATSAPP', label: 'WhatsApp only' },
+            { value: 'BOTH', label: 'Email + WhatsApp' },
+        ],
+    };
+}
+
+function whatsappTemplateQuestion(overrides: Partial<WizardQuestion> = {}): WizardQuestion {
+    return {
+        id: 'waTemplateName',
+        label: 'Which WhatsApp template to use?',
+        helpText:
+            'Approved WhatsApp template (Settings → Templates, type WHATSAPP). Its variables '
+            + 'auto-fill from each recipient\'s fields — map them later in the builder only if the names differ.',
+        type: 'whatsapp_template_select',
+        required: true,
+        showIf: { questionId: 'channel', values: ['WHATSAPP', 'BOTH'] },
+        ...overrides,
+    };
+}
+
+/**
+ * Build the SEND_EMAIL and/or SEND_WHATSAPP node(s) for the chosen channel,
+ * chained vertically starting at (x, y). Connect the upstream node to
+ * `nodes[0]`; internal chaining edges are returned in `edges`.
+ */
+function makeChannelSendNodes(
+    answers: Record<string, string | number | string[]>,
+    opts: {
+        on: string;
+        x: number;
+        y: number;
+        /** Node label prefix for the email node (default 'Send'). */
+        emailLabelPrefix?: string;
+        /** Placeholder → field/SpEL mapping applied to BOTH channels. */
+        templateVars?: Record<string, string>;
+        /** Email recipient field override (e.g. parentsEmail). */
+        recipientField?: string;
+        /** Iterate a different list for WhatsApp (defaults to `on`). */
+        waOn?: string;
+        /** Answer key holding the email template name (default 'templateName'). */
+        emailTemplateAnswerKey?: string;
+        /** Answer key holding the WhatsApp template name (default 'waTemplateName'). */
+        waTemplateAnswerKey?: string;
+    }
+): { nodes: Node[]; edges: Edge[] } {
+    const channel = String(answers.channel ?? 'EMAIL');
+    const nodes: Node[] = [];
+    const edges: Edge[] = [];
+    let y = opts.y;
+    if (channel === 'EMAIL' || channel === 'BOTH') {
+        const emailTemplate = answers[opts.emailTemplateAnswerKey ?? 'templateName'] as string;
+        nodes.push(makeNode('SEND_EMAIL', `${opts.emailLabelPrefix ?? 'Send'}: ${emailTemplate}`, {
+            templateName: emailTemplate,
+            on: opts.on,
+            forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
+            ...(opts.templateVars ? { templateVars: opts.templateVars } : {}),
+            ...(opts.recipientField ? { recipientField: opts.recipientField } : {}),
+        }, opts.x, y));
+        y += 180;
+    }
+    if (channel === 'WHATSAPP' || channel === 'BOTH') {
+        const waTemplate = answers[opts.waTemplateAnswerKey ?? 'waTemplateName'] as string;
+        nodes.push(makeNode('SEND_WHATSAPP', `WhatsApp: ${waTemplate}`, {
+            templateName: waTemplate,
+            on: opts.waOn ?? opts.on,
+            forEach: { operation: 'SEND_WHATSAPP', eval: "#ctx['item']" },
+            ...(opts.templateVars ? { templateVars: opts.templateVars } : {}),
+        }, opts.x, y));
+    }
+    for (let i = 0; i < nodes.length - 1; i++) {
+        edges.push(makeEdge(nodes[i]!.id, nodes[i + 1]!.id));
+    }
+    return { nodes, edges };
 }
 
 // ═══════════════════════════════════════════════════
@@ -198,8 +296,8 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
     //   on="#ctx['students']" → List<Map> ✓, each has email ✓
     {
         id: 'email_batch_students',
-        name: 'Email batch students',
-        description: 'Fetch students from a batch and send them an email using a template.',
+        name: 'Message batch students',
+        description: 'Fetch students from a batch and send them an email and/or WhatsApp message using a template.',
         icon: '📧',
         triggerEvents: ['LIVE_SESSION_CREATE', 'LIVE_SESSION_START', 'LIVE_SESSION_END', 'LEARNER_BATCH_ENROLLMENT', 'SUB_ORG_MEMBER_ENROLLMENT', 'INSTALLMENT_DUE_REMINDER'],
         workflowType: 'BOTH',
@@ -207,21 +305,27 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
             {
                 id: 'batchId',
                 label: 'Which batch to fetch students from?',
-                helpText: 'Select the batch whose students should receive the email.',
+                helpText: 'Select the batch whose students should receive the message.',
                 type: 'batch_select',
                 required: true,
             },
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which email template to use?',
                 helpText: 'Choose the email template that will be sent to each student.',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion({
+                helpText: 'Sent to each student\'s mobile number. Variables auto-fill from student fields (fullName, email, ...).',
+            }),
             {
                 id: 'recipientField',
-                label: 'Send to',
+                label: 'Send email to',
                 type: 'select',
+                showIf: EMAIL_CHANNEL_SHOWIF,
                 options: [
                     { value: '', label: 'Student email (default)' },
                     { value: 'parentsEmail', label: 'Parent email' },
@@ -239,18 +343,19 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: { batchId: answers.batchId as string },
             }, 250, 230);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['students']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-                ...(answers.recipientField ? { recipientField: answers.recipientField } : {}),
-            }, 250, 410);
+                x: 250,
+                y: 410,
+                ...(answers.recipientField ? { recipientField: answers.recipientField as string } : {}),
+            });
 
             return {
-                nodes: [triggerNode, queryNode, emailNode],
+                nodes: [triggerNode, queryNode, ...send.nodes],
                 edges: [
                     makeEdge(triggerNode.id, queryNode.id),
-                    makeEdge(queryNode.id, emailNode.id),
+                    makeEdge(queryNode.id, send.nodes[0]!.id),
+                    ...send.edges,
                 ],
             };
         },
@@ -259,19 +364,24 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
     // ─── 2. Send confirmation email to audience lead ───
     {
         id: 'audience_lead_confirmation',
-        name: 'Send lead confirmation email',
-        description: 'When someone fills your audience form, automatically send them a confirmation email.',
+        name: 'Send lead confirmation message',
+        description: 'When someone fills your audience form, automatically send them a confirmation email and/or WhatsApp message.',
         icon: '📝',
         triggerEvents: ['AUDIENCE_LEAD_SUBMISSION'],
         workflowType: 'EVENT_DRIVEN',
         questions: [
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which email template to send?',
                 helpText: 'This template will be sent to the person who filled the form.',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion({
+                helpText: 'Sent to the phone number the lead entered on the form. Variables auto-fill from the form\'s custom fields.',
+            }),
         ],
         generateWorkflow: (answers, triggerEvent) => {
             const triggerNode = makeNode('TRIGGER', 'Trigger: Audience form submitted', {
@@ -285,12 +395,18 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
             //
             // templateVars maps the sample template's placeholder names to the
             // actual context fields. Without these, {{parentName}} stays literal.
-            // Resolution order in SendEmailNodeHandler:
+            // Resolution order in SendEmailNodeHandler (and, since the WhatsApp
+            // enrichment, SendWhatsAppNodeHandler too):
             //   item field → context field → customFields[<key>] → SpEL → literal
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            //
+            // WhatsApp iterates {#ctx['user']} instead — respondentEmailRequests
+            // items only carry to/subject/body (no phone), while the lead's
+            // UserDTO carries mobile_number (extracted by the handler).
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['respondentEmailRequests']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
+                waOn: "{#ctx['user']}",
+                x: 250,
+                y: 230,
                 templateVars: {
                     parentName: 'Full Name',     // resolves from customFields["Full Name"]
                     fullName: 'Full Name',       // alias, in case template uses {{fullName}}
@@ -298,12 +414,12 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                     mobileNumber: 'Phone Number',// resolves from customFields["Phone Number"]
                     instituteName: 'instituteName', // resolves from context
                 },
-            }, 250, 230);
+            });
 
             return {
-                nodes: [triggerNode, emailNode],
-                edges: [makeEdge(triggerNode.id, emailNode.id)],
-                workflowDescription: 'Send confirmation email when a lead submits the audience form.',
+                nodes: [triggerNode, ...send.nodes],
+                edges: [makeEdge(triggerNode.id, send.nodes[0]!.id), ...send.edges],
+                workflowDescription: 'Send confirmation message when a lead submits the audience form.',
             };
         },
     },
@@ -320,13 +436,16 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
         triggerEvents: ['PAYMENT_FAILED'],
         workflowType: 'EVENT_DRIVEN',
         questions: [
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which email template to send?',
                 helpText: 'Template for the payment failure notification.',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion(),
         ],
         generateWorkflow: (answers, triggerEvent) => {
             const triggerNode = makeNode('TRIGGER', 'Trigger: Payment failed', {
@@ -340,17 +459,18 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: { packageSessionIds: "#ctx['packageSessionIds']" },
             }, 250, 230);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['ssigm_list']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 250, 410);
+                x: 250,
+                y: 410,
+            });
 
             return {
-                nodes: [triggerNode, queryNode, emailNode],
+                nodes: [triggerNode, queryNode, ...send.nodes],
                 edges: [
                     makeEdge(triggerNode.id, queryNode.id),
-                    makeEdge(queryNode.id, emailNode.id),
+                    makeEdge(queryNode.id, send.nodes[0]!.id),
+                    ...send.edges,
                 ],
             };
         },
@@ -367,12 +487,15 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
         triggerEvents: ['ABANDONED_CART'],
         workflowType: 'EVENT_DRIVEN',
         questions: [
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which reminder email template?',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion(),
         ],
         generateWorkflow: (answers, triggerEvent) => {
             const triggerNode = makeNode('TRIGGER', 'Trigger: Abandoned cart', {
@@ -384,17 +507,18 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: { batchId: "#ctx['packageSessionId']" },
             }, 250, 230);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['students']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 250, 410);
+                x: 250,
+                y: 410,
+            });
 
             return {
-                nodes: [triggerNode, queryNode, emailNode],
+                nodes: [triggerNode, queryNode, ...send.nodes],
                 edges: [
                     makeEdge(triggerNode.id, queryNode.id),
-                    makeEdge(queryNode.id, emailNode.id),
+                    makeEdge(queryNode.id, send.nodes[0]!.id),
+                    ...send.edges,
                 ],
             };
         },
@@ -417,12 +541,15 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'batch_select',
                 required: true,
             },
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which email template?',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion(),
         ],
         generateWorkflow: (answers, triggerEvent) => {
             const triggerNode = makeNode('TRIGGER', `Trigger: ${(triggerEvent ?? 'invite event').replace(/_/g, ' ').toLowerCase()}`, {
@@ -434,17 +561,18 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: { batchId: answers.batchId as string },
             }, 250, 230);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['students']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 250, 410);
+                x: 250,
+                y: 410,
+            });
 
             return {
-                nodes: [triggerNode, queryNode, emailNode],
+                nodes: [triggerNode, queryNode, ...send.nodes],
                 edges: [
                     makeEdge(triggerNode.id, queryNode.id),
-                    makeEdge(queryNode.id, emailNode.id),
+                    makeEdge(queryNode.id, send.nodes[0]!.id),
+                    ...send.edges,
                 ],
             };
         },
@@ -465,12 +593,15 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 helpText: 'Pick one or more batches. Leave all unchecked to report across every active batch in your institute.',
                 type: 'batch_multi_select',
             },
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which email template for the report?',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion(),
             {
                 id: 'daysBack',
                 label: 'Report covers last how many days?',
@@ -514,15 +645,15 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 },
             }, 250, 50, true);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['students']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 250, 230);
+                x: 250,
+                y: 230,
+            });
 
             return {
-                nodes: [queryNode, emailNode],
-                edges: [makeEdge(queryNode.id, emailNode.id)],
+                nodes: [queryNode, ...send.nodes],
+                edges: [makeEdge(queryNode.id, send.nodes[0]!.id), ...send.edges],
             };
         },
     },
@@ -549,12 +680,17 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'number',
                 defaultValue: 3,
             },
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which follow-up email template?',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion({
+                helpText: 'Sent to each lead\'s phone number from the form. Variables auto-fill from the lead\'s fields.',
+            }),
         ],
         generateWorkflow: (answers) => {
             // audienceId may be a string (legacy single-select) or string[] (multi-select).
@@ -572,15 +708,15 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 },
             }, 250, 50, true);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['leads']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 250, 230);
+                x: 250,
+                y: 230,
+            });
 
             return {
-                nodes: [queryNode, emailNode],
-                edges: [makeEdge(queryNode.id, emailNode.id)],
+                nodes: [queryNode, ...send.nodes],
+                edges: [makeEdge(queryNode.id, send.nodes[0]!.id), ...send.edges],
             };
         },
     },
@@ -596,12 +732,15 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
         triggerEvents: [],
         workflowType: 'SCHEDULED',
         questions: [
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which email template for the reminder?',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion(),
         ],
         generateWorkflow: (answers) => {
             const queryNode = makeNode('QUERY', 'Fetch upcoming installments', {
@@ -609,15 +748,15 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: {},
             }, 250, 50, true);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['feePaymentList']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 250, 230);
+                x: 250,
+                y: 230,
+            });
 
             return {
-                nodes: [queryNode, emailNode],
-                edges: [makeEdge(queryNode.id, emailNode.id)],
+                nodes: [queryNode, ...send.nodes],
+                edges: [makeEdge(queryNode.id, send.nodes[0]!.id), ...send.edges],
             };
         },
     },
@@ -635,35 +774,41 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
         triggerEvents: ['LEARNER_BATCH_ENROLLMENT', 'SUB_ORG_MEMBER_ENROLLMENT'],
         workflowType: 'EVENT_DRIVEN',
         questions: [
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which welcome email template?',
                 helpText: 'This will be sent immediately after enrollment.',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion({
+                helpText: 'Sent to the new student\'s mobile number right after enrollment. Variables like fullName/username auto-fill from the enrolled user.',
+            }),
         ],
         generateWorkflow: (answers, triggerEvent) => {
             const triggerNode = makeNode('TRIGGER', 'Trigger: Student enrolled', {
                 triggerEvent: triggerEvent ?? 'LEARNER_BATCH_ENROLLMENT',
             }, 250, 50, true);
 
-            // Wrap the just-enrolled user in a single-element list so SEND_EMAIL
-            // iterates once. We deliberately do NOT fetch batch students here —
-            // the welcome email is for the one user who just enrolled, and only
-            // the trigger context has their plaintext credentials. Iterating over
-            // the whole batch would email everyone the same password (wrong) and
+            // Wrap the just-enrolled user in a single-element list so SEND_EMAIL /
+            // SEND_WHATSAPP iterate once. We deliberately do NOT fetch batch students
+            // here — the welcome message is for the one user who just enrolled, and
+            // only the trigger context has their plaintext credentials. Iterating over
+            // the whole batch would message everyone the same password (wrong) and
             // would lose access to {{username}}/{{password}} entirely (the
             // students-by-batch query doesn't return those fields).
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            //
+            // Pre-populate the placeholder → context-field mapping so the user
+            // doesn't have to do it manually in the workflow builder. Each value
+            // is a SpEL expression evaluated against the workflow context at
+            // send time. The user can override any of these in the node config.
+            const send = makeChannelSendNodes(answers, {
                 on: "{#ctx['user']}",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
+                x: 250,
+                y: 230,
                 recipientField: 'email',
-                // Pre-populate the placeholder → context-field mapping so the user
-                // doesn't have to do it manually in the workflow builder. Each value
-                // is a SpEL expression evaluated against the workflow context at
-                // send time. The user can override any of these in the node config.
                 templateVars: {
                     fullName: "#ctx['user'].fullName",
                     username: "#ctx['user'].username",
@@ -671,12 +816,12 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                     email: "#ctx['user'].email",
                     instituteName: "#ctx['instituteName']",
                 },
-            }, 250, 230);
+            });
 
             return {
-                nodes: [triggerNode, emailNode],
-                edges: [makeEdge(triggerNode.id, emailNode.id)],
-                workflowDescription: 'Send welcome email when a student enrolls.',
+                nodes: [triggerNode, ...send.nodes],
+                edges: [makeEdge(triggerNode.id, send.nodes[0]!.id), ...send.edges],
+                workflowDescription: 'Send welcome message when a student enrolls.',
             };
         },
     },
@@ -699,12 +844,17 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'batch_select',
                 required: true,
             },
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which email template?',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion({
+                helpText: 'Note: the student roster only stores the student\'s mobile number, so the WhatsApp message goes to the student\'s phone (parent emails stay email-only).',
+            }),
         ],
         generateWorkflow: (answers, triggerEvent) => {
             const triggerNode = makeNode('TRIGGER', `Trigger: ${(triggerEvent ?? 'event').replace(/_/g, ' ').toLowerCase()}`, {
@@ -716,18 +866,20 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: { batchId: answers.batchId as string },
             }, 250, 230);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send to parents: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['students']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
+                x: 250,
+                y: 410,
+                emailLabelPrefix: 'Send to parents',
                 recipientField: 'parentsEmail',
-            }, 250, 410);
+            });
 
             return {
-                nodes: [triggerNode, queryNode, emailNode],
+                nodes: [triggerNode, queryNode, ...send.nodes],
                 edges: [
                     makeEdge(triggerNode.id, queryNode.id),
-                    makeEdge(queryNode.id, emailNode.id),
+                    makeEdge(queryNode.id, send.nodes[0]!.id),
+                    ...send.edges,
                 ],
             };
         },
@@ -742,12 +894,15 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
         triggerEvents: ['SUB_ORG_MEMBER_TERMINATION'],
         workflowType: 'EVENT_DRIVEN',
         questions: [
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which notification template?',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion(),
         ],
         generateWorkflow: (answers, triggerEvent) => {
             const triggerNode = makeNode('TRIGGER', 'Trigger: Member removed', {
@@ -759,17 +914,18 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: { batchId: "#ctx['packageSessionIds']" },
             }, 250, 230);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['students']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 250, 410);
+                x: 250,
+                y: 410,
+            });
 
             return {
-                nodes: [triggerNode, queryNode, emailNode],
+                nodes: [triggerNode, queryNode, ...send.nodes],
                 edges: [
                     makeEdge(triggerNode.id, queryNode.id),
-                    makeEdge(queryNode.id, emailNode.id),
+                    makeEdge(queryNode.id, send.nodes[0]!.id),
+                    ...send.edges,
                 ],
             };
         },
@@ -794,12 +950,15 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'batch_select',
                 required: true,
             },
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which reminder template?',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion(),
         ],
         generateWorkflow: (answers, triggerEvent) => {
             const triggerNode = makeNode('TRIGGER', 'Trigger: Session started', {
@@ -811,17 +970,18 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: { batchId: answers.batchId as string },
             }, 250, 230);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['students']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 250, 410);
+                x: 250,
+                y: 410,
+            });
 
             return {
-                nodes: [triggerNode, queryNode, emailNode],
+                nodes: [triggerNode, queryNode, ...send.nodes],
                 edges: [
                     makeEdge(triggerNode.id, queryNode.id),
-                    makeEdge(queryNode.id, emailNode.id),
+                    makeEdge(queryNode.id, send.nodes[0]!.id),
+                    ...send.edges,
                 ],
                 workflowDescription: 'Notify batch students when a live session starts.',
             };
@@ -843,13 +1003,16 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'batch_select',
                 required: true,
             },
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which follow-up template?',
                 helpText: 'Include recording link, feedback form, or next session info.',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion(),
         ],
         generateWorkflow: (answers, triggerEvent) => {
             const triggerNode = makeNode('TRIGGER', 'Trigger: Session ended', {
@@ -861,19 +1024,20 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: { batchId: answers.batchId as string },
             }, 250, 230);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['students']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 250, 410);
+                x: 250,
+                y: 410,
+            });
 
             return {
-                nodes: [triggerNode, queryNode, emailNode],
+                nodes: [triggerNode, queryNode, ...send.nodes],
                 edges: [
                     makeEdge(triggerNode.id, queryNode.id),
-                    makeEdge(queryNode.id, emailNode.id),
+                    makeEdge(queryNode.id, send.nodes[0]!.id),
+                    ...send.edges,
                 ],
-                workflowDescription: 'Send follow-up email after live session ends.',
+                workflowDescription: 'Send follow-up message after live session ends.',
             };
         },
     },
@@ -898,22 +1062,31 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
         triggerEvents: ['AUDIENCE_LEAD_SUBMISSION'],
         workflowType: 'EVENT_DRIVEN',
         questions: [
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which follow-up template?',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion({
+                helpText: 'Sent to the phone number the lead entered on the form. Variables auto-fill from the form\'s custom fields.',
+            }),
         ],
         generateWorkflow: (answers, triggerEvent) => {
             const triggerNode = makeNode('TRIGGER', 'Trigger: Lead submitted', {
                 triggerEvent: triggerEvent ?? 'AUDIENCE_LEAD_SUBMISSION',
             }, 250, 50, true);
 
-            const emailNode = makeNode('SEND_EMAIL', `Follow-up: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            // WhatsApp iterates {#ctx['user']} — respondentEmailRequests items only
+            // carry to/subject/body (no phone); the lead's UserDTO carries mobile_number.
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['respondentEmailRequests']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
+                waOn: "{#ctx['user']}",
+                x: 250,
+                y: 230,
+                emailLabelPrefix: 'Follow-up',
                 templateVars: {
                     parentName: 'Full Name',
                     fullName: 'Full Name',
@@ -921,11 +1094,11 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                     mobileNumber: 'Phone Number',
                     instituteName: 'instituteName',
                 },
-            }, 250, 230);
+            });
 
             return {
-                nodes: [triggerNode, emailNode],
-                edges: [makeEdge(triggerNode.id, emailNode.id)],
+                nodes: [triggerNode, ...send.nodes],
+                edges: [makeEdge(triggerNode.id, send.nodes[0]!.id), ...send.edges],
             };
         },
     },
@@ -945,13 +1118,16 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'number',
                 defaultValue: 7,
             },
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which reminder template?',
                 helpText: 'Template for the membership renewal reminder.',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion(),
         ],
         generateWorkflow: (answers, triggerEvent) => {
             const triggerNode = makeNode('TRIGGER', 'Trigger: Membership expiring', {
@@ -963,17 +1139,18 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: { daysUntilExpiry: answers.daysUntilExpiry ?? 7 },
             }, 250, 230);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['expiringMemberships']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 250, 410);
+                x: 250,
+                y: 410,
+            });
 
             return {
-                nodes: [triggerNode, queryNode, emailNode],
+                nodes: [triggerNode, queryNode, ...send.nodes],
                 edges: [
                     makeEdge(triggerNode.id, queryNode.id),
-                    makeEdge(queryNode.id, emailNode.id),
+                    makeEdge(queryNode.id, send.nodes[0]!.id),
+                    ...send.edges,
                 ],
                 workflowDescription: 'Send renewal reminders for expiring memberships.',
             };
@@ -999,12 +1176,15 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'batch_select',
                 required: true,
             },
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which notification template?',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion(),
         ],
         generateWorkflow: (answers, triggerEvent) => {
             const triggerNode = makeNode('TRIGGER', 'Trigger: Assessment created', {
@@ -1016,17 +1196,18 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: { batchId: answers.batchId as string },
             }, 250, 230);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['students']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 250, 410);
+                x: 250,
+                y: 410,
+            });
 
             return {
-                nodes: [triggerNode, queryNode, emailNode],
+                nodes: [triggerNode, queryNode, ...send.nodes],
                 edges: [
                     makeEdge(triggerNode.id, queryNode.id),
-                    makeEdge(queryNode.id, emailNode.id),
+                    makeEdge(queryNode.id, send.nodes[0]!.id),
+                    ...send.edges,
                 ],
                 workflowDescription: 'Notify batch students about a new assessment.',
             };
@@ -1050,12 +1231,15 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'batch_select',
                 required: true,
             },
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which email template?',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion(),
         ],
         generateWorkflow: (answers, triggerEvent) => {
             const triggerNode = makeNode('TRIGGER', `Trigger: ${(triggerEvent ?? 'assessment event').replace(/_/g, ' ').toLowerCase()}`, {
@@ -1067,17 +1251,18 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: { batchId: answers.batchId as string },
             }, 250, 230);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['students']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 250, 410);
+                x: 250,
+                y: 410,
+            });
 
             return {
-                nodes: [triggerNode, queryNode, emailNode],
+                nodes: [triggerNode, queryNode, ...send.nodes],
                 edges: [
                     makeEdge(triggerNode.id, queryNode.id),
-                    makeEdge(queryNode.id, emailNode.id),
+                    makeEdge(queryNode.id, send.nodes[0]!.id),
+                    ...send.edges,
                 ],
             };
         },
@@ -1098,12 +1283,15 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'batch_select',
                 required: true,
             },
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which template?',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion(),
         ],
         generateWorkflow: (answers, triggerEvent) => {
             const triggerNode = makeNode('TRIGGER', 'Trigger: Assessment started', {
@@ -1115,17 +1303,18 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: { batchId: answers.batchId as string },
             }, 250, 230);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['students']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 250, 410);
+                x: 250,
+                y: 410,
+            });
 
             return {
-                nodes: [triggerNode, queryNode, emailNode],
+                nodes: [triggerNode, queryNode, ...send.nodes],
                 edges: [
                     makeEdge(triggerNode.id, queryNode.id),
-                    makeEdge(queryNode.id, emailNode.id),
+                    makeEdge(queryNode.id, send.nodes[0]!.id),
+                    ...send.edges,
                 ],
             };
         },
@@ -1150,12 +1339,15 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'number',
                 defaultValue: 7,
             },
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which renewal reminder template?',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion(),
         ],
         generateWorkflow: (answers) => {
             const queryNode = makeNode('QUERY', 'Fetch expiring memberships', {
@@ -1163,15 +1355,15 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 params: { daysUntilExpiry: answers.daysUntilExpiry ?? 7 },
             }, 250, 50, true);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['expiringMemberships']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 250, 230);
+                x: 250,
+                y: 230,
+            });
 
             return {
-                nodes: [queryNode, emailNode],
-                edges: [makeEdge(queryNode.id, emailNode.id)],
+                nodes: [queryNode, ...send.nodes],
+                edges: [makeEdge(queryNode.id, send.nodes[0]!.id), ...send.edges],
                 workflowDescription: `Send renewal reminders ${answers.daysUntilExpiry} days before membership expires.`,
             };
         },
@@ -1192,13 +1384,18 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'batch_select',
                 required: true,
             },
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which report template?',
                 helpText: 'Template with variables like {{attendancePercentage}}, {{sessionsAttended}}.',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion({
+                helpText: 'Variables like attendancePercentage and sessionsAttended auto-fill from each student\'s report data.',
+            }),
             {
                 id: 'daysBack',
                 label: 'Report covers last how many days?',
@@ -1230,15 +1427,15 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 },
             }, 250, 50, true);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['students']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 250, 230);
+                x: 250,
+                y: 230,
+            });
 
             return {
-                nodes: [queryNode, emailNode],
-                edges: [makeEdge(queryNode.id, emailNode.id)],
+                nodes: [queryNode, ...send.nodes],
+                edges: [makeEdge(queryNode.id, send.nodes[0]!.id), ...send.edges],
                 workflowDescription: `Weekly engagement report for batch students (last ${answers.daysBack} days).`,
             };
         },
@@ -1259,12 +1456,17 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'batch_select',
                 required: true,
             },
+            channelQuestion(),
             {
                 id: 'templateName',
                 label: 'Which template for parents?',
                 type: 'template_select',
                 required: true,
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion({
+                helpText: 'Note: the roster only stores the student\'s mobile number, so the WhatsApp update goes to the student\'s phone (parent emails stay email-only).',
+            }),
             {
                 id: 'daysBack',
                 label: 'Report covers last how many days?',
@@ -1296,16 +1498,17 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 },
             }, 250, 50, true);
 
-            const emailNode = makeNode('SEND_EMAIL', `Send to parents: ${answers.templateName}`, {
-                templateName: answers.templateName as string,
+            const send = makeChannelSendNodes(answers, {
                 on: "#ctx['students']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
+                x: 250,
+                y: 230,
+                emailLabelPrefix: 'Send to parents',
                 recipientField: 'parentsEmail',
-            }, 250, 230);
+            });
 
             return {
-                nodes: [queryNode, emailNode],
-                edges: [makeEdge(queryNode.id, emailNode.id)],
+                nodes: [queryNode, ...send.nodes],
+                edges: [makeEdge(queryNode.id, send.nodes[0]!.id), ...send.edges],
                 workflowDescription: `Weekly attendance update sent to parents (last ${answers.daysBack} days).`,
             };
         },
@@ -1338,6 +1541,7 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
         triggerEvents: ['LIVE_SESSION_END'],
         workflowType: 'EVENT_DRIVEN',
         questions: [
+            channelQuestion(),
             {
                 id: 'presentTemplate',
                 label: 'Email template for students who attended',
@@ -1345,6 +1549,7 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'template_select',
                 required: true,
                 sampleTemplateKey: 'live_session_recap_present',
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
             {
                 id: 'absentTemplate',
@@ -1353,7 +1558,18 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 type: 'template_select',
                 required: true,
                 sampleTemplateKey: 'live_session_recap_absent',
+                showIf: EMAIL_CHANNEL_SHOWIF,
             },
+            whatsappTemplateQuestion({
+                id: 'waPresentTemplate',
+                label: 'WhatsApp template for students who attended',
+                helpText: 'Sent to learners marked PRESENT. Variables like fullName/sessionTitle auto-fill from attendance data.',
+            }),
+            whatsappTemplateQuestion({
+                id: 'waAbsentTemplate',
+                label: 'WhatsApp template for students who missed it',
+                helpText: 'Sent to learners marked ABSENT. Variables like fullName/sessionTitle auto-fill from attendance data.',
+            }),
         ],
         generateWorkflow: (answers, triggerEvent) => {
             const triggerNode = makeNode('TRIGGER', 'Trigger: Live class ended', {
@@ -1368,26 +1584,34 @@ export const USE_CASE_TEMPLATES: UseCaseTemplate[] = [
                 },
             }, 250, 230);
 
-            const presentEmailNode = makeNode('SEND_EMAIL', `Send to present: ${answers.presentTemplate}`, {
-                templateName: answers.presentTemplate as string,
+            const presentSend = makeChannelSendNodes(answers, {
                 on: "#ctx['presentStudents']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 50, 410);
+                x: 50,
+                y: 410,
+                emailLabelPrefix: 'Send to present',
+                emailTemplateAnswerKey: 'presentTemplate',
+                waTemplateAnswerKey: 'waPresentTemplate',
+            });
 
-            const absentEmailNode = makeNode('SEND_EMAIL', `Send to absent: ${answers.absentTemplate}`, {
-                templateName: answers.absentTemplate as string,
+            const absentSend = makeChannelSendNodes(answers, {
                 on: "#ctx['absentStudents']",
-                forEach: { operation: 'SEND_EMAIL', eval: "#ctx['item']" },
-            }, 450, 410);
+                x: 450,
+                y: 410,
+                emailLabelPrefix: 'Send to absent',
+                emailTemplateAnswerKey: 'absentTemplate',
+                waTemplateAnswerKey: 'waAbsentTemplate',
+            });
 
             return {
-                nodes: [triggerNode, queryNode, presentEmailNode, absentEmailNode],
+                nodes: [triggerNode, queryNode, ...presentSend.nodes, ...absentSend.nodes],
                 edges: [
                     makeEdge(triggerNode.id, queryNode.id),
-                    makeEdge(queryNode.id, presentEmailNode.id, 'present'),
-                    makeEdge(queryNode.id, absentEmailNode.id, 'absent'),
+                    makeEdge(queryNode.id, presentSend.nodes[0]!.id, 'present'),
+                    makeEdge(queryNode.id, absentSend.nodes[0]!.id, 'absent'),
+                    ...presentSend.edges,
+                    ...absentSend.edges,
                 ],
-                workflowDescription: 'Post-class recap emails to present and absent students for every live class in the institute.',
+                workflowDescription: 'Post-class recap messages to present and absent students for every live class in the institute.',
             };
         },
     },

@@ -156,6 +156,8 @@ export interface PaymentLogsRequest {
     enroll_invite_ids?: string[];
     package_session_ids?: string[];
     sources?: ('USER' | 'SUB_ORG')[]; // New field for filtering by source
+    payment_types?: string[]; // High-level payment type filter (SUB_ORG_ADMIN, LIVE_CLASS, CPO, USER_INVOICE, ...)
+    search_string?: string; // Free-text search across user name/email/phone (via auth) and amount
     sort_columns?: Record<string, string>;
 }
 

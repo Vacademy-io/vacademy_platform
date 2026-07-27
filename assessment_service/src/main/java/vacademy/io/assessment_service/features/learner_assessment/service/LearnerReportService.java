@@ -249,13 +249,21 @@ public class LearnerReportService {
         int partialCount = studentDetail.getPartialCorrectAttempt() != null ? studentDetail.getPartialCorrectAttempt() : 0;
         int skippedCount = studentDetail.getSkippedCount() != null ? studentDetail.getSkippedCount() : 0;
         int totalQuestions = correctCount + wrongCount + partialCount + skippedCount;
-        double studentAccuracy = totalQuestions > 0 ? (correctCount * 100.0) / totalQuestions : 0.0;
+        // Accuracy is marks-based (achieved / total) so partially-correct answers
+        // — e.g. coding questions graded on hidden test cases — get proportional
+        // credit instead of counting as fully wrong. Clamped to [0,100] because
+        // negative marking can push achieved marks below zero.
+        double studentMarksAchieved = studentDetail.getAchievedMarks() != null ? studentDetail.getAchievedMarks() : 0.0;
+        double studentAccuracy = totalMarks != null && totalMarks > 0
+                ? Math.max(0.0, Math.min(100.0, (studentMarksAchieved * 100.0) / totalMarks))
+                : 0.0;
 
-        // Compute class accuracy from overview
+        // Class accuracy uses the same marks-based definition and denominator so it
+        // is directly comparable to the student's accuracy.
         double classAccuracy = 0.0;
         if (overview.getTotalParticipants() != null && overview.getTotalParticipants() > 0
-                && overview.getAverageMarks() != null && highestMarks > 0) {
-            classAccuracy = (overview.getAverageMarks() / highestMarks) * 100.0;
+                && overview.getAverageMarks() != null && totalMarks != null && totalMarks > 0) {
+            classAccuracy = Math.max(0.0, Math.min(100.0, (overview.getAverageMarks() / totalMarks) * 100.0));
         }
 
         return StudentComparisonDto.builder()
@@ -501,11 +509,12 @@ public class LearnerReportService {
             double studentSectionTotal = studentSectionMarks.stream()
                     .mapToDouble(QuestionWiseMarks::getMarks)
                     .sum();
-            long studentCorrect = studentSectionMarks.stream()
-                    .filter(qwm -> "CORRECT".equals(qwm.getStatus()))
-                    .count();
-            long studentTotal = studentSectionMarks.size();
-            double studentAccuracy = studentTotal > 0 ? (studentCorrect * 100.0) / studentTotal : 0.0;
+            Double sectionMax = section.getTotalMarks() != null ? section.getTotalMarks() : 0.0;
+            // Marks-based section accuracy so partial credit (e.g. coding on hidden
+            // tests) is reflected. Clamped for negative marking.
+            double studentAccuracy = sectionMax > 0
+                    ? Math.max(0.0, Math.min(100.0, (studentSectionTotal * 100.0) / sectionMax))
+                    : 0.0;
 
             // Class data from aggregation
             double classAvg = 0.0;
@@ -515,9 +524,9 @@ public class LearnerReportService {
             if (agg != null) {
                 classAvg = agg[1] != null ? ((Number) agg[1]).doubleValue() : 0.0;
                 classHighestMarks = agg[2] != null ? ((Number) agg[2]).doubleValue() : 0.0;
-                long totalCorrect = agg[3] != null ? ((Number) agg[3]).longValue() : 0;
-                long totalQuestions = agg[4] != null ? ((Number) agg[4]).longValue() : 0;
-                classAccuracy = totalQuestions > 0 ? (totalCorrect * 100.0) / totalQuestions : 0.0;
+                classAccuracy = sectionMax > 0
+                        ? Math.max(0.0, Math.min(100.0, (classAvg * 100.0) / sectionMax))
+                        : 0.0;
             }
 
             Double sectionTotalMarks = section.getTotalMarks() != null ? section.getTotalMarks() : 0.0;

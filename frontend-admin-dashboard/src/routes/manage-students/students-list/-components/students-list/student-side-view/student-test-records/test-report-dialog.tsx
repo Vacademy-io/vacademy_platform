@@ -12,6 +12,7 @@ import { useState } from 'react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { StatusChips } from '@/components/design-system/chips';
 import { parseHtmlToString } from '@/components/common/export-offline/utils/utils';
+import { CodingAnswerReview } from './coding-answer-review';
 import { AssessmentReportStudentInterface } from '@/types/assessments/assessment-overview';
 import { AssessmentTestReport } from '@/types/assessments/assessment-data-report';
 import { Clock } from '@phosphor-icons/react';
@@ -389,9 +390,20 @@ export const TestReportDialog = ({
                                                               : 'bg-neutral-50'
                                                     }`}
                                                 >
-                                                    <div>
-                                                        {renderOptions(
-                                                            review.student_response_options as unknown
+                                                    <div className="w-full">
+                                                        {review.question_type === 'CODING' ? (
+                                                            <CodingAnswerReview
+                                                                studentResponse={
+                                                                    review.student_response_options
+                                                                }
+                                                                correctOptions={
+                                                                    review.correct_options
+                                                                }
+                                                            />
+                                                        ) : (
+                                                            renderOptions(
+                                                                review.student_response_options as unknown
+                                                            )
                                                         )}
                                                     </div>
                                                 </div>
@@ -421,7 +433,8 @@ export const TestReportDialog = ({
                                                 </StatusChips>
                                             </div>
                                         </div>
-                                        {review.answer_status !== 'CORRECT' && (
+                                        {review.question_type !== 'CODING' &&
+                                            review.answer_status !== 'CORRECT' && (
                                             <div className="flex w-full items-center gap-6 text-subtitle">
                                                 <div>Correct answer:</div>
                                                 <div className="flex w-full items-center justify-between">

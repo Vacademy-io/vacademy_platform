@@ -112,7 +112,8 @@ export function QuestionSettingsForm({ question, onChange, disabled }: Props) {
                         disabled={disabled}
                     />
                     <p className="mt-1 text-xs text-muted-foreground">
-                        Score = (passed / total) × max points.
+                        Total marks for this question, split equally across hidden test cases
+                        (samples if no hidden test exists).
                     </p>
                 </div>
             </section>

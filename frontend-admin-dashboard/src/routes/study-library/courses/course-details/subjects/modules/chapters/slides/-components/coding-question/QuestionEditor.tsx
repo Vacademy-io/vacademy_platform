@@ -61,6 +61,7 @@ export function QuestionEditor({ question, onChange, disabled, slideId }: Props)
                     <TestCaseList
                         testCases={question.testCases}
                         onChange={setTestCases}
+                        maxPoints={question.maxPoints}
                         disabled={disabled}
                     />
                 </TabsContent>

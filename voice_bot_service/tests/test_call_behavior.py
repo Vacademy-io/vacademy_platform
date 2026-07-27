@@ -298,3 +298,20 @@ def test_generation_time_commits_removed():
     # and the recorder is actually in the pipeline, after transport.output()
     assert rb_src.index("transport.output(),") < rb_src.index("played_transcript,")
     assert rb_src.index("played_transcript,") < rb_src.index("aggregators.assistant()")
+
+
+# ── A5: deaf-call detection keys on the receive task, not on exceptions ──────
+
+def test_stt_deaf_detection_is_receive_task_based():
+    """The base run_stt swallows send errors — an exception-based retry is dead
+    code (the original deaf-call incident stayed possible). Detection must key
+    on the receive task having exited."""
+    import inspect
+    src = inspect.getsource(pv.ResilientSarvamSTTService.run_stt)
+    assert "_receive_task" in src and ".done()" in src
+    # the unreachable exception-retry scaffolding must be gone (ignore comments)
+    code_lines = [l for l in src.splitlines() if not l.strip().startswith("#")]
+    assert not any("except Exception" in l for l in code_lines)
+    # reconnect keeps its storm-guard cooldown
+    rsrc = inspect.getsource(pv.ResilientSarvamSTTService._reconnect_once)
+    assert "_RECONNECT_COOLDOWN_SECS" in rsrc

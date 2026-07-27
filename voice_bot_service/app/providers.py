@@ -323,25 +323,21 @@ class ResilientSarvamSTTService(SarvamSTTService):
             return False
 
     async def run_stt(self, audio: bytes):
-        # Torn-down client (base disconnected but the pipeline is still feeding
-        # audio): try to restore instead of yielding None forever.
-        if not self._socket_client:
+        # REAL deaf-call detection (deep-review A5). The old exception-based
+        # retry here was DEAD CODE: base run_stt wraps its send in
+        # `except Exception` (log + ErrorFrame + yield None) so NOTHING ever
+        # escapes, and a mid-call socket death never nulls _socket_client — the
+        # 617-consecutive-error deaf call was still possible. The RELIABLE
+        # signal is the receive task having EXITED: the server closed the
+        # socket, the base's _receive_task_handler returned, and every
+        # subsequent send silently no-ops. Detect that and reconnect (5s
+        # cooldown so a hard Sarvam outage can't turn every 20ms chunk into a
+        # connect storm).
+        rt = getattr(self, "_receive_task", None)
+        if self._socket_client is None or (rt is not None and rt.done()):
             await self._reconnect_once()
-        try:
-            async for f in super().run_stt(audio):
-                yield f
-            return
-        except Exception:
-            # Base normally swallows send errors; anything escaping is a dead socket.
-            pass
-        if await self._reconnect_once():
-            try:
-                async for f in super().run_stt(audio):
-                    yield f
-                return
-            except Exception:
-                pass
-        yield None
+        async for f in super().run_stt(audio):
+            yield f
 
 
 class ResilientSarvamTTSService(SarvamTTSService):

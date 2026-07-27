@@ -1,12 +1,16 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { MyInput } from '@/components/design-system/input';
 import SelectChips from '@/components/design-system/SelectChips';
+import { ChipToggleGroup } from '@/components/design-system/chips';
 import PackageSelector from '@/components/design-system/PackageSelector';
+import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import type { SelectOption } from '@/components/design-system/SelectChips';
-import { Calendar, Funnel, X } from '@phosphor-icons/react';
+import { Funnel, GraduationCap, MagnifyingGlass, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { BatchForSession, PackageSessionFilter } from '@/types/payment-logs';
 
@@ -19,14 +23,20 @@ interface PaymentFiltersProps {
     onPaymentStatusesChange: (statuses: SelectOption[]) => void;
     selectedUserPlanStatuses: SelectOption[];
     onUserPlanStatusesChange: (statuses: SelectOption[]) => void;
-    selectedPaymentSources: SelectOption[]; // New prop
-    onPaymentSourcesChange: (sources: SelectOption[]) => void; // New prop
-    hasOrgAssociatedBatches: boolean; // New prop to conditionally show filter
+    selectedPaymentSources: SelectOption[];
+    onPaymentSourcesChange: (sources: SelectOption[]) => void;
+    selectedPaymentTypes: SelectOption[];
+    onPaymentTypesChange: (types: SelectOption[]) => void;
+    hasOrgAssociatedBatches: boolean;
     packageSessionFilter: PackageSessionFilter;
     onPackageSessionFilterChange: (filter: PackageSessionFilter) => void;
     batchesForSessions: BatchForSession[];
     onQuickFilterSelect: (range: { start: string; end: string }) => void;
     onClearFilters: () => void;
+    searchValue: string;
+    onSearchChange: (value: string) => void;
+    /** Optional action(s) rendered on the right of the control bar (e.g. export). */
+    exportSlot?: ReactNode;
 }
 
 const PAYMENT_STATUS_OPTIONS: SelectOption[] = [
@@ -47,6 +57,34 @@ const PAYMENT_SOURCE_OPTIONS: SelectOption[] = [
     { value: 'SUB_ORG', label: 'Org' },
 ];
 
+const PAYMENT_TYPE_OPTIONS: SelectOption[] = [
+    { value: 'SUB_ORG_ADMIN', label: 'Sub-Org Admin' },
+    { value: 'SUB_ORG_LEARNER', label: 'Sub-Org Learner' },
+    { value: 'LIVE_CLASS', label: 'Live Class' },
+    { value: 'COURSE', label: 'Course / Package' },
+    { value: 'CPO', label: 'Custom Installment' },
+    { value: 'ENROLL_INVITE', label: 'Enroll Invite' },
+    { value: 'USER_INVOICE', label: 'User Invoice' },
+];
+
+const QUICK_RANGE_OPTIONS = [
+    { value: '1h', label: 'Last 1 Hour' },
+    { value: 'today', label: 'Today' },
+    { value: '7d', label: 'Last 7 Days' },
+    { value: '30d', label: 'Last 30 Days' },
+    { value: 'all', label: 'All Time' },
+];
+
+/** Consistent label + control wrapper for the filter grid. */
+function FilterField({ label, children }: { label: string; children: ReactNode }) {
+    return (
+        <div className="flex flex-col gap-1.5">
+            <Label className="text-caption font-medium text-neutral-600">{label}</Label>
+            {children}
+        </div>
+    );
+}
+
 export function PaymentFilters({
     startDate,
     endDate,
@@ -58,16 +96,23 @@ export function PaymentFilters({
     onUserPlanStatusesChange,
     selectedPaymentSources,
     onPaymentSourcesChange,
+    selectedPaymentTypes,
+    onPaymentTypesChange,
     hasOrgAssociatedBatches,
     packageSessionFilter,
     onPackageSessionFilterChange,
     batchesForSessions,
     onQuickFilterSelect,
     onClearFilters,
+    searchValue,
+    onSearchChange,
+    exportSlot,
 }: PaymentFiltersProps) {
     const [showFilters, setShowFilters] = useState(false);
+    // Which quick-range pill is highlighted. Cleared when the user edits dates manually
+    // or clears everything, so the highlight never lies about the active range.
+    const [activeQuick, setActiveQuick] = useState<string>('');
 
-    // Handle package selection
     const handlePackageSessionChange = (selection: {
         packageSessionId: string | null;
         levelId: string;
@@ -106,10 +151,7 @@ export function PaymentFilters({
                 start.setDate(now.getDate() - 90);
                 break;
             case 'all':
-                return {
-                    start: '',
-                    end: '',
-                };
+                return { start: '', end: '' };
         }
 
         return {
@@ -119,107 +161,179 @@ export function PaymentFilters({
     };
 
     const handleQuickFilter = (type: string) => {
-        const range = getQuickDateRange(type);
-        onQuickFilterSelect(range);
+        setActiveQuick(type);
+        onQuickFilterSelect(getQuickDateRange(type));
     };
 
-    const hasActiveFilters =
-        startDate ||
-        endDate ||
-        selectedPaymentStatuses.length > 0 ||
-        selectedUserPlanStatuses.length > 0 ||
-        selectedPaymentSources.length > 0 ||
-        !!packageSessionFilter.packageId ||
-        (packageSessionFilter.packageSessionIds && packageSessionFilter.packageSessionIds.length > 0);
+    const handleDateChange = (setter: (date: string) => void, value: string) => {
+        setActiveQuick('');
+        setter(value ? new Date(value).toISOString() : '');
+    };
+
+    const activeFilterCount =
+        (selectedPaymentStatuses.length || 0) +
+        (selectedUserPlanStatuses.length || 0) +
+        (selectedPaymentSources.length || 0) +
+        (selectedPaymentTypes.length || 0) +
+        (startDate ? 1 : 0) +
+        (endDate ? 1 : 0) +
+        (packageSessionFilter.packageSessionIds?.length ||
+            (packageSessionFilter.packageId ? 1 : 0));
+
+    const hasActiveFilters = activeFilterCount > 0;
+
+    const handleClearAll = () => {
+        setActiveQuick('');
+        onClearFilters();
+    };
 
     return (
         <div className="space-y-4">
-            {/* Filter Toggle & Quick Filters */}
-            <div className="flex flex-wrap items-center gap-3">
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowFilters(!showFilters)}
-                    className={cn('gap-2', hasActiveFilters && 'border-primary-500 bg-primary-50')}
-                >
-                    <Funnel size={16} weight={hasActiveFilters ? 'fill' : 'regular'} />
-                    Filters                    {hasActiveFilters && (
-                        <span className="ml-1 flex size-5 items-center justify-center rounded-full bg-primary-500 text-xs text-white">
-                            {(selectedPaymentStatuses.length || 0) +
-                                (selectedUserPlanStatuses.length || 0) +
-                                (selectedPaymentSources.length || 0) +
-                                (startDate ? 1 : 0) +
-                                (endDate ? 1 : 0) +
-                                (packageSessionFilter.packageSessionIds?.length || (packageSessionFilter.packageId ? 1 : 0))}
-                        </span>
-                    )}
-                </Button>
+            {/* Control bar: search + filters toggle + export */}
+            <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                    {/* Search */}
+                    <div className="relative w-full sm:flex-1">
+                        <MagnifyingGlass className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-neutral-500" />
+                        <MyInput
+                            inputType="text"
+                            input={searchValue}
+                            onChangeFunction={(e) => onSearchChange(e.target.value)}
+                            inputPlaceholder="Search by name, email, phone, or amount"
+                            className="pl-9 sm:w-full"
+                        />
+                    </div>
 
-                <div className="flex items-center gap-2">
-                    <span className="text-sm text-gray-500">Quick:</span>
                     <Button
-                        variant="ghost"
+                        variant="outline"
                         size="sm"
-                        onClick={() => handleQuickFilter('1h')}
-                        className="h-8"
+                        onClick={() => setShowFilters(!showFilters)}
+                        className={cn(
+                            'h-9 gap-2',
+                            hasActiveFilters && 'border-primary-500 bg-primary-50 text-primary-600'
+                        )}
                     >
-                        Last 1 Hour
+                        <Funnel size={16} weight={hasActiveFilters ? 'fill' : 'regular'} />
+                        Filters
+                        {hasActiveFilters && (
+                            <span className="ml-1 flex size-5 items-center justify-center rounded-full bg-primary-500 text-caption text-neutral-50">
+                                {activeFilterCount}
+                            </span>
+                        )}
                     </Button>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleQuickFilter('today')}
-                        className="h-8"
-                    >
-                        Today
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleQuickFilter('7d')}
-                        className="h-8"
-                    >
-                        Last 7 Days
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleQuickFilter('30d')}
-                        className="h-8"
-                    >
-                        Last 30 Days
-                    </Button>
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleQuickFilter('all')}
-                        className="h-8"
-                    >
-                        All Time
-                    </Button>
+
+                    {exportSlot}
                 </div>
 
-                {hasActiveFilters && (
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={onClearFilters}
-                        className="ml-auto gap-2 text-red-600 hover:text-red-700"
-                    >
-                        <X size={16} />
-                        Clear All
-                    </Button>
-                )}
+                {/* Quick range + clear */}
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-caption font-medium text-neutral-500">Quick range</span>
+                    <ChipToggleGroup
+                        value={activeQuick}
+                        onChange={handleQuickFilter}
+                        options={QUICK_RANGE_OPTIONS}
+                        ariaLabel="Quick date range"
+                    />
+                    {hasActiveFilters && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleClearAll}
+                            className="ml-auto gap-2 text-danger-600 hover:text-danger-700"
+                        >
+                            <X size={16} />
+                            Clear All
+                        </Button>
+                    )}
+                </div>
             </div>
 
+            {/* Filter panel */}
             {showFilters && (
-                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
-                    {/* Package Session Filter Section */}
-                    <div className="mb-4 rounded-md border border-blue-200 bg-blue-50 p-3">
-                        <Label className="mb-2 block text-sm font-semibold text-blue-900">
-                            Filter by Course/Session
-                        </Label>
+                <div className="space-y-5 rounded-lg border border-border bg-card p-5 shadow-sm">
+                    {/* Attribute filters */}
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <FilterField label="Payment Type">
+                            <SelectChips
+                                options={PAYMENT_TYPE_OPTIONS}
+                                selected={selectedPaymentTypes}
+                                onChange={onPaymentTypesChange}
+                                placeholder="All types"
+                                multiSelect
+                                fullWidth
+                                clearable
+                            />
+                        </FilterField>
+                        <FilterField label="Payment Status">
+                            <SelectChips
+                                options={PAYMENT_STATUS_OPTIONS}
+                                selected={selectedPaymentStatuses}
+                                onChange={onPaymentStatusesChange}
+                                placeholder="All statuses"
+                                multiSelect
+                                fullWidth
+                                clearable
+                            />
+                        </FilterField>
+                        <FilterField label="Plan Status">
+                            <SelectChips
+                                options={USER_PLAN_STATUS_OPTIONS}
+                                selected={selectedUserPlanStatuses}
+                                onChange={onUserPlanStatusesChange}
+                                placeholder="All plan statuses"
+                                multiSelect
+                                fullWidth
+                                clearable
+                            />
+                        </FilterField>
+                        {hasOrgAssociatedBatches && (
+                            <FilterField label="Payment Source">
+                                <SelectChips
+                                    options={PAYMENT_SOURCE_OPTIONS}
+                                    selected={selectedPaymentSources}
+                                    onChange={onPaymentSourcesChange}
+                                    placeholder="All sources"
+                                    multiSelect
+                                    fullWidth
+                                    clearable
+                                />
+                            </FilterField>
+                        )}
+                    </div>
 
+                    <div className="h-px bg-border" />
+
+                    {/* Date range */}
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <FilterField label="Start Date">
+                            <Input
+                                type="datetime-local"
+                                value={startDate ? new Date(startDate).toISOString().slice(0, 16) : ''}
+                                onChange={(e) => handleDateChange(onStartDateChange, e.target.value)}
+                                className="h-9"
+                            />
+                        </FilterField>
+                        <FilterField label="End Date">
+                            <Input
+                                type="datetime-local"
+                                value={endDate ? new Date(endDate).toISOString().slice(0, 16) : ''}
+                                onChange={(e) => handleDateChange(onEndDateChange, e.target.value)}
+                                className="h-9"
+                            />
+                        </FilterField>
+                    </div>
+
+                    <div className="h-px bg-border" />
+
+                    {/* Course / session */}
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-2">
+                            <GraduationCap size={16} className="text-neutral-500" />
+                            <Label className="text-caption font-semibold uppercase tracking-wide text-neutral-500">
+                                {getTerminology(ContentTerms.Course, SystemTerms.Course)} /{' '}
+                                {getTerminology(ContentTerms.Session, SystemTerms.Session)}
+                            </Label>
+                        </div>
                         <PackageSelector
                             instituteId={getCurrentInstituteId() || ''}
                             onChange={handlePackageSessionChange}
@@ -229,92 +343,6 @@ export function PaymentFilters({
                             multiSelect={true}
                             initialPackageSessionIds={packageSessionFilter.packageSessionIds}
                         />
-                    </div>
-
-                    {/* Other Filters */}
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                        {/* Start Date */}
-                        <div className="space-y-2">
-                            <Label className="text-sm font-medium text-gray-700">
-                                <Calendar size={14} className="mr-1 inline" />
-                                Start Date
-                            </Label>
-                            <Input
-                                type="datetime-local"
-                                value={
-                                    startDate ? new Date(startDate).toISOString().slice(0, 16) : ''
-                                }
-                                onChange={(e) =>
-                                    onStartDateChange(
-                                        e.target.value ? new Date(e.target.value).toISOString() : ''
-                                    )
-                                }
-                                className="h-9"
-                            />
-                        </div>
-
-                        {/* End Date */}
-                        <div className="space-y-2">
-                            <Label className="text-sm font-medium text-gray-700">
-                                <Calendar size={14} className="mr-1 inline" />
-                                End Date
-                            </Label>
-                            <Input
-                                type="datetime-local"
-                                value={endDate ? new Date(endDate).toISOString().slice(0, 16) : ''}
-                                onChange={(e) =>
-                                    onEndDateChange(
-                                        e.target.value ? new Date(e.target.value).toISOString() : ''
-                                    )
-                                }
-                                className="h-9"
-                            />
-                        </div>
-
-                        {/* Payment Status */}
-                        <div className="space-y-2">
-                            <Label className="text-sm font-medium text-gray-700">
-                                Payment Status
-                            </Label>
-                            <SelectChips
-                                options={PAYMENT_STATUS_OPTIONS}
-                                selected={selectedPaymentStatuses}
-                                onChange={onPaymentStatusesChange}
-                                placeholder="Select statuses"
-                                multiSelect={true}
-                                clearable={true}
-                            />
-                        </div>
-                        {/* User Plan Status */}
-                        <div className="space-y-2">
-                            <Label className="text-sm font-medium text-gray-700">
-                                User Plan Status
-                            </Label>
-                            <SelectChips
-                                options={USER_PLAN_STATUS_OPTIONS}
-                                selected={selectedUserPlanStatuses}
-                                onChange={onUserPlanStatusesChange}
-                                placeholder="Select statuses"
-                                multiSelect={true}
-                                clearable={true}
-                            />
-                        </div>
-                        {/* Payment Source - Only show if institute has org-associated batches */}
-                        {hasOrgAssociatedBatches && (
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium text-gray-700">
-                                    Payment Source
-                                </Label>
-                                <SelectChips
-                                    options={PAYMENT_SOURCE_OPTIONS}
-                                    selected={selectedPaymentSources}
-                                    onChange={onPaymentSourcesChange}
-                                    placeholder="Select sources"
-                                    multiSelect={true}
-                                    clearable={true}
-                                />
-                            </div>
-                        )}
                     </div>
                 </div>
             )}

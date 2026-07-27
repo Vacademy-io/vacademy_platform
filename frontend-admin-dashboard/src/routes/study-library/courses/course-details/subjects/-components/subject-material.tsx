@@ -50,8 +50,10 @@ import {
 import Students from './student-list';
 import Assessments from './assessment-list';
 import LiveSessions from './live-sessions-list';
+import BatchReports from '@/routes/study-library/reports/-components/batch/batchReports';
 import Planning from './planning';
 import Activity from './activity';
+import PulseTab from '../../-components/pulse/PulseTab';
 import { PackageSettingsPanel } from '../../-components/package-settings/PackageSettingsPanel';
 import { getIcon } from '../modules/chapters/slides/-components/slides-sidebar/slides-sidebar-slides';
 import { MyButton } from '@/components/design-system/button';
@@ -863,6 +865,15 @@ export const SubjectMaterial = () => {
                 Select a batch to view its live sessions.
             </div>
         ),
+        [TabType.REPORTS]: packageSessionIds ? (
+            <div className="rounded-md bg-white text-sm text-gray-600 shadow-sm">
+                <BatchReports packageSessionId={packageSessionIds} courseId={courseId} />
+            </div>
+        ) : (
+            <div className="rounded-md bg-white p-6 text-center text-sm text-neutral-500 shadow-sm">
+                Select a batch to view its reports.
+            </div>
+        ),
         [TabType.CONTENT_STRUCTURE]: (
             <div className="p-6 py-2">
                 <div className="mb-4">
@@ -886,6 +897,11 @@ export const SubjectMaterial = () => {
         [TabType.ACTIVITY]: (
             <div className="rounded-md bg-white p-3 text-sm text-gray-600 shadow-sm">
                 <Activity packageSessionId={packageSessionIds ?? ''} />
+            </div>
+        ),
+        [TabType.PULSE]: (
+            <div className="rounded-md bg-white p-3 shadow-sm">
+                <PulseTab packageSessionId={packageSessionIds ?? ''} />
             </div>
         ),
         [TabType.SETTINGS]: (

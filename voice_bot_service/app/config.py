@@ -149,8 +149,10 @@ class Settings:
     # 0.25 (was 0.7): with Gemini's ~0.5s TTFT the filler often COLLIDES with the
     # real reply, and on live calls a reply-shaped filler ('Okay…') played right
     # before an interrupted response read as the bot answering then going silent.
+    # 0.10 (was 0.25): live feedback — still "too much Hmm-ing". The filler is
+    # only a latency mask; with Gemini at ~0.5s TTFT it is rarely needed.
     filler_probability: float = field(
-        default_factory=lambda: float(_env("FILLER_PROBABILITY", "0.25"))
+        default_factory=lambda: float(_env("FILLER_PROBABILITY", "0.10"))
     )
     # 'Hmm…' only: clearly a thinking sound. 'Achha…'/'Ji…'/'Okay…' sound like
     # complete replies, which made stalls read as answers.

@@ -10,6 +10,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import vacademy.io.notification_service.features.chatbot_flow.service.WhatsAppTemplateRenderer;
 import vacademy.io.notification_service.features.communication_timeline.dto.CommunicationTimelineRequest;
 import vacademy.io.notification_service.features.communication_timeline.dto.UnifiedCommunicationDTO;
 import vacademy.io.notification_service.features.notification_log.entity.NotificationLog;
@@ -25,6 +26,7 @@ public class CommunicationTimelineService {
 
     private final NotificationLogRepository notificationLogRepository;
     private final ObjectMapper objectMapper;
+    private final WhatsAppTemplateRenderer templateRenderer;
 
     private static final Map<String, String[]> TYPE_TO_CHANNEL_DIRECTION = Map.of(
             "EMAIL", new String[]{"EMAIL", "OUTBOUND"},
@@ -91,8 +93,9 @@ public class CommunicationTimelineService {
         }
 
         // Map to DTOs
+        Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache = templateRenderer.newCache();
         List<UnifiedCommunicationDTO> dtos = logs.getContent().stream()
-                .map(nl -> mapToDTO(nl, latestEmailEvents, allEmailEvents))
+                .map(nl -> mapToDTO(nl, latestEmailEvents, allEmailEvents, templateCache))
                 .collect(Collectors.toList());
 
         return new PageImpl<>(dtos, pageable, logs.getTotalElements());
@@ -142,7 +145,8 @@ public class CommunicationTimelineService {
     private UnifiedCommunicationDTO mapToDTO(
             NotificationLog nl,
             Map<String, NotificationLog> latestEmailEvents,
-            Map<String, List<NotificationLog>> allEmailEvents) {
+            Map<String, List<NotificationLog>> allEmailEvents,
+            Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache) {
 
         String[] channelDirection = TYPE_TO_CHANNEL_DIRECTION.getOrDefault(
                 nl.getNotificationType(), new String[]{"UNKNOWN", "UNKNOWN"});
@@ -166,7 +170,7 @@ public class CommunicationTimelineService {
         } else if ("EMAIL".equals(channel)) {
             mapEmailFields(builder, nl, latestEmailEvents, allEmailEvents);
         } else if ("WHATSAPP".equals(channel)) {
-            mapWhatsAppFields(builder, nl);
+            mapWhatsAppFields(builder, nl, templateCache);
         }
 
         return builder.build();
@@ -282,7 +286,8 @@ public class CommunicationTimelineService {
 
     private void mapWhatsAppFields(
             UnifiedCommunicationDTO.UnifiedCommunicationDTOBuilder builder,
-            NotificationLog nl) {
+            NotificationLog nl,
+            Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache) {
 
         String direction = TYPE_TO_CHANNEL_DIRECTION.getOrDefault(
                 nl.getNotificationType(), new String[]{"UNKNOWN", "UNKNOWN"})[1];
@@ -330,18 +335,35 @@ public class CommunicationTimelineService {
             }
         }
 
+        // Rebuild the actual template message (real text with params substituted) from the stored
+        // send payload + template — same renderer the WhatsApp Inbox uses. Only overrides the body
+        // for structured template sends; other payload shapes keep the legacy parse above, and the
+        // send-failure surfaces as a FAILED status instead of the misleading default DELIVERED.
+        String status = "DELIVERED"; // WA messages in log are typically already delivered
+        WhatsAppTemplateRenderer.Rendered rendered =
+                templateRenderer.render(nl, nl.getInstituteId(), templateCache);
+        if (rendered != null) {
+            if (rendered.templateName != null) templateName = rendered.templateName;
+            if (rendered.body != null) messageBody = rendered.body;
+            if ("FAILED".equals(rendered.deliveryStatus)) status = "FAILED";
+            // Surface the header media (image/video/document) so the UI can display the attachment.
+            builder.headerType(rendered.headerType);
+            builder.headerMediaUrl(rendered.headerMediaUrl);
+        }
+
         String title = templateName != null ? templateName : truncate(body, 60);
         builder.title(title);
         builder.templateName(templateName);
         builder.bodyPreview(truncate(messageBody != null ? messageBody : body, 150));
         builder.fullBody(messageBody != null ? messageBody : body);
-        builder.status("DELIVERED"); // WA messages in log are typically already delivered
+        builder.status(status);
         builder.metadata(metadata.isEmpty() ? null : metadata);
 
         // Simple status timeline for WA
+        String outboundStatus = "FAILED".equals(status) ? "FAILED" : "SENT";
         List<UnifiedCommunicationDTO.StatusEvent> timeline = new ArrayList<>();
         timeline.add(UnifiedCommunicationDTO.StatusEvent.builder()
-                .status("INBOUND".equals(direction) ? "RECEIVED" : "SENT")
+                .status("INBOUND".equals(direction) ? "RECEIVED" : outboundStatus)
                 .timestamp(nl.getNotificationDate())
                 .details(body)
                 .build());
@@ -464,8 +486,9 @@ public class CommunicationTimelineService {
             }
         }
 
+        Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache = templateRenderer.newCache();
         List<UnifiedCommunicationDTO> dtos = logs.getContent().stream()
-                .map(nl -> mapToDTO(nl, latestEmailEvents, allEmailEvents))
+                .map(nl -> mapToDTO(nl, latestEmailEvents, allEmailEvents, templateCache))
                 .collect(Collectors.toList());
 
         return new PageImpl<>(dtos, pageable, logs.getTotalElements());

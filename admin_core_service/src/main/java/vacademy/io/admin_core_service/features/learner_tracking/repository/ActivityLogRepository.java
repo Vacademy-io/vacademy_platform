@@ -442,7 +442,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
 
     @Query(value = """
                 WITH filtered_activity_log AS (
-                    SELECT DISTINCT al.id, al.user_id, al.start_time, al.end_time
+                    SELECT DISTINCT al.id, al.user_id, al.start_time, al.end_time, al.engaged_ms
                     FROM activity_log al
                     JOIN slide s ON s.id = al.slide_id
                     JOIN chapter_to_slides cs ON cs.slide_id = s.id
@@ -623,6 +623,26 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
             ) islands
             """, nativeQuery = true)
     Long computeEngagedMsFromBreadcrumbs(@Param("activityId") String activityId);
+
+    /**
+     * Presence heartbeat: refresh last_seen_at on the learner's most recent activity for this slide
+     * so someone who is on the slide but not generating tracking writes (e.g. a paused video/audio)
+     * still counts as present in Course Pulse. Server-clock (now()), touches only last_seen_at --
+     * created_at ("on slide since"), engaged_ms and breadcrumbs are untouched. No-op if no row exists.
+     */
+    @Modifying
+    @Transactional
+    @Query(value = """
+            UPDATE activity_log
+            SET last_seen_at = now()
+            WHERE id = (
+                SELECT id FROM activity_log
+                WHERE user_id = :userId AND slide_id = :slideId
+                ORDER BY created_at DESC
+                LIMIT 1
+            )
+            """, nativeQuery = true)
+    int touchPresence(@Param("userId") String userId, @Param("slideId") String slideId);
 
     @Query(value = """
                 WITH date_series AS (
@@ -1287,6 +1307,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     al.slide_id,
                     al.start_time,
                     al.end_time,
+                    al.engaged_ms,
                     al.user_id
                 FROM activity_log al
                 JOIN Slides s ON al.slide_id = s.slide_id
@@ -1614,6 +1635,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     al.slide_id,
                     al.start_time,
                     al.end_time,
+                    al.engaged_ms,
                     al.user_id
                 FROM activity_log al
                 JOIN Slides s ON al.slide_id = s.slide_id

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
@@ -19,6 +19,7 @@ import { AutosaveBridgePlugin } from './plugins/AutosaveBridgePlugin';
 import { SlashMenuPlugin } from './plugins/SlashMenuPlugin';
 import { buildCustomBlockOptions } from './plugins/custom-block-options';
 import { FloatingToolbarPlugin } from './plugins/FloatingToolbarPlugin';
+import { DragHandlePlugin } from './plugins/DragHandlePlugin';
 import './lexical-editor.css';
 
 export interface LexicalDocumentEditorProps {
@@ -104,13 +105,26 @@ export default function LexicalDocumentEditor({
         onError: onEditorError,
     }));
 
+    // The drag-handle plugin portals its grip + drop line into this anchor and
+    // positions them relative to it; hover detection runs on the anchor's
+    // parent (.lexical-doc-editor). Captured post-mount so the plugin only
+    // mounts once the wrapper DOM exists.
+    const [anchorElem, setAnchorElem] = useState<HTMLDivElement | null>(null);
+    const onAnchorRef = useCallback((el: HTMLDivElement | null) => {
+        if (el) setAnchorElem(el);
+    }, []);
+
     return (
         <div className="lexical-doc-editor" data-slide-id={slideId}>
             <LexicalComposer initialConfig={initialConfig}>
                 <RichTextPlugin
-                    contentEditable={<ContentEditable className="lexical-content-editable" />}
+                    contentEditable={
+                        <div className="lexical-editor-anchor" ref={onAnchorRef}>
+                            <ContentEditable className="lexical-content-editable" />
+                        </div>
+                    }
                     placeholder={
-                        <div className="pointer-events-none absolute left-0 top-1 text-lg text-gray-400">
+                        <div className="pointer-events-none absolute left-7 top-1 text-lg text-gray-400">
                             Click to start writing here...
                         </div>
                     }
@@ -126,6 +140,7 @@ export default function LexicalDocumentEditor({
                 <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
                 {!readOnly && <SlashMenuPlugin extraOptions={buildCustomBlockOptions()} />}
                 {!readOnly && <FloatingToolbarPlugin />}
+                {!readOnly && anchorElem && <DragHandlePlugin anchorElem={anchorElem} />}
                 <EditablePlugin readOnly={readOnly} />
                 <EditorLifecyclePlugin
                     initialHtml={initialHtml}

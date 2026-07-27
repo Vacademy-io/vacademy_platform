@@ -25,7 +25,7 @@ const SafeRouteSearch = () => {
 
 function RouteComponent() {
     const searchParams = SafeRouteSearch();
-    const [selectedTab, setSelectedTab] = useState('adminDisplay');
+    const [selectedTab, setSelectedTab] = useState<string>(SettingsTabs.RoleDisplay);
     const { setNavHeading } = useNavHeadingStore();
 
     useEffect(() => {
@@ -39,9 +39,14 @@ function RouteComponent() {
         }
     }, [searchParams.selectedTab]);
 
-    // Find the active tab component
+    // Find the active tab component. Falls back to Display Settings (not
+    // availableTabs[0]) when selectedTab is the 'tab' sentinel used by the
+    // bare Settings rail icon — a deliberate default, not array order.
     const availableTabs = getAvailableSettingsTabs();
-    const activeTabConfig = availableTabs.find((t) => t.tab === selectedTab) || availableTabs[0];
+    const activeTabConfig =
+        availableTabs.find((t) => t.tab === selectedTab) ??
+        availableTabs.find((t) => t.tab === SettingsTabs.RoleDisplay) ??
+        availableTabs[0];
     const ActiveComponent = activeTabConfig?.component;
 
     return <div>{ActiveComponent && <ActiveComponent isTab={true} />}</div>;

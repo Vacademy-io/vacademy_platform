@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 import { getInstituteId } from '@/constants/helper';
 import { listTemplates, deleteTemplate, submitToMeta, syncTemplates, WhatsAppTemplateDTO } from '../-services/template-api';
 import { getWhatsAppProviderStatus } from '@/services/whatsapp-provider-service';
+import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
+import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { TemplateBuilder } from './template-builder';
 
 export function TemplateListPage() {
@@ -125,7 +127,11 @@ export function TemplateListPage() {
                             : 'View synced templates. Create new templates in WATI Dashboard.'}
                     </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                    <SettingsQuickAccessButton
+                        settingsKey={SettingsTabs.WhatsApp}
+                        label="WhatsApp settings"
+                    />
                     <button onClick={handleSync} disabled={syncing}
                         className="flex items-center gap-1 px-3 py-2 text-sm border rounded-lg hover:bg-gray-50">
                         <ArrowClockwise size={16} className={syncing ? 'animate-spin' : ''} />

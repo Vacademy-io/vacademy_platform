@@ -1079,7 +1079,7 @@ const CampaignUsersContent = ({
                             <SelectItem value="MANUAL_CALLED">Manually called</SelectItem>
                         </SelectContent>
                     </Select>
-                    <ManageListFiltersLink />
+                    <ManageListFiltersLink surface="LEADS" />
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button variant="outline" size="sm" className="h-10">

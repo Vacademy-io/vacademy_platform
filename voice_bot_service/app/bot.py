@@ -94,13 +94,23 @@ class TranscriptCollector(FrameProcessor):
     LLM TTFT), and a human-style acknowledgment makes it read as attentiveness."""
 
     def __init__(self, outcome: CallOutcome, on_activity, is_bot_speaking,
-                 set_user_speaking=None, filler_phrases=None, on_transcript=None):
+                 set_user_speaking=None, filler_phrases=None, on_transcript=None,
+                 fillers_armed=None):
         super().__init__()
         self._outcome = outcome
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
         self._on_transcript = on_transcript or (lambda: None)
+        # Fillers only AFTER the bot has completed its first real utterance: during
+        # the setup dead-air callers say "hello? hello?" and a filler was the FIRST
+        # thing they ever heard ("starts with Hmm" — live complaint).
+        self._fillers_armed = fillers_armed or (lambda: True)
+        # Dedupe window for identical consecutive transcripts ("Hello" x3 while the
+        # pipeline warms up): each repeat triggered its own LLM run → the intro was
+        # spoken twice back-to-back on a live call.
+        self._last_text = ""
+        self._last_text_t = 0.0
         s = get_settings()
         self._filler_phrases = list(filler_phrases if filler_phrases is not None
                                     else s.filler_phrases)
@@ -119,12 +129,25 @@ class TranscriptCollector(FrameProcessor):
             self._set_user_speaking(False)
             self._on_activity(user=True)  # give them thinking time from speech END
         if isinstance(frame, TranscriptionFrame) and frame.text and frame.text.strip():
-            self._outcome.transcript.append({"role": "user", "text": frame.text.strip()})
+            text = frame.text.strip()
+            now = time.time()
+            # Drop an identical repeat within 4s (greeting spam: "Hello" x3 while the
+            # bot warms up/opens). Recorded once; repeats never reach the LLM, so the
+            # model can't answer the same hello twice.
+            if text.casefold() == self._last_text and now - self._last_text_t < 4.0:
+                logger.info("transcript dedupe: dropping repeat %r", text[:30])
+                self._on_activity(user=True)
+                return
+            self._last_text = text.casefold()
+            self._last_text_t = now
+            self._outcome.transcript.append({"role": "user", "text": text})
             self._on_activity(user=True)
             self._on_transcript()
-            # Filler only when the bot is quiet — a barge-in already has audio
-            # to cancel, and stacking a filler on it would talk over the caller.
+            # Filler only when the bot is quiet AND has spoken once already — a
+            # barge-in has audio to cancel, and a filler before the opening meant
+            # the first thing the caller ever heard was "Hmm…".
             if (self._filler_phrases and not self._is_bot_speaking()
+                    and self._fillers_armed()
                     and random.random() < self._filler_probability):
                 await self.push_frame(
                     TTSSpeakFrame(random.choice(self._filler_phrases)), direction)
@@ -624,8 +647,12 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         "out as 'one zero'. The ONLY exception is a phone number, which you read digit by digit."
     )
     fast_open_rule = (
-        "- Begin every reply with a short natural clause (a few words) before any longer "
-        "sentence — it reaches the caller faster and sounds more human."
+        "- Keep the FIRST sentence of every reply short (a few words) so it reaches the "
+        "caller fast — but make it SUBSTANCE, not a filler sound. Do NOT open replies with "
+        "\u2018Hmm\u2019, \u2018Achha\u2019, \u2018Theek hai\u2019, \u2018Okay\u2019, \u2018Right\u2019 or similar acknowledgment noises "
+        "more than about one reply in five — callers heard constant Hmm-ing as robotic. "
+        "Usually answer directly: \u2018Haan, accommodation shivir mein hi hai\u2019 beats \u2018Achha. "
+        "Toh accommodation\u2026\u2019."
     )
     # Live call went out in the evening but opened 'Good morning' — the authored script
     # hard-codes a greeting and nothing tied it to the clock. The RIGHT-NOW line above
@@ -770,11 +797,8 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         fast_open_rule,
         one_step_rule,
         goal_drive_rule,
-        ("- Never repeat the same acknowledgment twice in a row. Rotate naturally — right / "
-         "got it / sure / absolutely — don't open every turn the same way."
-         if is_english else
-         "- Never repeat the same acknowledgment twice in a row. Rotate naturally — हाँ / अच्छा / "
-         "ठीक है / जी बिल्कुल / समझ गई — don't say 'ji' every single turn."),
+        ("- Mostly SKIP acknowledgment openers entirely and answer directly; when you do "
+         "acknowledge, never use the same word twice in a row."),
         ("- Briefly reflect back the caller's specific point before you answer so they feel "
          "heard — not a generic 'I understand'."
          if is_english else
@@ -805,6 +829,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                   outcome: CallOutcome, *, aiohttp_session) -> CallOutcome:
     """Run one call end-to-end on an already-connected Plivo <Stream> transport.
     Mutates the caller-owned CallOutcome in place (crash-safe reporting)."""
+    _run_bot_t0 = time.time()
     settings = get_settings()
     agent = context.get("agent") or {}
 
@@ -826,7 +851,12 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
              # with nothing to react to. The watchdog compares these to detect
              # "spoke but no transcript ever came" and continues the conversation.
              "user_stopped_t": 0.0, "user_started_t": 0.0, "bot_stopped_t": 0.0,
-             "orphan_used": False}
+             "orphan_used": False, "bot_spoke_once": False,
+             # Audio-stall watchdog: stamped when a TTS generation begins, cleared
+             # the moment bot audio actually starts. If it stays pending >3.5s the
+             # reply was generated but never heard (Sarvam TTS first-byte stalls of
+             # 1.4-7s observed live) — force-reconnect TTS + regenerate.
+             "tts_gen_t": 0.0, "stall_recoveries": 0}
 
     def on_activity(user: bool = True):
         flags["t"] = time.time()
@@ -835,8 +865,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     def set_bot_speaking(speaking: bool):
         flags["bot_speaking"] = speaking
-        if not speaking:
+        if speaking:
+            flags["tts_gen_t"] = 0.0  # audio arrived — no stall
+        else:
             flags["bot_stopped_t"] = time.time()
+            flags["bot_spoke_once"] = True
 
     def set_user_speaking(speaking: bool):
         flags["user_speaking"] = speaking
@@ -885,6 +918,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     aiohttp_session=aiohttp_session,
                     pace=_as_float(agent.get("pace")),
                     temperature=_as_float(agent.get("temperature")))
+    # Audio-stall watchdog stamp: run_tts marks "audio pending"; BotStartedSpeaking
+    # clears it. MUST be wired after tts exists (a pre-assignment hasattr(tts, …)
+    # here crashed EVERY call with UnboundLocalError on 2026-07-27).
+    if hasattr(tts, "set_generate_callback"):
+        def _stamp_generate():
+            if flags["tts_gen_t"] == 0.0:
+                flags["tts_gen_t"] = time.time()
+        tts.set_generate_callback(_stamp_generate)
 
     llm_context = LLMContext(
         messages=[{"role": "system", "content": build_system_prompt(context)}]
@@ -906,7 +947,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      is_bot_speaking=lambda: flags["bot_speaking"],
                                      set_user_speaking=set_user_speaking,
                                      filler_phrases=eng_fillers if eng else None,
-                                     on_transcript=on_transcript)
+                                     on_transcript=on_transcript,
+                                     fillers_armed=lambda: flags["bot_spoke_once"])
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
                             transfer_closing=transfer_closing, end_closing=end_closing)
 
@@ -974,7 +1016,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # pipecat 0.0.95 source), so the model didn't know it had already greeted and
             # re-greeted from scratch on the caller's first reply — the observed
             # double/triple-greeting. run_llm omitted => append only, no generation.
-            logger.info("greet: openingLine spoken (corr=%s)", corr)
+            logger.info("greet: openingLine spoken (corr=%s) at +%.2fs", corr, time.time() - _run_bot_t0)
             outcome.transcript.append({"role": "assistant", "text": opening})
             await task.queue_frames([
                 LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": opening}]),
@@ -1040,6 +1082,32 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             if flags["bot_speaking"] or flags["user_speaking"]:
                 continue
 
+            # AUDIO-STALL RECOVERY: a reply was generated but its audio never
+            # started (TTS websocket stalled — 7s first-byte observed live; the
+            # caller heard permanent silence while the model kept "answering").
+            # Force a fresh TTS connection and have the model re-answer; capped
+            # at 3 recoveries per call so a hard provider outage can't loop.
+            gen_t = flags["tts_gen_t"]
+            if (gen_t > 0 and not flags["bot_speaking"]
+                    and time.time() - gen_t > 3.5
+                    and flags["stall_recoveries"] < 3):
+                flags["tts_gen_t"] = 0.0
+                flags["stall_recoveries"] += 1
+                logger.error("tts audio stall corr=%s (%.1fs since generation, recovery %d) — "
+                             "reconnecting TTS + regenerating", corr, time.time() - gen_t,
+                             flags["stall_recoveries"])
+                try:
+                    await tts._disconnect()
+                    await tts._connect()
+                except Exception as ex:
+                    logger.warning("tts stall reconnect failed corr=%s: %s", corr, ex)
+                await task.queue_frames([LLMMessagesAppendFrame(
+                    messages=[{"role": "user", "content":
+                        "[Audio glitch: the caller could NOT hear your last reply. "
+                        "Answer their last message again, briefly — do not mention the glitch.]"}],
+                    run_llm=True)])
+                continue
+
             # VAD-orphan: the caller audibly spoke but NO transcript arrived for
             # that utterance ("Yeah, I'm Shreyash" produced no STT data message at
             # all → dead air). PRECISION MATTERS — the first version armed on
@@ -1095,6 +1163,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     watchdog_task = asyncio.create_task(watchdog())
     try:
         runner = PipelineRunner(handle_sigint=False)
+        logger.info("setup timing corr=%s pipeline_built=%.2fs (since run_bot entry)",
+                    corr, time.time() - _run_bot_t0)
         await runner.run(task)
     finally:
         watchdog_task.cancel()

@@ -50,7 +50,14 @@ export type DashboardWidgetId =
     | 'aiFeaturesCard'
     | 'instituteOverview'
     | 'subOrgOverview'
-    | 'subOrgSelfStats';
+    | 'subOrgSelfStats'
+    | 'subOrgGeography'
+    | 'revenueTrends'
+    | 'subOrgRevenueTrends'
+    | 'vleAnalytics'
+    | 'topVles'
+    | 'subOrgSeatCourses'
+    | 'subOrgActivityDues';
 
 export interface DashboardWidgetConfig {
     id: DashboardWidgetId;
@@ -80,6 +87,8 @@ export type CourseDetailsTabId =
     | 'LIVE_SESSION'
     | 'PLANNING'
     | 'ACTIVITY'
+    | 'PULSE'
+    | 'REPORTS'
     | 'SETTINGS';
 
 export interface CourseDetailsTabConfig {
@@ -249,6 +258,45 @@ export interface LearnerManagementSettings {
     allowViewPassword: boolean;
     allowSendResetPasswordMail: boolean;
     showApprovalToggle: boolean;
+}
+
+// What a custom header button links to.
+//  - 'url' (default): opens the manually-entered `url`.
+//  - 'suborg_learner_invite': auto-resolves the VIEWER's sub-org SUBORG_LEARNER
+//     invite link for the course being viewed. Only renders for a sub-org admin
+//     on a course Student tab (needs a selected sub-org + a package session).
+//     Learners who enrol through it appear in the sub-org admin's learner list.
+//  - 'course_invite': auto-resolves the course's DEFAULT learner invite link for
+//     the package session being viewed.
+export type StudentHeaderButtonKind = 'url' | 'suborg_learner_invite' | 'course_invite';
+
+// A custom link button rendered in the Learner Management header (the Student
+// tab on Course Details + the standalone learner lists). Lets an admin surface
+// a manual link, the sub-org learner invite link, or the course invite link as
+// a one-click action.
+export interface StudentHeaderCustomButton {
+    id: string;
+    label: string;
+    // Link source. Missing/undefined = 'url' (backwards-compatible with buttons
+    // saved before kinds existed).
+    kind?: StudentHeaderButtonKind;
+    // Manual URL — used only when kind is 'url'/undefined; ignored for the auto
+    // (invite-resolving) kinds.
+    url?: string;
+    // Open the URL in a new browser tab. Default (undefined/true) = new tab.
+    openInNewTab?: boolean;
+}
+
+// Per-role control of the action buttons in the Learner Management header.
+export interface StudentManagementActionSettings {
+    // Show the built-in "Enroll" button. Default (undefined/true) = shown.
+    showEnrollButton?: boolean;
+    // Show the built-in "Invite" button. Default (undefined/true) = shown.
+    showInviteButton?: boolean;
+    // Custom link buttons rendered alongside the built-in buttons. Missing/empty
+    // = none. Each is a label + URL an admin pastes (invite link, sub-org learner
+    // registration link, or any other link).
+    customButtons?: StudentHeaderCustomButton[];
 }
 
 // Per-role column visibility on the manage-students learner-list. Holds the
@@ -489,6 +537,12 @@ export interface DisplaySettingsData {
 
     // 13) Learner management permissions for admins/teachers
     learnerManagement?: LearnerManagementSettings;
+
+    // 13a) Learner Management header action buttons — hide the built-in
+    //      Enroll/Invite buttons per role and add custom link buttons (e.g. an
+    //      invite link or sub-org learner registration link). Missing = defaults
+    //      (both built-in buttons shown, no custom buttons).
+    studentManagementActions?: StudentManagementActionSettings;
 
     // 13b) Live class scheduling controls. Role-level overlay on top of the
     //      institute-level Live Session Settings — admin can hide bulk

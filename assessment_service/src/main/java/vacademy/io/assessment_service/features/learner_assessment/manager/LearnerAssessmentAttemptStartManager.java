@@ -9,6 +9,7 @@ import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import vacademy.io.assessment_service.features.assessment.dto.AssessmentQuestionPreviewDto;
 import vacademy.io.assessment_service.features.assessment.dto.admin_get_dto.SectionDto;
@@ -29,6 +30,8 @@ import vacademy.io.common.core.utils.DateUtil;
 import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.common.student.dto.BasicParticipantDTO;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -212,8 +215,14 @@ public class LearnerAssessmentAttemptStartManager {
         return questions;
     }
 
-    // Strip expectedStdout (and any alternative acceptedOutputs) from hidden test
-    // cases so the answer key never reaches the learner.
+    // Redact the expected outputs of hidden test cases so the answer key never
+    // reaches the learner in plaintext. We replace expectedStdout / acceptedOutputs
+    // with SHA-256 hex digests of their NORMALIZED (trimmed) values and mark the
+    // test case with outputsHashed=true. The client grades a hidden test by hashing
+    // the learner's own normalized output and comparing digests — normalization
+    // MUST match the client's (trim leading/trailing whitespace). Removing the
+    // fields entirely (the old behavior) made hidden tests impossible to grade
+    // client-side, so they always failed.
     private void redactHiddenTestExpectedStdout(AssessmentQuestionPreviewDto preview) {
         if (preview == null || !QuestionTypes.CODING.name().equals(preview.getQuestionType())) return;
         String evaluationJson = preview.getEvaluationJson();
@@ -224,14 +233,43 @@ public class LearnerAssessmentAttemptStartManager {
             JsonNode testCases = root.path("data").path("testCases");
             if (!testCases.isArray()) return;
             for (JsonNode tc : testCases) {
-                if (tc instanceof ObjectNode && !tc.path("visible").asBoolean(true)) {
-                    ((ObjectNode) tc).remove("expectedStdout");
-                    ((ObjectNode) tc).remove("acceptedOutputs");
+                if (!(tc instanceof ObjectNode node) || node.path("visible").asBoolean(true)) continue;
+                // Guard against double-hashing if ever handed already-redacted JSON.
+                if (node.path("outputsHashed").asBoolean(false)) continue;
+                JsonNode acceptedNode = node.get("acceptedOutputs");
+                if (acceptedNode != null && acceptedNode.isArray() && acceptedNode.size() > 0) {
+                    ArrayNode hashed = mapper.createArrayNode();
+                    for (JsonNode a : acceptedNode) hashed.add(sha256Normalized(a.asText("")));
+                    node.set("acceptedOutputs", hashed);
+                    node.put("expectedStdout", sha256Normalized(acceptedNode.get(0).asText("")));
+                    node.put("outputsHashed", true);
+                } else {
+                    JsonNode expectedNode = node.get("expectedStdout");
+                    if (expectedNode == null || expectedNode.isNull()) continue;
+                    node.put("expectedStdout", sha256Normalized(expectedNode.asText("")));
+                    node.put("outputsHashed", true);
                 }
             }
             preview.setEvaluationJson(mapper.writeValueAsString(root));
         } catch (Exception ignored) {
             // If parsing fails, fall through and leave the original JSON; the client must still tolerate it.
+        }
+    }
+
+    // SHA-256 hex of the trimmed input, matching the client's normalizeOutput()
+    // (trim leading/trailing whitespace) so hidden-test digests compare equal.
+    private String sha256Normalized(String raw) {
+        String normalized = raw == null ? "" : raw.trim();
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(normalized.getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(hash.length * 2);
+            for (byte b : hash) sb.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+            return sb.toString();
+        } catch (Exception e) {
+            // SHA-256 is always available; if it somehow isn't, fail closed with an
+            // empty digest so the redacted output can never match a real one.
+            return "";
         }
     }
 

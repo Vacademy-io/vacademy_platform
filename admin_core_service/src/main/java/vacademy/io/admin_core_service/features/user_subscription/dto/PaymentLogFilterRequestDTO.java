@@ -40,5 +40,22 @@ public class PaymentLogFilterRequestDTO {
      * Filter by UserPlan source: List of sources (USER, SUB_ORG)
      */
     private List<String> sources;
+
+    /**
+     * Filter by high-level payment type. Each token maps to a specific predicate:
+     * SUB_ORG_ADMIN (enroll_invite.tag=SUB_ORG), SUB_ORG_LEARNER (enroll_invite.tag=SUBORG_LEARNER),
+     * LIVE_CLASS (payment_option.source=LIVE_SESSION), COURSE (payment_option.source=PACKAGE_SESSION),
+     * CPO (payment_option.type=CPO), ENROLL_INVITE (enroll_invite.tag=DEFAULT),
+     * USER_INVOICE (admin-generated invoice, invoice.source=ADMIN_MANUAL).
+     * Multiple values are OR-combined.
+     */
+    private List<String> paymentTypes;
+
+    /**
+     * Free-text search across user name / email / phone (resolved via the auth service) and the
+     * payment amount. Matching payment logs are those whose user matches OR whose amount contains
+     * this string.
+     */
+    private String searchString;
 }
 

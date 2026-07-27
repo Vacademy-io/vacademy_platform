@@ -6,17 +6,22 @@ import { Helmet } from 'react-helmet';
 import { useQuery } from '@tanstack/react-query';
 import { PaymentFilters } from './-components/PaymentFilters';
 import { PaymentLogsTable } from './-components/PaymentLogsTable';
-import { ActiveFiltersDisplay } from '@/components/common/filters/ActiveFiltersDisplay';
-import { fetchPaymentLogs, getPaymentLogsQueryKey } from '@/services/payment-logs';
+import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
+import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import type { SelectOption } from '@/components/design-system/SelectChips';
 import type {
     PaymentLogsRequest,
+    PaymentLogsResponse,
     PackageSessionFilter,
     BatchForSession,
 } from '@/types/payment-logs';
-import { Card } from '@/components/ui/card';
-import { CreditCard } from '@phosphor-icons/react';
+import { DownloadSimple } from '@phosphor-icons/react';
+import { MyButton } from '@/components/design-system/button';
+import { exportEntriesToCsv, fetchAllPaymentLogs } from './-utils/exportPaymentLogsCsv';
+import { computePaymentSummary } from './-utils/paymentSummary';
+import { PaymentSummaryCards } from './-components/PaymentSummaryCards';
+import { toast } from 'sonner';
 
 export const Route = createLazyFileRoute('/manage-payments/')({
     component: () => (
@@ -33,14 +38,36 @@ function ManagePaymentsLayoutPage() {
     const [currentPage, setCurrentPage] = useState(0);
     const [pageSize] = useState(20);
 
+    // Free-text search (name / email / phone / amount). The input updates `searchValue` instantly;
+    // `debouncedSearch` is what we actually send to the API, so we don't fire a request per keystroke.
+    const [searchValue, setSearchValue] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchValue.trim());
+            setCurrentPage(0);
+        }, 400);
+        return () => clearTimeout(timer);
+    }, [searchValue]);
+
     // Filters
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [selectedPaymentStatuses, setSelectedPaymentStatuses] = useState<SelectOption[]>([]);
     const [selectedUserPlanStatuses, setSelectedUserPlanStatuses] = useState<SelectOption[]>([]);
     const [selectedPaymentSources, setSelectedPaymentSources] = useState<SelectOption[]>([]); // New filter
-    const [packageSessionFilter, setPackageSessionFilter] = useState<PackageSessionFilter>({}); useEffect(() => {
-        setNavHeading(<h1 className="text-lg">Manage Payments</h1>);
+    const [selectedPaymentTypes, setSelectedPaymentTypes] = useState<SelectOption[]>([]);
+    const [packageSessionFilter, setPackageSessionFilter] = useState<PackageSessionFilter>({});
+    useEffect(() => {
+        setNavHeading(
+            <div className="flex items-center gap-2">
+                <h1 className="text-lg">Manage Payments</h1>
+                <SettingsQuickAccessButton
+                    settingsKey={SettingsTabs.PaymentGateways}
+                    label="Payment settings"
+                />
+            </div>
+        );
     }, [setNavHeading]);    // Get institute details from Zustand store (already loaded on app init)
     const instituteDetails = useInstituteDetailsStore((state) => state.instituteDetails);
 
@@ -85,6 +112,14 @@ function ManagePaymentsLayoutPage() {
             filters.sources = selectedPaymentSources.map((s) => s.value) as ('USER' | 'SUB_ORG')[];
         }
 
+        if (selectedPaymentTypes.length > 0) {
+            filters.payment_types = selectedPaymentTypes.map((t) => t.value);
+        }
+
+        if (debouncedSearch) {
+            filters.search_string = debouncedSearch;
+        }
+
         if (packageSessionFilter.packageSessionIds && packageSessionFilter.packageSessionIds.length > 0) {
             filters.package_session_ids = packageSessionFilter.packageSessionIds;
         } else if (packageSessionFilter.packageSessionId) {
@@ -111,20 +146,57 @@ function ManagePaymentsLayoutPage() {
         selectedPaymentStatuses,
         selectedUserPlanStatuses,
         selectedPaymentSources,
+        selectedPaymentTypes,
+        debouncedSearch,
         packageSessionFilter,
     ]);
 
-    // Fetch payment logs
+    // Fetch ALL rows matching the current server-side filters (dates, statuses, types, course,
+    // source). Search (name/email/phone/amount) and pagination are then applied client-side over
+    // this one dataset, so it powers the KPI cards, the table, AND the CSV export consistently.
     const {
-        data: paymentLogsData,
+        data: allData,
         isLoading: isLoadingPayments,
         error: paymentsError,
         refetch: refetchPaymentLogs,
     } = useQuery({
-        queryKey: getPaymentLogsQueryKey(currentPage, pageSize, requestFilters),
-        queryFn: () => fetchPaymentLogs(currentPage, pageSize, requestFilters),
+        queryKey: ['payment-logs-all', requestFilters],
+        queryFn: () => fetchAllPaymentLogs(requestFilters),
         staleTime: 30000,
     });
+
+    // The API already applies search + all filters (via requestFilters), so the returned rows ARE
+    // the searched/filtered set. Pagination is applied client-side over this set.
+    const filteredEntries = useMemo(() => allData?.entries ?? [], [allData]);
+
+    // KPI cards reflect the searched + filtered set.
+    const paymentSummary = useMemo(
+        () => computePaymentSummary(filteredEntries),
+        [filteredEntries]
+    );
+
+    // Client-side pagination over the searched/filtered set, shaped for the table.
+    const pagedData: PaymentLogsResponse | undefined = useMemo(() => {
+        if (!allData) return undefined;
+        const total = filteredEntries.length;
+        const totalPages = Math.max(1, Math.ceil(total / pageSize));
+        const page = Math.min(currentPage, totalPages - 1);
+        const start = page * pageSize;
+        const content = filteredEntries.slice(start, start + pageSize);
+        return {
+            content,
+            totalPages,
+            totalElements: total,
+            size: pageSize,
+            number: page,
+            numberOfElements: content.length,
+            first: page === 0,
+            last: page >= totalPages - 1,
+            empty: total === 0,
+            pageable: {},
+            sort: {},
+        } as unknown as PaymentLogsResponse;
+    }, [allData, filteredEntries, currentPage, pageSize]);
 
     // Build package sessions map
     const packageSessionsMap = useMemo(() => {
@@ -158,53 +230,23 @@ function ManagePaymentsLayoutPage() {
         setSelectedPaymentStatuses([]);
         setSelectedUserPlanStatuses([]);
         setSelectedPaymentSources([]); // Clear new filter
+        setSelectedPaymentTypes([]);
         setPackageSessionFilter({});
         setCurrentPage(0);
     };
 
-    // Handle clearing individual filters
-    const handleClearFilter = (filterType: string, value?: string) => {
-        switch (filterType) {
-            case 'all':
-                handleClearFilters();
-                break;
-            case 'startDate':
-                setStartDate('');
-                setCurrentPage(0);
-                break;
-            case 'endDate':
-                setEndDate('');
-                setCurrentPage(0);
-                break;
-            case 'paymentStatus':
-                setSelectedPaymentStatuses((prev) =>
-                    prev.filter((status) => status.value !== value)
-                );
-                setCurrentPage(0);
-                break;
-            case 'userPlanStatus':
-                setSelectedUserPlanStatuses((prev) =>
-                    prev.filter((status) => status.value !== value)
-                );
-                setCurrentPage(0);
-                break;
-            case 'paymentSource':
-                setSelectedPaymentSources((prev) =>
-                    prev.filter((source) => source.value !== value)
-                );
-                setCurrentPage(0);
-                break;
-            case 'packageSession':
-                if (value) {
-                    setPackageSessionFilter(prev => ({
-                        ...prev,
-                        packageSessionIds: prev.packageSessionIds?.filter(id => id !== value)
-                    }));
-                } else {
-                    setPackageSessionFilter({});
-                }
-                setCurrentPage(0);
-                break;
+    // Download the currently shown (searched + filtered) payment logs as CSV.
+    const handleExportCsv = async () => {
+        try {
+            if (filteredEntries.length === 0) {
+                toast.info('No payment records to export.');
+                return;
+            }
+            const count = exportEntriesToCsv(filteredEntries, instituteDetails?.institute_name);
+            toast.success(`Exported ${count.toLocaleString()} payment records.`);
+        } catch (error) {
+            console.error('Failed to export payment logs:', error);
+            toast.error('Failed to export payment logs. Please try again.');
         }
     };
 
@@ -219,55 +261,21 @@ function ManagePaymentsLayoutPage() {
             </Helmet>
 
             <div className="space-y-6 p-6">
-                {/* Statistics Card - Only showing total count which is accurate across all pages */}
-                <Card className="p-6">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <div className="rounded-lg bg-primary-100 p-4">
-                                <CreditCard
-                                    size={32}
-                                    className="text-primary-600"
-                                    weight="duotone"
-                                />
-                            </div>
-                            <div>
-                                <p className="text-sm font-medium text-gray-600">
-                                    Total Payment Records
-                                </p>
-                                <p className="mt-1 text-3xl font-bold text-gray-900">
-                                    {paymentLogsData?.totalElements.toLocaleString() || 0}
-                                </p>
-                                <p className="mt-1 text-xs text-gray-500">
-                                    Across all filtered results
-                                </p>
-                            </div>
-                        </div>
-                        {paymentLogsData && paymentLogsData.totalElements > 0 && (
-                            <div className="text-right">
-                                <p className="text-sm text-gray-600">
-                                    Showing page {paymentLogsData.number + 1} of{' '}
-                                    {paymentLogsData.totalPages}
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                    {paymentLogsData.numberOfElements} records on this page
-                                </p>
-                            </div>
-                        )}
-                    </div>
-                </Card>                {/* Active Filters Display */}
-                <ActiveFiltersDisplay
-                    startDate={startDate}
-                    endDate={endDate}
-                    selectedPaymentStatuses={selectedPaymentStatuses}
-                    selectedUserPlanStatuses={selectedUserPlanStatuses}
-                    selectedPaymentSources={selectedPaymentSources}
-                    packageSessionFilter={packageSessionFilter}
-                    batchesForSessions={batchesForSessions}
-                    onClearFilter={handleClearFilter}
+                {/* Summary KPI cards — reflect the current search + filters */}
+                <PaymentSummaryCards
+                    summary={paymentSummary}
+                    totalCount={filteredEntries.length}
+                    isLoading={isLoadingPayments}
+                    truncated={allData?.truncated}
                 />
 
                 {/* Filters */}
                 <PaymentFilters
+                    searchValue={searchValue}
+                    onSearchChange={(value) => {
+                        setSearchValue(value);
+                        setCurrentPage(0);
+                    }}
                     startDate={startDate}
                     endDate={endDate}
                     onStartDateChange={(date) => {
@@ -293,6 +301,11 @@ function ManagePaymentsLayoutPage() {
                         setSelectedPaymentSources(sources);
                         setCurrentPage(0);
                     }}
+                    selectedPaymentTypes={selectedPaymentTypes}
+                    onPaymentTypesChange={(types) => {
+                        setSelectedPaymentTypes(types);
+                        setCurrentPage(0);
+                    }}
                     hasOrgAssociatedBatches={hasOrgAssociatedBatches}
                     packageSessionFilter={packageSessionFilter}
                     onPackageSessionFilterChange={(filter) => {
@@ -302,9 +315,23 @@ function ManagePaymentsLayoutPage() {
                     batchesForSessions={batchesForSessions}
                     onQuickFilterSelect={handleQuickFilterSelect}
                     onClearFilters={handleClearFilters}
+                    exportSlot={
+                        filteredEntries.length > 0 ? (
+                            <MyButton
+                                buttonType="secondary"
+                                scale="medium"
+                                onAsyncClick={handleExportCsv}
+                                loadingText="Exporting…"
+                                className="gap-2"
+                            >
+                                <DownloadSimple size={16} />
+                                Download CSV
+                            </MyButton>
+                        ) : null
+                    }
                 />                {/* Payment Logs Table */}
                 <PaymentLogsTable
-                    data={paymentLogsData}
+                    data={pagedData}
                     isLoading={isLoadingPayments}
                     error={paymentsError as Error}
                     currentPage={currentPage}

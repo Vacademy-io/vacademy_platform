@@ -8,6 +8,7 @@ import { join } from "path";
 // Supported flavors:
 //   ssdc           → SSDC Horizon
 //   shikshanation  → Shiksha Nation
+//   zoe            → ZOE Edtech
 const flavors: Record<string, { appId: string; appName: string }> = {
   ssdc: {
     appId: "io.vacademy.student.app",
@@ -16,6 +17,10 @@ const flavors: Record<string, { appId: string; appName: string }> = {
   shikshanation: {
     appId: "com.shikshanation.new.app",
     appName: "Shiksha Nation",
+  },
+  zoe: {
+    appId: "com.zoeedtech.app",
+    appName: "ZOE Edtech",
   },
 };
 

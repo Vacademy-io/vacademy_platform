@@ -14,6 +14,7 @@ interface ActiveFiltersDisplayProps {
     selectedPaymentStatuses?: SelectOption[];
     selectedUserPlanStatuses?: SelectOption[];
     selectedPaymentSources?: SelectOption[];
+    selectedPaymentTypes?: SelectOption[];
     // Optional membership-specific filters
     selectedUserTypes?: SelectOption[];
 }
@@ -27,6 +28,7 @@ export function ActiveFiltersDisplay({
     selectedPaymentStatuses = [],
     selectedUserPlanStatuses = [],
     selectedPaymentSources = [],
+    selectedPaymentTypes = [],
     selectedUserTypes = [],
 }: ActiveFiltersDisplayProps) {
     const hasActiveFilters =
@@ -35,6 +37,7 @@ export function ActiveFiltersDisplay({
         selectedPaymentStatuses.length > 0 ||
         selectedUserPlanStatuses.length > 0 ||
         selectedPaymentSources.length > 0 ||
+        selectedPaymentTypes.length > 0 ||
         selectedUserTypes.length > 0 ||
         !!packageSessionFilter.packageId ||
         !!packageSessionFilter.packageSessionId ||
@@ -183,6 +186,23 @@ export function ActiveFiltersDisplay({
                         <button
                             onClick={() => onClearFilter('paymentSource', source.value)}
                             className="hover:text-orange-100"
+                        >
+                            <X size={12} weight="bold" />
+                        </button>
+                    </Badge>
+                ))}
+
+                {/* Payment Type Filters */}
+                {selectedPaymentTypes.map((type) => (
+                    <Badge
+                        key={type.value}
+                        variant="default"
+                        className="gap-2 bg-teal-600 text-white hover:bg-teal-700"
+                    >
+                        <span className="text-xs">Type: {type.label}</span>
+                        <button
+                            onClick={() => onClearFilter('paymentType', type.value)}
+                            className="hover:text-teal-100"
                         >
                             <X size={12} weight="bold" />
                         </button>

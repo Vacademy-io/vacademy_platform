@@ -1,3 +1,4 @@
+import type { ComponentType } from 'react';
 import { SettingsTabs } from '../-constants/terms';
 import PaymentSettings from '../-components/Payment/PaymentSettings';
 import ReferralSettings from '../-components/Referral/ReferralSettings';
@@ -28,6 +29,7 @@ import { AutomationSettings } from '../-components/Automations';
 import InvoiceSettings from '../-components/Invoice/InvoiceSettings';
 import CouponSettings from '../-components/Coupons/CouponSettings';
 import TelephonySettings from '../-components/TelephonySettings';
+import { TelephonyProviderCards } from '@/routes/settings/telephony/-components/telephony-provider-cards';
 import PaymentGatewaySettings from '../-components/PaymentGatewaySettings';
 import LmsSettings from '../-components/Lms/LmsSettings';
 import AiCallingSettings from '../-components/AiCallingSettings';
@@ -37,195 +39,350 @@ import BadgesRewardsSettings from '../-components/BadgesRewards/BadgesRewardsSet
 import LanguageSettings from '../-components/LanguageSettings';
 import AppearanceSettings from '../-components/Appearance/AppearanceSettings';
 
-export const getAvailableSettingsTabs = () => {
-    // Entries are sorted A-Z by display label (`value`) at the end so the
-    // sidebar renders in alphabetical order. Authoring order here is
-    // irrelevant — add new entries anywhere.
+/** Top-level settings navigation categories — order here is display order. */
+export type SettingsDomain =
+    | 'General'
+    | 'LMS'
+    | 'CRM'
+    | 'Finances'
+    | 'Calling'
+    | 'Communications'
+    | 'Integrations';
+
+export const SETTINGS_DOMAIN_ORDER: SettingsDomain[] = [
+    'General',
+    'LMS',
+    'CRM',
+    'Finances',
+    'Calling',
+    'Communications',
+    'Integrations',
+];
+
+/** Sub-group display order within each domain. */
+export const SETTINGS_GROUP_ORDER: Record<SettingsDomain, string[]> = {
+    General: ['Branding & Identity', 'Roles & Access', 'Data & Fields', 'Platform Configuration'],
+    LMS: [
+        'Course & Curriculum',
+        'Assessment & Certification',
+        'Content & Delivery',
+        'Learner Experience',
+    ],
+    CRM: ['Leads & Contacts'],
+    Finances: ['Billing & Payments'],
+    Calling: ['Voice & Telephony'],
+    Communications: ['Messaging & Automation'],
+    Integrations: ['Third-Party Connections'],
+};
+
+export interface SettingsTabEntry {
+    tab: SettingsTabs;
+    value: string;
+    component: ComponentType<Record<string, unknown>>;
+    domain: SettingsDomain;
+    group: string;
+    /**
+     * Chrome-free variant to render when this setting is shown inside the
+     * quick-access popup instead of the full /settings page. Falls back to
+     * `component` when absent (see getSettingsEntryByKey consumers).
+     */
+    embeddedComponent?: ComponentType<Record<string, unknown>>;
+}
+
+export const getAvailableSettingsTabs = (): SettingsTabEntry[] => {
+    // Grouped by domain/group for readability. Render order is driven by
+    // SETTINGS_DOMAIN_ORDER / SETTINGS_GROUP_ORDER at the consumption sites
+    // (sidebar-panel.tsx, sidebar-search.tsx), not by this array's order.
     return [
+        // ── General — Branding & Identity ──────────────────────────────────
         {
-            tab: SettingsTabs.RoleDisplay,
-            value: 'Display Settings',
-            component: RoleDisplaySettingsMain,
-        },
-        {
-            tab: SettingsTabs.StudentDisplay,
-            value: 'Student Display',
-            component: StudentDisplaySettings,
-        },
-        {
-            tab: SettingsTabs.ContentProtection,
-            value: 'Content Protection',
-            component: ContentProtectionSettings,
-        },
-        {
-            tab: SettingsTabs.Naming,
-            value: 'Naming Settings',
-            component: NamingSettings,
-        },
-        {
-            tab: SettingsTabs.Notification,
-            value: 'Notification Settings',
-            component: NotificationSettings,
-        },
-        {
-            tab: SettingsTabs.Automations,
-            value: 'Automations',
-            component: AutomationSettings,
-        },
-        {
-            tab: SettingsTabs.Payment,
-            value: 'Payment Settings',
-            component: PaymentSettings,
-        },
-        {
-            tab: SettingsTabs.Invoice,
-            value: 'Invoice Settings',
-            component: InvoiceSettings,
-        },
-        {
-            tab: SettingsTabs.Referral,
-            value: 'Referral Settings',
-            component: ReferralSettings,
-        },
-        {
-            tab: SettingsTabs.Course,
-            value: 'Course Settings',
-            component: CourseSettings,
-        },
-        {
-            tab: SettingsTabs.Assessment,
-            value: 'Assessment Settings',
-            component: AssessmentSettings,
-        },
-        {
-            tab: SettingsTabs.CustomFields,
-            value: 'Custom Fields',
-            component: CustomFieldsSettings,
-        },
-        {
-            tab: SettingsTabs.Certificates,
-            value: 'Certificate Settings',
-            component: CertificatesSettings,
-        },
-        {
-            tab: SettingsTabs.Templates,
-            value: 'Template Settings',
-            component: TemplateSettings,
-        },
-        {
-            tab: SettingsTabs.AiSettings,
-            value: 'AI Settings',
-            component: AiSettings,
-        },
-        {
-            tab: SettingsTabs.SchoolSettings,
-            value: 'School Settings',
-            component: SchoolSettings,
+            tab: SettingsTabs.Appearance,
+            value: 'Appearance',
+            component: AppearanceSettings,
+            domain: 'General',
+            group: 'Branding & Identity',
         },
         {
             tab: SettingsTabs.WhiteLabel,
             value: 'White-Label Setup',
             component: WhiteLabelSettings,
+            domain: 'General',
+            group: 'Branding & Identity',
         },
         {
-            tab: SettingsTabs.WhatsApp,
-            value: 'WhatsApp Settings',
-            component: WhatsAppSettings,
+            tab: SettingsTabs.Naming,
+            value: 'Naming Settings',
+            component: NamingSettings,
+            domain: 'General',
+            group: 'Branding & Identity',
         },
+        // ── General — Roles & Access ────────────────────────────────────────
         {
-            tab: SettingsTabs.LeadSettings,
-            value: 'Lead Settings',
-            component: LeadSettings,
-        },
-        {
-            tab: SettingsTabs.GuardianSettings,
-            value: 'Guardian Settings',
-            component: GuardianSettings,
-        },
-        {
-            tab: SettingsTabs.OnboardingSettings,
-            value: 'Onboarding Settings',
-            component: OnboardingSettings,
-        },
-        {
-            tab: SettingsTabs.GtmSettings,
-            value: 'GTM Settings',
-            component: GtmSettings,
+            tab: SettingsTabs.RoleDisplay,
+            value: 'Display Settings',
+            component: RoleDisplaySettingsMain,
+            domain: 'General',
+            group: 'Roles & Access',
         },
         {
             tab: SettingsTabs.Tnc,
             value: 'Student T&C',
             component: TncSettings,
+            domain: 'General',
+            group: 'Roles & Access',
+        },
+        // ── General — Data & Fields ──────────────────────────────────────────
+        {
+            tab: SettingsTabs.CustomFields,
+            value: 'Custom Fields',
+            component: CustomFieldsSettings,
+            domain: 'General',
+            group: 'Data & Fields',
+        },
+        // ── General — Platform Configuration ────────────────────────────────
+        {
+            tab: SettingsTabs.Language,
+            value: 'Language Settings',
+            component: LanguageSettings,
+            domain: 'General',
+            group: 'Platform Configuration',
         },
         {
-            tab: SettingsTabs.Integrations,
-            value: 'Ad Integrations',
-            component: IntegrationSettings,
-        },
-        {
-            tab: SettingsTabs.DoubtManagement,
-            value: 'Doubt Management',
-            component: DoubtManagementSettings,
-        },
-        {
-            tab: SettingsTabs.LiveSession,
-            value: 'Live Session Settings',
-            component: LiveSessionSettings,
-        },
-        {
-            tab: SettingsTabs.Youtube,
-            value: 'YouTube Integration',
-            component: YoutubeIntegrationSettings,
-        },
-        {
-            tab: SettingsTabs.Coupons,
-            value: 'Coupon Settings',
-            component: CouponSettings,
-        },
-        {
-            tab: SettingsTabs.Telephony,
-            value: 'Calling (Telephony)',
-            component: TelephonySettings,
-        },
-        {
-            tab: SettingsTabs.AiCalling,
-            value: 'AI Calling',
-            component: AiCallingSettings,
-        },
-        {
-            tab: SettingsTabs.CrmIntelligence,
-            value: 'CRM Intelligence',
-            component: CrmIntelligenceSettings,
-        },
-        {
-            tab: SettingsTabs.PaymentGateways,
-            value: 'Payment Gateways',
-            component: PaymentGatewaySettings,
-        },
-        {
-            tab: SettingsTabs.Lms,
-            value: 'LMS Settings',
-            component: LmsSettings,
+            tab: SettingsTabs.AiSettings,
+            value: 'AI Settings',
+            component: AiSettings,
+            domain: 'General',
+            group: 'Platform Configuration',
         },
         {
             tab: SettingsTabs.AssistantTools,
             value: 'Vacademy Assistant',
             component: AssistantToolsSettings,
+            domain: 'General',
+            group: 'Platform Configuration',
+        },
+        // ── LMS — Course & Curriculum ────────────────────────────────────────
+        {
+            tab: SettingsTabs.Course,
+            value: 'Course Settings',
+            component: CourseSettings,
+            domain: 'LMS',
+            group: 'Course & Curriculum',
+        },
+        {
+            tab: SettingsTabs.Lms,
+            value: 'Learning Platform Defaults',
+            component: LmsSettings,
+            domain: 'LMS',
+            group: 'Course & Curriculum',
+        },
+        // ── LMS — Assessment & Certification ────────────────────────────────
+        {
+            tab: SettingsTabs.Assessment,
+            value: 'Assessment Settings',
+            component: AssessmentSettings,
+            domain: 'LMS',
+            group: 'Assessment & Certification',
+        },
+        {
+            tab: SettingsTabs.Certificates,
+            value: 'Certificate Settings',
+            component: CertificatesSettings,
+            domain: 'LMS',
+            group: 'Assessment & Certification',
         },
         {
             tab: SettingsTabs.BadgesRewards,
             value: 'Badges & Rewards',
             component: BadgesRewardsSettings,
+            domain: 'LMS',
+            group: 'Assessment & Certification',
+        },
+        // ── LMS — Content & Delivery ─────────────────────────────────────────
+        {
+            tab: SettingsTabs.LiveSession,
+            value: 'Live Session Settings',
+            component: LiveSessionSettings,
+            domain: 'LMS',
+            group: 'Content & Delivery',
         },
         {
-            tab: SettingsTabs.Language,
-            value: 'Language Settings',
-            component: LanguageSettings,
+            tab: SettingsTabs.DoubtManagement,
+            value: 'Doubt Management',
+            component: DoubtManagementSettings,
+            domain: 'LMS',
+            group: 'Content & Delivery',
         },
         {
-            tab: SettingsTabs.Appearance,
-            value: 'Appearance',
-            component: AppearanceSettings,
+            tab: SettingsTabs.ContentProtection,
+            value: 'Content Protection',
+            component: ContentProtectionSettings,
+            domain: 'LMS',
+            group: 'Content & Delivery',
         },
-    ].sort((a, b) => a.value.localeCompare(b.value, undefined, { sensitivity: 'base' }));
+        // ── LMS — Learner Experience ─────────────────────────────────────────
+        {
+            tab: SettingsTabs.StudentDisplay,
+            value: 'Student Display',
+            component: StudentDisplaySettings,
+            domain: 'LMS',
+            group: 'Learner Experience',
+        },
+        // ── CRM — Leads & Contacts ───────────────────────────────────────────
+        {
+            tab: SettingsTabs.LeadSettings,
+            value: 'Lead Settings',
+            component: LeadSettings,
+            domain: 'CRM',
+            group: 'Leads & Contacts',
+        },
+        {
+            tab: SettingsTabs.Referral,
+            value: 'Referral Settings',
+            component: ReferralSettings,
+            domain: 'CRM',
+            group: 'Leads & Contacts',
+        },
+        {
+            tab: SettingsTabs.SchoolSettings,
+            value: 'Admissions & Counsellors',
+            component: SchoolSettings,
+            domain: 'CRM',
+            group: 'Leads & Contacts',
+        },
+        {
+            tab: SettingsTabs.GuardianSettings,
+            value: 'Guardian Settings',
+            component: GuardianSettings,
+            domain: 'CRM',
+            group: 'Leads & Contacts',
+        },
+        {
+            tab: SettingsTabs.OnboardingSettings,
+            value: 'Onboarding Settings',
+            component: OnboardingSettings,
+            domain: 'CRM',
+            group: 'Leads & Contacts',
+        },
+        // ── Finances — Billing & Payments ────────────────────────────────────
+        {
+            tab: SettingsTabs.Payment,
+            value: 'Payment Settings',
+            component: PaymentSettings,
+            domain: 'Finances',
+            group: 'Billing & Payments',
+        },
+        {
+            tab: SettingsTabs.PaymentGateways,
+            value: 'Payment Gateways',
+            component: PaymentGatewaySettings,
+            domain: 'Finances',
+            group: 'Billing & Payments',
+        },
+        {
+            tab: SettingsTabs.Invoice,
+            value: 'Invoice Settings',
+            component: InvoiceSettings,
+            domain: 'Finances',
+            group: 'Billing & Payments',
+        },
+        {
+            tab: SettingsTabs.Coupons,
+            value: 'Coupon Settings',
+            component: CouponSettings,
+            domain: 'Finances',
+            group: 'Billing & Payments',
+        },
+        // ── Calling — Voice & Telephony ──────────────────────────────────────
+        {
+            tab: SettingsTabs.Telephony,
+            value: 'Calling (Telephony)',
+            component: TelephonySettings,
+            embeddedComponent: TelephonyProviderCards,
+            domain: 'Calling',
+            group: 'Voice & Telephony',
+        },
+        {
+            tab: SettingsTabs.AiCalling,
+            value: 'AI Calling',
+            component: AiCallingSettings,
+            domain: 'Calling',
+            group: 'Voice & Telephony',
+        },
+        {
+            tab: SettingsTabs.CrmIntelligence,
+            value: 'CRM Intelligence',
+            component: CrmIntelligenceSettings,
+            domain: 'Calling',
+            group: 'Voice & Telephony',
+        },
+        // ── Communications — Messaging & Automation ──────────────────────────
+        {
+            tab: SettingsTabs.WhatsApp,
+            value: 'WhatsApp Settings',
+            component: WhatsAppSettings,
+            domain: 'Communications',
+            group: 'Messaging & Automation',
+        },
+        {
+            tab: SettingsTabs.Templates,
+            value: 'Template Settings',
+            component: TemplateSettings,
+            domain: 'Communications',
+            group: 'Messaging & Automation',
+        },
+        {
+            tab: SettingsTabs.Automations,
+            value: 'Automations',
+            component: AutomationSettings,
+            domain: 'Communications',
+            group: 'Messaging & Automation',
+        },
+        {
+            tab: SettingsTabs.Notification,
+            value: 'Notification Settings',
+            component: NotificationSettings,
+            domain: 'Communications',
+            group: 'Messaging & Automation',
+        },
+        // ── Integrations — Third-Party Connections ───────────────────────────
+        {
+            tab: SettingsTabs.Integrations,
+            value: 'Ad Integrations',
+            component: IntegrationSettings,
+            domain: 'Integrations',
+            group: 'Third-Party Connections',
+        },
+        {
+            tab: SettingsTabs.Youtube,
+            value: 'YouTube Integration',
+            component: YoutubeIntegrationSettings,
+            domain: 'Integrations',
+            group: 'Third-Party Connections',
+        },
+        {
+            tab: SettingsTabs.GtmSettings,
+            value: 'GTM Settings',
+            component: GtmSettings,
+            domain: 'Integrations',
+            group: 'Third-Party Connections',
+        },
+    ];
+};
+
+let settingsEntryLookup: Record<string, SettingsTabEntry> | null = null;
+
+/**
+ * O(1) lookup by `tab` key, used by the quick-access popup (and anywhere else
+ * that needs one entry rather than the whole list). Memoized once — the
+ * underlying array is static for the lifetime of the app.
+ */
+export const getSettingsEntryByKey = (key: string): SettingsTabEntry | undefined => {
+    if (!settingsEntryLookup) {
+        settingsEntryLookup = {};
+        getAvailableSettingsTabs().forEach((entry) => {
+            settingsEntryLookup![entry.tab] = entry;
+        });
+    }
+    return settingsEntryLookup[key];
 };

@@ -589,4 +589,47 @@ public interface StudentSessionInstituteGroupMappingRepository
       @Param("userId") String userId,
       @Param("instituteId") String instituteId);
 
+  /**
+   * Batch-scoped variant of {@link #findActiveSubOrgIdsForUserInInstitute}: the sub-org(s) a user
+   * belongs to *through this specific package session*. Preferred when the caller knows the batch
+   * (e.g. a doubt raised on a slide) because a learner enrolled under several sub-orgs must only
+   * surface the one that owns the batch in question — the institute-wide lookup would fan the
+   * event out to every sub-org they touch.
+   *
+   * Membership mirrors {@link #findActiveSubOrgRoster(String)} (own stamp OR the sub-org invite the
+   * user_plan came from). No institute predicate: the package session already pins tenancy.
+   */
+  @Query(value = """
+      SELECT DISTINCT COALESCE(ssigm.sub_org_id, ei.sub_org_id) AS sub_org_id
+      FROM student_session_institute_group_mapping ssigm
+      LEFT JOIN user_plan up ON up.id = ssigm.user_plan_id
+      LEFT JOIN enroll_invite ei ON ei.id = up.enroll_invite_id
+      WHERE ssigm.user_id = :userId
+        AND ssigm.package_session_id = :packageSessionId
+        AND ssigm.status = 'ACTIVE'
+        AND COALESCE(ssigm.sub_org_id, ei.sub_org_id) IS NOT NULL
+      """, nativeQuery = true)
+  List<String> findActiveSubOrgIdsForUserInPackageSession(
+      @Param("userId") String userId,
+      @Param("packageSessionId") String packageSessionId);
+
+  /**
+   * User ids of the sub-org's own admins — ACTIVE mappings stamped with this sub_org_id whose
+   * comma_separated_org_roles carry ADMIN (this also matches ROOT_ADMIN, the person who registered
+   * the sub-org). These accounts come from the sub-org registration/enrollment path, which never
+   * writes a SUB_ORG-linked FSPSSM row, so they are invisible to
+   * {@code findDistinctUserIdsBySubOrgIdAndLinkage} and have to be fetched separately.
+   *
+   * Deliberately leaner than {@link #findAdminsBySubOrg(String)}: no join to {@code student}, so an
+   * admin without a student profile row still comes back.
+   */
+  @Query(value = """
+      SELECT DISTINCT ssigm.user_id
+      FROM student_session_institute_group_mapping ssigm
+      WHERE ssigm.sub_org_id = :subOrgId
+        AND ssigm.status = 'ACTIVE'
+        AND ssigm.comma_separated_org_roles LIKE '%ADMIN%'
+      """, nativeQuery = true)
+  List<String> findActiveAdminUserIdsBySubOrg(@Param("subOrgId") String subOrgId);
+
 }

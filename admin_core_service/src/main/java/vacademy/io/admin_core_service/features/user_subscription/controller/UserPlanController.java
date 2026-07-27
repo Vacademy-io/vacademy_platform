@@ -52,6 +52,18 @@ public class UserPlanController {
         return ResponseEntity.ok(paymentLogs);
     }
 
+    /**
+     * Aggregated PAID collection total + per-day series for an institute, optionally
+     * scoped to one sub-org, over a UTC date window. Powers the dashboard "amount
+     * collected (last 3/7/24 days / all)" panels. Omit dates for all-time.
+     */
+    @PostMapping("/payment-logs/collection-summary")
+    public ResponseEntity<CollectionSummaryResponseDTO> getCollectionSummary(
+            @RequestAttribute("user") CustomUserDetails userDetails,
+            @RequestBody CollectionSummaryRequestDTO request) {
+        return ResponseEntity.ok(paymentLogService.getCollectionSummary(request));
+    }
+
     @PostMapping("/payment-logs/update-tracking")
     public ResponseEntity<Void> updatePaymentLogTracking(
             @RequestAttribute("user") CustomUserDetails userDetails,

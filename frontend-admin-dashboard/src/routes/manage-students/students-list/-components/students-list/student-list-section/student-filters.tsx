@@ -300,7 +300,7 @@ export const StudentFilters = ({
                                 )}
                             </div>
                         ))}
-                        <ManageListFiltersLink />
+                        <ManageListFiltersLink surface="STUDENTS" />
                     </div>
 
                     {/* Filter action buttons */}

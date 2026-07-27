@@ -29,6 +29,8 @@ import {
     fetchCounsellors,
 } from '@/routes/counsellors/-services/counsellor-workbench-services';
 import CallLogTab from './CallLogTab';
+import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
+import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import CallIntelligenceTab from '../../reports/-components/call-intelligence-tab';
 import { useCallIntelligenceEnabled, TeamCoachingSection } from '@/components/shared/leads';
 
@@ -125,16 +127,22 @@ export function CallLogPage() {
                         providers. Filter, disposition and export.
                     </p>
                 </div>
-                <Button
-                    onClick={refresh}
-                    size="sm"
-                    variant="outline"
-                    disabled={!instituteId || isRefreshing}
-                    className="gap-2"
-                >
-                    <ArrowsClockwise size={14} className={cn(isRefreshing && 'animate-spin')} />
-                    Refresh
-                </Button>
+                <div className="flex items-center gap-2">
+                    <SettingsQuickAccessButton
+                        settingsKey={SettingsTabs.Telephony}
+                        label="Calling settings"
+                    />
+                    <Button
+                        onClick={refresh}
+                        size="sm"
+                        variant="outline"
+                        disabled={!instituteId || isRefreshing}
+                        className="gap-2"
+                    >
+                        <ArrowsClockwise size={14} className={cn(isRefreshing && 'animate-spin')} />
+                        Refresh
+                    </Button>
+                </div>
             </header>
 
             {/* Shared filter bar */}

@@ -4,6 +4,8 @@ import { useEffect, useState, useMemo } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { MyButton } from '@/components/design-system/button';
 import { SessionStatus, sessionStatusLabels } from '../-constants/enums';
+import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
+import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import LiveSessionCard from './live-session-card';
 import { useNavigate } from '@tanstack/react-router';
 import { useSessionSearch } from '../-hooks/useLiveSessions';
@@ -1288,13 +1290,19 @@ export default function SessionListPage() {
                             </TabsTrigger>
                         ))}
                     </TabsList>
-                    <MyButton
-                        onClick={() => navigate({ to: '/study-library/live-session/schedule' })}
-                        buttonType="primary"
-                        className="w-full sm:w-auto"
-                    >
-                        Schedule
-                    </MyButton>
+                    <div className="flex items-center gap-2">
+                        <SettingsQuickAccessButton
+                            settingsKey={SettingsTabs.LiveSession}
+                            label="Live session settings"
+                        />
+                        <MyButton
+                            onClick={() => navigate({ to: '/study-library/live-session/schedule' })}
+                            buttonType="primary"
+                            className="w-full sm:w-auto"
+                        >
+                            Schedule
+                        </MyButton>
+                    </div>
                 </div>
 
                 <TabsContent value={SessionStatus.LIVE} className="space-y-4">

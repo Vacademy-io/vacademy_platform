@@ -13,6 +13,9 @@ import org.springframework.util.CollectionUtils;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.common.util.JsonUtil;
 import vacademy.io.admin_core_service.features.notification_service.service.PaymentNotificatonService;
+import vacademy.io.admin_core_service.features.user_subscription.dto.CollectionSummaryProjection;
+import vacademy.io.admin_core_service.features.user_subscription.dto.CollectionSummaryRequestDTO;
+import vacademy.io.admin_core_service.features.user_subscription.dto.CollectionSummaryResponseDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogFilterRequestDTO;
 import vacademy.io.admin_core_service.features.user_subscription.dto.PaymentLogWithUserPlanDTO;
@@ -882,6 +885,54 @@ public class PaymentLogService {
     }
 
     @Transactional(readOnly = true)
+    /**
+     * Aggregated PAID collection for an institute (optionally one sub-org) over a
+     * UTC date window. Returns the grand total + a per-day series for charting.
+     * Omitting the dates yields the all-time total (epoch -> now).
+     */
+    public CollectionSummaryResponseDTO getCollectionSummary(CollectionSummaryRequestDTO request) {
+        LocalDateTime startDate = request.getStartDateInUtc() != null
+                ? request.getStartDateInUtc()
+                : LocalDateTime.of(1970, 1, 1, 0, 0);
+        LocalDateTime endDate = request.getEndDateInUtc() != null
+                ? request.getEndDateInUtc()
+                : LocalDateTime.now();
+        boolean noSubOrg = !StringUtils.hasText(request.getSubOrgId());
+
+        List<CollectionSummaryProjection> rows = paymentLogRepository.getCollectionSummary(
+                request.getInstituteId(),
+                noSubOrg ? "__none__" : request.getSubOrgId(),
+                noSubOrg,
+                startDate,
+                endDate);
+
+        double total = 0d;
+        long count = 0L;
+        String currency = null;
+        List<CollectionSummaryResponseDTO.DailyPoint> daily = new ArrayList<>();
+        for (CollectionSummaryProjection row : rows) {
+            double amount = row.getAmount() != null ? row.getAmount() : 0d;
+            long dayCount = row.getCnt() != null ? row.getCnt() : 0L;
+            total += amount;
+            count += dayCount;
+            if (currency == null && StringUtils.hasText(row.getCurrency())) {
+                currency = row.getCurrency();
+            }
+            daily.add(CollectionSummaryResponseDTO.DailyPoint.builder()
+                    .date(row.getDay())
+                    .amount(amount)
+                    .count(dayCount)
+                    .build());
+        }
+
+        return CollectionSummaryResponseDTO.builder()
+                .totalAmount(total)
+                .totalCount(count)
+                .currency(currency)
+                .daily(daily)
+                .build();
+    }
+
     public Page<PaymentLogWithUserPlanDTO> getPaymentLogsForInstitute(
             PaymentLogFilterRequestDTO filterDTO,
             int pageNo,
@@ -894,6 +945,7 @@ public class PaymentLogService {
         List<String> packageSessionIds = safeList(filterDTO.getPackageSessionIds());
         List<String> userPlanStatuses = safeList(filterDTO.getUserPlanStatuses());
         List<String> sources = safeList(filterDTO.getSources());
+        List<String> paymentTypes = safeList(filterDTO.getPaymentTypes());
 
         LocalDateTime startDate = resolveStartDate(filterDTO);
         LocalDateTime endDate = resolveEndDate(filterDTO);
@@ -906,12 +958,24 @@ public class PaymentLogService {
         boolean noSourceFilter = sources.isEmpty();
         boolean noEnrollInviteFilter = enrollInviteIds.isEmpty();
         boolean noPackageSessionFilter = packageSessionIds.isEmpty();
-        // Invoice-path logs (admin invoices, paid LIVE_SESSION registrations) only
-        // disappear under filters that genuinely cannot apply to them (user-plan
-        // status, enroll-invite, package-session). A `sources` filter is honored
-        // inside the invoice arm against invoice.source instead of suppressing it —
-        // previously any source filter silently hid every live-session payment.
-        boolean includeInvoiceLogs = noUserPlanStatusFilter && noEnrollInviteFilter && noPackageSessionFilter;
+        // Payment-type filter: each token maps to a specific predicate in the native query.
+        // Values are OR-combined; when the list is empty the type filter is skipped entirely.
+        boolean noPaymentTypeFilter = paymentTypes.isEmpty();
+        boolean typeSubOrgAdmin = paymentTypes.contains("SUB_ORG_ADMIN");
+        boolean typeSubOrgLearner = paymentTypes.contains("SUB_ORG_LEARNER");
+        boolean typeLiveClass = paymentTypes.contains("LIVE_CLASS");
+        boolean typeCourse = paymentTypes.contains("COURSE");
+        boolean typeCpo = paymentTypes.contains("CPO");
+        boolean typeEnrollInvite = paymentTypes.contains("ENROLL_INVITE");
+        boolean typeUserInvoice = paymentTypes.contains("USER_INVOICE");
+
+        // Invoice-path logs (admin invoices, paid LIVE_SESSION registrations) appear when User Invoice
+        // is explicitly requested, or (with no payment-type filter) when no user-plan-only filter
+        // (plan status, enroll-invite, package-session) is active. A `sources` filter is honored inside
+        // the invoice arm against invoice.source rather than suppressing the whole arm.
+        boolean includeInvoiceLogs = typeUserInvoice
+                || (noPaymentTypeFilter && noUserPlanStatusFilter
+                        && noEnrollInviteFilter && noPackageSessionFilter);
 
         List<String> SENTINEL = List.of("__none__");
         List<String> paymentStatusesBound = noPaymentStatusFilter ? SENTINEL : paymentStatuses;
@@ -919,6 +983,21 @@ public class PaymentLogService {
         List<String> sourcesBound = noSourceFilter ? SENTINEL : sources;
         List<String> enrollInviteIdsBound = noEnrollInviteFilter ? SENTINEL : enrollInviteIds;
         List<String> packageSessionIdsBound = noPackageSessionFilter ? SENTINEL : packageSessionIds;
+
+        // Free-text search: resolve name/email/phone to a set of user IDs via the auth service, and
+        // match the amount directly on payment_log. A payment matches if its user OR amount matches.
+        String searchString = StringUtils.hasText(filterDTO.getSearchString())
+                ? filterDTO.getSearchString().trim()
+                : null;
+        boolean noSearchFilter = (searchString == null);
+        List<String> searchUserIds = Collections.emptyList();
+        boolean searchNumeric = false;
+        if (!noSearchFilter) {
+            searchUserIds = authService.searchUserIdsByQuery(searchString, filterDTO.getInstituteId());
+            searchNumeric = searchString.matches("[0-9]+(\\.[0-9]+)?");
+        }
+        boolean noSearchUserIds = searchUserIds.isEmpty();
+        List<String> searchUserIdsBound = noSearchUserIds ? SENTINEL : searchUserIds;
 
         // Use unsorted pageable — ORDER BY is hardcoded in the native query (created_at DESC)
         Pageable pageable = PageRequest.of(pageNo, pageSize);
@@ -939,6 +1018,19 @@ public class PaymentLogService {
                 noPackageSessionFilter,
                 userId,
                 includeInvoiceLogs,
+                noPaymentTypeFilter,
+                typeSubOrgAdmin,
+                typeSubOrgLearner,
+                typeLiveClass,
+                typeCourse,
+                typeCpo,
+                typeEnrollInvite,
+                typeUserInvoice,
+                noSearchFilter,
+                noSearchUserIds,
+                searchUserIdsBound,
+                searchNumeric,
+                searchString,
                 pageable);
 
         List<String> ids = idsPage.getContent();

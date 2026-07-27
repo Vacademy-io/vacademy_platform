@@ -3623,32 +3623,20 @@ class VideoGenerationPipeline:
                     # Disabled (no-op) when institute_id is None.
                     self._ai_video_ledger = None
                     try:
-                        # Import chain — package first, then LOAD FROM DISK.
-                        # In prod neither `app.services.ai_video_ledger` nor a
-                        # flat `ai_video_ledger` resolves from this module's
-                        # context, so this raised ImportError on EVERY run and
-                        # all Veo spend went unbilled (observed live: "AI video
-                        # ledger import failed (No module named 'app')"). Same
-                        # from-disk fallback that already rescues
-                        # fal_veo_client a few lines above.
-                        try:
-                            from app.services.ai_video_ledger import AiVideoLedger
-                        except ImportError:
-                            _led_path = (
-                                _Path(__file__).resolve().parent.parent
-                                / "services" / "ai_video_ledger.py"
-                            )
-                            _led_spec = _ilu.spec_from_file_location(
-                                "ai_video_ledger", _led_path
-                            )
-                            if _led_spec is None or _led_spec.loader is None:
-                                raise ImportError(f"cannot load {_led_path}")
-                            _led_mod = _ilu.module_from_spec(_led_spec)
-                            _sys.modules["ai_video_ledger"] = _led_mod
-                            _sys.modules["app.services.ai_video_ledger"] = _led_mod
-                            _led_spec.loader.exec_module(_led_mod)
-                            AiVideoLedger = _led_mod.AiVideoLedger
-                            print(f"   ℹ️  ai_video_ledger loaded from disk: {_led_path}")
+                        # Import with REAL package context. The previous
+                        # from-disk exec loaded the module with no parent
+                        # package AND registered it under
+                        # "app.services.ai_video_ledger" in sys.modules —
+                        # process-global, so every LATER run in the pod got
+                        # the broken copy and its lazy relative imports blew
+                        # up at charge() time ("attempted relative import
+                        # with no known parent package") → every dialogue
+                        # clip demoted. Fix: purge any poisoned cache entry,
+                        # put the ai_service ROOT (parent of app/) on
+                        # sys.path, and import natively — the ledger's whole
+                        # dependency chain (db, schemas, credit services)
+                        # resolves normally then.
+                        AiVideoLedger = self._import_ai_video_ledger()
                         self._ai_video_ledger = AiVideoLedger(
                             institute_id=institute_id,
                             video_id=run_name,
@@ -8802,7 +8790,7 @@ class VideoGenerationPipeline:
                         self._dialogue_ledger = _existing
                     else:
                         try:
-                            from app.services.ai_video_ledger import AiVideoLedger
+                            AiVideoLedger = self._import_ai_video_ledger()
                             self._dialogue_ledger = AiVideoLedger(
                                 institute_id=self._dialogue_institute_id,
                                 video_id=getattr(self, "_run_name", None) or "run",
@@ -8816,6 +8804,39 @@ class VideoGenerationPipeline:
         except Exception as init_err:
             print(f"   ⚠️ Seedance init failed: {init_err}")
             return False
+
+    @staticmethod
+    def _import_ai_video_ledger():
+        """Import AiVideoLedger with REAL package context.
+
+        Prod incident 2026-07-27: an older build loaded this module from disk
+        with no parent package and registered it under
+        "app.services.ai_video_ledger" in sys.modules. sys.modules is
+        process-global, so EVERY later run in that pod inherited the broken
+        copy, whose lazy relative imports exploded at charge() time and
+        demoted every dialogue clip ("credit deduction failed").
+        Fix: purge package-context-less cache entries, and when the package
+        isn't importable put the ai_service ROOT (parent of app/) on
+        sys.path so the ledger AND its whole dependency chain (db, schemas,
+        credit services) import natively.
+        """
+        import sys as _s
+        from pathlib import Path as _P
+        for _k in ("app.services.ai_video_ledger", "ai_video_ledger"):
+            _m = _s.modules.get(_k)
+            if _m is not None and not getattr(_m, "__package__", None):
+                _s.modules.pop(_k, None)
+        try:
+            from app.services.ai_video_ledger import AiVideoLedger
+            return AiVideoLedger
+        except ImportError:
+            pass
+        _root = str(_P(__file__).resolve().parent.parent.parent)
+        if _root not in _s.path:
+            _s.path.insert(0, _root)
+            print(f"   ℹ️  added {_root} to sys.path for app.* imports")
+        from app.services.ai_video_ledger import AiVideoLedger
+        return AiVideoLedger
 
     def _call_seedance_dialogue_clip(
         self,

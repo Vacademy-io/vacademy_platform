@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import PDFViewer from "./pdf-viewer";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
+import { usePresenceHeartbeat } from "@/hooks/study-library/usePresenceHeartbeat";
 import { EmptySlideMaterial } from "@/assets/svgs";
 import YouTubePlayerWrapper from "./youtube-player";
 import VimeoPlayerWrapper from "./vimeo-player";
@@ -48,6 +49,9 @@ export const SlideMaterial = ({
   const { t, i18n } = useTranslation("studyContent");
   const { activeItem, items, setActiveItem, slideEvaluations } =
     useContentStore();
+  // Course Pulse presence: keep the learner "present" on the open slide (incl. paused
+  // video/audio) while the tab is visible; stops on leave so they go offline naturally.
+  usePresenceHeartbeat(activeItem?.id);
   const selectionRef = useRef(null);
   const loadGenerationRef = useRef(0);
   const [heading, setHeading] = useState(activeItem?.title || "");
@@ -783,7 +787,10 @@ export const SlideMaterial = ({
             setContent(
               <div className="h-full w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <div className="h-full w-full bg-white rounded-lg overflow-hidden border border-neutral-200">
-                  <PDFViewer pdfUrl={url} />
+                  {/* Keyed by slide so moving between two PDF slides mounts a
+                      fresh viewer instead of reusing one carrying the previous
+                      slide's activity id and page-view buffer. */}
+                  <PDFViewer key={activeItem.id} pdfUrl={url} />
                 </div>
               </div>
             );

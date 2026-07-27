@@ -1,0 +1,12 @@
+-- user_lead_profile.conversion_status was created as VARCHAR(20) in V195, when the only
+-- statuses were LEAD | CONVERTED | LOST. The lead-status catalog (V261/V264) later added
+-- longer status_keys — 'QUALIFIED_OR_INTERESTED' (23) and 'ADMISSION_COUNSELLING' (21) both
+-- exceed 20 chars. Setting a lead to either from the side-view (update-status) then failed the
+-- INSERT/UPDATE with "value too long for type character varying(20)"; because that write
+-- flushes lazily inside a swallowing best-effort catch, the client only ever saw the opaque
+-- "Transaction silently rolled back because it has been marked as rollback-only".
+--
+-- Widen to VARCHAR(100) to match lead_status.status_key (also VARCHAR(100)), of which
+-- conversion_status is a mirror. Increasing a varchar length limit in Postgres is a
+-- metadata-only change (no table rewrite; the partial index from V195 is preserved).
+ALTER TABLE user_lead_profile ALTER COLUMN conversion_status TYPE VARCHAR(100);

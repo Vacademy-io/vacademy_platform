@@ -20,6 +20,7 @@ import { getDisplaySettingsWithFallback, saveDisplaySettings } from '@/services/
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { LearnerListColumnsCard } from './LearnerListColumnsCard';
 import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
+import { StudentManagementActionsCard } from './StudentManagementActionsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { DEFAULT_TEACHER_DISPLAY_SETTINGS } from '@/constants/display-settings/teacher-defaults';
 import { toast } from 'sonner';
@@ -1148,10 +1149,12 @@ export default function CustomRoleDisplaySettings({
                             'LIVE_SESSION',
                             'PLANNING',
                             'ACTIVITY',
+                            'PULSE',
+                            'REPORTS',
                             'SETTINGS',
                         ];
                         // Tabs that stay OFF unless explicitly enabled per role.
-                        const hiddenByDefault = new Set<string>(['LIVE_SESSION']);
+                        const hiddenByDefault = new Set<string>([]);
                         const sorted = tabIds
                             .map(
                                 (id) =>
@@ -1195,6 +1198,7 @@ export default function CustomRoleDisplaySettings({
                                                         LIVE_SESSION: 6,
                                                         PLANNING: 7,
                                                         ACTIVITY: 8,
+                                                        PULSE: 9,
                                                     };
                                                     const tabs = exists
                                                         ? prevTabs.map((t) =>
@@ -2196,6 +2200,16 @@ export default function CustomRoleDisplaySettings({
                     ))}
                 </CardContent>
             </Card>
+
+            <StudentManagementActionsCard
+                settings={settings.studentManagementActions}
+                onChange={(next) =>
+                    updateSettings((prev) => ({
+                        ...prev,
+                        studentManagementActions: next,
+                    }))
+                }
+            />
             </section>
 
             <section id="grp-access" className="space-y-6">

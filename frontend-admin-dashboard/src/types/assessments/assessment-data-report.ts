@@ -6,8 +6,12 @@ interface Option {
 interface Question {
     question_id: string; // UUID
     question_name: string;
-    student_response_options: Option[];
-    correct_options: Option[];
+    // For most types this is an Option[]. For CODING questions the backend sends
+    // the raw response JSON string (responseData with verdict/testCaseResults/etc.).
+    student_response_options: Option[] | string;
+    // Option[] normally; for CODING this is the question config JSON string.
+    correct_options: Option[] | string;
+    question_type?: string;
     explanation_id: string; // UUID
     explanation: string;
     mark: number;

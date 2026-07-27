@@ -8,6 +8,7 @@ import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogD
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ConcentrationScoreDTO;
 
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.List;
 
 @Entity
@@ -44,6 +45,13 @@ public class ActivityLog {
 
         @Column(name = "engaged_ms")
         private Long engagedMs;
+
+        // Course Pulse: server-stamped instant of the learner's most recent write on this
+        // slide-session. Refreshed on every insert/update by sanitizeTimesAndDeriveEngaged()
+        // from the server clock (never the client), so presence is skew- and timezone-safe.
+        // "Time on slide" for the live view is derived separately from created_at.
+        @Column(name = "last_seen_at")
+        private Instant lastSeenAt;
 
         @Column(name = "status", length = 50)
         private String status;
@@ -128,9 +136,13 @@ public class ActivityLog {
                 if (endTime != null && endTime.before(startTime)) {
                         endTime = startTime;
                 }
-                if (engagedMs == null && endTime != null) {
-                        engagedMs = Math.min(MAX_ENGAGED_MS, Math.max(0L, endTime.getTime() - startTime.getTime()));
+                if (engagedMs == null) {
+                        long endMs = (endTime != null) ? endTime.getTime() : System.currentTimeMillis();
+                        engagedMs = Math.min(MAX_ENGAGED_MS, Math.max(0L, endMs - startTime.getTime()));
                 }
+                // Presence heartbeat: stamp the server clock on every insert/update. This is the
+                // only value the live view trusts for "is this learner active right now".
+                lastSeenAt = Instant.now();
         }
 
         public ActivityLogDTO toActivityLogDTO() {

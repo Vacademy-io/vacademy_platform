@@ -46,8 +46,12 @@ public class UserLeadProfile {
     @Column(name = "lead_tier", length = 10)
     private String leadTier;
 
-    /** LEAD | CONVERTED | LOST. Once CONVERTED, score updates are frozen. */
-    @Column(name = "conversion_status", nullable = false, length = 20)
+    /**
+     * The lead's current pipeline status. Historically LEAD | CONVERTED | LOST, but now mirrors
+     * a lead_status.status_key (VARCHAR(100)) — custom catalog keys like QUALIFIED_OR_INTERESTED
+     * exceed 20 chars, so this must stay wide enough to hold any status_key. See V400.
+     */
+    @Column(name = "conversion_status", nullable = false, length = 100)
     @Builder.Default
     private String conversionStatus = "LEAD";
 

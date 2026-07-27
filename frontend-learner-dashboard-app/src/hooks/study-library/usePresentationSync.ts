@@ -2,10 +2,10 @@ import { ActivitySchema } from "@/schemas/study-library/presentation-tracking-sc
 import { useAddDocumentActivity } from "@/services/study-library/tracking-api/add-document-activity";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { TrackingDataType } from "@/types/tracking-data-type";
-import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { Preferences } from "@capacitor/preferences";
 import { useRouter } from "@tanstack/react-router";
 import { z } from "zod";
+import { useResolvedPackageSessionId } from "./useResolvedPackageSessionId";
 import { useSlidesRefresh } from "./useSlidesRefresh";
 const STORAGE_KEY = "presentation_tracking_data";
 const USER_ID_KEY = "StudentDetails";
@@ -22,6 +22,7 @@ export const usePresentationSync = () => {
     const { activeItem } = useContentStore();
     const router = useRouter();
     const { chapterId, moduleId, subjectId } = router.state.location.search;
+    const resolvePackageSessionId = useResolvedPackageSessionId();
 
     const { refreshSlides } = useSlidesRefresh();
 
@@ -36,7 +37,7 @@ export const usePresentationSync = () => {
                 : null;
             const userId = userDetails?.user_id;
 
-            const packageSessionId = await getPackageSessionId();
+            const packageSessionId = await resolvePackageSessionId();
 
             console.log("👤 [usePresentationSync] User ID found:", userId);
 

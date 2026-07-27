@@ -15,10 +15,9 @@ import { Upload, Trash2, Pencil } from 'lucide-react';
 import { MyInput } from '@/components/design-system/input';
 import PhoneInputField from '@/components/design-system/phone-input-field';
 import { Separator } from '@/components/ui/separator';
-import MultiSelectDropdown from '@/components/design-system/multiple-select-field';
+import { Badge } from '@/components/ui/badge';
 import { UserProfile } from '@/services/student-list-section/getAdminDetails';
 import useAdminLogoStore from '@/components/common/layout-container/sidebar/admin-logo-zustand';
-import { RoleType } from '@/constants/dummy-data';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { AxiosError } from 'axios';
@@ -255,19 +254,33 @@ const AdminProfile = ({ adminDetails }: { adminDetails: UserProfile }) => {
                                             )}
                                         />
 
-                                        <MultiSelectDropdown
-                                            form={form}
-                                            label="Role Type"
-                                            name="roleType"
-                                            options={RoleType.map((option, index) => ({
-                                                value: option.name,
-                                                label: option.name,
-                                                _id: index,
-                                            }))}
-                                            control={form.control}
-                                            className="flex w-full flex-col"
-                                            required
-                                        />
+                                        {/* Roles are read-only here — a user must not be able to
+                                            change their own roles from self-service profile editing
+                                            (that would allow granting themselves ADMIN). Role
+                                            management is done by an administrator elsewhere. */}
+                                        <div className="flex w-full flex-col gap-2">
+                                            <label className="text-base font-normal">Role Type</label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {adminDetails.roles?.length ? (
+                                                    adminDetails.roles.map((role, idx) => (
+                                                        <Badge
+                                                            key={idx}
+                                                            className="rounded-lg border border-neutral-300 bg-primary-50 px-2 py-1 font-normal text-neutral-600 shadow-none"
+                                                        >
+                                                            {role.role_name}
+                                                        </Badge>
+                                                    ))
+                                                ) : (
+                                                    <span className="text-sm text-neutral-400">
+                                                        No roles assigned
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-caption text-neutral-400">
+                                                Roles are managed by your institute administrator and
+                                                can&apos;t be changed here.
+                                            </p>
+                                        </div>
 
                                         <Separator />
                                         <h1 className="text-lg font-semibold">

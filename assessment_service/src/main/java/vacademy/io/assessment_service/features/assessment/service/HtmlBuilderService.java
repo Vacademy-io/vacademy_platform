@@ -1641,12 +1641,27 @@ public class HtmlBuilderService {
                 case "CODING": {
                     String language = responseData.path("language").asText("");
                     String verdict = responseData.path("verdict").asText("");
-                    int passed = responseData.path("passedCount").asInt(0);
-                    int totalCount = responseData.path("totalCount").asInt(0);
                     double score = responseData.path("score").asDouble(0.0);
+                    // Show the graded (hidden, else sample) test-case count.
+                    int hTotal = 0, hPassed = 0, sTotal = 0, sPassed = 0;
+                    JsonNode results = responseData.path("testCaseResults");
+                    if (results.isArray()) {
+                        for (JsonNode tc : results) {
+                            boolean visible = tc.path("visible").asBoolean(true);
+                            boolean testPassed = tc.path("passed").asBoolean(false);
+                            if (visible) { sTotal++; if (testPassed) sPassed++; }
+                            else { hTotal++; if (testPassed) hPassed++; }
+                        }
+                    }
+                    int gPassed = hTotal > 0 ? hPassed : sPassed;
+                    int gTotal = hTotal > 0 ? hTotal : sTotal;
+                    if (gTotal == 0) {
+                        gPassed = responseData.path("passedCount").asInt(0);
+                        gTotal = responseData.path("totalCount").asInt(0);
+                    }
                     String summary = (language.isEmpty() ? "" : language + " | ")
                             + (verdict.isEmpty() ? "" : verdict + " | ")
-                            + passed + "/" + totalCount + " tests"
+                            + gPassed + "/" + gTotal + " tests"
                             + " | score " + String.format(java.util.Locale.US, "%.2f", score);
                     String source = responseData.path("sourceCode").asText("");
                     if (source.isEmpty()) return List.of(summary);
@@ -1684,6 +1699,35 @@ public class HtmlBuilderService {
             long totalTimeMs = responseData.path("totalTimeMs").asLong(0);
             long peakMemoryKb = responseData.path("peakMemoryKb").asLong(0);
 
+            // Grading is based on the HIDDEN test cases (samples when no hidden
+            // exist). Compute the breakdown from the per-test results so the count
+            // is consistent with the UI regardless of when the attempt was scored.
+            int hiddenTotal = 0, hiddenPassed = 0, sampleTotal = 0, samplePassed = 0;
+            JsonNode testCaseResults = responseData.path("testCaseResults");
+            if (testCaseResults.isArray()) {
+                for (JsonNode tc : testCaseResults) {
+                    boolean visible = tc.path("visible").asBoolean(true);
+                    boolean testPassed = tc.path("passed").asBoolean(false);
+                    if (visible) {
+                        sampleTotal++;
+                        if (testPassed) samplePassed++;
+                    } else {
+                        hiddenTotal++;
+                        if (testPassed) hiddenPassed++;
+                    }
+                }
+            }
+            boolean hasHidden = hiddenTotal > 0;
+            int gradedPassed = hasHidden ? hiddenPassed : samplePassed;
+            int gradedTotal = hasHidden ? hiddenTotal : sampleTotal;
+            String gradedLabel = hasHidden ? "hidden" : "sample";
+            // Legacy fallback: no per-test breakdown available, use stored counts.
+            if (gradedTotal == 0 && totalCount > 0) {
+                gradedPassed = passed;
+                gradedTotal = totalCount;
+                gradedLabel = "graded";
+            }
+
             // Pull allowed limits from correct_options.data.perRunLimits so we
             // can render measured-vs-allowed alongside the runtime metrics.
             Long allowedTimeMs = null;
@@ -1712,9 +1756,21 @@ public class HtmlBuilderService {
             html.append("<td style=\"color: ").append(summaryColor).append(";\">");
             if (!language.isEmpty()) html.append(escapeHtml(language)).append(" | ");
             if (!verdict.isEmpty()) html.append(escapeHtml(verdict)).append(" | ");
-            html.append(passed).append("/").append(totalCount).append(" tests | score ")
+            html.append(gradedPassed).append("/").append(gradedTotal).append(" tests | score ")
                     .append(String.format(java.util.Locale.US, "%.2f", score));
             html.append("</td></tr></table>");
+
+            // Test cases passed breakdown row (graded set = hidden, else samples).
+            if (gradedTotal > 0) {
+                html.append("<table style=\"font-size: 11px; margin-bottom: 4px; color: #555;\"><tr>");
+                html.append("<td style=\"width: 120px;\"></td><td>");
+                html.append("<b>Test cases passed:</b> ").append(gradedPassed).append("/").append(gradedTotal)
+                        .append(" (").append(gradedLabel).append(")");
+                if (hasHidden && sampleTotal > 0) {
+                    html.append(" &nbsp; <b>Sample:</b> ").append(samplePassed).append("/").append(sampleTotal);
+                }
+                html.append("</td></tr></table>");
+            }
 
             // Measured-vs-allowed runtime metrics row.
             boolean hasMeasured = totalTimeMs > 0 || peakMemoryKb > 0;

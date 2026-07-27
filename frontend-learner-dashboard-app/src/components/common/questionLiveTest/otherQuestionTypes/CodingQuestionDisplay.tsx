@@ -166,10 +166,16 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
             let errored = false;
             let timedOut = false;
             for (const tc of tests) {
-                const r = await runTestCase(code, language, tc.stdin, effectiveAccepted(tc), {
-                    cpuSeconds,
-                    memoryKb,
-                });
+                const r = await runTestCase(
+                    code,
+                    language,
+                    tc.stdin,
+                    effectiveAccepted(tc),
+                    { cpuSeconds, memoryKb },
+                    // Hidden tests are served with hashed expected outputs; grade
+                    // by hashing the learner's output and comparing digests.
+                    tc.outputsHashed ?? false,
+                );
                 fresh.push({
                     id: tc.id,
                     label: tc.label,
@@ -187,19 +193,27 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
                 if (r.error) errored = true;
                 if (r.error && r.error.toUpperCase().includes("TIMEOUT")) timedOut = true;
             }
-            const passed = fresh.filter((r) => r.passed).length;
-            const v = computeVerdict(passed, tests.length, errored, timedOut);
+            const passedAll = fresh.filter((r) => r.passed).length;
+            const v = computeVerdict(passedAll, tests.length, errored, timedOut);
             setResults(fresh);
             setVerdict(v);
             if (persist) {
                 const maxPoints = config.maxPoints ?? 10;
-                const score = tests.length > 0 ? (passed / tests.length) * maxPoints : 0;
+                // Score is based on the HIDDEN test cases (falling back to samples
+                // when no hidden tests exist), mirroring the server-side coding
+                // marking strategy so the learner sees the score they'll be awarded.
+                const hidden = fresh.filter((r) => r.visible === false);
+                const scoringSet =
+                    hidden.length > 0 ? hidden : fresh.filter((r) => r.visible === true);
+                const scoredPassed = scoringSet.filter((r) => r.passed).length;
+                const scoredTotal = scoringSet.length;
+                const score = scoredTotal > 0 ? (scoredPassed / scoredTotal) * maxPoints : 0;
                 setCodingAnswer(questionId, {
                     language,
                     sourceCode: code,
                     verdict: v,
-                    passedCount: passed,
-                    totalCount: tests.length,
+                    passedCount: scoredPassed,
+                    totalCount: scoredTotal,
                     score,
                     totalTimeMs: totalTime,
                     peakMemoryKb: peakMemory,
@@ -207,7 +221,7 @@ export function CodingQuestionDisplay({ questionId, attemptId, config }: Props) 
                     pasteAttemptCount: existingAnswer?.pasteAttemptCount ?? 0,
                 });
             }
-            return { fresh, passed, total: tests.length, verdict: v };
+            return { fresh, passed: passedAll, total: tests.length, verdict: v };
         },
         [
             code,

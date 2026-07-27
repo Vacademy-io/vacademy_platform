@@ -3,7 +3,7 @@ import { EnrollStudentsButton } from '../../../../../../components/common/studen
 import { useRouter } from '@tanstack/react-router';
 import { BulkDialogProvider } from '../../../-providers/bulk-dialog-provider';
 import { MyDialog } from '@/components/design-system/dialog';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DropdownItemType } from '@/components/common/students/enroll-manually/dropdownTypesForPackageItems';
 import { useGetBatchesQuery } from '@/routes/manage-institute/batches/-services/get-batches';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -12,7 +12,16 @@ import { InviteLink } from '@/routes/manage-students/-components/InviteLink';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { NoCourseDialog } from '@/components/common/students/no-course-dialog';
 import { cn } from '@/lib/utils';
-import { UserPlus, ArrowRight, Users, GraduationCap, Calendar } from '@phosphor-icons/react';
+import { UserPlus, ArrowRight, Users, GraduationCap, Calendar, LinkSimple } from '@phosphor-icons/react';
+import { getDisplaySettingsFromCache, DISPLAY_SETTINGS_UPDATED_EVENT } from '@/services/display-settings';
+import { getActiveRoleDisplaySettingsKey } from '@/lib/auth/instituteUtils';
+import type { StudentHeaderCustomButton } from '@/types/display-settings';
+import { useQuery } from '@tanstack/react-query';
+import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
+import { getInstituteId } from '@/constants/helper';
+import { GET_INVITE_LINKS, GET_DEFAULT_INVITE } from '@/constants/urls';
+import createInviteLink from '@/routes/manage-students/invite/-utils/createInviteLink';
+import { isCallerSubOrgAdmin } from '@/lib/auth/facultyAccessUtils';
 import { getTerminology, getTerminologyPlural } from '@/components/common/layout-container/sidebar/utils';
 import { RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import CreateInvite from '@/routes/manage-students/invite/-components/create-invite/CreateInvite';
@@ -218,6 +227,116 @@ export const StudentListHeader = ({
     const [isOpen, setIsOpen] = useState(false);
     const { isCompact } = useCompactMode();
 
+    // Re-read display settings live when they're saved from the Settings panel,
+    // so hiding a built-in button / adding a custom button reflects here without
+    // a page reload (saveDisplaySettings fires this after writing the cache).
+    const [, bumpSettings] = useState(0);
+    useEffect(() => {
+        const onUpdate = () => bumpSettings((v) => v + 1);
+        window.addEventListener(DISPLAY_SETTINGS_UPDATED_EVENT, onUpdate);
+        return () => window.removeEventListener(DISPLAY_SETTINGS_UPDATED_EVENT, onUpdate);
+    }, []);
+
+    // Per-role Display Settings → "Learner Management Buttons": hide the built-in
+    // Enroll / Invite buttons and surface custom link buttons (manual URL, the
+    // sub-org learner invite link, or the course learner invite link) in this header.
+    const actionSettings = getDisplaySettingsFromCache(
+        getActiveRoleDisplaySettingsKey()
+    )?.studentManagementActions;
+    const showEnrollButton = actionSettings?.showEnrollButton !== false;
+    const showInviteButton = actionSettings?.showInviteButton !== false;
+    const rawButtons = actionSettings?.customButtons ?? [];
+
+    const needsSubOrgInvite = rawButtons.some((b) => b.kind === 'suborg_learner_invite');
+    const needsCourseInvite = rawButtons.some((b) => b.kind === 'course_invite');
+
+    // Is the viewer a sub-org admin? Use the faculty-access signal (has any
+    // sub-orgs) rather than the localStorage "selected sub-org" — that key is
+    // cleared on login and only re-set when a sub-org is explicitly picked, so a
+    // legitimately-logged-in sub-org admin often has it null, which wrongly hid
+    // the sub-org invite button. False for the parent institute admin, so the
+    // button stays hidden there. The get-enroll-invite query below is FSPSSM-
+    // scoped to the caller, so it still resolves only THIS admin's own invite.
+    const isSubOrgAdmin = isCallerSubOrgAdmin();
+    const instituteId = getInstituteId();
+    const learnerBase = instituteDetails?.learner_portal_base_url;
+
+    // The sub-org's SUBORG_LEARNER invite for the viewed course. get-enroll-invite
+    // is FSPSSM-scoped to the caller, so for a sub-org admin `tags:['SUBORG_LEARNER']`
+    // returns only THEIR sub-org's learner invite for this package session — a
+    // learner who enrolls through it lands in the sub-org admin's learner list.
+    const { data: subOrgInviteCode } = useQuery({
+        queryKey: ['suborg-learner-invite-code', packageSessionId, instituteId],
+        queryFn: async (): Promise<string | null> => {
+            const res = await authenticatedAxiosInstance.post(
+                `${GET_INVITE_LINKS}?instituteId=${instituteId}&pageNo=0&pageSize=20`,
+                {
+                    search_name: '',
+                    package_session_ids: [packageSessionId],
+                    payment_option_ids: [],
+                    sort_columns: {},
+                    tags: ['SUBORG_LEARNER'],
+                }
+            );
+            const row = (res.data?.content ?? [])[0] as
+                | { invite_code?: string; inviteCode?: string }
+                | undefined;
+            return row?.invite_code ?? row?.inviteCode ?? null;
+        },
+        enabled: needsSubOrgInvite && !!packageSessionId && isSubOrgAdmin && !!instituteId,
+        staleTime: 5 * 60 * 1000,
+    });
+
+    // The course's DEFAULT learner invite for the viewed package session.
+    const { data: courseInviteCode } = useQuery({
+        queryKey: ['course-default-invite-code', packageSessionId, instituteId],
+        queryFn: async (): Promise<string | null> => {
+            const res = await authenticatedAxiosInstance.get(
+                GET_DEFAULT_INVITE(instituteId ?? '', packageSessionId ?? '')
+            );
+            const d = (res.data ?? {}) as { invite_code?: string; inviteCode?: string };
+            return d.invite_code ?? d.inviteCode ?? null;
+        },
+        enabled: needsCourseInvite && !!packageSessionId && !!instituteId,
+        staleTime: 5 * 60 * 1000,
+        retry: false,
+    });
+
+    // Resolve each configured button to a concrete href; drop the ones that can't
+    // resolve in this context (missing label/URL, or an auto invite that has no
+    // sub-org / package session / matching invite here).
+    const resolveHref = (button: StudentHeaderCustomButton): string | null => {
+        const kind = button.kind ?? 'url';
+        if (kind === 'url') return button.url?.trim() || null;
+        if (kind === 'suborg_learner_invite') {
+            if (!isSubOrgAdmin || !packageSessionId || !subOrgInviteCode) return null;
+            return createInviteLink(subOrgInviteCode, learnerBase);
+        }
+        if (kind === 'course_invite') {
+            if (!packageSessionId || !courseInviteCode) return null;
+            return createInviteLink(courseInviteCode, learnerBase);
+        }
+        return null;
+    };
+
+    type ResolvedButton = { id: string; label: string; href: string; openInNewTab?: boolean };
+    const resolvedButtons: ResolvedButton[] = rawButtons
+        .map((button): ResolvedButton | null => {
+            const label = button.label?.trim();
+            const href = resolveHref(button);
+            if (!label || !href) return null;
+            return { id: button.id, label, href, openInNewTab: button.openInNewTab };
+        })
+        .filter((b): b is ResolvedButton => b !== null);
+
+    const openCustomLink = (href: string, openInNewTab?: boolean) => {
+        if (openInNewTab === false) {
+            window.location.href = href;
+        } else {
+            window.open(href, '_blank', 'noopener,noreferrer');
+        }
+    };
+
     const handleOpenChange = () => {
         setOpenInviteLinksDialog(!openInviteLinksDialog);
     };
@@ -256,20 +375,42 @@ export const StudentListHeader = ({
             </div>
 
             {/* Compact professional action buttons */}
-            <div className="flex items-center gap-1.5">
-                <MyButton
-                    onClick={() => setOpenInviteLinksDialog(true)}
-                    scale="small"
-                    buttonType="secondary"
-                    className={cn(
-                        "group flex items-center gap-1 border border-blue-200 bg-white text-blue-700 transition-all duration-200 hover:scale-100 hover:border-blue-300 hover:bg-blue-50",
-                        isCompact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-xs"
-                    )}
-                >
-                    <UserPlus className={cn("transition-transform duration-200 group-hover:scale-110", isCompact ? "size-2.5" : "size-3")} />
-                    <span className="hidden sm:inline">Invite</span>
-                </MyButton>
+            <div className="flex flex-wrap items-center gap-1.5">
+                {resolvedButtons.map((button) => (
+                    <button
+                        key={button.id}
+                        type="button"
+                        onClick={() => openCustomLink(button.href, button.openInNewTab)}
+                        title={button.label}
+                        className={cn(
+                            "hover:bg-primary-600 group inline-flex items-center gap-2 rounded-lg bg-primary-500 font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
+                            isCompact ? "px-3 py-2 text-sm" : "px-5 py-2.5 text-sm"
+                        )}
+                    >
+                        <LinkSimple
+                            weight="bold"
+                            className={cn("shrink-0", isCompact ? "size-4" : "size-5")}
+                        />
+                        <span>{button.label}</span>
+                    </button>
+                ))}
 
+                {showInviteButton && (
+                    <MyButton
+                        onClick={() => setOpenInviteLinksDialog(true)}
+                        scale="small"
+                        buttonType="secondary"
+                        className={cn(
+                            "group flex items-center gap-1 border border-blue-200 bg-white text-blue-700 transition-all duration-200 hover:scale-100 hover:border-blue-300 hover:bg-blue-50",
+                            isCompact ? "px-2 py-0.5 text-[10px]" : "px-2.5 py-1 text-xs"
+                        )}
+                    >
+                        <UserPlus className={cn("transition-transform duration-200 group-hover:scale-110", isCompact ? "size-2.5" : "size-3")} />
+                        <span className="hidden sm:inline">Invite</span>
+                    </MyButton>
+                )}
+
+                {showEnrollButton && (
                 <BulkDialogProvider>
                     {!instituteDetails?.batches_for_sessions.length ? (
                         <NoCourseDialog
@@ -294,6 +435,7 @@ export const StudentListHeader = ({
                         <EnrollStudentsButton initialPackageSessionId={packageSessionId} />
                     )}
                 </BulkDialogProvider>
+                )}
             </div>
 
             <InviteLinksDialog

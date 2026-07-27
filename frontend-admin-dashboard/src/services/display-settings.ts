@@ -277,7 +277,8 @@ function mergeDisplayWithDefaults(
                 { id: 'ASSESSMENT', order: 5, visible: true },
                 { id: 'PLANNING', order: 6, visible: false },
                 { id: 'ACTIVITY', order: 7, visible: false },
-                { id: 'SETTINGS', order: 8, visible: false },
+                { id: 'REPORTS', order: 8, visible: true },
+                { id: 'SETTINGS', order: 9, visible: false },
             ],
             defaultTab: 'OUTLINE' as const,
         };
@@ -586,6 +587,29 @@ function mergeDisplayWithDefaults(
         showApprovalToggle:
             incoming?.learnerManagement?.showApprovalToggle ??
             defLearnerManagement.showApprovalToggle,
+    };
+
+    // Learner Management header action buttons (hide Enroll/Invite per role +
+    // custom link buttons). Must be an explicit pass-through here or the fields
+    // are dropped on read/cache-write.
+    const defStudentActions = defaults.studentManagementActions || {
+        showEnrollButton: true,
+        showInviteButton: true,
+        customButtons: [],
+    };
+    merged.studentManagementActions = {
+        showEnrollButton:
+            incoming?.studentManagementActions?.showEnrollButton ??
+            defStudentActions.showEnrollButton ??
+            true,
+        showInviteButton:
+            incoming?.studentManagementActions?.showInviteButton ??
+            defStudentActions.showInviteButton ??
+            true,
+        customButtons:
+            incoming?.studentManagementActions?.customButtons ??
+            defStudentActions.customButtons ??
+            [],
     };
 
     // Learner-list column visibility (per-role overlay). Passes through whatever
@@ -1000,6 +1024,37 @@ export function resolveEffectivePostLoginRoute(
     const candidateCatCfg = cats.find((c) => c.id === candidateCategory);
     const candidateVisible = candidateCatCfg ? candidateCatCfg.visible !== false : true;
     if (candidateVisible) return candidate;
+
+    // The candidate's primary (built-in) tab lives in a hidden category — but the
+    // loop above stops at the FIRST path match, so a route can look "hidden" even
+    // when an admin has deliberately re-surfaced that exact path as a custom tab
+    // in a DIFFERENT, visible category (e.g. hiding CRM's Dashboard but adding a
+    // custom /dashboard tab under LMS). If any visible tab in a visible category
+    // resolves to this route, it is genuinely reachable — keep it rather than
+    // redirecting the user away from their own custom link.
+    //
+    // Uses a path-boundary match (exact or `<route>/…`), NOT a loose
+    // `startsWith`, and ignores the non-specific '/' route that custom tabs get
+    // by default — otherwise a visible custom tab left on '/' would match every
+    // candidate and suppress the intended hidden-category redirect entirely.
+    const routeSurfacesCandidate = (r?: string): boolean => {
+        if (!r || r === '/') return false;
+        return candidate === r || candidate.startsWith(r.endsWith('/') ? r : `${r}/`);
+    };
+    const reachableViaVisibleTab = ds.sidebar.some((t) => {
+        if (t.visible === false) return false;
+        const base = SidebarItemsData.find((i) => i.id === t.id);
+        const cat = tabCategory(t.id, t.category as CategoryId | undefined);
+        const catCfg = cats.find((c) => c.id === cat);
+        if (catCfg && catCfg.visible === false) return false;
+        if (routeSurfacesCandidate(t.route || base?.to)) return true;
+        const subRoutes: string[] = [
+            ...(t.subTabs || []).map((s) => s.route),
+            ...(base?.subItems || []).map((s) => s.subItemLink || ''),
+        ].filter(Boolean) as string[];
+        return subRoutes.some((r) => routeSurfacesCandidate(r));
+    });
+    if (reachableViaVisibleTab) return candidate;
 
     // Candidate lands in a hidden category — pick the default visible one.
     const sortedCats = cats.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useEnquiryForm } from '../../-hooks/useEnquiryForm';
 import { defaultEnquiryFormValues, EnquiryForm } from '../../-schema/EnquirySchema';
@@ -7,7 +7,9 @@ import { useInstituteDetailsStore } from '@/stores/students/students-list/useIns
 import { MyButton } from '@/components/design-system/button';
 import CampaignTypeDropdown from '@/routes/audience-manager/list/-components/create-campaign-dialog/CampaignTypeDropdown';
 import StatusDropdown from '@/routes/audience-manager/list/-components/create-campaign-dialog/StatusDropdown';
-import MultiEmailInput from '@/routes/audience-manager/list/-components/audience-invite/components/MultiEmailInput';
+import MultiEmailInput, {
+    MultiEmailInputHandle,
+} from '@/routes/audience-manager/list/-components/audience-invite/components/MultiEmailInput';
 import EnquiryCustomFieldsCard from './EnquiryCustomFieldsCard';
 import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -137,6 +139,7 @@ interface CreateEnquiryFormProps {
 export const CreateEnquiryForm: React.FC<CreateEnquiryFormProps> = ({ onSuccess }) => {
     const { instituteDetails } = useInstituteDetailsStore();
     const [emails, setEmails] = useState<string[]>([]);
+    const multiEmailRef = useRef<MultiEmailInputHandle>(null);
     const [enableSettings, setEnableSettings] = useState(false);
 
     const { form, handleSubmit, handleReset, isSubmitting } = useEnquiryForm();
@@ -325,6 +328,11 @@ export const CreateEnquiryForm: React.FC<CreateEnquiryFormProps> = ({ onSuccess 
             return;
         }
 
+        // Flush any half-typed email in the Team Notifications box into the
+        // committed list before building the payload. Returns the final list
+        // synchronously so we don't depend on React state having re-rendered.
+        const notifyEmails = multiEmailRef.current?.flush() ?? emails;
+
         // Build settings JSON from counsellor settings only if enabled
         const settingsJson =
             enableSettings && data.counsellor_settings
@@ -341,7 +349,7 @@ export const CreateEnquiryForm: React.FC<CreateEnquiryFormProps> = ({ onSuccess 
             description: data.description?.trim() || '',
             campaign_objective: data.campaign_objective?.trim() || '',
             session_id: data.session_id,
-            to_notify: emails.join(', '),
+            to_notify: notifyEmails.join(', '),
             send_respondent_email: Boolean(data.send_respondent_email),
             json_web_metadata: settingsJson,
             start_date_local: formatDateTimeForPayload(data.start_date_local, false),
@@ -490,6 +498,7 @@ export const CreateEnquiryForm: React.FC<CreateEnquiryFormProps> = ({ onSuccess 
                     </TooltipProvider>
                 </div>
                 <MultiEmailInput
+                    ref={multiEmailRef}
                     value={emails}
                     onChange={setEmails}
                     placeholder="Enter email addresses"

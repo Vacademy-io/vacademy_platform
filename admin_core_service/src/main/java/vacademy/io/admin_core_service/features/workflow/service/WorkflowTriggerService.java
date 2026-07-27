@@ -31,6 +31,9 @@ public class WorkflowTriggerService {
     private IdempotencyService idempotencyService;
 
     @Autowired
+    private vacademy.io.admin_core_service.features.workflow.repository.WorkflowNodeMappingRepository workflowNodeMappingRepository;
+
+    @Autowired
     private vacademy.io.admin_core_service.features.workflow.service.idempotency.IdempotencyStrategyFactory idempotencyStrategyFactory;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -234,6 +237,73 @@ public class WorkflowTriggerService {
 
         log.info("---- Workflow Trigger Event END ----");
         return response;
+    }
+
+    /**
+     * Resolve which triggers would fire for an event, applying the SAME precedence rules as
+     * {@link #handleTriggerEvents}: specific (eventId) triggers take priority over global
+     * (eventId IS NULL) ones, and pool-scoped triggers (contextData['poolId']) stack on top.
+     * Read-only; kept quiet (no dispatch logging). If the precedence in handleTriggerEvents
+     * ever changes, update this in lockstep.
+     */
+    private List<WorkflowTrigger> resolveTriggers(String eventName, String eventId, String instituteId,
+            Map<String, Object> contextData) {
+        List<String> activeStatuses = List.of(StatusEnum.ACTIVE.name());
+        List<WorkflowTrigger> triggers;
+
+        if (eventId != null && !eventId.isEmpty()) {
+            triggers = workflowTriggerRepository.findSpecificTriggers(instituteId, eventId, eventName, activeStatuses);
+            if (triggers.isEmpty()) {
+                triggers = workflowTriggerRepository.findGlobalTriggers(instituteId, eventName, activeStatuses);
+            }
+        } else {
+            triggers = workflowTriggerRepository.findGlobalTriggers(instituteId, eventName, activeStatuses);
+        }
+
+        Object poolIdObj = contextData == null ? null : contextData.get("poolId");
+        if (poolIdObj != null && !poolIdObj.toString().isBlank()) {
+            String poolId = poolIdObj.toString();
+            List<WorkflowTrigger> poolTriggers = workflowTriggerRepository
+                    .findSpecificTriggers(instituteId, poolId, eventName, activeStatuses);
+            if (!poolTriggers.isEmpty()) {
+                java.util.Set<String> seen = new java.util.HashSet<>();
+                for (WorkflowTrigger t : triggers) {
+                    seen.add(t.getId());
+                }
+                triggers = new java.util.ArrayList<>(triggers);
+                for (WorkflowTrigger pt : poolTriggers) {
+                    if (seen.add(pt.getId())) {
+                        triggers.add(pt);
+                    }
+                }
+            }
+        }
+        return triggers;
+    }
+
+    /**
+     * True if the workflow(s) that fire for this event already send the admin-notification
+     * email (a SEND_EMAIL node bound to {@code adminEmailRequests}). Callers that also carry
+     * a to_notify admin list (e.g. the audience submit paths) use this to decide whether they
+     * must send that admin alert directly — the direct send only runs when this returns false,
+     * so audiences whose workflow already includes an admin-notify node are not double-emailed.
+     */
+    @Transactional(readOnly = true)
+    public boolean anyResolvedWorkflowSendsAdminEmail(String eventName, String eventId, String instituteId,
+            Map<String, Object> contextData) {
+        List<WorkflowTrigger> triggers = resolveTriggers(eventName, eventId, instituteId, contextData);
+        if (triggers == null || triggers.isEmpty()) {
+            return false;
+        }
+        List<String> workflowIds = triggers.stream()
+                .map(t -> t.getWorkflow() == null ? null : t.getWorkflow().getId())
+                .filter(java.util.Objects::nonNull)
+                .distinct()
+                .collect(java.util.stream.Collectors.toList());
+        if (workflowIds.isEmpty()) {
+            return false;
+        }
+        return workflowNodeMappingRepository.existsAdminEmailNodeInWorkflows(workflowIds);
     }
 
     public Optional<WorkflowTrigger> findByInstituteIdEventNameAndEventId(String instituteId, String eventName,

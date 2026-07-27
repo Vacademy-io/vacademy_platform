@@ -37,8 +37,11 @@ import {
     Sparkle,
     Eye,
     ArrowClockwise,
+    CalendarBlank,
+    CaretDown,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import dayjs from 'dayjs';
 
 // All v2 report modules — batch runs always include everything.
 const ALL_MODULES = [
@@ -92,7 +95,17 @@ interface StudentRow {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export default function BatchAiAnalysis() {
+interface BatchAiAnalysisProps {
+    /**
+     * When rendered inside a batch-scoped surface (e.g. Course Details → Reports),
+     * the batch is already known — the course/session/level picker is hidden and
+     * reports are generated for the learners of this package session.
+     */
+    fixedPackageSessionId?: string;
+}
+
+export default function BatchAiAnalysis({ fixedPackageSessionId }: BatchAiAnalysisProps = {}) {
+    const isBatchFixed = Boolean(fixedPackageSessionId);
     const { getCourseFromPackage, getSessionFromPackage, getLevelsFromPackage2, getPackageSessionId } =
         useInstituteDetailsStore();
     const { setPacageSessionId } = usePacageDetails();
@@ -105,6 +118,8 @@ export default function BatchAiAnalysis() {
     const [rows, setRows] = useState<StudentRow[]>([]);
     const [running, setRunning] = useState(false);
     const [preparing, setPreparing] = useState(false);
+    // Fixed-batch mode: keep the date filter collapsed behind a one-line summary.
+    const [showDateFilter, setShowDateFilter] = useState(false);
     const stopRef = useRef(false);
 
     // Report viewer
@@ -126,14 +141,39 @@ export default function BatchAiAnalysis() {
         formState: { errors },
     } = useForm<FormValues>({
         resolver: zodResolver(formSchema),
-        defaultValues: { course: '', session: '', level: '', startDate: '', endDate: '' },
+        defaultValues: {
+            // In fixed-batch mode the picker is hidden; seed the three fields so the
+            // schema's "required" checks pass — only the date range is user-supplied.
+            course: fixedPackageSessionId ?? '',
+            session: fixedPackageSessionId ?? '',
+            level: fixedPackageSessionId ?? '',
+            startDate: '',
+            endDate: '',
+        },
     });
 
     const selectedCourse = watch('course');
     const selectedSession = watch('session');
     const selectedLevel = watch('level');
+    const startDate = watch('startDate');
+    const endDate = watch('endDate');
+
+    const handleDateRangeChange = (res: { startDate: string; endDate: string } | null) => {
+        if (res) {
+            const [sDay, sMonth, sYear] = res.startDate.split('/');
+            const [eDay, eMonth, eYear] = res.endDate.split('/');
+            setValue('startDate', `${sYear}-${sMonth}-${sDay}`);
+            setValue('endDate', `${eYear}-${eMonth}-${eDay}`);
+            clearErrors('startDate');
+            clearErrors('endDate');
+        } else {
+            setValue('startDate', '');
+            setValue('endDate', '');
+        }
+    };
 
     useEffect(() => {
+        if (isBatchFixed) return;
         if (selectedCourse) {
             setSessionList(getSessionFromPackage({ courseId: selectedCourse }));
             setValue('session', '');
@@ -143,6 +183,7 @@ export default function BatchAiAnalysis() {
     }, [selectedCourse]);
 
     useEffect(() => {
+        if (isBatchFixed) return;
         if (selectedSession === '') {
             setValue('level', '');
             setLevelList([]);
@@ -157,6 +198,7 @@ export default function BatchAiAnalysis() {
     }, [selectedSession]);
 
     useEffect(() => {
+        if (isBatchFixed) return;
         if (sessionList?.length === 1 && sessionList[0]?.id === 'DEFAULT') {
             setValue('session', 'DEFAULT');
             setValue('level', 'DEFAULT');
@@ -291,11 +333,13 @@ export default function BatchAiAnalysis() {
 
     const onSubmit = async (data: FormValues) => {
         const packageSessionId =
+            fixedPackageSessionId ||
             getPackageSessionId({
                 courseId: data.course || '',
                 sessionId: data.session || '',
                 levelId: data.level || '',
-            }) || '';
+            }) ||
+            '';
 
         if (!packageSessionId) {
             toast.error('Could not resolve the selected batch. Check course / session / level.');
@@ -333,11 +377,13 @@ export default function BatchAiAnalysis() {
         // We need the last-used dates + package session; re-read from the form.
         const values = watch();
         const packageSessionId =
+            fixedPackageSessionId ||
             getPackageSessionId({
                 courseId: values.course || '',
                 sessionId: values.session || '',
                 levelId: values.level || '',
-            }) || '';
+            }) ||
+            '';
         if (!packageSessionId || !values.startDate || !values.endDate) {
             toast.error('Re-select the batch and date range to retry.');
             return;
@@ -371,10 +417,11 @@ export default function BatchAiAnalysis() {
                 <div className="mb-3 flex items-center gap-2">
                     <Sparkle size={18} className="text-primary-500" weight="fill" />
                     <p className="text-sm font-medium text-neutral-700">
-                        Generate an AI report for every active learner in a batch.
+                        Generate an AI report for every active learner in this batch.
                     </p>
                 </div>
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                    {!isBatchFixed && (
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                         <div>
                             <label className="mb-1 block text-xs font-medium text-neutral-700">
@@ -448,36 +495,76 @@ export default function BatchAiAnalysis() {
                             </div>
                         )}
                     </div>
+                    )}
 
-                    <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-end">
-                        <div className="flex-1">
-                            <DateRangeFilter
-                                onChange={(res) => {
-                                    if (res) {
-                                        const [sDay, sMonth, sYear] = res.startDate.split('/');
-                                        const [eDay, eMonth, eYear] = res.endDate.split('/');
-                                        setValue('startDate', `${sYear}-${sMonth}-${sDay}`);
-                                        setValue('endDate', `${eYear}-${eMonth}-${eDay}`);
-                                        clearErrors('startDate');
-                                        clearErrors('endDate');
-                                    } else {
-                                        setValue('startDate', '');
-                                        setValue('endDate', '');
-                                    }
-                                }}
-                            />
+                    {isBatchFixed ? (
+                        <div className="space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <CalendarBlank className="size-4 text-neutral-400" />
+                                    <span className="text-caption text-neutral-500">Range:</span>
+                                    <span className="text-body font-medium text-neutral-700">
+                                        {startDate && endDate
+                                            ? `${dayjs(startDate).format('DD MMM YYYY')} — ${dayjs(endDate).format('DD MMM YYYY')}`
+                                            : 'Last 7 days'}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowDateFilter((open) => !open)}
+                                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-caption font-medium text-primary-500 hover:bg-primary-50"
+                                    >
+                                        {showDateFilter ? 'Hide' : 'Change'}
+                                        <CaretDown
+                                            className={cn(
+                                                'size-3 transition-transform',
+                                                showDateFilter && 'rotate-180'
+                                            )}
+                                        />
+                                    </button>
+                                </div>
+                                <MyButton
+                                    type="submit"
+                                    buttonType="primary"
+                                    className="h-9 px-4 text-body font-medium"
+                                    disabled={running || preparing}
+                                >
+                                    {preparing
+                                        ? 'Loading learners…'
+                                        : running
+                                          ? 'Generating…'
+                                          : 'Generate AI Reports'}
+                                </MyButton>
+                            </div>
+                            {/* Kept mounted (only visually hidden) so DateRangeFilter's
+                                "7 Days" default still seeds the form on first render. */}
+                            <div className={cn(!showDateFilter && 'hidden')}>
+                                <DateRangeFilter
+                                    defaultFilter="7 Days"
+                                    onChange={handleDateRangeChange}
+                                />
+                            </div>
                         </div>
-                        <div className="sm:mb-1">
-                            <MyButton
-                                type="submit"
-                                buttonType="primary"
-                                className="h-9 px-4 text-sm font-medium"
-                                disabled={running || preparing}
-                            >
-                                {preparing ? 'Loading learners…' : running ? 'Generating…' : 'Generate AI Reports'}
-                            </MyButton>
+                    ) : (
+                        <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-end">
+                            <div className="flex-1">
+                                <DateRangeFilter onChange={handleDateRangeChange} />
+                            </div>
+                            <div className="sm:mb-1">
+                                <MyButton
+                                    type="submit"
+                                    buttonType="primary"
+                                    className="h-9 px-4 text-sm font-medium"
+                                    disabled={running || preparing}
+                                >
+                                    {preparing
+                                        ? 'Loading learners…'
+                                        : running
+                                          ? 'Generating…'
+                                          : 'Generate AI Reports'}
+                                </MyButton>
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {Object.keys(errors).length > 0 && (
                         <div className="rounded-md border border-danger-200 bg-danger-50 p-3">

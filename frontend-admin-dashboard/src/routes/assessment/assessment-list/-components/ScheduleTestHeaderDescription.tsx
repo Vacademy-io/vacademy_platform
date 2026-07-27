@@ -3,6 +3,8 @@ import { MyButton } from '@/components/design-system/button';
 import { CalendarBlank } from '@phosphor-icons/react';
 import { useNavigate } from '@tanstack/react-router';
 import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
+import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
+import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { Examination, Mock, Practice, Survey } from '@/svgs';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { cn } from '@/lib/utils';
@@ -51,7 +53,12 @@ export const ScheduleTestHeaderDescription = ({
                     testing process from start to finish.
                 </p>
             </div>
-            <Dialog>
+            <div className="flex items-center gap-2">
+                <SettingsQuickAccessButton
+                    settingsKey={SettingsTabs.Assessment}
+                    label="Assessment settings"
+                />
+                <Dialog>
                 <DialogTrigger
                     disabled={getCourseFromPackage().length === 0}
                     className={cn(
@@ -123,7 +130,8 @@ export const ScheduleTestHeaderDescription = ({
                         </div>
                     </div>
                 </DialogContent>
-            </Dialog>
+                </Dialog>
+            </div>
         </div>
     );
 };

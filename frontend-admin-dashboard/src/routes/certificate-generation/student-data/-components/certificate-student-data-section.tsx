@@ -8,6 +8,8 @@ import { CertificateGenerationSession } from '@/types/certificate/certificate-ty
 import { StudentDataStep } from './student-data-step/student-data-step';
 import { PdfAnnotationStep } from './pdf-annotation-step/pdf-annotation-step';
 import { MyButton } from '@/components/design-system/button';
+import { SettingsQuickAccessButton } from '@/components/settings/quick-access/SettingsQuickAccessButton';
+import { SettingsTabs } from '@/routes/settings/-constants/terms';
 import { ArrowLeft, Certificate, FileText } from '@phosphor-icons/react';
 import { useRouter } from '@tanstack/react-router';
 import { cn } from '@/lib/utils';
@@ -149,6 +151,10 @@ export const CertificateStudentDataSection = () => {
                             </div>
                         </div>
                     </div>
+                    <SettingsQuickAccessButton
+                        settingsKey={SettingsTabs.Certificates}
+                        label="Certificate settings"
+                    />
                 </div>
 
                 {/* Step Navigation */}

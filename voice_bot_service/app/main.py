@@ -377,7 +377,9 @@ async def ws_endpoint(websocket: WebSocket):
 
         # Context BEFORE the pipeline — a call without persona/lead must not proceed.
         try:
+            _t0 = __import__("time").time()
             context = await admin_core.get_call_context(corr, agent)
+            logger.info("setup timing corr=%s ctx_fetch=%.2fs", corr, __import__("time").time() - _t0)
         except Exception:
             logger.exception("ws: context fetch failed corr=%s — closing", corr)
             await websocket.close()

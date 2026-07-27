@@ -79,6 +79,10 @@ export const TRANSLATION_STATUS_URL = `${BASE_URL}/admin-core-service/translatio
 export const TRANSLATION_ITEMS_URL = `${BASE_URL}/admin-core-service/translations/v1/items`;
 export const TRANSLATION_ITEM_STATE_URL = `${BASE_URL}/admin-core-service/translations/v1/item/state`;
 
+export const COURSE_PULSE_SUMMARY = `${BASE_URL}/admin-core-service/course-pulse/summary`;
+export const COURSE_PULSE_CONTENT_MAP = `${BASE_URL}/admin-core-service/course-pulse/content-map`;
+export const COURSE_PULSE_FEED = `${BASE_URL}/admin-core-service/course-pulse/feed`;
+
 // Institute AI Settings APIs
 export const GET_INSTITUTE_AI_SETTINGS = (instituteId: string) =>
     `${AI_SERVICE_BASE_URL}/institute/ai-settings/v1/get?institute_id=${instituteId}`;
@@ -995,6 +999,7 @@ export const WORKFLOW_LOGS_BASE = `${BASE_URL}/admin-core-service/workflow/logs`
 // User Plan URLs
 export const GET_USER_PLANS = `${BASE_URL}/admin-core-service/v1/user-plan/all`;
 export const GET_PAYMENT_LOGS = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs`;
+export const GET_PAYMENT_COLLECTION_SUMMARY = `${BASE_URL}/admin-core-service/v1/user-plan/payment-logs/collection-summary`;
 
 // System files
 export const ADD_SYSTEM_FILE = `${BASE_URL}/admin-core-service/system-files/v1/add`;
@@ -1126,6 +1131,7 @@ export const AI_PAGE_BUILDER_EDIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v
 export const AI_PAGE_BUILDER_BRAND_KIT = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/brand-kit`;
 export const AI_PAGE_BUILDER_IMAGE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/image`;
 export const AI_PAGE_BUILDER_SITE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/site`;
+export const AI_PAGE_BUILDER_INTAKE = () => `${AI_SERVICE_BASE_URL}/page-builder/v1/intake`;
 // Course field AI assist (ai_service) — inline generate on the Add Course form
 export const AI_COURSE_ASSIST_TEXT = () => `${AI_SERVICE_BASE_URL}/course/assist/v1/text`;
 export const AI_COURSE_ASSIST_IMAGE = () => `${AI_SERVICE_BASE_URL}/course/assist/v1/image`;

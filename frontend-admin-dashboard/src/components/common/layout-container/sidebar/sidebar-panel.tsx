@@ -15,7 +15,6 @@ import {
     Question,
     Tabs,
     UserGear,
-    ChalkboardTeacher,
     Student,
     TextAa,
     Bell,
@@ -26,11 +25,37 @@ import {
     Certificate,
     Layout,
     Brain,
-    Money,
     GearSix,
     Medal,
+    PaintBrush,
+    Globe,
+    FileText,
+    Translate,
+    Robot,
+    Stack,
+    ClipboardText,
+    VideoCamera,
+    ShieldCheck,
+    Funnel,
+    GraduationCap,
+    Users,
+    DoorOpen,
+    Wallet,
+    Receipt,
+    Ticket,
+    Phone,
+    Waveform,
+    ChartLineUp,
+    WhatsappLogo,
+    Lightning,
+    Megaphone,
+    YoutubeLogo,
+    Tag,
+    MagnifyingGlass,
+    CaretDown,
     type IconProps,
 } from '@phosphor-icons/react';
+import { MyInput } from '@/components/design-system/input';
 import { SupportPanel } from '@/components/common/support/SupportPanel';
 import { useSupportConfig } from '@/services/support';
 import { getRecentTabs, type RecentTabEntry } from './recent-tabs-store';
@@ -40,7 +65,12 @@ import { getCategoryColors } from './sidebar-colors';
 import type { CategoryId } from './category-rail';
 import { useIsMobile } from '@/hooks/use-mobile';
 import type { DisplaySettingsData } from '@/types/display-settings';
-import { getAvailableSettingsTabs } from '@/routes/settings/-utils/utils';
+import {
+    getAvailableSettingsTabs,
+    SETTINGS_DOMAIN_ORDER,
+    SETTINGS_GROUP_ORDER,
+    type SettingsTabEntry,
+} from '@/routes/settings/-utils/utils';
 
 interface SidebarPanelProps {
     isOpen: boolean;
@@ -91,11 +121,11 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
         activeCategory === 'RECENT'
             ? [] // Recent items are handled separately
             : sidebarItems.filter((item) => {
-                if (item.id === 'settings') return false; // Settings is on the rail
-                const show = item.showForInstitute;
-                const category = item.category || 'CRM';
-                return (!show || show === instituteId) && category === activeCategory;
-            });
+                  if (item.id === 'settings') return false; // Settings is on the rail
+                  const show = item.showForInstitute;
+                  const category = item.category || 'CRM';
+                  return (!show || show === instituteId) && category === activeCategory;
+              });
 
     const recentTabs = activeCategory === 'RECENT' ? getRecentTabs() : [];
 
@@ -106,7 +136,8 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
     const settingsTabs = activeCategory === 'SETTINGS' ? getAvailableSettingsTabs() : [];
     // Reactively read the selectedTab search param from the URL
     const routerState = useRouterState({ select: (s) => s.location.search });
-    const activeSettingsTab = (routerState as unknown as Record<string, string>)?.selectedTab || 'tab';
+    const activeSettingsTab =
+        (routerState as unknown as Record<string, string>)?.selectedTab || 'tab';
 
     return (
         <div
@@ -137,42 +168,42 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                         onItemClick?.();
                     }}
                 >
-                    {instituteLogo && (() => {
-                        const hasCustom = logoWidthPx != null || logoHeightPx != null;
-                        if (hasCustom) {
-                            // maxWidth: 100% caps the logo at the available panel width
-                            // so an admin-configured pixel width larger than the panel
-                            // doesn't overflow — it just fills the available space.
+                    {instituteLogo &&
+                        (() => {
+                            const hasCustom = logoWidthPx != null || logoHeightPx != null;
+                            if (hasCustom) {
+                                // maxWidth: 100% caps the logo at the available panel width
+                                // so an admin-configured pixel width larger than the panel
+                                // doesn't overflow — it just fills the available space.
+                                return (
+                                    <img
+                                        src={instituteLogo}
+                                        alt="logo"
+                                        className="object-contain"
+                                        style={{
+                                            width: logoWidthPx ?? undefined,
+                                            height: logoHeightPx ?? undefined,
+                                            maxWidth: '100%',
+                                        }}
+                                    />
+                                );
+                            }
                             return (
                                 <img
                                     src={instituteLogo}
                                     alt="logo"
-                                    className="object-contain"
-                                    style={{
-                                        width: logoWidthPx ?? undefined,
-                                        height: logoHeightPx ?? undefined,
-                                        maxWidth: '100%',
-                                    }}
+                                    className="h-8 w-auto max-w-[36px] shrink-0 object-contain"
                                 />
                             );
-                        }
-                        return (
-                            <img
-                                src={instituteLogo}
-                                alt="logo"
-                                className="h-8 w-auto max-w-[36px] flex-shrink-0 object-contain"
-                            />
-                        );
-                    })()}
+                        })()}
                     {!hideInstituteName && (
                         <span
                             className={cn(
                                 'text-sm font-semibold text-neutral-800',
-                                // Stacked: wrap up to 2 lines (centered), ellipsis
-                                // beyond. Beside the logo: single-line ellipsis.
-                                stackNameBelowLogo
-                                    ? 'w-full line-clamp-2 break-words'
-                                    : 'truncate'
+                                // Stacked: wrap the full name across as many lines
+                                // as needed (centered), never truncated. Beside the
+                                // logo: single-line ellipsis.
+                                stackNameBelowLogo ? 'w-full break-words' : 'truncate'
                             )}
                             title={instituteName}
                         >
@@ -182,7 +213,7 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                 </div>
                 {isPartnershipLinkage && mainInstituteName && (
                     <div className="flex items-center gap-2 px-4 pb-3 pl-14 text-neutral-500">
-                        <span className="text-[10px] font-medium text-neutral-500 whitespace-nowrap">
+                        <span className="whitespace-nowrap text-[10px] font-medium text-neutral-500">
                             Powered by
                         </span>
                         {mainInstituteLogoUrl ? (
@@ -190,12 +221,12 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                                 <img
                                     src={mainInstituteLogoUrl}
                                     alt={mainInstituteName}
-                                    className="h-6 w-auto object-contain max-w-[100px]"
+                                    className="h-6 w-auto max-w-[100px] object-contain"
                                     aria-hidden
                                 />
                             </div>
                         ) : (
-                            <span className="text-xs font-bold text-neutral-700 truncate">
+                            <span className="truncate text-xs font-bold text-neutral-700">
                                 {mainInstituteName}
                             </span>
                         )}
@@ -259,11 +290,7 @@ interface RecentTabsListProps {
     onItemClick?: () => void;
 }
 
-const RecentTabsList: React.FC<RecentTabsListProps> = ({
-    entries,
-    currentRoute,
-    onItemClick,
-}) => {
+const RecentTabsList: React.FC<RecentTabsListProps> = ({ entries, currentRoute, onItemClick }) => {
     if (entries.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center gap-2 px-4 py-8 text-center">
@@ -325,7 +352,7 @@ function SupportOptions() {
     const [hover, setHover] = React.useState(false);
     const config = useSupportConfig();
     const planKey = config.data?.plan.key;
-    const planLabel = planKey ? (SUPPORT_PLAN_SHORT[planKey] ?? planKey) : null;
+    const planLabel = planKey ? SUPPORT_PLAN_SHORT[planKey] ?? planKey : null;
 
     return (
         <>
@@ -364,67 +391,179 @@ function SupportOptions() {
 
 // ─── Settings Tabs List ────────────────────────────────────────
 
-/** Map settings tab keys to unique icons */
-const SETTINGS_TAB_ICONS: Record<string, React.FC<IconProps>> = {
+/** Map settings tab keys to unique icons — also reused by sidebar-search.tsx */
+export const SETTINGS_TAB_ICONS: Record<string, React.FC<IconProps>> = {
     tab: Tabs,
-    adminDisplay: UserGear,
-    teacherDisplay: ChalkboardTeacher,
-    studentDisplay: Student,
+    appearance: PaintBrush,
+    whiteLabel: Globe,
     naming: TextAa,
-    notification: Bell,
-    payment: CreditCard,
-    referral: Gift,
-    course: BookOpen,
+    roleDisplay: UserGear,
+    tnc: FileText,
     customFields: Sliders,
-    certificates: Certificate,
-    templates: Layout,
+    language: Translate,
     aiSettings: Brain,
-    feeManagement: Money,
+    assistantTools: Robot,
+    course: BookOpen,
+    lms: Stack,
+    assessment: ClipboardText,
+    certificates: Certificate,
     badgesRewards: Medal,
+    liveSession: VideoCamera,
+    doubtManagement: Question,
+    contentProtection: ShieldCheck,
+    studentDisplay: Student,
+    leadSettings: Funnel,
+    referral: Gift,
+    schoolSettings: GraduationCap,
+    guardianSettings: Users,
+    onboardingSettings: DoorOpen,
+    payment: CreditCard,
+    paymentGateways: Wallet,
+    invoice: Receipt,
+    coupons: Ticket,
+    telephony: Phone,
+    aiCalling: Waveform,
+    crmIntelligence: ChartLineUp,
+    whatsapp: WhatsappLogo,
+    templates: Layout,
+    automations: Lightning,
+    notification: Bell,
+    integrations: Megaphone,
+    youtube: YoutubeLogo,
+    gtmSettings: Tag,
 };
 
 interface SettingsTabsListProps {
-    tabs: { tab: string; value: string; component: React.FC<any> }[];
+    tabs: SettingsTabEntry[];
     activeTab: string;
     onItemClick?: () => void;
 }
 
-const SettingsTabsList: React.FC<SettingsTabsListProps> = ({
-    tabs,
-    activeTab,
-    onItemClick,
-}) => {
+const SettingsTabsList: React.FC<SettingsTabsListProps> = ({ tabs, activeTab, onItemClick }) => {
+    // Group by domain, then by group, driven by the fixed order arrays —
+    // never by this array's authoring order, which is free to change.
+    const groupedByDomain = React.useMemo(() => {
+        const byDomain = new Map<string, Map<string, SettingsTabEntry[]>>();
+        tabs.forEach((tab) => {
+            if (!byDomain.has(tab.domain)) byDomain.set(tab.domain, new Map());
+            const byGroup = byDomain.get(tab.domain)!;
+            if (!byGroup.has(tab.group)) byGroup.set(tab.group, []);
+            byGroup.get(tab.group)!.push(tab);
+        });
+        return byDomain;
+    }, [tabs]);
+
+    // The domain containing the currently active tab starts expanded; every
+    // other domain starts collapsed to just its header, so the resting view
+    // is 7 short lines instead of a full 37-item scroll.
+    const activeDomain = React.useMemo(
+        () => tabs.find((t) => t.tab === activeTab)?.domain,
+        [tabs, activeTab]
+    );
+    const [expandedDomains, setExpandedDomains] = React.useState<Set<string>>(
+        () => new Set(activeDomain ? [activeDomain] : [])
+    );
+    const toggleDomain = (domain: string) => {
+        setExpandedDomains((prev) => {
+            const next = new Set(prev);
+            if (next.has(domain)) next.delete(domain);
+            else next.add(domain);
+            return next;
+        });
+    };
+
+    const [query, setQuery] = React.useState('');
+    const trimmedQuery = query.trim().toLowerCase();
+    const isSearching = trimmedQuery.length > 0;
+    const matchesQuery = (tab: SettingsTabEntry, domain: string) =>
+        tab.value.toLowerCase().includes(trimmedQuery) ||
+        tab.group.toLowerCase().includes(trimmedQuery) ||
+        domain.toLowerCase().includes(trimmedQuery);
+
     return (
         <div className="flex flex-col gap-0.5">
-            <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
-                Settings
-            </p>
-            {tabs.map((tab) => {
-                const isActive = activeTab === tab.tab;
-                const Icon = SETTINGS_TAB_ICONS[tab.tab] || GearSix;
+            <div className="relative px-2 pb-2 pt-1">
+                <MyInput
+                    inputType="text"
+                    input={query}
+                    onChangeFunction={(e) => setQuery(e.target.value)}
+                    inputPlaceholder="Search settings"
+                    className="h-8 pl-8 text-caption"
+                />
+                <MagnifyingGlass className="absolute left-4 top-1/2 size-3.5 -translate-y-1/2 text-neutral-400" />
+            </div>
+            {SETTINGS_DOMAIN_ORDER.map((domain) => {
+                const groups = groupedByDomain.get(domain);
+                if (!groups) return null;
+
+                const groupEntries = (SETTINGS_GROUP_ORDER[domain] || [])
+                    .map((group) => ({
+                        group,
+                        items: (groups.get(group) || []).filter(
+                            (tab) => !isSearching || matchesQuery(tab, domain)
+                        ),
+                    }))
+                    .filter(({ items }) => items.length > 0);
+                if (isSearching && groupEntries.length === 0) return null;
+
+                const isExpanded = isSearching || expandedDomains.has(domain);
+
                 return (
-                    <Link
-                        key={tab.tab}
-                        to="/settings"
-                        search={{ selectedTab: tab.tab }}
-                        onClick={() => onItemClick?.()}
-                        className={cn(
-                            'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all duration-150',
-                            isActive
-                                ? 'bg-primary-50 font-medium text-neutral-800'
-                                : 'text-neutral-600 hover:bg-neutral-100'
-                        )}
-                    >
-                        <Icon
-                            size={16}
-                            weight={isActive ? 'fill' : 'regular'}
-                            className={cn(
-                                'shrink-0 transition-colors',
-                                isActive ? 'text-neutral-800' : 'text-neutral-400'
-                            )}
-                        />
-                        <span className="truncate">{tab.value}</span>
-                    </Link>
+                    <div key={domain}>
+                        <button
+                            type="button"
+                            onClick={() => toggleDomain(domain)}
+                            className="flex w-full items-center justify-between px-3 pb-1 pt-3 text-caption font-semibold uppercase tracking-wider text-neutral-400 hover:text-neutral-600"
+                        >
+                            <span>{domain}</span>
+                            <CaretDown
+                                className={cn(
+                                    'size-3 shrink-0 transition-transform',
+                                    !isExpanded && '-rotate-90'
+                                )}
+                            />
+                        </button>
+                        {isExpanded &&
+                            groupEntries.map(({ group, items }) => (
+                                <div key={group} className="mb-0.5">
+                                    {(SETTINGS_GROUP_ORDER[domain]?.length ?? 0) > 1 && (
+                                        <p className="px-3 pb-0.5 pt-1 text-caption font-medium text-neutral-400">
+                                            {group}
+                                        </p>
+                                    )}
+                                    {items.map((tab) => {
+                                        const isActive = activeTab === tab.tab;
+                                        const Icon = SETTINGS_TAB_ICONS[tab.tab] || GearSix;
+                                        return (
+                                            <Link
+                                                key={tab.tab}
+                                                to="/settings"
+                                                search={{ selectedTab: tab.tab }}
+                                                onClick={() => onItemClick?.()}
+                                                className={cn(
+                                                    'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-all duration-150',
+                                                    isActive
+                                                        ? 'bg-primary-50 font-medium text-neutral-800'
+                                                        : 'text-neutral-600 hover:bg-neutral-100'
+                                                )}
+                                            >
+                                                <Icon
+                                                    size={16}
+                                                    weight={isActive ? 'fill' : 'regular'}
+                                                    className={cn(
+                                                        'shrink-0 transition-colors',
+                                                        isActive
+                                                            ? 'text-neutral-800'
+                                                            : 'text-neutral-400'
+                                                    )}
+                                                />
+                                                <span className="truncate">{tab.value}</span>
+                                            </Link>
+                                        );
+                                    })}
+                                </div>
+                            ))}
+                    </div>
                 );
             })}
         </div>

@@ -32,6 +32,7 @@ import { DEFAULT_ADMIN_DISPLAY_SETTINGS } from '@/constants/display-settings/adm
 import { StudentSideViewSettingsCard } from './StudentSideViewSettingsCard';
 import { LearnerListColumnsCard } from './LearnerListColumnsCard';
 import { ListCustomFieldControlsCard } from './ListCustomFieldControlsCard';
+import { StudentManagementActionsCard } from './StudentManagementActionsCard';
 import { TeamRoleVisibilityCard } from './TeamRoleVisibilityCard';
 import { toast } from 'sonner';
 import {
@@ -1164,6 +1165,8 @@ export default function AdminDisplaySettings() {
                             'LIVE_SESSION',
                             'PLANNING',
                             'ACTIVITY',
+                            'PULSE',
+                            'REPORTS',
                             'SETTINGS',
                         ];
                         const orderForId: Record<string, number> = {
@@ -1175,10 +1178,12 @@ export default function AdminDisplaySettings() {
                             LIVE_SESSION: 6,
                             PLANNING: 7,
                             ACTIVITY: 8,
-                            SETTINGS: 9,
+                            PULSE: 9,
+                            REPORTS: 10,
+                            SETTINGS: 11,
                         };
                         // Tabs that stay OFF unless explicitly enabled per role.
-                        const hiddenByDefault = new Set<string>(['LIVE_SESSION']);
+                        const hiddenByDefault = new Set<string>([]);
                         const sorted = detailsIds
                             .map((id) => ({
                                 ...(settings.courseDetails?.tabs.find((t) => t.id === id) || {
@@ -2214,6 +2219,16 @@ export default function AdminDisplaySettings() {
                     ))}
                 </CardContent>
             </Card>
+
+            <StudentManagementActionsCard
+                settings={settings.studentManagementActions}
+                onChange={(next) =>
+                    updateSettings((prev) => ({
+                        ...prev,
+                        studentManagementActions: next,
+                    }))
+                }
+            />
             </section>
 
             <section id="grp-access" className="space-y-6">

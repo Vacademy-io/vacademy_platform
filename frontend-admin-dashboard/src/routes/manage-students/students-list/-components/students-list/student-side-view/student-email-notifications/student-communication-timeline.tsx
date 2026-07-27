@@ -18,6 +18,7 @@ import {
     ArrowDown,
     CaretDown,
     CaretUp,
+    FileText,
     type Icon as PhosphorIcon,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -252,6 +253,46 @@ function StatusPill({ statusKey }: { statusKey: string }) {
     );
 }
 
+// ─── WhatsApp header media (image / video / document) ────────────────────────
+// Renders the actual attachment sent in a template's media header.
+
+function TimelineHeaderMedia({ type, url }: { type?: string; url: string }) {
+    const t = (type || 'IMAGE').toUpperCase();
+
+    if (t === 'VIDEO') {
+        return <video src={url} controls className="mb-2 max-h-64 w-full rounded-md bg-neutral-100" />;
+    }
+
+    if (t === 'DOCUMENT') {
+        return (
+            <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mb-2 inline-flex items-center gap-1.5 rounded-md bg-neutral-100 px-2 py-1.5 text-xs text-info-600 hover:underline"
+            >
+                <FileText className="size-3.5" /> View document
+            </a>
+        );
+    }
+
+    // IMAGE (default) — click to open full size; hides itself if the URL is dead/expired.
+    return (
+        <a href={url} target="_blank" rel="noopener noreferrer">
+            <img
+                src={url}
+                alt="attachment"
+                loading="lazy"
+                onError={(e) => {
+                    const anchor = e.currentTarget.closest('a');
+                    if (anchor) anchor.style.display = 'none';
+                }}
+                className="mb-2 max-h-64 w-full rounded-md bg-neutral-100 object-contain"
+            />
+        </a>
+    );
+}
+
 // ─── Expanded Detail Body ───────────────────────────────────────────────────
 // Rendered as the `body` slot of a ProfileTimelineItem when the item is
 // expanded.  Click propagation is stopped so expanding text-selection inside
@@ -321,14 +362,22 @@ function ExpandedDetail({
                     />
                 </div>
             ) : (
-                item.fullBody && (
+                (item.fullBody || item.headerMediaUrl) && (
                     <div className="rounded-md border border-neutral-100 bg-neutral-50 p-2.5">
                         <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
                             Message
                         </p>
-                        <p className="max-h-80 overflow-y-auto whitespace-pre-wrap text-xs text-neutral-700">
-                            {item.fullBody}
-                        </p>
+                        {item.headerMediaUrl && (
+                            <TimelineHeaderMedia
+                                type={item.headerType}
+                                url={item.headerMediaUrl}
+                            />
+                        )}
+                        {item.fullBody && (
+                            <p className="max-h-80 overflow-y-auto whitespace-pre-wrap text-xs text-neutral-700">
+                                {item.fullBody}
+                            </p>
+                        )}
                     </div>
                 )
             )}

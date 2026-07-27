@@ -22,8 +22,14 @@ import { cn } from '@/lib/utils';
 import { CATEGORY_COLORS } from './sidebar-colors';
 import { SidebarItemsType } from '@/types/layout-container/layout-container-types';
 import type { DisplaySettingsData } from '@/types/display-settings';
-import { LockKey } from '@phosphor-icons/react';
+import { LockKey, GearSix } from '@phosphor-icons/react';
 import { recordRecentTab } from './recent-tabs-store';
+import { SETTINGS_TAB_ICONS } from './sidebar-panel';
+import {
+    getAvailableSettingsTabs,
+    SETTINGS_DOMAIN_ORDER,
+    type SettingsTabEntry,
+} from '@/routes/settings/-utils/utils';
 
 interface SidebarSearchProps {
     open: boolean;
@@ -93,6 +99,18 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
         return groups;
     }, [sidebarItems, instituteId, hiddenCategoryIds]);
 
+    // Every settings screen, grouped by its top-level domain — indexed
+    // directly from the same registry the /settings page itself renders from,
+    // so search can never drift out of sync with what's actually there.
+    const settingsByDomain = React.useMemo(() => {
+        const map = new Map<string, SettingsTabEntry[]>();
+        getAvailableSettingsTabs().forEach((entry) => {
+            if (!map.has(entry.domain)) map.set(entry.domain, []);
+            map.get(entry.domain)!.push(entry);
+        });
+        return map;
+    }, []);
+
     const handleSelect = useCallback(
         (to: string | undefined, title: string, category?: string, itemId?: string) => {
             if (!to) return;
@@ -104,6 +122,23 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
                 category: (category as 'CRM' | 'LMS' | 'AI') || 'CRM',
             });
             navigate({ to });
+            onOpenChange(false);
+        },
+        [navigate, onOpenChange]
+    );
+
+    // Settings entries navigate with a selectedTab search param, which the
+    // generic handleSelect above doesn't support (no other caller needs it) —
+    // kept as its own small handler instead of growing handleSelect's signature.
+    const handleSettingsSelect = useCallback(
+        (entry: SettingsTabEntry) => {
+            recordRecentTab({
+                id: entry.tab,
+                label: entry.value,
+                route: '/settings',
+                category: 'CRM',
+            });
+            navigate({ to: '/settings', search: { selectedTab: entry.tab } });
             onOpenChange(false);
         },
         [navigate, onOpenChange]
@@ -151,7 +186,12 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
                         key={sub.subItemId}
                         value={`${sub.subItem} ${item.title} ${item.category}`}
                         onSelect={() =>
-                            handleSelect(sub.subItemLink, sub.subItem || '', item.category, sub.subItemId)
+                            handleSelect(
+                                sub.subItemLink,
+                                sub.subItem || '',
+                                item.category,
+                                sub.subItemId
+                            )
                         }
                         className="gap-3 px-3 py-2"
                     >
@@ -209,23 +249,48 @@ export const SidebarSearch: React.FC<SidebarSearchProps> = ({
                     );
                 })}
 
-                {/* Settings (if available) */}
-                {sidebarItems.some((item) => item.id === 'settings') && (
-                    <>
-                        <CommandSeparator />
-                        <CommandGroup heading="Settings">
-                            <CommandItem
-                                value="Settings Configuration"
-                                onSelect={() => handleSelect('/settings', 'Settings')}
-                                className="gap-3 px-3 py-2.5"
-                            >
-                                <span className="text-sm">⚙️</span>
-                                <span className="flex-1">Settings</span>
-                                <span className="text-[10px] text-neutral-400">⌘ ,</span>
-                            </CommandItem>
-                        </CommandGroup>
-                    </>
-                )}
+                {/* Settings — every screen individually searchable, grouped by domain */}
+                {sidebarItems.some((item) => item.id === 'settings') &&
+                    SETTINGS_DOMAIN_ORDER.map((domain) => {
+                        const entries = settingsByDomain.get(domain);
+                        if (!entries || entries.length === 0) return null;
+                        return (
+                            <React.Fragment key={`settings-${domain}`}>
+                                <CommandSeparator />
+                                <CommandGroup
+                                    heading={
+                                        <span className="font-semibold text-neutral-500">
+                                            Settings · {domain}
+                                        </span>
+                                    }
+                                >
+                                    {entries.map((entry) => {
+                                        const Icon = SETTINGS_TAB_ICONS[entry.tab] || GearSix;
+                                        return (
+                                            <CommandItem
+                                                key={entry.tab}
+                                                value={`${entry.value} ${domain} ${entry.group} settings`}
+                                                onSelect={() => handleSettingsSelect(entry)}
+                                                className="gap-3 px-3 py-2.5"
+                                            >
+                                                <Icon
+                                                    size={18}
+                                                    weight="regular"
+                                                    className="shrink-0 text-neutral-400"
+                                                />
+                                                <span className="flex-1 truncate">
+                                                    {entry.value}
+                                                </span>
+                                                <span className="text-caption text-neutral-400">
+                                                    {entry.group}
+                                                </span>
+                                            </CommandItem>
+                                        );
+                                    })}
+                                </CommandGroup>
+                            </React.Fragment>
+                        );
+                    })}
             </CommandList>
         </CommandDialog>
     );

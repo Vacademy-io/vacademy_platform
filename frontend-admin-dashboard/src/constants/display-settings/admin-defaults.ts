@@ -72,9 +72,16 @@ function defaultDashboardWidgetsAdmin(): DashboardWidgetConfig[] {
         'pendingActions',
         // 4. Operational health (finance)
         'financeSummary',
+        'revenueTrends',
         'recentTransactions',
         'subOrgOverview',
         'subOrgSelfStats',
+        'subOrgRevenueTrends',
+        'subOrgGeography',
+        'vleAnalytics',
+        'topVles',
+        'subOrgSeatCourses',
+        'subOrgActivityDues',
         // 5. Engagement signals
         'unresolvedDoubts',
         'recentNotifications',
@@ -239,6 +246,11 @@ export const DEFAULT_ADMIN_DISPLAY_SETTINGS: DisplaySettingsData = {
         allowViewPassword: true,
         allowSendResetPasswordMail: true,
         showApprovalToggle: true,
+    },
+    studentManagementActions: {
+        showEnrollButton: true,
+        showInviteButton: true,
+        customButtons: [],
     },
     leadsFilterCustomFields: [],
     postLoginRedirectRoute: '/dashboard',

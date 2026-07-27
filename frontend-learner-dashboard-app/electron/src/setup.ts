@@ -18,6 +18,7 @@ import { readFileSync } from 'fs';
 const flavorBranding: Record<string, { appName: string; iconBase: string }> = {
   ssdc: { appName: 'SSDC Horizon', iconBase: 'ssdc_horizon' },
   shikshanation: { appName: 'Shiksha Nation', iconBase: 'shiksha_nation' },
+  zoe: { appName: 'ZOE Edtech', iconBase: 'zoe' },
 };
 let currentFlavor = 'ssdc';
 try {

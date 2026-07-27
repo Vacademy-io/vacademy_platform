@@ -19,6 +19,14 @@ export interface InboxMessage {
     source?: string;
     senderName?: string;
     status?: string;
+    // Template-send context (present only on outgoing template messages)
+    templateName?: string;
+    provider?: string;
+    deliveryStatus?: 'SUCCESS' | 'FAILED';
+    error?: string;
+    headerType?: string;
+    /** Media URL for an IMAGE/VIDEO/DOCUMENT template header. */
+    headerMediaUrl?: string;
 }
 
 export async function getConversations(

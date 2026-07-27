@@ -22,6 +22,7 @@ import { getTerminology } from '@/components/common/layout-container/sidebar/uti
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { useEditorStore } from '../-stores/editor-store';
 import { ImageUploadField } from './ImageUploadField';
+import { AiIntakeChat, IntakeResult } from './AiIntakeChat';
 import { renderComponentPreview } from './ComponentPreviews';
 import {
     generateAiPage, estimateAiPageCredits, generateAiImage, generateAiSite,
@@ -44,7 +45,7 @@ const DIRECTIONS = [
     'Minimal and calm: few colors, lots of air, short copy, quiet trust signals.',
 ];
 
-type Step = 'brief' | 'assets' | 'confirm' | 'review';
+type Step = 'chat' | 'brief' | 'assets' | 'confirm' | 'review';
 
 export const AiPageWizard = ({
     open,
@@ -58,7 +59,7 @@ export const AiPageWizard = ({
     const { config, addPage, updateGlobalSettings } = useEditorStore();
     const { toast } = useToast();
 
-    const [step, setStep] = useState<Step>('brief');
+    const [step, setStep] = useState<Step>('chat');
     const [brief, setBrief] = useState('');
     const [pageType, setPageType] = useState('homepage');
     const [useRealData, setUseRealData] = useState(true);
@@ -184,8 +185,26 @@ export const AiPageWizard = ({
         handleClose(false);
     };
 
+    // Chat intake hands its gathered brief + assets to the classic pipeline
+    // and jumps straight to the confirm (credits) step.
+    const acceptIntake = (r: IntakeResult) => {
+        setBrief(r.brief);
+        setPageType(r.pageType);
+        setWholeSite(r.wholeSite);
+        if (r.images.length) {
+            setImages((prev) => {
+                const seen = new Set(prev.map((i) => i.url));
+                return [...prev, ...r.images.filter((i) => !seen.has(i.url))];
+            });
+        }
+        if (r.inspiration.length) {
+            setInspiration((prev) => Array.from(new Set([...prev, ...r.inspiration])).slice(0, 3));
+        }
+        setStep('confirm');
+    };
+
     const reset = () => {
-        setStep('brief');
+        setStep('chat');
         setBrief('');
         setPageType('homepage');
         setImages([]);
@@ -253,6 +272,17 @@ export const AiPageWizard = ({
                         Create page with AI
                     </DialogTitle>
                 </DialogHeader>
+
+                {/* Kept mounted (hidden) off-step so the transcript survives
+                    hopping to the form/assets steps and back. */}
+                <div className={step === 'chat' ? '' : 'hidden'}>
+                    <AiIntakeChat
+                        instituteName={(instituteDetails as any)?.institute_name || undefined}
+                        courses={useRealData ? courseSnapshot : []}
+                        terminology={terminology}
+                        onComplete={acceptIntake}
+                    />
+                </div>
 
                 {step === 'brief' && (
                     <div className="space-y-4">
@@ -605,10 +635,20 @@ export const AiPageWizard = ({
                 )}
 
                 <DialogFooter className="gap-2">
-                    {step === 'brief' && (
-                        <Button onClick={() => setStep('assets')} disabled={!brief.trim()}>
-                            Next: images
+                    {step === 'chat' && (
+                        <Button variant="ghost" className="text-gray-500" onClick={() => setStep('brief')}>
+                            Prefer a form? Use the quick brief
                         </Button>
+                    )}
+                    {step === 'brief' && (
+                        <>
+                            <Button variant="ghost" onClick={() => setStep('chat')}>
+                                <ArrowLeft className="mr-1 size-4" /> Assistant
+                            </Button>
+                            <Button onClick={() => setStep('assets')} disabled={!brief.trim()}>
+                                Next: images
+                            </Button>
+                        </>
                     )}
                     {step === 'assets' && (
                         <>

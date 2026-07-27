@@ -22,6 +22,7 @@ public class WhatsAppInboxService {
 
     private final NotificationLogRepository notificationLogRepository;
     private final ChannelToInstituteMappingRepository channelMappingRepository;
+    private final WhatsAppTemplateRenderer templateRenderer;
     private final List<ChatbotMessageProvider> messageProviders;
 
     public List<InboxConversationDTO> getConversations(String instituteId, int offset, int limit) {
@@ -29,6 +30,8 @@ public class WhatsAppInboxService {
 
         List<NotificationLog> logs = notificationLogRepository.findConversationsForInbox(instituteId, limit, offset);
         if (logs.isEmpty()) return List.of();
+
+        Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache = templateRenderer.newCache();
 
         // Batch unread counts (single query, not N+1)
         List<String> phones = logs.stream().map(NotificationLog::getChannelId).collect(Collectors.toList());
@@ -46,7 +49,7 @@ public class WhatsAppInboxService {
                 .phone(nl.getChannelId())
                 .senderName(nl.getSenderName())
                 .userId(nl.getUserId())
-                .lastMessage(truncate(nl.getBody(), 60))
+                .lastMessage(truncate(templateRenderer.displayBody(nl, instituteId, templateCache), 60))
                 .lastMessageType(nl.getNotificationType().contains("OUTGOING") ? "OUTGOING" : "INCOMING")
                 .lastMessageTime(nl.getNotificationDate())
                 .unreadCount(unreadMap.getOrDefault(nl.getChannelId(), 0L))
@@ -59,16 +62,29 @@ public class WhatsAppInboxService {
 
         List<NotificationLog> logs = notificationLogRepository.findMessagesForPhone(phone, instituteId, cursor, limit);
 
-        return logs.stream().map(nl -> InboxMessageDTO.builder()
-                .id(nl.getId())
-                .body(nl.getBody())
-                .direction(nl.getNotificationType().contains("OUTGOING") ? "OUTGOING" : "INCOMING")
-                .timestamp(nl.getNotificationDate())
-                .source(nl.getSource())
-                .senderName(nl.getSenderName())
-                .status(nl.getNotificationType())
-                .build()
-        ).collect(Collectors.toList());
+        Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache = templateRenderer.newCache();
+
+        return logs.stream().map(nl -> {
+            WhatsAppTemplateRenderer.Rendered rm = templateRenderer.render(nl, instituteId, templateCache);
+            // When we can rebuild the real template text, show it; otherwise fall back to the
+            // stored body (free-text replies, incoming messages, or template no longer on file).
+            String body = (rm != null && rm.body != null) ? rm.body : nl.getBody();
+            return InboxMessageDTO.builder()
+                    .id(nl.getId())
+                    .body(body)
+                    .direction(nl.getNotificationType().contains("OUTGOING") ? "OUTGOING" : "INCOMING")
+                    .timestamp(nl.getNotificationDate())
+                    .source(nl.getSource())
+                    .senderName(nl.getSenderName())
+                    .status(nl.getNotificationType())
+                    .templateName(rm != null ? rm.templateName : null)
+                    .provider(rm != null ? rm.provider : null)
+                    .deliveryStatus(rm != null ? rm.deliveryStatus : null)
+                    .error(rm != null ? rm.error : null)
+                    .headerType(rm != null ? rm.headerType : null)
+                    .headerMediaUrl(rm != null ? rm.headerMediaUrl : null)
+                    .build();
+        }).collect(Collectors.toList());
     }
 
     public List<InboxConversationDTO> searchConversations(String instituteId, String query) {
@@ -77,11 +93,13 @@ public class WhatsAppInboxService {
         String safeQuery = "%" + query.replace("%", "\\%").replace("_", "\\_") + "%";
         List<NotificationLog> logs = notificationLogRepository.searchConversations(instituteId, safeQuery);
 
+        Map<String, WhatsAppTemplateRenderer.InstituteTemplates> templateCache = templateRenderer.newCache();
+
         return logs.stream().map(nl -> InboxConversationDTO.builder()
                 .phone(nl.getChannelId())
                 .senderName(nl.getSenderName())
                 .userId(nl.getUserId())
-                .lastMessage(truncate(nl.getBody(), 60))
+                .lastMessage(truncate(templateRenderer.displayBody(nl, instituteId, templateCache), 60))
                 .lastMessageType(nl.getNotificationType().contains("OUTGOING") ? "OUTGOING" : "INCOMING")
                 .lastMessageTime(nl.getNotificationDate())
                 .build()

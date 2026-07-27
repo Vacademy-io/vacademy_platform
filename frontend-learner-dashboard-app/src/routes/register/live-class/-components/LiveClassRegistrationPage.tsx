@@ -628,10 +628,13 @@ export default function LiveClassRegistrationPage() {
   // session. On a match, collapse into the registered state — but when the
   // session requires OTP verification, prove ownership of the typed identity
   // first (this is the new-device path; without it anyone who knows a payer's
-  // email could take over their seat).
-  const checkIdentityRegistration = async (identity: GuestIdentity) => {
-    if (!data?.sessionId) return;
-    if (!identity.email && !identity.mobileNumber) return;
+  // email could take over their seat). Returns whether a registration was
+  // found so the form's explicit "Already registered?" lookup can react.
+  const checkIdentityRegistration = async (
+    identity: GuestIdentity
+  ): Promise<boolean> => {
+    if (!data?.sessionId) return false;
+    if (!identity.email && !identity.mobileNumber) return false;
     try {
       const info = await fetchLiveSessionPaymentInfo(
         data.sessionId,
@@ -665,20 +668,23 @@ export default function LiveClassRegistrationPage() {
         if (channelsToVerify.length > 0) {
           pendingResumeRef.current = { identity, info };
           setOtpChannels(channelsToVerify);
-          return;
+          return true;
         }
         await completeIdentityResume(identity, info);
+        return true;
       } else {
         setIsUserAlreadyRegistered(false);
+        return false;
       }
     } catch (error) {
       console.error("Failed to check registration:", error);
+      return false;
     }
   };
 
-  const handleIdentityChange = (identity: GuestIdentity) => {
+  const handleIdentityChange = (identity: GuestIdentity): Promise<boolean> => {
     if (identity.email) setVerifiedEmail(identity.email);
-    checkIdentityRegistration(identity);
+    return checkIdentityRegistration(identity);
   };
 
   if (isLoading || resolvingRegistration) return <DashboardLoader />;

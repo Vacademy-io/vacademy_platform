@@ -323,12 +323,16 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
                               AND (COALESCE(:customFieldExcludedIdsCsv, '') = ''
                                    OR NOT (ar.id = ANY(STRING_TO_ARRAY(:customFieldExcludedIdsCsv, ','))))
+                              -- NOTE never put a semicolon anywhere in this query's comments --
+                              -- Hibernate's limit handler treats the first semicolon as end of
+                              -- statement and injects "fetch first ? rows only" there, which
+                              -- desyncs JDBC parameter binding (column index out of range).
                               -- Call-history matching. A call log links to a lead THREE ways:
                               -- response_id (manual dialer + CDR import), subject_id+LEAD (AI
                               -- campaigns), or just user_id (about a quarter of Airtel CDR rows
-                              -- have no response link; the lead side-panel lists calls by user_id
-                              -- + institute, so the filter must match the same or called leads
-                              -- land in NOT_CALLED).
+                              -- have no response link, while the lead side-panel lists calls by
+                              -- user_id + institute, so the filter must match the same or called
+                              -- leads land in NOT_CALLED).
                               -- Keep each column in its OWN EXISTS block: one EXISTS with an OR
                               -- across columns defeats every index and seq-scans the whole call
                               -- log per candidate lead (statement timeout).
@@ -584,12 +588,16 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
                               AND (COALESCE(:customFieldExcludedIdsCsv, '') = ''
                                    OR NOT (ar.id = ANY(STRING_TO_ARRAY(:customFieldExcludedIdsCsv, ','))))
+                              -- NOTE never put a semicolon anywhere in this query's comments --
+                              -- Hibernate's limit handler treats the first semicolon as end of
+                              -- statement and injects "fetch first ? rows only" there, which
+                              -- desyncs JDBC parameter binding (column index out of range).
                               -- Call-history matching. A call log links to a lead THREE ways:
                               -- response_id (manual dialer + CDR import), subject_id+LEAD (AI
                               -- campaigns), or just user_id (about a quarter of Airtel CDR rows
-                              -- have no response link; the lead side-panel lists calls by user_id
-                              -- + institute, so the filter must match the same or called leads
-                              -- land in NOT_CALLED).
+                              -- have no response link, while the lead side-panel lists calls by
+                              -- user_id + institute, so the filter must match the same or called
+                              -- leads land in NOT_CALLED).
                               -- Keep each column in its OWN EXISTS block: one EXISTS with an OR
                               -- across columns defeats every index and seq-scans the whole call
                               -- log per candidate lead (statement timeout).
@@ -854,12 +862,16 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
                               AND (COALESCE(:customFieldExcludedIdsCsv, '') = ''
                                    OR NOT (ar.id = ANY(STRING_TO_ARRAY(:customFieldExcludedIdsCsv, ','))))
+                              -- NOTE never put a semicolon anywhere in this query's comments --
+                              -- Hibernate's limit handler treats the first semicolon as end of
+                              -- statement and injects "fetch first ? rows only" there, which
+                              -- desyncs JDBC parameter binding (column index out of range).
                               -- Call-history matching. A call log links to a lead THREE ways:
                               -- response_id (manual dialer + CDR import), subject_id+LEAD (AI
                               -- campaigns), or just user_id (about a quarter of Airtel CDR rows
-                              -- have no response link; the lead side-panel lists calls by user_id
-                              -- + institute, so the filter must match the same or called leads
-                              -- land in NOT_CALLED).
+                              -- have no response link, while the lead side-panel lists calls by
+                              -- user_id + institute, so the filter must match the same or called
+                              -- leads land in NOT_CALLED).
                               -- Keep each column in its OWN EXISTS block: one EXISTS with an OR
                               -- across columns defeats every index and seq-scans the whole call
                               -- log per candidate lead (statement timeout).
@@ -1111,12 +1123,16 @@ public interface AudienceResponseRepository extends JpaRepository<AudienceRespon
                                    OR ar.id = ANY(STRING_TO_ARRAY(:customFieldMatchedIdsCsv, ',')))
                               AND (COALESCE(:customFieldExcludedIdsCsv, '') = ''
                                    OR NOT (ar.id = ANY(STRING_TO_ARRAY(:customFieldExcludedIdsCsv, ','))))
+                              -- NOTE never put a semicolon anywhere in this query's comments --
+                              -- Hibernate's limit handler treats the first semicolon as end of
+                              -- statement and injects "fetch first ? rows only" there, which
+                              -- desyncs JDBC parameter binding (column index out of range).
                               -- Call-history matching. A call log links to a lead THREE ways:
                               -- response_id (manual dialer + CDR import), subject_id+LEAD (AI
                               -- campaigns), or just user_id (about a quarter of Airtel CDR rows
-                              -- have no response link; the lead side-panel lists calls by user_id
-                              -- + institute, so the filter must match the same or called leads
-                              -- land in NOT_CALLED).
+                              -- have no response link, while the lead side-panel lists calls by
+                              -- user_id + institute, so the filter must match the same or called
+                              -- leads land in NOT_CALLED).
                               -- Keep each column in its OWN EXISTS block: one EXISTS with an OR
                               -- across columns defeats every index and seq-scans the whole call
                               -- log per candidate lead (statement timeout).

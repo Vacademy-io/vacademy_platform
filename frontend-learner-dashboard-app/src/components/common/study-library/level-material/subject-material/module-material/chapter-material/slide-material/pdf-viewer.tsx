@@ -54,6 +54,33 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const { activeItem } = useContentStore();
+
+  // The slide this viewer's activity buffer belongs to.
+  //
+  // `activityId` and `pageViews` used to be created once per mount and the
+  // buffered activity's slide_id was read from `activeItem` at flush time. When
+  // the learner moved to the next slide, the still-mounted viewer rewrote the
+  // buffer's slide_id to the new slide while keeping the *previous* slide's
+  // page views. The sync then POSTed them under the new slide, and because the
+  // backend merges an activity row by its client-supplied id, the whole row was
+  // re-parented — the previous slide lost its tracking outright and the new one
+  // absorbed page numbers it never had. That is how a 2-page reading note ended
+  // up with 14 tracked pages (capped to 100%) while the 14-page PDF next to it
+  // sat below 100% with no evidence left to recompute from.
+  //
+  // Binding the buffer to a slide and resetting it on change keeps each slide's
+  // page views its own. Reset happens during render (refs only, no state) so the
+  // effect below can never observe a buffer from the previous slide.
+  const trackedSlideIdRef = useRef<string | null>(null);
+  if (activeItem?.id && trackedSlideIdRef.current !== activeItem.id) {
+    trackedSlideIdRef.current = activeItem.id;
+    activityId.current = uuidv4();
+    pageViews.current = [];
+    totalPagesReadRef.current = 0;
+    startTime.current = getISTTime();
+    startTimeInMillis.current = getEpochTimeInMillis();
+    pageStartTime.current = new Date();
+  }
   // const { pdfRef } = useMediaRefs();
   // Verification state
   const [showVerification, setShowVerification] = useState(false);
@@ -438,13 +465,19 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
 
   // Update activity in real-time when elapsedTime changes
   useEffect(() => {
+    // Only track the slide this buffer belongs to. Without this the viewer
+    // would attribute the buffered page views to whatever slide happens to be
+    // active at flush time — see trackedSlideIdRef above.
+    const trackedSlideId = trackedSlideIdRef.current;
+    if (!trackedSlideId || trackedSlideId !== activeItem?.id) return;
+
     totalPagesReadRef.current = new Set(
       pageViews.current.map((v) => v.page)
     ).size;
 
     addActivity(
       {
-        slide_id: activeItem?.id || "",
+        slide_id: trackedSlideId,
         activity_id: activityId.current,
         source: "DOCUMENT" as const,
         source_id: documentId || "",

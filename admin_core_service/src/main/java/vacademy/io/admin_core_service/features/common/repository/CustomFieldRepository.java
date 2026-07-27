@@ -57,6 +57,8 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
     Boolean getRequireEmailVerification();
 
     Boolean getRequirePhoneVerification();
+
+    String getWhatsappOtpTemplateName();
   }
 
   @Query(value = """
@@ -82,7 +84,8 @@ public interface CustomFieldRepository extends JpaRepository<CustomFields, Strin
         s.subject           AS subject,
         s.cover_file_id     AS coverFileId,
         s.require_email_verification AS requireEmailVerification,
-        s.require_phone_verification AS requirePhoneVerification
+        s.require_phone_verification AS requirePhoneVerification,
+        s.whatsapp_otp_template_name AS whatsappOtpTemplateName
       FROM live_session s
       INNER JOIN institute_custom_fields icf
              ON icf.type     = 'SESSION'

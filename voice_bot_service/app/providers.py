@@ -314,6 +314,24 @@ class ResilientSarvamTTSService(SarvamTTSService):
     nothing on live calls — inject it into the config dict (Sarvam-accepted,
     probe-verified 2026-07-20)."""
 
+    # bot.py wires this to stamp "a response's audio is now pending" — the
+    # audio-stall watchdog uses it to detect a generated-but-never-heard reply
+    # (observed live: TTS first-byte spiked to 7s; every reply was cancelled by
+    # the caller's next 'hello' before its audio started → permanently silent call).
+    _on_generate = None
+
+    def set_generate_callback(self, cb):
+        self._on_generate = cb
+
+    async def run_tts(self, text: str):
+        if self._on_generate is not None:
+            try:
+                self._on_generate()
+            except Exception:
+                pass
+        async for frame in super().run_tts(text):
+            yield frame
+
     def __init__(self, *args, pace_override: float | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         self._pace_override = pace_override

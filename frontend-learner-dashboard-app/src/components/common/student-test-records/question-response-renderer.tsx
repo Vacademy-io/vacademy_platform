@@ -127,8 +127,18 @@ export const renderStudentResponse = (
           passed?: boolean;
           visible?: boolean;
         }>;
-        const passed = tests.filter((t) => t.passed).length;
-        const total = tests.length;
+        // Grading is based on the HIDDEN test cases (falling back to samples when
+        // no hidden tests exist), so surface the graded breakdown explicitly rather
+        // than a single ambiguous "passed/total".
+        const hiddenTests = tests.filter((t) => t.visible === false);
+        const sampleTests = tests.filter((t) => t.visible !== false);
+        const gradedTests = hiddenTests.length > 0 ? hiddenTests : sampleTests;
+        const gradedPassed = gradedTests.filter((t) => t.passed).length;
+        const gradedTotal = gradedTests.length;
+        const gradedLabel = hiddenTests.length > 0 ? "hidden" : "sample";
+        const samplePassed = sampleTests.filter((t) => t.passed).length;
+        const passed = gradedPassed;
+        const total = gradedTotal;
         const verdictColor =
           r.verdict === "ACCEPTED"
             ? "text-green-700"
@@ -193,6 +203,22 @@ export const renderStudentResponse = (
                 </span>
               )}
             </div>
+            {tests.length > 0 && (
+              <div className="flex flex-wrap gap-3 text-xs">
+                <span>
+                  <b>Test cases passed:</b>{" "}
+                  <code className="rounded bg-muted px-1">
+                    {gradedPassed}/{gradedTotal}
+                  </code>{" "}
+                  <span className="text-muted-foreground">({gradedLabel})</span>
+                </span>
+                {hiddenTests.length > 0 && sampleTests.length > 0 && (
+                  <span className="text-muted-foreground">
+                    Sample: {samplePassed}/{sampleTests.length}
+                  </span>
+                )}
+              </div>
+            )}
             {showRuntimeRow && (
               <div className="flex flex-wrap gap-3 text-xs">
                 <span>

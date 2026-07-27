@@ -458,7 +458,13 @@ Schedules a one-shot future execution via Quartz. Survives JVM restart (unlike D
 
 ### SEND_WHATSAPP
 
-WhatsApp send, list-iterated like SEND_EMAIL (`on` must resolve to a List; wrap singletons `{#ctx['user']}`). Mobile extracted from `mobileNumber`/`mobile_number`/`mobile`/`phoneNumber`/`phone_number`/`phone`/`to` (digits-sanitized). Supports named `templateVars` OR COMBOT-style positional `params` (presence of `params` skips template validation). WHATSAPP channel is rate-limited; single batch (no chunk/throttle/timeout knobs like email). `dryRun` suppresses the send. Result keys are snake_case (`processed_count`, …).
+WhatsApp send, list-iterated like SEND_EMAIL (`on` must resolve to a List; wrap singletons `{#ctx['user']}`). _(Enriched 2026-07-27 to SEND_EMAIL parity.)_
+
+- **Recipient extraction:** node-level `recipientField` config first (supports custom-field names like `"Phone Number"`), then key aliases `mobileNumber`/`mobile_number`/`mobile`/`phoneNumber`/`phone_number`/`phone`/`to`/`whatsappNumber`/`parentMobile`/`parents_mobile`/`guardianMobile`/`contactNumber` (camel+snake), then a last-resort scan over item values for a phone-shaped string (10–15 digits, phone punctuation only). Digits-sanitized; bare 10-digit numbers get `91` prefixed when the institute defaults to India.
+- **Variable resolution** (same order as SEND_EMAIL): `#...` → SpEL (with `#ctx` + `#item` bound) → item field (with camelCase/snake_case variants) → workflow context → `customFields` → literal.
+- **Auto-fill:** required params from the template's `dynamic_parameters` that aren't in `templateVars` are auto-resolved from item fields → context → customFields; the "missing required template variable" error only fires when nothing resolves. Supports named `templateVars` OR COMBOT-style positional `params` (presence of `params` skips template validation).
+- **Dispatch:** chunked like email — `chunkSize` (default 50), `throttleMs` (200), `chunkTimeoutMs` (30s) node-config knobs; per-phone header/button param maps are sliced per chunk; a timed-out chunk logs a warning and the node continues.
+- WHATSAPP channel is rate-limited; `dryRun` suppresses the send. Result keys are snake_case (`processed_count`, …).
 
 ### COMBOT
 
@@ -774,6 +780,8 @@ await queryClient.invalidateQueries({ queryKey: ['wizard-email-templates'] });
 ## Wizard template catalog (current 26 use cases)
 
 Each lives in [`use-case-templates.ts`](../frontend-admin-dashboard/src/routes/workflow/create/-components/use-case-templates.ts). Trigger event(s) listed; the wizard only shows templates compatible with the selected trigger.
+
+> **Channel selector (added 2026-07-27):** every messaging use case now asks "Send via" — Email only (default, unchanged behavior), WhatsApp only, or Email + WhatsApp. Picking WhatsApp swaps/adds a SEND_WHATSAPP node over the same recipient list and a WhatsApp-template dropdown (type `WHATSAPP` in Settings → Templates). Audience-lead use cases iterate `{#ctx['user']}` for WhatsApp (the `respondentEmailRequests` items carry no phone). Helpers: `channelQuestion()` / `whatsappTemplateQuestion()` / `makeChannelSendNodes()` in the same file.
 
 Categorized:
 

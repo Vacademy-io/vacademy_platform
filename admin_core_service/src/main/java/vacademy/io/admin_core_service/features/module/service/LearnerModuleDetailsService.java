@@ -3,6 +3,7 @@ package vacademy.io.admin_core_service.features.module.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.learner_operation.enums.LearnerOperationEnum;
 import vacademy.io.admin_core_service.features.learner_study_library.dto.LearnerModuleDTOWithDetails;
 import vacademy.io.admin_core_service.features.module.enums.ModuleStatusEnum;
@@ -22,10 +23,13 @@ public class LearnerModuleDetailsService {
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public List<LearnerModuleDTOWithDetails> getModulesDetailsWithChapters(String subjectId, String packageSessionId,
             String userId, CustomUserDetails user) {
+        // Admins view a learner's progress, so the requested userId wins; fall back to the
+        // caller only when it is omitted (learner fetching their own progress).
+        String progressUserId = StringUtils.hasText(userId) ? userId : user.getUserId();
         String rawResponse = moduleChapterMappingRepository.getModuleChapterProgress(
                 subjectId,
                 packageSessionId,
-                user.getUserId(),
+                progressUserId,
                 LearnerOperationEnum.PERCENTAGE_MODULE_COMPLETED.name(),
                 LearnerOperationEnum.PERCENTAGE_CHAPTER_COMPLETED.name(),
                 List.of(SlideStatus.PUBLISHED.name(), SlideStatus.UNSYNC.name()),

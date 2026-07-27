@@ -45,7 +45,9 @@ import { getSessionBySessionId } from '../../-services/utils';
 import { useLiveSessionStore } from '../-store/sessionIdstore';
 import { useNavigate, useRouter } from '@tanstack/react-router';
 import { useLiveSessionSettings } from '@/hooks/useLiveSessionSettings';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { listPaymentGateways } from '@/routes/settings/-services/payment-gateway-service';
+import { fetchWhatsAppTemplates } from '@/routes/automation/chatbot-flows/-services/chatbot-flow-api';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useSessionDetailsStore } from '../../-store/useSessionDetailsStore';
 import { Loader2 } from 'lucide-react';
@@ -310,8 +312,10 @@ export default function ScheduleStep2() {
             paymentEnabled: false,
             paymentPrice: '',
             paymentCurrency: 'INR',
+            paymentVendor: '',
             requireEmailVerification: false,
             requirePhoneVerification: false,
+            whatsappOtpTemplateName: '',
         },
     });
 
@@ -337,11 +341,13 @@ export default function ScheduleStep2() {
             form.setValue('paymentEnabled', true);
             form.setValue('paymentPrice', String(sessionDetails.paymentConfig.price ?? ''));
             form.setValue('paymentCurrency', sessionDetails.paymentConfig.currency ?? 'INR');
+            form.setValue('paymentVendor', sessionDetails.paymentConfig.vendor ?? '');
         }
 
         // Prefill registration verification toggles (edit mode)
         form.setValue('requireEmailVerification', !!sessionDetails.requireEmailVerification);
         form.setValue('requirePhoneVerification', !!sessionDetails.requirePhoneVerification);
+        form.setValue('whatsappOtpTemplateName', sessionDetails.whatsappOtpTemplateName ?? '');
 
         // Set notification settings
         const defaultNotifySettings = {
@@ -495,6 +501,31 @@ export default function ScheduleStep2() {
     });
 
     const { control, handleSubmit, watch, getValues, setValue } = form;
+
+    // Institute payment gateways (per-session gateway picker) and WhatsApp
+    // templates (phone-OTP template picker), fetched lazily when the relevant
+    // toggle is on.
+    const wizardInstituteId = getInstId() ?? '';
+    const paymentEnabledOn = !!watch('paymentEnabled');
+    const phoneVerificationOn = !!watch('requirePhoneVerification');
+    const { data: gatewayMappings = [] } = useQuery({
+        queryKey: ['institute-payment-gateways', wizardInstituteId],
+        queryFn: () => listPaymentGateways(wizardInstituteId),
+        enabled: !!wizardInstituteId && paymentEnabledOn,
+    });
+    const activeGateways = gatewayMappings.filter((g) => g.status === 'ACTIVE');
+    // Backend rule: the default gateway is the most recently created ACTIVE mapping.
+    const defaultVendor = [...activeGateways].sort((a, b) =>
+        (b.created_at ?? '').localeCompare(a.created_at ?? '')
+    )[0]?.vendor;
+    const { data: whatsappTemplates = [] } = useQuery({
+        queryKey: ['whatsapp-otp-templates', wizardInstituteId],
+        queryFn: () => fetchWhatsAppTemplates(wizardInstituteId),
+        enabled: !!wizardInstituteId && phoneVerificationOn,
+    });
+    const approvedTemplates = whatsappTemplates.filter(
+        (t) => (t.status ?? '').toUpperCase() === 'APPROVED'
+    );
     const { fields, move, append, remove } = useFieldArray({
         control,
         name: 'fields',
@@ -1367,6 +1398,24 @@ export default function ScheduleStep2() {
                                             required
                                         />
                                     </div>
+                                    <div className="w-full sm:w-60">
+                                        <SelectField
+                                            label="Payment gateway"
+                                            name="paymentVendor"
+                                            options={activeGateways.map((gateway, index) => ({
+                                                _id: index,
+                                                value: gateway.vendor,
+                                                label:
+                                                    gateway.vendor === defaultVendor
+                                                        ? `${gateway.vendor} (Default)`
+                                                        : gateway.vendor,
+                                            }))}
+                                            control={control}
+                                        />
+                                        <p className="mt-1 text-caption text-neutral-500">
+                                            Leave unset to charge via the default gateway.
+                                        </p>
+                                    </div>
                                 </div>
                             )}
                             {watch('paymentEnabled') && (
@@ -1379,37 +1428,40 @@ export default function ScheduleStep2() {
                         </div>
                     </SectionCard>
 
-                    <SectionCard
-                        icon={<UsersThree size={18} />}
-                        title="Select Participants"
-                        description="Pick a session, then choose batches or individual learners to enroll."
-                    >
-                        <div className="flex flex-col gap-4">
-                            <div className="w-full sm:max-w-[280px]">
-                                <MyDropdown
-                                    currentValue={currentSession ?? undefined}
-                                    dropdownList={sessionList}
-                                    placeholder={`Select ${getTerminology(ContentTerms.Session, SystemTerms.Session)}`}
-                                    handleChange={handleSessionChange}
+                    {/* Public classes have open registration — assigning classes/batches
+                        is meaningless noise there, so the picker is private-only. */}
+                    {accessType === AccessType.PRIVATE && (
+                        <SectionCard
+                            icon={<UsersThree size={18} />}
+                            title="Select Participants"
+                            description="Pick a session, then choose batches or individual learners to enroll."
+                        >
+                            <div className="flex flex-col gap-4">
+                                <div className="w-full sm:max-w-[280px]">
+                                    <MyDropdown
+                                        currentValue={currentSession ?? undefined}
+                                        dropdownList={sessionList}
+                                        placeholder={`Select ${getTerminology(ContentTerms.Session, SystemTerms.Session)}`}
+                                        handleChange={handleSessionChange}
+                                    />
+                                </div>
+                                <LiveSessionParticipantsTab
+                                    form={form}
+                                    courses={courses}
+                                    currentSession={currentSession}
                                 />
+                                {attemptedPrivateCreate &&
+                                    !isEditState &&
+                                    (previewSelectedLevels?.length ?? 0) === 0 &&
+                                    (watch('selectedLearners')?.length ?? 0) === 0 && (
+                                        <p className="text-sm text-danger-600">
+                                            Assign at least one batch (or individual learner) to a
+                                            private live class.
+                                        </p>
+                                    )}
                             </div>
-                            <LiveSessionParticipantsTab
-                                form={form}
-                                courses={courses}
-                                currentSession={currentSession}
-                            />
-                            {attemptedPrivateCreate &&
-                                !isEditState &&
-                                accessType === AccessType.PRIVATE &&
-                                (previewSelectedLevels?.length ?? 0) === 0 &&
-                                (watch('selectedLearners')?.length ?? 0) === 0 && (
-                                    <p className="text-sm text-danger-600">
-                                        Assign at least one batch (or individual learner) to a
-                                        private live class.
-                                    </p>
-                                )}
-                        </div>
-                    </SectionCard>
+                        </SectionCard>
+                    )}
 
                     {/* Auto-add recordings to course — batch mode only. Gated behind the
                         institute-wide "Auto-upload recordings to course" setting (see
@@ -1522,11 +1574,29 @@ export default function ScheduleStep2() {
                                         )}
                                     />
                                     {watch('requirePhoneVerification') && (
-                                        <p className="text-sm text-neutral-500">
-                                            The OTP is sent on WhatsApp — your institute needs an
-                                            approved WhatsApp OTP template registered for this to
-                                            work.
-                                        </p>
+                                        <div className="flex flex-col gap-1">
+                                            <div className="w-full sm:w-72">
+                                                <SelectField
+                                                    label="WhatsApp OTP template"
+                                                    name="whatsappOtpTemplateName"
+                                                    options={approvedTemplates.map(
+                                                        (template, index) => ({
+                                                            _id: index,
+                                                            value: template.name,
+                                                            label: template.category
+                                                                ? `${template.name} (${template.category})`
+                                                                : template.name,
+                                                        })
+                                                    )}
+                                                    control={control}
+                                                />
+                                            </div>
+                                            <p className="text-sm text-neutral-500">
+                                                The OTP is sent on WhatsApp using this approved
+                                                template. Leave unset to use your institute&apos;s
+                                                default OTP template.
+                                            </p>
+                                        </div>
                                     )}
                                 </div>
                                 <Sortable

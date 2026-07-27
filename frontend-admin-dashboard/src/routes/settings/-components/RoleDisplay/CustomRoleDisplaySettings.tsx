@@ -1149,11 +1149,12 @@ export default function CustomRoleDisplaySettings({
                             'LIVE_SESSION',
                             'PLANNING',
                             'ACTIVITY',
+                            'PULSE',
                             'REPORTS',
                             'SETTINGS',
                         ];
                         // Tabs that stay OFF unless explicitly enabled per role.
-                        const hiddenByDefault = new Set<string>(['LIVE_SESSION']);
+                        const hiddenByDefault = new Set<string>([]);
                         const sorted = tabIds
                             .map(
                                 (id) =>
@@ -1197,6 +1198,7 @@ export default function CustomRoleDisplaySettings({
                                                         LIVE_SESSION: 6,
                                                         PLANNING: 7,
                                                         ACTIVITY: 8,
+                                                        PULSE: 9,
                                                     };
                                                     const tabs = exists
                                                         ? prevTabs.map((t) =>

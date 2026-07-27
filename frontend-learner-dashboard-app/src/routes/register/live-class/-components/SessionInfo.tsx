@@ -1,35 +1,31 @@
 import dayjs from "dayjs";
 import CountdownTimer from "./CountDown";
 import RegistrationLogo from "@/svgs/registration-logo.svg?url";
-import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
-import { ContentTerms, SystemTerms } from "@/types/naming-settings";
-import { isNullOrEmptyOrUndefined } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { SessionDetailsResponse } from "@/routes/study-library/live-class/-types/types";
 import { convertSessionTimeToUserTimezone } from "@/utils/timezone";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 
 interface SessionInfoProps {
   sessionTitle?: string;
   startTime?: string;
   lastEntryTime?: string;
-  subject?: string;
-  coverFileUrl?: string;
   sessionDetails?: SessionDetailsResponse | null;
   instituteName?: string | null;
   instituteLogoUrl?: string | null;
+  /** Frosted panel styling for when the page renders a hero background. */
+  glass?: boolean;
 }
 
 export default function SessionInfo({
   sessionTitle,
   startTime,
   lastEntryTime,
-  subject,
-  coverFileUrl,
   sessionDetails,
   instituteName,
   instituteLogoUrl,
+  glass,
 }: SessionInfoProps) {
   const getSessionTimezone = () => {
     return "timezone" in (sessionDetails || {})
@@ -77,7 +73,12 @@ export default function SessionInfo({
   const convertedStartTime = getConvertedStartTime();
 
   return (
-    <div className="flex flex-col gap-6 h-full w-full lg:w-1/2 lg:max-w-reg-560 items-center">
+    <div
+      className={cn(
+        "flex flex-col gap-6 h-full w-full lg:w-1/2 lg:max-w-reg-560 items-center",
+        glass && "rounded-2xl bg-white/90 backdrop-blur-md shadow-xl p-5 sm:p-8"
+      )}
+    >
       {/* Institute Branding */}
       <div className="flex items-center gap-3">
         {instituteLogoUrl ? (
@@ -105,15 +106,6 @@ export default function SessionInfo({
         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 leading-tight tracking-tight">
           {sessionTitle}
         </h1>
-        {!isNullOrEmptyOrUndefined(subject) && (
-          <Badge
-            variant="outline"
-            className="text-primary-500 border-primary-200 bg-primary-50 px-3 py-1 text-xs font-medium"
-          >
-            {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}:{" "}
-            {subject}
-          </Badge>
-        )}
       </div>
 
       {/* Countdown */}

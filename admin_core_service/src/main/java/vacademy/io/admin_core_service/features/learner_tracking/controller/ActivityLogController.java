@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.LearnerActivityProjection;
+import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogRepository;
 import vacademy.io.admin_core_service.features.learner_tracking.service.ActivityLogService;
 import vacademy.io.common.auth.model.CustomUserDetails;
 import vacademy.io.common.core.constants.PageConstants;
@@ -14,6 +15,7 @@ import vacademy.io.common.core.constants.PageConstants;
 @RequiredArgsConstructor
 public class ActivityLogController {
     private final ActivityLogService activityLogService;
+    private final ActivityLogRepository activityLogRepository;
 
     @GetMapping("/learner-activity")
     public ResponseEntity<Page<LearnerActivityProjection>> getStudentActivity(
@@ -25,6 +27,19 @@ public class ActivityLogController {
 
         Page<LearnerActivityProjection> studentActivities = activityLogService.getStudentActivityBySlide(slideId, packageSessionId, page, size, user);
         return ResponseEntity.ok(studentActivities);
+    }
+
+    /**
+     * Presence heartbeat from the learner app: keeps the learner "present" on this slide even when
+     * no tracking write is happening (paused video/audio, static reading). Fired every ~60s while
+     * the slide is open and the tab is visible; stops when they leave, so they go OFFLINE naturally.
+     */
+    @PostMapping("/presence-heartbeat")
+    public ResponseEntity<Void> presenceHeartbeat(
+            @RequestParam String slideId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        activityLogRepository.touchPresence(user.getUserId(), slideId);
+        return ResponseEntity.ok().build();
     }
 
 }

@@ -87,6 +87,7 @@ export type CourseDetailsTabId =
     | 'LIVE_SESSION'
     | 'PLANNING'
     | 'ACTIVITY'
+    | 'PULSE'
     | 'REPORTS'
     | 'SETTINGS';
 

@@ -111,6 +111,12 @@ public class Step2Service {
         if (request.getRequirePhoneVerification() != null) {
             session.setRequirePhoneVerification(request.getRequirePhoneVerification());
         }
+        if (request.getWhatsappOtpTemplateName() != null) {
+            session.setWhatsappOtpTemplateName(
+                    request.getWhatsappOtpTemplateName().isBlank()
+                            ? null
+                            : request.getWhatsappOtpTemplateName().trim());
+        }
     }
 
     private void processNotificationActions(LiveSessionStep2RequestDTO request, String sessionId, boolean isEdit) {

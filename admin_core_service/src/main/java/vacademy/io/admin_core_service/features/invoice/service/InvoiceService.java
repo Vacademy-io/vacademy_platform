@@ -159,6 +159,11 @@ public class InvoiceService {
     @Autowired
     private vacademy.io.admin_core_service.features.live_session.repository.SessionGuestRegistrationRepository sessionGuestRegistrationRepository;
 
+    // Same no-cycle rule: read the session's payment option (per-session gateway
+    // choice) via the repository, not LiveSessionPaymentService.
+    @Autowired
+    private vacademy.io.admin_core_service.features.user_subscription.repository.PaymentOptionRepository paymentOptionRepositoryForVendor;
+
     @Value("${default.learner.portal.url:https://learner.vacademy.io}")
     private String learnerPortalUrl;
 
@@ -3714,6 +3719,60 @@ public class InvoiceService {
      *                   fields like amount/currency/vendor stay server-authoritative
      *                   from the invoice + institute config.
      */
+    /**
+     * Gateway for one invoice: LIVE_SESSION invoices may carry a per-session
+     * vendor choice (stored in the session payment option's metadata JSON by the
+     * wizard); anything else — or an unconfigured/inactive choice — charges via
+     * the institute default (latest ACTIVE mapping). Repository-only lookups,
+     * same no-cycle rule as the registration flip above.
+     */
+    private InstitutePaymentGatewayMappingService.VendorInfo resolveVendorForInvoice(
+            Invoice invoice, String instituteId) {
+        try {
+            if ("LIVE_SESSION".equalsIgnoreCase(invoice.getSource())
+                    && StringUtils.hasText(invoice.getSourceId())) {
+                String sessionId = sessionGuestRegistrationRepository.findById(invoice.getSourceId())
+                        .map(reg -> reg.getSessionId())
+                        .orElse(null);
+                if (sessionId != null) {
+                    String chosen = paymentOptionRepositoryForVendor
+                            .findFirstBySourceAndSourceIdAndStatusOrderByCreatedAtDesc(
+                                    "LIVE_SESSION", sessionId, "ACTIVE")
+                            .map(option -> readVendorFromOptionMetadata(
+                                    option.getPaymentOptionMetadataJson()))
+                            .orElse(null);
+                    if (StringUtils.hasText(chosen)) {
+                        String normalized = chosen.trim().toUpperCase();
+                        boolean activeForInstitute = institutePaymentGatewayMappingService
+                                .getAllVendorsForInstitute(instituteId).stream()
+                                .anyMatch(v -> normalized.equalsIgnoreCase(v.getVendor()));
+                        if (activeForInstitute) {
+                            return new InstitutePaymentGatewayMappingService.VendorInfo(
+                                    normalized, normalized);
+                        }
+                        log.warn("Session-chosen gateway {} is not ACTIVE for institute {}; "
+                                + "falling back to the default", normalized, instituteId);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Per-session vendor resolution failed for invoice {}; using institute default: {}",
+                    invoice.getId(), e.getMessage());
+        }
+        return institutePaymentGatewayMappingService.getLatestVendorInfoForInstitute(instituteId);
+    }
+
+    private String readVendorFromOptionMetadata(String metadataJson) {
+        if (!StringUtils.hasText(metadataJson)) {
+            return null;
+        }
+        try {
+            return new ObjectMapper().readTree(metadataJson).path("vendor").asText(null);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     public PaymentResponseDTO initiatePaymentForAdminInvoice(String invoiceId, String instituteId,
             CustomUserDetails userDetails, PaymentInitiationRequestDTO clientData) {
         Invoice invoice = invoiceRepository.findById(invoiceId)
@@ -3727,9 +3786,11 @@ public class InvoiceService {
                     + " and can no longer be paid");
         }
 
-        // Get institute's configured gateway
+        // Gateway: a live-session fee may carry a per-session vendor choice (stored
+        // on the session's payment option); everything else charges through the
+        // institute default (latest ACTIVE mapping).
         InstitutePaymentGatewayMappingService.VendorInfo vendorInfo =
-                institutePaymentGatewayMappingService.getLatestVendorInfoForInstitute(instituteId);
+                resolveVendorForInvoice(invoice, instituteId);
 
         PaymentInitiationRequestDTO paymentRequest = new PaymentInitiationRequestDTO();
         paymentRequest.setAmount(invoice.getTotalAmount().doubleValue());

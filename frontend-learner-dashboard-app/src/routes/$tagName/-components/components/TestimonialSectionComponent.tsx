@@ -65,7 +65,11 @@ const TestimonialCard: React.FC<{ testimonial: Testimonial; hoverEffect?: string
   const getInitials = (name: string) =>
     name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
-  const feedbackText = testimonial.feedback || testimonial.text || testimonial.quote || "";
+  // "content" included: the AI composer emits it, and the admin preview
+  // already accepts it — the learner must render the same keys (field bug:
+  // published testimonials showed empty quotes).
+  const feedbackText =
+    testimonial.feedback || testimonial.text || testimonial.quote || (testimonial as { content?: string }).content || "";
 
   const hoverClass =
     hoverEffect === "lift" ? "hover:-translate-y-1 hover:shadow-lg" :

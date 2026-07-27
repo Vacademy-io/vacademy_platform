@@ -38,17 +38,18 @@ import {
 } from '../profile-ui';
 
 // ── Per-subject completion helper ─────────────────────────────────────────────
-// Mirrors calculateLearningPercentage but scoped to a single SubjectWithDetails.
+// Mirrors calculateLearningPercentage (the backend subject rollup) scoped to a
+// single subject: subject% = mean of its modules' canonical percentage_completed,
+// every module counted, missing → 0. Kept consistent with the overall gauge so a
+// subject's "behind" status matches how it weighs into the course number.
 function calcSubjectPercentage(subject: SubjectWithDetails): number {
-    let total = 0;
-    let count = 0;
-    subject.modules.forEach((mod) => {
-        mod.chapters.forEach((ch) => {
-            count += 1;
-            total += ch.percentage_completed;
-        });
-    });
-    return count === 0 ? 0 : total / count;
+    const modules = subject.modules ?? [];
+    if (modules.length === 0) return 0;
+    const moduleSum = modules.reduce(
+        (sum, mod) => sum + (mod.percentage_completed ?? 0),
+        0
+    );
+    return moduleSum / modules.length;
 }
 
 export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?: boolean }) => {

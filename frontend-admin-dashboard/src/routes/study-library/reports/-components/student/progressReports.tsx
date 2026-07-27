@@ -25,14 +25,13 @@ import {
     SUBJECT_OVERVIEW_WIDTH,
     SubjectOverviewColumnType,
 } from '../../-types/types';
-import {
-    fetchLearnersSubjectWiseProgress,
-    exportLearnersSubjectReport,
-} from '../../-services/utils';
+import { fetchLearnersSubjectWiseProgress } from '../../-services/utils';
 import { useMutation } from '@tanstack/react-query';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
 import { usePacageDetails } from '../../-store/usePacageDetails';
 import { convertMinutesToTimeFormat, formatToTwoDecimalPlaces } from '../../-services/helper';
+import { resolveInstituteLogoUrl } from '../live/-utils/instituteLogo';
+import { exportSubjectProgressPdf } from '../../-utils/exportSubjectProgressPdf';
 import { useSearch } from '@tanstack/react-router';
 import { Route } from '@/routes/study-library/reports';
 import { toast } from 'sonner';
@@ -55,6 +54,7 @@ export default function ProgressReports() {
         getLevelsFromPackage2,
         getPackageSessionId,
     } = useInstituteDetailsStore();
+    const instituteDetails = useInstituteDetailsStore((s) => s.instituteDetails);
     const { setPacageSessionId, setCourse, setSession, setLevel, pacageSessionId } = usePacageDetails();
 
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
@@ -66,7 +66,6 @@ export default function ProgressReports() {
     const [studentList, setStudentList] = useState<UserResponse>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [subjectReportData, setSubjectReportData] = useState<SubjectProgressResponse>();
-    const tableState = { columnVisibility: { module_id: false, user_id: false } };
     const filteredStudents = studentList.filter((student) =>
         student.full_name.toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -200,32 +199,38 @@ export default function ProgressReports() {
         setLevel(levelList.find((course) => (course.id = data.level))?.level_name || '');
     };
 
-    const getBatchReportDataPDF = useMutation({
-        mutationFn: () =>
-            exportLearnersSubjectReport({
-                startDate: '',
-                endDate: '',
-                packageSessionId: pacageSessionId || '',
-                userId: selectedStudent || '',
-            }),
-        onSuccess: async (response) => {
-            const url = window.URL.createObjectURL(new Blob([response]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `learners_report.pdf`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
-            toast.success('Learners Report PDF exported successfully');
-        },
-        onError: (error: unknown) => {
-            throw error;
-        },
-    });
-
-    const handleExportPDF = () => {
-        getBatchReportDataPDF.mutate();
+    const [isExporting, setIsExporting] = useState(false);
+    const handleExportPDF = async () => {
+        if (!subjectReportData) return;
+        setIsExporting(true);
+        try {
+            const logoUrl = await resolveInstituteLogoUrl(
+                instituteDetails?.institute_logo_file_id
+            );
+            await exportSubjectProgressPdf(
+                {
+                    instituteName: instituteDetails?.institute_name || 'Vacademy',
+                    logoUrl,
+                    learnerName:
+                        studentList.find((s) => s.user_id === selectedStudent)?.full_name || '',
+                    courseName: courseList.find((c) => c.id === selectedCourse)?.name || '',
+                    sessionName: sessionList.find((s) => s.id === selectedSession)?.name || '',
+                    levelName: levelList.find((l) => l.id === selectedLevel)?.level_name || '',
+                    courseTerm: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                    sessionTerm: getTerminology(ContentTerms.Session, SystemTerms.Session),
+                    levelTerm: getTerminology(ContentTerms.Level, SystemTerms.Level),
+                    moduleTerm: getTerminology(ContentTerms.Module, SystemTerms.Module),
+                    subjectTerm: getTerminology(ContentTerms.Subject, SystemTerms.Subject),
+                    batchTerm: getTerminology(ContentTerms.Batch, SystemTerms.Batch),
+                },
+                subjectReportData
+            );
+            toast.success('Report exported');
+        } catch {
+            toast.error('Failed to export PDF');
+        } finally {
+            setIsExporting(false);
+        }
     };
 
     const transformToSubjectOverview = (
@@ -260,7 +265,25 @@ export default function ProgressReports() {
         total_elements: 0,
         last: false,
     };
-    const isExporting = getBatchReportDataPDF.isPending;
+
+    // Courses shallower than the full Subject → Module structure come back with
+    // the literal "DEFAULT" placeholder for the missing level(s). Rather than
+    // showing a whole column of "DEFAULT", hide any structural column whose
+    // every row is that placeholder. Metric columns are never hidden this way.
+    const isStructuralColumnAllDefault = (key: 'subject' | 'module') =>
+        subjectWiseData.content.length > 0 &&
+        subjectWiseData.content.every(
+            (row) => (row[key] ?? '').toString().trim().toUpperCase() === 'DEFAULT'
+        );
+    const tableState = {
+        columnVisibility: {
+            module_id: false,
+            user_id: false,
+            subject: !isStructuralColumnAllDefault('subject'),
+            module: !isStructuralColumnAllDefault('module'),
+        },
+    };
+
     return (
         <div className="space-y-6">
             {/* Modern Filter Card */}
@@ -352,7 +375,10 @@ export default function ProgressReports() {
                         <Select
                             onValueChange={(value) => setValue('student', value)}
                             {...register('student')}
-                            defaultValue=""
+                            // Controlled like the course/session/level selects above so
+                            // the ?studentReport= prefill (setValue('student', userId))
+                            // is reflected in the trigger, not just in form state.
+                            value={selectedStudent || ''}
                             disabled={!studentList.length}
                         >
                             <SelectTrigger className="h-9 text-sm">

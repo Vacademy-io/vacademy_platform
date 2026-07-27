@@ -1,5 +1,5 @@
 import type React from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, Clock, CheckCircle, XCircle, CircleNotch } from "@phosphor-icons/react";
 import { useMutation } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
@@ -71,6 +71,9 @@ const VideoQuestionOverlay = ({
     previousAnswer,
 }: VideoQuestionProps) => {
     const { activeItem } = useContentStore();
+    // Real time the learner has had this in-video question open (mount → submit)
+    // so the reported "Time Spent" reflects actual engagement, not a fake 1 minute.
+    const activityStartRef = useRef<number>(Date.now());
     const [selectedOption, setSelectedOption] = useState<SelectedOption | null>(
         null
     );
@@ -347,7 +350,7 @@ const VideoQuestionOverlay = ({
                 source_type: activeItem.source_type || "",
                 user_id: userId,
                 slide_id: slideId,
-                start_time_in_millis: Date.now() - 60000,
+                start_time_in_millis: activityStartRef.current,
                 end_time_in_millis: Date.now(),
                 percentage_watched: 0,
                 videos: [],

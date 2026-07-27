@@ -65,7 +65,6 @@ export default function ProgressReports({
     const [sessionList, setSessionList] = useState<{ id: string; name: string }[]>([]);
     const [levelList, setLevelList] = useState<LevelType[]>([]);
     const [subjectReportData, setSubjectReportData] = useState<SubjectProgressResponse>();
-    const tableState = { columnVisibility: { module_id: false, user_id: false } };
     const { handleSubmit, setValue, watch, trigger } = useForm<FormValues>({
         resolver: zodResolver(formSchema),
         defaultValues: {
@@ -102,6 +101,24 @@ export default function ProgressReports({
         page_size: 10,
         total_elements: 0,
         last: false,
+    };
+
+    // Courses shallower than the full Subject → Module structure come back with
+    // the literal "DEFAULT" placeholder for the missing level(s). Hide any
+    // structural column whose every row is that placeholder instead of showing
+    // a whole column of "DEFAULT". Metric columns are never hidden this way.
+    const isStructuralColumnAllDefault = (key: 'subject' | 'module') =>
+        subjectWiseData.content.length > 0 &&
+        subjectWiseData.content.every(
+            (row) => (row[key] ?? '').toString().trim().toUpperCase() === 'DEFAULT'
+        );
+    const tableState = {
+        columnVisibility: {
+            module_id: false,
+            user_id: false,
+            subject: !isStructuralColumnAllDefault('subject'),
+            module: !isStructuralColumnAllDefault('module'),
+        },
     };
 
     const SubjectWiseMutation = useMutation({

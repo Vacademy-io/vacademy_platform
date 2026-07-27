@@ -5,8 +5,10 @@ import {
     drawCards,
     drawTitleAndInfo,
     fmtDate,
+    INK,
     lastY,
     loadLogo,
+    M,
     resolveTheme,
     sectionTitle,
     stampAllPages,
@@ -34,6 +36,28 @@ export interface LearningLeaderboardRow {
     avg_concentration: number;
     daily_avg_time: number;
     total_time: number;
+}
+
+export interface LearningTimelineSlide {
+    slide_title: string;
+    module_name: string;
+    chapter_name: string;
+    subject_name: string;
+    concentration_score: number;
+    time_spent: string | number;
+}
+
+/**
+ * The per-date slide breakdown shown under "Learning Timeline" on screen.
+ * hideModule/hideChapter mirror the on-screen DEFAULT-column hiding so a
+ * course with no real modules/chapters doesn't print a column of "DEFAULT".
+ */
+export interface LearningTimelinePdfInput {
+    slides: Array<{ date: string; slide_details: LearningTimelineSlide[] }>;
+    hideModule: boolean;
+    hideChapter: boolean;
+    moduleTerm: string;
+    chapterTerm: string;
 }
 
 const SUBTITLE = 'Learning Progress Report';
@@ -95,7 +119,11 @@ export async function exportBatchLearningPdf(
     doc.save(`batch-learning-report-${dayjs().format('YYYYMMDD')}.pdf`);
 }
 
-export async function exportLearnerLearningPdf(meta: LearningPdfMeta, report: LearnersReportResponse) {
+export async function exportLearnerLearningPdf(
+    meta: LearningPdfMeta,
+    report: LearnersReportResponse,
+    timeline?: LearningTimelinePdfInput
+) {
     const doc = createReportDoc();
     const logo = await loadLogo(meta.logoUrl);
     const theme = resolveTheme();
@@ -151,6 +179,60 @@ export async function exportLearnerLearningPdf(meta: LearningPdfMeta, report: Le
             ];
         }),
     });
+
+    // Per-date slide breakdown — the "Learning Timeline" the report shows on screen.
+    if (timeline?.slides?.length) {
+        const pageH = doc.internal.pageSize.getHeight();
+        y = lastY(doc) + 11;
+        if (y > pageH - 40) {
+            doc.addPage();
+            y = 33;
+        }
+        y = sectionTitle(doc, 'Learning Timeline', y, theme);
+        timeline.slides.forEach((day) => {
+            if (y > pageH - 40) {
+                doc.addPage();
+                y = 33;
+            }
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.setTextColor(...INK);
+            doc.text(`Date: ${fmtDate(day.date)}`, M, y);
+
+            const head = [
+                'Study Slide',
+                ...(timeline.hideModule ? [] : [timeline.moduleTerm]),
+                ...(timeline.hideChapter ? [] : [timeline.chapterTerm]),
+                'Concentration',
+                'Time Spent',
+            ];
+            const concIdx = head.length - 2;
+            const timeIdx = head.length - 1;
+            autoTable(doc, {
+                ...tableBase(theme),
+                startY: y + 2,
+                head: [head],
+                columnStyles: {
+                    [concIdx]: { halign: 'right', cellWidth: 26 },
+                    [timeIdx]: { halign: 'right', cellWidth: 22 },
+                },
+                body: (day.slide_details ?? []).map((s) => {
+                    const timeMinutes =
+                        typeof s.time_spent === 'number'
+                            ? s.time_spent
+                            : parseFloat(String(s.time_spent)) || 0;
+                    return [
+                        s.slide_title,
+                        ...(timeline.hideModule ? [] : [s.module_name]),
+                        ...(timeline.hideChapter ? [] : [s.chapter_name]),
+                        `${formatToTwoDecimalPlaces(s.concentration_score)} %`,
+                        convertMinutesToTimeFormat(timeMinutes),
+                    ];
+                }),
+            });
+            y = lastY(doc) + 8;
+        });
+    }
 
     stampAllPages(doc, meta.instituteName, logo, theme, SUBTITLE);
     doc.save(

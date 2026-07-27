@@ -94,13 +94,23 @@ class TranscriptCollector(FrameProcessor):
     LLM TTFT), and a human-style acknowledgment makes it read as attentiveness."""
 
     def __init__(self, outcome: CallOutcome, on_activity, is_bot_speaking,
-                 set_user_speaking=None, filler_phrases=None, on_transcript=None):
+                 set_user_speaking=None, filler_phrases=None, on_transcript=None,
+                 fillers_armed=None):
         super().__init__()
         self._outcome = outcome
         self._on_activity = on_activity
         self._is_bot_speaking = is_bot_speaking
         self._set_user_speaking = set_user_speaking or (lambda speaking: None)
         self._on_transcript = on_transcript or (lambda: None)
+        # Fillers only AFTER the bot has completed its first real utterance: during
+        # the setup dead-air callers say "hello? hello?" and a filler was the FIRST
+        # thing they ever heard ("starts with Hmm" — live complaint).
+        self._fillers_armed = fillers_armed or (lambda: True)
+        # Dedupe window for identical consecutive transcripts ("Hello" x3 while the
+        # pipeline warms up): each repeat triggered its own LLM run → the intro was
+        # spoken twice back-to-back on a live call.
+        self._last_text = ""
+        self._last_text_t = 0.0
         s = get_settings()
         self._filler_phrases = list(filler_phrases if filler_phrases is not None
                                     else s.filler_phrases)
@@ -119,12 +129,25 @@ class TranscriptCollector(FrameProcessor):
             self._set_user_speaking(False)
             self._on_activity(user=True)  # give them thinking time from speech END
         if isinstance(frame, TranscriptionFrame) and frame.text and frame.text.strip():
-            self._outcome.transcript.append({"role": "user", "text": frame.text.strip()})
+            text = frame.text.strip()
+            now = time.time()
+            # Drop an identical repeat within 4s (greeting spam: "Hello" x3 while the
+            # bot warms up/opens). Recorded once; repeats never reach the LLM, so the
+            # model can't answer the same hello twice.
+            if text.casefold() == self._last_text and now - self._last_text_t < 4.0:
+                logger.info("transcript dedupe: dropping repeat %r", text[:30])
+                self._on_activity(user=True)
+                return
+            self._last_text = text.casefold()
+            self._last_text_t = now
+            self._outcome.transcript.append({"role": "user", "text": text})
             self._on_activity(user=True)
             self._on_transcript()
-            # Filler only when the bot is quiet — a barge-in already has audio
-            # to cancel, and stacking a filler on it would talk over the caller.
+            # Filler only when the bot is quiet AND has spoken once already — a
+            # barge-in has audio to cancel, and a filler before the opening meant
+            # the first thing the caller ever heard was "Hmm…".
             if (self._filler_phrases and not self._is_bot_speaking()
+                    and self._fillers_armed()
                     and random.random() < self._filler_probability):
                 await self.push_frame(
                     TTSSpeakFrame(random.choice(self._filler_phrases)), direction)
@@ -805,6 +828,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                   outcome: CallOutcome, *, aiohttp_session) -> CallOutcome:
     """Run one call end-to-end on an already-connected Plivo <Stream> transport.
     Mutates the caller-owned CallOutcome in place (crash-safe reporting)."""
+    _run_bot_t0 = time.time()
     settings = get_settings()
     agent = context.get("agent") or {}
 
@@ -826,7 +850,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
              # with nothing to react to. The watchdog compares these to detect
              # "spoke but no transcript ever came" and continues the conversation.
              "user_stopped_t": 0.0, "user_started_t": 0.0, "bot_stopped_t": 0.0,
-             "orphan_used": False}
+             "orphan_used": False, "bot_spoke_once": False}
 
     def on_activity(user: bool = True):
         flags["t"] = time.time()
@@ -837,6 +861,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         flags["bot_speaking"] = speaking
         if not speaking:
             flags["bot_stopped_t"] = time.time()
+            flags["bot_spoke_once"] = True
 
     def set_user_speaking(speaking: bool):
         flags["user_speaking"] = speaking
@@ -906,7 +931,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      is_bot_speaking=lambda: flags["bot_speaking"],
                                      set_user_speaking=set_user_speaking,
                                      filler_phrases=eng_fillers if eng else None,
-                                     on_transcript=on_transcript)
+                                     on_transcript=on_transcript,
+                                     fillers_armed=lambda: flags["bot_spoke_once"])
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
                             transfer_closing=transfer_closing, end_closing=end_closing)
 
@@ -974,7 +1000,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # pipecat 0.0.95 source), so the model didn't know it had already greeted and
             # re-greeted from scratch on the caller's first reply — the observed
             # double/triple-greeting. run_llm omitted => append only, no generation.
-            logger.info("greet: openingLine spoken (corr=%s)", corr)
+            logger.info("greet: openingLine spoken (corr=%s) at +%.2fs", corr, time.time() - _run_bot_t0)
             outcome.transcript.append({"role": "assistant", "text": opening})
             await task.queue_frames([
                 LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": opening}]),
@@ -1095,6 +1121,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     watchdog_task = asyncio.create_task(watchdog())
     try:
         runner = PipelineRunner(handle_sigint=False)
+        logger.info("setup timing corr=%s pipeline_built=%.2fs (since run_bot entry)",
+                    corr, time.time() - _run_bot_t0)
         await runner.run(task)
     finally:
         watchdog_task.cancel()

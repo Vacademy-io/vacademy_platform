@@ -1725,6 +1725,12 @@ async def intake_turn(
         messages.append(msg)
     if len(messages) == 1:
         messages.append({"role": "user", "content": "Hi — I want to build a website for my institute."})
+    # Vision turns pull chat models into prose mode ("Nice logo! …") — restate
+    # the contract inside the final user message so every turn stays JSON.
+    messages[-1]["content"] = (
+        str(messages[-1].get("content") or "")
+        + "\n\n(Reply with ONLY the JSON object per the OUTPUT CONTRACT — no text outside it.)"
+    )
 
     primary, fallbacks = resolve_models(
         db, "page_builder", preferred_model=body.preferred_model, hard_fallback=_DEFAULT_MODEL
@@ -1755,10 +1761,12 @@ async def intake_turn(
         # call — degrade to text-only rather than failing the conversation.
         logger.warning("[page-intake] retrying without attachments: %s", last_err)
         stripped = [{k: v for k, v in m.items() if k != "attachments"} for m in messages]
-        stripped.append({
-            "role": "user",
-            "content": "(note: my uploaded image could not be loaded — please continue without it)",
-        })
+        # Merge the note into the final user turn — a trailing extra user
+        # message (consecutive same-role) is rejected by some providers.
+        stripped[-1]["content"] = (
+            "(note: my uploaded image could not be loaded — please continue without it)\n"
+            + str(stripped[-1].get("content") or "")
+        )
         out = await _try(stripped)
     if out is None:
         raise HTTPException(status_code=502, detail=f"Assistant turn failed: {last_err}")

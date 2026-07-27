@@ -158,7 +158,7 @@ public class EmailSenderVerificationService {
                 .mode(storedMode)
                 .status(liveStatus)
                 .verified(verified)
-                .message(messageFor(storedMode, liveStatus, email, extractDomain(email)))
+                .message(messageFor(storedMode, liveStatus, identity, extractDomain(identity)))
                 .dnsRecords(dnsRecords)
                 .build();
     }

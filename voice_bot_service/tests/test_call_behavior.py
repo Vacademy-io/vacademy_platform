@@ -249,3 +249,52 @@ async def test_sentinel_new_start_clears_pending_swallow():
     await drive(LLMFullResponseEndFrame())    # must NOT be swallowed
     end_frames = [f for f in pushed if isinstance(f, LLMFullResponseEndFrame)]
     assert len(end_frames) == 1
+
+
+# ── A3: transcripts record what the caller HEARD (playout), not generation ───
+
+@pytest.mark.asyncio
+async def test_played_transcript_records_ttstext_and_merges_clauses():
+    from pipecat.frames.frames import TTSTextFrame, TranscriptionFrame
+    from pipecat.processors.frame_processor import FrameDirection
+    import unittest.mock as um
+
+    o = FakeOutcome()
+    rec = b.PlayedTranscriptRecorder(o)
+
+    async def fake_push(frame, direction=FrameDirection.DOWNSTREAM):
+        pass
+    rec.push_frame = fake_push
+
+    async def fake_super(self, frame, direction):
+        return
+
+    async def drive(frame):
+        with um.patch.object(b.FrameProcessor, "process_frame", new=fake_super):
+            await rec.process_frame(frame, FrameDirection.DOWNSTREAM)
+
+    await drive(TTSTextFrame("Hello!"))
+    await drive(TTSTextFrame("Am I speaking with Shreyash?"))
+    assert len(o.transcript) == 1                      # consecutive clauses merge
+    assert "Hello!" in o.transcript[0]["text"]
+    assert "Shreyash" in o.transcript[0]["text"]
+
+    o.transcript.append({"role": "user", "text": "yes"})  # caller turn intervenes
+    await drive(TTSTextFrame("Great, thank you."))
+    assert o.transcript[-1]["role"] == "assistant"
+    assert o.transcript[-1]["text"] == "Great, thank you."
+    assert len(o.transcript) == 3
+
+
+def test_generation_time_commits_removed():
+    """Sentinel and greet must no longer write assistant transcript entries —
+    only PlayedTranscriptRecorder does (playout position)."""
+    import inspect
+    sg_src = inspect.getsource(b.SentinelGate)
+    assert 'transcript.append({"role": "assistant"' not in sg_src
+    rb_src = inspect.getsource(b.run_bot)
+    greet = rb_src.split("_greet_when_ready")[1].split("@transport.event_handler")[0]
+    assert 'outcome.transcript.append' not in greet
+    # and the recorder is actually in the pipeline, after transport.output()
+    assert rb_src.index("transport.output(),") < rb_src.index("played_transcript,")
+    assert rb_src.index("played_transcript,") < rb_src.index("aggregators.assistant()")

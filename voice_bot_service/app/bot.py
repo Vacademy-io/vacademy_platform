@@ -41,6 +41,7 @@ from pipecat.frames.frames import (
     LLMTextFrame,
     TranscriptionFrame,
     TTSSpeakFrame,
+    TTSTextFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
 )
@@ -166,6 +167,32 @@ class TranscriptCollector(FrameProcessor):
                     and random.random() < self._filler_probability):
                 await self.push_frame(
                     TTSSpeakFrame(random.choice(self._filler_phrases)), direction)
+        await self.push_frame(frame, direction)
+
+
+class PlayedTranscriptRecorder(FrameProcessor):
+    """Sits AFTER transport.output(): records assistant speech from TTSTextFrames,
+    which the transport releases at PLAYOUT position — i.e. text the caller
+    actually HEARD. Replaces generation-time commits (deep-review A3): stalled or
+    interrupted replies used to enter the transcript in full, so the disposition
+    analyzer judged conversations that never happened (live 'Wrong_Number' on a
+    caller who heard nothing) — while nudges/farewells/fillers the caller DID
+    hear were never recorded (they ride TTSSpeakFrame, which also emits
+    TTSTextFrames, so this captures them too). Consecutive assistant clauses
+    merge into one transcript entry until a caller turn intervenes."""
+
+    def __init__(self, outcome: CallOutcome):
+        super().__init__()
+        self._outcome = outcome
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, TTSTextFrame) and frame.text and frame.text.strip():
+            t = self._outcome.transcript
+            if t and t[-1]["role"] == "assistant":
+                t[-1]["text"] = (t[-1]["text"] + " " + frame.text.strip()).strip()
+            else:
+                t.append({"role": "assistant", "text": frame.text.strip()})
         await self.push_frame(frame, direction)
 
 
@@ -378,9 +405,9 @@ class SentinelGate(FrameProcessor):
         await self.push_frame(frame, direction)
 
     def _flush_utterance(self):
-        text = self._utterance.strip()
-        if text:
-            self._outcome.transcript.append({"role": "assistant", "text": text})
+        # Transcript commits moved to PlayedTranscriptRecorder (playout-ordered,
+        # played-text-only — deep-review A3). The utterance accumulator remains
+        # only as marker bookkeeping; clear it each response.
         self._utterance = ""
 
     async def _register_handoff(self):
@@ -1033,6 +1060,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                                      on_transcript=on_transcript,
                                      fillers_armed=lambda: flags["bot_spoke_once"],
                                      bot_stopped_t=lambda: flags["bot_stopped_t"])
+    played_transcript = PlayedTranscriptRecorder(outcome)
+
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
                             transfer_closing=transfer_closing, end_closing=end_closing)
 
@@ -1045,6 +1074,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         sentinel,
         tts,
         transport.output(),
+        played_transcript,
         aggregators.assistant(),
     ])
 
@@ -1111,7 +1141,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # re-greeted from scratch on the caller's first reply — the observed
             # double/triple-greeting. run_llm omitted => append only, no generation.
             logger.info("greet: openingLine spoken (corr=%s) at +%.2fs", corr, time.time() - _run_bot_t0)
-            outcome.transcript.append({"role": "assistant", "text": opening})
+            # transcript entry comes from PlayedTranscriptRecorder at PLAYOUT
+            # (A3) — pre-crediting here recorded openings the caller never heard.
             await task.queue_frames([
                 LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": opening}]),
                 TTSSpeakFrame(opening)])

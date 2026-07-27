@@ -387,6 +387,16 @@ class ResilientSarvamTTSService(SarvamTTSService):
     def __init__(self, *args, pace_override: float | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         self._pace_override = pace_override
+        # Serializes connect/disconnect: three drivers touch the socket (the
+        # processor's run_tts error path, the interruption handler's per-barge-in
+        # reconnect, and the watchdog's stall recovery). The base's
+        # _connect_websocket is check-then-act with awaits in between — two
+        # concurrent calls both pass the check and the loser's socket LEAKS OPEN
+        # server-side (deep-review B1/F5; plausible contributor to Sarvam's
+        # first-byte stalls). Verified: base _connect/_disconnect never nest, so
+        # a non-reentrant Lock is safe.
+        import asyncio as _asyncio
+        self._conn_lock = _asyncio.Lock()
 
     async def _send_config(self):
         if self._pace_override is not None:
@@ -394,8 +404,13 @@ class ResilientSarvamTTSService(SarvamTTSService):
         await super()._send_config()
 
     async def _connect(self):
-        for attr in ("_receive_task", "_keepalive_task"):
-            t = getattr(self, attr, None)
-            if t is not None and t.done():
-                setattr(self, attr, None)
-        await super()._connect()
+        async with self._conn_lock:
+            for attr in ("_receive_task", "_keepalive_task"):
+                t = getattr(self, attr, None)
+                if t is not None and t.done():
+                    setattr(self, attr, None)
+            await super()._connect()
+
+    async def _disconnect(self):
+        async with self._conn_lock:
+            await super()._disconnect()

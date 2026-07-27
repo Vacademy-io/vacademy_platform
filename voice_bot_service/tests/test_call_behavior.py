@@ -315,3 +315,20 @@ def test_stt_deaf_detection_is_receive_task_based():
     # reconnect keeps its storm-guard cooldown
     rsrc = inspect.getsource(pv.ResilientSarvamSTTService._reconnect_once)
     assert "_RECONNECT_COOLDOWN_SECS" in rsrc
+
+
+# ── B1/Stage E: TTS connect/disconnect serialized; stall recovery re-enabled ──
+
+def test_tts_connect_lock_and_stall_reenabled():
+    import inspect
+    src = inspect.getsource(pv.ResilientSarvamTTSService)
+    assert "_conn_lock" in src
+    # both mutators go through the lock
+    c = src.split("async def _connect")[1].split("async def _disconnect")[0]
+    d = src.split("async def _disconnect")[1]
+    assert "_conn_lock" in c and "_conn_lock" in d
+    # default ON with env kill-switch retained
+    import app.config as cfg
+    import inspect as _i
+    csrc = _i.getsource(cfg)
+    assert 'STALL_RECOVERY_ENABLED", "true"' in csrc

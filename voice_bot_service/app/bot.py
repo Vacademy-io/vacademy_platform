@@ -851,7 +851,12 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
              # with nothing to react to. The watchdog compares these to detect
              # "spoke but no transcript ever came" and continues the conversation.
              "user_stopped_t": 0.0, "user_started_t": 0.0, "bot_stopped_t": 0.0,
-             "orphan_used": False, "bot_spoke_once": False}
+             "orphan_used": False, "bot_spoke_once": False,
+             # Audio-stall watchdog: stamped when a TTS generation begins, cleared
+             # the moment bot audio actually starts. If it stays pending >3.5s the
+             # reply was generated but never heard (Sarvam TTS first-byte stalls of
+             # 1.4-7s observed live) — force-reconnect TTS + regenerate.
+             "tts_gen_t": 0.0, "stall_recoveries": 0}
 
     def on_activity(user: bool = True):
         flags["t"] = time.time()
@@ -860,7 +865,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     def set_bot_speaking(speaking: bool):
         flags["bot_speaking"] = speaking
-        if not speaking:
+        if speaking:
+            flags["tts_gen_t"] = 0.0  # audio arrived — no stall
+        else:
             flags["bot_stopped_t"] = time.time()
             flags["bot_spoke_once"] = True
 
@@ -903,6 +910,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # of dead-airing (see ResilientSarvamSTTService._handle_message). Only while
     # the bot is quiet, and never in the opening seconds (greet owns those).
     _call_t0 = time.time()
+    if hasattr(tts, "set_generate_callback"):
+        def _stamp_generate():
+            if flags["tts_gen_t"] == 0.0:
+                flags["tts_gen_t"] = time.time()
+        tts.set_generate_callback(_stamp_generate)
     if hasattr(stt, "set_backchannel_gate"):
         stt.set_backchannel_gate(
             lambda: not flags["bot_speaking"] and time.time() - _call_t0 > 6.0)
@@ -1065,6 +1077,32 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # long caller utterance no transcript arrives and the clock used to go
             # stale — the nudge fired at the caller mid-sentence.
             if flags["bot_speaking"] or flags["user_speaking"]:
+                continue
+
+            # AUDIO-STALL RECOVERY: a reply was generated but its audio never
+            # started (TTS websocket stalled — 7s first-byte observed live; the
+            # caller heard permanent silence while the model kept "answering").
+            # Force a fresh TTS connection and have the model re-answer; capped
+            # at 3 recoveries per call so a hard provider outage can't loop.
+            gen_t = flags["tts_gen_t"]
+            if (gen_t > 0 and not flags["bot_speaking"]
+                    and time.time() - gen_t > 3.5
+                    and flags["stall_recoveries"] < 3):
+                flags["tts_gen_t"] = 0.0
+                flags["stall_recoveries"] += 1
+                logger.error("tts audio stall corr=%s (%.1fs since generation, recovery %d) — "
+                             "reconnecting TTS + regenerating", corr, time.time() - gen_t,
+                             flags["stall_recoveries"])
+                try:
+                    await tts._disconnect()
+                    await tts._connect()
+                except Exception as ex:
+                    logger.warning("tts stall reconnect failed corr=%s: %s", corr, ex)
+                await task.queue_frames([LLMMessagesAppendFrame(
+                    messages=[{"role": "user", "content":
+                        "[Audio glitch: the caller could NOT hear your last reply. "
+                        "Answer their last message again, briefly — do not mention the glitch.]"}],
+                    run_llm=True)])
                 continue
 
             # VAD-orphan: the caller audibly spoke but NO transcript arrived for

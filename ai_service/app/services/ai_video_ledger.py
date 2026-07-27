@@ -132,10 +132,21 @@ class AiVideoLedger:
         if cost_usd <= 0:
             return Decimal("0")
 
-        from ..db import db_session
-        from ..schemas.credits import CreditDeductRequest
-        from .credit_rate_service import CreditRateService
-        from .credit_service import CreditService
+        # Absolute-first: when this module is loaded WITHOUT package context
+        # (the pipeline's from-disk fallback), relative imports raise
+        # "attempted relative import with no known parent package" — which
+        # demoted EVERY dialogue clip at charge time in prod. Absolute works
+        # in both contexts once ai_service/ is on sys.path.
+        try:
+            from app.db import db_session
+            from app.schemas.credits import CreditDeductRequest
+            from app.services.credit_rate_service import CreditRateService
+            from app.services.credit_service import CreditService
+        except ImportError:
+            from ..db import db_session
+            from ..schemas.credits import CreditDeductRequest
+            from .credit_rate_service import CreditRateService
+            from .credit_service import CreditService
 
         # Compute credits via the live ratio. We bypass calculate_credits
         # because Veo pricing is non-uniform (audio × duration) and lives
@@ -217,8 +228,12 @@ class AiVideoLedger:
         if credits is None or credits <= 0:
             return
 
-        from ..db import db_session
-        from .credit_service import CreditService
+        try:
+            from app.db import db_session
+            from app.services.credit_service import CreditService
+        except ImportError:
+            from ..db import db_session
+            from .credit_service import CreditService
 
         try:
             with db_session() as db:

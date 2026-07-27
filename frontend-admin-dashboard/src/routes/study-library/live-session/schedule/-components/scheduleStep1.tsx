@@ -142,6 +142,11 @@ export default function ScheduleStep1() {
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [selectedMusicFile, setSelectedMusicFile] = useState<File | null>(null);
     const [existingThumbnailId, setExistingThumbnailId] = useState<string | null>(null);
+    // Cover image — rendered as the hero background of the public registration
+    // page (and the waiting-room fallback backdrop).
+    const [selectedCoverFile, setSelectedCoverFile] = useState<File | null>(null);
+    const [existingCoverId, setExistingCoverId] = useState<string | null>(null);
+    const coverFileInputRef = useRef<HTMLInputElement>(null);
     const [existingMusicId, setExistingMusicId] = useState<string | null>(null);
     const musicFileInputRef = useRef<HTMLInputElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -870,6 +875,9 @@ export default function ScheduleStep1() {
         if (schedule.background_score_file_id) {
             setExistingMusicId(schedule.background_score_file_id);
         }
+        if (schedule.cover_file_id) {
+            setExistingCoverId(schedule.cover_file_id);
+        }
 
         setIsFormInitialized(true);
 
@@ -1073,6 +1081,28 @@ export default function ScheduleStep1() {
         fileInputRef.current?.click();
     };
 
+    const handleCoverFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (file) {
+            setSelectedCoverFile(file);
+        } else {
+            toast.error('Please upload a valid image file');
+        }
+    };
+
+    const handleCoverUploadClick = () => {
+        coverFileInputRef.current?.click();
+    };
+
+    const handleRemoveCoverFile = () => {
+        setSelectedCoverFile(null);
+    };
+
+    const handleRemoveExistingCover = () => {
+        setExistingCoverId(null);
+        toast.success('Cover image removed. Save to confirm changes.');
+    };
+
     const handleMusicFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (file) {
@@ -1182,14 +1212,16 @@ export default function ScheduleStep1() {
         return false;
     };
 
-    /** Uploads the core session files (background music + cover thumbnail).
+    /** Uploads the core session files (background music + thumbnail + cover).
      *  Returns the resulting file IDs, or null if an upload fails. */
     const uploadCoreFiles = async (): Promise<{
         musicFileId: string | undefined;
         thumbnailFileId: string | undefined;
+        coverFileId: string | undefined;
     } | null> => {
         let musicFileId = existingMusicId || undefined;
         let thumbnailFileId = existingThumbnailId || undefined;
+        let coverFileId = existingCoverId || undefined;
 
         if (selectedMusicFile) {
             try {
@@ -1209,7 +1241,16 @@ export default function ScheduleStep1() {
                 return null;
             }
         }
-        return { musicFileId, thumbnailFileId };
+        if (selectedCoverFile) {
+            try {
+                coverFileId = await UploadFileInS3(selectedCoverFile, () => { }, 'your-user-id');
+            } catch (error) {
+                console.error('Error uploading cover image:', error);
+                toast.error('Failed to upload cover image. Please try again.');
+                return null;
+            }
+        }
+        return { musicFileId, thumbnailFileId, coverFileId };
     };
 
     /** Merges the latest live form state into the submitted data so that
@@ -1301,13 +1342,16 @@ export default function ScheduleStep1() {
 
             // Session IDs already in the form data are sufficient for the backend
             // to determine updates vs new additions — pass an empty originalSchedules array.
+            // Cover = the admin-chosen hero image for the public registration
+            // page. No more silent institute-logo fallback: no cover means the
+            // public page renders its theme gradient instead.
             const body = transformFormToDTOStep1(
                 updatedData,
                 INSTITUTE_ID,
                 [],
                 uploadedFiles.musicFileId,
                 uploadedFiles.thumbnailFileId,
-                instituteDetails?.institute_logo_file_id,
+                uploadedFiles.coverFileId ?? null,
                 updateRecurrenceScope
             );
 
@@ -2706,6 +2750,69 @@ export default function ScheduleStep1() {
                         accept=".mp3, .wav, .ogg, .m4a, .aac, .flac, .wma, .aiff, .au, .mid, .midi, .mp2, .mp3, .m4a, .aac, .flac, .wma, .aiff, .au, .mid, .midi"
                         className="hidden"
                     />
+                    <input
+                        type="file"
+                        ref={coverFileInputRef}
+                        onChange={handleCoverFileSelect}
+                        accept=".png, .jpg, .jpeg, .webp"
+                        className="hidden"
+                    />
+                    <div className="flex flex-col items-start gap-2">
+                        <div className="flex flex-col gap-2">
+                            <div>Cover Image</div>
+                            <MyButton
+                                type="button"
+                                buttonType="secondary"
+                                onClick={handleCoverUploadClick}
+                                className="flex items-center gap-2"
+                            >
+                                <UploadSimple size={20} />
+                                {existingCoverId || selectedCoverFile ? 'Replace' : 'Upload'}
+                            </MyButton>
+                            <p className="text-sm text-neutral-500">
+                                Hero background of the public registration page (and the
+                                waiting-room backdrop). A wide landscape image works best.
+                            </p>
+                        </div>
+                        {existingCoverId && !selectedCoverFile && (
+                            <div className="mt-2 flex h-fit max-w-52 flex-row items-center justify-between gap-2 rounded-md border border-green-500 bg-green-50 p-2 text-sm">
+                                <span className="text-xs font-medium text-green-700">
+                                    Existing file
+                                </span>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleViewFile(existingCoverId, 'thumbnail')}
+                                        className="text-green-600 hover:text-green-800"
+                                        title="View file"
+                                    >
+                                        <Eye size={18} weight="bold" />
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={handleRemoveExistingCover}
+                                        className="text-red-500 hover:text-red-700"
+                                        title="Remove file"
+                                    >
+                                        <X size={18} weight="bold" />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        {selectedCoverFile && (
+                            <div className="mt-2 flex h-fit max-w-52 flex-row items-center justify-between gap-2 rounded-md border border-primary-500 p-2 text-sm">
+                                <span className="max-w-36 truncate text-xs">
+                                    {selectedCoverFile.name}
+                                </span>
+                                <X
+                                    className="shrink-0 cursor-pointer text-red-500 hover:text-red-700"
+                                    onClick={handleRemoveCoverFile}
+                                    size={18}
+                                    weight="bold"
+                                />
+                            </div>
+                        )}
+                    </div>
                     {form.watch('waitingRoomType') !== WaitingRoomType.PRE_JOINING && (
                     <>
                     <div className="flex flex-col items-start gap-2">

@@ -1186,6 +1186,15 @@ public class AudienceService {
                             instituteId,
                             contextData);
 
+                    // The workflow context carries adminEmailRequests, but a workflow that only
+                    // emails the respondent has no consumer for it — the to_notify admin alert
+                    // would be silently dropped. Send it directly unless the workflow itself
+                    // already includes an admin-notify node (guarded to avoid double-sending).
+                    notifyToNotifyAdminsIfWorkflowDoesNot(
+                            requestDTO.getAudienceId(), instituteId, audience,
+                            userForNotification.getFullName(), userForNotification.getEmail(),
+                            customFieldsForEmail, contextData);
+
                     return savedResponse.getId();
                 }
 
@@ -1635,6 +1644,14 @@ public class AudienceService {
                         contextData);
 
                 logger.info("[V2] Workflow triggered successfully for audience: {}", requestDTO.getAudienceId());
+
+                // Send the to_notify admin alert directly unless the workflow already has an
+                // admin-notify node (otherwise adminEmailRequests has no consumer and the alert
+                // is silently dropped). Guarded to avoid double-sending.
+                notifyToNotifyAdminsIfWorkflowDoesNot(
+                        requestDTO.getAudienceId(), instituteId, audience,
+                        createdUser.getFullName(), createdUser.getEmail(),
+                        customFieldsForEmail, contextData);
 
                 return savedResponse.getId();
             }
@@ -3658,6 +3675,78 @@ public class AudienceService {
     }
 
     /**
+     * Notify the audience's {@code to_notify} admin recipients about a new lead — but ONLY
+     * when the workflow that fired for this submission does not already send admin emails
+     * (a SEND_EMAIL node bound to {@code adminEmailRequests}).
+     *
+     * <p>Why this exists: the workflow-driven submit paths ({@code submitLead},
+     * {@code submitLeadV2}, {@code submitLeadFromFormWebhook}) delegate to the workflow engine
+     * and return, putting the admin list on the context as {@code adminEmailRequests}. If the
+     * audience's workflow only emails the respondent (the common case — no admin-notify node),
+     * that list has no consumer and the {@code to_notify} alert is silently dropped. This makes
+     * the alert fire directly in exactly that case, while skipping it for audiences whose
+     * workflow already includes an admin-notify node (so they are not double-emailed).
+     *
+     * <p>On any detection error we skip the direct send (rather than risk a duplicate for the
+     * audiences that are already handled correctly by a workflow node). Best-effort — never
+     * blocks the submission.
+     */
+    private void notifyToNotifyAdminsIfWorkflowDoesNot(String audienceId, String instituteId,
+            Audience audience, String respondentFullName, String respondentEmail,
+            Map<String, String> customFields, Map<String, Object> contextData) {
+        if (audience == null || !StringUtils.hasText(audience.getToNotify())) {
+            return;
+        }
+        try {
+            if (workflowTriggerService.anyResolvedWorkflowSendsAdminEmail(
+                    WorkflowTriggerEvent.AUDIENCE_LEAD_SUBMISSION.name(), audienceId, instituteId, contextData)) {
+                logger.info(
+                        "Workflow already sends admin emails for audience {} — skipping direct to_notify send.",
+                        audienceId);
+                return;
+            }
+        } catch (Exception e) {
+            logger.warn(
+                    "Admin-notify detection failed for audience {}: {} — skipping direct send to avoid duplicate admin emails.",
+                    audienceId, e.getMessage());
+            return;
+        }
+        sendToNotifyAdminEmails(audience, respondentFullName, respondentEmail, customFields, instituteId);
+    }
+
+    /**
+     * Send the "New Lead Submitted" notification email to each {@code to_notify} admin
+     * recipient. Best-effort per recipient — a send failure to one never blocks the others or
+     * the submission. Mirrors the direct admin-send already used by the no-workflow branches.
+     */
+    private void sendToNotifyAdminEmails(Audience audience, String respondentFullName,
+            String respondentEmail, Map<String, String> customFields, String instituteIdForNotification) {
+        if (audience == null || !StringUtils.hasText(audience.getToNotify())) {
+            return;
+        }
+        for (String email : audience.getToNotify().split(",")) {
+            String trimmedEmail = email.trim();
+            if (!StringUtils.hasText(trimmedEmail)) {
+                continue;
+            }
+            String adminEmailBody = buildAdminNotificationBody(
+                    audience.getCampaignName(), respondentFullName, respondentEmail, customFields);
+
+            GenericEmailRequest adminEmailRequest = new GenericEmailRequest();
+            adminEmailRequest.setTo(trimmedEmail);
+            adminEmailRequest.setSubject("New Lead Submitted - " + audience.getCampaignName());
+            adminEmailRequest.setBody(adminEmailBody);
+
+            try {
+                notificationService.sendGenericHtmlMailViaUnified(adminEmailRequest, instituteIdForNotification);
+                logger.info("Sent admin notification (to_notify) to: {}", trimmedEmail);
+            } catch (Exception ex) {
+                logger.error("Failed to send admin notification to {}: {}", trimmedEmail, ex.getMessage());
+            }
+        }
+    }
+
+    /**
      * Build notification email body for admin recipients (to_notify) - HTML
      * formatted
      */
@@ -4197,6 +4286,14 @@ public class AudienceService {
             logger.error("Failed to trigger workflow for form webhook submission", e);
             // Don't throw exception - response is already saved
         }
+
+        // Send the to_notify admin alert directly unless the workflow already has an
+        // admin-notify node — otherwise adminEmailRequests has no consumer and the alert
+        // is silently dropped for form-webhook leads (e.g. Meta/Zoho). Guarded against dupes.
+        notifyToNotifyAdminsIfWorkflowDoesNot(
+                audienceId, instituteId, audience,
+                createdUser.getFullName(), createdUser.getEmail(),
+                customFieldsForEmail, contextData);
 
         return savedResponse.getId();
     }

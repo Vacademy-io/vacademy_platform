@@ -235,12 +235,26 @@ export const CourseStructureDetails = ({
     return Math.round(totalProgress / moduleChapters.length);
   };
 
-  // Helper: subject progress aggregated across all its chapters
+  // Helper: subject progress = mean of its MODULE percentages.
+  //
+  // Deliberately mean-of-module-means, not a flat average over every chapter in
+  // the subject. The backend computes it the same way
+  // (ActivityLogRepository#getSubjectCompletionPercentage sums the module
+  // percentages and divides by the module count), and the course percentage is
+  // in turn the mean of these subject values. Flattening the chapters instead
+  // silently weights modules by how many chapters they contain, so a subject
+  // with a 1-chapter module and a 10-chapter module would render a number that
+  // contradicts the course bar directly beneath it.
   const calculateSubjectProgress = (subjectId: string): number => {
-    const chapters = (subjectModulesMap[subjectId] ?? []).flatMap(
-      (mod) => mod.chapters ?? []
+    const modules = subjectModulesMap[subjectId] ?? [];
+    if (modules.length === 0) return 0;
+
+    const totalProgress = modules.reduce(
+      (sum, mod) => sum + calculateModuleProgress(mod.chapters ?? []),
+      0
     );
-    return calculateModuleProgress(chapters);
+
+    return Math.round(totalProgress / modules.length);
   };
 
   // Helper: render progress bar
@@ -1234,6 +1248,25 @@ export const CourseStructureDetails = ({
                       >
                         {toTitleCase(subject.subject_name)}
                       </span>
+                      {/* Subject Progress Indicator — same treatment modules and
+                          chapters get, so every level of the outline reads the
+                          same way. onDark: the subject row sits on the navy
+                          surface in the Play theme. */}
+                      <div className="flex items-center gap-2 ms-auto shrink-0 min-w-20">
+                        {(() => {
+                          const progress = calculateSubjectProgress(subject.id);
+                          return (
+                            <>
+                              <div className="w-14 sm:w-16 hidden sm:block">
+                                {renderProgressBar(progress, "sm")}
+                              </div>
+                              {renderCompletionBadge(progress, {
+                                onDark: true,
+                              })}
+                            </>
+                          );
+                        })()}
+                      </div>
                     </div>
                   </CollapsibleTrigger>
                   <CollapsibleContent
@@ -2165,6 +2198,23 @@ export const CourseStructureDetails = ({
                       <span className="break-words font-medium" title={toTitleCase(subject.subject_name)}>
                         {toTitleCase(subject.subject_name)}
                       </span>
+                      {/* Subject Progress Indicator — matches the module and
+                          chapter rows below so every outline level reads the
+                          same way. onDark: this row sits on the navy surface in
+                          the Play theme. */}
+                      <div className="flex items-center gap-2 ms-auto shrink-0 min-w-20">
+                        {(() => {
+                          const progress = calculateSubjectProgress(subject.id);
+                          return (
+                            <>
+                              <div className="w-14 sm:w-16 hidden sm:block">
+                                {renderProgressBar(progress, "sm")}
+                              </div>
+                              {renderCompletionBadge(progress, { onDark: true })}
+                            </>
+                          );
+                        })()}
+                      </div>
                     </div>
                   </CollapsibleTrigger>
                   <CollapsibleContent className={`pb-1 pt-2 `}>

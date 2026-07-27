@@ -278,7 +278,15 @@ const FooterPreview: React.FC<P> = ({ props }) => {
 
 const StatsPreview: React.FC<P> = ({ props }) => {
     const bg = props.backgroundColor || props.styles?.backgroundColor || '#FFFFFF';
-    const fg = props.textColor || props.styles?.textColor || '#111827';
+    // Heading/description default to white on a dark section bg (matches the
+    // learner StatsHighlightsComponent) unless an explicit textColor is set.
+    const darkBg = (() => {
+        const raw = String(bg).trim().replace(/^#/, '');
+        if (!/^[0-9a-fA-F]{6}$/.test(raw)) return false;
+        const r = parseInt(raw.slice(0, 2), 16), g = parseInt(raw.slice(2, 4), 16), b = parseInt(raw.slice(4, 6), 16);
+        return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.55;
+    })();
+    const fg = props.textColor || props.styles?.textColor || (darkBg ? '#FFFFFF' : '#111827'); // design-lint-ignore: page-builder default colors
     // Support both formats: flat stats[] and grouped groups[].stats[]
     const useGroups = props.groups && props.groups.length > 0;
     const displayStats: any[] = useGroups

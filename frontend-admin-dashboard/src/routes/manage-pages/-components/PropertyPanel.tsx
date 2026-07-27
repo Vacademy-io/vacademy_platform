@@ -3699,26 +3699,41 @@ const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
                     </div>
                 </div>
             )}
-            <div>
-                <div className="flex items-center justify-between mb-2">
-                    <Label className="text-xs font-medium">Logos ({logos.length})</Label>
-                    <Button variant="ghost" size="sm" onClick={addLogo} className="h-6 text-xs"><Plus className="size-3 mr-1" /> Add</Button>
+            {props.display === 'label-pill' ? (
+                // Text ticker (no images) — fast add/edit of sliding points.
+                <div>
+                    <Label className="text-xs font-medium">Ticker items ({logos.length})</Label>
+                    <p className="mb-1 text-caption text-gray-400">One announcement per line — these scroll across the band.</p>
+                    <ListField
+                        value={logos.map((l: any) => l.label).filter((s: any) => s != null)}
+                        onCommit={(items) => updateProp('logos', items.map((label: string) => ({ label })))}
+                        separator="newline"
+                        placeholder={'e.g.\nGATE 2026 batches open\nISRO/BARC post-GATE batches\n30,000+ students trained'}
+                        rows={5}
+                    />
                 </div>
-                <div className="space-y-2">
-                    {logos.map((logo: any, i: number) => (
-                        <div key={i} className="rounded border bg-gray-50 p-2 space-y-2">
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs font-medium">Logo {i + 1}</span>
-                                <Button variant="ghost" size="sm" onClick={() => deleteLogo(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
+            ) : (
+                <div>
+                    <div className="flex items-center justify-between mb-2">
+                        <Label className="text-xs font-medium">Logos ({logos.length})</Label>
+                        <Button variant="ghost" size="sm" onClick={addLogo} className="h-6 text-xs"><Plus className="size-3 mr-1" /> Add</Button>
+                    </div>
+                    <div className="space-y-2">
+                        {logos.map((logo: any, i: number) => (
+                            <div key={i} className="rounded border bg-gray-50 p-2 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-medium">Logo {i + 1}</span>
+                                    <Button variant="ghost" size="sm" onClick={() => deleteLogo(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
+                                </div>
+                                <ImageUploadField label="Image" value={logo.image || ''} onChange={(url) => updateLogo(i, 'image', url)} aiKind="logo" />
+                                <Input placeholder="Alt text" value={logo.alt || ''} onChange={(e) => updateLogo(i, 'alt', e.target.value)} />
+                                <Input placeholder="Label (company name, shown in labeled modes)" value={logo.label || ''} onChange={(e) => updateLogo(i, 'label', e.target.value)} />
+                                <Input placeholder="Link URL (optional)" value={logo.url || ''} onChange={(e) => updateLogo(i, 'url', e.target.value)} />
                             </div>
-                            <ImageUploadField label="Image" value={logo.image || ''} onChange={(url) => updateLogo(i, 'image', url)} aiKind="logo" />
-                            <Input placeholder="Alt text" value={logo.alt || ''} onChange={(e) => updateLogo(i, 'alt', e.target.value)} />
-                            <Input placeholder="Label (company name, shown in labeled modes)" value={logo.label || ''} onChange={(e) => updateLogo(i, 'label', e.target.value)} />
-                            <Input placeholder="Link URL (optional)" value={logo.url || ''} onChange={(e) => updateLogo(i, 'url', e.target.value)} />
-                        </div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 };

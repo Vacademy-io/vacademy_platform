@@ -647,8 +647,12 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         "out as 'one zero'. The ONLY exception is a phone number, which you read digit by digit."
     )
     fast_open_rule = (
-        "- Begin every reply with a short natural clause (a few words) before any longer "
-        "sentence — it reaches the caller faster and sounds more human."
+        "- Keep the FIRST sentence of every reply short (a few words) so it reaches the "
+        "caller fast — but make it SUBSTANCE, not a filler sound. Do NOT open replies with "
+        "\u2018Hmm\u2019, \u2018Achha\u2019, \u2018Theek hai\u2019, \u2018Okay\u2019, \u2018Right\u2019 or similar acknowledgment noises "
+        "more than about one reply in five — callers heard constant Hmm-ing as robotic. "
+        "Usually answer directly: \u2018Haan, accommodation shivir mein hi hai\u2019 beats \u2018Achha. "
+        "Toh accommodation\u2026\u2019."
     )
     # Live call went out in the evening but opened 'Good morning' — the authored script
     # hard-codes a greeting and nothing tied it to the clock. The RIGHT-NOW line above
@@ -793,11 +797,8 @@ def build_system_prompt(context: Dict[str, Any]) -> str:
         fast_open_rule,
         one_step_rule,
         goal_drive_rule,
-        ("- Never repeat the same acknowledgment twice in a row. Rotate naturally — right / "
-         "got it / sure / absolutely — don't open every turn the same way."
-         if is_english else
-         "- Never repeat the same acknowledgment twice in a row. Rotate naturally — हाँ / अच्छा / "
-         "ठीक है / जी बिल्कुल / समझ गई — don't say 'ji' every single turn."),
+        ("- Mostly SKIP acknowledgment openers entirely and answer directly; when you do "
+         "acknowledge, never use the same word twice in a row."),
         ("- Briefly reflect back the caller's specific point before you answer so they feel "
          "heard — not a generic 'I understand'."
          if is_english else

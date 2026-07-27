@@ -11,7 +11,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CircleNotch, PaperPlaneTilt, Image as ImageIcon, Sparkle, X } from '@phosphor-icons/react';
 import { useToast } from '@/hooks/use-toast';
-import { ImageUploadField } from './ImageUploadField';
+import { useFileUpload } from '@/hooks/use-file-upload';
+import { getPublicUrl } from '@/services/upload_file';
+import { getUserId } from '@/utils/userDetails';
 import {
     intakeAiTurn, IntakeTurn, IntakeResponse, AiPageImage, AiCourseSnapshotItem,
 } from '../-services/ai-page-service';
@@ -108,8 +110,9 @@ export const AiIntakeChat = ({
     const [input, setInput] = useState('');
     // Images staged on the composer bar (sent with the next message).
     const [pendingImages, setPendingImages] = useState<string[]>([]);
-    const [uploaderOpen, setUploaderOpen] = useState(false);
-    const [uploaderValue, setUploaderValue] = useState('');
+    const [uploadBusy, setUploadBusy] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const { uploadFile } = useFileUpload();
     // Everything collected across the conversation, handed to the generator.
     const collectedImages = useRef<AiPageImage[]>([]);
     const collectedInspiration = useRef<string[]>([]);
@@ -184,8 +187,35 @@ export const AiIntakeChat = ({
         setMessages(history);
         setInput('');
         setPendingImages([]);
-        setUploaderOpen(false);
         turnMutation.mutate(history);
+    };
+
+    // One-tap upload from the composer — stages the image for the next send.
+    const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const userId = getUserId();
+        if (!userId) return;
+        try {
+            setUploadBusy(true);
+            const fileId = await uploadFile({
+                file,
+                setIsUploading: setUploadBusy,
+                userId,
+                source: 'CATALOGUE_IMAGES',
+                sourceId: 'ADMIN',
+                publicUrl: true,
+            });
+            if (fileId) {
+                const url = (await getPublicUrl(fileId)) || fileId;
+                setPendingImages((p) => (p.includes(url) ? p : [...p, url]));
+            }
+        } catch {
+            toast({ title: 'Upload failed', description: 'Please try again.', variant: 'destructive' });
+        } finally {
+            setUploadBusy(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
     };
 
     const finish = () => {
@@ -204,7 +234,7 @@ export const AiIntakeChat = ({
     return (
         <div className="flex h-96 flex-col">
             {/* Transcript */}
-            <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto border-y border-gray-100 py-3 pr-1">
+            <div ref={scrollRef} className="min-h-40 flex-1 space-y-3 overflow-y-auto border-y border-gray-100 py-3 pr-1">
                 {messages.map((m, i) => (
                     <Bubble key={i} turn={m} />
                 ))}
@@ -235,20 +265,16 @@ export const AiIntakeChat = ({
                 </div>
             )}
 
-            {/* Upload affordance — highlighted when the assistant asked for one */}
-            {(uploaderOpen || askingUpload) && (
-                <div className="mt-2 rounded-lg border border-primary-100 bg-primary-50 p-2">
-                    <ImageUploadField
-                        label={UPLOAD_LABELS[last?.request_upload || 'photo'] || 'Add an image'}
-                        value={uploaderValue}
-                        onChange={(url) => {
-                            if (url) {
-                                setPendingImages((p) => (p.includes(url) ? p : [...p, url]));
-                                setUploaderValue('');
-                            }
-                        }}
-                    />
-                </div>
+            {/* Slim upload prompt — one tap opens the file picker */}
+            {askingUpload && (
+                <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="mt-2 flex items-center gap-2 rounded-lg border border-dashed border-primary-200 bg-primary-50 px-3 py-2 text-xs font-medium text-primary-500 hover:bg-primary-100"
+                >
+                    <ImageIcon className="size-4" />
+                    {UPLOAD_LABELS[last?.request_upload || 'photo']}
+                </button>
             )}
 
             {/* Staged images going out with the next message */}
@@ -269,16 +295,24 @@ export const AiIntakeChat = ({
             )}
 
             {/* Composer */}
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFile}
+            />
             <div className="mt-2 flex items-center gap-1.5">
                 <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="size-9 shrink-0 p-0"
+                    className={`size-9 shrink-0 p-0 ${askingUpload ? 'border-primary-300 text-primary-500 ring-2 ring-primary-100' : ''}`}
                     title="Attach an image"
-                    onClick={() => setUploaderOpen((o) => !o)}
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadBusy}
                 >
-                    <ImageIcon className="size-4" />
+                    {uploadBusy ? <CircleNotch className="size-4 animate-spin" /> : <ImageIcon className="size-4" />}
                 </Button>
                 <Input
                     value={input}

@@ -473,10 +473,21 @@ public class LearnerTrackingAsyncService {
                                         + "previous percentage.",
                                         userId, chapterId, moduleId, subjectId, packageSessionId);
                 }
-                if (!StringUtils.hasText(chapterId)) {
-                        return;
+                // Skip only the chapter-level work when there's no chapterId; the
+                // module / subject / package rollups below still run off whatever
+                // ids WERE supplied. They recompute from stored chapter values, so
+                // they remain useful without a chapterId — and returning early here
+                // would silently drop a refresh the caller used to get.
+                if (StringUtils.hasText(chapterId)) {
+                        updateChapterCompletionPercentage(userId, chapterId);
                 }
 
+                updateModuleCompletionPercentage(userId, moduleId);
+                updateSubjectCompletionPercentage(userId, subjectId);
+                updatePackageSessionCompletionPercentage(userId, packageSessionId);
+        }
+
+        private void updateChapterCompletionPercentage(String userId, String chapterId) {
                 learnerOperationService.deleteLearnerOperationByUserIdSourceAndSourceIdAndOperation(userId,
                                 LearnerOperationSourceEnum.CHAPTER.name(), chapterId,
                                 LearnerOperationEnum.LAST_SLIDE_VIEWED.name());
@@ -516,10 +527,6 @@ public class LearnerTrackingAsyncService {
                                                 chapterId,
                                                 LearnerOperationEnum.LAST_SLIDE_VIEWED.name(),
                                                 slideId));
-
-                updateModuleCompletionPercentage(userId, moduleId);
-                updateSubjectCompletionPercentage(userId, subjectId);
-                updatePackageSessionCompletionPercentage(userId, packageSessionId);
         }
 
         // ==== Module-Level Tracking ====

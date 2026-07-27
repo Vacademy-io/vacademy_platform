@@ -3,7 +3,18 @@ import TimelineReports from './timelineReports';
 import ProgressReports from './progressReports';
 import BatchAiAnalysis from './batchAiAnalysis';
 
-export default function BatchReports() {
+interface BatchReportsProps {
+    /**
+     * Scopes all three report tabs to a single batch and hides the
+     * course/session/level pickers. Used by Course Details → Reports, where the
+     * batch is already implied by the page.
+     */
+    packageSessionId?: string;
+    /** Course id backing `packageSessionId`, used only to title the reports. */
+    courseId?: string;
+}
+
+export default function BatchReports({ packageSessionId, courseId }: BatchReportsProps = {}) {
     return (
         <div className="w-full">
             <Tabs defaultValue="timeline" className="w-full">
@@ -43,15 +54,21 @@ export default function BatchReports() {
                 {/* Tab Content */}
                 <div className="bg-white">
                     <TabsContent value="timeline" className="mt-0 p-6 focus-visible:outline-none">
-                        <TimelineReports />
+                        <TimelineReports
+                            fixedPackageSessionId={packageSessionId}
+                            fixedCourseId={courseId}
+                        />
                     </TabsContent>
                     
                     <TabsContent value="progress" className="mt-0 p-6 focus-visible:outline-none">
-                        <ProgressReports />
+                        <ProgressReports
+                            fixedPackageSessionId={packageSessionId}
+                            fixedCourseId={courseId}
+                        />
                     </TabsContent>
 
                     <TabsContent value="ai-analysis" className="mt-0 p-6 focus-visible:outline-none">
-                        <BatchAiAnalysis />
+                        <BatchAiAnalysis fixedPackageSessionId={packageSessionId} />
                     </TabsContent>
                 </div>
             </Tabs>

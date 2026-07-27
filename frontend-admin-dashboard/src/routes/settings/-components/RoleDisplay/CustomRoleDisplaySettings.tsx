@@ -1149,6 +1149,7 @@ export default function CustomRoleDisplaySettings({
                             'LIVE_SESSION',
                             'PLANNING',
                             'ACTIVITY',
+                            'REPORTS',
                             'SETTINGS',
                         ];
                         // Tabs that stay OFF unless explicitly enabled per role.

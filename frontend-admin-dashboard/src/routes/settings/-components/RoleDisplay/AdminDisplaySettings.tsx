@@ -1165,6 +1165,7 @@ export default function AdminDisplaySettings() {
                             'LIVE_SESSION',
                             'PLANNING',
                             'ACTIVITY',
+                            'REPORTS',
                             'SETTINGS',
                         ];
                         const orderForId: Record<string, number> = {
@@ -1176,7 +1177,8 @@ export default function AdminDisplaySettings() {
                             LIVE_SESSION: 6,
                             PLANNING: 7,
                             ACTIVITY: 8,
-                            SETTINGS: 9,
+                            REPORTS: 9,
+                            SETTINGS: 10,
                         };
                         // Tabs that stay OFF unless explicitly enabled per role.
                         const hiddenByDefault = new Set<string>(['LIVE_SESSION']);

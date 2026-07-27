@@ -38,7 +38,22 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
-export default function ProgressReports() {
+interface ProgressReportsProps {
+    /**
+     * When rendered inside a batch-scoped surface (e.g. Course Details → Reports),
+     * the batch is already known — the course/session/level picker is hidden and
+     * the report is generated for this package session directly.
+     */
+    fixedPackageSessionId?: string;
+    /** Course id backing `fixedPackageSessionId`, used only to title the report. */
+    fixedCourseId?: string;
+}
+
+export default function ProgressReports({
+    fixedPackageSessionId,
+    fixedCourseId,
+}: ProgressReportsProps = {}) {
+    const isBatchFixed = Boolean(fixedPackageSessionId);
     const {
         getCourseFromPackage,
         getSessionFromPackage,
@@ -99,7 +114,7 @@ export default function ProgressReports() {
             exportBatchSubjectWiseReport({
                 startDate: '',
                 endDate: '',
-                packageSessionId: pacageSessionId || '',
+                packageSessionId: fixedPackageSessionId || pacageSessionId || '',
             }),
         onSuccess: async (response) => {
             const url = window.URL.createObjectURL(new Blob([response]));
@@ -151,17 +166,10 @@ export default function ProgressReports() {
         }
     }, [selectedSession]);
 
-    const onSubmit = (data: FormValues) => {
-        // api call
+    const runReport = (packageSessionId: string) => {
+        if (!packageSessionId) return;
         SubjectWiseMutation.mutate(
-            {
-                packageSessionId:
-                    getPackageSessionId({
-                        courseId: data.course,
-                        sessionId: data.session,
-                        levelId: data.level,
-                    }) || '',
-            },
+            { packageSessionId },
             {
                 onSuccess: (data) => {
                     setSubjectReportData(data);
@@ -171,21 +179,31 @@ export default function ProgressReports() {
                 },
             }
         );
-        setCourse(courseList.find((course) => (course.id = data.course))?.name || '');
-        setSession(sessionList.find((course) => (course.id = data.session))?.name || '');
-        setLevel(levelList.find((course) => (course.id = data.level))?.level_name || '');
-        setPacageSessionId(
+        setPacageSessionId(packageSessionId);
+    };
+
+    const onSubmit = (data: FormValues) => {
+        runReport(
             getPackageSessionId({
                 courseId: data.course,
                 sessionId: data.session,
                 levelId: data.level,
             }) || ''
         );
+        setCourse(courseList.find((course) => course.id === data.course)?.name || '');
+        setSession(sessionList.find((session) => session.id === data.session)?.name || '');
+        setLevel(levelList.find((level) => level.id === data.level)?.level_name || '');
     };
+
+    // Batch is already known (Course Details → Reports): generate straight away.
+    useEffect(() => {
+        if (fixedPackageSessionId) runReport(fixedPackageSessionId);
+    }, [fixedPackageSessionId]);
 
     return (
         <div className="space-y-6">
-            {/* Modern Filter Card */}
+            {/* Modern Filter Card — hidden when the batch is already scoped by the parent */}
+            {!isBatchFixed && (
             <div className="bg-white rounded-lg border border-neutral-200 p-4 shadow-sm">
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                     {/* Course, Session, Level Row */}
@@ -286,7 +304,8 @@ export default function ProgressReports() {
                     </div>
                 </form>
             </div>
-            
+            )}
+
             {isPending && <DashboardLoader />}
             
             {subjectReportData && (
@@ -296,7 +315,9 @@ export default function ProgressReports() {
                         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                             <div className="space-y-2">
                                 <h3 className="text-lg font-semibold text-primary-600">
-                                    {courseList.find((course) => course.id === selectedCourse)?.name || ''}
+                                    {courseList.find(
+                                        (course) => course.id === (fixedCourseId || selectedCourse)
+                                    )?.name || ''}
                                 </h3>
                             </div>
                             <MyButton

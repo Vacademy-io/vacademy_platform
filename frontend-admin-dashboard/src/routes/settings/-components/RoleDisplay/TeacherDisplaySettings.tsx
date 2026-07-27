@@ -1149,6 +1149,7 @@ export default function TeacherDisplaySettings() {
                             'LIVE_SESSION',
                             'PLANNING',
                             'ACTIVITY',
+                            'REPORTS',
                         ];
                         // Tabs that stay OFF unless explicitly enabled per role.
                         const hiddenByDefault = new Set<string>(['LIVE_SESSION']);

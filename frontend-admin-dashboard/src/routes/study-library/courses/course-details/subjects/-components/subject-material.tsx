@@ -50,6 +50,7 @@ import {
 import Students from './student-list';
 import Assessments from './assessment-list';
 import LiveSessions from './live-sessions-list';
+import BatchReports from '@/routes/study-library/reports/-components/batch/batchReports';
 import Planning from './planning';
 import Activity from './activity';
 import { PackageSettingsPanel } from '../../-components/package-settings/PackageSettingsPanel';
@@ -861,6 +862,15 @@ export const SubjectMaterial = () => {
         ) : (
             <div className="rounded-md bg-white p-6 text-center text-sm text-neutral-500 shadow-sm">
                 Select a batch to view its live sessions.
+            </div>
+        ),
+        [TabType.REPORTS]: packageSessionIds ? (
+            <div className="rounded-md bg-white text-sm text-gray-600 shadow-sm">
+                <BatchReports packageSessionId={packageSessionIds} courseId={courseId} />
+            </div>
+        ) : (
+            <div className="rounded-md bg-white p-6 text-center text-sm text-neutral-500 shadow-sm">
+                Select a batch to view its reports.
             </div>
         ),
         [TabType.CONTENT_STRUCTURE]: (

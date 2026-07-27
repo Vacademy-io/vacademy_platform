@@ -94,6 +94,7 @@ import { AddChapterButton } from '../subjects/modules/chapters/-components/chapt
 import Students from '../subjects/-components/student-list';
 import Assessments from '../subjects/-components/assessment-list';
 import LiveSessions from '../subjects/-components/live-sessions-list';
+import BatchReports from '@/routes/study-library/reports/-components/batch/batchReports';
 import { getIcon } from '../subjects/modules/chapters/slides/-components/slides-sidebar/slides-sidebar-slides';
 import { useContentStore } from '../subjects/modules/chapters/slides/-stores/chapter-sidebar-store';
 import { TeachersList } from '../subjects/-components/teacher-list';
@@ -3685,6 +3686,15 @@ export const CourseStructureDetails = ({
         ) : (
             <div className="rounded-md bg-white p-6 text-center text-sm text-neutral-500 shadow-sm">
                 Select a batch to view its live sessions.
+            </div>
+        ),
+        [TabType.REPORTS]: batchPackageSessionId ? (
+            <div className="rounded-md bg-white text-sm text-gray-600 shadow-sm">
+                <BatchReports packageSessionId={batchPackageSessionId} courseId={courseId} />
+            </div>
+        ) : (
+            <div className="rounded-md bg-white p-6 text-center text-sm text-neutral-500 shadow-sm">
+                Select a batch to view its reports.
             </div>
         ),
         [TabType.CONTENT_STRUCTURE]: (

@@ -610,7 +610,7 @@ export function LoginForm() {
                                 />
                             ) : null}
                             {instituteName && cachedBranding?.hideInstituteName !== true ? (
-                                <div className="mb-2 text-lg font-bold text-neutral-900 sm:mb-4 sm:text-xl">
+                                <div className="mb-2 text-center text-lg font-bold text-neutral-900 sm:mb-4 sm:text-xl">
                                     {instituteName}
                                 </div>
                             ) : null}

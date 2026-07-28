@@ -158,7 +158,10 @@ export const SidebarPanel: React.FC<SidebarPanelProps> = ({
                     className={cn(
                         'flex cursor-pointer items-center',
                         hideInstituteName
-                            ? 'justify-center p-0'
+                            ? // Name hidden: logo alone, but keep the same header
+                              // padding as the other branches so it never touches
+                              // the panel edges or the bottom divider.
+                              'justify-center px-4 py-4'
                             : stackNameBelowLogo
                               ? 'flex-col gap-2 px-4 py-4 text-center'
                               : 'gap-2.5 px-4 py-4'

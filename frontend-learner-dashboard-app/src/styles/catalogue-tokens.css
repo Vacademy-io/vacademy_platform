@@ -771,6 +771,14 @@
      ============================================= */
   .catalogue-carousel-bleed {
     padding-inline: calc(max((100% - var(--catalogue-content-max)) / 2, 0px) + var(--space-4));
+    /* The rail snaps (snap-mandatory + snap-start), and snap alignment is
+       computed against the SNAPPORT, which ignores regular padding — on load
+       the mandatory snap yanked the first card past the gutter to the
+       container edge (and left scrollLeft > 0, so the "previous" arrow showed
+       on an unscrolled rail). scroll-padding is the one property that shrinks
+       the snapport; keep it identical to the visual gutter so the resting
+       snap position IS the aligned position. */
+    scroll-padding-inline: calc(max((100% - var(--catalogue-content-max)) / 2, 0px) + var(--space-4));
   }
 
   /* Hide the scroll track on swipe rails — the overflowing card and the

@@ -26,6 +26,23 @@ public class CatalogueLeadRequestDTO {
 
     private String instituteId;
 
+    /**
+     * Optional destination campaign. When set (and it is an ACTIVE audience of
+     * this institute) the lead lands in THAT campaign instead of the
+     * auto-provisioned "Course Catalogue Leads" list — this is what lets a
+     * website's contact form, newsletter box and event registrations each feed
+     * their own audience list. Invalid/foreign ids fall back to the auto list
+     * rather than failing: a mis-configured page must never lose a lead.
+     */
+    private String audienceId;
+
+    /**
+     * Optional capture-channel tag written to audience_response.source_type
+     * (e.g. "WEBSITE_FORM", "NEWSLETTER", "POPUP_FORM"). Defaults to
+     * COURSE_CATALOGUE for backward compatibility.
+     */
+    private String sourceType;
+
     private String fullName;
 
     private String email;

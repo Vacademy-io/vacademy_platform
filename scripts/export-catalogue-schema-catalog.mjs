@@ -83,6 +83,13 @@ const USAGE = {
         'generic buckets. It has no price/image/enrol fields by design, so it is safe on informational pages.',
 };
 const DATA_BOUND = {
+    leadForm:
+        "Embeds an Audience campaign's LIVE registration form (fields defined in the CRM's Audience " +
+        "Manager) and submits leads into that campaign. Set ONLY title/subtitle/submitLabel/" +
+        "successMessage/layout/align — audienceId must be chosen by the admin from their existing " +
+        "campaigns, so leave it as an empty string and NEVER invent one. Use it for event " +
+        "registrations, demo bookings and enquiry sections; contactForm remains fine for a simple " +
+        "authored name/email/message form.",
     productPageOffer:
         "Renders a LIVE Product Page's sellable courses (names, prices, images) and deep-links each " +
         "card into that page's cart. Set ONLY title/subtitle/ctaLabel/columns, the header props " +

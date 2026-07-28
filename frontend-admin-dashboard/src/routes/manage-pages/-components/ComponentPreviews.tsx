@@ -13,7 +13,7 @@ import {
 import { renderHtmlSection } from '../-utils/catalogue-html';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
-import { PRODUCT_PAGE_OPEN_URL } from '@/constants/urls';
+import { PRODUCT_PAGE_OPEN_URL, AUDIENCE_CAMPAIGN_OPEN_URL } from '@/constants/urls';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
 interface P { props: any }
@@ -153,6 +153,64 @@ const ProductPageOfferPreview: React.FC<P> = ({ props }) => {
             </p>
         )}
         </>
+    );
+};
+
+/** Canvas preview for `leadForm` — fetches the campaign's real form fields
+ *  from the same anonymous endpoint the learner uses, rendered inert. */
+const LeadFormPreview: React.FC<P> = ({ props }) => {
+    const instituteId = getCurrentInstituteId();
+    const audienceId = props.audienceId;
+    const { data, isLoading } = useQuery({
+        queryKey: ['LEAD_FORM_PREVIEW', audienceId, instituteId],
+        queryFn: async () =>
+            (await axios.get(`${AUDIENCE_CAMPAIGN_OPEN_URL}/${instituteId}/${audienceId}`)).data,
+        enabled: !!audienceId && !!instituteId,
+        staleTime: 60_000,
+    });
+    const fields = ((data?.institute_custom_fields || []) as any[])
+        .filter((f) => f?.custom_field && f.status !== 'DELETED')
+        .sort((a, b) => (a.individual_order ?? 0) - (b.individual_order ?? 0));
+    const isLeft = props.align === 'left';
+    return (
+        <section className="catalogue-section" style={props.backgroundColor ? { backgroundColor: props.backgroundColor } : undefined}>
+            <div className="catalogue-shell-narrow">
+                {(props.title || props.subtitle) && (
+                    <div className={`catalogue-section-header ${isLeft ? 'text-left' : 'text-center'}`}>
+                        {props.title && <h2 className="catalogue-h2 text-catalogue-text-primary">{props.title}</h2>}
+                        {props.subtitle && <p className="catalogue-lead text-catalogue-text-muted">{props.subtitle}</p>}
+                    </div>
+                )}
+                <div className={props.layout === 'bare' ? '' : 'catalogue-card-elevated p-6'}>
+                    {!audienceId ? (
+                        <p className="p-4 text-center text-sm text-catalogue-text-muted">
+                            Pick a campaign in the properties panel — its form fields render here.
+                        </p>
+                    ) : isLoading ? (
+                        <p className="p-4 text-center text-sm text-catalogue-text-muted">Loading form fields…</p>
+                    ) : fields.length === 0 ? (
+                        <p className="p-4 text-center text-sm text-catalogue-text-muted">
+                            This campaign has no form fields yet — add them in Audience Manager.
+                        </p>
+                    ) : (
+                        <div className="space-y-4">
+                            {fields.map((f: any, i: number) => (
+                                <div key={i}>
+                                    <p className="mb-1.5 text-sm font-medium text-catalogue-text-secondary">
+                                        {f.custom_field.fieldName}
+                                        {f.custom_field.isMandatory && <span className="ms-1 text-catalogue-brand-ink">*</span>}
+                                    </p>
+                                    <div className="h-10 rounded-catalogue-md border border-catalogue-border bg-catalogue-bg-muted" />
+                                </div>
+                            ))}
+                            <span className="catalogue-btn catalogue-btn-primary w-full justify-center">
+                                {props.submitLabel || 'Submit'}
+                            </span>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </section>
     );
 };
 
@@ -1455,6 +1513,8 @@ export const renderComponentPreview = (
             return <ProductPageOfferPreview props={props} />;
         case 'detailBlocks':
             return <DetailBlocksPreview props={props} />;
+        case 'leadForm':
+            return <LeadFormPreview props={props} />;
         case 'htmlBlock': {
             if (!props.html) {
                 return (

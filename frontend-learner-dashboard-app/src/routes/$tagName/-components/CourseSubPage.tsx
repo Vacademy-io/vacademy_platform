@@ -3,6 +3,7 @@ import { withArabicFallback } from "@/utils/branding";
 import { useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
+import { AudienceFormModal } from "./AudienceFormModal";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
 import { buildPrimaryScaleVars } from "../-utils/style-utils";
@@ -34,6 +35,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showLeadCollection, setShowLeadCollection] = useState(false);
+  const [audienceForm, setAudienceForm] = useState<{ audienceId: string; title?: string } | null>(null);
   const [showIntroPage, setShowIntroPage] = useState(false);
   const [introCompleted, setIntroCompleted] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
@@ -181,6 +183,19 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
       window.removeEventListener('openLeadCollection', handleOpenLeadCollection);
     };
   }, [catalogueData]);
+
+  // Listen for buttons asking to open an Audience campaign form as a popup
+  // (action 'openForm' on buttonBlock / ctaBanner). Mirrors openLeadCollection.
+  useEffect(() => {
+    const handleOpenAudienceForm = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      if (detail.audienceId) {
+        setAudienceForm({ audienceId: detail.audienceId, title: detail.title });
+      }
+    };
+    window.addEventListener('openAudienceForm', handleOpenAudienceForm);
+    return () => window.removeEventListener('openAudienceForm', handleOpenAudienceForm);
+  }, []);
 
   // Handle lead collection modal
   const handleLeadCollectionClose = () => {
@@ -411,6 +426,15 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
       )}
 
       {/* Lead Collection Modal - Show when requested and intro is completed or not active */}
+      {audienceForm && (
+        <AudienceFormModal
+          isOpen={!!audienceForm}
+          onClose={() => setAudienceForm(null)}
+          audienceId={audienceForm.audienceId}
+          title={audienceForm.title}
+          instituteId={instituteId}
+        />
+      )}
       {showLeadCollection && catalogueData && catalogueData.globalSettings.leadCollection.enabled && (!showIntroPage || introCompleted) && (
         <LeadCollectionModal
           isOpen={showLeadCollection}

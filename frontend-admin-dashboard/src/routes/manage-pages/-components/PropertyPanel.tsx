@@ -28,6 +28,7 @@ import { RichTextField } from './RichTextField';
 import { StyleEditor } from './StyleEditor';
 import { useQuery } from '@tanstack/react-query';
 import { getAllProductPages } from '../product-pages/-services/product-pages-service';
+import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { LinkPicker } from './LinkPicker';
 import type { ComponentStyle } from '../-types/editor-types';
@@ -1233,6 +1234,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
             return <HtmlBlockEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'productPageOffer':
             return <ProductPageOfferEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'leadForm':
+            return <LeadFormEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'productCourseGrid':
             return <ProductCourseGridEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'tabsAccordion':
@@ -3093,11 +3096,29 @@ const CtaBannerEditor = ({ component, pageId, updateComponent }: any) => {
                 {props.button?.enabled && (
                     <>
                         <Input placeholder="Button text" value={props.button?.text || ''} onChange={(e) => updateProp('button', { ...props.button, text: e.target.value })} />
-                        <LinkPicker
-                            label="Button Link"
-                            value={props.button?.target || ''}
-                            onChange={(v) => updateProp('button', { ...props.button, target: v })}
-                        />
+                        <div>
+                            <Label className="text-xs">On click</Label>
+                            <div className="mt-1 flex gap-1">
+                                {([['navigate', 'Open a link'], ['openForm', 'Open form popup']] as const).map(([v, l]) => (
+                                    <button key={v} onClick={() => updateProp('button', { ...props.button, action: v })}
+                                        className={`rounded px-2.5 py-1 text-caption font-medium ${(props.button?.action || 'navigate') === v ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
+                                ))}
+                            </div>
+                        </div>
+                        {props.button?.action === 'openForm' ? (
+                            <CampaignPicker
+                                label="Form to open (campaign)"
+                                allowEmpty={false}
+                                value={props.button?.audienceId || ''}
+                                onChange={(id) => updateProp('button', { ...props.button, audienceId: id })}
+                            />
+                        ) : (
+                            <LinkPicker
+                                label="Button Link"
+                                value={props.button?.target || ''}
+                                onChange={(v) => updateProp('button', { ...props.button, target: v })}
+                            />
+                        )}
                     </>
                 )}
             </div>
@@ -3179,8 +3200,13 @@ const ContactFormEditor = ({ component, pageId, updateComponent }: any) => {
             <div className="space-y-2"><Label>Submit Button Label</Label><Input value={props.submitLabel || 'Send Message'} onChange={(e) => updateProp('submitLabel', e.target.value)} /></div>
             <div className="space-y-2"><Label>Success Message</Label><Input value={props.successMessage || ''} onChange={(e) => updateProp('successMessage', e.target.value)} /></div>
             <ColorPickerField label="Background Color" value={props.backgroundColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */} onChange={(c) => updateProp('backgroundColor', c)} />
-            <div className="rounded border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
-                Form submissions are sent as enquiries. Configure the Enquiry setting in Global Settings.
+            <CampaignPicker
+                value={props.audienceId || ''}
+                onChange={(id, name) => updateComponent(pageId, component.id, { props: { ...props, audienceId: id, audienceName: name } })}
+            />
+            <div className="rounded border border-gray-200 bg-gray-50 p-2 text-caption text-gray-500">
+                Submissions land as leads in the campaign above (or the default website-leads list)
+                — visible in Audience Manager → Recent Leads, with dedup and counsellor assignment.
             </div>
         </div>
     );
@@ -3343,6 +3369,114 @@ const ImageGalleryEditor = ({ component, pageId, updateComponent }: any) => {
 };
 
 /* ─── Spacer Editor ────────────────────────────────────────────────────── */
+/**
+ * Campaign (audience list) picker — the shared "where do these leads go?"
+ * control for every website capture point. Lists the institute's ACTIVE
+ * campaigns from Audience Manager; the empty choice means the auto-provisioned
+ * default website-leads list.
+ */
+const CampaignPicker = ({ value, onChange, label = 'Send responses to', allowEmpty = true }: {
+    value: string;
+    onChange: (id: string, name: string) => void;
+    label?: string;
+    allowEmpty?: boolean;
+}) => {
+    const instituteId = getCurrentInstituteId();
+    const { data, isLoading } = useQuery({
+        ...handleFetchCampaignsList({ institute_id: instituteId || '', status: 'ACTIVE', page: 0, size: 100 }),
+        enabled: !!instituteId,
+    });
+    const campaigns = ((data?.content || []) as any[])
+        .map((c) => ({ id: c.id || c.audience_id || c.campaign_id, name: c.campaign_name }))
+        .filter((c) => c.id);
+    return (
+        <div>
+            <Label className="text-xs">{label}</Label>
+            <select
+                className="mt-1 w-full rounded border px-2 py-1.5 text-xs"
+                value={value || ''}
+                onChange={(e) => {
+                    const picked = campaigns.find((c) => c.id === e.target.value);
+                    onChange(e.target.value, picked?.name || '');
+                }}
+            >
+                <option value="">
+                    {isLoading ? 'Loading campaigns…' : allowEmpty ? 'Default website leads list' : 'Select a campaign'}
+                </option>
+                {campaigns.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+            </select>
+            <p className="mt-1 text-caption text-gray-400">
+                Campaigns come from Audience Manager — edit their form fields there.
+            </p>
+        </div>
+    );
+};
+
+/**
+ * Editor for `leadForm` — an Audience campaign's form embedded on the page.
+ * The FIELDS are not edited here by design: they live on the campaign in
+ * Audience Manager, so one definition serves every placement (inline, popup,
+ * standalone /audience-response page).
+ */
+const LeadFormEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+    return (
+        <div className="space-y-4">
+            <div className="rounded border border-gray-200 bg-gray-50 p-2 text-caption text-gray-500">
+                Renders a campaign&apos;s registration form right on the page. Fields, options and
+                mandatory flags are configured on the campaign in Audience Manager; submissions land
+                in that campaign with dedup, scoring and counsellor assignment.
+            </div>
+            <CampaignPicker
+                label="Campaign (form + destination)"
+                allowEmpty={false}
+                value={props.audienceId || ''}
+                onChange={(id, name) => updateComponent(pageId, component.id, { props: { ...props, audienceId: id, audienceName: name } })}
+            />
+            <div>
+                <Label className="text-xs">Title</Label>
+                <Input className="mt-1" value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} placeholder="Register your interest" />
+            </div>
+            <div>
+                <Label className="text-xs">Subtitle</Label>
+                <Textarea className="mt-1" rows={2} value={props.subtitle || ''} onChange={(e) => updateProp('subtitle', e.target.value)} />
+            </div>
+            <div>
+                <Label className="text-xs">Submit button label</Label>
+                <Input className="mt-1" value={props.submitLabel || ''} onChange={(e) => updateProp('submitLabel', e.target.value)} placeholder="Submit" />
+            </div>
+            <div>
+                <Label className="text-xs">Success message</Label>
+                <Input className="mt-1" value={props.successMessage || ''} onChange={(e) => updateProp('successMessage', e.target.value)} placeholder="Thank you! We've received your details." />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <Label className="text-xs">Style</Label>
+                    <div className="mt-1 flex gap-1">
+                        {(['card', 'bare'] as const).map((v) => (
+                            <button key={v} onClick={() => updateProp('layout', v)}
+                                className={`rounded px-2.5 py-1 text-caption font-medium capitalize ${(props.layout || 'card') === v ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{v}</button>
+                        ))}
+                    </div>
+                </div>
+                <div>
+                    <Label className="text-xs">Header align</Label>
+                    <div className="mt-1 flex gap-1">
+                        {(['center', 'left'] as const).map((v) => (
+                            <button key={v} onClick={() => updateProp('align', v)}
+                                className={`rounded px-2.5 py-1 text-caption font-medium capitalize ${(props.align || 'center') === v ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{v}</button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => {
     const { props } = component;
     const instituteId = getCurrentInstituteId();
@@ -4641,14 +4775,38 @@ const ButtonBlockEditor = ({ component, pageId, updateComponent }: any) => {
     return (
         <div className="space-y-4">
             <Input value={props.text || ''} onChange={(e) => updateProp('text', e.target.value)} placeholder="Button text" />
-            <LinkPicker
-                label="Link Destination"
-                value={props.url || ''}
-                onChange={(v) => updateProp('url', v)}
-                showTarget
-                target={props.target}
-                onTargetChange={(t) => updateProp('target', t)}
-            />
+            <div>
+                <Label className="text-xs">On click</Label>
+                <div className="mt-1 flex gap-1">
+                    {([['link', 'Open a link'], ['openForm', 'Open form popup']] as const).map(([v, l]) => (
+                        <button key={v} onClick={() => updateProp('action', v)}
+                            className={`rounded px-2.5 py-1 text-caption font-medium ${(props.action || 'link') === v ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
+                    ))}
+                </div>
+            </div>
+            {(props.action || 'link') === 'openForm' ? (
+                <>
+                    <CampaignPicker
+                        label="Form to open (campaign)"
+                        allowEmpty={false}
+                        value={props.audienceId || ''}
+                        onChange={(id) => updateProp('audienceId', id)}
+                    />
+                    <div>
+                        <Label className="text-xs">Popup title</Label>
+                        <Input className="mt-1" value={props.formTitle || ''} onChange={(e) => updateProp('formTitle', e.target.value)} placeholder="Defaults to the button text" />
+                    </div>
+                </>
+            ) : (
+                <LinkPicker
+                    label="Link Destination"
+                    value={props.url || ''}
+                    onChange={(v) => updateProp('url', v)}
+                    showTarget
+                    target={props.target}
+                    onTargetChange={(t) => updateProp('target', t)}
+                />
+            )}
             <div>
                 <Label className="text-xs">Variant</Label>
                 <div className="flex gap-1 mt-1">
@@ -4708,6 +4866,10 @@ const NewsletterSignupEditor = ({ component, pageId, updateComponent }: any) => 
             <Input value={props.placeholder || ''} onChange={(e) => updateProp('placeholder', e.target.value)} placeholder="Input placeholder" />
             <Input value={props.buttonText || ''} onChange={(e) => updateProp('buttonText', e.target.value)} placeholder="Button text" />
             <Input value={props.successMessage || ''} onChange={(e) => updateProp('successMessage', e.target.value)} placeholder="Success message" />
+            <CampaignPicker
+                value={props.audienceId || ''}
+                onChange={(id, name) => updateComponent(pageId, component.id, { props: { ...props, audienceId: id, audienceName: name } })}
+            />
             <div>
                 <Label className="text-xs">Layout</Label>
                 <div className="flex gap-1 mt-1">

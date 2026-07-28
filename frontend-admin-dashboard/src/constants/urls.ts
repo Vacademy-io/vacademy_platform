@@ -1269,6 +1269,8 @@ export const ADMIN_ACTIVITY_LOGS_EXPORT_CSV = `${BASE_URL}/admin-core-service/au
 // Product Pages
 export const PRODUCT_PAGE_BASE_URL = `${BASE_URL}/admin-core-service/v1/product-page`;
 export const PRODUCT_PAGE_OPEN_URL = `${BASE_URL}/admin-core-service/open/v1/product-page`;
+// Anonymous campaign/form definition — same endpoint the learner form renderer uses.
+export const AUDIENCE_CAMPAIGN_OPEN_URL = `${BASE_URL}/admin-core-service/open/v1/audience/campaign`;
 export const GET_ALL_PRODUCT_PAGES = (instituteId: string) =>
     `${PRODUCT_PAGE_BASE_URL}/get-all?instituteId=${instituteId}`;
 export const CREATE_PRODUCT_PAGE = (instituteId: string) =>

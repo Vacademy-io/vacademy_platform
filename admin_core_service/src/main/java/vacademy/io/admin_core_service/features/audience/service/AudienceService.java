@@ -500,7 +500,25 @@ public class AudienceService {
             throw new VacademyException("Email is required to capture a lead");
         }
 
-        Audience audience = getOrCreateCatalogueAudience(dto.getInstituteId());
+        // Destination routing: a website capture point (contact form, newsletter,
+        // popup registration) may name the campaign its leads belong to. Only an
+        // ACTIVE audience of the SAME institute is honoured; anything else falls
+        // back to the auto list — a stale audienceId on a published page must
+        // degrade to "lead lands in the default list", never to a lost lead.
+        Audience audience = null;
+        if (StringUtils.hasText(dto.getAudienceId())) {
+            audience = audienceRepository.findById(dto.getAudienceId())
+                    .filter(a -> dto.getInstituteId().equals(a.getInstituteId()))
+                    .filter(a -> "ACTIVE".equals(a.getStatus()))
+                    .orElse(null);
+            if (audience == null) {
+                logger.warn("Catalogue lead: audienceId {} invalid/inactive for institute {} — using auto list",
+                        dto.getAudienceId(), dto.getInstituteId());
+            }
+        }
+        if (audience == null) {
+            audience = getOrCreateCatalogueAudience(dto.getInstituteId());
+        }
 
         UserDTO userDTO = UserDTO.builder()
                 .fullName(dto.getFullName())
@@ -557,7 +575,7 @@ public class AudienceService {
         // 3. Persist the lead — this is what Audience Manager → Recent Leads reads.
         AudienceResponse savedResponse = audienceResponseRepository.save(AudienceResponse.builder()
                 .audienceId(audience.getId())
-                .sourceType("COURSE_CATALOGUE")
+                .sourceType(StringUtils.hasText(dto.getSourceType()) ? dto.getSourceType() : "COURSE_CATALOGUE")
                 .sourceId(sourceId)
                 .userId(userId)
                 .parentEmail(dto.getEmail())

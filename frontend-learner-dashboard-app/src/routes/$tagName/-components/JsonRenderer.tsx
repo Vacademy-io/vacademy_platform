@@ -37,6 +37,8 @@ import { HeaderComponent } from "./components/HeaderComponent";
 import { HtmlBlockSection } from "./components/HtmlBlockSection";
 import { ProductPageOfferComponent } from "./components/ProductPageOfferComponent";
 import { DetailBlocksComponent } from "./components/DetailBlocksComponent";
+import { LeadFormComponent } from "./components/LeadFormComponent";
+import { submitWebsiteLead, isSpamSubmission } from "../-utils/website-lead";
 import { BannerComponent } from "./components/BannerComponent";
 import { CourseCatalogComponent } from "./components/CourseCatalogComponent";
 // Removed CourseRecommendationsComponent import as it's not used
@@ -220,7 +222,7 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
       case "pricingTable":
         return <PricingTableRenderer key={id} {...props} />;
       case "contactForm":
-        return <ContactFormRenderer key={id} {...props} />;
+        return <ContactFormRenderer key={id} {...props} instituteId={instituteId} tagName={tagName} />;
       case "teamSection":
         return <TeamSectionRenderer key={id} {...props} />;
       case "announcementFeed":
@@ -256,12 +258,24 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         // Dense per-item spec blocks (programmes/services/plans). isPreviewMode
         // so an unconfigured section guides the admin instead of vanishing.
         return <DetailBlocksComponent key={id} {...props} isPreviewMode={isPreviewMode} />;
+
+      case "leadForm":
+        // An Audience campaign's form rendered inline — the form definition
+        // lives in the CRM (AUDIENCE_FORM custom fields), fetched live.
+        return (
+          <LeadFormComponent
+            key={id}
+            {...props}
+            instituteId={instituteId}
+            isPreviewMode={isPreviewMode}
+          />
+        );
       case "imageBlock":
         return <ImageBlockRenderer key={id} {...props} />;
       case "buttonBlock":
         return <ButtonBlockRenderer key={id} {...props} />;
       case "newsletterSignup":
-        return <NewsletterSignupRenderer key={id} {...props} />;
+        return <NewsletterSignupRenderer key={id} {...props} instituteId={instituteId} tagName={tagName} />;
       case "stepsProcess":
         return <StepsProcessRenderer key={id} {...props} />;
 
@@ -577,11 +591,21 @@ const CtaBannerRenderer: React.FC<any> = ({ heading, subheading, backgroundColor
           {heading && <h2 style={{ color: textColor }} className="catalogue-h2">{heading}</h2>}
           {subheading && <p style={{ color: textColor, opacity: 0.85 }} className="mt-2 text-lg">{subheading}</p>}
         </div>
-        {button?.enabled && (
-          <CatalogueLink to={button.target || '#'} className={ctaButtonClass} style={{ color: backgroundColor }}>
-            {button.text}
-          </CatalogueLink>
-        )}
+        {button?.enabled &&
+          (button.action === 'openForm' && button.audienceId ? (
+            <button
+              type="button"
+              onClick={() => dispatchOpenAudienceForm(button.audienceId, button.formTitle || button.text)}
+              className={ctaButtonClass}
+              style={{ color: backgroundColor }}
+            >
+              {button.text}
+            </button>
+          ) : (
+            <CatalogueLink to={button.target || '#'} className={ctaButtonClass} style={{ color: backgroundColor }}>
+              {button.text}
+            </CatalogueLink>
+          ))}
       </div>
     </section>
   );
@@ -621,10 +645,61 @@ const PricingTableRenderer: React.FC<any> = ({ headerText, subheading, plans = [
   </section>
 );
 
-const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], submitLabel = 'Send Message', successMessage, backgroundColor }) => {
+/** Pull the visitor's identity out of authored form fields by name heuristics
+ *  (the same heuristics the audience submit service uses). */
+const extractLeadIdentity = (fields: any[], formData: Record<string, string>) => {
+  let email = '', phone = '', fullName = '';
+  const rest: Record<string, string> = {};
+  for (const f of fields) {
+    const value = (formData[f.name] || '').trim();
+    if (!value) continue;
+    const k = `${f.name} ${f.label || ''}`.toLowerCase();
+    if (!email && (f.type === 'email' || k.includes('email') || k.includes('mail'))) email = value;
+    else if (!phone && (f.type === 'tel' || k.includes('phone') || k.includes('mobile') || k.includes('whatsapp'))) phone = value;
+    else if (!fullName && k.includes('name')) fullName = value;
+    else rest[f.label || f.name] = value;
+  }
+  return { email, phone, fullName, rest };
+};
+
+const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], submitLabel = 'Send Message', successMessage, backgroundColor, audienceId, instituteId, tagName }) => {
+  // HISTORY: this form used to fake success with no network call — every
+  // submission on every institute site was silently discarded. It now submits
+  // through the hardened catalogue-lead pipeline; audienceId (optional, set in
+  // the editor) routes it to a chosen campaign instead of the default list.
   const [submitted, setSubmitted] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [honeypot, setHoneypot] = React.useState('');
+  const mountedAt = React.useRef(Date.now());
   const [formData, setFormData] = React.useState<Record<string, string>>({});
-  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); setSubmitted(true); };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    // Spam verdicts show the success state — never tell a bot it was caught.
+    if (isSpamSubmission(honeypot, mountedAt.current)) { setSubmitted(true); return; }
+    const { email, phone, fullName, rest } = extractLeadIdentity(fields, formData);
+    if (!email) { setError('Please include your email address.'); return; }
+    if (!instituteId) { setError('This form is not connected yet — please try again later.'); return; }
+    setSubmitting(true);
+    try {
+      await submitWebsiteLead({
+        instituteId,
+        audienceId,
+        fullName,
+        email,
+        mobileNumber: phone,
+        sourceType: 'WEBSITE_FORM',
+        sourceId: `${tagName || 'catalogue'}:contact-form`,
+        customFieldValues: rest,
+      });
+      setSubmitted(true);
+    } catch {
+      setError('Something went wrong — please try again.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
   const txt = sectionText(backgroundColor);
   return (
     <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 bg-catalogue-bg">
@@ -647,8 +722,13 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
                 )}
               </div>
             ))}
-            <button type="submit" className="w-full rounded-lg py-3 font-semibold text-white transition hover:opacity-90" style={{ backgroundColor: 'hsl(var(--primary-500, 217 91% 60%))' }}>
-              {submitLabel}
+            {/* Honeypot — hidden from humans, filled by bots. */}
+            <div className="sr-only" aria-hidden="true">
+              <label>Company website<input type="text" tabIndex={-1} autoComplete="off" value={honeypot} onChange={(e) => setHoneypot(e.target.value)} /></label>
+            </div>
+            {error && <p className="rounded-lg bg-warning-50 px-4 py-2.5 text-sm text-catalogue-text-secondary" role="alert">{error}</p>}
+            <button type="submit" disabled={submitting} className="w-full rounded-lg py-3 font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60" style={{ backgroundColor: 'hsl(var(--primary-500, 217 91% 60%))' }}>
+              {submitting ? 'Sending…' : submitLabel}
             </button>
           </form>
         )}
@@ -1355,44 +1435,80 @@ const ImageBlockRenderer: React.FC<any> = ({ src, alt = '', caption, linkUrl, li
 
 /* ─── Button Block ─────────────────────────────────────────────────────── */
 
-const ButtonBlockRenderer: React.FC<any> = ({ text = 'Button', url = '#', target = '_self', variant = 'filled', size = 'large', alignment = 'center', backgroundColor = '', textColor = '', borderRadius = '8px', fullWidth = false }) => {
+/** Ask the page shell to open an Audience campaign form as a popup. Buttons
+ *  anywhere in the JSON tree dispatch this; CourseSubPage/CourseCataloguePage
+ *  own the single modal mount — same pattern as `openLeadCollection`. */
+const dispatchOpenAudienceForm = (audienceId: string, title?: string) =>
+  window.dispatchEvent(new CustomEvent('openAudienceForm', { detail: { audienceId, title } }));
+
+const ButtonBlockRenderer: React.FC<any> = ({ text = 'Button', url = '#', target = '_self', variant = 'filled', size = 'large', alignment = 'center', backgroundColor = '', textColor = '', borderRadius = '8px', fullWidth = false, action = 'link', audienceId = '', formTitle = '' }) => {
   const bg = backgroundColor || 'hsl(var(--primary-500, 217 91% 60%))';
   const fg = textColor || (variant === 'filled' ? 'white' : bg);
   const padding = size === 'small' ? '10px 24px' : size === 'large' ? '16px 40px' : '12px 32px';
   const fontSize = size === 'small' ? '14px' : size === 'large' ? '18px' : '16px';
+  const styleProps: React.CSSProperties = {
+    padding,
+    fontSize,
+    backgroundColor: variant === 'filled' ? bg : 'transparent',
+    color: fg,
+    border: variant === 'outline' ? `2px solid ${bg}` : 'none',
+    borderRadius,
+    textDecoration: 'none',
+  };
+  const className = `inline-block font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] ${fullWidth ? 'w-full text-center' : ''}`;
 
   return (
     <section className="py-8 px-4 sm:px-6 lg:px-8" style={{ textAlign: alignment as any }}>
-      <CatalogueLink
-        to={url || '#'}
-        target={target}
-        className={`inline-block font-semibold transition-all duration-200 hover:opacity-90 active:scale-[0.98] ${fullWidth ? 'w-full text-center' : ''}`}
-        style={{
-          padding,
-          fontSize,
-          backgroundColor: variant === 'filled' ? bg : 'transparent',
-          color: fg,
-          border: variant === 'outline' ? `2px solid ${bg}` : 'none',
-          borderRadius,
-          textDecoration: 'none',
-        }}
-      >
-        {text}
-      </CatalogueLink>
+      {action === 'openForm' && audienceId ? (
+        // Any button can be a registration point: opens the campaign's form as
+        // a popup instead of navigating.
+        <button type="button" onClick={() => dispatchOpenAudienceForm(audienceId, formTitle || text)} className={className} style={styleProps}>
+          {text}
+        </button>
+      ) : (
+        <CatalogueLink to={url || '#'} target={target} className={className} style={styleProps}>
+          {text}
+        </CatalogueLink>
+      )}
     </section>
   );
 };
 
 /* ─── Newsletter Signup ────────────────────────────────────────────────── */
 
-const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placeholder = 'Enter your email', buttonText = 'Subscribe', layout = 'inline', backgroundColor, successMessage }) => {
+const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placeholder = 'Enter your email', buttonText = 'Subscribe', layout = 'inline', backgroundColor, successMessage, audienceId, instituteId, tagName }) => {
+  // HISTORY: previously set the success flag with no network call — every
+  // subscription was silently discarded. Now submits through the catalogue-lead
+  // pipeline; audienceId (optional) routes to a chosen campaign.
   const [email, setEmail] = React.useState('');
   const [submitted, setSubmitted] = React.useState(false);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [error, setError] = React.useState('');
+  const [honeypot, setHoneypot] = React.useState('');
+  const mountedAt = React.useRef(Date.now());
   const txt = sectionText(backgroundColor);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email) setSubmitted(true);
+    if (!email) return;
+    setError('');
+    if (isSpamSubmission(honeypot, mountedAt.current)) { setSubmitted(true); return; }
+    if (!instituteId) { setError('This form is not connected yet — please try again later.'); return; }
+    setSubmitting(true);
+    try {
+      await submitWebsiteLead({
+        instituteId,
+        audienceId,
+        email,
+        sourceType: 'NEWSLETTER',
+        sourceId: `${tagName || 'catalogue'}:newsletter`,
+      });
+      setSubmitted(true);
+    } catch {
+      setError('Something went wrong — please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -1412,15 +1528,21 @@ const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placehol
               placeholder={placeholder}
               className="flex-1 rounded-lg border border-catalogue-border bg-catalogue-bg px-4 py-3 text-sm outline-none transition focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
             />
+            {/* Honeypot — hidden from humans, filled by bots. */}
+            <div className="sr-only" aria-hidden="true">
+              <label>Company website<input type="text" tabIndex={-1} autoComplete="off" value={honeypot} onChange={(e) => setHoneypot(e.target.value)} /></label>
+            </div>
             <button
               type="submit"
-              className="rounded-lg px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90 active:scale-[0.98]"
+              disabled={submitting}
+              className="rounded-lg px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
               style={{ backgroundColor: 'hsl(var(--primary-500, 217 91% 60%))' }}
             >
-              {buttonText}
+              {submitting ? '…' : buttonText}
             </button>
           </form>
         )}
+        {error && <p className="mt-3 text-sm text-catalogue-text-secondary" role="alert">{error}</p>}
       </div>
     </section>
   );

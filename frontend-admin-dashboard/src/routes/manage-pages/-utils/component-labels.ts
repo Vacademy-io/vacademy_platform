@@ -35,6 +35,7 @@ export const COMPONENT_LABELS: Record<string, string> = {
     ctaBanner: 'CTA Banner',
     pricingTable: 'Pricing Table',
     contactForm: 'Contact Form',
+    leadForm: 'Lead Form',
     teamSection: 'Team',
     announcementFeed: 'Announcements',
     imageGallery: 'Image Gallery',

@@ -330,6 +330,25 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         },
     },
 
+    // An Audience campaign's registration form embedded on the page. Only the
+    // campaign id is stored — fields/options/mandatory flags live on the
+    // campaign in Audience Manager and are fetched live, so one definition
+    // serves every placement (inline section, popup, /audience-response page).
+    leadForm: {
+        type: 'leadForm',
+        enabled: true,
+        props: {
+            audienceId: '',
+            audienceName: '',
+            title: 'Register your interest',
+            subtitle: "Fill in your details and we'll get back to you.",
+            submitLabel: 'Submit',
+            successMessage: "Thank you! We've received your details.",
+            layout: 'card',
+            align: 'center',
+        },
+    },
+
     contactForm: {
         type: 'contactForm',
         enabled: true,
@@ -345,6 +364,10 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             submitLabel: 'Send Message',
             successMessage: "Thank you! We'll be in touch soon.",
             backgroundColor: '#FFFFFF', // design-lint-ignore: page-builder template default color
+            // Destination campaign (Audience Manager). Empty = the auto
+            // "Course Catalogue Leads" list.
+            audienceId: '',
+            audienceName: '',
         },
     },
 
@@ -632,6 +655,10 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             textColor: '',
             borderRadius: '8px',
             fullWidth: false,
+            // 'link' navigates; 'openForm' opens the campaign's form as a popup.
+            action: 'link',
+            audienceId: '',
+            formTitle: '',
         },
     },
 
@@ -646,6 +673,9 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             layout: 'inline',
             backgroundColor: '#F8FAFC', // design-lint-ignore: page-builder template default color
             successMessage: 'Thank you for subscribing!',
+            // Destination campaign (Audience Manager). Empty = the auto list.
+            audienceId: '',
+            audienceName: '',
         },
     },
 

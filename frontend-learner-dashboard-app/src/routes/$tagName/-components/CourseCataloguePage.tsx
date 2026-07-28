@@ -4,6 +4,7 @@ import { Capacitor } from "@capacitor/core";
 import { useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
+import { AudienceFormModal } from "./AudienceFormModal";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
 import { buildPrimaryScaleVars } from "../-utils/style-utils";
@@ -37,6 +38,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showLeadCollection, setShowLeadCollection] = useState(false);
+  const [audienceForm, setAudienceForm] = useState<{ audienceId: string; title?: string } | null>(null);
   // Non-mandatory lead collection is "armed" rather than shown immediately, then
   // surfaced on a scroll/dwell signal (see effect below) to avoid t=0 friction.
   const [leadArmed, setLeadArmed] = useState(false);
@@ -254,6 +256,19 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       window.removeEventListener('openLeadCollection', handleOpenLeadCollection);
     };
   }, [catalogueData]);
+
+  // Listen for buttons asking to open an Audience campaign form as a popup
+  // (action 'openForm' on buttonBlock / ctaBanner). Mirrors openLeadCollection.
+  useEffect(() => {
+    const handleOpenAudienceForm = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      if (detail.audienceId) {
+        setAudienceForm({ audienceId: detail.audienceId, title: detail.title });
+      }
+    };
+    window.addEventListener('openAudienceForm', handleOpenAudienceForm);
+    return () => window.removeEventListener('openAudienceForm', handleOpenAudienceForm);
+  }, []);
 
   // Handle lead collection modal
   const handleLeadCollectionClose = () => {
@@ -489,6 +504,15 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       )}
 
       {/* Lead Collection Modal - Show when requested, intro completed, and not in preview mode */}
+      {audienceForm && (
+        <AudienceFormModal
+          isOpen={!!audienceForm}
+          onClose={() => setAudienceForm(null)}
+          audienceId={audienceForm.audienceId}
+          title={audienceForm.title}
+          instituteId={instituteId}
+        />
+      )}
       {showLeadCollection && !isPreviewMode && catalogueData && catalogueData.globalSettings.leadCollection && (!showIntroPage || introCompleted) && (
         <LeadCollectionModal
           isOpen={showLeadCollection}

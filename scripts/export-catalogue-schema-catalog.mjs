@@ -63,6 +63,12 @@ const ESCAPE_HATCH_NOTES = {
         'images only from provided URLs. Max 2 per page. Prefer typed components whenever they fit.',
 };
 const DATA_BOUND = {
+    productPageOffer:
+        "Renders a LIVE Product Page's sellable courses (names, prices, images) and deep-links each " +
+        "card into that page's cart. Set ONLY title/subtitle/ctaLabel/columns and the display toggles — " +
+        "productPageCode must be chosen by the admin from their existing product pages, so leave it as " +
+        "an empty string and NEVER invent a code or course entries. Use it when the brief mentions " +
+        "selling/enrolling a specific set of paid programs; use courseCatalog for the full course grid.",
     courseCatalog: 'Renders the institute\'s LIVE course grid. Configure filters/title only — never invent course entries.',
     bookCatalogue: 'Renders the LIVE book store. Configure presentation only.',
     cartComponent: 'Live cart. Placement only.',

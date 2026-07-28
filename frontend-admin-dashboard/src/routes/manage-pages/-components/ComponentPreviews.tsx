@@ -11,8 +11,99 @@ import {
 } from '@phosphor-icons/react';
 
 import { renderHtmlSection } from '../-utils/catalogue-html';
+import { useQuery } from '@tanstack/react-query';
+import axios from 'axios';
+import { PRODUCT_PAGE_OPEN_URL } from '@/constants/urls';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 
 interface P { props: any }
+
+/** Live product-page courses on the canvas. Fetches the same anonymous
+ *  endpoint the learner uses, so the editor shows the real course list, real
+ *  prices and real images instead of placeholders that could disagree with the
+ *  published page. */
+const ProductPageOfferPreview: React.FC<P> = ({ props }) => {
+    const instituteId = getCurrentInstituteId();
+    const code = props.productPageCode;
+    const { data, isLoading } = useQuery({
+        queryKey: ['PP_OFFER_PREVIEW', code, instituteId],
+        queryFn: async () =>
+            (await axios.get(`${PRODUCT_PAGE_OPEN_URL}/by-code?code=${code}&instituteId=${instituteId}`)).data,
+        enabled: !!code && !!instituteId,
+        staleTime: 60_000,
+    });
+    const cols = Math.min(Math.max(Number(props.columns) || 3, 1), 4);
+    const mappings = ((data?.mappings || []) as any[])
+        .filter((m) => (m.status ?? 'ACTIVE') === 'ACTIVE')
+        .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+
+    const shell = (children: React.ReactNode) => (
+        <section className="catalogue-section" style={props.backgroundColor ? { backgroundColor: props.backgroundColor } : undefined}>
+            <div className="catalogue-shell">
+                {(props.title || props.subtitle) && (
+                    <div className="catalogue-section-header text-center">
+                        {props.title && <h2 className="catalogue-h2 text-catalogue-text-primary">{props.title}</h2>}
+                        {props.subtitle && <p className="catalogue-lead catalogue-measure text-catalogue-text-muted">{props.subtitle}</p>}
+                    </div>
+                )}
+                {children}
+            </div>
+        </section>
+    );
+
+    if (!code) {
+        return shell(
+            <div className="rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center text-sm text-catalogue-text-muted">
+                Pick a product page in the properties panel to show its courses here.
+            </div>
+        );
+    }
+    if (isLoading) {
+        return shell(<div className="p-6 text-center text-sm text-catalogue-text-muted">Loading courses…</div>);
+    }
+    if (mappings.length === 0) {
+        return shell(
+            <div className="rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center text-sm text-catalogue-text-muted">
+                This product page has no active courses yet.
+            </div>
+        );
+    }
+    return shell(
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 24 }}>
+            {mappings.map((m, i) => {
+                const chips = [m.level_name, m.session_name].filter(Boolean);
+                const price = m.payment_plan?.actual_price;
+                const mrp = m.payment_plan?.elevated_price;
+                return (
+                    <div key={m.id || i} className="catalogue-card-elevated flex flex-col p-5 text-left">
+                        {props.showImage !== false && (
+                            <div className="mb-4 aspect-[16/9] w-full rounded-catalogue-lg bg-catalogue-bg-muted" />
+                        )}
+                        {props.showChips !== false && chips.length > 0 && (
+                            <div className="mb-2 flex flex-wrap gap-1.5">
+                                {chips.map((c: string, j: number) => (
+                                    <span key={j} className="inline-flex items-center rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-catalogue-brand-ink ring-1 ring-primary-100">{c}</span>
+                                ))}
+                            </div>
+                        )}
+                        <h3 className="catalogue-h3 mb-2 text-catalogue-text-primary">{m.package_name || 'Course'}</h3>
+                        {props.showPrice !== false && typeof price === 'number' && (
+                            <div className="mb-3 flex items-baseline gap-2">
+                                <span className="text-lg font-bold text-catalogue-text-primary">{price === 0 ? 'Free' : `${m.payment_plan?.currency || ''} ${price}`}</span>
+                                {typeof mrp === 'number' && mrp > price && (
+                                    <span className="text-xs text-catalogue-text-muted line-through">{mrp}</span>
+                                )}
+                            </div>
+                        )}
+                        <span className="catalogue-btn catalogue-btn-primary mt-auto w-full justify-center">
+                            {props.ctaLabel || 'Enrol now'}
+                        </span>
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
 
 /** Live, sanitized, shadow-scoped render of an htmlBlock on the canvas —
  *  same safety layer the learner renderer uses (catalogue-html.ts). */
@@ -846,22 +937,44 @@ export const renderComponentPreview = (
             );
         }
         case 'logoCloud': {
-            const logos = props.logos || [];
+            // Mirrors the learner LogoCloudRenderer: honours `display` (the
+            // preview used to draw grey "Logo" boxes even in text-ticker mode,
+            // so a working announcement band looked broken on the canvas) and
+            // hides rows that would not render live, instead of showing
+            // phantom placeholders for editor-seeded empty entries.
+            const lcDisplay = props.display || 'logo';
+            const lcWillRender = (l: any) =>
+                lcDisplay === 'label-pill' ? !!(l.label || l.alt) : !!(l.image || l.label);
+            const logos = (props.logos || []).filter(lcWillRender);
+            const isTicker = props.layout === 'marquee';
             return (
-                <section className="py-10 px-8 text-center">
+                <section className="py-10 text-center">
                     {props.headerText && <h3 className="mb-6 text-lg font-semibold text-gray-400 uppercase tracking-wider">{props.headerText}</h3>}
-                    <div className="flex flex-wrap items-center justify-center gap-8">
+                    <div className={`flex items-center gap-6 ${isTicker ? 'overflow-hidden px-0' : 'flex-wrap justify-center px-8'}`}>
                         {logos.length === 0 ? (
-                            <div className="text-sm text-gray-300">Add logos via the property panel</div>
-                        ) : logos.map((logo: any, i: number) => (
-                            <div key={i} className={`h-10 w-24 rounded bg-gray-100 ${props.grayscale ? 'grayscale' : ''}`}>
-                                {logo.image ? (
-                                    <img src={logo.image} alt={logo.alt || ''} className="h-full w-full object-contain" />
-                                ) : (
-                                    <div className="flex h-full items-center justify-center text-xs text-gray-300">Logo</div>
-                                )}
+                            <div className="w-full text-sm text-gray-300">
+                                {lcDisplay === 'label-pill' ? 'Add ticker items via the property panel' : 'Add logos via the property panel'}
                             </div>
-                        ))}
+                        ) : logos.map((logo: any, i: number) => {
+                            const label = lcDisplay === 'label-pill' ? (logo.label || logo.alt || '') : (logo.label || '');
+                            if (lcDisplay === 'label-pill' || (!logo.image && label)) {
+                                return (
+                                    <span key={i} className="inline-flex shrink-0 items-center rounded-full border border-catalogue-border bg-catalogue-bg-subtle px-4 py-1.5 text-sm font-medium text-catalogue-text-secondary">
+                                        {label}
+                                    </span>
+                                );
+                            }
+                            return (
+                                <div key={i} className={`flex shrink-0 flex-col items-center gap-1 ${props.grayscale ? 'grayscale' : ''}`}>
+                                    <div className="h-10 w-24 rounded bg-gray-100">
+                                        {logo.image && <img src={logo.image} alt={logo.alt || ''} className="h-full w-full object-contain" />}
+                                    </div>
+                                    {lcDisplay === 'logo+label' && label && (
+                                        <span className="text-caption text-catalogue-text-muted">{label}</span>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </section>
             );
@@ -1193,6 +1306,8 @@ export const renderComponentPreview = (
                 </div>
             );
         }
+        case 'productPageOffer':
+            return <ProductPageOfferPreview props={props} />;
         case 'htmlBlock': {
             if (!props.html) {
                 return (

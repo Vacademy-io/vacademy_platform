@@ -35,6 +35,7 @@ import {
 } from "@phosphor-icons/react";
 import { HeaderComponent } from "./components/HeaderComponent";
 import { HtmlBlockSection } from "./components/HtmlBlockSection";
+import { ProductPageOfferComponent } from "./components/ProductPageOfferComponent";
 import { BannerComponent } from "./components/BannerComponent";
 import { CourseCatalogComponent } from "./components/CourseCatalogComponent";
 // Removed CourseRecommendationsComponent import as it's not used
@@ -268,6 +269,18 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             instituteId={instituteId}
             globalSettings={globalSettings}
             tagName={tagName}
+          />
+        );
+
+      case "productPageOffer":
+        // Live-reads the product page's courses; instituteId/preview come from
+        // the renderer, everything else from props.
+        return (
+          <ProductPageOfferComponent
+            key={id}
+            {...props}
+            instituteId={instituteId}
+            isPreviewMode={isPreviewMode}
           />
         );
 
@@ -871,18 +884,27 @@ const LogoCloudRenderer: React.FC<any> = ({ headerText, subheading, logos = [], 
   const visible = logos.filter((logo: any) => logoWillRender(logo, display));
   return (
   <section className="catalogue-section-tight">
-    <div className="catalogue-shell text-center">
-      {headerText && <h3 className="mb-2 text-lg font-semibold uppercase tracking-wider text-catalogue-text-muted">{headerText}</h3>}
-      {subheading && <p className="mb-8 text-sm text-catalogue-text-muted">{subheading}</p>}
-      {layout === 'marquee' ? (
-        <div className="overflow-hidden">
-          <div className="catalogue-marquee flex items-center gap-12" style={{ animationDuration: MARQUEE_SPEED_MAP[marqueeSpeed] || '30s' }}>
-            {[...visible, ...visible].map((logo: any, i: number) => (
-              <LogoItem key={i} logo={logo} grayscale={grayscale} display={display} tile={tile} logoHeight={logoHeight} />
-            ))}
-          </div>
+    {(headerText || subheading) && (
+      <div className="catalogue-shell text-center">
+        {headerText && <h3 className="mb-2 text-lg font-semibold uppercase tracking-wider text-catalogue-text-muted">{headerText}</h3>}
+        {subheading && <p className="mb-8 text-sm text-catalogue-text-muted">{subheading}</p>}
+      </div>
+    )}
+    {layout === 'marquee' ? (
+      // A ticker must run EDGE TO EDGE. Keeping the track inside
+      // .catalogue-shell clamped it to the 72rem content column, so the band
+      // spanned the viewport while its items floated in a centred box with
+      // dead space either side. The header still uses the shell; only the
+      // scrolling track breaks out.
+      <div className="catalogue-marquee-viewport overflow-hidden">
+        <div className="catalogue-marquee flex items-center gap-6 sm:gap-12" style={{ animationDuration: MARQUEE_SPEED_MAP[marqueeSpeed] || '30s' }}>
+          {[...visible, ...visible].map((logo: any, i: number) => (
+            <LogoItem key={i} logo={logo} grayscale={grayscale} display={display} tile={tile} logoHeight={logoHeight} />
+          ))}
         </div>
-      ) : (
+      </div>
+    ) : (
+      <div className="catalogue-shell text-center">
         <div className={`grid items-center justify-items-center gap-8 grid-cols-2 sm:grid-cols-3 ${columns >= 4 ? 'md:grid-cols-4' : ''} ${columns >= 5 ? 'lg:grid-cols-5' : ''} ${columns >= 6 ? 'xl:grid-cols-6' : ''}`}>
           {visible.map((logo: any, i: number) => (
             <div key={i} data-stagger-item style={{ ['--stagger-i' as any]: i }}>
@@ -890,8 +912,8 @@ const LogoCloudRenderer: React.FC<any> = ({ headerText, subheading, logos = [], 
             </div>
           ))}
         </div>
-      )}
-    </div>
+      </div>
+    )}
   </section>
   );
 };

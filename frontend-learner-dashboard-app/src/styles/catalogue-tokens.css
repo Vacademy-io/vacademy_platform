@@ -1355,6 +1355,13 @@
     transform: translateY(0);
   }
 
+  /* Full-bleed ticker viewport: fades the first/last ~4rem so items dissolve
+     at the edges instead of appearing to be clipped by a box. */
+  .catalogue-marquee-viewport {
+    -webkit-mask-image: linear-gradient(to right, transparent, black 3rem, black calc(100% - 3rem), transparent);
+    mask-image: linear-gradient(to right, transparent, black 3rem, black calc(100% - 3rem), transparent);
+  }
+
   /* Custom-HTML section host (htmlBlock escape hatch). The shadow root scopes
      the section's CSS in; this class scopes its layout OUT: translateZ creates
      a containing block so position:fixed inside the section can never overlay

@@ -791,6 +791,24 @@
       }
     },
     {
+      "type": "productPageOffer",
+      "templateKey": "productPageOffer",
+      "exampleProps": {
+        "productPageCode": "",
+        "productPageName": "",
+        "title": "Our Programs",
+        "subtitle": "Pick a program and enrol in minutes.",
+        "columns": 3,
+        "ctaLabel": "Enrol now",
+        "showImage": true,
+        "showChips": true,
+        "showDescription": true,
+        "showValidity": true,
+        "showPrice": true
+      },
+      "dataBound": "Renders a LIVE Product Page's sellable courses (names, prices, images) and deep-links each card into that page's cart. Set ONLY title/subtitle/ctaLabel/columns and the display toggles — productPageCode must be chosen by the admin from their existing product pages, so leave it as an empty string and NEVER invent a code or course entries. Use it when the brief mentions selling/enrolling a specific set of paid programs; use courseCatalog for the full course grid."
+    },
+    {
       "type": "htmlBlock",
       "templateKey": "htmlBlock",
       "exampleProps": {

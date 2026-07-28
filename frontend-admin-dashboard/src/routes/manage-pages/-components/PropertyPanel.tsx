@@ -1,5 +1,6 @@
 import { useEditorStore } from '../-stores/editor-store';
 import { CATALOGUE_FONTS } from '../-utils/catalogue-fonts';
+import { componentTemplates } from '../-utils/component-templates';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -1222,6 +1223,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
             return <HtmlBlockEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'productPageOffer':
             return <ProductPageOfferEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'productCourseGrid':
+            return <ProductCourseGridEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'tabsAccordion':
             return <TabsAccordionEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'logoCloud':
@@ -3373,13 +3376,94 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
             </div>
 
             <div>
-                <Label className="text-xs">Columns</Label>
+                <Label className="text-xs">Layout</Label>
+                <div className="mt-1 grid grid-cols-2 gap-1">
+                    {([
+                        ['grid', 'Grid', 'Wraps onto rows'],
+                        ['carousel', 'Horizontal', 'One swipeable row'],
+                    ] as const).map(([value, label, hint]) => (
+                        <button
+                            key={value}
+                            onClick={() => updateProp('layout', value)}
+                            title={hint}
+                            className={`rounded px-2 py-1.5 text-caption font-medium ${(props.layout || 'grid') === value ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+                {(props.layout || 'grid') === 'carousel' && (
+                    <p className="mt-1 text-caption text-gray-400">
+                        Cards sit in one row that visitors swipe or scroll sideways; arrows appear
+                        when there is more to see. Columns sets how many are visible at once.
+                    </p>
+                )}
+            </div>
+
+            <div>
+                <Label className="text-xs">Columns{(props.layout || 'grid') === 'carousel' ? ' visible' : ''}</Label>
                 <div className="mt-1 flex gap-1">
                     {[2, 3, 4].map((c) => (
                         <button key={c} onClick={() => updateProp('columns', c)}
-                            className={`rounded px-3 py-1 text-caption font-medium ${(props.columns || 3) === c ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{c}</button>
+                            className={`rounded px-3 py-1 text-caption font-medium ${(props.columns || 3) === c ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{c}</button>
                     ))}
                 </div>
+            </div>
+
+            <div className="space-y-3 rounded border border-dashed border-gray-200 p-2">
+                <p className="text-caption font-medium text-gray-500">Browsing</p>
+
+                <div>
+                    <Label className="text-xs">Courses per page</Label>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                        {[6, 9, 12, 24, 0].map((n) => (
+                            <button
+                                key={n}
+                                onClick={() => updateProp('pageSize', n)}
+                                className={`rounded px-2.5 py-1 text-caption font-medium ${(props.pageSize ?? 9) === n ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}
+                            >
+                                {n === 0 ? 'All' : n}
+                            </button>
+                        ))}
+                    </div>
+                    <p className="mt-1 text-caption text-gray-400">
+                        {(props.pageSize ?? 9) === 0
+                            ? 'Every course renders in one long grid — only sensible for short lists.'
+                            : 'Visitors page through the list; the canvas shows the first page.'}
+                    </p>
+                </div>
+
+                <div className="flex items-center justify-between">
+                    <Label className="text-xs">Search box</Label>
+                    <Switch checked={props.showSearch !== false} onCheckedChange={(c) => updateProp('showSearch', c)} />
+                </div>
+                <p className="-mt-1 text-caption text-gray-400">
+                    Shown only when the product page has 8+ courses.
+                </p>
+
+                {/* Vertical scroll is a grid-only concern — a carousel already
+                    scrolls, sideways. */}
+                {(props.layout || 'grid') !== 'carousel' && (
+                    <>
+                        <div className="flex items-center justify-between">
+                            <Label className="text-xs">Scroll inside the section</Label>
+                            <Switch checked={!!props.scrollable} onCheckedChange={(c) => updateProp('scrollable', c)} />
+                        </div>
+                        {props.scrollable && (
+                            <div>
+                                <Label className="text-xs">Max height (px)</Label>
+                                <Input
+                                    className="mt-1"
+                                    type="number"
+                                    min={240}
+                                    step={40}
+                                    value={props.scrollMaxHeight ?? 640}
+                                    onChange={(e) => updateProp('scrollMaxHeight', Number(e.target.value) || 640)}
+                                />
+                            </div>
+                        )}
+                    </>
+                )}
             </div>
 
             <div className="space-y-2 rounded border border-dashed border-gray-200 p-2">
@@ -3390,6 +3474,74 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
                     ['showDescription', 'Short description'],
                     ['showValidity', 'Access period'],
                     ['showPrice', 'Price & discount'],
+                ] as const).map(([key, label]) => (
+                    <div key={key} className="flex items-center justify-between">
+                        <Label className="text-xs">{label}</Label>
+                        <Switch checked={props[key] !== false} onCheckedChange={(c) => updateProp(key, c)} />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+/**
+ * Catalogue-side editor for `productCourseGrid`.
+ *
+ * This type is inherited from the product-pages designer, where the page itself
+ * IS the product context. On a catalogue page there is no such context, so the
+ * learner renderer aliases it to the full institute course catalog — which is
+ * why it has no "product page" field and never could. Admins reasonably expect
+ * one, so the editor says so plainly and offers a one-click switch to
+ * `productPageOffer`, which is the product-page-scoped component.
+ */
+const ProductCourseGridEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    const convertToOffer = () =>
+        updateComponent(pageId, component.id, {
+            type: 'productPageOffer',
+            props: {
+                ...(componentTemplates.productPageOffer?.props ?? {}),
+                title: props.title || '',
+                columns: props.columns ?? 3,
+                showPrice: props.showPrice !== false,
+            },
+        });
+
+    return (
+        <div className="space-y-4">
+            <div className="rounded border border-warning-200 bg-warning-50 p-2 text-caption text-warning-700">
+                This block shows your <strong>entire course catalogue</strong> — it is not tied to a
+                product page, so there is no product page to pick here. To show one product
+                page&apos;s courses (and send clicks into its cart), switch to Product Page Offer.
+            </div>
+            <Button variant="outline" size="sm" className="w-full text-xs" onClick={convertToOffer}>
+                Switch to Product Page Offer
+            </Button>
+
+            <div>
+                <Label className="text-xs">Title</Label>
+                <Input className="mt-1" value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} placeholder="All Courses" />
+            </div>
+
+            <div>
+                <Label className="text-xs">Columns</Label>
+                <div className="mt-1 flex gap-1">
+                    {[2, 3, 4].map((c) => (
+                        <button key={c} onClick={() => updateProp('columns', c)}
+                            className={`rounded px-3 py-1 text-caption font-medium ${(props.columns || 3) === c ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{c}</button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="space-y-2 rounded border border-dashed border-gray-200 p-2">
+                {([
+                    ['showFilters', 'Filters sidebar'],
+                    ['showPrice', 'Price'],
+                    ['showBadge', 'Badges'],
                 ] as const).map(([key, label]) => (
                     <div key={key} className="flex items-center justify-between">
                         <Label className="text-xs">{label}</Label>

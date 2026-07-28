@@ -54,7 +54,13 @@ const { ORNAMENT_PRESETS } = await importTs('src/routes/manage-pages/-utils/cata
 // institute data — but get a special note. htmlBlock is a governed escape
 // hatch: allowed, sanitized server-side (nh3 + CSS scrub) and rendered in a
 // contained shadow root; usage rules live in the composer's design doctrine.
-const FORBIDDEN = new Set([]);
+// productCourseGrid is inherited from the product-pages designer, where the page
+// itself supplies the product context. On a catalogue page there is none, so the
+// learner renderer aliases it to the full institute catalog — it looks like a
+// product-page component but cannot be scoped to one, which misled admins when
+// the composer emitted it. Use courseCatalog (full grid) or productPageOffer
+// (one product page's courses) instead.
+const FORBIDDEN = new Set(['productCourseGrid']);
 const ESCAPE_HATCH_NOTES = {
     htmlBlock:
         'ESCAPE HATCH for bespoke sections only. props {html, css, prompt}. Sanitized + rendered in a scoped sandbox: ' +
@@ -65,7 +71,10 @@ const ESCAPE_HATCH_NOTES = {
 const DATA_BOUND = {
     productPageOffer:
         "Renders a LIVE Product Page's sellable courses (names, prices, images) and deep-links each " +
-        "card into that page's cart. Set ONLY title/subtitle/ctaLabel/columns and the display toggles — " +
+        "card into that page's cart. Set ONLY title/subtitle/ctaLabel/columns, the browse props " +
+        "(layout: grid|carousel — carousel is one swipeable horizontal row; pageSize — courses per " +
+        "page, 9 is a good default, 0 disables paging; showSearch; scrollable + scrollMaxHeight " +
+        "to cap a grid's height) and the display toggles — " +
         "productPageCode must be chosen by the admin from their existing product pages, so leave it as " +
         "an empty string and NEVER invent a code or course entries. Use it when the brief mentions " +
         "selling/enrolling a specific set of paid programs; use courseCatalog for the full course grid.",

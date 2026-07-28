@@ -1,9 +1,16 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Clock } from "@phosphor-icons/react";
+import { Link } from "@tanstack/react-router";
+import {
+  ArrowRight,
+  BookOpen,
+  CaretLeft,
+  CaretRight,
+  Clock,
+  MagnifyingGlass,
+} from "@phosphor-icons/react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { PriceWithMrp } from "@/components/common/price-with-mrp";
-import { CatalogueLink } from "../CatalogueLink";
 import { handleGetProductPage } from "@/routes/product-pages/$productPageCode/-services/product-page-service";
 
 /**
@@ -17,6 +24,13 @@ import { handleGetProductPage } from "@/routes/product-pages/$productPageCode/-s
  *
  * The endpoint is the anonymous `open/v1/product-page/by-code`, so this works
  * for logged-out visitors — which is the whole point of a marketing page.
+ *
+ * WHY NOT CatalogueLink: that component is for catalogue *page slugs* — it
+ * lowercases the route and prefixes the current `$tagName`, which turned
+ * `/product-pages/x?instituteId=…` into `/book-store/product-pages/x?instituteid=…`
+ * (404, plus search params the product-page route could no longer read). Product
+ * pages are a top-level app route, so we link to them with the typed router
+ * Link and let it serialise the search params with their exact casing.
  */
 
 interface ProductPageMapping {
@@ -43,17 +57,29 @@ interface ProductPageOfferProps {
   title?: string;
   subtitle?: string;
   columns?: number;
+  /** 'grid' wraps onto rows; 'carousel' is a single swipeable horizontal row. */
+  layout?: "grid" | "carousel";
   ctaLabel?: string;
   showImage?: boolean;
   showChips?: boolean;
   showDescription?: boolean;
   showValidity?: boolean;
   showPrice?: boolean;
+  /** Courses per page. 0 (or unset) renders every course with no pager. */
+  pageSize?: number;
+  /** Search box — auto-hidden when the page has only a handful of courses. */
+  showSearch?: boolean;
+  /** Cap the grid's height and scroll inside it instead of growing the page. */
+  scrollable?: boolean;
+  scrollMaxHeight?: number;
   backgroundColor?: string;
   instituteId?: string;
   /** Admin canvas passes this so the section always renders something. */
   isPreviewMode?: boolean;
 }
+
+/** Below this a search box is noise rather than help. */
+const SEARCH_MIN_COURSES = 8;
 
 /** Strips HTML and clamps the course blurb to a card-sized teaser. */
 const toPlainText = (html?: string, max = 160): string => {
@@ -83,12 +109,28 @@ const formatValidity = (days?: number): string => {
   return `${days} days access`;
 };
 
+/**
+ * Branded fallback tile. Most catalogues have no preview image on most
+ * courses, and a grid of empty grey rectangles reads as broken — a titled
+ * brand-tinted tile reads as designed.
+ */
+const CoursePlaceholder: React.FC<{ title: string }> = ({ title }) => (
+  <div className="flex aspect-[16/9] w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-catalogue-lg bg-gradient-to-br from-primary-100 via-primary-50 to-transparent px-3">
+    <BookOpen size={30} className="text-catalogue-brand-ink opacity-50" aria-hidden="true" />
+    <span className="line-clamp-1 text-center text-xs font-medium text-catalogue-brand-ink opacity-80">
+      {title}
+    </span>
+  </div>
+);
+
 const CourseImage: React.FC<{ mediaId?: string; alt: string }> = ({ mediaId, alt }) => {
   const [url, setUrl] = useState("");
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let alive = true;
+    setFailed(false);
+    setUrl("");
     if (!mediaId) return;
     if (mediaId.startsWith("http")) {
       setUrl(mediaId);
@@ -96,14 +138,16 @@ const CourseImage: React.FC<{ mediaId?: string; alt: string }> = ({ mediaId, alt
     }
     getPublicUrlWithoutLogin(mediaId)
       .then((u) => { if (alive && u) setUrl(u); })
-      .catch(() => { /* placeholder below covers it */ });
+      .catch(() => { if (alive) setFailed(true); });
     return () => { alive = false; };
   }, [mediaId]);
+
+  if (!mediaId || failed) return <CoursePlaceholder title={alt} />;
 
   // Reserve the band either way so cards don't reflow when images resolve.
   return (
     <div className="catalogue-img-zoom aspect-[16/9] w-full overflow-hidden rounded-catalogue-lg bg-catalogue-bg-muted">
-      {url && !failed && (
+      {url && (
         <img
           src={url}
           alt={alt}
@@ -117,17 +161,35 @@ const CourseImage: React.FC<{ mediaId?: string; alt: string }> = ({ mediaId, alt
   );
 };
 
+/** Compact windowed pager: ‹ 1 … 4 5 6 … 20 › */
+const buildPageWindow = (current: number, total: number): (number | "gap")[] => {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages = new Set<number>([1, total, current, current - 1, current + 1]);
+  const sorted = [...pages].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
+  const out: (number | "gap")[] = [];
+  sorted.forEach((p, i) => {
+    if (i > 0 && p - sorted[i - 1]! > 1) out.push("gap");
+    out.push(p);
+  });
+  return out;
+};
+
 export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   productPageCode,
   title,
   subtitle,
   columns = 3,
+  layout = "grid",
   ctaLabel,
   showImage = true,
   showChips = true,
   showDescription = true,
   showValidity = true,
   showPrice = true,
+  pageSize = 9,
+  showSearch = true,
+  scrollable = false,
+  scrollMaxHeight = 640,
   backgroundColor,
   instituteId,
   isPreviewMode = false,
@@ -136,9 +198,77 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     ...handleGetProductPage(productPageCode || "", instituteId || ""),
   });
 
+  const [page, setPage] = useState(1);
+  const [query, setQuery] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [canPrev, setCanPrev] = useState(false);
+  const [canNext, setCanNext] = useState(false);
+
+  const isCarousel = layout === "carousel";
   const cols = Math.min(Math.max(Number(columns) || 3, 1), 4);
   const gridCols =
     `grid gap-6 grid-cols-1 sm:grid-cols-2 ${cols >= 3 ? "lg:grid-cols-3" : ""} ${cols >= 4 ? "xl:grid-cols-4" : ""}`;
+
+  const mappings: ProductPageMapping[] = useMemo(
+    () =>
+      ((data?.mappings as unknown as ProductPageMapping[]) || [])
+        .filter((m) => (m.status ?? "ACTIVE") === "ACTIVE")
+        .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0)),
+    [data]
+  );
+
+  const searchEnabled = showSearch !== false && mappings.length >= SEARCH_MIN_COURSES;
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q || !searchEnabled) return mappings;
+    return mappings.filter((m) =>
+      [m.package_name, m.level_name, m.session_name]
+        .filter(Boolean)
+        .some((v) => (v as string).toLowerCase().includes(q))
+    );
+  }, [mappings, query, searchEnabled]);
+
+  // 0/unset means "no pager" — render everything.
+  const perPage = Number(pageSize) > 0 ? Math.floor(Number(pageSize)) : filtered.length || 1;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+  // Derive rather than sync via an effect: a shrinking result set (search)
+  // must not leave the pager parked on a page that no longer exists.
+  const safePage = Math.min(Math.max(page, 1), totalPages);
+  const start = (safePage - 1) * perPage;
+  const visible = filtered.slice(start, start + perPage);
+
+  const goToPage = (p: number) => {
+    setPage(Math.min(Math.max(p, 1), totalPages));
+    // Keep the viewer at the start of the list they just paged.
+    if (scrollRef.current) scrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    if (trackRef.current) trackRef.current.scrollTo({ left: 0, behavior: "smooth" });
+  };
+
+  /** Enable each arrow only when there is actually room to travel that way. */
+  const syncArrows = () => {
+    const el = trackRef.current;
+    if (!el) return;
+    setCanPrev(el.scrollLeft > 8);
+    setCanNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 8);
+  };
+
+  const scrollByPage = (dir: number) => {
+    const el = trackRef.current;
+    if (!el) return;
+    // Just under a full viewport keeps a sliver of the previous card visible,
+    // which is what tells the visitor the row continues.
+    el.scrollBy({ left: dir * el.clientWidth * 0.9, behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    if (!isCarousel) return;
+    syncArrows();
+    window.addEventListener("resize", syncArrows);
+    return () => window.removeEventListener("resize", syncArrows);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCarousel, visible.length, cols]);
 
   const header = (
     <>
@@ -163,14 +293,17 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     </section>
   );
 
+  const emptyState = (message: string) =>
+    section(
+      <div className="catalogue-card rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center text-sm text-catalogue-text-muted">
+        {message}
+      </div>
+    );
+
   // ── Not configured yet: guide the admin, stay invisible to visitors ──
   if (!productPageCode) {
     if (!isPreviewMode) return null;
-    return section(
-      <div className="catalogue-card rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center text-sm text-catalogue-text-muted">
-        Pick a product page in the properties panel to show its courses here.
-      </div>
-    );
+    return emptyState("Pick a product page in the properties panel to show its courses here.");
   }
 
   if (isLoading) {
@@ -188,43 +321,49 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     );
   }
 
-  const mappings: ProductPageMapping[] = ((data?.mappings as unknown as ProductPageMapping[]) || [])
-    .filter((m) => (m.status ?? "ACTIVE") === "ACTIVE")
-    .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
-
   // A marketing page should never show a broken or empty band to a visitor.
   if (isError || mappings.length === 0) {
     if (!isPreviewMode) return null;
-    return section(
-      <div className="catalogue-card rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center text-sm text-catalogue-text-muted">
-        {isError
-          ? "Couldn't load this product page. Check that it is ACTIVE and belongs to this institute."
-          : "This product page has no courses yet — add them in its Courses tab."}
-      </div>
+    return emptyState(
+      isError
+        ? "Couldn't load this product page. Check that it is ACTIVE and belongs to this institute."
+        : "This product page has no courses yet — add them in its Courses tab."
     );
   }
 
-  return section(
-    <div className={gridCols}>
-      {mappings.map((m, i) => {
+  const renderCard = (m: ProductPageMapping, i: number) => {
         const name = m.package_name || "Course";
         const chips = [m.level_name, m.session_name].filter(Boolean) as string[];
         const blurb = showDescription ? toPlainText(m.about_the_course_html) : "";
         const validity = showValidity ? formatValidity(m.payment_plan?.validity_in_days) : "";
-        // package_session_id is the canonical form the funnel matches first;
-        // defaultTab=CART drops the visitor straight into checkout with this
-        // course already selected.
-        const href =
-          `/product-pages/${productPageCode}?instituteId=${encodeURIComponent(instituteId || "")}` +
-          `&courseIds=${encodeURIComponent(m.package_session_id)}&defaultTab=CART`;
 
         return (
-          <CatalogueLink
-            key={m.id || i}
-            to={href}
+          <Link
+            key={m.id || `${start}-${i}`}
+            to="/product-pages/$productPageCode"
+            params={{ productPageCode }}
+            // package_session_id is the canonical form the funnel matches
+            // first; defaultTab=CART drops the visitor straight into checkout
+            // with this course already selected.
+            search={{
+              ...(instituteId ? { instituteId } : {}),
+              courseIds: m.package_session_id,
+              defaultTab: "CART" as const,
+            }}
             data-stagger-item
-            style={{ ["--stagger-i" as string]: i } as React.CSSProperties}
-            className="catalogue-card-elevated group flex flex-col p-5 text-start no-underline"
+            style={{
+              ["--stagger-i" as string]: i,
+              // Carousel cards size to show exactly `columns` per view (minus
+              // the gaps); the min-width below takes over on narrow screens so
+              // the row overflows into a swipe instead of crushing the cards.
+              ...(isCarousel
+                ? { flexBasis: `calc((100% - ${(cols - 1) * 1.5}rem) / ${cols})` }
+                : {}),
+            } as React.CSSProperties}
+            className={
+              "catalogue-card-elevated group flex flex-col p-5 text-start no-underline" +
+              (isCarousel ? " min-w-reg-250 shrink-0 snap-start" : "")
+            }
           >
             {showImage && <CourseImage mediaId={m.course_preview_image_media_id} alt={name} />}
             <div className={showImage ? "mt-4 flex flex-1 flex-col" : "flex flex-1 flex-col"}>
@@ -240,7 +379,9 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                   ))}
                 </div>
               )}
-              <h3 className="catalogue-h3 mb-2 text-catalogue-text-primary">{name}</h3>
+              {/* Clamped: course names run long ("Chapter 10 | Living
+                  Creatures…") and an unclamped title ruins the row rhythm. */}
+              <h3 className="catalogue-h3 mb-2 line-clamp-2 text-catalogue-text-primary">{name}</h3>
               {blurb && (
                 <p className="mb-3 line-clamp-2 text-sm leading-relaxed text-catalogue-text-secondary">
                   {blurb}
@@ -268,10 +409,144 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                 </span>
               </div>
             </div>
-          </CatalogueLink>
+          </Link>
         );
-      })}
+  };
+
+  const cards = visible.map((m, i) => renderCard(m, i));
+
+  const grid = <div className={gridCols}>{cards}</div>;
+
+  const carousel = (
+    <div className="relative">
+      <div
+        ref={trackRef}
+        onScroll={syncArrows}
+        className="flex snap-x snap-mandatory gap-6 overflow-x-auto pb-3"
+        role="group"
+        aria-label={title || "Courses"}
+      >
+        {cards}
+      </div>
+
+      {/* Arrows are an affordance on top of native scroll/swipe, not the only
+          way to move — they stay hidden until there is somewhere to go. */}
+      {canPrev && (
+        <button
+          type="button"
+          onClick={() => scrollByPage(-1)}
+          aria-label="Scroll to previous courses"
+          className="catalogue-btn catalogue-btn-secondary absolute left-1 top-1/2 hidden size-9 -translate-y-1/2 justify-center rounded-full bg-catalogue-bg p-0 shadow-lg md:inline-flex"
+        >
+          <CaretLeft size={16} weight="bold" aria-hidden="true" />
+        </button>
+      )}
+      {canNext && (
+        <button
+          type="button"
+          onClick={() => scrollByPage(1)}
+          aria-label="Scroll to more courses"
+          className="catalogue-btn catalogue-btn-secondary absolute right-1 top-1/2 hidden size-9 -translate-y-1/2 justify-center rounded-full bg-catalogue-bg p-0 shadow-lg md:inline-flex"
+        >
+          <CaretRight size={16} weight="bold" aria-hidden="true" />
+        </button>
+      )}
     </div>
+  );
+
+  return section(
+    <>
+      {searchEnabled && (
+        <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-xs">
+            <MagnifyingGlass
+              size={16}
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-catalogue-text-muted"
+              aria-hidden="true"
+            />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => { setQuery(e.target.value); setPage(1); }}
+              placeholder="Search courses"
+              aria-label="Search courses"
+              className="catalogue-input w-full pl-9"
+            />
+          </div>
+          <p className="text-xs text-catalogue-text-muted" role="status" aria-live="polite">
+            {filtered.length === 0
+              ? "No matches"
+              : `Showing ${start + 1}–${Math.min(start + perPage, filtered.length)} of ${filtered.length}`}
+          </p>
+        </div>
+      )}
+
+      {filtered.length === 0 ? (
+        <div className="catalogue-card rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center text-sm text-catalogue-text-muted">
+          No courses match “{query.trim()}”.
+        </div>
+      ) : isCarousel ? (
+        carousel
+      ) : scrollable ? (
+        <div
+          ref={scrollRef}
+          className="overflow-y-auto overscroll-contain pr-1"
+          // Admin-authored height — a free-form px value, so it cannot be a token.
+          style={{ maxHeight: `${Math.max(Number(scrollMaxHeight) || 640, 240)}px` }}
+        >
+          {grid}
+        </div>
+      ) : (
+        grid
+      )}
+
+      {totalPages > 1 && (
+        <nav className="mt-8 flex flex-wrap items-center justify-center gap-2" aria-label="Course pages">
+          <button
+            type="button"
+            onClick={() => goToPage(safePage - 1)}
+            disabled={safePage === 1}
+            aria-label="Previous page"
+            className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <CaretLeft size={14} weight="bold" aria-hidden="true" />
+          </button>
+
+          {buildPageWindow(safePage, totalPages).map((p, i) =>
+            p === "gap" ? (
+              <span key={`gap-${i}`} className="px-1 text-xs text-catalogue-text-muted" aria-hidden="true">
+                …
+              </span>
+            ) : (
+              <button
+                key={p}
+                type="button"
+                onClick={() => goToPage(p)}
+                aria-label={`Page ${p}`}
+                aria-current={p === safePage ? "page" : undefined}
+                className={
+                  p === safePage
+                    ? "catalogue-btn catalogue-btn-primary catalogue-btn-sm min-w-9 justify-center"
+                    : "catalogue-btn catalogue-btn-secondary catalogue-btn-sm min-w-9 justify-center"
+                }
+              >
+                {p}
+              </button>
+            )
+          )}
+
+          <button
+            type="button"
+            onClick={() => goToPage(safePage + 1)}
+            disabled={safePage === totalPages}
+            aria-label="Next page"
+            className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <CaretRight size={14} weight="bold" aria-hidden="true" />
+          </button>
+        </nav>
+      )}
+    </>
   );
 };
 

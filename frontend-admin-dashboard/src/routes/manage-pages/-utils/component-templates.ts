@@ -662,12 +662,20 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             title: 'Our Programs',
             subtitle: 'Pick a program and enrol in minutes.',
             columns: 3,
+            // 'grid' wraps onto rows; 'carousel' is one swipeable horizontal row.
+            layout: 'grid',
             ctaLabel: 'Enrol now',
             showImage: true,
             showChips: true,
             showDescription: true,
             showValidity: true,
             showPrice: true,
+            // Product pages can carry 150+ courses (book stores especially), so
+            // paginate by default; 0 renders every course with no pager.
+            pageSize: 9,
+            showSearch: true,
+            scrollable: false,
+            scrollMaxHeight: 640,
         },
     },
 

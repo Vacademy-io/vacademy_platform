@@ -33,9 +33,16 @@ const ProductPageOfferPreview: React.FC<P> = ({ props }) => {
         staleTime: 60_000,
     });
     const cols = Math.min(Math.max(Number(props.columns) || 3, 1), 4);
-    const mappings = ((data?.mappings || []) as any[])
+    const allMappings = ((data?.mappings || []) as any[])
         .filter((m) => (m.status ?? 'ACTIVE') === 'ACTIVE')
         .sort((a, b) => (a.display_order ?? 0) - (b.display_order ?? 0));
+    // The canvas shows the FIRST page only. A book-store product page can carry
+    // 150+ courses; rendering them all made the editor unusable (and misrepresented
+    // what a visitor actually sees, which is one paginated page at a time).
+    const perPage = Number(props.pageSize) > 0 ? Math.floor(Number(props.pageSize)) : allMappings.length;
+    const mappings = allMappings.slice(0, perPage);
+    const hiddenCount = allMappings.length - mappings.length;
+    const totalPages = perPage > 0 ? Math.ceil(allMappings.length / perPage) : 1;
 
     const shell = (children: React.ReactNode) => (
         <section className="catalogue-section" style={props.backgroundColor ? { backgroundColor: props.backgroundColor } : undefined}>
@@ -68,14 +75,26 @@ const ProductPageOfferPreview: React.FC<P> = ({ props }) => {
             </div>
         );
     }
+    const isCarousel = props.layout === 'carousel';
     return shell(
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 24 }}>
+        <>
+        <div
+            style={
+                isCarousel
+                    ? { display: 'flex', gap: 24, overflowX: 'auto', paddingBottom: 12 }
+                    : { display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 24 }
+            }
+        >
             {mappings.map((m, i) => {
                 const chips = [m.level_name, m.session_name].filter(Boolean);
                 const price = m.payment_plan?.actual_price;
                 const mrp = m.payment_plan?.elevated_price;
                 return (
-                    <div key={m.id || i} className="catalogue-card-elevated flex flex-col p-5 text-left">
+                    <div
+                        key={m.id || i}
+                        className="catalogue-card-elevated flex flex-col p-5 text-left"
+                        style={isCarousel ? { flex: `0 0 calc((100% - ${(cols - 1) * 24}px) / ${cols})`, minWidth: 250 } : undefined}
+                    >
                         {props.showImage !== false && (
                             <div className="mb-4 aspect-[16/9] w-full rounded-catalogue-lg bg-catalogue-bg-muted" />
                         )}
@@ -102,6 +121,17 @@ const ProductPageOfferPreview: React.FC<P> = ({ props }) => {
                 );
             })}
         </div>
+        {hiddenCount > 0 && (
+            <p className="mt-4 text-center text-caption text-catalogue-text-muted">
+                + {hiddenCount} more course(s) — visitors page through {totalPages} pages
+                {isCarousel
+                    ? ', scrolling each row sideways'
+                    : props.scrollable
+                      ? ', scrolling inside the section'
+                      : ''}.
+            </p>
+        )}
+        </>
     );
 };
 

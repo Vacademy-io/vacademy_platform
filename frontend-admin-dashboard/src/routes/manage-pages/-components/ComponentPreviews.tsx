@@ -107,7 +107,11 @@ const ProductPageOfferPreview: React.FC<P> = ({ props }) => {
             }
         >
             {mappings.map((m, i) => {
-                const chips = [m.level_name, m.session_name].filter(Boolean);
+                // Mirror the learner rule: sentinel level/session names are
+                // placeholders, not information.
+                const SENTINELS = new Set(['default', 'none', 'null', 'undefined', '']);
+                const chips = [m.level_name, m.session_name]
+                    .filter((c: any) => c && !SENTINELS.has(String(c).trim().toLowerCase()));
                 const price = m.payment_plan?.actual_price;
                 const mrp = m.payment_plan?.elevated_price;
                 return (

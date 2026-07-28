@@ -88,6 +88,41 @@ interface ProductPageOfferProps {
 /** Below this a search box is noise rather than help. */
 const SEARCH_MIN_COURSES = 8;
 
+// Backend stores sentinel level/session names ("default", "DEFAULT") on
+// packages the admin never levelled — they are placeholders, not information,
+// and rendering them as chips reads as broken data. Same rule as the main
+// course catalog: hide sentinels, title-case genuine values.
+const SENTINEL_CHIP_VALUES = new Set(["default", "none", "null", "undefined", ""]);
+
+const toChipCase = (raw: string): string =>
+  raw
+    .trim()
+    .split(/\s+/)
+    .map((w) => (w === w.toUpperCase() && w.length > 3 ? w.charAt(0) + w.slice(1).toLowerCase() : w))
+    .join(" ");
+
+const displayChips = (values: (string | undefined)[]): string[] => {
+  const out: string[] = [];
+  for (const v of values) {
+    if (!v) continue;
+    const trimmed = v.trim();
+    if (SENTINEL_CHIP_VALUES.has(trimmed.toLowerCase())) continue;
+    const label = toChipCase(trimmed);
+    if (!out.some((c) => c.toLowerCase() === label.toLowerCase())) out.push(label);
+  }
+  return out;
+};
+
+/** "Summer Sprint 2.0 - Class 6" → "SS" — the monogram for imageless tiles. */
+const initialsOf = (title: string): string =>
+  title
+    .trim()
+    .split(/\s+/)
+    .filter((w) => /^[a-z0-9]/i.test(w))
+    .slice(0, 2)
+    .map((w) => w.charAt(0).toUpperCase())
+    .join("") || "•";
+
 /** Strips HTML and clamps the course blurb to a card-sized teaser. */
 const toPlainText = (html?: string, max = 160): string => {
   if (!html) return "";
@@ -122,16 +157,19 @@ const formatValidity = (days?: number): string => {
  * brand-tinted tile reads as designed.
  */
 const CoursePlaceholder: React.FC<{ title: string }> = ({ title }) => (
-  // Committed brand tint, not a wash: a rail of imageless courses is the COMMON
-  // case (163-course book stores), and pale near-white tiles in a row read as
-  // broken images rather than designed tiles.
-  <div className="flex aspect-[16/9] w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-catalogue-lg bg-gradient-to-br from-primary-200 via-primary-100 to-primary-50 px-4">
-    <span className="inline-flex size-9 items-center justify-center rounded-full bg-catalogue-bg/70">
-      <BookOpen weight="duotone" className="size-5 text-catalogue-brand-ink" aria-hidden="true" />
+  // Committed brand tint with a MONOGRAM, not the course title: the real title
+  // renders directly under the tile, so printing it inside the tile too made
+  // every imageless card read its own name twice. A big two-letter monogram
+  // gives each tile identity without the echo.
+  <div className="relative flex aspect-[16/9] w-full items-center justify-center overflow-hidden rounded-catalogue-lg bg-gradient-to-br from-primary-200 via-primary-100 to-primary-50">
+    <span className="catalogue-h2 select-none font-bold tracking-wide-08 text-catalogue-brand-ink opacity-90" aria-hidden="true">
+      {initialsOf(title)}
     </span>
-    <span className="line-clamp-2 text-center text-xs font-semibold leading-snug text-catalogue-brand-ink">
-      {title}
-    </span>
+    <BookOpen
+      weight="duotone"
+      className="absolute bottom-2.5 right-3 size-4 text-catalogue-brand-ink opacity-60"
+      aria-hidden="true"
+    />
   </div>
 );
 
@@ -389,7 +427,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
 
   const renderCard = (m: ProductPageMapping, i: number) => {
         const name = m.package_name || "Course";
-        const chips = [m.level_name, m.session_name].filter(Boolean) as string[];
+        const chips = showChips ? displayChips([m.level_name, m.session_name]) : [];
         const blurb = showDescription ? toPlainText(m.about_the_course_html) : "";
         const validity = showValidity ? formatValidity(m.payment_plan?.validity_in_days) : "";
 

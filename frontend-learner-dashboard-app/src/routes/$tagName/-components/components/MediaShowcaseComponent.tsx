@@ -2,7 +2,7 @@ import React, { useState, useEffect ,useMemo} from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
-import { Play } from "@phosphor-icons/react";
+import { Play, Pause } from "@phosphor-icons/react";
 
 interface MediaItem {
   type: "image" | "video";
@@ -317,6 +317,18 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
   autoplay = false,
   autoplayInterval = 3000,
 }) => {
+  const [isPaused, setIsPaused] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const apply = () => setPrefersReducedMotion(mq.matches);
+    apply();
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, []);
+
   const navigate = useNavigate();
   const domainRouting = useDomainRouting();
   const { roundedEdges = true } = styles;
@@ -423,7 +435,9 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
 
   // Autoplay functionality
   useEffect(() => {
-    if (!isSliderFormat || !autoplay || !slides || slides.length <= 1) {
+    // WCAG 2.2.2: auto-advancing content must be pausable, and must not
+    // auto-advance at all for users who asked for reduced motion.
+    if (!isSliderFormat || !autoplay || !slides || slides.length <= 1 || isPaused || isHovered || prefersReducedMotion) {
       return;
     }
 
@@ -446,7 +460,7 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
       console.log("[MediaShowcaseComponent] Clearing autoplay interval");
       clearInterval(interval);
     };
-  }, [isSliderFormat, autoplay, autoplayInterval, slides?.length]);
+  }, [isSliderFormat, autoplay, autoplayInterval, slides?.length, isPaused, isHovered, prefersReducedMotion]);
 
   const nextSlide = () => {
     if (isSliderFormat && slides) {
@@ -531,7 +545,18 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
     
     
     return (
-      <section className="w-full relative" style={{ width: '100%', overflow: 'hidden' }}>
+      <section
+        className="w-full relative"
+        style={{ width: '100%', overflow: 'hidden' }}
+        aria-roledescription="carousel"
+        aria-label="Highlights"
+        // Pause while the visitor is actually reading/interacting; focusin
+        // covers keyboard users, who cannot hover.
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        onFocus={() => setIsHovered(true)}
+        onBlur={() => setIsHovered(false)}
+      >
         <div 
           className="relative overflow-hidden h-72 sm:h-blob-lg"
           style={{
@@ -664,11 +689,13 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
 
           {/* Dots Indicator */}
           {slides.length > 1 && (
-            <div className="absolute bottom-4 start-1/2 transform -translate-x-1/2 flex space-x-2 z-20">
+            <div className="absolute bottom-4 start-1/2 transform -translate-x-1/2 flex items-center space-x-2 z-20">
               {slides.map((_, index) => (
                 <button
                   key={index}
+                  type="button"
                   onClick={() => setCurrentIndex(index)}
+                  aria-current={index === currentIndex}
                   className={`w-2 h-2 sm:w-3 sm:h-3 rounded-full transition-all ${
                     index === currentIndex
                       ? "bg-white"
@@ -677,6 +704,21 @@ export const MediaShowcaseComponent: React.FC<MediaShowcaseProps> = ({
                   aria-label={`Go to slide ${index + 1}`}
                 />
               ))}
+              {/* WCAG 2.2.2 — auto-advancing content needs a pause control.
+                  Hidden when autoplay is off or the OS asks for reduced
+                  motion (in which case nothing is moving to pause). */}
+              {autoplay && !prefersReducedMotion && (
+                <button
+                  type="button"
+                  onClick={() => setIsPaused((v) => !v)}
+                  aria-label={isPaused ? "Resume automatic slideshow" : "Pause automatic slideshow"}
+                  className="ms-2 inline-flex size-7 items-center justify-center rounded-full bg-white/25 text-white backdrop-blur-sm transition-colors hover:bg-white/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                >
+                  {isPaused
+                    ? <Play size={13} weight="fill" aria-hidden="true" />
+                    : <Pause size={13} weight="fill" aria-hidden="true" />}
+                </button>
+              )}
             </div>
           )}
         </div>

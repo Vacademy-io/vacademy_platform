@@ -7,6 +7,7 @@
 @import './styles/catalogue-tokens.css';
 @import './styles/catalogue-themes.css';
 @import './styles/catalogue-animations.css';
+@import './styles/catalogue-canvas.css';
 
 @tailwind base;
 @tailwind components;

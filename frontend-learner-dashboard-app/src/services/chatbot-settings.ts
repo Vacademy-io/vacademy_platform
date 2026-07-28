@@ -15,6 +15,13 @@ export const DEFAULT_CHATBOT_SETTINGS: ChatbotSettingsData = {
     default_language: 'en-IN',
     default_voice: 'shubh',
   },
+  launcher_settings: {
+    draggable: true,
+    nudge_enabled: true,
+    nudge_interval_seconds: 120,
+    nudge_duration_seconds: 5,
+    bounce: true,
+  },
 };
 export const CHATBOT_SETTINGS_KEY = "CHATBOT_SETTING";
 const LS_KEY = `${CHATBOT_SETTINGS_KEY}_cache_v1`;
@@ -32,6 +39,15 @@ export interface ChatbotSettingsData {
   voice_settings?: {
     default_language: string;
     default_voice: string;
+  };
+  // Floating launcher (FAB) behavior — all optional; the button falls back to
+  // sensible defaults (draggable, a 2-min/5-sec nudge, bounce on reveal).
+  launcher_settings?: {
+    draggable?: boolean;
+    nudge_enabled?: boolean;
+    nudge_interval_seconds?: number;
+    nudge_duration_seconds?: number;
+    bounce?: boolean;
   };
 }
 

@@ -116,6 +116,14 @@ interface TutorConfiguration {
         default_language: string;
         default_voice: string;
     };
+    // Floating launcher (FAB) behavior on the student app
+    launcher_settings?: {
+        draggable?: boolean;
+        nudge_enabled?: boolean;
+        nudge_interval_seconds?: number;
+        nudge_duration_seconds?: number;
+        bounce?: boolean;
+    };
 }
 
 interface ActivityLogRecord {
@@ -195,6 +203,13 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
         voice_settings: {
             default_language: 'en-IN',
             default_voice: 'shubh',
+        },
+        launcher_settings: {
+            draggable: true,
+            nudge_enabled: true,
+            nudge_interval_seconds: 120,
+            nudge_duration_seconds: 5,
+            bounce: true,
         },
     });
     const [newHardRule, setNewHardRule] = useState('');
@@ -571,6 +586,7 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                         enabled_modes: tutorConfig.enabled_modes,
                         chatbot_pages: tutorConfig.chatbot_pages,
                         voice_settings: tutorConfig.voice_settings,
+                        launcher_settings: tutorConfig.launcher_settings,
                     },
                 },
                 {
@@ -1676,6 +1692,128 @@ const AiSettings: React.FC<AiSettingsProps> = ({ isTab }) => {
                                     </label>
                                 );
                             })}
+                        </div>
+                    </div>
+
+                    {/* Floating Launcher Behavior */}
+                    <div className="space-y-3 border-t border-indigo-100 pt-4">
+                        <Label className="text-sm font-medium">Floating Launcher</Label>
+                        <p className="text-xs text-muted-foreground">
+                            How the floating chat button behaves in the student app
+                        </p>
+
+                        <div className="flex items-center justify-between gap-3 rounded-lg border border-indigo-100 p-2.5">
+                            <div>
+                                <span className="text-sm font-medium">Draggable</span>
+                                <p className="text-xs text-muted-foreground">
+                                    Let students drag the button and snap it to either side edge
+                                </p>
+                            </div>
+                            <Switch
+                                checked={tutorConfig.launcher_settings?.draggable ?? true}
+                                onCheckedChange={(v) =>
+                                    setTutorConfig({
+                                        ...tutorConfig,
+                                        launcher_settings: {
+                                            ...tutorConfig.launcher_settings,
+                                            draggable: v,
+                                        },
+                                    })
+                                }
+                            />
+                        </div>
+
+                        <div className="flex items-center justify-between gap-3 rounded-lg border border-indigo-100 p-2.5">
+                            <div>
+                                <span className="text-sm font-medium">Periodic message</span>
+                                <p className="text-xs text-muted-foreground">
+                                    Briefly pop a nudge (&quot;Any doubts?&quot;) on a timer, then collapse
+                                </p>
+                            </div>
+                            <Switch
+                                checked={tutorConfig.launcher_settings?.nudge_enabled ?? true}
+                                onCheckedChange={(v) =>
+                                    setTutorConfig({
+                                        ...tutorConfig,
+                                        launcher_settings: {
+                                            ...tutorConfig.launcher_settings,
+                                            nudge_enabled: v,
+                                        },
+                                    })
+                                }
+                            />
+                        </div>
+
+                        {(tutorConfig.launcher_settings?.nudge_enabled ?? true) && (
+                            <div className="grid gap-6 md:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-medium">
+                                        Show every (seconds)
+                                    </Label>
+                                    <Input
+                                        type="number"
+                                        min={10}
+                                        value={
+                                            tutorConfig.launcher_settings?.nudge_interval_seconds ??
+                                            120
+                                        }
+                                        onChange={(e) =>
+                                            setTutorConfig({
+                                                ...tutorConfig,
+                                                launcher_settings: {
+                                                    ...tutorConfig.launcher_settings,
+                                                    nudge_interval_seconds: Number(e.target.value),
+                                                },
+                                            })
+                                        }
+                                        className="border-indigo-100 focus:border-indigo-300"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-sm font-medium">
+                                        Stay open for (seconds)
+                                    </Label>
+                                    <Input
+                                        type="number"
+                                        min={1}
+                                        value={
+                                            tutorConfig.launcher_settings?.nudge_duration_seconds ??
+                                            5
+                                        }
+                                        onChange={(e) =>
+                                            setTutorConfig({
+                                                ...tutorConfig,
+                                                launcher_settings: {
+                                                    ...tutorConfig.launcher_settings,
+                                                    nudge_duration_seconds: Number(e.target.value),
+                                                },
+                                            })
+                                        }
+                                        className="border-indigo-100 focus:border-indigo-300"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex items-center justify-between gap-3 rounded-lg border border-indigo-100 p-2.5">
+                            <div>
+                                <span className="text-sm font-medium">Bounce animation</span>
+                                <p className="text-xs text-muted-foreground">
+                                    Bounce the button while the message shows, to catch attention
+                                </p>
+                            </div>
+                            <Switch
+                                checked={tutorConfig.launcher_settings?.bounce ?? true}
+                                onCheckedChange={(v) =>
+                                    setTutorConfig({
+                                        ...tutorConfig,
+                                        launcher_settings: {
+                                            ...tutorConfig.launcher_settings,
+                                            bounce: v,
+                                        },
+                                    })
+                                }
+                            />
                         </div>
                     </div>
 

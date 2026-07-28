@@ -1505,6 +1505,20 @@ const MediaShowcaseEditor = ({ component, pageId, updateComponent }: any) => {
 };
 
 // Book Catalogue Editor
+// Sort modes the learner catalogue understands. The stored value IS the label —
+// it must stay byte-identical to COURSE_CATALOG_SORT_OPTIONS in the learner app
+// (frontend-learner-dashboard-app .../-types/course-catalogue-types.ts), which
+// falls back to "Newest" for anything it does not recognise.
+const COURSE_CATALOG_SORT_OPTIONS = [
+    'Newest',
+    'Oldest',
+    'Price: Low to High',
+    'Price: High to Low',
+    'Rating',
+    'Name A-Z',
+    'Name Z-A',
+];
+
 const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
     const { props } = component;
 
@@ -1539,6 +1553,27 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
                     onCheckedChange={(c) => updateProp('showFilters', c)}
                 />
             </div>
+
+            {component.type === 'courseCatalog' && (
+                <div className="space-y-2">
+                    <Label>Default Sort</Label>
+                    <select
+                        className="w-full rounded border px-3 py-1.5 text-sm"
+                        value={props.defaultSort || 'Newest'}
+                        onChange={(e) => updateProp('defaultSort', e.target.value)}
+                    >
+                        {COURSE_CATALOG_SORT_OPTIONS.map((option) => (
+                            <option key={option} value={option}>
+                                {option}
+                            </option>
+                        ))}
+                    </select>
+                    <p className="text-xs text-neutral-500">
+                        How courses are ordered when the page opens. Learners can still change
+                        it. Pick &ldquo;Price: Low to High&rdquo; to show free courses first.
+                    </p>
+                </div>
+            )}
 
             <div className="rounded border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
                 Advanced filter configuration and cart settings coming soon.

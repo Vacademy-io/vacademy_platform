@@ -628,7 +628,14 @@ _PREMIUM_EXEMPLAR = json.dumps({
             {"id": "courses", "type": "courseCatalog", "enabled": True, "props": {"title": "Explore our programs"}},
             {
                 "id": "cta", "type": "ctaBanner", "enabled": True,
-                "props": {"headerText": "Ready to start?", "description": "Book a free demo class this week.", "buttonText": "Book a free demo", "buttonAction": "openLeadCollection"},
+                # Must match CtaBannerRenderer's actual contract ({heading, subheading, button}).
+                # It previously taught {headerText, description, buttonText, buttonAction}, none of
+                # which the renderer reads — a model that copied the exemplar faithfully produced an
+                # empty coloured band.
+                "props": {"heading": "Ready to start?", "subheading": "Book a free demo class this week.",
+                          "layout": "centered",
+                          "button": {"enabled": True, "text": "Book a free demo", "action": "navigate",
+                                     "target": "contact", "style": "white"}},
                 "style": {"layout": {"width": "full"}, "backgroundLayers": [{"type": "linear", "from": "hsl(var(--primary-500))", "to": "hsl(var(--primary-400))", "angle": 120}]},
             },
         ],
@@ -647,8 +654,9 @@ _PREMIUM_DOCTRINE = [
     "Fraunces / DM Serif Display) and keep fonts.family a clean SANS body (Inter / Mulish / Outfit) — serif headlines over sans "
     "paragraphs is the single biggest 'premium' signal. For a modern/techy brand use Space Grotesk/Outfit headings on an Inter body. "
     "Motion: calm or balanced.",
-    "OPEN with a rich heroSection: an eyebrow BADGE, a bold specific headline, 2 CTA buttons (primary+secondary), and 3 statChips "
-    "for proof numbers. Put it on a section shell (style.layout.width 'wide') with minHeight '80vh' + contentAlign 'center' so it fills the fold.",
+    "On a LANDING page, OPEN with a rich heroSection: an eyebrow BADGE, a bold specific headline, 2 CTA buttons (primary+secondary), and 3 statChips "
+    "for proof numbers. Put it on a section shell (style.layout.width 'wide') with minHeight '80vh' + contentAlign 'center' so it fills the fold. "
+    "On a DIRECTORY/reference page the fold belongs to the CONTENT, not to a hero — see the ARCHETYPE section, which overrides this.",
     "Use a sectionHeading with a highlight (style 'gradient' or 'underline') on ONE key phrase before each dense section — this accent is what makes pages feel designed.",
     "For a DIVISIONS / two-pillars / plan-comparison / 'what you get' section, use featureGrid with style 'panel' (columns 2 or 3): each feature is a card with a "
     "tinted HEADER band (props: badge, iconName, title, description) over a body of `bullets`. Make ONE pillar stand out by setting its headerVariant 'solid' "
@@ -662,10 +670,16 @@ _PREMIUM_DOCTRINE = [
     "Theme preset: commit to a COLOR that fits the brand's subject (ocean/midnight = tech & engineering, forest = growth & science, sunset/amber = energetic, "
     "rose/violet = creative, slate = corporate). Use 'default' ONLY when the institute's own brand color should shine through unchanged.",
     "Add tasteful depth: an ornaments glow-orb behind a feature section, a subtle backgroundLayers gradient on the CTA, atmosphere on the hero. Keep it restrained — one accent per section.",
-    "Rhythm: exactly ONE hero; alternate section surface tints; place a live courseCatalog where offerings belong; end with a CTA (and contact if a contact page). 6–12 sections.",
+    "Rhythm: AT MOST ONE hero; alternate section surface tints; end with a CTA (and contact if a contact page). "
+    "Section count and whether a live courseCatalog belongs at all are decided by the ARCHETYPE and COMMERCE sections below — "
+    "never add courseCatalog, cartComponent or any price/enrol element to a page whose brief says it is informational.",
     "Copy: concise, benefit-led, specific to THIS institute (use real course names + the provided stats/claims). Never lorem ipsum, never generic filler. Mirror the brief's language.",
-    "ESCAPE HATCH — htmlBlock: when a design idea genuinely cannot be expressed with the typed components (a bespoke bento grid, an unusual editorial "
-    "layout, decorative hero art), you may use AT MOST TWO htmlBlock components per page: props {html, css, prompt}. Hard rules: (1) style ONLY via the css "
+    "htmlBlock — when a design genuinely cannot be expressed with the typed components (a bespoke bento grid, an unusual editorial "
+    "layout, decorative hero art, or a DENSE INFORMATION TABLE such as a hairline-bordered spec grid or a label:value detail strip), "
+    "use htmlBlock: props {html, css, prompt}. It is NOT a last resort for information-heavy reference pages — for those it is often the "
+    "RIGHT choice, because the typed components are built for marketing sections and cannot render a bordered no-gap data table. "
+    "ONE htmlBlock may contain MANY repeated blocks (e.g. every offering on a directory page), so prefer one well-built htmlBlock over "
+    "several. Budget: AT MOST THREE htmlBlock components per page. Hard rules: (1) style ONLY via the css "
     "prop with class selectors — never <style> tags in the html; (2) ALL colors and fonts MUST come from the site theme variables — var(--primary-500), "
     "var(--primary-400), var(--primary-50), var(--catalogue-text-primary), var(--catalogue-text-secondary), var(--catalogue-bg), var(--catalogue-border), "
     "font-family: var(--catalogue-heading-font, inherit) for display text — NEVER literal hex colors, so re-theming still works; (3) MUST be responsive: "
@@ -673,6 +687,186 @@ _PREMIUM_DOCTRINE = [
     "CSS only (the section renders in a sandbox that strips everything else); (5) set props.prompt to a one-line brief of the section's intent so it can be "
     "regenerated later; (6) include generous padding (the section renders full-bleed with no outer spacing of its own). Prefer typed components whenever they fit.",
 ]
+
+
+# ── Page archetypes ────────────────────────────────────────────────────────────
+# The doctrine above describes a persuasive LANDING page. Applied to a reference
+# page it produces the wrong artefact: an Edzumo admin who asked for "details of
+# programs, no enroll flow just data" got an 80vh hero, three generic feature
+# grids that collapsed 25 offerings into 3 buckets, and a live enrol grid. The
+# archetype block below is appended per page_type and OVERRIDES the landing-page
+# rhythm rules, so structure follows the admin's actual intent.
+_ARCHETYPE_RULES: Dict[str, str] = {
+    "homepage": (
+        "LANDING. Persuasive arc: hero → proof → what you get → how it works → social proof → CTA. "
+        "The hero owns the fold. 6–12 sections."
+    ),
+    "courses": (
+        "DIRECTORY / REFERENCE. This page's job is to DOCUMENT what the institute offers — densely, "
+        "scannably, in the order given. Rules:\n"
+        "  (1) NO tall hero. Open with a compact page header (a sectionHeading, or a heroSection with NO "
+        "minHeight) so real content is visible in the fold.\n"
+        "  (2) ONE self-contained block PER offering. Do NOT merge several offerings into one card and "
+        "do NOT summarise the list into 2–4 generic buckets — an admin who lists 25 offerings expects to "
+        "find all 25 on the page, each by its REAL name. If there are more than 12, group them under "
+        "sectionHeadings by theme, but every offering still gets its own titled block.\n"
+        "  (3) Each block carries: a short uppercase eyebrow/tag, the offering's real name as the "
+        "heading, a 1–2 sentence description, 4–6 concrete detail items (what is covered/included), and "
+        "a strip of 3–4 label:value specs (eligibility, mode, duration, level…). Give exactly ONE block "
+        "a visually distinct accent treatment if one offering is the flagship.\n"
+        "  (4) A bordered, no-gap data table with a label:value spec strip is what this page wants and "
+        "the typed marketing components cannot render it — this is the archetype where htmlBlock is the "
+        "RIGHT tool. One htmlBlock holding every offering block is the preferred shape.\n"
+        "  (5) Coverage beats verbosity: if space is tight, shorten each block rather than dropping "
+        "offerings. Never invent a detail you were not given — omit a spec you do not know rather than "
+        "guessing eligibility, duration, fees or outcomes for a real programme.\n"
+        "  (6) Testimonial, logoCloud and marquee sections are NOISE here — omit them. End with ONE CTA."
+    ),
+    "course-landing": (
+        "SINGLE-OFFERING SALES PAGE. One offering only: hero → outcomes → curriculum/what's included → "
+        "proof → pricing/enrol → FAQ → CTA. Depth over breadth."
+    ),
+    "about": (
+        "STORY. Narrative order: who we are → origin → what we believe → the people → proof/milestones "
+        "→ a soft CTA. Prose-led; prefer readable measure over dense grids."
+    ),
+    "admissions": (
+        "PROCESS. Lead with a stepsProcess of the actual admission steps, then eligibility and dates as "
+        "label:value detail, then required documents, then FAQ, then the apply CTA."
+    ),
+    "contact": (
+        "CONTACT. Address/phone/email and a contactForm high on the page, a mapEmbed, hours, and a short "
+        "FAQ. No hero taller than the content."
+    ),
+}
+
+# Phrases an admin uses when they want a reference page with no commerce on it.
+_INFO_ONLY_MARKERS = (
+    "no enroll", "no enrol", "no enrollment", "no enrolment", "without enroll", "without enrol",
+    "no signup", "no sign up", "no sign-up", "no registration",
+    "just data", "only data", "just info", "just information", "information only", "informational",
+    "details only", "just details", "no price", "no prices", "no pricing", "no fee", "no fees",
+    "no payment", "no checkout", "no cart", "no buy", "not for sale", "no selling",
+)
+
+
+def _is_info_only(brief: str) -> bool:
+    """True when the admin explicitly asked for an informational page.
+
+    Drives the COMMERCE directive: the doctrine used to tell the composer to
+    always place a live courseCatalog, so "no enroll flow just data" still came
+    back with an enrol grid.
+    """
+    lowered = (brief or "").lower()
+    return any(marker in lowered for marker in _INFO_ONLY_MARKERS)
+
+
+# Platform defaults for the Naming Settings labels the admin FE sends. An entry
+# whose value still equals its default is NOT a rename — the admin simply never
+# touched it — so it must produce no instruction at all. Edzumo's payload was
+# {"course": "Question Set", "learner": "Student", "level": "Level",
+#  "session": "Session", "batch": "Batch"}: only TWO real renames, yet the old
+# "use these words in all copy" line made the model dutifully work the untouched
+# words into prose too ("Multi-Session programs, Batch-wise schedule").
+_TERM_DEFAULTS: Dict[str, str] = {
+    "course": "Course", "level": "Level", "session": "Session",
+    "subject": "Subject", "module": "Module", "chapter": "Chapter",
+    "slide": "Slide", "livesession": "Live Session", "batch": "Batch",
+    "package": "Package", "populartag": "Popular Tag", "learner": "Learner",
+    "teacher": "Teacher", "admin": "Admin", "evaluator": "Evaluator",
+    "coursecreator": "Course Creator", "assessmentcreator": "Assessment Creator",
+    "invite": "Invite", "audiencelist": "Audience List", "inventory": "Inventory",
+    "suborg": "Sub-Org",
+}
+
+_TERMINOLOGY_RULES = (
+    "\nHOW TO APPLY IT — a substitution is correct ONLY where the text names that entity type as a "
+    "generic noun. Everywhere else, write normal natural English.\n"
+    "1. UI LABELS (nav items, section headings, button text, filter labels, table headers, tabs): use "
+    "the value EXACTLY as written above, in its given Title Case.\n"
+    "2. RUNNING PROSE (any sentence, paragraph or description): write the term in LOWER CASE — "
+    "\"browse our question sets\", \"built for students and graduates\". NEVER paste a Title Case label "
+    "mid-sentence: \"engineering Students & graduates\" is WRONG, \"engineering students & graduates\" is "
+    "right. Keep the given capitalisation only for acronyms (MBA, IIT, GATE).\n"
+    "3. PLURALS: use only a plural form listed above. If none is listed, do NOT invent one — this "
+    "institute may spell its plural differently. Rewrite instead: singular attributively (\"Question Set "
+    "details\"), or a determiner (\"every Question Set\").\n"
+    "4. NEVER rename a PROPER NOUN. Real course / program / exam / company names are reproduced "
+    "verbatim. \"Placement-focused Question Sets for MakeMyTrip\" is WRONG — MakeMyTrip is the NAME of a "
+    "program, so write \"MakeMyTrip placement program\" in the brief's own words. A heading or card title "
+    "carrying a real offering's name is never rewritten, re-bucketed or re-labelled.\n"
+    "5. Entities NOT listed above were never renamed, so you have NO instruction about them. Do not "
+    "force words like \"Session\", \"Batch\" or \"Level\" into copy where a person writing about this "
+    "institute would not use them. \"Multi-Session programs, Batch-wise schedule\" is robot copy.\n"
+    "6. THE ADMIN'S BRIEF WINS. Mirror the words the admin used for their own offerings. This glossary "
+    "only fixes what the PLATFORM's entities are CALLED in labels. If applying a term would make a "
+    "phrase read awkwardly, do not apply it."
+)
+
+_TERMINOLOGY_INTAKE_NOTE = (
+    "\n7. IN THIS INTERVIEW: use these labels when talking to the admin, and restate them verbatim in "
+    "one short 'vocabulary' line of the brief so the composer receives them — but write the rest of the "
+    "brief in the ADMIN'S OWN words, never in glossary words."
+)
+
+
+def _terminology_block(raw: Optional[Dict[str, str]], intake: bool = False) -> Optional[str]:
+    """Render only the institute's RENAMED entity labels as instructions, or None.
+
+    The values are Title-Case UI labels, not a prose vocabulary. The old
+    instruction ("use these words in all copy") produced "Browse All Question
+    Sets", "Placement-focused Question Sets for MakeMyTrip" and "engineering
+    Students & graduates". Entries still at the platform default are dropped so
+    the model gets no licence to force untouched words into copy.
+    """
+    lines: List[str] = []
+    for key, value in (raw or {}).items():
+        k = str(key).strip()
+        lk = k.lower()
+        if not isinstance(value, str) or lk.endswith("plural"):
+            continue
+        singular = value.strip()
+        if not singular:
+            continue
+        default = _TERM_DEFAULTS.get(lk)
+        if default and singular.casefold() == default.casefold():
+            continue  # not a rename → no instruction
+        plural = ""
+        for cand_key in (f"{k}Plural", f"{k}_plural", f"{lk}plural", f"{lk}_plural"):
+            cand = (raw or {}).get(cand_key)
+            if isinstance(cand, str) and cand.strip():
+                plural = cand.strip()
+                break
+        noun = default or lk
+        if plural:
+            lines.append(f'- what the platform calls a {noun} is called "{singular}" here (plural: "{plural}")')
+        else:
+            lines.append(
+                f'- what the platform calls a {noun} is called "{singular}" here '
+                f'(NO plural form was configured — see rule 3, do not invent one)'
+            )
+    if not lines:
+        return None
+    block = (
+        "## INSTITUTE VOCABULARY (a LABEL glossary — NOT a list of words to force into the copy)\n"
+        "This institute has renamed some of the platform's built-in entity labels:\n"
+        + "\n".join(lines)
+        + "\n"
+        + _TERMINOLOGY_RULES
+    )
+    return block + _TERMINOLOGY_INTAKE_NOTE if intake else block
+
+
+# Appended when the admin asked for an informational page. The doctrine used to
+# say "place a live courseCatalog where offerings belong" unconditionally.
+_NO_COMMERCE_RULE = (
+    "## COMMERCE: OFF FOR THIS PAGE\n"
+    "The admin explicitly asked for an informational page. Do NOT emit courseCatalog, bookCatalogue, "
+    "cartComponent, productPageOffer, pricingTable, buyRentSection or any price, fee, discount, "
+    "'Enrol now'/'Buy'/'Add to cart' element. Describe the offerings as information only. A single "
+    "soft CTA at the end (talk to us / book a counselling call / contact) is welcome — a purchase path "
+    "is not."
+)
 
 
 def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration_brief: str = "", site_corpus: str = "", fixed_global: Optional[Dict[str, Any]] = None) -> str:
@@ -699,11 +893,9 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
 
     if req.institute_name:
         parts.append(f"## INSTITUTE\nName: {req.institute_name}")
-    if req.terminology:
-        parts.append(
-            "## TERMINOLOGY (use these words in all copy)\n"
-            + json.dumps(req.terminology, ensure_ascii=False)
-        )
+    term_block = _terminology_block(req.terminology)
+    if term_block:
+        parts.append(term_block)
     if req.courses:
         parts.append(
             "## REAL COURSES (reference these by name; use courseCatalog for the live grid)\n"
@@ -745,8 +937,16 @@ def _build_prompt(req: GeneratePageRequest, catalog: Dict[str, Any], inspiration
 
     page_type = req.page_type or "homepage"
     parts.append(
-        f"## TASK\nPage type: {page_type}\nAdmin brief (mirror its language in the page copy):\n{req.brief.strip()}"
+        f"## TASK\nPage type: {page_type} — {_PAGE_TYPE_LABELS.get(page_type, 'a page of this site')}\n"
+        f"Admin brief (mirror its language in the page copy):\n{req.brief.strip()}"
     )
+    # The archetype OVERRIDES the landing-page rhythm rules in DESIGN RULES. Without
+    # it every page_type came out shaped like a homepage.
+    archetype_rule = _ARCHETYPE_RULES.get(page_type)
+    if archetype_rule:
+        parts.append(f"## PAGE ARCHETYPE — this governs the page's STRUCTURE\n{archetype_rule}")
+    if _is_info_only(req.brief):
+        parts.append(_NO_COMMERCE_RULE)
     parts.append(
         "## OUTPUT CONTRACT\nReturn ONLY a JSON object of this exact shape (no markdown, no commentary):\n"
         '{"globalSettings": {"theme": {"preset": "...", "atmosphere": {"canvas": "...", "intensity": "..."}, '
@@ -1170,8 +1370,9 @@ def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any], attachment
     parts.append("## COMPONENT VOCABULARY (types with example props)\n" + json.dumps(vocab, ensure_ascii=False))
     parts.append("## STYLE VOCABULARY\n" + json.dumps(catalog["styleSchema"], ensure_ascii=False))
 
-    if req.terminology:
-        parts.append("## TERMINOLOGY (use these words in copy)\n" + json.dumps(req.terminology, ensure_ascii=False))
+    term_block = _terminology_block(req.terminology)
+    if term_block:
+        parts.append(term_block)
     if req.images:
         parts.append(
             "## PROVIDED IMAGES (the ONLY image URLs you may use)\n"
@@ -1629,13 +1830,24 @@ async def generate_page_image(
 
 # ─── Multi-page site (one brief → several coherent pages) ────────────────────
 
-_SITE_PAGE_LABELS = {
+# Canonical page-type vocabulary — the SINGLE source for the intake validator
+# and the whole-site generator.
+#
+# These two used to diverge: "courses" was valid for a site build but absent from
+# the intake validator's allowlist, and "course-landing" was the reverse. Since
+# the intake validator silently coerces anything unrecognised to "homepage", a
+# request like "a page that has details of programs" was classified "courses",
+# rejected, and rebuilt as a LANDING page — hero, feature grids and a live
+# enrol grid instead of a dense directory. Keep this list authoritative.
+_PAGE_TYPE_LABELS = {
     "homepage": "the main landing page",
+    "courses": "a programs/offerings DIRECTORY page — one detailed block per offering",
+    "course-landing": "a sales page for ONE offering",
     "about": "an about-us / our-story page",
-    "contact": "a contact page (address, form, map)",
     "admissions": "an admissions / how-to-enroll page",
-    "courses": "a programs overview page",
+    "contact": "a contact page (address, form, map)",
 }
+_SITE_PAGE_LABELS = _PAGE_TYPE_LABELS
 
 
 class GenerateSiteRequest(BaseModel):
@@ -1824,15 +2036,24 @@ def _build_intake_prompt(req: IntakeRequest) -> str:
             "## REAL COURSES (already known — do not ask for a course list again)\n"
             + json.dumps([c.model_dump(exclude_none=True) for c in req.courses], ensure_ascii=False)
         )
-    if req.terminology:
-        parts.append("## TERMINOLOGY\n" + json.dumps(req.terminology, ensure_ascii=False))
+    term_block = _terminology_block(req.terminology, intake=True)
+    if term_block:
+        parts.append(term_block)
     parts.append(
         "## OUTPUT CONTRACT\nReturn ONLY a JSON object (no markdown fences):\n"
         '{"reply": "<your next message>", "chips": ["<2-4 short tap-to-answer suggestions>"], '
         '"request_upload": "logo"|"photo"|"inspiration"|null, '
         '"received_image_kind": "logo"|"photo"|"inspiration"|null, "ready": true|false, '
-        '"brief": "<current composer brief draft>", "page_type": "homepage"|"course-landing"|"about"|'
-        '"admissions"|"contact", "whole_site": true|false}'
+        '"brief": "<current composer brief draft>", '
+        '"page_type": ' + "|".join(f'"{k}"' for k in _PAGE_TYPE_LABELS) + ', '
+        '"whole_site": true|false}\n'
+        "PAGE TYPE — pick the one that matches what the admin actually asked for; this decides the "
+        "page's whole STRUCTURE, so getting it wrong produces the wrong page:\n"
+        + "\n".join(f"  - {k}: {v}" for k, v in _PAGE_TYPE_LABELS.items())
+        + "\nIf the admin asks to list/detail what they offer (\"details of my programs\", \"all our "
+        "courses\", \"what we teach\"), that is `courses` — NOT `homepage`.\n"
+        "If the admin says the page is informational only (\"just data\", \"no enrolment\", \"no "
+        "prices\"), say so explicitly in `brief` — the composer omits all commerce when it reads that."
     )
     return "\n\n".join(parts)
 
@@ -1983,7 +2204,7 @@ async def intake_turn(
     if recv_kind not in _INTAKE_UPLOAD_KINDS:
         recv_kind = None
     page_type = data.get("page_type")
-    if page_type not in {"homepage", "course-landing", "about", "admissions", "contact"}:
+    if page_type not in _PAGE_TYPE_LABELS:
         page_type = "homepage"
 
     try:

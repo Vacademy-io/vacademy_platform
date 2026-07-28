@@ -1,6 +1,9 @@
 import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import {
+    CREATE_TIMELINE_EVENT,
+    GET_CROSS_STAGE_TIMELINE,
     GET_STUDENTS,
+    MEETINGS_BY_LEAD,
     MENTORSHIP_ASSIGNMENTS,
     MENTORSHIP_ASSIGNMENTS_BULK,
     MENTORSHIP_ASSIGNMENT_BY_ID,
@@ -13,12 +16,15 @@ import {
 import type {
     AssignMentorRequest,
     AssignmentResult,
+    BookingInstance,
     BulkRoundRobinRequest,
     CreateMentorRequest,
+    CreateNoteRequest,
     MenteeDTO,
     MentorDTO,
     MentorDashboard,
     StudentRow,
+    TimelineEvent,
     UpdateMentorRequest,
 } from '../-types/mentorship-types';
 
@@ -110,6 +116,47 @@ export const fetchMyMentees = async (instituteId: string): Promise<MenteeDTO[]> 
         params: { instituteId },
     });
     return res.data as MenteeDTO[];
+};
+
+/** A mentee's notes/activity from the shared timeline system (pinned first). */
+export const fetchStudentTimeline = async (studentUserId: string): Promise<TimelineEvent[]> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: `${GET_CROSS_STAGE_TIMELINE}/${studentUserId}`,
+        params: { page: 0, size: 20 },
+    });
+    return (res.data?.content ?? []) as TimelineEvent[];
+};
+
+/** Add a mentorship note against a mentee (writes to timeline_event, category ACTIVITY). */
+export const createMentorNote = async (req: CreateNoteRequest): Promise<TimelineEvent> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: CREATE_TIMELINE_EVENT,
+        data: {
+            type: 'MENTORSHIP',
+            type_id: req.studentUserId,
+            action_type: 'NOTE',
+            title: req.title,
+            description: req.description,
+            student_user_id: req.studentUserId,
+            category: 'ACTIVITY',
+        },
+    });
+    return res.data as TimelineEvent;
+};
+
+/** A mentee's scheduled calls (booking instances matched by invitee user id). */
+export const fetchMenteeCalls = async (
+    instituteId: string,
+    studentUserId: string
+): Promise<BookingInstance[]> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'GET',
+        url: MEETINGS_BY_LEAD,
+        params: { instituteId, inviteeUserId: studentUserId },
+    });
+    return (res.data ?? []) as BookingInstance[];
 };
 
 /**

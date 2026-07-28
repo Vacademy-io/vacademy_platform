@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createLazyFileRoute, useNavigate } from '@tanstack/react-router';
-import { ChatCircle, UsersThree } from '@phosphor-icons/react';
+import { ChatCircle, NotePencil, UsersThree } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
@@ -9,6 +9,7 @@ import { getInstituteId } from '@/constants/helper';
 import { createDirectConversation } from '@/services/chat/chatApi';
 import { useMyMentees } from '../-hooks/use-mentorship';
 import type { MenteeDTO } from '../-types/mentorship-types';
+import { MenteeDetailDialog } from '../-components/MenteeDetailDialog';
 
 export const Route = createLazyFileRoute('/mentorship/my-mentorship/')({
     component: MyMentorshipRoute,
@@ -38,6 +39,7 @@ function MyMentorshipPage() {
     const instituteId = getInstituteId();
     const { data, isLoading, isError, refetch } = useMyMentees(instituteId);
     const [messagingId, setMessagingId] = useState<string | null>(null);
+    const [detailMentee, setDetailMentee] = useState<MenteeDTO | null>(null);
 
     const mentees = data ?? [];
 
@@ -98,19 +100,38 @@ function MyMentorshipPage() {
                                     )}
                                 </div>
                             </div>
-                            <MyButton
-                                type="button"
-                                buttonType="secondary"
-                                scale="small"
-                                onClick={() => message(mentee)}
-                                disable={messagingId === mentee.student_user_id}
-                            >
-                                <ChatCircle size={16} /> Message
-                            </MyButton>
+                            <div className="flex gap-2">
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="small"
+                                    onClick={() => setDetailMentee(mentee)}
+                                >
+                                    <NotePencil size={16} /> Details
+                                </MyButton>
+                                <MyButton
+                                    type="button"
+                                    buttonType="secondary"
+                                    scale="small"
+                                    onClick={() => message(mentee)}
+                                    disable={messagingId === mentee.student_user_id}
+                                >
+                                    <ChatCircle size={16} /> Message
+                                </MyButton>
+                            </div>
                         </div>
                     ))}
                 </div>
             )}
+
+            <MenteeDetailDialog
+                mentee={detailMentee}
+                instituteId={instituteId}
+                open={!!detailMentee}
+                onOpenChange={(o) => {
+                    if (!o) setDetailMentee(null);
+                }}
+            />
         </div>
     );
 }

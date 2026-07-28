@@ -3,10 +3,13 @@ import {
     assignMentees,
     bulkRoundRobin,
     createMentor,
+    createMentorNote,
     deleteMentor,
     fetchDashboard,
+    fetchMenteeCalls,
     fetchMentors,
     fetchMyMentees,
+    fetchStudentTimeline,
     provisionMentorBookingPage,
     unassignMentee,
     updateMentor,
@@ -15,6 +18,7 @@ import type {
     AssignMentorRequest,
     BulkRoundRobinRequest,
     CreateMentorRequest,
+    CreateNoteRequest,
     UpdateMentorRequest,
 } from '../-types/mentorship-types';
 
@@ -22,7 +26,34 @@ export const MENTORSHIP_KEYS = {
     mentors: 'mentorship-mentors',
     dashboard: 'mentorship-dashboard',
     myMentees: 'mentorship-my-mentees',
+    timeline: 'mentorship-timeline',
+    calls: 'mentorship-calls',
 } as const;
+
+export const useStudentTimeline = (studentUserId: string | undefined) =>
+    useQuery({
+        queryKey: [MENTORSHIP_KEYS.timeline, studentUserId],
+        queryFn: () => fetchStudentTimeline(studentUserId ?? ''),
+        enabled: !!studentUserId,
+        staleTime: 15 * 1000,
+    });
+
+export const useMenteeCalls = (instituteId: string | undefined, studentUserId: string | undefined) =>
+    useQuery({
+        queryKey: [MENTORSHIP_KEYS.calls, instituteId, studentUserId],
+        queryFn: () => fetchMenteeCalls(instituteId ?? '', studentUserId ?? ''),
+        enabled: !!instituteId && !!studentUserId,
+        staleTime: 30 * 1000,
+    });
+
+export const useCreateNote = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: (req: CreateNoteRequest) => createMentorNote(req),
+        onSuccess: (_data, req) =>
+            queryClient.invalidateQueries({ queryKey: [MENTORSHIP_KEYS.timeline, req.studentUserId] }),
+    });
+};
 
 export const useMentorDashboard = (instituteId: string | undefined) =>
     useQuery({

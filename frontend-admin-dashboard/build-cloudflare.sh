@@ -34,13 +34,11 @@ pnpm --version
 echo "Installing dependencies..."
 pnpm install --frozen-lockfile
 
-# Run TypeScript compiler
-echo "Running TypeScript compiler..."
-pnpm exec tsc --noEmit
-
-# Build the application
-echo "Building application..."
-pnpm exec vite build
+# Typecheck + bundle. `pnpm run build` runs tsc and vite build CONCURRENTLY
+# (see package.json) and fails if either fails, so wall-clock is max(tsc, vite)
+# instead of the sum. Do not split these back into two serial steps.
+echo "Typechecking and building application..."
+pnpm run build
 
 echo "================================================"
 echo "Build completed successfully!"

@@ -172,14 +172,27 @@ export default defineConfig(({ mode }) => {
                     }
                 },
             },
-            // Bundle analyzer - generates stats.html after build
-            visualizer({
-                filename: 'dist/stats.html',
-                open: false,
-                gzipSize: true,
-                brotliSize: true,
-                template: 'treemap', // 'sunburst', 'network', 'treemap'
-            }),
+            // Bundle analyzer — OPT-IN ONLY (`ANALYZE=true pnpm build`).
+            //
+            // This used to run on every build, including Cloudflare Pages. It
+            // gzip(level 9) + brotli(quality 11, the slowest setting) compresses
+            // EVERY module in the graph — ~17,900 of them — after Rollup is
+            // otherwise finished. That was several minutes of pure CPU on every
+            // deploy, and it emitted a 10 MB dist/stats.html that got published
+            // (exposing the full source-tree layout) and re-uploaded every time.
+            //
+            // Run it locally when you actually want to look at the treemap.
+            ...(process.env.ANALYZE
+                ? [
+                      visualizer({
+                          filename: 'dist/stats.html',
+                          open: false,
+                          gzipSize: true,
+                          brotliSize: true,
+                          template: 'treemap', // 'sunburst', 'network', 'treemap'
+                      }),
+                  ]
+                : []),
         ],
         // plugins: [react(), tsconfigPaths(), svgr({ include: "**/*.svg" })],
 
@@ -363,7 +376,11 @@ export default defineConfig(({ mode }) => {
                 onwarn: (warning, warn) => {
                     warn(warning);
                 },
-                maxParallelFileOps: 2, // Reduce parallel operations to save memory
+                // Reduce parallel operations to save memory.
+                // Measured 2026-07-28: raising this to 8 made the build *slower*
+                // (1m25s vs 1m15s) — the build is CPU-bound in transform/render,
+                // not blocked on file I/O. Leave at 2; it costs nothing.
+                maxParallelFileOps: 2,
             },
             target: 'esnext',
             minify: 'esbuild', // Use esbuild instead of terser for faster, less memory-intensive builds

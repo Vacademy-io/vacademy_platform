@@ -135,9 +135,17 @@ public class MeetingBookingService {
         final String customLinkRef = customLink;
         final boolean allocateMeetRef = allocateMeet;
         TransactionTemplate tx = new TransactionTemplate(transactionManager);
-        BookingInstance instance = tx.execute(status -> persistBooking(
-                request, user, pageRef, hostUserId, title, duration, timezone, zone,
-                locationType, customLinkRef, allocateMeetRef, start, end, reminderConfig));
+        BookingInstance instance;
+        try {
+            instance = tx.execute(status -> persistBooking(
+                    request, user, pageRef, hostUserId, title, duration, timezone, zone,
+                    locationType, customLinkRef, allocateMeetRef, start, end, reminderConfig));
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // uq_booking_instance_page_slot violated: another invitee grabbed this
+            // exact slot between the availability check and our insert. The whole
+            // transaction (session + schedule + instance) rolled back.
+            throw new VacademyException("This slot was just booked. Please pick another time.");
+        }
 
         // ---- Phase 2 (post-commit, best effort): Meet link + Calendar push + confirmation email ----
         if (allocateMeet) {

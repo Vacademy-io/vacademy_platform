@@ -846,22 +846,44 @@ export const renderComponentPreview = (
             );
         }
         case 'logoCloud': {
-            const logos = props.logos || [];
+            // Mirrors the learner LogoCloudRenderer: honours `display` (the
+            // preview used to draw grey "Logo" boxes even in text-ticker mode,
+            // so a working announcement band looked broken on the canvas) and
+            // hides rows that would not render live, instead of showing
+            // phantom placeholders for editor-seeded empty entries.
+            const lcDisplay = props.display || 'logo';
+            const lcWillRender = (l: any) =>
+                lcDisplay === 'label-pill' ? !!(l.label || l.alt) : !!(l.image || l.label);
+            const logos = (props.logos || []).filter(lcWillRender);
+            const isTicker = props.layout === 'marquee';
             return (
-                <section className="py-10 px-8 text-center">
+                <section className="py-10 text-center">
                     {props.headerText && <h3 className="mb-6 text-lg font-semibold text-gray-400 uppercase tracking-wider">{props.headerText}</h3>}
-                    <div className="flex flex-wrap items-center justify-center gap-8">
+                    <div className={`flex items-center gap-6 ${isTicker ? 'overflow-hidden px-0' : 'flex-wrap justify-center px-8'}`}>
                         {logos.length === 0 ? (
-                            <div className="text-sm text-gray-300">Add logos via the property panel</div>
-                        ) : logos.map((logo: any, i: number) => (
-                            <div key={i} className={`h-10 w-24 rounded bg-gray-100 ${props.grayscale ? 'grayscale' : ''}`}>
-                                {logo.image ? (
-                                    <img src={logo.image} alt={logo.alt || ''} className="h-full w-full object-contain" />
-                                ) : (
-                                    <div className="flex h-full items-center justify-center text-xs text-gray-300">Logo</div>
-                                )}
+                            <div className="w-full text-sm text-gray-300">
+                                {lcDisplay === 'label-pill' ? 'Add ticker items via the property panel' : 'Add logos via the property panel'}
                             </div>
-                        ))}
+                        ) : logos.map((logo: any, i: number) => {
+                            const label = lcDisplay === 'label-pill' ? (logo.label || logo.alt || '') : (logo.label || '');
+                            if (lcDisplay === 'label-pill' || (!logo.image && label)) {
+                                return (
+                                    <span key={i} className="inline-flex shrink-0 items-center rounded-full border border-catalogue-border bg-catalogue-bg-subtle px-4 py-1.5 text-sm font-medium text-catalogue-text-secondary">
+                                        {label}
+                                    </span>
+                                );
+                            }
+                            return (
+                                <div key={i} className={`flex shrink-0 flex-col items-center gap-1 ${props.grayscale ? 'grayscale' : ''}`}>
+                                    <div className="h-10 w-24 rounded bg-gray-100">
+                                        {logo.image && <img src={logo.image} alt={logo.alt || ''} className="h-full w-full object-contain" />}
+                                    </div>
+                                    {lcDisplay === 'logo+label' && label && (
+                                        <span className="text-caption text-catalogue-text-muted">{label}</span>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </section>
             );

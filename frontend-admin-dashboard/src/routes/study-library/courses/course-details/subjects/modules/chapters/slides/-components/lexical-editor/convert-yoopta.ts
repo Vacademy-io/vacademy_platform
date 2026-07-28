@@ -1,0 +1,182 @@
+import { createEditor } from 'lexical';
+import { editorNodes, editorTheme, onEditorError } from './editor-config';
+import { importDocHtml, exportDocHtml } from './serialization';
+
+/**
+ * Opt-in "convert to new editor" pre-flight for an existing Yoopta document.
+ *
+ * Runs the Yoopta HTML through the Lexical import → export round-trip in a
+ * detached (headless) editor and diffs the result against the source to decide
+ * whether the conversion is lossless. If it is, the caller persists the
+ * round-tripped (marker-bearing) HTML so the slide re-routes to Lexical.
+ *
+ * The round-trip is the same code path a real save takes, so "clean here" ==
+ * "clean when the user later edits + saves in Lexical".
+ */
+
+export interface ConversionAnalysis {
+    /** The Lexical round-tripped HTML (marker-wrapped) to persist on convert. */
+    convertedHtml: string;
+    /** True when no hard data loss was detected (blocks, media, or text). */
+    safe: boolean;
+    /** Custom block types / structural elements present in the source but
+     *  dropped by the round-trip (hard loss). */
+    lostBlocks: string[];
+    /** Media URLs (img/video/iframe/audio src, link href, pdf url) present in
+     *  the source but missing after the round-trip (hard loss). */
+    lostMedia: string[];
+    /** True when the visible non-block text changed (hard loss). */
+    textChanged: boolean;
+    /** Soft notes: inline styling (colour, alignment, size) the new editor may
+     *  not carry over. Not blocking — cosmetic. */
+    formattingWarnings: string[];
+}
+
+/** data-yoopta-type values whose whole subtree is opaque to the plain-text /
+ *  formatting comparison (their fidelity is covered by block-count + payload
+ *  round-trip, not visible text, which differs by design between the two
+ *  editors' static fallback bodies). */
+const CUSTOM_BLOCK_SELECTOR = '[data-yoopta-type],div.mermaid,pre';
+
+function parse(html: string): Document {
+    return new DOMParser().parseFromString(html || '', 'text/html');
+}
+
+/** Count structural blocks by kind (custom type, mermaid, table, media). */
+function blockCounts(doc: Document): Map<string, number> {
+    const counts = new Map<string, number>();
+    const bump = (k: string) => counts.set(k, (counts.get(k) ?? 0) + 1);
+    doc.querySelectorAll('[data-yoopta-type]').forEach((el) =>
+        bump(`type:${el.getAttribute('data-yoopta-type') || 'unknown'}`)
+    );
+    doc.querySelectorAll('div.mermaid').forEach(() => bump('mermaid'));
+    doc.querySelectorAll('table').forEach(() => bump('table'));
+    doc.querySelectorAll('img[src]').forEach((el) => {
+        const src = el.getAttribute('src');
+        if (src && src !== 'null' && src !== 'undefined') bump('img');
+    });
+    doc.querySelectorAll('video, iframe').forEach(() => bump('media-embed'));
+    return counts;
+}
+
+/** Collect the media/link URLs that carry real content (must survive). */
+function mediaUrls(doc: Document): Set<string> {
+    const urls = new Set<string>();
+    const add = (u: string | null) => {
+        if (u && u !== 'null' && u !== 'undefined' && !u.startsWith('data:')) urls.add(u.trim());
+    };
+    doc.querySelectorAll('img').forEach((el) => add(el.getAttribute('src')));
+    doc.querySelectorAll('video').forEach((el) => {
+        add(el.getAttribute('src'));
+        el.querySelectorAll('source').forEach((s) => add(s.getAttribute('src')));
+    });
+    doc.querySelectorAll('audio').forEach((el) => add(el.getAttribute('src')));
+    doc.querySelectorAll('iframe').forEach((el) => add(el.getAttribute('src')));
+    doc.querySelectorAll('a[href]').forEach((el) => add(el.getAttribute('href')));
+    doc.querySelectorAll('[data-pdf-url]').forEach((el) => add(el.getAttribute('data-pdf-url')));
+    return urls;
+}
+
+/** Visible text OUTSIDE custom-block subtrees, whitespace-normalised. Custom
+ *  blocks are excluded because the two editors emit different static fallback
+ *  bodies for the same payload. */
+function nonBlockText(doc: Document): string {
+    const clone = doc.body.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll(CUSTOM_BLOCK_SELECTOR).forEach((el) => el.remove());
+    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+/** Detect inline styling in the source (outside custom blocks) that the new
+ *  editor's default nodes may not preserve. */
+function formattingWarnings(sourceDoc: Document, convertedDoc: Document): string[] {
+    const warnings: string[] = [];
+    const strip = (doc: Document) => {
+        const clone = doc.body.cloneNode(true) as HTMLElement;
+        clone.querySelectorAll(CUSTOM_BLOCK_SELECTOR).forEach((el) => el.remove());
+        return clone;
+    };
+    const src = strip(sourceDoc);
+    const conv = strip(convertedDoc);
+    const srcHtml = src.innerHTML;
+    const convHtml = conv.innerHTML;
+
+    const checks: Array<[RegExp, string]> = [
+        [/(?:^|[;"\s])color\s*:/i, 'text colour'],
+        [/background(?:-color)?\s*:/i, 'background / highlight colour'],
+        [/text-align\s*:\s*(?:center|right|justify)/i, 'text alignment'],
+        [/font-size\s*:/i, 'custom font sizes'],
+    ];
+    for (const [re, label] of checks) {
+        if (re.test(srcHtml) && !re.test(convHtml)) warnings.push(label);
+    }
+    // Inline marks that Lexical does preserve are fine; only flag if the source
+    // had them and the conversion dropped them entirely.
+    const hasMark = (h: string) => /<(mark|u|s|strike)\b/i.test(h);
+    if (hasMark(srcHtml) && !hasMark(convHtml))
+        warnings.push('highlight / underline / strikethrough');
+    return warnings;
+}
+
+/** Run the round-trip and diff. Pure/among the browser (uses DOMParser +
+ *  document); safe to call client-side without mounting anything. */
+export function analyzeConversion(sourceHtml: string): ConversionAnalysis {
+    // Headless editor with the full custom-node registry so importDOM matchers
+    // and exportDOM run exactly as in the live editor.
+    const editor = createEditor({
+        namespace: 'yoopta-convert-check',
+        nodes: editorNodes,
+        theme: editorTheme,
+        onError: onEditorError,
+    });
+
+    let convertedHtml = '';
+    try {
+        importDocHtml(editor, sourceHtml);
+        convertedHtml = exportDocHtml(editor);
+    } catch (e) {
+        console.error('[Lexical] conversion round-trip failed:', e);
+        return {
+            convertedHtml: '',
+            safe: false,
+            lostBlocks: ['(conversion failed — the document could not be parsed)'],
+            lostMedia: [],
+            textChanged: false,
+            formattingWarnings: [],
+        };
+    }
+
+    const srcDoc = parse(sourceHtml);
+    const convDoc = parse(convertedHtml);
+
+    // Block loss
+    const before = blockCounts(srcDoc);
+    const after = blockCounts(convDoc);
+    const lostBlocks: string[] = [];
+    before.forEach((count, key) => {
+        if ((after.get(key) ?? 0) < count) {
+            lostBlocks.push(key.startsWith('type:') ? key.slice(5) : key);
+        }
+    });
+
+    // Media loss
+    const beforeUrls = mediaUrls(srcDoc);
+    const afterUrls = mediaUrls(convDoc);
+    const lostMedia: string[] = [];
+    beforeUrls.forEach((u) => {
+        if (!afterUrls.has(u)) lostMedia.push(u);
+    });
+
+    // Text loss (outside custom blocks)
+    const textChanged = nonBlockText(srcDoc) !== nonBlockText(convDoc);
+
+    const safe = lostBlocks.length === 0 && lostMedia.length === 0 && !textChanged;
+
+    return {
+        convertedHtml,
+        safe,
+        lostBlocks,
+        lostMedia,
+        textChanged,
+        formattingWarnings: formattingWarnings(srcDoc, convDoc),
+    };
+}

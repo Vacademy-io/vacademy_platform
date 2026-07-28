@@ -35,6 +35,42 @@
     to { opacity: 1; transform: translateY(0); }
 }
 
+/* ─── Entrance keyframes for style.animation.entrance ────────────────────
+   The ComponentStyleWrapper emits `animation: catalogue-<type> …` where
+   <type> is the authored token: fade-up | fade-in | slide-left | slide-right
+   | zoom-in. Only the legacy camelCase names above existed, so every entrance
+   pointed at a NONEXISTENT keyframe. Plain sections survived (the invalid
+   animation simply never ran, and nothing else held them transparent), but
+   STAGGERED sections hide their items with a base `opacity: 0` rule that only
+   the animation's fill can lift — so any section with entrance+stagger
+   rendered as permanently invisible blank space. These are the names the
+   wrapper actually asks for. */
+
+@keyframes catalogue-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes catalogue-fade-up {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes catalogue-slide-left {
+    from { opacity: 0; transform: translateX(30px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes catalogue-slide-right {
+    from { opacity: 0; transform: translateX(-30px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes catalogue-zoom-in {
+    from { opacity: 0; transform: scale(0.92); }
+    to { opacity: 1; transform: scale(1); }
+}
+
 /* ─── Hover Effects ──────────────────────────────────────────────────── */
 
 .catalogue-hover-lift {

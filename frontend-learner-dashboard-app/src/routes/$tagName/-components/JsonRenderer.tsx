@@ -1677,6 +1677,12 @@ const ComponentStyleWrapper: React.FC<{
     ? `
 [data-cid="${component.id}"] [data-stagger-item] { opacity: 0; }
 [data-cid="${component.id}"].catalogue-stagger-go [data-stagger-item] {
+  /* opacity:1 is the failsafe, not a conflict: a RUNNING animation's keyframes
+     override normal declarations, but if catalogue-<type> resolves to no
+     keyframe (it happened — the fade-up/fadeInUp naming mismatch) the
+     animation silently never runs, and without this line the base opacity:0
+     above held every staggered section permanently invisible. */
+  opacity: 1;
   animation: catalogue-${entrance!.type} ${durationCss} ${entrance!.easing ?? 'var(--catalogue-motion-ease, ease-out)'} both;
   animation-delay: calc(${entrance!.delay ?? 0}ms + min(var(--stagger-i, 0), ${stagger!.maxItems ?? 8}) * ${stagger!.interval}ms);
 }

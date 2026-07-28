@@ -7,6 +7,8 @@ import vacademy.io.admin_core_service.features.booking.dto.BookingAvailabilityDT
 import vacademy.io.admin_core_service.features.booking.entity.BookingInstance;
 import vacademy.io.admin_core_service.features.booking.entity.BookingPage;
 import vacademy.io.admin_core_service.features.booking.repository.BookingInstanceRepository;
+import vacademy.io.admin_core_service.features.live_session.dto.CalendarEventDTO;
+import vacademy.io.admin_core_service.features.live_session.service.BookingManagementService;
 
 import java.sql.Timestamp;
 import java.time.DayOfWeek;
@@ -25,9 +27,9 @@ import java.util.stream.Collectors;
  *
  * All window math runs in the PAGE timezone; results are instants the caller
  * formats into the invitee's zone. Conflicts are checked against the host's
- * other active booking_instances (expanded by the page buffers). Bookings the
- * host has outside this feature (live classes, ad-hoc calendar events) are NOT
- * consulted in v1.
+ * other active booking_instances AND the host's live classes (both expanded by
+ * the page buffers), so a mentor can't be double-booked between a class and a
+ * 1:1. Ad-hoc external (Google) calendar events are still not consulted.
  */
 @Slf4j
 @Service
@@ -38,6 +40,7 @@ public class BookingSlotService {
 
     private final BookingInstanceRepository bookingInstanceRepository;
     private final BookingPageService bookingPageService;
+    private final BookingManagementService bookingManagementService;
 
     /** Bookable slot-start instants for [fromDate, toDate] (dates in page tz, inclusive). */
     public List<Instant> availableSlots(BookingPage page, LocalDate fromDate, LocalDate toDate) {
@@ -84,7 +87,35 @@ public class BookingSlotService {
                 .map(b -> new Instant[]{
                         b.getScheduledStartUtc().toInstant().minusSeconds(bufferBefore * 60L),
                         b.getScheduledEndUtc().toInstant().plusSeconds(bufferAfter * 60L)})
-                .collect(Collectors.toList());
+                .collect(Collectors.toCollection(ArrayList::new));
+
+        // Also block the host's real live classes (booking-created sessions are already
+        // covered by the booking_instance overlap above). Reuses the tested getUserCalendar
+        // mapping; each event's wall-clock is converted to a UTC range in its own session
+        // timezone. Best-effort — a lookup hiccup must never break slot listing.
+        try {
+            for (CalendarEventDTO ev : bookingManagementService.getUserCalendar(
+                    page.getHostUserId(), fromDate, toDate)) {
+                if (ev.getSource() != null && ev.getSource().toUpperCase().contains("MEETING_BOOKING")) continue;
+                if (ev.getDate() == null || ev.getStartTime() == null || ev.getEndTime() == null) continue;
+                ZoneId evZone;
+                try {
+                    evZone = ZoneId.of(ev.getTimezone() != null && !ev.getTimezone().isBlank()
+                            ? ev.getTimezone() : page.getTimezone());
+                } catch (Exception zoneEx) {
+                    evZone = pageZone;
+                }
+                Instant evStart = ev.getDate().atTime(ev.getStartTime()).atZone(evZone).toInstant();
+                Instant evEnd = ev.getDate().atTime(ev.getEndTime()).atZone(evZone).toInstant();
+                if (!evEnd.isAfter(evStart)) continue; // skip malformed / midnight-wrap rows
+                busy.add(new Instant[]{
+                        evStart.minusSeconds(bufferBefore * 60L),
+                        evEnd.plusSeconds(bufferAfter * 60L)});
+            }
+        } catch (Exception e) {
+            log.warn("Host live-class conflict lookup failed for host {}: {}",
+                    page.getHostUserId(), e.getMessage());
+        }
 
         List<Instant> out = new ArrayList<>();
         for (LocalDate date = fromDate; !date.isAfter(toDate); date = date.plusDays(1)) {

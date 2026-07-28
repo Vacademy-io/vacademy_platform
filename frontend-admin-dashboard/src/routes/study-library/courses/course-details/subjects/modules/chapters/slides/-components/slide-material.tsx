@@ -4182,6 +4182,28 @@ export const SlideMaterial = ({
         getRestorableLocalDraftHtml,
     ]);
 
+    // Which editor the active DOC slide uses — drives the small header badge so
+    // authors can tell the new (Lexical) editor from the legacy (Yoopta) one at
+    // a glance. null for non-DOC slides (no badge).
+    const docEditorKind = useMemo<'lexical' | 'yoopta' | null>(() => {
+        if (
+            activeItem?.source_type !== 'DOCUMENT' ||
+            activeItem?.document_slide?.type !== 'DOC'
+        ) {
+            return null;
+        }
+        return isLexicalDocSlide(activeItem, getRestorableLocalDraftHtml(activeItem))
+            ? 'lexical'
+            : 'yoopta';
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        activeItem?.source_type,
+        activeItem?.document_slide?.type,
+        activeItem?.id,
+        activeItem?.status,
+        getRestorableLocalDraftHtml,
+    ]);
+
     const handleExtraMenuSelect = async (value: string) => {
         if (value === 'activity-stats') {
             setIsStatsOpen(true);
@@ -4462,6 +4484,23 @@ export const SlideMaterial = ({
                                 <h3 className="truncate text-xs font-semibold text-neutral-600 sm:text-sm md:text-base lg:text-h3">
                                     {heading || 'No content selected'}
                                 </h3>
+                                {docEditorKind && (
+                                    <span
+                                        title={
+                                            docEditorKind === 'lexical'
+                                                ? 'This document uses the new editor'
+                                                : 'This document uses the legacy editor — convert it from the ⋯ menu'
+                                        }
+                                        className={cn(
+                                            'shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-caption font-medium',
+                                            docEditorKind === 'lexical'
+                                                ? 'border-primary-200 bg-primary-50 text-primary-600'
+                                                : 'border-neutral-200 bg-neutral-100 text-neutral-500'
+                                        )}
+                                    >
+                                        {docEditorKind === 'lexical' ? 'New editor' : 'Legacy editor'}
+                                    </span>
+                                )}
                                 {!isLearnerView && (
                                     <PencilSimpleLine
                                         className="shrink-0 cursor-pointer hover:text-primary-500"

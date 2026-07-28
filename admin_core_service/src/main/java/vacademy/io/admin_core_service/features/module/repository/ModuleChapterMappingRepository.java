@@ -29,12 +29,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                         'description', m.description,
                         'thumbnail_id', m.thumbnail_id
                     ),
-                    'percentage_completed', COALESCE(CAST(
-                        MAX(CASE
-                            WHEN mo.value ~ '^[0-9]+(\\.[0-9]+)?$' THEN mo.value
-                            ELSE '0'
-                        END) AS FLOAT
-                    ), 0.0),
+                    'percentage_completed', COALESCE(AVG(COALESCE(chapter_slide_pct.chapter_pct, 0)), 0.0),
                     'module_order', smm.module_order,
                     'chapters', COALESCE(json_agg(
                         jsonb_build_object(
@@ -44,7 +39,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                             'file_id', c.file_id,
                             'description', c.description,
                             'drip_condition', c.drip_condition_json,
-                            'percentage_completed', chap_data.percentage_completed,
+                            'percentage_completed', COALESCE(chapter_slide_pct.chapter_pct, 0),
                             'last_slide_viewed', chap_data.last_slide_viewed,
                             'video_count', chap_data.video_count,
                             'pdf_count', chap_data.pdf_count,
@@ -100,6 +95,28 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                         AND lo.user_id = :userId
                     GROUP BY c.id
                 ) AS chap_data ON chap_data.chapter_id = c.id
+                LEFT JOIN (
+                    SELECT sub.chapter_id, AVG(sub.slide_pct) AS chapter_pct
+                    FROM (
+                        SELECT cts2.chapter_id, s2.id AS slide_id,
+                            COALESCE(MAX(CASE
+                                WHEN slo.operation IN (
+                                        'PERCENTAGE_VIDEO_WATCHED', 'PERCENTAGE_DOCUMENT_COMPLETED',
+                                        'PERCENTAGE_QUIZ_COMPLETED', 'PERCENTAGE_QUESTION_COMPLETED',
+                                        'PERCENTAGE_ASSIGNMENT_COMPLETED')
+                                     AND slo.value ~ '^[0-9]+(\\.[0-9]+)?$'
+                                THEN LEAST(CAST(slo.value AS FLOAT), 100)
+                                ELSE NULL
+                            END), 0) AS slide_pct
+                        FROM chapter_to_slides cts2
+                        JOIN slide s2 ON cts2.slide_id = s2.id AND s2.status IN (:slideStatusList)
+                        LEFT JOIN learner_operation slo
+                            ON slo.source_id = s2.id AND slo.source = 'SLIDE' AND slo.user_id = :userId
+                        WHERE cts2.status IN (:chapterToSlideStatusList)
+                        GROUP BY cts2.chapter_id, s2.id
+                    ) sub
+                    GROUP BY sub.chapter_id
+                ) AS chapter_slide_pct ON chapter_slide_pct.chapter_id = c.id
                 WHERE smm.subject_id = :subjectId
                 GROUP BY m.id, m.module_name, m.description, m.thumbnail_id, mo.value, smm.module_order, smm.created_at
             ) AS module_data
@@ -194,12 +211,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                         'description', m.description,
                         'thumbnail_id', m.thumbnail_id
                     ),
-                    'percentage_completed', COALESCE(CAST(
-                        MAX(CASE
-                            WHEN mo.value ~ '^[0-9]+(\\.[0-9]+)?$' THEN mo.value
-                            ELSE '0'
-                        END) AS FLOAT
-                    ), 0.0),
+                    'percentage_completed', COALESCE(AVG(COALESCE(chapter_slide_pct.chapter_pct, 0)), 0.0),
                     'module_order', smm.module_order,
                     'chapters', COALESCE(json_agg(
                         jsonb_build_object(
@@ -209,7 +221,7 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                             'file_id', c.file_id,
                             'description', c.description,
                             'drip_condition', c.drip_condition_json,
-                            'percentage_completed', chap_data.percentage_completed,
+                            'percentage_completed', COALESCE(chapter_slide_pct.chapter_pct, 0),
                             'last_slide_viewed', chap_data.last_slide_viewed,
                             'video_count', chap_data.video_count,
                             'pdf_count', chap_data.pdf_count,
@@ -611,6 +623,28 @@ public interface ModuleChapterMappingRepository extends JpaRepository<ModuleChap
                         AND lo.user_id = :userId
                     GROUP BY c.id
                 ) AS chap_data ON chap_data.chapter_id = c.id
+                LEFT JOIN (
+                    SELECT sub.chapter_id, AVG(sub.slide_pct) AS chapter_pct
+                    FROM (
+                        SELECT cts2.chapter_id, s2.id AS slide_id,
+                            COALESCE(MAX(CASE
+                                WHEN slo.operation IN (
+                                        'PERCENTAGE_VIDEO_WATCHED', 'PERCENTAGE_DOCUMENT_COMPLETED',
+                                        'PERCENTAGE_QUIZ_COMPLETED', 'PERCENTAGE_QUESTION_COMPLETED',
+                                        'PERCENTAGE_ASSIGNMENT_COMPLETED')
+                                     AND slo.value ~ '^[0-9]+(\\.[0-9]+)?$'
+                                THEN LEAST(CAST(slo.value AS FLOAT), 100)
+                                ELSE NULL
+                            END), 0) AS slide_pct
+                        FROM chapter_to_slides cts2
+                        JOIN slide s2 ON cts2.slide_id = s2.id AND s2.status IN (:slideStatusList)
+                        LEFT JOIN learner_operation slo
+                            ON slo.source_id = s2.id AND slo.source = 'SLIDE' AND slo.user_id = :userId
+                        WHERE cts2.status IN (:chapterToSlideStatusList)
+                        GROUP BY cts2.chapter_id, s2.id
+                    ) sub
+                    GROUP BY sub.chapter_id
+                ) AS chapter_slide_pct ON chapter_slide_pct.chapter_id = c.id
                 WHERE smm.subject_id = :subjectId
                 GROUP BY m.id, m.module_name, m.description, m.thumbnail_id, mo.value, smm.module_order, smm.created_at
             ) AS module_data

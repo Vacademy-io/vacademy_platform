@@ -1228,16 +1228,34 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     GROUP BY cs.subject_id, cs.module_id
                 ),
                 LearnerCompletion AS (
-                    SELECT
-                        mc.subject_id,
-                        mc.module_id,
-                        AVG(CAST(NULLIF(lo.value, '') AS FLOAT)) AS learner_completion
-                    FROM learner_operation lo
-                    JOIN ModuleChapters mc ON lo.source_id = mc.chapter_id
-                    WHERE lo.operation = 'PERCENTAGE_CHAPTER_COMPLETED'
-                    AND lo.user_id = :userId
-                    AND lo.value ~ '^[0-9\\.]+$'
-                    GROUP BY mc.subject_id, mc.module_id
+                    -- Module % = mean over chapters of (mean over that chapter's
+                    -- slides of the slide's completion), computed live from the
+                    -- SLIDE-level operations. Matches the learner app exactly and
+                    -- never drifts, unlike the stored PERCENTAGE_CHAPTER_COMPLETED.
+                    SELECT cp.subject_id, cp.module_id, AVG(cp.chapter_pct) AS learner_completion
+                    FROM (
+                        SELECT sp.subject_id, sp.module_id, sp.chapter_id,
+                               AVG(sp.slide_pct) AS chapter_pct
+                        FROM (
+                            SELECT cs.subject_id, cs.module_id, cs.chapter_id, cs.slide_id,
+                                COALESCE(MAX(CASE
+                                    WHEN slo.operation IN (
+                                            'PERCENTAGE_VIDEO_WATCHED', 'PERCENTAGE_DOCUMENT_COMPLETED',
+                                            'PERCENTAGE_QUIZ_COMPLETED', 'PERCENTAGE_QUESTION_COMPLETED',
+                                            'PERCENTAGE_ASSIGNMENT_COMPLETED')
+                                         AND slo.value ~ '^[0-9]+(\\.[0-9]+)?$'
+                                    THEN LEAST(CAST(slo.value AS FLOAT), 100)
+                                    ELSE NULL
+                                END), 0) AS slide_pct
+                            FROM ChapterSlides cs
+                            LEFT JOIN learner_operation slo
+                                ON slo.source_id = cs.slide_id AND slo.source = 'SLIDE'
+                                AND slo.user_id = :userId
+                            GROUP BY cs.subject_id, cs.module_id, cs.chapter_id, cs.slide_id
+                        ) sp
+                        GROUP BY sp.subject_id, sp.module_id, sp.chapter_id
+                    ) cp
+                    GROUP BY cp.subject_id, cp.module_id
                 ),
                 BatchCompletion AS (
                     SELECT

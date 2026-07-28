@@ -10,6 +10,8 @@ import BookingPage from "./-components/booking-page";
 const bookingParamsSchema = z.object({
   instituteId: z.string().min(1),
   slug: z.string().min(1),
+  // "1" from the My Mentors flow → book via the authenticated endpoint.
+  authed: z.string().optional(),
 });
 
 export const Route = createFileRoute("/booking-response/")({
@@ -38,7 +40,7 @@ export const Route = createFileRoute("/booking-response/")({
 });
 
 function RouteComponent() {
-  const { instituteId, slug } = Route.useSearch();
+  const { instituteId, slug, authed } = Route.useSearch();
 
   const {
     data: pageData,
@@ -72,6 +74,11 @@ function RouteComponent() {
   }
 
   return (
-    <BookingPage pageData={pageData} instituteId={instituteId} slug={slug} />
+    <BookingPage
+      pageData={pageData}
+      instituteId={instituteId}
+      slug={slug}
+      authed={authed === "1"}
+    />
   );
 }

@@ -120,6 +120,18 @@ public class PublicBookingService {
 
     public PublicBookingDTOs.PublicBookingViewDTO book(String instituteId, String slug,
                                                        PublicBookingDTOs.PublicBookRequestDTO request) {
+        return book(instituteId, slug, request, null);
+    }
+
+    /**
+     * Same booking flow, but stamps {@code inviteeUserId} on the booking. Used by
+     * authenticated learners booking an assigned mentor so the meeting is tied to
+     * their account (My Schedule, reminders, "my bookings") rather than a bare
+     * guest email.
+     */
+    public PublicBookingDTOs.PublicBookingViewDTO book(String instituteId, String slug,
+                                                       PublicBookingDTOs.PublicBookRequestDTO request,
+                                                       String inviteeUserId) {
         BookingPage page = activePage(instituteId, slug);
         if (request.getName() == null || request.getName().isBlank()) {
             throw new VacademyException("name is required");
@@ -165,6 +177,7 @@ public class PublicBookingService {
                 .bookingPageId(page.getId())
                 .hostUserId(page.getHostUserId())
                 .startTime(request.getStartTime())
+                .inviteeUserId(inviteeUserId)
                 .inviteeName(request.getName())
                 .inviteeEmail(hasEmail ? request.getEmail() : null)
                 .inviteePhone(hasPhone ? request.getPhone() : null)

@@ -28,7 +28,10 @@ export function MentorCard({
 
     const book = () => {
         if (!mentor.booking_page_slug || !instituteId) return;
-        navigate({ to: "/booking-response", search: { instituteId, slug: mentor.booking_page_slug } });
+        navigate({
+            to: "/booking-response",
+            search: { instituteId, slug: mentor.booking_page_slug, authed: "1" },
+        });
     };
 
     const message = async () => {

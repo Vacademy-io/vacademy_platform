@@ -34,6 +34,10 @@ interface RegistrationFormProps {
   verifiedEmail: string;
   verifiedEmails: string[];
   paymentRequired: boolean;
+  /** Session's verification config — drives which identity the
+   *  "Already registered?" lookup asks for. */
+  requireEmailVerification?: boolean;
+  requirePhoneVerification?: boolean;
   onSubmit: (formValues: RegistrationFormValues) => void;
   onError: (errors: FieldErrors) => void;
   /** Resolves to true when a registration was found for the identity. */
@@ -67,6 +71,8 @@ export default function RegistrationForm({
   verifiedEmail,
   verifiedEmails,
   paymentRequired,
+  requireEmailVerification,
+  requirePhoneVerification,
   onSubmit,
   onError,
   onIdentityChange,
@@ -103,11 +109,18 @@ export default function RegistrationForm({
     emailFieldKeys.length === 0 && (paymentRequired || !hasMandatoryPhone);
 
   // "Already registered?" quick lookup: instead of the full form, ask only for
-  // the session's identity field (phone for phone-identity forms, email
-  // otherwise) and resolve the existing registration server-side. A payer on a
-  // new device types one field and is back in — never the whole form.
+  // one identity field and resolve the existing registration server-side. The
+  // channel follows the session's verification config (phone verification →
+  // phone, email verification → email); without any verification configured it
+  // falls back to the form's identity shape, defaulting to email.
   const lookupChannel: "email" | "phone" =
-    hasMandatoryPhone && emailFieldKeys.length === 0 ? "phone" : "email";
+    requirePhoneVerification && !requireEmailVerification
+      ? "phone"
+      : requireEmailVerification
+        ? "email"
+        : hasMandatoryPhone && emailFieldKeys.length === 0
+          ? "phone"
+          : "email";
   const [lookupMode, setLookupMode] = useState(false);
   const [lookupValue, setLookupValue] = useState("");
   const [lookupBusy, setLookupBusy] = useState(false);
@@ -292,9 +305,7 @@ export default function RegistrationForm({
             className="text-sm font-semibold text-primary-500 underline-offset-2 hover:underline"
             onClick={() => setLookupMode(true)}
           >
-            {lookupChannel === "phone"
-              ? "Continue with your mobile number"
-              : "Continue with your email"}
+            Continue here
           </button>
         </div>
         <FormProvider {...form}>

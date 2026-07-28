@@ -81,17 +81,39 @@ export const AiPageWizard = ({
     const [wholeSite, setWholeSite] = useState(false);
     const [siteResult, setSiteResult] = useState<GenerateSiteResponse | null>(null);
 
-    // Compact snapshot of real offerings from institute details (no new API)
+    // Compact snapshot of real offerings from institute details (no new API).
+    //
+    // Aggregates EVERY level and session a package is offered in rather than
+    // keeping only the first. On a directory page those are the spec values the
+    // composer needs ("Level: Basic, Advanced"); previously it saw a single
+    // arbitrary level per package and had nothing concrete to put in a spec
+    // strip, so it invented details or omitted them.
+    //
+    // NOTE: batches_for_sessions carries no course description or tags (its
+    // package_dto is just {id, package_name, thumbnail_id, package_type}), so
+    // per-offering prose still has to come from the admin's brief. Feeding real
+    // descriptions would need a separate course-detail call.
     const courseSnapshot = useMemo(() => {
         const batches = (instituteDetails as any)?.batches_for_sessions || [];
-        const seen = new Map<string, { name: string; level?: string }>();
+        const byName = new Map<string, { levels: Set<string>; sessions: Set<string> }>();
         for (const b of batches) {
             const name = b?.package_dto?.package_name;
-            if (name && !seen.has(name)) {
-                seen.set(name, { name, level: b?.level?.level_name || undefined });
-            }
+            if (!name) continue;
+            if (!byName.has(name)) byName.set(name, { levels: new Set(), sessions: new Set() });
+            const entry = byName.get(name)!;
+            const level = b?.level?.level_name;
+            const session = b?.session?.session_name;
+            // "default" is the platform's placeholder level, not a real one.
+            if (level && level.toLowerCase() !== 'default') entry.levels.add(level);
+            if (session && session.toLowerCase() !== 'default') entry.sessions.add(session);
         }
-        return Array.from(seen.values()).slice(0, 25);
+        return Array.from(byName.entries())
+            .slice(0, 40)
+            .map(([name, { levels, sessions }]) => ({
+                name,
+                level: levels.size ? Array.from(levels).join(', ') : undefined,
+                tags: sessions.size ? Array.from(sessions) : undefined,
+            }));
     }, [instituteDetails]);
 
     const terminology = useMemo(

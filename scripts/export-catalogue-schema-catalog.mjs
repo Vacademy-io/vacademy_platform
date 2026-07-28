@@ -69,6 +69,19 @@ const ESCAPE_HATCH_NOTES = {
         'images only from provided URLs. Max 3 per page (one block may contain many repeated sub-blocks, so prefer one ' +
         'well-built block over several). Prefer typed components for ordinary marketing sections; for dense data tables this IS the right tool.',
 };
+// Per-component "when to reach for this" notes. _build_prompt dumps each
+// component object verbatim, so a new key here reaches the composer prompt with
+// no Python change.
+const USAGE = {
+    detailBlocks:
+        'THE component for a reference/DIRECTORY page — "details of our programs", a course index, a services ' +
+        'or plans breakdown. Renders ONE dense block per item: eyebrow tag, real title, description, a gapless ' +
+        'hairline table of 4-6 detail items, a strip of 3-4 label:value specs, an optional note, and a ' +
+        'deep-link anchor. Give exactly ONE block headerVariant "solid" if there is a flagship. Use it INSTEAD ' +
+        'of sectionHeading+featureGrid whenever the job is to DOCUMENT offerings rather than sell them: one ' +
+        'block per offering, keeping every real name — never merge or summarise a list of offerings into a few ' +
+        'generic buckets. It has no price/image/enrol fields by design, so it is safe on informational pages.',
+};
 const DATA_BOUND = {
     productPageOffer:
         "Renders a LIVE Product Page's sellable courses (names, prices, images) and deep-links each " +
@@ -98,6 +111,7 @@ for (const [key, tpl] of Object.entries(componentTemplates)) {
         type: tpl.type,
         templateKey: key,
         exampleProps: tpl.props,
+        ...(USAGE[tpl.type] ? { usage: USAGE[tpl.type] } : {}),
         ...(DATA_BOUND[tpl.type] ? { dataBound: DATA_BOUND[tpl.type] } : {}),
         ...(ESCAPE_HATCH_NOTES[tpl.type] ? { escapeHatch: ESCAPE_HATCH_NOTES[tpl.type] } : {}),
     });

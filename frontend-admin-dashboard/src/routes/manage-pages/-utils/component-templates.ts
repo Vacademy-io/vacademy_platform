@@ -521,6 +521,58 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         },
     },
 
+    // Editorial "spec sheet": ONE dense block per thing being documented, with a
+    // hairline detail table and a label/value spec strip. This is the reference /
+    // directory counterpart to featureGrid's marketing cards — use it when the
+    // page's job is to DOCUMENT offerings rather than sell them. It deliberately
+    // has no price/image/enrol props, so it can never render a commerce surface.
+    detailBlocks: {
+        type: 'detailBlocks',
+        enabled: true,
+        props: {
+            headerText: '',
+            subheading: '',
+            columns: 3,
+            specColumns: 4,
+            blocks: [
+                {
+                    anchor: 'flagship-program',
+                    tag: 'Flagship Program',
+                    headerVariant: 'solid',
+                    title: 'Flagship Program',
+                    description: 'One or two sentences on who this is for and what it covers.',
+                    items: [
+                        { title: 'What is covered', description: 'A concrete detail about the syllabus, materials or teaching.' },
+                        { title: 'How it is taught', description: 'Live classes, recordings, doubt sessions — whatever is true here.' },
+                        { title: 'Practice and testing', description: 'Test series, previous papers, analytics.' },
+                    ],
+                    specs: [
+                        { label: 'Eligibility', value: 'Who can join' },
+                        { label: 'Mode', value: 'Classroom + online' },
+                        { label: 'Duration', value: '12 months' },
+                        { label: 'Level', value: 'Beginner to advanced' },
+                    ],
+                    note: 'Optional note — concessions, instalments, or anything that needs calling out.',
+                    noteTone: 'warn',
+                },
+                {
+                    anchor: 'second-program',
+                    tag: 'Category',
+                    title: 'Second Program',
+                    description: 'Duplicate this block for every programme you offer.',
+                    items: [
+                        { title: 'Detail one', description: 'Replace with a real detail.' },
+                        { title: 'Detail two', description: 'Replace with a real detail.' },
+                    ],
+                    specs: [
+                        { label: 'Eligibility', value: 'Who can join' },
+                        { label: 'Mode', value: 'Online' },
+                    ],
+                },
+            ],
+        },
+    },
+
     featureGrid: {
         type: 'featureGrid',
         enabled: true,

@@ -11,6 +11,7 @@ import { Component } from '../-types/editor-types';
 // Component type → short human-readable label
 const TYPE_LABEL: Record<string, string> = {
     header: 'Header',
+    detailBlocks: 'Program Blocks',
     heroSection: 'Hero Section',
     courseCatalog: 'Course Catalog',
     bookCatalogue: 'Book Catalogue',

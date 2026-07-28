@@ -135,6 +135,100 @@ const ProductPageOfferPreview: React.FC<P> = ({ props }) => {
     );
 };
 
+/** Canvas preview for `detailBlocks`.
+ *
+ *  Mirrors the learner markup at reduced padding. The catalogue tokens are
+ *  byte-synced between the apps, so `catalogue-hairline-grid` behaves
+ *  identically here — and referencing the literal class strings in admin source
+ *  is what keeps admin's own Tailwind purge from dropping the rules (the
+ *  safelist in tailwind.config.mjs is the belt; this is the braces). */
+const DetailBlocksPreview: React.FC<P> = ({ props }) => {
+    const blocks: any[] = Array.isArray(props.blocks) ? props.blocks.filter((b: any) => b?.title) : [];
+    const cols = Math.min(Math.max(Number(props.columns) || 3, 1), 3);
+    const specCols = Math.min(Math.max(Number(props.specColumns) || 4, 1), 4);
+
+    if (blocks.length === 0) {
+        return (
+            <section className="catalogue-section">
+                <div className="catalogue-shell">
+                    <div className="rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center text-sm text-catalogue-text-muted">
+                        Add a block for each programme you want to document.
+                    </div>
+                </div>
+            </section>
+        );
+    }
+
+    return (
+        <section className="catalogue-section">
+            <div className="catalogue-shell">
+                {(props.headerText || props.subheading) && (
+                    <div className="catalogue-section-header text-center">
+                        {props.headerText && <h2 className="catalogue-h2 text-catalogue-text-primary">{props.headerText}</h2>}
+                        {props.subheading && <p className="catalogue-lead catalogue-measure text-catalogue-text-muted">{props.subheading}</p>}
+                    </div>
+                )}
+                <div className="space-y-10">
+                    {blocks.map((b: any, i: number) => {
+                        const items = Array.isArray(b.items) ? b.items.filter((x: any) => x?.title) : [];
+                        const specs = Array.isArray(b.specs) ? b.specs.filter((x: any) => x?.label) : [];
+                        const variant = b.headerVariant || 'subtle';
+                        const isSolid = variant === 'solid' && !b.headerColor;
+                        const headerClass = isSolid ? 'bg-primary-500' : variant === 'tint' ? 'bg-primary-50' : 'bg-catalogue-bg-muted';
+                        return (
+                            <article key={i} className="catalogue-block-anchor">
+                                <div
+                                    className={`rounded-t-catalogue-lg border border-b-0 border-catalogue-border px-6 py-5 ${headerClass}`}
+                                    style={b.headerColor ? { backgroundColor: b.headerColor } : undefined}
+                                >
+                                    {b.tag && (
+                                        <span className={`mb-2 inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide-08 ${isSolid ? 'bg-white/15 text-white' : 'bg-primary-50 text-catalogue-brand-ink ring-1 ring-primary-100'}`}>
+                                            {b.tag}
+                                        </span>
+                                    )}
+                                    <h3 className={`catalogue-h3 ${isSolid ? 'text-white' : 'text-catalogue-text-primary'}`}>{b.title}</h3>
+                                    {b.description && (
+                                        <p className={`catalogue-measure-start mt-2 text-sm leading-relaxed ${isSolid ? 'text-white/85' : 'text-catalogue-text-secondary'}`}>
+                                            {b.description}
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="overflow-hidden rounded-b-catalogue-lg border border-catalogue-border bg-catalogue-bg">
+                                    {items.length > 0 && (
+                                        <div className="catalogue-hairline-grid" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
+                                            {items.map((it: any, j: number) => (
+                                                <div key={j} className="px-5 py-4">
+                                                    <h4 className="mb-1 text-sm font-semibold text-catalogue-text-primary">{it.title}</h4>
+                                                    {it.description && <p className="text-xs leading-relaxed text-catalogue-text-secondary">{it.description}</p>}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    {specs.length > 0 && (
+                                        <dl className="catalogue-hairline-grid" style={{ gridTemplateColumns: `repeat(${specCols}, 1fr)` }}>
+                                            {specs.map((s: any, j: number) => (
+                                                <div key={j} className="px-5 py-3">
+                                                    <dt className="mb-1 text-xs font-semibold uppercase tracking-wide-08 text-catalogue-text-muted">{s.label}</dt>
+                                                    <dd className="text-sm font-medium text-catalogue-text-secondary">{s.value}</dd>
+                                                </div>
+                                            ))}
+                                        </dl>
+                                    )}
+                                    {b.note && (
+                                        <p className={`px-5 py-3 text-sm text-catalogue-text-secondary ${b.noteTone === 'info' ? 'bg-primary-50' : b.noteTone === 'plain' ? 'bg-catalogue-bg-muted' : 'bg-warning-50'}`}>
+                                            {b.note}
+                                        </p>
+                                    )}
+                                </div>
+                            </article>
+                        );
+                    })}
+                </div>
+            </div>
+        </section>
+    );
+};
+
 /** Live, sanitized, shadow-scoped render of an htmlBlock on the canvas —
  *  same safety layer the learner renderer uses (catalogue-html.ts). */
 const HtmlBlockLivePreview = ({ props }: P) => {
@@ -1338,6 +1432,8 @@ export const renderComponentPreview = (
         }
         case 'productPageOffer':
             return <ProductPageOfferPreview props={props} />;
+        case 'detailBlocks':
+            return <DetailBlocksPreview props={props} />;
         case 'htmlBlock': {
             if (!props.html) {
                 return (

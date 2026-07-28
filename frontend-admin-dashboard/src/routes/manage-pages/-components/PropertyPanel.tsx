@@ -1238,6 +1238,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
             return <TextBlockEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'featureGrid':
             return <FeatureGridEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'detailBlocks':
+            return <DetailBlocksEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'imageBlock':
             return <ImageBlockEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'buttonBlock':
@@ -4150,6 +4152,201 @@ const ListField = ({
 };
 
 /* ─── Feature Grid Editor ──────────────────────────────────────────────── */
+/**
+ * Editor for `detailBlocks`.
+ *
+ * A fully-populated block is ~1 title + 1 description + 6 items × 2 fields +
+ * 4 specs × 2 fields, so eight programmes would be ~160 inputs. Items and specs
+ * are therefore edited as BULK TEXT (one per line) and parsed, which is also how
+ * an admin naturally has this content to hand — pasted from a prospectus.
+ *
+ * Without this editor the component would be permanently uneditable by a human:
+ * GenericEditor only renders string/number/boolean props, so array props get no
+ * UI at all.
+ */
+const DetailBlocksEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const blocks: any[] = Array.isArray(props.blocks) ? props.blocks : [];
+    const [expandedIdx, setExpandedIdx] = useState<number | null>(0);
+
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+    const setBlocks = (next: any[]) => updateProp('blocks', next);
+    const updateBlock = (i: number, key: string, value: any) =>
+        setBlocks(blocks.map((b, idx) => (idx === i ? { ...b, [key]: value } : b)));
+
+    const addBlock = () =>
+        setBlocks([...blocks, { title: 'New Program', tag: '', description: '', items: [], specs: [] }]);
+    const deleteBlock = (i: number) => {
+        setBlocks(blocks.filter((_, idx) => idx !== i));
+        if (expandedIdx === i) setExpandedIdx(null);
+    };
+    const moveBlock = (i: number, dir: -1 | 1) => {
+        const j = i + dir;
+        if (j < 0 || j >= blocks.length) return;
+        const next = [...blocks];
+        [next[i], next[j]] = [next[j], next[i]];
+        setBlocks(next);
+        setExpandedIdx(j);
+    };
+
+    // "Title — Description" per line. Accepts em dash, en dash or a pipe so a
+    // paste from a doc or a spreadsheet both work.
+    const itemsToText = (items: any[]) =>
+        (items || []).map((it) => (it?.description ? `${it.title} — ${it.description}` : it?.title || '')).join('\n');
+    const textToItems = (text: string) =>
+        text
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line) => {
+                const m = line.match(/^(.*?)\s*[—–|]\s*(.*)$/);
+                return m ? { title: m[1]!.trim(), description: m[2]!.trim() } : { title: line };
+            });
+
+    // "Label: Value" per line — split on the FIRST colon only, so values
+    // containing colons survive.
+    const specsToText = (specs: any[]) =>
+        (specs || []).map((s) => `${s?.label || ''}: ${s?.value || ''}`).join('\n');
+    const textToSpecs = (text: string) =>
+        text
+            .split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line) => {
+                const idx = line.indexOf(':');
+                return idx === -1
+                    ? { label: line, value: '' }
+                    : { label: line.slice(0, idx).trim(), value: line.slice(idx + 1).trim() };
+            });
+
+    const pill = (active: boolean) =>
+        `rounded px-2.5 py-1 text-caption font-medium ${active ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`;
+
+    return (
+        <div className="space-y-4">
+            <div className="rounded border border-gray-200 bg-gray-50 p-2 text-caption text-gray-500">
+                One block per programme — a detail table plus a label/value spec strip. Built for
+                reference pages, so it carries no price or enrol button by design.
+            </div>
+
+            <div>
+                <Label className="text-xs">Section heading</Label>
+                <Input className="mt-1" value={props.headerText || ''} onChange={(e) => updateProp('headerText', e.target.value)} placeholder="(optional)" />
+            </div>
+            <div>
+                <Label className="text-xs">Section subheading</Label>
+                <Textarea className="mt-1" rows={2} value={props.subheading || ''} onChange={(e) => updateProp('subheading', e.target.value)} placeholder="(optional)" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <Label className="text-xs">Detail columns</Label>
+                    <div className="mt-1 flex gap-1">
+                        {[1, 2, 3].map((c) => (
+                            <button key={c} onClick={() => updateProp('columns', c)} className={pill((props.columns ?? 3) === c)}>{c}</button>
+                        ))}
+                    </div>
+                </div>
+                <div>
+                    <Label className="text-xs">Spec columns</Label>
+                    <div className="mt-1 flex gap-1">
+                        {[2, 3, 4].map((c) => (
+                            <button key={c} onClick={() => updateProp('specColumns', c)} className={pill((props.specColumns ?? 4) === c)}>{c}</button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                    <Label className="text-xs">Blocks ({blocks.length})</Label>
+                    <Button variant="outline" size="sm" className="h-7 text-caption" onClick={addBlock}>+ Add block</Button>
+                </div>
+
+                {blocks.map((b, i) => (
+                    <div key={i} className="rounded border border-gray-200">
+                        <div className="flex items-center gap-1 bg-gray-50 px-2 py-1.5">
+                            <button onClick={() => setExpandedIdx(expandedIdx === i ? null : i)} className="flex-1 truncate text-left text-xs font-medium">
+                                {b?.title || `Block ${i + 1}`}
+                            </button>
+                            <Button variant="ghost" size="sm" className="size-6 p-0" disabled={i === 0} onClick={() => moveBlock(i, -1)} title="Move up">↑</Button>
+                            <Button variant="ghost" size="sm" className="size-6 p-0" disabled={i === blocks.length - 1} onClick={() => moveBlock(i, 1)} title="Move down">↓</Button>
+                            <Button variant="ghost" size="sm" className="size-6 p-0 text-danger-600" onClick={() => deleteBlock(i)} title="Delete">×</Button>
+                        </div>
+
+                        {expandedIdx === i && (
+                            <div className="space-y-3 p-2">
+                                <div>
+                                    <Label className="text-xs">Title</Label>
+                                    <Input className="mt-1" value={b?.title || ''} onChange={(e) => updateBlock(i, 'title', e.target.value)} />
+                                </div>
+                                <div>
+                                    <Label className="text-xs">Tag / eyebrow</Label>
+                                    <Input className="mt-1" value={b?.tag || ''} onChange={(e) => updateBlock(i, 'tag', e.target.value)} placeholder="Flagship Program" />
+                                </div>
+                                <div>
+                                    <Label className="text-xs">Description</Label>
+                                    <Textarea className="mt-1" rows={3} value={b?.description || ''} onChange={(e) => updateBlock(i, 'description', e.target.value)} />
+                                </div>
+
+                                <div>
+                                    <Label className="text-xs">Header style</Label>
+                                    <div className="mt-1 flex gap-1">
+                                        {(['subtle', 'tint', 'solid'] as const).map((v) => (
+                                            <button key={v} onClick={() => updateBlock(i, 'headerVariant', v)} className={pill((b?.headerVariant || 'subtle') === v)}>{v}</button>
+                                        ))}
+                                    </div>
+                                    <p className="mt-1 text-caption text-gray-400">Give just one block “solid” so the flagship stands out.</p>
+                                </div>
+
+                                <div>
+                                    <Label className="text-xs">Detail items — one per line, “Title — Description”</Label>
+                                    <Textarea
+                                        className="mt-1 font-mono text-caption"
+                                        rows={6}
+                                        value={itemsToText(b?.items)}
+                                        onChange={(e) => updateBlock(i, 'items', textToItems(e.target.value))}
+                                        placeholder={'Complete Syllabus Coverage — Every topic with structured notes\n200+ Test Series — Topic, subject and full-length mocks'}
+                                    />
+                                </div>
+
+                                <div>
+                                    <Label className="text-xs">Specs — one per line, “Label: Value”</Label>
+                                    <Textarea
+                                        className="mt-1 font-mono text-caption"
+                                        rows={4}
+                                        value={specsToText(b?.specs)}
+                                        onChange={(e) => updateBlock(i, 'specs', textToSpecs(e.target.value))}
+                                        placeholder={'Eligibility: Any engineering graduate\nMode: Classroom + online'}
+                                    />
+                                </div>
+
+                                <div>
+                                    <Label className="text-xs">Note strip</Label>
+                                    <Textarea className="mt-1" rows={2} value={b?.note || ''} onChange={(e) => updateBlock(i, 'note', e.target.value)} placeholder="(optional)" />
+                                    {b?.note && (
+                                        <div className="mt-1 flex gap-1">
+                                            {(['warn', 'info', 'plain'] as const).map((t) => (
+                                                <button key={t} onClick={() => updateBlock(i, 'noteTone', t)} className={pill((b?.noteTone || 'warn') === t)}>{t}</button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div>
+                                    <Label className="text-xs">Deep-link anchor</Label>
+                                    <Input className="mt-1" value={b?.anchor || ''} onChange={(e) => updateBlock(i, 'anchor', e.target.value)} placeholder="auto from title" />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
     const { props } = component;
     const features = props.features || [];

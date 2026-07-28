@@ -624,6 +624,86 @@
       }
     },
     {
+      "type": "detailBlocks",
+      "templateKey": "detailBlocks",
+      "exampleProps": {
+        "headerText": "",
+        "subheading": "",
+        "columns": 3,
+        "specColumns": 4,
+        "blocks": [
+          {
+            "anchor": "flagship-program",
+            "tag": "Flagship Program",
+            "headerVariant": "solid",
+            "title": "Flagship Program",
+            "description": "One or two sentences on who this is for and what it covers.",
+            "items": [
+              {
+                "title": "What is covered",
+                "description": "A concrete detail about the syllabus, materials or teaching."
+              },
+              {
+                "title": "How it is taught",
+                "description": "Live classes, recordings, doubt sessions — whatever is true here."
+              },
+              {
+                "title": "Practice and testing",
+                "description": "Test series, previous papers, analytics."
+              }
+            ],
+            "specs": [
+              {
+                "label": "Eligibility",
+                "value": "Who can join"
+              },
+              {
+                "label": "Mode",
+                "value": "Classroom + online"
+              },
+              {
+                "label": "Duration",
+                "value": "12 months"
+              },
+              {
+                "label": "Level",
+                "value": "Beginner to advanced"
+              }
+            ],
+            "note": "Optional note — concessions, instalments, or anything that needs calling out.",
+            "noteTone": "warn"
+          },
+          {
+            "anchor": "second-program",
+            "tag": "Category",
+            "title": "Second Program",
+            "description": "Duplicate this block for every programme you offer.",
+            "items": [
+              {
+                "title": "Detail one",
+                "description": "Replace with a real detail."
+              },
+              {
+                "title": "Detail two",
+                "description": "Replace with a real detail."
+              }
+            ],
+            "specs": [
+              {
+                "label": "Eligibility",
+                "value": "Who can join"
+              },
+              {
+                "label": "Mode",
+                "value": "Online"
+              }
+            ]
+          }
+        ]
+      },
+      "usage": "THE component for a reference/DIRECTORY page — \"details of our programs\", a course index, a services or plans breakdown. Renders ONE dense block per item: eyebrow tag, real title, description, a gapless hairline table of 4-6 detail items, a strip of 3-4 label:value specs, an optional note, and a deep-link anchor. Give exactly ONE block headerVariant \"solid\" if there is a flagship. Use it INSTEAD of sectionHeading+featureGrid whenever the job is to DOCUMENT offerings rather than sell them: one block per offering, keeping every real name — never merge or summarise a list of offerings into a few generic buckets. It has no price/image/enrol fields by design, so it is safe on informational pages."
+    },
+    {
       "type": "featureGrid",
       "templateKey": "featureGrid",
       "exampleProps": {

@@ -733,6 +733,54 @@
   }
 
   /* =============================================
+     HAIRLINE DATA GRID  (detailBlocks)
+     A gapless, table-like grid whose cells are separated by 1px rules —
+     the editorial "spec sheet" look, as opposed to the floating gapped
+     cards of .catalogue-card. Used for a programme's feature table and
+     its label/value spec strip.
+
+     WHY box-shadow AND NOT borders + :nth-child resets: the cell count
+     per row changes at every breakpoint (3->2->1, 4->2->1). Any
+     :nth-child(3n) rule that strips the right-hand border is wrong the
+     moment the grid reflows to 2 columns. Each cell instead paints its
+     OWN right + bottom hairline, and the parent clips the overhanging
+     outer edges with overflow:hidden — so it is correct at every column
+     count with no per-breakpoint rules, never double-draws a 2px seam,
+     and works unchanged in RTL (the clipped edge is whichever side is
+     physically outermost).
+     ============================================= */
+  .catalogue-hairline-grid {
+    display: grid;
+    overflow: hidden;
+  }
+
+  .catalogue-hairline-grid > * {
+    box-shadow:
+      1px 0 0 0 hsl(var(--catalogue-border)),
+      0 1px 0 0 hsl(var(--catalogue-border));
+  }
+
+  /* =============================================
+     ANCHOR OFFSET
+     Deep links (#gate) must not land under the sticky site header.
+     Tracks --catalogue-header-height rather than hard-coding it.
+
+     Never combine with Tailwind's scroll-mt-* on the same element:
+     catalogue-tokens.css is imported BEFORE @tailwind utilities and both
+     sit in @layer utilities, so at equal specificity Tailwind wins on
+     source order and would silently override this.
+     ============================================= */
+  .catalogue-block-anchor {
+    scroll-margin-top: calc(var(--catalogue-header-height-mobile) + var(--space-4));
+  }
+
+  @media (min-width: 768px) {
+    .catalogue-block-anchor {
+      scroll-margin-top: calc(var(--catalogue-header-height) + var(--space-4));
+    }
+  }
+
+  /* =============================================
      CATALOGUE CONTAINER
      Responsive container with consistent padding
      ============================================= */

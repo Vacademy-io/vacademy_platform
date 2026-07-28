@@ -36,6 +36,7 @@ import {
 import { HeaderComponent } from "./components/HeaderComponent";
 import { HtmlBlockSection } from "./components/HtmlBlockSection";
 import { ProductPageOfferComponent } from "./components/ProductPageOfferComponent";
+import { DetailBlocksComponent } from "./components/DetailBlocksComponent";
 import { BannerComponent } from "./components/BannerComponent";
 import { CourseCatalogComponent } from "./components/CourseCatalogComponent";
 // Removed CourseRecommendationsComponent import as it's not used
@@ -251,6 +252,10 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         return <TextBlockRenderer key={id} {...props} />;
       case "featureGrid":
         return <FeatureGridRenderer key={id} {...props} />;
+      case "detailBlocks":
+        // Dense per-item spec blocks (programmes/services/plans). isPreviewMode
+        // so an unconfigured section guides the admin instead of vanishing.
+        return <DetailBlocksComponent key={id} {...props} isPreviewMode={isPreviewMode} />;
       case "imageBlock":
         return <ImageBlockRenderer key={id} {...props} />;
       case "buttonBlock":

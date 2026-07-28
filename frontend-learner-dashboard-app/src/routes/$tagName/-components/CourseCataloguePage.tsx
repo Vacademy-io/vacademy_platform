@@ -531,38 +531,19 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       )}
 
 
-      {/* Mobile Action Buttons - Fixed at bottom for catalogue page (hidden in preview mode) */}
+      {/* Mobile action bar — mirrors the header's Auth/CTA buttons (see
+          MobileActionBar): admins control it from Global Header, including
+          campaign-form popup buttons; removing every header button hides it. */}
       {(!showIntroPage || introCompleted) && !isPreviewMode && catalogueData && (
-        <div className="md:hidden fixed bottom-0 start-0 end-0 z-50 bg-catalogue-bg border-t border-catalogue-border p-4">
-          <div className={`flex flex-col gap-3 ${isAndroid || isIOS ? 'mb-8' : ''}`}>
-            {/* Login Button */}
-            <div className="flex flex-col gap-1">
-              <button
-                onClick={handleIntroLogin}
-                className="catalogue-btn catalogue-btn-secondary w-full"
-              >
-                Login
-              </button>
-              <span className="text-xs text-catalogue-text-secondary text-center">If already registered</span>
-            </div>
-
-            {/* Get Started Button — mirrors the header's authLinks config, so a
-                catalogue that removed "Get Started" from its header hides it here too */}
-            {!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false) && shouldShowMobileGetStarted(catalogueData, pageSlug) && (
-              <div className="flex flex-col gap-1">
-                <button
-                  onClick={() => {
-                    setShowLeadCollection(true);
-                  }}
-                  className="catalogue-btn catalogue-btn-primary w-full"
-                >
-                  Get Started
-                </button>
-                <span className="text-xs text-catalogue-text-secondary text-center">For new users</span>
-              </div>
-            )}
-          </div>
-        </div>
+        <MobileActionBar
+          catalogueData={catalogueData}
+          pageSlug={pageSlug}
+          legacyGetStartedVisible={!(catalogueData?.globalSettings?.courseCatalogeType?.enabled ?? false)}
+          onLogin={handleIntroLogin}
+          onLegacyGetStarted={() => setShowLeadCollection(true)}
+          onNavigate={(route) => navigate({ to: `/${tagName}/${route.replace(/^\//, '')}` })}
+          nativePad={isAndroid || isIOS}
+        />
       )}
 
       {/* Back to Top Button */}

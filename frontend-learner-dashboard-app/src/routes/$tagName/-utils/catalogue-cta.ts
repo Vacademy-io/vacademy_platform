@@ -8,7 +8,7 @@
  * the mobile bar mirror the same `authLinks` config so both stay consistent.
  */
 
-type AuthLink = { label?: string; route?: string };
+type AuthLink = { label?: string; route?: string; audienceId?: string; formTitle?: string };
 
 const norm = (s?: string) => (s || '').toLowerCase().replace(/[^a-z]/g, '');
 
@@ -45,4 +45,40 @@ export function shouldShowMobileGetStarted(catalogueData: any, pageSlug?: string
         const label = norm(l.label);
         return r === 'getstarted' || label === 'getstarted' || r === 'signup';
     });
+}
+
+
+/**
+ * Links the mobile bottom bar should render — the SAME buttons as the header,
+ * so the bar has one mental model: "your header buttons, stacked for thumbs".
+ *
+ * Returns:
+ *  - null  → the catalogue never configured authLinks → legacy default bar
+ *            (Login + Get Started) so existing institutes are unaffected;
+ *  - []    → the admin explicitly removed every header button → hide the bar;
+ *  - [...] → render these (login routes, campaign-form buttons, page links).
+ */
+export function resolveMobileBarLinks(catalogueData: any, pageSlug?: string): AuthLink[] | null {
+    const pages: any[] = catalogueData?.pages || [];
+    const page = pages.find((p) =>
+        pageSlug
+            ? p?.route === pageSlug || p?.route === `/${pageSlug}`
+            : p?.id === 'home' || p?.route === 'homepage' || p?.route === '/' || p?.route === ''
+    );
+    const pageHeader = page?.components?.find((c: any) => c?.type === 'header');
+    const links =
+        pageHeader?.props?.authLinks ??
+        catalogueData?.globalSettings?.layout?.header?.props?.authLinks;
+    return Array.isArray(links) ? links : null;
+}
+
+/** Classification the bar shares with the header's click handling. */
+export function classifyBarLink(link: AuthLink): 'login' | 'signup' | 'form' | 'leadCollection' | 'navigate' {
+    if (((link.audienceId as string) || '').trim()) return 'form';
+    const r = norm(link.route);
+    if (r === 'login') return 'login';
+    if (r === 'signup') return 'signup';
+    const label = norm(link.label);
+    if (r === 'getstarted' || r === '' || label.includes('getstarted')) return 'leadCollection';
+    return 'navigate';
 }

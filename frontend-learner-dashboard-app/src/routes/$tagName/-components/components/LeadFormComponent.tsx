@@ -202,7 +202,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
         className="catalogue-card-elevated flex flex-col items-center gap-3 p-8 text-center"
         role="status"
       >
-        <CheckCircle size={40} weight="duotone" className="text-catalogue-brand-ink" aria-hidden="true" />
+        <CheckCircle weight="duotone" className="size-10 text-catalogue-brand-ink" aria-hidden="true" />
         <p className="text-base font-semibold text-catalogue-text-primary">
           {successMessage || "Thank you! We've received your details."}
         </p>
@@ -256,7 +256,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
         className="catalogue-btn catalogue-btn-primary w-full justify-center disabled:cursor-not-allowed disabled:opacity-60"
       >
         {submitting ? "Sending…" : submitLabel || "Submit"}
-        {!submitting && <PaperPlaneTilt size={15} weight="bold" aria-hidden="true" />}
+        {!submitting && <PaperPlaneTilt className="size-4" weight="bold" aria-hidden="true" />}
       </button>
     </form>
   );

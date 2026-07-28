@@ -75,7 +75,7 @@ export const AudienceFormModal: React.FC<AudienceFormModalProps> = ({
             aria-label="Close"
             className="catalogue-btn catalogue-btn-secondary size-9 shrink-0 justify-center rounded-full p-0"
           >
-            <X size={16} weight="bold" aria-hidden="true" />
+            <X className="size-4" weight="bold" aria-hidden="true" />
           </button>
         </div>
 

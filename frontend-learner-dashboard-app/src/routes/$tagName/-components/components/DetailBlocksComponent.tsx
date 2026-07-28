@@ -240,7 +240,7 @@ export const DetailBlocksComponent: React.FC<DetailBlocksProps> = ({
                     className="inline-flex items-center gap-1.5 text-sm font-semibold text-catalogue-brand-ink no-underline hover:underline"
                   >
                     {b.link.text}
-                    <ArrowUpRight size={14} weight="bold" aria-hidden="true" />
+                    <ArrowUpRight className="size-3.5" weight="bold" aria-hidden="true" />
                   </CatalogueLink>
                 </div>
               )}

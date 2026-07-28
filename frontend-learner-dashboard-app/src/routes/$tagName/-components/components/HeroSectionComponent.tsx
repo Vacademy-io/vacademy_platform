@@ -424,9 +424,14 @@ const HeroSectionPlaceholder: React.FC<{
 }) => {
   const navigate = useNavigate();
 
-  const handleButtonClick = (button: { action?: string; target?: string }) => {
+  const handleButtonClick = (button: { action?: string; target?: string; audienceId?: string; text?: string }) => {
     if (button.action === "navigate" && button.target) {
       navigate({ to: button.target });
+    } else if (button.action === "openForm" && (button.audienceId || '').trim()) {
+      // Campaign-bound popup: opens the audience list's form (AudienceFormModal).
+      window.dispatchEvent(new CustomEvent('openAudienceForm', {
+        detail: { audienceId: (button.audienceId || '').trim(), title: button.text },
+      }));
     } else if (button.action === "openLeadCollection") {
       window.dispatchEvent(new CustomEvent('openLeadCollection', { detail: { source: 'heroSection' } }));
     }
@@ -698,9 +703,14 @@ const HeroSectionWithState: React.FC<{
     return () => { isMounted = false; };
   }, [heroImage, heroBackgroundImage, isHeroImagePlaceholder, isBackgroundImagePlaceholder]);
 
-  const handleButtonClick = (button: { action?: string; target?: string }) => {
+  const handleButtonClick = (button: { action?: string; target?: string; audienceId?: string; text?: string }) => {
     if (button.action === "navigate" && button.target) {
       navigate({ to: button.target });
+    } else if (button.action === "openForm" && (button.audienceId || '').trim()) {
+      // Campaign-bound popup: opens the audience list's form (AudienceFormModal).
+      window.dispatchEvent(new CustomEvent('openAudienceForm', {
+        detail: { audienceId: (button.audienceId || '').trim(), title: button.text },
+      }));
     } else if (button.action === "openLeadCollection") {
       window.dispatchEvent(new CustomEvent('openLeadCollection', { detail: { source: 'heroSection' } }));
     }

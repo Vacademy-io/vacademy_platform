@@ -2498,7 +2498,8 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                                 }}
                             >
                                 <option value="navigate">Navigate</option>
-                                <option value="openLeadCollection">Open lead form</option>
+                                <option value="openLeadCollection">Open lead form (legacy)</option>
+                                <option value="openForm">Open campaign form (popup)</option>
                             </select>
                             {(b.action || 'navigate') === 'navigate' && (
                                 <Input
@@ -2513,6 +2514,18 @@ const HeroSectionEditor = ({ component, pageId, updateComponent }: any) => {
                                 />
                             )}
                         </div>
+                        {b.action === 'openForm' && (
+                            <CampaignPicker
+                                label="Audience list / campaign to connect"
+                                allowEmpty={false}
+                                value={b.audienceId || ''}
+                                onChange={(id) => {
+                                    const next = [...(props.left?.buttons || [])];
+                                    next[i] = { ...next[i], audienceId: id };
+                                    updateLeft('buttons', next);
+                                }}
+                            />
+                        )}
                     </div>
                 ))}
             </div>

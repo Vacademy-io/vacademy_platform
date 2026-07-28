@@ -127,7 +127,7 @@ const CoursePlaceholder: React.FC<{ title: string }> = ({ title }) => (
   // broken images rather than designed tiles.
   <div className="flex aspect-[16/9] w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-catalogue-lg bg-gradient-to-br from-primary-200 via-primary-100 to-primary-50 px-4">
     <span className="inline-flex size-9 items-center justify-center rounded-full bg-catalogue-bg/70">
-      <BookOpen size={20} weight="duotone" className="text-catalogue-brand-ink" aria-hidden="true" />
+      <BookOpen weight="duotone" className="size-5 text-catalogue-brand-ink" aria-hidden="true" />
     </span>
     <span className="line-clamp-2 text-center text-xs font-semibold leading-snug text-catalogue-brand-ink">
       {title}
@@ -305,7 +305,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
         className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-catalogue-brand-ink no-underline hover:underline"
       >
         {viewAllLabel || "See all"}
-        <ArrowRight size={14} weight="bold" aria-hidden="true" />
+        <ArrowRight className="size-3.5" weight="bold" aria-hidden="true" />
       </Link>
     ) : null;
 
@@ -450,7 +450,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
               )}
               {validity && (
                 <p className="mb-2 inline-flex items-center gap-1.5 text-xs text-catalogue-text-muted">
-                  <Clock size={14} aria-hidden="true" /> {validity}
+                  <Clock className="size-3.5" aria-hidden="true" /> {validity}
                 </p>
               )}
               {/* Price and CTA pinned to the bottom so ragged card bodies
@@ -466,7 +466,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                 )}
                 <span className="catalogue-btn catalogue-btn-primary catalogue-btn-sm w-full justify-center">
                   {ctaLabel || "Enrol now"}
-                  <ArrowRight size={14} weight="bold" aria-hidden="true" />
+                  <ArrowRight className="size-3.5" weight="bold" aria-hidden="true" />
                 </span>
               </div>
             </div>
@@ -503,7 +503,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
           aria-label="Scroll to previous courses"
           className="catalogue-btn catalogue-btn-secondary absolute left-3 top-1/2 hidden size-10 -translate-y-1/2 justify-center rounded-full border-catalogue-border bg-catalogue-bg p-0 shadow-lg md:inline-flex"
         >
-          <CaretLeft size={18} weight="bold" aria-hidden="true" />
+          <CaretLeft className="size-5" weight="bold" aria-hidden="true" />
         </button>
       )}
       {canNext && (
@@ -513,7 +513,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
           aria-label="Scroll to more courses"
           className="catalogue-btn catalogue-btn-secondary absolute right-3 top-1/2 hidden size-10 -translate-y-1/2 justify-center rounded-full border-catalogue-border bg-catalogue-bg p-0 shadow-lg md:inline-flex"
         >
-          <CaretRight size={18} weight="bold" aria-hidden="true" />
+          <CaretRight className="size-5" weight="bold" aria-hidden="true" />
         </button>
       )}
     </div>
@@ -523,8 +523,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div className="relative w-full sm:max-w-xs">
         <MagnifyingGlass
-          size={16}
-          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-catalogue-text-muted"
+          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-catalogue-text-muted"
           aria-hidden="true"
         />
         <input
@@ -592,7 +591,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
             aria-label="Previous page"
             className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <CaretLeft size={14} weight="bold" aria-hidden="true" />
+            <CaretLeft className="size-3.5" weight="bold" aria-hidden="true" />
           </button>
 
           {buildPageWindow(safePage, totalPages).map((p, i) =>
@@ -625,7 +624,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
             aria-label="Next page"
             className="catalogue-btn catalogue-btn-secondary catalogue-btn-sm disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <CaretRight size={14} weight="bold" aria-hidden="true" />
+            <CaretRight className="size-3.5" weight="bold" aria-hidden="true" />
           </button>
         </nav>
       )}

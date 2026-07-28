@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { CircleNotch, PaperPlaneTilt, Image as ImageIcon, Sparkle, X } from '@phosphor-icons/react';
 import { useToast } from '@/hooks/use-toast';
 import { useFileUpload } from '@/hooks/use-file-upload';
@@ -190,28 +191,32 @@ export const AiIntakeChat = ({
         turnMutation.mutate(history);
     };
 
-    // One-tap upload from the composer — stages the image for the next send.
+    // Upload from the composer — stages EVERY selected image for the next send
+    // (admins share several screenshots/photos at once; forcing one-by-one
+    // uploads was the field complaint).
     const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
         const userId = getUserId();
         if (!userId) return;
         try {
             setUploadBusy(true);
-            const fileId = await uploadFile({
-                file,
-                setIsUploading: setUploadBusy,
-                userId,
-                source: 'CATALOGUE_IMAGES',
-                sourceId: 'ADMIN',
-                publicUrl: true,
-            });
-            if (fileId) {
-                const url = (await getPublicUrl(fileId)) || fileId;
-                setPendingImages((p) => (p.includes(url) ? p : [...p, url]));
+            for (const file of files) {
+                const fileId = await uploadFile({
+                    file,
+                    setIsUploading: () => {},
+                    userId,
+                    source: 'CATALOGUE_IMAGES',
+                    sourceId: 'ADMIN',
+                    publicUrl: true,
+                });
+                if (fileId) {
+                    const url = (await getPublicUrl(fileId)) || fileId;
+                    setPendingImages((p) => (p.includes(url) ? p : [...p, url]));
+                }
             }
         } catch {
-            toast({ title: 'Upload failed', description: 'Please try again.', variant: 'destructive' });
+            toast({ title: 'Upload failed', description: 'Some images may not have uploaded — please retry.', variant: 'destructive' });
         } finally {
             setUploadBusy(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
@@ -232,7 +237,7 @@ export const AiIntakeChat = ({
     const askingUpload = !!last?.request_upload && !turnMutation.isPending;
 
     return (
-        <div className="flex h-96 flex-col">
+        <div className="flex h-dialog-chat flex-col">
             {/* Transcript */}
             <div ref={scrollRef} className="min-h-40 flex-1 space-y-3 overflow-y-auto border-y border-gray-100 py-3 pr-1">
                 {messages.map((m, i) => (
@@ -299,10 +304,11 @@ export const AiIntakeChat = ({
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 className="hidden"
                 onChange={handleFile}
             />
-            <div className="mt-2 flex items-center gap-1.5">
+            <div className="mt-2 flex items-end gap-1.5">
                 <Button
                     type="button"
                     variant="outline"
@@ -314,7 +320,7 @@ export const AiIntakeChat = ({
                 >
                     {uploadBusy ? <CircleNotch className="size-4 animate-spin" /> : <ImageIcon className="size-4" />}
                 </Button>
-                <Input
+                <Textarea
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -323,7 +329,9 @@ export const AiIntakeChat = ({
                             send(input);
                         }
                     }}
-                    placeholder={askingUpload ? 'Upload above, or reply here…' : 'Type your answer…'}
+                    rows={2}
+                    placeholder={askingUpload ? 'Upload above, or reply here… (Shift+Enter for a new line)' : 'Type your answer… (Shift+Enter for a new line)'}
+                    className="max-h-40 min-h-9 flex-1 resize-none"
                     autoFocus
                 />
                 <Button

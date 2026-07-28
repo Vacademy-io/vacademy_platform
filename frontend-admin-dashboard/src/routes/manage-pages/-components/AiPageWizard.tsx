@@ -290,7 +290,7 @@ export const AiPageWizard = ({
             {/* overflow-x-hidden: DialogContent is a grid; a wide child (the
                 scaled preview's marquee) would otherwise expand the implicit
                 column and shove the footer buttons off-screen. */}
-            <DialogContent className={step === 'chat' ? 'max-w-2xl overflow-x-hidden' : 'max-w-xl overflow-x-hidden'}>
+            <DialogContent className={step === 'chat' ? 'max-w-4xl overflow-x-hidden' : 'max-w-xl overflow-x-hidden'}>
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Sparkle className="size-4 text-primary-500" weight="duotone" />

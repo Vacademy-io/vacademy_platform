@@ -146,28 +146,32 @@ export const AiCopilotPanel = () => {
         scrollToEnd();
     };
 
-    // One-tap upload from the composer — stages the image for the next send.
+    // Upload from the composer — stages EVERY selected image for the next send
+    // (admins share several screenshots/photos at once; forcing one-by-one
+    // uploads was the field complaint).
     const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const files = Array.from(e.target.files || []);
+        if (files.length === 0) return;
         const userId = getUserId();
         if (!userId) return;
         try {
             setUploadBusy(true);
-            const fileId = await uploadFile({
-                file,
-                setIsUploading: setUploadBusy,
-                userId,
-                source: 'CATALOGUE_IMAGES',
-                sourceId: 'ADMIN',
-                publicUrl: true,
-            });
-            if (fileId) {
-                const url = (await getPublicUrl(fileId)) || fileId;
-                setPendingImages((p) => (p.includes(url) ? p : [...p, url]));
+            for (const file of files) {
+                const fileId = await uploadFile({
+                    file,
+                    setIsUploading: () => {},
+                    userId,
+                    source: 'CATALOGUE_IMAGES',
+                    sourceId: 'ADMIN',
+                    publicUrl: true,
+                });
+                if (fileId) {
+                    const url = (await getPublicUrl(fileId)) || fileId;
+                    setPendingImages((p) => (p.includes(url) ? p : [...p, url]));
+                }
             }
         } catch {
-            toast({ title: 'Upload failed', description: 'Please try again.', variant: 'destructive' });
+            toast({ title: 'Upload failed', description: 'Some images may not have uploaded — please retry.', variant: 'destructive' });
         } finally {
             setUploadBusy(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
@@ -340,6 +344,7 @@ export const AiCopilotPanel = () => {
                     ref={fileInputRef}
                     type="file"
                     accept="image/*"
+                    multiple
                     className="hidden"
                     onChange={handleFile}
                 />

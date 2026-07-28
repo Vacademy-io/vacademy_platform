@@ -243,7 +243,7 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
   return (
     <section
       ref={sectionRef}
-      className="w-full py-14 sm:py-20"
+      className="w-full catalogue-section"
       style={{ backgroundColor: backgroundColor || "#f8fafc" }} // design-lint-ignore: page-builder default color
     >
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">

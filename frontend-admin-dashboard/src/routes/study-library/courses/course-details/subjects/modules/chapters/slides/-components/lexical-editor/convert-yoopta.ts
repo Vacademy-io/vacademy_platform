@@ -77,13 +77,28 @@ function mediaUrls(doc: Document): Set<string> {
     return urls;
 }
 
-/** Visible text OUTSIDE custom-block subtrees, whitespace-normalised. Custom
- *  blocks are excluded because the two editors emit different static fallback
- *  bodies for the same payload. */
-function nonBlockText(doc: Document): string {
+/** Word multiset of the visible text OUTSIDE custom-block subtrees.
+ *
+ *  A boundary space is injected at every block edge first, because
+ *  `textContent` concatenates block text with NO separator — so the two
+ *  editors' differing inter-block whitespace (Yoopta pretty-prints with
+ *  newlines; Lexical emits compact HTML) would otherwise make identical text
+ *  look different (`"A B"` vs `"AB"`). Custom blocks are excluded because the
+ *  two editors emit different static fallback bodies for the same payload. */
+const BLOCK_TAGS =
+    'p,div,h1,h2,h3,h4,h5,h6,li,tr,td,th,blockquote,pre,summary,figure,figcaption,section,article,header,footer,ul,ol,table';
+
+function nonBlockWordCounts(doc: Document): Map<string, number> {
     const clone = doc.body.cloneNode(true) as HTMLElement;
     clone.querySelectorAll(CUSTOM_BLOCK_SELECTOR).forEach((el) => el.remove());
-    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+    // Line breaks and block edges become explicit spaces so words never fuse.
+    clone.querySelectorAll('br').forEach((br) => br.replaceWith(' '));
+    clone.querySelectorAll(BLOCK_TAGS).forEach((el) => el.append(' '));
+    const counts = new Map<string, number>();
+    for (const word of (clone.textContent || '').split(/\s+/)) {
+        if (word) counts.set(word, (counts.get(word) ?? 0) + 1);
+    }
+    return counts;
 }
 
 /** Detect inline styling in the source (outside custom blocks) that the new
@@ -166,8 +181,15 @@ export function analyzeConversion(sourceHtml: string): ConversionAnalysis {
         if (!afterUrls.has(u)) lostMedia.push(u);
     });
 
-    // Text loss (outside custom blocks)
-    const textChanged = nonBlockText(srcDoc) !== nonBlockText(convDoc);
+    // Text loss (outside custom blocks): flag only when the source has words
+    // the conversion actually dropped — added words / reflow don't count as
+    // loss, and boundary-aware counting ignores inter-block whitespace diffs.
+    const srcWords = nonBlockWordCounts(srcDoc);
+    const convWords = nonBlockWordCounts(convDoc);
+    let textChanged = false;
+    srcWords.forEach((count, word) => {
+        if ((convWords.get(word) ?? 0) < count) textChanged = true;
+    });
 
     const safe = lostBlocks.length === 0 && lostMedia.length === 0 && !textChanged;
 

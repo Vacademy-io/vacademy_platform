@@ -108,6 +108,20 @@ export const ComponentLibrary = () => {
 
     const contentTypes = Object.keys(componentTemplates).filter((k) => !LAYOUT_KEYS.has(k));
 
+    // Labels are derived from the camelCase type, which alone yields "detail
+    // Blocks" / "cta Banner". Capitalise the first word, and override the few
+    // whose type name is not what an admin would look for.
+    const LABEL_OVERRIDES: Record<string, string> = {
+        detailBlocks: 'Program Blocks',
+        ctaBanner: 'CTA Banner',
+        htmlBlock: 'Custom HTML',
+        productPageOffer: 'Product Page Offer',
+        faqSection: 'FAQ Section',
+    };
+    const labelFor = (type: string) =>
+        LABEL_OVERRIDES[type] ??
+        type.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()).trim();
+
     return (
         <div className="flex flex-col gap-1.5 overflow-y-auto p-3">
             {/* ── Layout containers ── */}
@@ -134,7 +148,7 @@ export const ComponentLibrary = () => {
                 <DraggableComponentItem
                     key={type}
                     templateKey={type}
-                    label={type.replace(/([A-Z])/g, ' $1').trim()}
+                    label={labelFor(type)}
                     description="Click or drag"
                     onAdd={handleAdd}
                     disabled={!selectedPageId}

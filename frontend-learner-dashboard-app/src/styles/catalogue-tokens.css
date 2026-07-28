@@ -1178,7 +1178,7 @@
     --catalogue-brand-ink: var(--brand-ink-d, var(--primary-300, var(--catalogue-text-primary)));
   }
 
-  [data-catalogue-theme] :is(h1, h2, h3),
+  [data-catalogue-theme] :is(h1, h2, h3, h4, h5, h6),
   [data-catalogue-theme] :is(.catalogue-display, .catalogue-h1, .catalogue-h2, .catalogue-h3) {
     font-family: var(--catalogue-heading-font, inherit);
   }

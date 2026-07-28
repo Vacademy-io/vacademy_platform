@@ -982,7 +982,9 @@ export const renderComponentPreview = (
                 fgStyle === 'gradient-border' ? 'catalogue-card-gradient-border p-5' :
                 fgStyle === 'tinted' ? 'catalogue-card-tinted p-5' :
                 'p-4';
-            const fgLeft = props.align === 'left';
+            // Mirrors the learner default: prose cards left-align, icon tiles centre.
+            const fgHasProse = features.some((f: any) => String(f.description || '').length > 60 || (f.bullets?.length ?? 0) > 0);
+            const fgLeft = (props.align ?? (fgHasProse ? 'left' : 'center')) === 'left';
             return (
                 <section className="py-10 px-8" style={{ backgroundColor: props.backgroundColor || '#FFFFFF' }}>
                     {props.headerText && <h2 className="mb-1 text-center catalogue-h2" style={{ color: fg }}>{props.headerText}</h2>}
@@ -999,9 +1001,9 @@ export const renderComponentPreview = (
                                             <span className="inline-flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-50 to-primary-100 p-3 text-primary-500 ring-1 ring-primary-100 transition-transform duration-300 group-hover:scale-105">
                                                 <IconComp size={props.iconSize === 'small' ? 18 : props.iconSize === 'medium' ? 24 : 28} weight="duotone" aria-hidden="true" />
                                             </span>
-                                        ) : (
-                                            <span className={props.iconSize === 'large' ? 'text-3xl' : 'text-2xl'}>{f.icon || '⭐'}</span>
-                                        )}
+                                        ) : f.icon ? (
+                                            <span className={props.iconSize === 'large' ? 'text-3xl' : 'text-2xl'}>{f.icon}</span>
+                                        ) : null}
                                     </div>
                                     {chips.length > 0 && (
                                         <div className={`mb-2 flex flex-wrap gap-1.5 ${fgLeft ? '' : 'justify-center'}`}>

@@ -1122,7 +1122,7 @@ const TextBlockRenderer: React.FC<any> = ({ content = '', maxWidth = '800px', al
 /* ─── Feature Grid ─────────────────────────────────────────────────────── */
 
 const FeatureGridRenderer: React.FC<any> = ({
-  headerText, subheading, columns = 3, features = [], style = 'cards', iconSize = 'large', backgroundColor, align = 'center',
+  headerText, subheading, columns = 3, features = [], style = 'cards', iconSize = 'large', backgroundColor, align,
 }) => {
   const sizeMap: Record<string, string> = { small: 'text-xl', medium: 'text-2xl', large: 'text-3xl' };
   const txt = sectionText(backgroundColor);
@@ -1150,7 +1150,11 @@ const FeatureGridRenderer: React.FC<any> = ({
         !f.image &&
         String(f.description || '').length <= 60
     );
-  const isLeft = align === 'left';
+  // Multi-line copy reads badly centred (the reference designs left-align it).
+  // Compact icon tiles still look right centred, so only prose cards flip.
+  const hasProse = features.some((f: any) => String(f.description || '').length > 60 || (f.bullets?.length ?? 0) > 0);
+  const effectiveAlign = align ?? (hasProse ? 'left' : 'center');
+  const isLeft = effectiveAlign === 'left';
 
   // "panel" — a tinted-header division/comparison card: a colored header band
   // (badge + serif title + description) over a body of brand-bulleted rows.
@@ -1256,6 +1260,7 @@ const FeatureGridRenderer: React.FC<any> = ({
             const bullets: string[] = (f.bullets || []).filter(Boolean);
             return (
             <div key={i} data-stagger-item style={{ ['--stagger-i' as any]: i }} className={`${isLeft ? 'text-start' : 'text-center'} ${cardClass}`}>
+              {(f.image || IconComp || f.icon) && (
               <div className="mb-4">
                 {f.image ? (
                   <img src={f.image} alt={f.title || ''} className={`${isLeft ? '' : 'mx-auto'} w-full max-w-40 h-auto rounded-lg object-cover`} style={{ aspectRatio: '1/1' }} />
@@ -1263,10 +1268,11 @@ const FeatureGridRenderer: React.FC<any> = ({
                   <span className={`inline-flex items-center justify-center rounded-2xl bg-gradient-to-br from-primary-50 to-primary-100 ring-1 ring-primary-100 text-primary-500 transition-transform duration-300 ease-out group-hover:scale-105 ${iconSize === 'small' ? 'size-11 p-2.5' : iconSize === 'medium' ? 'size-12 p-3' : 'size-14 p-3.5'} ${isLeft ? '' : 'mx-auto'}`}>
                     <IconComp size={iconSize === 'small' ? 20 : iconSize === 'medium' ? 26 : 30} weight="duotone" aria-hidden="true" />
                   </span>
-                ) : (
-                  <span className={sizeMap[iconSize] || 'text-3xl'}>{f.icon || '⭐'}</span>
-                )}
+                ) : f.icon ? (
+                  <span className={sizeMap[iconSize] || 'text-3xl'}>{f.icon}</span>
+                ) : null}
               </div>
+              )}
               {chips.length > 0 && (
                 <div className={`mb-3 flex flex-wrap gap-1.5 ${isLeft ? '' : 'justify-center'}`}>
                   {chips.map((c: string, j: number) => (

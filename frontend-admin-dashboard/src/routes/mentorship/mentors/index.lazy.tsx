@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { createLazyFileRoute } from '@tanstack/react-router';
-import { CalendarPlus, Plus, Trash, UsersThree } from '@phosphor-icons/react';
+import { CalendarCheck, CalendarPlus, Plus, Trash, UsersThree } from '@phosphor-icons/react';
 import { toast } from 'sonner';
 import { LayoutContainer } from '@/components/common/layout-container/layout-container';
 import { MyButton } from '@/components/design-system/button';
 import { useNavHeadingStore } from '@/stores/layout-container/useNavHeadingStore';
 import { getInstituteId } from '@/constants/helper';
-import { useDeleteMentor, useMentorDashboard } from '../-hooks/use-mentorship';
+import { useDeleteMentor, useMentorDashboard, useProvisionBookingPage } from '../-hooks/use-mentorship';
 import type { MentorDTO } from '../-types/mentorship-types';
 import { AddMentorDialog } from '../-components/AddMentorDialog';
 import { AssignMenteesDialog } from '../-components/AssignMenteesDialog';
@@ -39,10 +39,12 @@ function MentorsPage() {
     const instituteId = getInstituteId();
     const { data, isLoading, isError, refetch } = useMentorDashboard(instituteId);
     const deleteMentor = useDeleteMentor();
+    const provisionBooking = useProvisionBookingPage();
 
     const [addOpen, setAddOpen] = useState(false);
     const [bulkOpen, setBulkOpen] = useState(false);
     const [assignMentor, setAssignMentor] = useState<MentorDTO | null>(null);
+    const [bookingId, setBookingId] = useState<string | null>(null);
 
     const mentors = data?.mentors ?? [];
 
@@ -53,6 +55,19 @@ function MentorsPage() {
             toast.success('Mentor removed');
         } catch {
             toast.error('Failed to remove mentor');
+        }
+    };
+
+    const enableBooking = async (m: MentorDTO) => {
+        if (!instituteId) return;
+        setBookingId(m.id);
+        try {
+            await provisionBooking.mutateAsync({ id: m.id, instituteId });
+            toast.success('Booking page set up');
+        } catch {
+            toast.error('Failed to set up booking page');
+        } finally {
+            setBookingId(null);
         }
     };
 
@@ -118,6 +133,21 @@ function MentorsPage() {
                                 <span className="rounded-full bg-neutral-100 px-2.5 py-1 text-caption text-neutral-500">
                                     {m.assigned_student_count ?? 0} students
                                 </span>
+                                {m.booking_page_slug ? (
+                                    <span className="flex items-center gap-1 rounded-full bg-success-50 px-2.5 py-1 text-caption text-success-600">
+                                        <CalendarCheck size={14} weight="bold" /> Booking on
+                                    </span>
+                                ) : (
+                                    <MyButton
+                                        type="button"
+                                        buttonType="secondary"
+                                        scale="small"
+                                        onClick={() => enableBooking(m)}
+                                        disable={bookingId === m.id}
+                                    >
+                                        <CalendarCheck size={16} /> Enable booking
+                                    </MyButton>
+                                )}
                                 <MyButton
                                     type="button"
                                     buttonType="secondary"

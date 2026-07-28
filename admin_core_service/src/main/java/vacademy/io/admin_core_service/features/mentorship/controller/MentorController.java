@@ -86,6 +86,18 @@ public class MentorController {
         return ResponseEntity.ok("Mentor removed");
     }
 
+    /** Provision (or return the existing) booking page for a mentor so learners can book. */
+    @PostMapping("/mentors/{id}/booking-page")
+    @Auditable(entityType = "MENTOR", action = "PROVISION_BOOKING_PAGE",
+            entityIdExpr = "#id", descriptionExpr = "'set up mentor booking page'")
+    public ResponseEntity<MentorDTO> provisionBookingPage(
+            @PathVariable("id") String id,
+            @RequestParam("instituteId") String instituteId,
+            @RequestAttribute("user") CustomUserDetails user) {
+        instituteAccessValidator.requireAdminAccess(user, instituteId);
+        return ResponseEntity.ok(mentorService.provisionBookingPage(id, instituteId, user));
+    }
+
     // ==================== ASSIGNMENT ====================
 
     @PostMapping("/assignments")

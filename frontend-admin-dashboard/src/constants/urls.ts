@@ -1176,6 +1176,7 @@ export const MEETINGS_BY_LEAD = `${MEETINGS_BASE}/by-lead`;
 export const MENTORSHIP_BASE = `${BASE_URL}/admin-core-service/mentorship/v1`;
 export const MENTORSHIP_MENTORS = `${MENTORSHIP_BASE}/mentors`;
 export const MENTORSHIP_MENTOR_BY_ID = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}`;
+export const MENTORSHIP_MENTOR_BOOKING_PAGE = (id: string) => `${MENTORSHIP_BASE}/mentors/${id}/booking-page`;
 export const MENTORSHIP_DASHBOARD = `${MENTORSHIP_BASE}/dashboard`;
 export const MENTORSHIP_ASSIGNMENTS = `${MENTORSHIP_BASE}/assignments`;
 export const MENTORSHIP_ASSIGNMENTS_BULK = `${MENTORSHIP_BASE}/assignments/bulk-round-robin`;

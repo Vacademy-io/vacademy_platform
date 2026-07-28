@@ -4,6 +4,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
+import vacademy.io.admin_core_service.features.booking.dto.BookingAvailabilityDTO;
+import vacademy.io.admin_core_service.features.booking.dto.BookingPageDTO;
+import vacademy.io.admin_core_service.features.booking.repository.BookingPageRepository;
+import vacademy.io.admin_core_service.features.booking.service.BookingPageService;
 import vacademy.io.admin_core_service.features.mentorship.dto.CreateMentorRequest;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDTO;
 import vacademy.io.admin_core_service.features.mentorship.dto.MentorDashboardDTO;
@@ -36,6 +40,8 @@ public class MentorService {
 
     private final MentorRepository mentorRepository;
     private final MentorStudentAssignmentRepository assignmentRepository;
+    private final BookingPageRepository bookingPageRepository;
+    private final BookingPageService bookingPageService;
     private final AuthService authService;
 
     @Transactional
@@ -118,6 +124,47 @@ public class MentorService {
         // is not institute-scoped, so it could strip the role in other institutes.
     }
 
+    /**
+     * Ensure the mentor has a booking page (host = the mentor) so learners can book
+     * 1:1 sessions. Idempotent — returns the current mentor if a live page already
+     * exists. Creates a sensible default (Mon–Fri 09:00–17:00, Google Meet) via the
+     * booking module; the mentor can refine availability later in Meetings.
+     */
+    @Transactional
+    public MentorDTO provisionBookingPage(String mentorId, String instituteId, CustomUserDetails user) {
+        Mentor mentor = getActiveMentorOrThrow(mentorId, instituteId);
+
+        if (slugFor(mentor.getBookingPageId()) != null) {
+            // Already linked to a live booking page — no-op.
+            int existing = (int) assignmentRepository.countByMentorIdAndStatus(mentor.getId(), MentorStatus.ACTIVE.name());
+            return toDTO(mentor, existing, hydrate(List.of(mentor.getUserId())).get(mentor.getUserId()));
+        }
+
+        String label = (mentor.getDisplayName() != null && !mentor.getDisplayName().isBlank())
+                ? mentor.getDisplayName() : "Mentor";
+
+        List<BookingAvailabilityDTO.WeeklyWindow> windows =
+                List.of("MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY").stream()
+                        .map(day -> BookingAvailabilityDTO.WeeklyWindow.builder()
+                                .dayOfWeek(day).startTime("09:00").endTime("17:00").build())
+                        .collect(Collectors.toList());
+        BookingAvailabilityDTO availability = BookingAvailabilityDTO.builder().weeklyWindows(windows).build();
+
+        BookingPageDTO pageDto = new BookingPageDTO();
+        pageDto.setInstituteId(instituteId);
+        pageDto.setHostUserId(mentor.getUserId());
+        pageDto.setTitle(label + " — 1:1 Session");
+        pageDto.setAllocateGoogleMeet(true);
+        pageDto.setAvailability(availability);
+
+        BookingPageDTO created = bookingPageService.create(pageDto, user);
+        mentor.setBookingPageId(created.getId());
+        mentor = mentorRepository.save(mentor);
+
+        int count = (int) assignmentRepository.countByMentorIdAndStatus(mentor.getId(), MentorStatus.ACTIVE.name());
+        return toDTO(mentor, count, hydrate(List.of(mentor.getUserId())).get(mentor.getUserId()));
+    }
+
     public MentorDashboardDTO dashboard(String instituteId) {
         List<MentorDTO> mentors = list(instituteId);
         List<MentorStudentAssignment> active =
@@ -147,6 +194,15 @@ public class MentorService {
         return counts;
     }
 
+    /** Resolve a mentor's booking-page slug (for the learner Book flow); null when unset/deleted. */
+    String slugFor(String bookingPageId) {
+        if (bookingPageId == null || bookingPageId.isBlank()) return null;
+        return bookingPageRepository.findById(bookingPageId)
+                .filter(p -> !MentorStatus.DELETED.name().equals(p.getStatus()))
+                .map(vacademy.io.admin_core_service.features.booking.entity.BookingPage::getSlug)
+                .orElse(null);
+    }
+
     /** Batch-resolve user identity from auth_service, keyed by user id. Never throws hard. */
     private Map<String, UserDTO> hydrate(List<String> userIds) {
         List<String> distinct = userIds.stream().filter(id -> id != null && !id.isBlank()).distinct().toList();
@@ -173,6 +229,7 @@ public class MentorService {
                 .profileImageFileId(m.getProfileImageFileId())
                 .bio(m.getBio())
                 .bookingPageId(m.getBookingPageId())
+                .bookingPageSlug(slugFor(m.getBookingPageId()))
                 .status(m.getStatus())
                 .assignedStudentCount(assignedCount)
                 .name(u != null ? u.getFullName() : null)

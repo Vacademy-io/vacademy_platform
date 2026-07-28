@@ -7,6 +7,7 @@ import {
     fetchDashboard,
     fetchMentors,
     fetchMyMentees,
+    provisionMentorBookingPage,
     unassignMentee,
     updateMentor,
 } from '../-services/mentorship-service';
@@ -73,6 +74,14 @@ export const useDeleteMentor = () => {
     const invalidate = useInvalidateMentorship();
     return useMutation({
         mutationFn: (v: { id: string; instituteId: string }) => deleteMentor(v.id, v.instituteId),
+        onSuccess: invalidate,
+    });
+};
+
+export const useProvisionBookingPage = () => {
+    const invalidate = useInvalidateMentorship();
+    return useMutation({
+        mutationFn: (v: { id: string; instituteId: string }) => provisionMentorBookingPage(v.id, v.instituteId),
         onSuccess: invalidate,
     });
 };

@@ -6,6 +6,7 @@ import {
     MENTORSHIP_ASSIGNMENT_BY_ID,
     MENTORSHIP_DASHBOARD,
     MENTORSHIP_MENTORS,
+    MENTORSHIP_MENTOR_BOOKING_PAGE,
     MENTORSHIP_MENTOR_BY_ID,
     MENTORSHIP_MY_MENTEES,
 } from '@/constants/urls';
@@ -88,6 +89,18 @@ export const unassignMentee = async (id: string, instituteId: string): Promise<s
         params: { instituteId },
     });
     return res.data as string;
+};
+
+export const provisionMentorBookingPage = async (
+    id: string,
+    instituteId: string
+): Promise<MentorDTO> => {
+    const res = await authenticatedAxiosInstance({
+        method: 'POST',
+        url: MENTORSHIP_MENTOR_BOOKING_PAGE(id),
+        params: { instituteId },
+    });
+    return res.data as MentorDTO;
 };
 
 export const fetchMyMentees = async (instituteId: string): Promise<MenteeDTO[]> => {

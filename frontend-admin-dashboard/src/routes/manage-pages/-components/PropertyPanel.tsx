@@ -3377,6 +3377,54 @@ const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => 
                 <Input className="mt-1" value={props.ctaLabel || ''} onChange={(e) => updateProp('ctaLabel', e.target.value)} placeholder="Enrol now" />
             </div>
 
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <Label className="text-xs">Header alignment</Label>
+                    <div className="mt-1 flex gap-1">
+                        {([
+                            ['left', 'Left'],
+                            ['center', 'Center'],
+                        ] as const).map(([value, label]) => (
+                            <button
+                                key={value}
+                                onClick={() => updateProp('align', value)}
+                                className={`rounded px-2.5 py-1 text-caption font-medium ${(props.align || 'center') === value ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div>
+                    <Label className="text-xs">Header size</Label>
+                    <div className="mt-1 flex gap-1">
+                        {([
+                            ['md', 'Compact'],
+                            ['lg', 'Large'],
+                        ] as const).map(([value, label]) => (
+                            <button
+                                key={value}
+                                onClick={() => updateProp('headerScale', value)}
+                                className={`rounded px-2.5 py-1 text-caption font-medium ${(props.headerScale || 'lg') === value ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+                <Label className="text-xs">“See all” link to the product page</Label>
+                <Switch checked={!!props.showViewAll} onCheckedChange={(c) => updateProp('showViewAll', c)} />
+            </div>
+            {props.showViewAll && (
+                <div>
+                    <Label className="text-xs">Link label</Label>
+                    <Input className="mt-1" value={props.viewAllLabel || ''} onChange={(e) => updateProp('viewAllLabel', e.target.value)} placeholder="See all" />
+                </div>
+            )}
+
             <div>
                 <Label className="text-xs">Layout</Label>
                 <div className="mt-1 grid grid-cols-2 gap-1">

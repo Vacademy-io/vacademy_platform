@@ -716,6 +716,13 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             columns: 3,
             // 'grid' wraps onto rows; 'carousel' is one swipeable horizontal row.
             layout: 'grid',
+            // App-style rail header by default: left-aligned, compact type, with
+            // a "See all" link into the product page. Existing saved pages have
+            // no align/headerScale props and keep the old centered look.
+            align: 'left',
+            headerScale: 'md',
+            showViewAll: true,
+            viewAllLabel: 'See all',
             ctaLabel: 'Enrol now',
             showImage: true,
             showChips: true,

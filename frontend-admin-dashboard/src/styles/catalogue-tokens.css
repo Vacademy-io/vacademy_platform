@@ -761,6 +761,19 @@
   }
 
   /* =============================================
+     FULL-BLEED CAROUSEL GUTTER
+     A horizontal card rail should scroll edge-to-edge across the viewport
+     (cards visibly continuing past the screen edge is the swipe affordance),
+     while its FIRST card still lines up with the .catalogue-shell content
+     column above it. Apply to the scroll container placed OUTSIDE the shell:
+     the padding reproduces the shell's computed gutter, and overflow runs to
+     the true section edge.
+     ============================================= */
+  .catalogue-carousel-bleed {
+    padding-inline: calc(max((100% - var(--catalogue-content-max)) / 2, 0px) + var(--space-4));
+  }
+
+  /* =============================================
      ANCHOR OFFSET
      Deep links (#gate) must not land under the sticky site header.
      Tracks --catalogue-header-height rather than hard-coding it.

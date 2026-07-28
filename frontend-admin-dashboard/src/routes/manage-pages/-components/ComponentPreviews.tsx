@@ -44,15 +44,36 @@ const ProductPageOfferPreview: React.FC<P> = ({ props }) => {
     const hiddenCount = allMappings.length - mappings.length;
     const totalPages = perPage > 0 ? Math.ceil(allMappings.length / perPage) : 1;
 
+    // Mirrors the learner header contract: align left/center, compact/large
+    // scale, optional "See all" affordance (inert on the canvas).
+    const isLeft = props.align === 'left';
+    const compactHeader = props.headerScale === 'md';
+    const titleClass = compactHeader ? 'catalogue-h3 text-catalogue-text-primary' : 'catalogue-h2 text-catalogue-text-primary';
+    const subtitleClass = compactHeader ? 'mt-1 text-sm text-catalogue-text-muted' : 'catalogue-lead text-catalogue-text-muted';
+    const seeAll = props.showViewAll ? (
+        <span className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-catalogue-brand-ink">
+            {props.viewAllLabel || 'See all'} →
+        </span>
+    ) : null;
     const shell = (children: React.ReactNode) => (
         <section className="catalogue-section" style={props.backgroundColor ? { backgroundColor: props.backgroundColor } : undefined}>
             <div className="catalogue-shell">
-                {(props.title || props.subtitle) && (
-                    <div className="catalogue-section-header text-center">
-                        {props.title && <h2 className="catalogue-h2 text-catalogue-text-primary">{props.title}</h2>}
-                        {props.subtitle && <p className="catalogue-lead catalogue-measure text-catalogue-text-muted">{props.subtitle}</p>}
-                    </div>
-                )}
+                {(props.title || props.subtitle || seeAll) &&
+                    (isLeft ? (
+                        <div className="catalogue-section-header flex items-end justify-between gap-4 text-left">
+                            <div className="min-w-0">
+                                {props.title && <h2 className={titleClass}>{props.title}</h2>}
+                                {props.subtitle && <p className={subtitleClass}>{props.subtitle}</p>}
+                            </div>
+                            {seeAll}
+                        </div>
+                    ) : (
+                        <div className="catalogue-section-header text-center">
+                            {props.title && <h2 className={titleClass}>{props.title}</h2>}
+                            {props.subtitle && <p className={`${subtitleClass} catalogue-measure`}>{props.subtitle}</p>}
+                            {seeAll && <div className="mt-2">{seeAll}</div>}
+                        </div>
+                    ))}
                 {children}
             </div>
         </section>
@@ -105,16 +126,16 @@ const ProductPageOfferPreview: React.FC<P> = ({ props }) => {
                                 ))}
                             </div>
                         )}
-                        <h3 className="catalogue-h3 mb-2 text-catalogue-text-primary">{m.package_name || 'Course'}</h3>
+                        <h3 className="mb-1.5 line-clamp-2 text-base font-semibold leading-snug text-catalogue-text-primary">{m.package_name || 'Course'}</h3>
                         {props.showPrice !== false && typeof price === 'number' && (
                             <div className="mb-3 flex items-baseline gap-2">
-                                <span className="text-lg font-bold text-catalogue-text-primary">{price === 0 ? 'Free' : `${m.payment_plan?.currency || ''} ${price}`}</span>
+                                <span className="text-sm font-bold text-catalogue-text-primary">{price === 0 ? 'Free' : `${m.payment_plan?.currency || ''} ${price}`}</span>
                                 {typeof mrp === 'number' && mrp > price && (
                                     <span className="text-xs text-catalogue-text-muted line-through">{mrp}</span>
                                 )}
                             </div>
                         )}
-                        <span className="catalogue-btn catalogue-btn-primary mt-auto w-full justify-center">
+                        <span className="catalogue-btn catalogue-btn-primary catalogue-btn-sm mt-auto w-full justify-center">
                             {props.ctaLabel || 'Enrol now'}
                         </span>
                     </div>

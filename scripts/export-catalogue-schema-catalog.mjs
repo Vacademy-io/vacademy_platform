@@ -85,10 +85,12 @@ const USAGE = {
 const DATA_BOUND = {
     productPageOffer:
         "Renders a LIVE Product Page's sellable courses (names, prices, images) and deep-links each " +
-        "card into that page's cart. Set ONLY title/subtitle/ctaLabel/columns, the browse props " +
-        "(layout: grid|carousel — carousel is one swipeable horizontal row; pageSize — courses per " +
-        "page, 9 is a good default, 0 disables paging; showSearch; scrollable + scrollMaxHeight " +
-        "to cap a grid's height) and the display toggles — " +
+        "card into that page's cart. Set ONLY title/subtitle/ctaLabel/columns, the header props " +
+        "(align: left|center — left with headerScale 'md' and showViewAll true is the app-style rail " +
+        "look; headerScale: md|lg; viewAllLabel), the browse props " +
+        "(layout: grid|carousel — carousel is one swipeable edge-to-edge row, pair it with align 'left'; " +
+        "pageSize — courses per page, 9 is a good default, 0 disables paging; showSearch; scrollable + " +
+        "scrollMaxHeight to cap a grid's height) and the display toggles — " +
         "productPageCode must be chosen by the admin from their existing product pages, so leave it as " +
         "an empty string and NEVER invent a code or course entries. Use it when the brief mentions " +
         "selling/enrolling a specific set of paid programs; use courseCatalog for the full course grid.",

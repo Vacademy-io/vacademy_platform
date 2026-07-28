@@ -59,6 +59,13 @@ interface ProductPageOfferProps {
   columns?: number;
   /** 'grid' wraps onto rows; 'carousel' is a single swipeable horizontal row. */
   layout?: "grid" | "carousel";
+  /** Section header alignment. 'left' reads as an app-style rail heading. */
+  align?: "center" | "left";
+  /** 'md' is the compact app-style header; 'lg' the full marketing header. */
+  headerScale?: "md" | "lg";
+  /** "See all" link in the header, straight to the product page itself. */
+  showViewAll?: boolean;
+  viewAllLabel?: string;
   ctaLabel?: string;
   showImage?: boolean;
   showChips?: boolean;
@@ -180,6 +187,10 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   subtitle,
   columns = 3,
   layout = "grid",
+  align = "center",
+  headerScale = "lg",
+  showViewAll = false,
+  viewAllLabel,
   ctaLabel,
   showImage = true,
   showChips = true,
@@ -270,14 +281,51 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCarousel, visible.length, cols]);
 
-  const header = (
-    <>
-      {title && <h2 className="catalogue-h2 text-catalogue-text-primary">{title}</h2>}
-      {subtitle && (
-        <p className="catalogue-lead catalogue-measure text-catalogue-text-muted">{subtitle}</p>
-      )}
-    </>
-  );
+  const isLeft = align === "left";
+  const compact = headerScale === "md";
+
+  // Straight to the product page itself — the "there's more here" affordance
+  // an app-style rail heading is expected to carry.
+  const seeAll =
+    showViewAll && productPageCode ? (
+      <Link
+        to="/product-pages/$productPageCode"
+        params={{ productPageCode }}
+        search={instituteId ? { instituteId } : {}}
+        className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-catalogue-brand-ink no-underline hover:underline"
+      >
+        {viewAllLabel || "See all"}
+        <ArrowRight size={14} weight="bold" aria-hidden="true" />
+      </Link>
+    ) : null;
+
+  const titleClass = compact
+    ? "catalogue-h3 text-catalogue-text-primary"
+    : "catalogue-h2 text-catalogue-text-primary";
+  const subtitleClass = compact
+    ? "mt-1 text-sm text-catalogue-text-muted"
+    : "catalogue-lead text-catalogue-text-muted";
+
+  const header =
+    title || subtitle || seeAll ? (
+      isLeft ? (
+        <div className="catalogue-section-header flex items-end justify-between gap-4 text-start">
+          <div className="min-w-0">
+            {title && <h2 className={titleClass}>{title}</h2>}
+            {subtitle && (
+              <p className={`${subtitleClass} catalogue-measure-start`}>{subtitle}</p>
+            )}
+          </div>
+          {seeAll}
+        </div>
+      ) : (
+        <div className="catalogue-section-header text-center">
+          {title && <h2 className={titleClass}>{title}</h2>}
+          {subtitle && <p className={`${subtitleClass} catalogue-measure`}>{subtitle}</p>}
+          {seeAll && <div className="mt-2">{seeAll}</div>}
+        </div>
+      )
+    ) : null;
 
   const section = (children: React.ReactNode) => (
     <section
@@ -285,9 +333,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
       style={backgroundColor ? { backgroundColor } : undefined}
     >
       <div className="catalogue-shell">
-        {(title || subtitle) && (
-          <div className="catalogue-section-header text-center">{header}</div>
-        )}
+        {header}
         {children}
       </div>
     </section>
@@ -361,51 +407,55 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
                 : {}),
             } as React.CSSProperties}
             className={
-              "catalogue-card-elevated group flex flex-col p-5 text-start no-underline" +
+              "catalogue-card-elevated group flex flex-col p-4 text-start no-underline" +
               (isCarousel ? " min-w-reg-250 shrink-0 snap-start" : "")
             }
           >
             {showImage && <CourseImage mediaId={m.course_preview_image_media_id} alt={name} />}
-            <div className={showImage ? "mt-4 flex flex-1 flex-col" : "flex flex-1 flex-col"}>
+            <div className={showImage ? "mt-3 flex flex-1 flex-col" : "flex flex-1 flex-col"}>
               {showChips && chips.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-1.5">
                   {chips.map((c, j) => (
                     <span
                       key={j}
-                      className="inline-flex items-center rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-catalogue-brand-ink ring-1 ring-primary-100"
+                      className="inline-flex items-center rounded-full bg-primary-50 px-2.5 py-0.5 text-xs font-medium text-catalogue-brand-ink ring-1 ring-primary-100"
                     >
                       {c}
                     </span>
                   ))}
                 </div>
               )}
-              {/* Clamped: course names run long ("Chapter 10 | Living
+              {/* Card-scale type, not a section heading: catalogue-h3 here made
+                  every card title read like a page title (the field complaint).
+                  Clamped because course names run long ("Chapter 10 | Living
                   Creatures…") and an unclamped title ruins the row rhythm. */}
-              <h3 className="catalogue-h3 mb-2 line-clamp-2 text-catalogue-text-primary">{name}</h3>
+              <h3 className="mb-1.5 line-clamp-2 text-base font-semibold leading-snug text-catalogue-text-primary">
+                {name}
+              </h3>
               {blurb && (
-                <p className="mb-3 line-clamp-2 text-sm leading-relaxed text-catalogue-text-secondary">
+                <p className="mb-2 line-clamp-2 text-sm leading-relaxed text-catalogue-text-secondary">
                   {blurb}
                 </p>
               )}
               {validity && (
-                <p className="mb-3 inline-flex items-center gap-1.5 text-xs text-catalogue-text-muted">
+                <p className="mb-2 inline-flex items-center gap-1.5 text-xs text-catalogue-text-muted">
                   <Clock size={14} aria-hidden="true" /> {validity}
                 </p>
               )}
               {/* Price and CTA pinned to the bottom so ragged card bodies
                   still line up across the row. */}
-              <div className="mt-auto space-y-3 pt-1">
+              <div className="mt-auto space-y-2.5 pt-1">
                 {showPrice && (
                   <PriceWithMrp
                     actual={m.payment_plan?.actual_price}
                     elevated={m.payment_plan?.elevated_price}
                     currency={m.payment_plan?.currency}
-                    size="md"
+                    size="sm"
                   />
                 )}
-                <span className="catalogue-btn catalogue-btn-primary w-full justify-center">
+                <span className="catalogue-btn catalogue-btn-primary catalogue-btn-sm w-full justify-center">
                   {ctaLabel || "Enrol now"}
-                  <ArrowRight size={15} weight="bold" aria-hidden="true" />
+                  <ArrowRight size={14} weight="bold" aria-hidden="true" />
                 </span>
               </div>
             </div>
@@ -417,12 +467,16 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
 
   const grid = <div className={gridCols}>{cards}</div>;
 
+  // The rail renders OUTSIDE the shell so cards scroll edge-to-edge across the
+  // viewport (a card visibly continuing past the screen edge IS the swipe
+  // affordance); catalogue-carousel-bleed re-creates the shell's gutter as
+  // padding so the first card still lines up with the heading above it.
   const carousel = (
     <div className="relative">
       <div
         ref={trackRef}
         onScroll={syncArrows}
-        className="flex snap-x snap-mandatory gap-6 overflow-x-auto pb-3"
+        className="catalogue-carousel-bleed flex snap-x snap-mandatory gap-6 overflow-x-auto pb-3"
         role="group"
         aria-label={title || "Courses"}
       >
@@ -454,52 +508,70 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     </div>
   );
 
-  return section(
-    <>
-      {searchEnabled && (
-        <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative w-full sm:max-w-xs">
-            <MagnifyingGlass
-              size={16}
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-catalogue-text-muted"
-              aria-hidden="true"
-            />
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => { setQuery(e.target.value); setPage(1); }}
-              placeholder="Search courses"
-              aria-label="Search courses"
-              className="catalogue-input w-full pl-9"
-            />
+  const searchRow = searchEnabled && (
+    <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="relative w-full sm:max-w-xs">
+        <MagnifyingGlass
+          size={16}
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-catalogue-text-muted"
+          aria-hidden="true"
+        />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setPage(1); }}
+          placeholder="Search courses"
+          aria-label="Search courses"
+          className="catalogue-input w-full pl-9"
+        />
+      </div>
+      <p className="text-xs text-catalogue-text-muted" role="status" aria-live="polite">
+        {filtered.length === 0
+          ? "No matches"
+          : `Showing ${start + 1}–${Math.min(start + perPage, filtered.length)} of ${filtered.length}`}
+      </p>
+    </div>
+  );
+
+  // Hand-rolled shell layout (instead of section()) because the carousel track
+  // must be a DIRECT child of the full-width section to bleed to the viewport
+  // edge — everything else stays inside the shell column.
+  return (
+    <section
+      className="catalogue-section bg-catalogue-bg"
+      style={backgroundColor ? { backgroundColor } : undefined}
+    >
+      <div className="catalogue-shell">
+        {header}
+        {searchRow}
+        {filtered.length === 0 && (
+          <div className="catalogue-card rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center text-sm text-catalogue-text-muted">
+            No courses match “{query.trim()}”.
           </div>
-          <p className="text-xs text-catalogue-text-muted" role="status" aria-live="polite">
-            {filtered.length === 0
-              ? "No matches"
-              : `Showing ${start + 1}–${Math.min(start + perPage, filtered.length)} of ${filtered.length}`}
-          </p>
-        </div>
-      )}
+        )}
+      </div>
 
-      {filtered.length === 0 ? (
-        <div className="catalogue-card rounded-catalogue-lg border border-dashed border-catalogue-border p-8 text-center text-sm text-catalogue-text-muted">
-          No courses match “{query.trim()}”.
-        </div>
-      ) : isCarousel ? (
-        carousel
-      ) : scrollable ? (
-        <div
-          ref={scrollRef}
-          className="overflow-y-auto overscroll-contain pr-1"
-          // Admin-authored height — a free-form px value, so it cannot be a token.
-          style={{ maxHeight: `${Math.max(Number(scrollMaxHeight) || 640, 240)}px` }}
-        >
-          {grid}
-        </div>
-      ) : (
-        grid
-      )}
+      {filtered.length > 0 &&
+        (isCarousel ? (
+          carousel
+        ) : (
+          <div className="catalogue-shell">
+            {scrollable ? (
+              <div
+                ref={scrollRef}
+                className="overflow-y-auto overscroll-contain pr-1"
+                // Admin-authored height — a free-form px value, so it cannot be a token.
+                style={{ maxHeight: `${Math.max(Number(scrollMaxHeight) || 640, 240)}px` }}
+              >
+                {grid}
+              </div>
+            ) : (
+              grid
+            )}
+          </div>
+        ))}
 
+      <div className="catalogue-shell">
       {totalPages > 1 && (
         <nav className="mt-8 flex flex-wrap items-center justify-center gap-2" aria-label="Course pages">
           <button
@@ -546,7 +618,8 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
           </button>
         </nav>
       )}
-    </>
+      </div>
+    </section>
   );
 };
 

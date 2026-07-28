@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { CourseCatalogProps } from "../../-types/course-catalogue-types";
+import {
+  COURSE_CATALOG_SORT_OPTIONS,
+  CourseCatalogProps,
+  CourseCatalogSortOption,
+  DEFAULT_COURSE_CATALOG_SORT,
+} from "../../-types/course-catalogue-types";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { urlCourseDetails } from "@/constants/urls";
 import axios from "axios";
@@ -31,6 +36,15 @@ import {
 import { ContentTerms, SystemTerms } from "@/types/naming-settings";
 import { OfferBadge, PriceWithMrp } from "@/components/common/price-with-mrp";
 import { resolveInviteAvailability } from "@/lib/invite-availability";
+
+// The catalogue JSON is authored by hand and by the AI page builder, so treat
+// defaultSort as untrusted: anything outside the known sort modes would leave
+// the dropdown showing a value the sort switch never matches, silently
+// disabling sorting. Unknown values fall back to the historic default.
+const resolveDefaultSort = (value?: string): CourseCatalogSortOption =>
+  COURSE_CATALOG_SORT_OPTIONS.includes(value as CourseCatalogSortOption)
+    ? (value as CourseCatalogSortOption)
+    : DEFAULT_COURSE_CATALOG_SORT;
 
 // Compact, scaling page list with ellipsis. Always keeps a consistent number
 // of controls (~6-7) no matter how many pages there are — so the catalogue can
@@ -448,6 +462,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   filtersConfig,
   cartButtonConfig,
   render,
+  defaultSort,
   instituteId,
   tagName,
   globalSettings,
@@ -465,7 +480,21 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
   const [filteredCourses, setFilteredCourses] = useState<Course[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortOption, setSortOption] = useState("Newest");
+  // Opening sort comes from the catalogue JSON so each institute picks its own
+  // (e.g. "Price: Low to High" leads with free courses, since price 0 sorts
+  // first). Sorting runs before pagination, so the choice holds across the
+  // whole catalogue rather than just the visible page.
+  const [sortOption, setSortOption] = useState<CourseCatalogSortOption>(() =>
+    resolveDefaultSort(defaultSort),
+  );
+
+  // The page-builder preview pushes config updates into a mounted tree, so the
+  // initial state above would never see a newly picked default. Re-seed only
+  // when the configured value itself changes — a learner's own dropdown choice
+  // is never clobbered, since re-renders carry the same string.
+  useEffect(() => {
+    setSortOption(resolveDefaultSort(defaultSort));
+  }, [defaultSort]);
 
   // Filter states
   const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
@@ -1299,20 +1328,18 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     />
                     <select
                       value={sortOption}
-                      onChange={(e) => setSortOption(e.target.value)}
+                      onChange={(e) =>
+                        setSortOption(
+                          e.target.value as CourseCatalogSortOption,
+                        )
+                      }
                       className="w-full ps-10 pe-4 py-2.5 border border-catalogue-border rounded-lg bg-catalogue-bg text-catalogue-text-primary focus:outline-none focus:ring-2 focus:ring-primary-400 focus:border-transparent appearance-none"
                     >
-                      <option value="Newest">Newest</option>
-                      <option value="Oldest">Oldest</option>
-                      <option value="Price: Low to High">
-                        Price: Low to High
-                      </option>
-                      <option value="Price: High to Low">
-                        Price: High to Low
-                      </option>
-                      <option value="Rating">Rating</option>
-                      <option value="Name A-Z">Name A-Z</option>
-                      <option value="Name Z-A">Name Z-A</option>
+                      {COURSE_CATALOG_SORT_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>

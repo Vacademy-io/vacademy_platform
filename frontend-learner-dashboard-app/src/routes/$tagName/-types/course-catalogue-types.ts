@@ -217,9 +217,33 @@ export interface BannerProps {
   alignment: "left" | "center" | "right";
 }
 
+/** Sort modes offered by the catalogue's sort dropdown. The value stored in the
+ *  catalogue JSON is the label itself, so what an admin picks in the page
+ *  builder is exactly what a learner sees selected. */
+export const COURSE_CATALOG_SORT_OPTIONS = [
+  "Newest",
+  "Oldest",
+  "Price: Low to High",
+  "Price: High to Low",
+  "Rating",
+  "Name A-Z",
+  "Name Z-A",
+] as const;
+
+export type CourseCatalogSortOption =
+  (typeof COURSE_CATALOG_SORT_OPTIONS)[number];
+
+/** Sort used when a catalogue does not pin one — preserves the historic order. */
+export const DEFAULT_COURSE_CATALOG_SORT: CourseCatalogSortOption = "Newest";
+
 export interface CourseCatalogProps {
   title: string;
   showFilters: boolean;
+  /** Sort applied on first render. Set this to "Price: Low to High" to lead
+   *  with free courses (price 0 sorts first) ahead of the cheapest paid ones.
+   *  Unset or unrecognised falls back to DEFAULT_COURSE_CATALOG_SORT; either
+   *  way the learner can still change the sort from the dropdown. */
+  defaultSort?: CourseCatalogSortOption;
   filtersConfig?: Array<{
     id: string;
     label: string;

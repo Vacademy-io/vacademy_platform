@@ -294,11 +294,29 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   }
 
 
-  // The page brings its own hero → the generic blue title band is redundant
-  // chrome on top of a designed page (AI marketing pages open with a hero).
-  const hasOwnHero = (currentPage.components || []).some(
-    (c: any) => c?.type === "heroSection" && c?.enabled !== false
+  // The generic blue title band is FALLBACK chrome, for pages that never
+  // introduce themselves (a bare cart or policy page). Any page that opens with
+  // its own hero or heading already shows a title, so the band is duplicate
+  // chrome stacked on top of a designed page.
+  //
+  // This used to test for heroSection only. Directory/reference pages — the
+  // composer's `courses` archetype — deliberately open with a COMPACT
+  // sectionHeading instead of a tall hero so the content owns the fold, which
+  // meant they fell through to the fallback and got a blue bar sitting above
+  // their own heading.
+  const enabledComponents = (currentPage.components || []).filter(
+    (c: any) => c?.enabled !== false
   );
+  const OPENS_WITH_OWN_TITLE = new Set([
+    "heroSection",
+    "sectionHeading",
+    "detailBlocks",
+    "htmlBlock",
+    "banner",
+  ]);
+  const hasOwnPageHeader =
+    enabledComponents.some((c: any) => c?.type === "heroSection") ||
+    OPENS_WITH_OWN_TITLE.has(enabledComponents[0]?.type);
   const themeSettings = catalogueData?.globalSettings?.theme as any;
 
   return (
@@ -345,9 +363,9 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
             />
           )}
 
-          {/* Page Title Header - Professional styling (suppressed when the
-              page opens with its own hero section) */}
-          {currentPage?.title && !hasOwnHero && (
+          {/* Page Title Header — fallback chrome only; suppressed when the page
+              opens with its own hero or heading (see hasOwnPageHeader) */}
+          {currentPage?.title && !hasOwnPageHeader && (
             <div
               className="w-full py-5 sm:py-6 lg:py-8"
               style={{

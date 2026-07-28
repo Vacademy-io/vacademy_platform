@@ -31,7 +31,9 @@ import { getInstituteSelectionResult, setSelectedInstitute } from '@/lib/auth/in
 import { getTokenFromCookie, getUserRoles } from '@/lib/auth/sessionUtility';
 import { handleLoginFlow } from '@/lib/auth/loginFlowHandler';
 import {
+    cacheInstituteBranding,
     getCachedInstituteBranding,
+    getPublicUrl,
     resolveInstituteForCurrentHost,
     resolveInstituteForDomain,
     type DomainResolveResponse,
@@ -77,7 +79,15 @@ export function LoginForm() {
     const { hasSeenAnimation, setHasSeenAnimation } = useAnimationStore();
     const navigate = useNavigate();
     const { instituteLogo } = useInstituteLogoStore();
-    const cachedBranding = getCachedInstituteBranding();
+    // Branding must be STATE, not a bare localStorage read: logout wipes
+    // localStorage (clearWebStorage) and the router then redirects to /login
+    // CLIENT-SIDE, so index.tsx's bootstrap never re-runs and this read returns
+    // null — which silently dropped the institute name and the T&C/Privacy
+    // footer while the logo (held in the in-memory zustand store) stayed put.
+    // The live re-resolve effect below refills it.
+    const [cachedBranding, setCachedBranding] = useState<
+        ReturnType<typeof getCachedInstituteBranding>
+    >(() => getCachedInstituteBranding());
     const instituteName = cachedBranding?.instituteName;
     const portalRoleLabel = cachedBranding?.role === 'TEACHER' ? 'Teacher' : 'Admin';
     const portalInstitute = instituteName || 'Vacademy';
@@ -293,12 +303,14 @@ export function LoginForm() {
         }
     }, [navigate, queryClient]);
 
-    // Re-resolve the LIVE domain-routing flags on the login page. The cached
-    // branding read above can be stale or predate the auth flags (e.g. written by
-    // an older build), which would otherwise leave OAuth buttons visible even after
-    // the institute disabled them. Resolving fresh guarantees an explicit `false`
-    // always wins — matching the learner login, which gates providers on the
-    // freshly-resolved institute settings.
+    // Re-resolve the LIVE domain-routing branding + flags on the login page. The
+    // cached branding read above can be stale, missing (logout wipes localStorage
+    // and the redirect to /login is client-side, so index.tsx never re-runs) or
+    // predate the auth flags (e.g. written by an older build), which would
+    // otherwise leave OAuth buttons visible even after the institute disabled
+    // them. Resolving fresh guarantees an explicit `false` always wins — matching
+    // the learner login, which gates providers on the freshly-resolved institute
+    // settings — and that the institute name / T&C links always render.
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -317,6 +329,19 @@ export function LoginForm() {
                           )
                         : await resolveInstituteForCurrentHost();
                 if (cancelled || !live) return;
+
+                // Live wins over whatever the cache held, so a toggle flipped in
+                // Settings (e.g. hideInstituteName) shows up without a hard reload.
+                setCachedBranding((prev) => (prev ? { ...prev, ...live } : live));
+
+                const store = useInstituteLogoStore.getState();
+                store.setBrandingDisplay({
+                    hideInstituteName: live.hideInstituteName === true,
+                    logoWidthPx: typeof live.logoWidthPx === 'number' ? live.logoWidthPx : null,
+                    logoHeightPx: typeof live.logoHeightPx === 'number' ? live.logoHeightPx : null,
+                    stackNameBelowLogo: live.stackNameBelowLogo === true,
+                });
+
                 setProviderFlags(resolveAuthProviderFlags(live));
                 setAllowSignup(live.allowSignup !== false);
                 if (live.allowUsernamePasswordAuth === false && live.allowEmailOtpAuth !== false) {
@@ -327,6 +352,31 @@ export function LoginForm() {
                     live.allowPhoneAuth === true
                 ) {
                     setAuthMethod('PHONE');
+                }
+
+                // Cold/wiped storage (post-logout): refill it so the pre-paint
+                // favicon/title script and the rest of the app see branding again,
+                // and restore the logo if the in-memory store lost it too. Not
+                // marked as the selected institute — login still resolves the
+                // signed-in user's own institute.
+                if (!getCachedInstituteBranding()) {
+                    const [logoUrl, iconUrl] = await Promise.all([
+                        getPublicUrl(live.instituteLogoFileId),
+                        getPublicUrl(live.tabIconFileId),
+                    ]);
+                    if (cancelled) return;
+                    cacheInstituteBranding(
+                        live.instituteId,
+                        {
+                            ...live,
+                            instituteLogoUrl: logoUrl || undefined,
+                            tabIconUrl: iconUrl || undefined,
+                        },
+                        { setSelectedInstitute: false }
+                    );
+                    if (logoUrl && !useInstituteLogoStore.getState().instituteLogo) {
+                        useInstituteLogoStore.getState().setInstituteLogo(logoUrl);
+                    }
                 }
             } catch {
                 // ignore — keep the cached/default flags

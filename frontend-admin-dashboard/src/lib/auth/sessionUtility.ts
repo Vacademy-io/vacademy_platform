@@ -272,7 +272,17 @@ async function refreshTokens(refreshToken: string): Promise<UnauthorizedResponse
 // Non-sensitive UI preferences that should survive logout (so the next visit
 // keeps the user's chosen theme, table layout, etc.). Everything else in
 // localStorage is wiped.
-const LOGOUT_PRESERVE_KEYS = ['theme-code', 'theme-custom-color', 'vite-ui-theme'];
+// `current_domain_branding` is the PUBLIC white-label config of the host
+// (name/logo/theme/auth toggles) — it comes from an unauthenticated endpoint and
+// carries no user data, so wiping it only made the login page we redirect to lose
+// the institute name and T&C/Privacy links (the redirect is client-side, so
+// index.tsx's bootstrap never re-runs to refetch it).
+const LOGOUT_PRESERVE_KEYS = [
+    'theme-code',
+    'theme-custom-color',
+    'vite-ui-theme',
+    'current_domain_branding',
+];
 // Key PREFIXES whose entries also survive logout — per-surface layout choices
 // such as the leads "Manage Column" show/hide (crm-lead-columns:<surface>).
 const LOGOUT_PRESERVE_PREFIXES = ['crm-lead-columns:'];

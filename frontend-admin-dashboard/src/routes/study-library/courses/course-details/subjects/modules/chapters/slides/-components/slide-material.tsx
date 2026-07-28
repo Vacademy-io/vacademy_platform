@@ -49,6 +49,7 @@ import { handleUnpublishSlide } from './slide-operations/handleUnpublishSlide';
 import { updateHeading } from './slide-operations/updateSlideHeading';
 import { formatHTMLString, stripAwsQueryParamsFromUrls } from './slide-operations/formatHtmlString';
 import { isLexicalDocSlide, EMPTY_LEXICAL_INNER } from './lexical-editor/lexical-doc-marker';
+import { ConvertToLexicalDialog } from './lexical-editor/ConvertToLexicalDialog';
 import {
     flattenSemanticWrappers,
     detectDeserializeLoss,
@@ -719,6 +720,11 @@ export const SlideMaterial = ({
     // controlled from here, triggers hidden.
     const [isStatsOpen, setIsStatsOpen] = useState(false);
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+    // "Convert to new editor" (Yoopta DOC → Lexical). Holds the current HTML to
+    // pre-flight; the dialog runs the loss check and calls back on confirm.
+    const [isConvertOpen, setIsConvertOpen] = useState(false);
+    const [convertSourceHtml, setConvertSourceHtml] = useState<string | null>(null);
+    const [isConverting, setIsConverting] = useState(false);
     // Saved-vs-current panes for the compare dialog. Saved side uses the same
     // baseline rule as dirty detection (what the editor loaded from); current
     // side is the localStorage draft. Recomputed only while the dialog is open.
@@ -4157,8 +4163,24 @@ export const SlideMaterial = ({
         ) {
             options.push({ label: 'Export as PDF', value: 'export-pdf' });
         }
+        // Offer conversion only for legacy (Yoopta) DOC slides — those on the
+        // old editor, i.e. type 'DOC' with no data-editor="lexical" marker.
+        if (
+            activeItem?.source_type === 'DOCUMENT' &&
+            activeItem?.document_slide?.type === 'DOC' &&
+            !isLexicalDocSlide(activeItem, getRestorableLocalDraftHtml(activeItem))
+        ) {
+            options.push({ label: 'Convert to new editor', value: 'convert-to-lexical' });
+        }
         return options;
-    }, [activeItem?.source_type, activeItem?.document_slide?.type]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+        activeItem?.source_type,
+        activeItem?.document_slide?.type,
+        activeItem?.id,
+        activeItem?.status,
+        getRestorableLocalDraftHtml,
+    ]);
 
     const handleExtraMenuSelect = async (value: string) => {
         if (value === 'activity-stats') {
@@ -4177,6 +4199,91 @@ export const SlideMaterial = ({
                 await SaveDraft(activeItem);
                 await handleConvertAndUpload(activeItem.document_slide?.data || null);
             }
+        } else if (value === 'convert-to-lexical' && activeItem) {
+            // Snapshot the current Yoopta content; the dialog runs the loss
+            // pre-flight and calls handleConvertToLexical on confirm.
+            const current =
+                getCurrentEditorHTMLContent() ||
+                activeItem.document_slide?.data ||
+                activeItem.document_slide?.published_data ||
+                '';
+            setConvertSourceHtml(current);
+            setIsConvertOpen(true);
+        }
+    };
+
+    // Persist the Lexical-round-tripped (marker-bearing) HTML and force a clean
+    // editor reload so the slide re-routes to the new editor. `forced` = the
+    // author overrode a detected data-loss warning.
+    const handleConvertToLexical = async (convertedHtml: string, forced: boolean) => {
+        if (!activeItem || !convertedHtml) return;
+        setIsConverting(true);
+        const isPublished = activeItem.status === 'PUBLISHED';
+        const totalPages = estimatePageCount(convertedHtml);
+        const doConvertSave = (force: boolean) =>
+            addUpdateDocumentSlide({
+                id: activeItem.id,
+                title: activeItem.title || '',
+                image_file_id: '',
+                description: activeItem.description || '',
+                slide_order: null,
+                document_slide: {
+                    id: activeItem.document_slide?.id || crypto.randomUUID(),
+                    type: 'DOC',
+                    data: convertedHtml,
+                    title: activeItem.document_slide?.title || activeItem.title || '',
+                    cover_file_id: '',
+                    total_pages: totalPages,
+                    // Convert the published snapshot too when the slide is live,
+                    // so learners see the (equivalent) converted content and the
+                    // status stays PUBLISHED; otherwise leave it untouched.
+                    published_data: isPublished
+                        ? convertedHtml
+                        : activeItem.document_slide?.published_data || null,
+                    published_document_total_pages: isPublished
+                        ? totalPages
+                        : activeItem.document_slide?.published_document_total_pages || 1,
+                    force_overwrite: force,
+                    force_publish: force,
+                },
+                status: activeItem.status,
+                new_slide: false,
+                notify: false,
+            });
+        try {
+            try {
+                await doConvertSave(forced);
+            } catch (error) {
+                // On the structural-loss 409, the author already accepted the
+                // dialog's assessment — retry once forced rather than a second
+                // confirm.
+                const status = (error as { response?: { status?: number } })?.response?.status;
+                if (status === 409) await doConvertSave(true);
+                else throw error;
+            }
+            // Reflect in the store + force a clean reload that re-routes to Lexical.
+            clearLocalDraft(activeItem.id);
+            lastLoadContentSlideIdRef.current = null;
+            setActiveItem({
+                ...activeItem,
+                document_slide: activeItem.document_slide
+                    ? {
+                          ...activeItem.document_slide,
+                          data: convertedHtml,
+                          published_data: isPublished
+                              ? convertedHtml
+                              : activeItem.document_slide.published_data,
+                      }
+                    : activeItem.document_slide,
+            } as Slide);
+            setHistoryRestoreNonce((n) => n + 1);
+            setIsConvertOpen(false);
+            toast.success('Converted to the new editor.');
+        } catch (error) {
+            console.error('Convert to Lexical failed:', error);
+            toast.error('Could not convert this document. Please try again.');
+        } finally {
+            setIsConverting(false);
         }
     };
 
@@ -4306,6 +4413,18 @@ export const SlideMaterial = ({
                     restore the last saved version. This cannot be undone.
                 </p>
             </MyDialog>
+            {/* Convert legacy (Yoopta) DOC → new (Lexical) editor, with a
+                pre-flight data-loss check. */}
+            <ConvertToLexicalDialog
+                open={isConvertOpen}
+                onOpenChange={(open) => {
+                    setIsConvertOpen(open);
+                    if (!open) setConvertSourceHtml(null);
+                }}
+                sourceHtml={convertSourceHtml}
+                onConfirm={handleConvertToLexical}
+                converting={isConverting}
+            />
             {activeItem && (
                 <div className="sticky top-0 z-50 -mx-2 -mt-2 flex flex-col gap-2 border-b border-neutral-200 bg-white/80 px-2 py-1 shadow-sm backdrop-blur-sm sm:-mx-3 sm:-mt-3 sm:px-3 sm:py-1.5 md:-mx-4 md:-mt-4 md:px-4 md:py-2.5 lg:-mx-7 lg:-mt-7 lg:px-7 lg:py-3">
                     {/* Row 1 — editable title + actions. Wraps so the title truncates

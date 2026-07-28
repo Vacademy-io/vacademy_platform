@@ -1908,6 +1908,9 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                         <Button size="sm" variant="outline" onClick={addGetStartedLink}>
                             <Plus className="mr-1 size-3" /> Get Started
                         </Button>
+                        <Button size="sm" variant="outline" onClick={() => updateProp('authLinks', [...(props.authLinks || []), { label: 'Enquire Now', route: '', audienceId: ' ', formTitle: '' }])}>
+                            <Plus className="mr-1 size-3" /> Enquire (form)
+                        </Button>
                         <Button size="sm" variant="outline" onClick={addAuthLink}>
                             <Plus className="mr-1 size-3" /> Add
                         </Button>
@@ -1915,8 +1918,9 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                 </div>
                 <p className="text-caption text-gray-400">
                     Buttons shown on the right side of the header (e.g. Login, Sign Up). A
-                    &ldquo;Get Started&rdquo; button opens the enrollment / lead-collection form
-                    (requires lead collection to be enabled in catalogue settings).
+                    &ldquo;Get Started&rdquo; button opens the legacy lead-collection form;
+                    &ldquo;Open form popup&rdquo; opens any Audience campaign&apos;s form (Enquire
+                    Now, event registration) — pick the campaign below the toggle.
                 </p>
                 {(props.authLinks || []).map((link: any, index: number) => (
                     <div key={index} className="rounded border bg-gray-50 p-2">
@@ -1948,11 +1952,37 @@ const HeaderEditor = ({ component, pageId, updateComponent }: any) => {
                                     value={link.label || ''}
                                     onChange={(e) => updateAuthLink(index, 'label', e.target.value)}
                                 />
-                                <LinkPicker
-                                    label="Route"
-                                    value={link.route || ''}
-                                    onChange={(v) => updateAuthLink(index, 'route', v)}
-                                />
+                                <div>
+                                    <Label className="text-xs">On click</Label>
+                                    <div className="mt-1 flex gap-1">
+                                        {([['route', 'Open a link'], ['openForm', 'Open form popup']] as const).map(([v, l]) => (
+                                            <button key={v}
+                                                onClick={() => updateAuthLink(index, 'audienceId', v === 'openForm' ? (link.audienceId || ' ') : '')}
+                                                className={`rounded px-2.5 py-1 text-caption font-medium ${(link.audienceId ? 'openForm' : 'route') === v ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
+                                        ))}
+                                    </div>
+                                </div>
+                                {link.audienceId ? (
+                                    <>
+                                        <CampaignPicker
+                                            label="Form to open (campaign)"
+                                            allowEmpty={false}
+                                            value={(link.audienceId || '').trim()}
+                                            onChange={(id) => updateAuthLink(index, 'audienceId', id)}
+                                        />
+                                        <Input
+                                            placeholder="Popup title (defaults to the label)"
+                                            value={link.formTitle || ''}
+                                            onChange={(e) => updateAuthLink(index, 'formTitle', e.target.value)}
+                                        />
+                                    </>
+                                ) : (
+                                    <LinkPicker
+                                        label="Route"
+                                        value={link.route || ''}
+                                        onChange={(v) => updateAuthLink(index, 'route', v)}
+                                    />
+                                )}
                             </div>
                         )}
                     </div>

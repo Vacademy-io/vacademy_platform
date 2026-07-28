@@ -21,7 +21,7 @@ import type { StudentAuthPresentation } from "@/types/student-display-settings";
 
 export const HeaderComponent: React.FC<HeaderProps & {
   navigation?: Array<{ label: string; route: string; openInSameTab?: boolean }>;
-  authLinks?: Array<{ label: string; route: string }>;
+  authLinks?: Array<{ label: string; route: string; audienceId?: string; formTitle?: string }>;
   useAuthModal?: boolean;
   catalogueData?: CourseCatalogueData;
   tagName?: string;
@@ -621,6 +621,12 @@ export const HeaderComponent: React.FC<HeaderProps & {
                           } else {
                             window.location.href = `/${r}`;
                           }
+                        } else if (((link as any).audienceId || '').trim()) {
+                          // Header CTA bound to an Audience campaign — open its
+                          // form as a popup (Enquire Now / Register).
+                          window.dispatchEvent(new CustomEvent('openAudienceForm', {
+                            detail: { audienceId: ((link as any).audienceId || '').trim(), title: (link as any).formTitle || link.label },
+                          }));
                         } else if (isLeadFormLink(link)) {
                           window.dispatchEvent(new CustomEvent('openLeadCollection'));
                         } else {
@@ -881,6 +887,10 @@ export const HeaderComponent: React.FC<HeaderProps & {
                                 } else {
                                   navigate({ to: `/${r}` });
                                 }
+                              } else if (((link as any).audienceId || '').trim()) {
+                                window.dispatchEvent(new CustomEvent('openAudienceForm', {
+                                  detail: { audienceId: ((link as any).audienceId || '').trim(), title: (link as any).formTitle || link.label },
+                                }));
                               } else if (isLeadFormLink(link)) {
                                 const event = new CustomEvent('openLeadCollection', {
                                   detail: { source: 'mobileMenu' }

@@ -417,6 +417,59 @@ async def _import_site(url: str) -> str:
         return ""
 
 
+async def _describe_attachments(
+    image_urls: List[str], db, institute_id: Optional[str], user_id: Optional[str]
+) -> str:
+    """Vision pass over images the admin attached to a COPILOT instruction.
+
+    The copilot's prompt previously listed attachments as bare URLs, so the
+    model literally could not see them and answered "I couldn't see an actual
+    section attached" when an admin pasted a screenshot of a section they
+    wanted built (real field report). Images are inlined as data URLs because
+    provider-side fetching of our media URLs is unreliable.
+
+    Unlike _analyze_inspiration (mood only, never content), this transcribes
+    UI screenshots — the admin is asking us to REBUILD what they attached, so
+    the structure and copy are the point. Best-effort: returns '' on failure.
+    """
+    from ..services.chat_llm_client import ChatLLMClient
+    from ..services.api_key_resolver import ApiKeyResolver
+
+    urls = [u for u in image_urls if isinstance(u, str) and u.startswith("https://")][:3]
+    if not urls:
+        return ""
+    inlined = await asyncio.gather(*(_inline_image_data_url(u) for u in urls))
+    attachments = [{"type": "image", "url": d} for d, _ in inlined if d]
+    if not attachments:
+        # Fall back to the raw URLs — the provider may still fetch them.
+        attachments = [{"type": "image", "url": u} for u in urls]
+
+    client = ChatLLMClient(ApiKeyResolver(db))
+    messages = [{
+        "role": "user",
+        "content": (
+            "An education-institute admin attached these image(s) to a request to edit their "
+            "website. For EACH image, first classify it as either A) a SCREENSHOT/MOCKUP of a web "
+            "section or page, or B) a PHOTO / logo / graphic meant to be placed on the page.\n"
+            "If A: describe the section precisely enough to rebuild it — layout (columns, order), "
+            "every piece of visible TEXT verbatim (headings, subheadings, body, badges/chips, "
+            "button labels, stats and their labels), and the visual treatment (card style, dark or "
+            "light band, icon usage, alignment).\n"
+            "If B: one line on what it depicts and where it would fit.\n"
+            "Be concise but complete. No preamble."
+        ),
+        "attachments": attachments,
+    }]
+    try:
+        resp = await client.chat_completion(
+            messages, temperature=0.2, max_tokens=1400, institute_id=institute_id, user_id=user_id
+        )
+        return _clean_string((resp.get("content") or "").strip())
+    except Exception as e:  # noqa: BLE001 — never block the edit on the vision pass
+        logger.warning("[page-copilot] attachment vision pass failed: %s", e)
+        return ""
+
+
 async def _analyze_inspiration(image_urls: List[str], db, institute_id: Optional[str], user_id: Optional[str]) -> str:
     """Vision pass over inspiration screenshots → a short DESIGN brief (mood,
     palette direction, serif-vs-sans display, layout patterns). Structure/mood
@@ -1103,7 +1156,7 @@ class EditPageResponse(BaseModel):
     warnings: List[str] = Field(default_factory=list)
 
 
-def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any]) -> str:
+def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any], attachment_brief: str = "") -> str:
     parts: List[str] = []
     parts.append(
         "You are the copilot for Vacademy's catalogue website builder. The admin has an existing "
@@ -1123,6 +1176,16 @@ def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any]) -> str:
         parts.append(
             "## PROVIDED IMAGES (the ONLY image URLs you may use)\n"
             + json.dumps([i.model_dump(exclude_none=True) for i in req.images], ensure_ascii=False)
+        )
+    if attachment_brief:
+        parts.append(
+            "## WHAT THE ADMIN ATTACHED (read by a vision pass — you cannot see the raw image)\n"
+            + attachment_brief
+            + "\n\nHOW TO USE IT: if the attachment is a SCREENSHOT/MOCKUP of a section, BUILD that "
+              "section with our components (match its structure, copy and treatment as closely as the "
+              "vocabulary allows) and insert it where the instruction asks — never say you cannot see "
+              "the image, and never place the screenshot itself as a page image. If it is a PHOTO/logo, "
+              "place it using its URL from PROVIDED IMAGES."
         )
     if req.history:
         convo = "\n".join(f"{t.role}: {t.content}" for t in req.history[-6:])
@@ -1297,7 +1360,18 @@ async def edit_page(
         )
 
     catalog = _load_catalog()
-    prompt = _build_edit_prompt(body, catalog)
+    # Vision pass first: without it the model receives attachments as bare URLs
+    # and cannot see them (field report: "I couldn't see an actual section
+    # attached" when an admin pasted a screenshot of the section they wanted).
+    attachment_brief = ""
+    if body.images:
+        try:
+            attachment_brief = await _describe_attachments(
+                [i.url for i in body.images], db, institute_id, actor_user_id
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[page-copilot] attachment description skipped: %s", e)
+    prompt = _build_edit_prompt(body, catalog, attachment_brief)
     run_id = uuid.uuid4().hex
 
     primary, fallbacks = resolve_models(

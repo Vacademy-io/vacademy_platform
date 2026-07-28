@@ -478,6 +478,7 @@ const FEATURE_ICON_MAP: Record<string, React.ComponentType<any>> = {
 
 const FaqSectionRenderer: React.FC<any> = ({ headerText, subheading, faqs = [], backgroundColor }) => {
   const [openIndex, setOpenIndex] = React.useState<number | null>(null);
+  const sectionUid = React.useId();
   const txt = sectionText(backgroundColor);
   return (
     <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 bg-catalogue-bg-subtle">
@@ -488,14 +489,23 @@ const FaqSectionRenderer: React.FC<any> = ({ headerText, subheading, faqs = [], 
           {faqs.map((faq: any, i: number) => (
             <div key={i} data-stagger-item style={{ ['--stagger-i' as any]: i }} className="rounded-lg border border-catalogue-border bg-catalogue-bg overflow-hidden">
               <button
+                type="button"
+                aria-expanded={openIndex === i}
+                aria-controls={`faq-panel-${sectionUid}-${i}`}
+                id={`faq-trigger-${sectionUid}-${i}`}
                 onClick={() => setOpenIndex(openIndex === i ? null : i)}
                 className="flex w-full items-center justify-between px-6 py-4 text-start font-medium text-catalogue-text-primary hover:bg-catalogue-interactive-hover"
               >
                 <span>{faq.question}</span>
-                <span className="ms-4 text-catalogue-text-muted text-xl">{openIndex === i ? '−' : '+'}</span>
+                <span aria-hidden="true" className="ms-4 text-catalogue-text-muted text-xl">{openIndex === i ? '−' : '+'}</span>
               </button>
               {openIndex === i && (
-                <div className="border-t border-catalogue-border-subtle px-6 py-4 text-catalogue-text-secondary leading-relaxed">
+                <div
+                  id={`faq-panel-${sectionUid}-${i}`}
+                  role="region"
+                  aria-labelledby={`faq-trigger-${sectionUid}-${i}`}
+                  className="border-t border-catalogue-border-subtle px-6 py-4 text-catalogue-text-secondary leading-relaxed"
+                >
                   {faq.answer}
                 </div>
               )}
@@ -712,6 +722,7 @@ const SpacerRenderer: React.FC<any> = ({ height = '48px', showDivider = false, d
 const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defaultOpen = 0, allowMultiple = false, backgroundColor, variant = 'plain', renderSlot }) => {
   const [activeTab, setActiveTab] = React.useState(defaultOpen);
   const [openIndices, setOpenIndices] = React.useState<Set<number>>(new Set([defaultOpen]));
+  const tabsUid = React.useId();
 
   const toggleAccordion = (i: number) => {
     setOpenIndices((prev) => {
@@ -814,20 +825,33 @@ const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defau
   return (
     <section style={sectionBg(backgroundColor)} className="catalogue-section-tight px-4 bg-catalogue-bg">
       <div className="mx-auto max-w-3xl">
-        <div className="flex border-b border-catalogue-border">
+        <div role="tablist" className="flex border-b border-catalogue-border">
           {items.map((item: any, i: number) => (
             <button key={i} onClick={() => setActiveTab(i)}
+              type="button"
+              role="tab"
+              id={`tab-${tabsUid}-${i}`}
+              aria-selected={i === activeTab}
+              aria-controls={`tabpanel-${tabsUid}-${i}`}
+              tabIndex={i === activeTab ? 0 : -1}
               className={`px-5 py-3 text-sm font-medium transition-colors ${i === activeTab ? 'border-b-2 border-primary-500 text-catalogue-brand-ink' : 'text-catalogue-text-muted hover:text-catalogue-text-secondary'}`}>
               {item.title}
             </button>
           ))}
         </div>
         {items[activeTab] && (
-          Array.isArray(items[activeTab].slot) && items[activeTab].slot.length && renderSlot ? (
-            <div className="p-5 space-y-4">{renderSlot(items[activeTab].slot)}</div>
-          ) : (
-            <div className="p-5 text-catalogue-text-secondary" dangerouslySetInnerHTML={{ __html: items[activeTab].content || '' }} />
-          )
+          <div
+            role="tabpanel"
+            id={`tabpanel-${tabsUid}-${activeTab}`}
+            aria-labelledby={`tab-${tabsUid}-${activeTab}`}
+            tabIndex={0}
+          >
+            {Array.isArray(items[activeTab].slot) && items[activeTab].slot.length && renderSlot ? (
+              <div className="p-5 space-y-4">{renderSlot(items[activeTab].slot)}</div>
+            ) : (
+              <div className="p-5 text-catalogue-text-secondary" dangerouslySetInnerHTML={{ __html: items[activeTab].content || '' }} />
+            )}
+          </div>
         )}
       </div>
     </section>

@@ -1318,6 +1318,32 @@
     scroll-behavior: auto !important;
   }
 
+  /* Skip link — off-screen until focused, then a real, visible control.
+     Uses primary-500 (not --catalogue-interactive-focus-ring, which is
+     near-black in light mode). */
+  .catalogue-skip-link {
+    position: absolute;
+    left: var(--space-4);
+    top: var(--space-4);
+    z-index: 100;
+    transform: translateY(-200%);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--catalogue-radius-md);
+    background-color: hsl(var(--catalogue-bg));
+    color: hsl(var(--catalogue-text-primary));
+    font-size: var(--catalogue-font-sm);
+    font-weight: 600;
+    box-shadow: var(--catalogue-elevation-3);
+    outline: 2px solid hsl(var(--primary-500));
+    outline-offset: 2px;
+    transition: transform var(--catalogue-transition-fast);
+  }
+
+  .catalogue-skip-link:focus-visible,
+  .catalogue-skip-link:focus {
+    transform: translateY(0);
+  }
+
   /* Custom-HTML section host (htmlBlock escape hatch). The shadow root scopes
      the section's CSS in; this class scopes its layout OUT: translateZ creates
      a containing block so position:fixed inside the section can never overlay

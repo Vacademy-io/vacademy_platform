@@ -9,6 +9,7 @@ import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { FileType } from '@/types/common/file-upload';
 import { convertDocToHtml } from './utils/doc-to-html';
+import { docHtmlToLexicalIfSafe } from '../lexical-editor/convert-yoopta';
 import { useRouter } from '@tanstack/react-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { useReplaceBase64ImagesWithNetworkUrls } from '@/utils/helpers/study-library-helpers.ts/slides/replaceBase64ToNetworkUrl';
@@ -17,10 +18,7 @@ import { convertHtmlToPdf } from '../../-helper/helper';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { useSlidesMutations } from '../../-hooks/use-slides';
 import { getSlideStatusForUser } from '../../non-admin/hooks/useNonAdminSlides';
-import {
-    buildAppendReorderPayload,
-    getNextSlideOrder,
-} from '../../-helper/slide-naming-utils';
+import { buildAppendReorderPayload, getNextSlideOrder } from '../../-helper/slide-naming-utils';
 
 interface FormData {
     docFile: FileList | null;
@@ -194,6 +192,12 @@ export const AddDocDialog = ({
             setUploadProgress(70);
             const { totalPages } = await convertHtmlToPdf(processedHtml);
 
+            // Open uploads in the new (Lexical) editor when the content
+            // round-trips losslessly; otherwise keep the legacy editor so a
+            // complex document never silently loses a table/image/block.
+            const lexicalHtml = docHtmlToLexicalIfSafe(processedHtml);
+            const finalHtml = lexicalHtml ?? processedHtml;
+
             setUploadStage('Saving slide…');
             setUploadProgress(85);
             const slideStatus = getSlideStatusForUser();
@@ -207,11 +211,11 @@ export const AddDocDialog = ({
                 document_slide: {
                     id: documentIdRef.current,
                     type: 'DOC',
-                    data: processedHtml,
+                    data: finalHtml,
                     title,
                     cover_file_id: '',
                     total_pages: totalPages,
-                    published_data: slideStatus === 'PUBLISHED' ? processedHtml : null,
+                    published_data: slideStatus === 'PUBLISHED' ? finalHtml : null,
                     published_document_total_pages: totalPages,
                 },
                 status: slideStatus,
@@ -271,7 +275,7 @@ export const AddDocDialog = ({
                         <div className="text-center">
                             {file ? (
                                 <>
-                                    <p className="text-primary-600 font-medium">{file.name}</p>
+                                    <p className="font-medium text-primary-600">{file.name}</p>
                                     <p className="text-sm text-gray-500">
                                         {(file.size / (1024 * 1024)).toFixed(2)} MB
                                     </p>
@@ -294,7 +298,7 @@ export const AddDocDialog = ({
                     <div className="space-y-3 duration-300 animate-in fade-in slide-in-from-bottom-2">
                         <Progress
                             value={uploadProgress}
-                            className="[&>div]:to-primary-600 h-2 bg-neutral-200 [&>div]:bg-gradient-to-r [&>div]:from-primary-500"
+                            className="h-2 bg-neutral-200 [&>div]:bg-gradient-to-r [&>div]:from-primary-500 [&>div]:to-primary-600"
                         />
                         <div className="text-sm text-neutral-600">
                             {uploadStage || 'This may take a few moments…'}

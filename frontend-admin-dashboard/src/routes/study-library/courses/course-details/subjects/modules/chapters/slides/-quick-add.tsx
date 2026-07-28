@@ -19,6 +19,7 @@ import { useReplaceBase64ImagesWithNetworkUrls } from '@/utils/helpers/study-lib
 import { convertHtmlToPdf } from './-helper/helper';
 import { formatHTMLString } from './-components/slide-operations/formatHtmlString';
 import { EMPTY_LEXICAL_INNER } from './-components/lexical-editor/lexical-doc-marker';
+import { docHtmlToLexicalIfSafe } from './-components/lexical-editor/convert-yoopta';
 import {
     Plus,
     YoutubeLogo,
@@ -558,6 +559,9 @@ export function QuickAddView({ search }: { search: ChapterSearchParamsForQuickAd
                     const processedHtml = await replaceBase64ImagesWithNetworkUrls(html);
                     const normalized = normalizeHtmlQuotes(processedHtml);
                     const { totalPages } = await convertHtmlToPdf(processedHtml);
+                    // Open uploads in the new (Lexical) editor when lossless;
+                    // else keep the legacy editor (no silent content loss).
+                    const finalHtml = docHtmlToLexicalIfSafe(normalized) ?? normalized;
                     const id = crypto.randomUUID();
                     const resp: string = await addUpdateDocumentSlide({
                         id,
@@ -568,11 +572,11 @@ export function QuickAddView({ search }: { search: ChapterSearchParamsForQuickAd
                         document_slide: {
                             id: crypto.randomUUID(),
                             type: 'DOC',
-                            data: normalized,
+                            data: finalHtml,
                             title: item.title,
                             cover_file_id: '',
                             total_pages: totalPages,
-                            published_data: normalized,
+                            published_data: finalHtml,
                             published_document_total_pages: totalPages,
                         },
                         status,

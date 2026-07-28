@@ -86,7 +86,17 @@ export const PropertyPanel = () => {
 
         let component: (typeof config.pages)[number]['components'][number] | null = null;
         let pageId = '';
-        for (const p of config.pages) {
+        // Component ids are only unique WITHIN a page (the server dedupes
+        // per-page), so an id like "hero" can exist on several pages at once.
+        // Resolve against the page the admin is actually editing first — a
+        // first-match scan across all pages used to show (and WRITE TO) another
+        // page's hero when ids collided. The global scan stays only as a
+        // fallback for selections made outside a page context.
+        const selectedPage = config.pages.find((p) => p.id === selectedPageId);
+        const orderedPages = selectedPage
+            ? [selectedPage, ...config.pages.filter((p) => p.id !== selectedPageId)]
+            : config.pages;
+        for (const p of orderedPages) {
             const c = findComponent(p.components);
             if (c) {
                 component = c;

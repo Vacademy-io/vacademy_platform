@@ -259,6 +259,9 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
         // so an unconfigured section guides the admin instead of vanishing.
         return <DetailBlocksComponent key={id} {...props} isPreviewMode={isPreviewMode} />;
 
+      case "marquee":
+        return <MarqueeRenderer key={id} {...props} />;
+
       case "leadForm":
         // An Audience campaign's form rendered inline — the form definition
         // lives in the CRM (AUDIENCE_FORM custom fields), fetched live.
@@ -959,6 +962,61 @@ const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defau
 /* ─── Logo Cloud ───────────────────────────────────────────────────────── */
 
 const MARQUEE_SPEED_MAP: Record<string, string> = { slow: '45s', medium: '30s', fast: '18s' };
+
+/* ─── Marquee (announcement ticker) ────────────────────────────────────── */
+
+/** Standalone scrolling ticker ("GCC Batch 2026-27 — Now Launching …").
+ *
+ *  This type previously existed ONLY as an admin canvas preview — the learner
+ *  renderer had no case for it, so a published marquee rendered as nothing at
+ *  all (the exact ghost-component failure detailBlocks was registered against).
+ *  Reuses the logoCloud marquee machinery: the catalogue-marquee keyframes
+ *  translate -50%, so rendering the row twice yields a seamless loop, and the
+ *  shared class already handles hover-pause and prefers-reduced-motion. */
+const MarqueeRenderer: React.FC<any> = ({
+  items = [],
+  defaultIcon = '',
+  speed = 'medium',
+  direction = 'left',
+  backgroundColor = '#1e1b4b', // design-lint-ignore: page-builder default color
+  textColor = '#ffffff', // design-lint-ignore: page-builder default color
+  iconColor = '#facc15', // design-lint-ignore: page-builder default color
+  fontSize = 'sm',
+}) => {
+  const list = (Array.isArray(items) ? items : []).filter((it: any) => it && it.text);
+  if (list.length === 0) return null;
+  const row = [...list, ...list];
+  return (
+    <section
+      className="catalogue-marquee-viewport overflow-hidden py-3"
+      style={{ backgroundColor }}
+      aria-label="Announcements"
+    >
+      <div
+        className="catalogue-marquee flex items-center gap-10"
+        style={{
+          animationDuration: MARQUEE_SPEED_MAP[speed] || '30s',
+          // The keyframes scroll left; 'right' simply plays them backwards.
+          animationDirection: direction === 'right' ? 'reverse' : undefined,
+          color: textColor,
+        }}
+      >
+        {row.map((item: any, i: number) => (
+          <span
+            key={i}
+            aria-hidden={i >= list.length}
+            className={`flex shrink-0 items-center gap-2 whitespace-nowrap font-medium ${fontSize === 'base' ? 'text-base' : 'text-sm'}`}
+          >
+            {(item.icon || defaultIcon) && (
+              <span style={{ color: iconColor }} aria-hidden="true">{item.icon || defaultIcon}</span>
+            )}
+            {item.text}
+          </span>
+        ))}
+      </div>
+    </section>
+  );
+};
 
 // Must match LogoItem's visibility rule — grid cells are pre-filtered so a
 // null item never leaves an empty grid track or a dead stagger slot.

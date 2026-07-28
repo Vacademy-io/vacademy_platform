@@ -55,7 +55,8 @@ export default function ProgressReports() {
         getPackageSessionId,
     } = useInstituteDetailsStore();
     const instituteDetails = useInstituteDetailsStore((s) => s.instituteDetails);
-    const { setPacageSessionId, setCourse, setSession, setLevel, pacageSessionId } = usePacageDetails();
+    const { setPacageSessionId, setCourse, setSession, setLevel, setLearnerName, pacageSessionId } =
+        usePacageDetails();
 
     const accessToken = getTokenFromCookie(TokenKey.accessToken);
     const tokenData = getTokenDecodedData(accessToken);
@@ -66,9 +67,25 @@ export default function ProgressReports() {
     const [studentList, setStudentList] = useState<UserResponse>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [subjectReportData, setSubjectReportData] = useState<SubjectProgressResponse>();
-    const filteredStudents = studentList.filter((student) =>
-        student.full_name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    // Match by name-start or any word-start (so "mo" finds "Dipti Mohile"),
+    // ranking whole-name prefixes first. Far more precise than a raw substring
+    // match, which surfaced everyone sharing a common letter.
+    const studentQuery = searchTerm.trim().toLowerCase();
+    const filteredStudents = studentList
+        .filter((student) => {
+            if (!studentQuery) return true;
+            const name = student.full_name.toLowerCase();
+            return (
+                name.startsWith(studentQuery) ||
+                name.split(/\s+/).some((word) => word.startsWith(studentQuery))
+            );
+        })
+        .sort((a, b) => {
+            if (!studentQuery) return 0;
+            const ap = a.full_name.toLowerCase().startsWith(studentQuery) ? 0 : 1;
+            const bp = b.full_name.toLowerCase().startsWith(studentQuery) ? 0 : 1;
+            return ap - bp || a.full_name.localeCompare(b.full_name);
+        });
     const search = useSearch({ from: Route.id });
     const {
         register,
@@ -166,6 +183,20 @@ export default function ProgressReports() {
         }
     }, [selectedSession]);
 
+    // Fallbacks: auto-select the session/level as soon as its list resolves to a
+    // single option and nothing is chosen yet — so picking a course reliably
+    // prefills the whole form even if the cascade above misses on the first resolve.
+    useEffect(() => {
+        if (!selectedSession && sessionList.length === 1 && sessionList[0]) {
+            setValue('session', sessionList[0].id);
+        }
+    }, [sessionList, selectedSession]);
+    useEffect(() => {
+        if (!selectedLevel && levelList.length === 1 && levelList[0]) {
+            setValue('level', levelList[0].id);
+        }
+    }, [levelList, selectedLevel]);
+
     const SubjectWiseMutation = useMutation({
         mutationFn: fetchLearnersSubjectWiseProgress,
     });
@@ -194,9 +225,12 @@ export default function ProgressReports() {
                 },
             }
         );
-        setCourse(courseList.find((course) => (course.id = data.course))?.name || '');
-        setSession(sessionList.find((course) => (course.id = data.session))?.name || '');
-        setLevel(levelList.find((course) => (course.id = data.level))?.level_name || '');
+        setCourse(courseList.find((course) => course.id === data.course)?.name || '');
+        setSession(sessionList.find((sessionItem) => sessionItem.id === data.session)?.name || '');
+        setLevel(levelList.find((levelItem) => levelItem.id === data.level)?.level_name || '');
+        setLearnerName(
+            studentList.find((student) => student.user_id === data.student)?.full_name || ''
+        );
     };
 
     const [isExporting, setIsExporting] = useState(false);

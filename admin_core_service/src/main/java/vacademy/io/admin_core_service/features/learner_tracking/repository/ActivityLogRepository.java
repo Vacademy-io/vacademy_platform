@@ -838,7 +838,8 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                 WITH RawChapters AS (
                     SELECT
                         mc.chapter_id,
-                        ch.chapter_name
+                        ch.chapter_name,
+                        cps.chapter_order
                     FROM module_chapter_mapping mc
                     JOIN chapter_package_session_mapping cps
                         ON mc.chapter_id = cps.chapter_id AND cps.status IN (:chapterPackageStatusList)
@@ -847,14 +848,15 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     WHERE mc.module_id = :moduleId
                 ),
                 Chapters AS (
-                    SELECT DISTINCT chapter_id, chapter_name FROM RawChapters
+                    SELECT DISTINCT chapter_id, chapter_name, chapter_order FROM RawChapters
                 ),
                 Slides AS (
                     SELECT DISTINCT
                         csm.chapter_id,
                         s.id AS slide_id,
                         s.title AS slide_title,
-                        s.source_type AS slide_source_type
+                        s.source_type AS slide_source_type,
+                        csm.slide_order AS slide_order
                     FROM chapter_to_slides csm
                     JOIN Chapters c ON csm.chapter_id = c.chapter_id
                     JOIN slide s ON csm.slide_id = s.id AND s.status IN (:slideStatusList)
@@ -940,12 +942,13 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                     c.chapter_id AS chapterId,
                     c.chapter_name AS chapterName,
                     (
-                        SELECT JSON_AGG(slide_data)
+                        SELECT JSON_AGG(slide_data ORDER BY slide_data.slide_order NULLS LAST, slide_data.slide_title)
                         FROM (
                             SELECT DISTINCT ON (s.slide_id)
                                 s.slide_id,
                                 s.slide_title,
                                 s.slide_source_type,
+                                s.slide_order,
                                 COALESCE(lt.avg_time_spent, 0.0) AS avg_time_spent,
                                 COALESCE(lc.avg_concentration_score, 0.0) AS avg_concentration_score,
                                 COALESCE(CAST(bt.avg_time_spent_by_batch AS TEXT), '0.0') AS avg_time_spent_by_batch,
@@ -965,7 +968,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         ) slide_data
                     ) AS slides
                 FROM Chapters c
-                ORDER BY c.chapter_id;
+                ORDER BY c.chapter_order NULLS LAST, c.chapter_name;
             """, nativeQuery = true)
     List<ChapterSlideProgressProjection> getChapterSlideProgressCombined(
             @Param("moduleId") String moduleId,
@@ -1623,7 +1626,8 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                         WITH Chapters AS (
                             SELECT
                                 mc.chapter_id,
-                                ch.chapter_name AS chapter_name
+                                ch.chapter_name AS chapter_name,
+                                cps.chapter_order AS chapter_order
                             FROM module_chapter_mapping mc
                             JOIN chapter_package_session_mapping cps ON mc.chapter_id = cps.chapter_id
                                 AND cps.status IN (:chapterPackageStatusList)
@@ -1636,7 +1640,8 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                                 csm.chapter_id,
                                 s.id AS slide_id,
                                 s.title AS slide_title,
-                                s.source_type AS slide_source_type
+                                s.source_type AS slide_source_type,
+                                csm.slide_order AS slide_order
                             FROM chapter_to_slides csm
                             JOIN Chapters c ON csm.chapter_id = c.chapter_id
                             JOIN slide s ON csm.slide_id = s.id
@@ -1693,12 +1698,14 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, String
                                     'avg_time_spent', COALESCE(a.avg_time_spent, 0.0),
                                     'avg_concentration_score', COALESCE(cscore.avg_concentration_score, 0.0)
                                 )
+                                ORDER BY s.slide_order NULLS LAST, s.slide_title
                             ) AS slides
                         FROM Chapters c
                         JOIN Slides s ON c.chapter_id = s.chapter_id
                         LEFT JOIN AvgTimeSpent a ON s.slide_id = a.slide_id
                         LEFT JOIN AvgConcentrationScore cscore ON s.slide_id = cscore.slide_id
-                        GROUP BY c.chapter_id, c.chapter_name
+                        GROUP BY c.chapter_id, c.chapter_name, c.chapter_order
+                        ORDER BY c.chapter_order NULLS LAST, c.chapter_name
                         """, nativeQuery = true)
     List<ChapterSlideProgressProjection> getChapterSlideProgress(
             @Param("moduleId") String moduleId,

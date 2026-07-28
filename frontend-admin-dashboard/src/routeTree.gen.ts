@@ -79,6 +79,8 @@ import { Route as SettingsTelephonyIndexRouteImport } from "./routes/settings/te
 import { Route as SettingsFeeManagementIndexRouteImport } from "./routes/settings/fee-management/index"
 import { Route as PlanningPlanningIndexRouteImport } from "./routes/planning/planning/index"
 import { Route as PlanningActivityLogsIndexRouteImport } from "./routes/planning/activity-logs/index"
+import { Route as MentorshipMyMentorshipIndexRouteImport } from "./routes/mentorship/my-mentorship/index"
+import { Route as MentorshipMentorsIndexRouteImport } from "./routes/mentorship/mentors/index"
 import { Route as MeetingsTeamIndexRouteImport } from "./routes/meetings/team/index"
 import { Route as MeetingsMyScheduleIndexRouteImport } from "./routes/meetings/my-schedule/index"
 import { Route as ManageStudentsStudentsListIndexRouteImport } from "./routes/manage-students/students-list/index"
@@ -695,6 +697,21 @@ const PlanningActivityLogsIndexRoute =
   } as any).lazy(() =>
     import("./routes/planning/activity-logs/index.lazy").then((d) => d.Route),
   )
+const MentorshipMyMentorshipIndexRoute =
+  MentorshipMyMentorshipIndexRouteImport.update({
+    id: "/mentorship/my-mentorship/",
+    path: "/mentorship/my-mentorship/",
+    getParentRoute: () => rootRouteImport,
+  } as any).lazy(() =>
+    import("./routes/mentorship/my-mentorship/index.lazy").then((d) => d.Route),
+  )
+const MentorshipMentorsIndexRoute = MentorshipMentorsIndexRouteImport.update({
+  id: "/mentorship/mentors/",
+  path: "/mentorship/mentors/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/mentorship/mentors/index.lazy").then((d) => d.Route),
+)
 const MeetingsTeamIndexRoute = MeetingsTeamIndexRouteImport.update({
   id: "/meetings/team/",
   path: "/meetings/team/",
@@ -1821,6 +1838,8 @@ export interface FileRoutesByFullPath {
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
   "/meetings/my-schedule/": typeof MeetingsMyScheduleIndexRoute
   "/meetings/team/": typeof MeetingsTeamIndexRoute
+  "/mentorship/mentors/": typeof MentorshipMentorsIndexRoute
+  "/mentorship/my-mentorship/": typeof MentorshipMyMentorshipIndexRoute
   "/planning/activity-logs/": typeof PlanningActivityLogsIndexRoute
   "/planning/planning/": typeof PlanningPlanningIndexRoute
   "/settings/fee-management/": typeof SettingsFeeManagementIndexRoute
@@ -2014,6 +2033,8 @@ export interface FileRoutesByTo {
   "/manage-students/students-list": typeof ManageStudentsStudentsListIndexRoute
   "/meetings/my-schedule": typeof MeetingsMyScheduleIndexRoute
   "/meetings/team": typeof MeetingsTeamIndexRoute
+  "/mentorship/mentors": typeof MentorshipMentorsIndexRoute
+  "/mentorship/my-mentorship": typeof MentorshipMyMentorshipIndexRoute
   "/planning/activity-logs": typeof PlanningActivityLogsIndexRoute
   "/planning/planning": typeof PlanningPlanningIndexRoute
   "/settings/fee-management": typeof SettingsFeeManagementIndexRoute
@@ -2209,6 +2230,8 @@ export interface FileRoutesById {
   "/manage-students/students-list/": typeof ManageStudentsStudentsListIndexRoute
   "/meetings/my-schedule/": typeof MeetingsMyScheduleIndexRoute
   "/meetings/team/": typeof MeetingsTeamIndexRoute
+  "/mentorship/mentors/": typeof MentorshipMentorsIndexRoute
+  "/mentorship/my-mentorship/": typeof MentorshipMyMentorshipIndexRoute
   "/planning/activity-logs/": typeof PlanningActivityLogsIndexRoute
   "/planning/planning/": typeof PlanningPlanningIndexRoute
   "/settings/fee-management/": typeof SettingsFeeManagementIndexRoute
@@ -2405,6 +2428,8 @@ export interface FileRouteTypes {
     | "/manage-students/students-list/"
     | "/meetings/my-schedule/"
     | "/meetings/team/"
+    | "/mentorship/mentors/"
+    | "/mentorship/my-mentorship/"
     | "/planning/activity-logs/"
     | "/planning/planning/"
     | "/settings/fee-management/"
@@ -2598,6 +2623,8 @@ export interface FileRouteTypes {
     | "/manage-students/students-list"
     | "/meetings/my-schedule"
     | "/meetings/team"
+    | "/mentorship/mentors"
+    | "/mentorship/my-mentorship"
     | "/planning/activity-logs"
     | "/planning/planning"
     | "/settings/fee-management"
@@ -2792,6 +2819,8 @@ export interface FileRouteTypes {
     | "/manage-students/students-list/"
     | "/meetings/my-schedule/"
     | "/meetings/team/"
+    | "/mentorship/mentors/"
+    | "/mentorship/my-mentorship/"
     | "/planning/activity-logs/"
     | "/planning/planning/"
     | "/settings/fee-management/"
@@ -2986,6 +3015,8 @@ export interface RootRouteChildren {
   ManageStudentsStudentsListIndexRoute: typeof ManageStudentsStudentsListIndexRoute
   MeetingsMyScheduleIndexRoute: typeof MeetingsMyScheduleIndexRoute
   MeetingsTeamIndexRoute: typeof MeetingsTeamIndexRoute
+  MentorshipMentorsIndexRoute: typeof MentorshipMentorsIndexRoute
+  MentorshipMyMentorshipIndexRoute: typeof MentorshipMyMentorshipIndexRoute
   PlanningActivityLogsIndexRoute: typeof PlanningActivityLogsIndexRoute
   PlanningPlanningIndexRoute: typeof PlanningPlanningIndexRoute
   SettingsFeeManagementIndexRoute: typeof SettingsFeeManagementIndexRoute
@@ -3568,6 +3599,20 @@ declare module "@tanstack/react-router" {
       path: "/planning/activity-logs"
       fullPath: "/planning/activity-logs/"
       preLoaderRoute: typeof PlanningActivityLogsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/mentorship/my-mentorship/": {
+      id: "/mentorship/my-mentorship/"
+      path: "/mentorship/my-mentorship"
+      fullPath: "/mentorship/my-mentorship/"
+      preLoaderRoute: typeof MentorshipMyMentorshipIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/mentorship/mentors/": {
+      id: "/mentorship/mentors/"
+      path: "/mentorship/mentors"
+      fullPath: "/mentorship/mentors/"
+      preLoaderRoute: typeof MentorshipMentorsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/meetings/team/": {
@@ -4554,6 +4599,8 @@ const rootRouteChildren: RootRouteChildren = {
   ManageStudentsStudentsListIndexRoute: ManageStudentsStudentsListIndexRoute,
   MeetingsMyScheduleIndexRoute: MeetingsMyScheduleIndexRoute,
   MeetingsTeamIndexRoute: MeetingsTeamIndexRoute,
+  MentorshipMentorsIndexRoute: MentorshipMentorsIndexRoute,
+  MentorshipMyMentorshipIndexRoute: MentorshipMyMentorshipIndexRoute,
   PlanningActivityLogsIndexRoute: PlanningActivityLogsIndexRoute,
   PlanningPlanningIndexRoute: PlanningPlanningIndexRoute,
   SettingsFeeManagementIndexRoute: SettingsFeeManagementIndexRoute,

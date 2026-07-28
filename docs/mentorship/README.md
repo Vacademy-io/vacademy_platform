@@ -99,7 +99,10 @@ distribution that respects prior load). One-shot; no persistent pool table in v1
 - **Phase 0** — deploy booking + enable chat (ops). 
 - **Phase 1** — mentorship backend. ✅ done (branch `feat/mentorship`).
 - **Phase 2** — mentorship FE (admin module + learner tab).
-- **Phase 3** — Google Calendar reflection.
+- **Phase 3** — Google Calendar reflection. ✅ done — one-way push via `GoogleCalendarService`
+  (reuses the per-institute Meet Google account; host + invitee attendees, `sendUpdates=all`;
+  id in `booking_instance.google_calendar_event_id`; deleted on cancel/reschedule). Needs
+  connected Google accounts to re-authorize once (adds the `calendar.events` scope).
 - **Phase 4** — hardening (booking questions via master custom-fields, slot conflicts
   vs live classes, double-book lock, Meet-space cleanup on cancel).
 

@@ -649,6 +649,28 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
         },
     },
 
+    // Surfaces a Product Page's sellable courses on a catalogue page and
+    // deep-links each card into that page's cart. Only the CODE is stored —
+    // the course list is read live, because a product-page save replaces all
+    // of its invite mappings and any cached list would go stale.
+    productPageOffer: {
+        type: 'productPageOffer',
+        enabled: true,
+        props: {
+            productPageCode: '',
+            productPageName: '',
+            title: 'Our Programs',
+            subtitle: 'Pick a program and enrol in minutes.',
+            columns: 3,
+            ctaLabel: 'Enrol now',
+            showImage: true,
+            showChips: true,
+            showDescription: true,
+            showValidity: true,
+            showPrice: true,
+        },
+    },
+
     htmlBlock: {
         type: 'htmlBlock',
         enabled: true,

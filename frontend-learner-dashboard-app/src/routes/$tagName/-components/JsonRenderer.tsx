@@ -35,6 +35,7 @@ import {
 } from "@phosphor-icons/react";
 import { HeaderComponent } from "./components/HeaderComponent";
 import { HtmlBlockSection } from "./components/HtmlBlockSection";
+import { ProductPageOfferComponent } from "./components/ProductPageOfferComponent";
 import { BannerComponent } from "./components/BannerComponent";
 import { CourseCatalogComponent } from "./components/CourseCatalogComponent";
 // Removed CourseRecommendationsComponent import as it's not used
@@ -268,6 +269,18 @@ export const JsonRenderer: React.FC<JsonRendererProps> = ({
             instituteId={instituteId}
             globalSettings={globalSettings}
             tagName={tagName}
+          />
+        );
+
+      case "productPageOffer":
+        // Live-reads the product page's courses; instituteId/preview come from
+        // the renderer, everything else from props.
+        return (
+          <ProductPageOfferComponent
+            key={id}
+            {...props}
+            instituteId={instituteId}
+            isPreviewMode={isPreviewMode}
           />
         );
 

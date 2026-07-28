@@ -25,6 +25,9 @@ import { ImageUploadField } from './ImageUploadField';
 import { VariantSwitcher } from './VariantSwitcher';
 import { RichTextField } from './RichTextField';
 import { StyleEditor } from './StyleEditor';
+import { useQuery } from '@tanstack/react-query';
+import { getAllProductPages } from '../product-pages/-services/product-pages-service';
+import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { LinkPicker } from './LinkPicker';
 import type { ComponentStyle } from '../-types/editor-types';
 
@@ -1217,6 +1220,8 @@ const ComponentEditor = ({ component, pageId, updateComponent }: any) => {
             return <SpacerEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'htmlBlock':
             return <HtmlBlockEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
+        case 'productPageOffer':
+            return <ProductPageOfferEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'tabsAccordion':
             return <TabsAccordionEditor component={component} pageId={pageId} updateComponent={updateComponent} />;
         case 'logoCloud':
@@ -3288,6 +3293,114 @@ const ImageGalleryEditor = ({ component, pageId, updateComponent }: any) => {
 };
 
 /* ─── Spacer Editor ────────────────────────────────────────────────────── */
+const ProductPageOfferEditor = ({ component, pageId, updateComponent }: any) => {
+    const { props } = component;
+    const instituteId = getCurrentInstituteId();
+    const updateProp = (key: string, value: any) =>
+        updateComponent(pageId, component.id, { props: { ...props, [key]: value } });
+
+    // Only ACTIVE/DRAFT pages come back; a DRAFT page will not render publicly,
+    // so it is labelled rather than hidden (admins often build both together).
+    const { data: pages, isLoading } = useQuery({
+        queryKey: ['PRODUCT_PAGES_FOR_CATALOGUE', instituteId],
+        queryFn: () => getAllProductPages(instituteId!),
+        enabled: !!instituteId,
+        staleTime: 60_000,
+    });
+
+    const selected = (pages || []).find((p: any) => p.code === props.productPageCode);
+
+    return (
+        <div className="space-y-4">
+            <div className="rounded border border-gray-200 bg-gray-50 p-2 text-caption text-gray-500">
+                Shows a product page&apos;s courses here and sends each click straight into that
+                page&apos;s cart. The course list, prices and images are read live from the product
+                page — edit them there, not here.
+            </div>
+
+            <div>
+                <Label className="text-xs">Product page</Label>
+                <select
+                    className="mt-1 w-full rounded border px-2 py-1.5 text-xs"
+                    value={props.productPageCode || ''}
+                    onChange={(e) => {
+                        const page = (pages || []).find((p: any) => p.code === e.target.value);
+                        updateComponent(pageId, component.id, {
+                            props: {
+                                ...props,
+                                productPageCode: e.target.value,
+                                productPageName: page?.name || '',
+                            },
+                        });
+                    }}
+                >
+                    <option value="">{isLoading ? 'Loading product pages…' : 'Select a product page'}</option>
+                    {(pages || []).map((p: any) => (
+                        <option key={p.id} value={p.code}>
+                            {p.name}{p.status !== 'ACTIVE' ? ` (${p.status})` : ''}
+                        </option>
+                    ))}
+                </select>
+                {selected && selected.status !== 'ACTIVE' && (
+                    <p className="mt-1 text-caption text-warning-600">
+                        This page is {selected.status} — set it ACTIVE or the section stays hidden to visitors.
+                    </p>
+                )}
+                {selected && (
+                    <p className="mt-1 text-caption text-gray-400">
+                        {selected.mappings?.filter((m: any) => (m.status ?? 'ACTIVE') === 'ACTIVE').length ?? 0}{' '}
+                        course(s) will render.
+                    </p>
+                )}
+                {!isLoading && (pages || []).length === 0 && (
+                    <p className="mt-1 text-caption text-gray-400">
+                        No product pages yet — create one under Manage Pages &gt; Product Pages.
+                    </p>
+                )}
+            </div>
+
+            <div>
+                <Label className="text-xs">Title</Label>
+                <Input className="mt-1" value={props.title || ''} onChange={(e) => updateProp('title', e.target.value)} placeholder="Our Programs" />
+            </div>
+            <div>
+                <Label className="text-xs">Subtitle</Label>
+                <Textarea className="mt-1" rows={2} value={props.subtitle || ''} onChange={(e) => updateProp('subtitle', e.target.value)} placeholder="Pick a program and enrol in minutes." />
+            </div>
+            <div>
+                <Label className="text-xs">Button label</Label>
+                <Input className="mt-1" value={props.ctaLabel || ''} onChange={(e) => updateProp('ctaLabel', e.target.value)} placeholder="Enrol now" />
+            </div>
+
+            <div>
+                <Label className="text-xs">Columns</Label>
+                <div className="mt-1 flex gap-1">
+                    {[2, 3, 4].map((c) => (
+                        <button key={c} onClick={() => updateProp('columns', c)}
+                            className={`rounded px-3 py-1 text-caption font-medium ${(props.columns || 3) === c ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{c}</button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="space-y-2 rounded border border-dashed border-gray-200 p-2">
+                <p className="text-caption font-medium text-gray-500">Show on each card</p>
+                {([
+                    ['showImage', 'Preview image'],
+                    ['showChips', 'Level / session chips'],
+                    ['showDescription', 'Short description'],
+                    ['showValidity', 'Access period'],
+                    ['showPrice', 'Price & discount'],
+                ] as const).map(([key, label]) => (
+                    <div key={key} className="flex items-center justify-between">
+                        <Label className="text-xs">{label}</Label>
+                        <Switch checked={props[key] !== false} onCheckedChange={(c) => updateProp(key, c)} />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
 const HtmlBlockEditor = ({ component, pageId, updateComponent }: any) => {
     const { props } = component;
     const updateProp = (key: string, value: any) =>

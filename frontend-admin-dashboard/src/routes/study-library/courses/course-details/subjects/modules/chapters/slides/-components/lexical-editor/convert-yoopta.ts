@@ -202,3 +202,21 @@ export function analyzeConversion(sourceHtml: string): ConversionAnalysis {
         formattingWarnings: formattingWarnings(srcDoc, convDoc),
     };
 }
+
+/**
+ * For freshly-created content (docx/doc uploads): return the Lexical-routed
+ * (marker-bearing) HTML when the round-trip is lossless, else null so the
+ * caller keeps the original HTML on the legacy editor. Uploads should open in
+ * the new editor by default, but never at the cost of silently dropping a
+ * table / image / block the uploaded document actually had.
+ */
+export function docHtmlToLexicalIfSafe(sourceHtml: string): string | null {
+    if (!sourceHtml || !sourceHtml.trim()) return null;
+    try {
+        const a = analyzeConversion(sourceHtml);
+        return a.safe && a.convertedHtml ? a.convertedHtml : null;
+    } catch (e) {
+        console.error('[Lexical] upload→lexical pre-flight failed:', e);
+        return null;
+    }
+}

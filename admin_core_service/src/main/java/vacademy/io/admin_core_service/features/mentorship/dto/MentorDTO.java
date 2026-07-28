@@ -27,6 +27,7 @@ public class MentorDTO {
     private String profileImageFileId;
     private String bio;
     private String bookingPageId;
+    private String bookingPageSlug; // resolved from booking_page; null when unset — Book is gated on this
     private String status;
     private Integer assignedStudentCount;
 

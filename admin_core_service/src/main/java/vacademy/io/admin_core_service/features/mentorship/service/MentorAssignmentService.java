@@ -39,6 +39,7 @@ public class MentorAssignmentService {
 
     private final MentorStudentAssignmentRepository assignmentRepository;
     private final MentorRepository mentorRepository;
+    private final MentorService mentorService;
     private final AuthService authService;
 
     @Transactional
@@ -183,6 +184,7 @@ public class MentorAssignmentService {
                     .profileImageFileId(m.getProfileImageFileId())
                     .bio(m.getBio())
                     .bookingPageId(m.getBookingPageId())
+                    .bookingPageSlug(mentorService.slugFor(m.getBookingPageId()))
                     .status(m.getStatus())
                     .name(u != null ? u.getFullName() : null)
                     .email(u != null ? u.getEmail() : null)

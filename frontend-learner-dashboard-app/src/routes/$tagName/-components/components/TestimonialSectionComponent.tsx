@@ -65,7 +65,11 @@ const TestimonialCard: React.FC<{ testimonial: Testimonial; hoverEffect?: string
   const getInitials = (name: string) =>
     name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
-  const feedbackText = testimonial.feedback || testimonial.text || testimonial.quote || "";
+  // "content" included: the AI composer emits it, and the admin preview
+  // already accepts it — the learner must render the same keys (field bug:
+  // published testimonials showed empty quotes).
+  const feedbackText =
+    testimonial.feedback || testimonial.text || testimonial.quote || (testimonial as { content?: string }).content || "";
 
   const hoverClass =
     hoverEffect === "lift" ? "hover:-translate-y-1 hover:shadow-lg" :
@@ -140,7 +144,7 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
   // Carousel Layout
   if (layout === "carousel") {
     return (
-      <section className="w-full py-10 sm:py-14" style={{ backgroundColor: backgroundColor || '#f8fafc' }}>{/* design-lint-ignore: page-builder default color */}
+      <section className="w-full catalogue-section" style={{ backgroundColor: backgroundColor || '#f8fafc' }}>{/* design-lint-ignore: page-builder default color */}
         <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-8">
             <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">{headerText}</h2>
@@ -202,7 +206,7 @@ export const TestimonialSectionComponent: React.FC<TestimonialSectionProps> = ({
 
   // Grid / Grid-Scroll Layout
   return (
-    <section className="w-full py-10 sm:py-14" style={{ backgroundColor: backgroundColor || '#f8fafc' }}>{/* design-lint-ignore: page-builder default color */}
+    <section className="w-full catalogue-section" style={{ backgroundColor: backgroundColor || '#f8fafc' }}>{/* design-lint-ignore: page-builder default color */}
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-8">
           <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">{headerText}</h2>

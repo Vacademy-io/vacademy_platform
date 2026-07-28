@@ -524,6 +524,15 @@ export function buildResponsiveCSS(componentId: string, style?: ComponentStyle):
         }
     }
 
+    // Viewport-relative minHeight is a DESKTOP art-direction device. On a phone
+    // an 80vh section with centred content wastes most of the screen (measured:
+    // an 884px-tall hero holding 480px of content, ~400px of dead space). Relax
+    // it below the tablet breakpoint so the section sizes to its content. Applies
+    // retroactively to every already-published page.
+    if (typeof style.minHeight === 'string' && /\d\s*(?:vh|svh|dvh|lvh|%)/.test(style.minHeight)) {
+        lines.push(`@media (max-width: 768px) { ${selector} { min-height: 0 !important; } }`);
+    }
+
     if (style.visibility) {
         if (style.visibility.tablet === false) {
             lines.push(`@media (max-width: 768px) { ${selector} { display: none !important; } }`);
@@ -568,4 +577,52 @@ export function getHoverClass(style?: ComponentStyle): string {
         brighten: 'catalogue-hover-brighten',
     };
     return map[style.animation.hover.type] || '';
+}
+
+/* ─── Custom primary brand color (globalSettings.theme.primaryColor) ────────
+ * The theme panel stores a hex override; renderers apply it as INLINE CSS
+ * variables on the catalogue wrapper so it beats the preset's stylesheet
+ * values ([data-catalogue-theme="…"] { --primary-*: … }). The ramp mirrors
+ * the preset scale stops: 500 = the brand color, 50–300 are tints on the
+ * same hue. Returns {} for missing/invalid hex → preset stays in charge. */
+export function buildPrimaryScaleVars(hex?: string | null): Record<string, string> {
+    const raw = (hex || '').trim().replace(/^#/, '');
+    if (!/^[0-9a-fA-F]{6}$/.test(raw)) return {};
+    const r = parseInt(raw.slice(0, 2), 16) / 255;
+    const g = parseInt(raw.slice(2, 4), 16) / 255;
+    const b = parseInt(raw.slice(4, 6), 16) / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    let h = 0;
+    let s = 0;
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+    }
+    const H = Math.round(h * 360);
+    const S = Math.round(s * 100);
+    const L = Math.round(l * 100);
+    // Tints walk lightness toward near-white on the same hue; light stops get
+    // slightly desaturated so muted brand colors don't turn pastel-neon.
+    const stop = (lightness: number, satMul = 1) =>
+        `${H} ${Math.round(Math.min(100, S * satMul))}% ${Math.round(lightness)}%`;
+    const l50 = L + (97 - L) * 0.94;
+    const l100 = L + (97 - L) * 0.85;
+    const l200 = L + (97 - L) * 0.68;
+    const l300 = L + (97 - L) * 0.45;
+    const l400 = Math.min(97, L + 7);
+    return {
+        '--primary-50': stop(l50, 0.75),
+        '--primary-100': stop(l100, 0.8),
+        '--primary-200': stop(l200, 0.85),
+        '--primary-300': stop(l300, 0.95),
+        '--primary-400': stop(l400),
+        '--primary-500': stop(L),
+        // Legible text on the brand color: white on dark brands, ink on light.
+        '--primary-foreground': L < 62 ? '0 0% 100%' : '222 47% 11%',
+    };
 }

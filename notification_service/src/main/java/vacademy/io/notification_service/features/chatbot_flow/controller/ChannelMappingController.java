@@ -183,10 +183,13 @@ public class ChannelMappingController {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
+            // Subscribe to inbound messages/statuses AND template lifecycle events so Meta
+            // pushes approval/rejection/recategorisation — otherwise a template created via
+            // Vacademy stays PENDING locally even after Meta rejects/removes it.
             String formBody = "object=whatsapp_business_account"
                     + "&callback_url=" + java.net.URLEncoder.encode(webhookUrl, java.nio.charset.StandardCharsets.UTF_8)
                     + "&verify_token=" + java.net.URLEncoder.encode(verifyToken, java.nio.charset.StandardCharsets.UTF_8)
-                    + "&fields=messages"
+                    + "&fields=messages,message_template_status_update,message_template_category_update"
                     + "&access_token=" + java.net.URLEncoder.encode(appAccessToken, java.nio.charset.StandardCharsets.UTF_8);
 
             HttpEntity<String> request = new HttpEntity<>(formBody, headers);

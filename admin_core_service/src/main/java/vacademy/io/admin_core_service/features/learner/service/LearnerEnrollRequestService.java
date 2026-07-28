@@ -158,6 +158,31 @@ public class LearnerEnrollRequestService {
     public LearnerEnrollResponseDTO recordLearnerRequest(LearnerEnrollRequestDTO learnerEnrollRequestDTO,
             Map<String, Object> extraData) {
         LearnerPackageSessionsEnrollDTO enrollDTO = learnerEnrollRequestDTO.getLearnerPackageSessionEnroll();
+
+        // ── Institute integrity guard (root-cause fix) ────────────────────────────
+        // The enroll invite is the single source of truth for which institute this
+        // enrollment belongs to. The FE supplies instituteId separately (derived from
+        // its host/domain context in the invite URL), and it can drift from the
+        // invite's institute — e.g. a Shiksha Nation invite opened with an IDEED host
+        // context. Left unchecked, that mismatched id was stamped verbatim onto the
+        // auth user_role authority (AuthService) and the SSIGM row, while user_plan
+        // still pointed at the invite — enrolling the learner into the WRONG institute
+        // and giving multi-institute accounts. Normalize to the invite's institute
+        // here, before it is consumed for send-credentials, portal-url, auth-user and
+        // batch enrollment. Mirrors the guard already enforced on the step-1
+        // form-submit path (EnrollmentFormService).
+        if (StringUtils.hasText(enrollDTO.getEnrollInviteId())) {
+            EnrollInvite integrityInvite = getValidatedEnrollInvite(enrollDTO.getEnrollInviteId());
+            if (StringUtils.hasText(integrityInvite.getInstituteId())
+                    && !integrityInvite.getInstituteId().equals(learnerEnrollRequestDTO.getInstituteId())) {
+                log.warn("Enroll institute mismatch: request instituteId={} but invite {} belongs to institute={}. "
+                        + "Using the invite's institute for enrollment.",
+                        learnerEnrollRequestDTO.getInstituteId(), integrityInvite.getId(),
+                        integrityInvite.getInstituteId());
+                learnerEnrollRequestDTO.setInstituteId(integrityInvite.getInstituteId());
+            }
+        }
+
         if (!StringUtils.hasText(learnerEnrollRequestDTO.getUser().getId())) {
             // B2B: Override auth roles from invite settingJson if it's a SUB_ORG invite
             if (StringUtils.hasText(enrollDTO.getEnrollInviteId())) {

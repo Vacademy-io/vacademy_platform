@@ -34,11 +34,14 @@ from pipecat.frames.frames import (
     BotStartedSpeakingFrame,
     BotStoppedSpeakingFrame,
     Frame,
+    InterruptionFrame,
     LLMFullResponseEndFrame,
+    LLMFullResponseStartFrame,
     LLMMessagesAppendFrame,
     LLMTextFrame,
     TranscriptionFrame,
     TTSSpeakFrame,
+    TTSTextFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
 )
@@ -54,6 +57,9 @@ from pipecat.audio.interruptions.min_words_interruption_strategy import (
 )
 
 from . import admin_core
+from .callstate import (CallState, WatchdogConfig, Decision, watchdog_decide,
+                        apply_decision, NONE, CANCEL_STARVED, REISSUE_STOP,
+                        CAP_FAREWELL, STALL_RECOVER, ORPHAN_ASK, NUDGE, IDLE_HANGUP)
 from .config import get_settings
 from .providers import build_llm, build_stt, build_tts
 
@@ -81,6 +87,9 @@ class CallOutcome:
     transfer_requested: bool = False
     transfer_registered: bool = False
     end_requested: bool = False
+    # Set by main.py when run_bot raises: the report must say "failed", not
+    # "no-answer" — a crash is our fault and must never read as the lead's.
+    crashed: bool = False
 
     def duration_seconds(self) -> int:
         end = self.ended_at or time.time()
@@ -95,7 +104,7 @@ class TranscriptCollector(FrameProcessor):
 
     def __init__(self, outcome: CallOutcome, on_activity, is_bot_speaking,
                  set_user_speaking=None, filler_phrases=None, on_transcript=None,
-                 fillers_armed=None):
+                 fillers_armed=None, bot_stopped_t=None):
         super().__init__()
         self._outcome = outcome
         self._on_activity = on_activity
@@ -106,6 +115,10 @@ class TranscriptCollector(FrameProcessor):
         # the setup dead-air callers say "hello? hello?" and a filler was the FIRST
         # thing they ever heard ("starts with Hmm" — live complaint).
         self._fillers_armed = fillers_armed or (lambda: True)
+        # When the bot last FINISHED speaking — a repeat is only greeting-spam if
+        # the bot has said nothing since the first copy; if it asked a NEW question
+        # in between, an identical short answer ("haan") is a REAL answer.
+        self._bot_stopped_t = bot_stopped_t or (lambda: 0.0)
         # Dedupe window for identical consecutive transcripts ("Hello" x3 while the
         # pipeline warms up): each repeat triggered its own LLM run → the intro was
         # spoken twice back-to-back on a live call.
@@ -134,9 +147,14 @@ class TranscriptCollector(FrameProcessor):
             # Drop an identical repeat within 4s (greeting spam: "Hello" x3 while the
             # bot warms up/opens). Recorded once; repeats never reach the LLM, so the
             # model can't answer the same hello twice.
-            if text.casefold() == self._last_text and now - self._last_text_t < 4.0:
+            if (text.casefold() == self._last_text and now - self._last_text_t < 4.0
+                    and self._bot_stopped_t() < self._last_text_t):
                 logger.info("transcript dedupe: dropping repeat %r", text[:30])
                 self._on_activity(user=True)
+                # The words WERE heard — stamp transcript time so the VAD-orphan
+                # can't treat a heard-and-dropped repeat as a swallowed utterance
+                # and apologise "I couldn't hear you" (deep-review A1).
+                self._on_transcript()
                 return
             self._last_text = text.casefold()
             self._last_text_t = now
@@ -148,9 +166,36 @@ class TranscriptCollector(FrameProcessor):
             # the first thing the caller ever heard was "Hmm…".
             if (self._filler_phrases and not self._is_bot_speaking()
                     and self._fillers_armed()
+                    and not text.startswith("[")     # synthetic cue, not real speech
                     and random.random() < self._filler_probability):
                 await self.push_frame(
                     TTSSpeakFrame(random.choice(self._filler_phrases)), direction)
+        await self.push_frame(frame, direction)
+
+
+class PlayedTranscriptRecorder(FrameProcessor):
+    """Sits AFTER transport.output(): records assistant speech from TTSTextFrames,
+    which the transport releases at PLAYOUT position — i.e. text the caller
+    actually HEARD. Replaces generation-time commits (deep-review A3): stalled or
+    interrupted replies used to enter the transcript in full, so the disposition
+    analyzer judged conversations that never happened (live 'Wrong_Number' on a
+    caller who heard nothing) — while nudges/farewells/fillers the caller DID
+    hear were never recorded (they ride TTSSpeakFrame, which also emits
+    TTSTextFrames, so this captures them too). Consecutive assistant clauses
+    merge into one transcript entry until a caller turn intervenes."""
+
+    def __init__(self, outcome: CallOutcome):
+        super().__init__()
+        self._outcome = outcome
+
+    async def process_frame(self, frame: Frame, direction: FrameDirection):
+        await super().process_frame(frame, direction)
+        if isinstance(frame, TTSTextFrame) and frame.text and frame.text.strip():
+            t = self._outcome.transcript
+            if t and t[-1]["role"] == "assistant":
+                t[-1]["text"] = (t[-1]["text"] + " " + frame.text.strip()).strip()
+            else:
+                t.append({"role": "assistant", "text": frame.text.strip()})
         await self.push_frame(frame, direction)
 
 
@@ -201,24 +246,64 @@ class SentinelGate(FrameProcessor):
 
     def __init__(self, outcome: CallOutcome, on_activity, set_bot_speaking,
                  transfer_closing: str = "Ek moment, main aapko connect kar rahi hoon.",
-                 end_closing: str = "Theek hai, dhanyavaad. Aapka din shubh ho!"):
+                 end_closing: str = "Theek hai, dhanyavaad. Aapka din shubh ho!",
+                 transfer_fail_closing: str = ("Mujhe abhi connect karne mein dikkat aa "
+                                               "rahi hai — hamare counsellor aapko jald "
+                                               "call karenge. Dhanyavaad!")):
         super().__init__()
         self._outcome = outcome
         self._on_activity = on_activity
         self._set_bot_speaking = set_bot_speaking
         self._transfer_closing = transfer_closing
         self._end_closing = end_closing
+        self._transfer_fail_closing = transfer_fail_closing
+        self._transfer_fallback_done = False
         self._task: Optional[PipelineTask] = None
+        # run_bot injects _begin_stop so sentinel-initiated stops arm the SAME
+        # graceful-stop deadline as watchdog stops (deep-review A6/F2: raw
+        # stop_when_done left the drain starvable forever).
+        self._arm_stop = None
         self._buffer = ""          # marker hold-back across token chunks
         self._utterance = ""       # current assistant utterance (one transcript entry)
         self._spoke_this_response = False
         self._response_active = False  # LLM tokens still streaming for this response
+        # A2 shield: a barge-in DURING streaming cancels the LLM task, but its
+        # finally-block still emits an orphan LLMFullResponseEndFrame. Downstream,
+        # pipecat 0.0.95's assistant aggregator decrements its _started counter
+        # for EVERY End it sees — the interruption already reset it to 0, so the
+        # orphan End underflows it to -1 and ALL later assistant text is silently
+        # dropped from the model's context (verbatim repeats / re-asking, deep-
+        # review A2, verified against the wheel). Swallow exactly that one End.
+        self._swallow_next_end = False
 
     def set_task(self, task: PipelineTask):
         self._task = task
 
+    def set_arm_stop(self, arm_stop):
+        self._arm_stop = arm_stop
+
     async def process_frame(self, frame: Frame, direction: FrameDirection):
         await super().process_frame(frame, direction)
+
+        if isinstance(frame, InterruptionFrame):
+            if self._response_active:
+                # The LLM task is being cancelled mid-stream; its finally will
+                # still emit one orphan End — mark it for swallowing (A2).
+                self._swallow_next_end = True
+            # Stale hold-back/utterance from the aborted response must not bleed
+            # into the next one (deep-review B6).
+            self._buffer = ""
+            self._response_active = False
+            await self.push_frame(frame, direction)
+            return
+
+        if isinstance(frame, LLMFullResponseStartFrame):
+            # A NEW response begins — any expected orphan End never arrived (or
+            # was consumed upstream); swallowing this response's End instead
+            # would corrupt the aggregator bracket the OTHER way.
+            self._swallow_next_end = False
+            await self.push_frame(frame, direction)
+            return
 
         if isinstance(frame, LLMTextFrame):
             self._on_activity(user=False)
@@ -244,11 +329,25 @@ class SentinelGate(FrameProcessor):
             if self._buffer:
                 logger.info("sentinel: dropping partial marker tail %r corr=%s",
                             self._buffer, self._outcome.corr)
-                if self._buffer.startswith("<<"):
+                if self._buffer.startswith("<<T"):
+                    # A max_tokens cut mid-"<<TRANSFER>>" is a request for a HUMAN —
+                    # ending instead hung up on exactly the callers who asked for one.
+                    self._outcome.transfer_requested = True
+                elif self._buffer.startswith("<<"):
                     self._outcome.end_requested = True
                 self._buffer = ""
             self._response_active = False
             self._flush_utterance()
+            if self._swallow_next_end:
+                # The orphan End of an interrupted stream — local bookkeeping done
+                # above; do NOT push it downstream (A2 underflow shield). An
+                # interrupted response must also never drive the marker-only
+                # close, and its spoke-flag must not leak into the next response.
+                self._swallow_next_end = False
+                self._spoke_this_response = False
+                logger.info("sentinel: swallowed orphan response-End after interruption corr=%s",
+                            self._outcome.corr)
+                return
             await self.push_frame(frame, direction)
             # Marker-only response (nothing spoken): no BotStoppedSpeakingFrame
             # will ever arrive, so speak a short close to drive the stop path.
@@ -281,19 +380,37 @@ class SentinelGate(FrameProcessor):
             await self.push_frame(frame, direction)
             if self._outcome.transfer_requested and not self._outcome.transfer_registered:
                 await self._register_handoff()
+                if (not self._outcome.transfer_registered
+                        and not self._transfer_fallback_done):
+                    # Handoff registration failed (admin_core down / no target):
+                    # do NOT end on an unfulfilled "connecting you now" — promise a
+                    # callback instead, then close on that farewell's BotStopped.
+                    self._transfer_fallback_done = True
+                    self._outcome.transfer_requested = False
+                    self._outcome.end_requested = True
+                    logger.warning("sentinel: handoff failed — speaking callback fallback corr=%s",
+                                   self._outcome.corr)
+                    self._utterance = self._transfer_fail_closing
+                    self._spoke_this_response = True
+                    self._flush_utterance()
+                    await self.push_frame(TTSSpeakFrame(self._transfer_fail_closing), direction)
+                    return
             if (self._outcome.end_requested or self._outcome.transfer_requested) and self._task:
                 logger.info("sentinel: stopping call corr=%s (transfer=%s end=%s)",
                             self._outcome.corr, self._outcome.transfer_requested,
                             self._outcome.end_requested)
-                await self._task.stop_when_done()
+                if self._arm_stop is not None:
+                    await self._arm_stop()
+                else:
+                    await self._task.stop_when_done()
             return
 
         await self.push_frame(frame, direction)
 
     def _flush_utterance(self):
-        text = self._utterance.strip()
-        if text:
-            self._outcome.transcript.append({"role": "assistant", "text": text})
+        # Transcript commits moved to PlayedTranscriptRecorder (playout-ordered,
+        # played-text-only — deep-review A3). The utterance accumulator remains
+        # only as marker bookkeeping; clear it each response.
         self._utterance = ""
 
     async def _register_handoff(self):
@@ -301,7 +418,12 @@ class SentinelGate(FrameProcessor):
         if not numbers:
             logger.warning("transfer requested but no handoff target corr=%s", self._outcome.corr)
             return
-        registered = await admin_core.post_handoff(self._outcome.corr, numbers[0])
+        try:
+            registered = await asyncio.wait_for(
+                admin_core.post_handoff(self._outcome.corr, numbers[0]), timeout=4.0)
+        except asyncio.TimeoutError:
+            logger.warning("handoff registration timed out corr=%s", self._outcome.corr)
+            registered = None
         self._outcome.transfer_registered = registered is not None
 
     @staticmethod
@@ -365,7 +487,7 @@ _STT_LANGS = {
     "telugu": ("te-IN", "Telugu"),
     "kannada": ("kn-IN", "Kannada"),
     "malayalam": ("ml-IN", "Malayalam"),
-    "odia": ("od-IN", "Odia"),
+    "odia": ("or-IN", "Odia"),
 }
 
 
@@ -837,37 +959,25 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # clock only escalates while the bot is NOT speaking (TTS playout is real-time
     # and much slower than token generation), and only USER activity re-arms the
     # nudge — otherwise the nudge's own audio resets it and hangup never escalates.
-    flags = {"t": time.time(), "nudged": False, "bot_speaking": False,
-             "user_speaking": False, "stopping_since": None,
-             # REAL WORDS only (final transcripts) — the greet's callee-spoke-first
-             # check keys on this, NOT on flags["t"]: since the idle clock re-arms on
-             # bare VAD activity, pickup noise/breath was making the greet think the
-             # callee had spoken → scripted opening skipped → the model improvised
-             # bare "Hello."s (observed live).
-             "transcript_t": 0.0,
-             # When the caller last STOPPED speaking (VAD) + the last orphan we
-             # handled — Sarvam sometimes swallows a short utterance ENTIRELY (no
-             # data message, not even an empty one), leaving the turn machinery
-             # with nothing to react to. The watchdog compares these to detect
-             # "spoke but no transcript ever came" and continues the conversation.
-             "user_stopped_t": 0.0, "user_started_t": 0.0, "bot_stopped_t": 0.0,
-             "orphan_used": False, "bot_spoke_once": False,
-             # Audio-stall watchdog: stamped when a TTS generation begins, cleared
-             # the moment bot audio actually starts. If it stays pending >3.5s the
-             # reply was generated but never heard (Sarvam TTS first-byte stalls of
-             # 1.4-7s observed live) — force-reconnect TTS + regenerate.
-             "tts_gen_t": 0.0, "stall_recoveries": 0}
+    # Explicit state machine (see app/callstate.py — field docs + transition
+    # contract live there; dict-style access kept for the frame callbacks).
+    flags = CallState(t=time.time())
 
     def on_activity(user: bool = True):
+        # VAD blips reset the idle CLOCK but no longer re-arm the nudge: on lines
+        # with breathing/hold-music the re-arm made the hangup escalation
+        # unreachable — the bot nudged every ~10s until the duration cap
+        # (deep-review A10). Real words re-arm it in on_transcript below.
         flags["t"] = time.time()
-        if user:
-            flags["nudged"] = False
 
     def set_bot_speaking(speaking: bool):
         flags["bot_speaking"] = speaking
-        if speaking:
-            flags["tts_gen_t"] = 0.0  # audio arrived — no stall
-        else:
+        # Clear the pending-audio stamp on BOTH transitions: audio starting means
+        # no stall; audio STOPPING means the response played (a clause stamped
+        # mid-playout must not read as "never heard" — the false-fire mechanism
+        # behind the 2026-07-27 repeat-3x incident, deep-review B1).
+        flags["tts_gen_t"] = 0.0
+        if not speaking:
             flags["bot_stopped_t"] = time.time()
             flags["bot_spoke_once"] = True
 
@@ -913,7 +1023,11 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     if hasattr(stt, "set_backchannel_gate"):
         stt.set_backchannel_gate(
             lambda: not flags["bot_speaking"] and time.time() - _call_t0 > 6.0)
-    llm = build_llm()
+    # to_thread: on Vertex the constructor performs a SYNCHRONOUS service-account
+    # OAuth round-trip (~1-2s). Run per-call setup off the event loop so other
+    # LIVE calls' audio doesn't glitch while this one dials (part of the measured
+    # 3.2s StartFrame gap; lifespan pre-warm covers the import cost).
+    llm = await asyncio.to_thread(build_llm)
     tts = build_tts(settings.sample_rate, voice=agent.get("voice"),
                     aiohttp_session=aiohttp_session,
                     pace=_as_float(agent.get("pace")),
@@ -923,7 +1037,9 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
     # here crashed EVERY call with UnboundLocalError on 2026-07-27).
     if hasattr(tts, "set_generate_callback"):
         def _stamp_generate():
-            if flags["tts_gen_t"] == 0.0:
+            # Only stamp while the bot is QUIET: a clause generated mid-playout is
+            # part of an already-playing response, not a potentially-stalled one.
+            if flags["tts_gen_t"] == 0.0 and not flags["bot_speaking"]:
                 flags["tts_gen_t"] = time.time()
         tts.set_generate_callback(_stamp_generate)
 
@@ -940,15 +1056,19 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
 
     def on_transcript():
         flags["transcript_t"] = time.time()
-        # Real words re-arm the one-shot orphan (see watchdog).
+        # Real words re-arm the one-shot orphan (see watchdog) AND the idle nudge.
         flags["orphan_used"] = False
+        flags["nudged"] = False
 
     transcript = TranscriptCollector(outcome, on_activity,
                                      is_bot_speaking=lambda: flags["bot_speaking"],
                                      set_user_speaking=set_user_speaking,
                                      filler_phrases=eng_fillers if eng else None,
                                      on_transcript=on_transcript,
-                                     fillers_armed=lambda: flags["bot_spoke_once"])
+                                     fillers_armed=lambda: flags["bot_spoke_once"],
+                                     bot_stopped_t=lambda: flags["bot_stopped_t"])
+    played_transcript = PlayedTranscriptRecorder(outcome)
+
     sentinel = SentinelGate(outcome, on_activity, set_bot_speaking,
                             transfer_closing=transfer_closing, end_closing=end_closing)
 
@@ -961,6 +1081,7 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         sentinel,
         tts,
         transport.output(),
+        played_transcript,
         aggregators.assistant(),
     ])
 
@@ -1003,11 +1124,21 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
         opening = _clean_opening(_fill_placeholders(
             (agent.get("openingLine") or "").strip(), context))
         connect_t = time.time()
+        # Base beat, then EXTEND while the callee is audibly speaking: a Sarvam
+        # final physically cannot arrive inside 0.8s (VAD stop + server endpointing
+        # ≈1.2s minimum), so the old transcript check was dead code and the opening
+        # talked OVER callers who answered with a sentence (deep-review A9). Wait
+        # out their utterance (cap 2.5s) so the final can land and drive the
+        # proven caller-spoke-first LLM path instead.
         while time.time() - connect_t < settings.greet_delay_secs:
-            # Skip our open ONLY on real transcribed words — not on VAD noise
-            # (pickup clatter/breath was falsely skipping the scripted opening).
             if flags["transcript_t"] > connect_t + 0.05:
                 logger.info("greet: callee spoke first — LLM replies, skipping our open (corr=%s)", corr)
+                return
+            await asyncio.sleep(0.1)
+        while (time.time() - connect_t < 2.5
+               and (flags["user_speaking"] or flags["user_started_t"] > connect_t)):
+            if flags["transcript_t"] > connect_t + 0.05:
+                logger.info("greet: callee spoke first (extended wait) — skipping our open (corr=%s)", corr)
                 return
             await asyncio.sleep(0.1)
         if opening:
@@ -1017,7 +1148,8 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             # re-greeted from scratch on the caller's first reply — the observed
             # double/triple-greeting. run_llm omitted => append only, no generation.
             logger.info("greet: openingLine spoken (corr=%s) at +%.2fs", corr, time.time() - _run_bot_t0)
-            outcome.transcript.append({"role": "assistant", "text": opening})
+            # transcript entry comes from PlayedTranscriptRecorder at PLAYOUT
+            # (A3) — pre-crediting here recorded openings the caller never heard.
             await task.queue_frames([
                 LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": opening}]),
                 TTSSpeakFrame(opening)])
@@ -1038,9 +1170,14 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                            "specify — do not just say 'hello'.]"}],
                 run_llm=True)])
 
+    # Tracked so run_bot's finally can cancel it — an orphaned greet task on a
+    # pipeline that died during setup would queue frames into a cancelled task
+    # (noisy) and hold its closure alive.
+    _bg_tasks: list = []
+
     @transport.event_handler("on_client_connected")
     async def _on_connected(_transport, _client):
-        asyncio.create_task(_greet_when_ready())
+        _bg_tasks.append(asyncio.create_task(_greet_when_ready()))
 
     @transport.event_handler("on_client_disconnected")
     async def _on_disconnected(_transport, _client):
@@ -1054,47 +1191,48 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
             flags["stopping_since"] = time.time()
             await task.stop_when_done()
 
+    # Wired HERE, after _begin_stop exists — a forward reference at sentinel
+    # construction time would NameError on every call (same class of bug as the
+    # 2026-07-27 tts-before-assignment outage).
+    sentinel.set_arm_stop(_begin_stop)
+
     async def watchdog():
-        """Idle nudge → idle hangup; hard call-duration cap; graceful-stop deadline."""
+        """1-second tick: PURE decision (callstate.watchdog_decide — fully covered
+        by the timeline harness) + bookkeeping + I/O execution here."""
+        cfg = WatchdogConfig(
+            connected_at=outcome.connected_at,
+            cap_secs=cap_secs,
+            idle_timeout_secs=settings.idle_timeout_secs,
+            stall_recovery_enabled=settings.stall_recovery_enabled,
+            graceful_stop_deadline_secs=_GRACEFUL_STOP_DEADLINE_SECS,
+        )
+        repeat_line = ("Sorry, I missed that — could you say that again?" if eng else
+                       "Maaf kijiye, main sun nahi paayi — ek baar phir boliye?")
         while True:
             await asyncio.sleep(1.0)
+            now = time.time()
+            d = watchdog_decide(flags, now, cfg)
+            apply_decision(flags, d, now)
 
-            # Graceful-stop deadline: stop_when_done can be starved by new turns.
-            if flags["stopping_since"] is not None:
-                if time.time() - flags["stopping_since"] > _GRACEFUL_STOP_DEADLINE_SECS:
-                    logger.warning("graceful stop starved — cancelling corr=%s", corr)
-                    await task.cancel()
-                    return
+            if d.kind == NONE:
                 continue
-
-            # Hard per-call ceiling (telephony + vendor spend bound).
-            if time.time() - outcome.connected_at >= cap_secs:
+            if d.kind == CANCEL_STARVED:
+                logger.warning("graceful stop starved — cancelling corr=%s", corr)
+                await task.cancel()
+                return
+            if d.kind == REISSUE_STOP:
+                # A barge-in DRAINS queued frames including the EndFrame (A7).
+                await task.stop_when_done()
+                continue
+            if d.kind == CAP_FAREWELL:
                 logger.info("max call duration reached corr=%s (%.0fs)", corr, cap_secs)
                 outcome.end_requested = True
                 await task.queue_frames([TTSSpeakFrame(cap_farewell)])
                 await _begin_stop()
                 continue
-
-            # Idle handling — clock paused while the bot is speaking AND while the
-            # CALLER is speaking (VAD-armed): Sarvam STT emits finals only, so during a
-            # long caller utterance no transcript arrives and the clock used to go
-            # stale — the nudge fired at the caller mid-sentence.
-            if flags["bot_speaking"] or flags["user_speaking"]:
-                continue
-
-            # AUDIO-STALL RECOVERY: a reply was generated but its audio never
-            # started (TTS websocket stalled — 7s first-byte observed live; the
-            # caller heard permanent silence while the model kept "answering").
-            # Force a fresh TTS connection and have the model re-answer; capped
-            # at 3 recoveries per call so a hard provider outage can't loop.
-            gen_t = flags["tts_gen_t"]
-            if (gen_t > 0 and not flags["bot_speaking"]
-                    and time.time() - gen_t > 3.5
-                    and flags["stall_recoveries"] < 3):
-                flags["tts_gen_t"] = 0.0
-                flags["stall_recoveries"] += 1
+            if d.kind == STALL_RECOVER:
                 logger.error("tts audio stall corr=%s (%.1fs since generation, recovery %d) — "
-                             "reconnecting TTS + regenerating", corr, time.time() - gen_t,
+                             "reconnecting TTS + regenerating", corr, d.detail,
                              flags["stall_recoveries"])
                 try:
                     await tts._disconnect()
@@ -1107,54 +1245,23 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                         "Answer their last message again, briefly — do not mention the glitch.]"}],
                     run_llm=True)])
                 continue
-
-            # VAD-orphan: the caller audibly spoke but NO transcript arrived for
-            # that utterance ("Yeah, I'm Shreyash" produced no STT data message at
-            # all → dead air). PRECISION MATTERS — the first version armed on
-            # `stopped_t > transcript_t`, but Sarvam's finals land WHILE the caller
-            # is still speaking, so that test was true after every normal utterance
-            # and the bot steamrolled ("Thank you" to a consent question the caller
-            # never answered, 6 mis-fires in one call). Correct discriminator: no
-            # final has arrived SINCE THE UTTERANCE BEGAN. And the reaction is to
-            # ASK, not assume — a human who missed words says "sorry, say that
-            # again?", they don't act as if they heard a yes. One-shot until real
-            # words arrive; only after the bot has been quiet ≥2s (never steal the
-            # caller's turn at bot-stop).
-            now = time.time()
-            ust, usta = flags["user_stopped_t"], flags["user_started_t"]
-            if (ust > 0 and not flags["orphan_used"]
-                    and usta > flags["transcript_t"]          # nothing captured since speech began
-                    and usta > 0 and ust - usta >= 0.4        # a real utterance, not a blip
-                    and 2.5 <= now - ust <= 10.0
-                    and now - flags["bot_stopped_t"] >= 2.0
-                    and now - outcome.connected_at > 6.0):
-                flags["orphan_used"] = True
-                flags["t"] = now
+            if d.kind == ORPHAN_ASK:
                 logger.info("vad-orphan ask-repeat corr=%s (no transcript %.1fs after speech)",
-                            corr, now - ust)
-                repeat_line = ("Sorry, I missed that — could you say that again?" if eng else
-                               "Maaf kijiye, main sun nahi paayi — ek baar phir boliye?")
+                            corr, d.detail)
                 await task.queue_frames([
                     LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": repeat_line}]),
                     TTSSpeakFrame(repeat_line)])
                 continue
-
-            idle = time.time() - flags["t"]
-            if idle < settings.idle_timeout_secs:
-                continue
-            if not flags["nudged"]:
-                flags["nudged"] = True
-                flags["t"] = time.time()
-                # Context-append too: TTSSpeakFrame text never reaches the LLM context,
-                # so without this the model doesn't know it asked and can't react to
-                # the caller's "haan sun raha hoon" coherently.
+            if d.kind == NUDGE:
+                # Context-append too: TTSSpeakFrame text never reaches the LLM
+                # context — without it the model can't react to "haan sun raha hoon".
                 await task.queue_frames([
                     LLMMessagesAppendFrame(messages=[{"role": "assistant", "content": nudge_text}]),
                     TTSSpeakFrame(nudge_text)])
-            else:
-                # Speak a brief closing BEFORE dropping — a silent hangup felt like the
-                # call "disconnected without a proper close" (live feedback). _begin_stop's
-                # graceful-stop deadline lets the farewell play out (same as cap_farewell).
+                continue
+            if d.kind == IDLE_HANGUP:
+                # Speak a brief closing BEFORE dropping — a silent hangup read as
+                # "disconnected without a proper close" (live feedback).
                 logger.info("idle hangup corr=%s", corr)
                 outcome.end_requested = True
                 await task.queue_frames([TTSSpeakFrame(idle_farewell)])
@@ -1167,7 +1274,35 @@ async def run_bot(transport, corr: str, context: Dict[str, Any],
                     corr, time.time() - _run_bot_t0)
         await runner.run(task)
     finally:
-        watchdog_task.cancel()
         outcome.ended_at = time.time()
+        # AWAITED cancellation (not fire-and-forget): retrieves the task result so
+        # a watchdog crash is logged instead of vanishing as a pending-task warning.
+        for _t in [watchdog_task, *_bg_tasks]:
+            _t.cancel()
+            try:
+                await _t
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.exception("teardown: background task died corr=%s", corr)
+        # Best-effort SDK teardown: STT holds a per-call AsyncSarvamAI whose
+        # underlying httpx.AsyncClient the pipeline never closes — leaked per
+        # call. (TTS reuses the app-level aiohttp session; its websocket is
+        # closed by the pipeline's own End/Cancel path.) Shape verified against
+        # the pinned wheels 2026-07-27: _sarvam_client._client_wrapper
+        # .httpx_client (fern AsyncHttpClient, NO aclose) .httpx_client (the
+        # real httpx.AsyncClient, has aclose). Every step is defensive.
+        for _svc in (stt, tts):
+            _sdk = getattr(_svc, "_sarvam_client", None) or getattr(_svc, "_client", None)
+            _httpx = getattr(getattr(_sdk, "_client_wrapper", None), "httpx_client", None)
+            _inner = getattr(_httpx, "httpx_client", _httpx)
+            _close = getattr(_inner, "aclose", None)
+            if _close is not None:
+                try:
+                    _res = _close()
+                    if asyncio.iscoroutine(_res):
+                        await _res
+                except Exception:
+                    pass
 
     return outcome

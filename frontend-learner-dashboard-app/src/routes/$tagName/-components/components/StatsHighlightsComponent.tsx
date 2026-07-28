@@ -124,6 +124,18 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
 }) => {
   const { backgroundColor } = styles;
 
+  // On a dark custom section background the fixed gray heading/description go
+  // low-contrast — switch them to light text. (Stat CARDS stay white, so
+  // their inner label/number keep their own contrast.)
+  const onDark = (() => {
+    const raw = (backgroundColor || "").trim().replace(/^#/, "");
+    if (!/^[0-9a-fA-F]{6}$/.test(raw)) return false;
+    const r = parseInt(raw.slice(0, 2), 16);
+    const g = parseInt(raw.slice(2, 4), 16);
+    const b = parseInt(raw.slice(4, 6), 16);
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.55;
+  })();
+
   const sectionRef = useRef<HTMLElement>(null);
   const [inView, setInView] = useState(false);
 
@@ -207,7 +219,7 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
 
           {/* Label */}
           {bigValue && (
-            <span className="mt-3 text-xs font-semibold uppercase tracking-wider text-gray-500 sm:text-sm">
+            <span className="mt-3 text-xs font-semibold uppercase tracking-wider text-gray-600 sm:text-sm">
               {labelText}
             </span>
           )}
@@ -231,7 +243,7 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
   return (
     <section
       ref={sectionRef}
-      className="w-full py-14 sm:py-20"
+      className="w-full catalogue-section"
       style={{ backgroundColor: backgroundColor || "#f8fafc" }} // design-lint-ignore: page-builder default color
     >
       <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
@@ -242,11 +254,11 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
             inView ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4",
           )}
         >
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-gray-900">
+          <h2 className={cn("text-3xl sm:text-4xl font-bold tracking-tight", onDark ? "text-white" : "text-gray-900")}>
             {headerText}
           </h2>
           {!useGroupsFormat && description && (
-            <p className="mt-3 text-base sm:text-lg text-gray-500 max-w-2xl mx-auto">
+            <p className={cn("mt-3 text-base sm:text-lg max-w-2xl mx-auto", onDark ? "text-white/70" : "text-gray-500")}>
               {description}
             </p>
           )}

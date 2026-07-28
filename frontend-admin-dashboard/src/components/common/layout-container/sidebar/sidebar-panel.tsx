@@ -524,13 +524,16 @@ const SettingsTabsList: React.FC<SettingsTabsListProps> = ({ tabs, activeTab, on
                             />
                         </button>
                         {isExpanded &&
-                            groupEntries.map(({ group, items }) => (
-                                <div key={group} className="mb-0.5">
-                                    {(SETTINGS_GROUP_ORDER[domain]?.length ?? 0) > 1 && (
-                                        <p className="px-3 pb-0.5 pt-1 text-caption font-medium text-neutral-400">
-                                            {group}
-                                        </p>
+                            groupEntries.map(({ group, items }, groupIdx) => (
+                                <div
+                                    key={group}
+                                    className={cn(
+                                        'flex flex-col gap-0.5',
+                                        // Groups are separated by a hairline rather than a
+                                        // label — the domain header is the only text tier.
+                                        groupIdx > 0 && 'mt-1 border-t border-neutral-200/70 pt-1'
                                     )}
+                                >
                                     {items.map((tab) => {
                                         const isActive = activeTab === tab.tab;
                                         const Icon = SETTINGS_TAB_ICONS[tab.tab] || GearSix;

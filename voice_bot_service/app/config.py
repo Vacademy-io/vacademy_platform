@@ -175,6 +175,15 @@ class Settings:
     # mid-utterance (VAD-armed — see bot.py). 10s: at 7s the nudge kept firing while a
     # slow-thinking caller was composing an answer (observed live).
     idle_timeout_secs: float = field(default_factory=lambda: float(_env("IDLE_TIMEOUT_SECS", "8.0")))
+    # Audio-stall auto-recovery: ON (Wave 2 Stage E). The v1 false-fire (stale
+    # pending-stamp → agents repeated 3x) is fixed — stamps arm only while the
+    # bot is quiet and clear on BOTH speaking transitions — and the mechanism is
+    # covered by the timeline harness (multi-clause replies produce ZERO stall
+    # decisions; true stalls recover once, capped at 3). TTS connect/disconnect
+    # is now lock-serialized so the forced reconnect can't race the pipeline's
+    # own reconnects. Env kill-switch retained.
+    stall_recovery_enabled: bool = field(
+        default_factory=lambda: _env("STALL_RECOVERY_ENABLED", "true").lower() == "true")
 
     # Hard per-call ceiling when the agent config doesn't set maxCallMinutes —
     # bounds telephony + STT/LLM/TTS spend on a runaway conversation.
@@ -202,6 +211,23 @@ class Settings:
     tts_prompt_sample_rate: int = field(
         default_factory=lambda: int(_env("TTS_PROMPT_SAMPLE_RATE", "44100"))
     )
+
+    # /tts and /preview are PUBLIC endpoints (Plivo has to fetch them) that write
+    # synthesized audio to disk — unbounded, an attacker filling the volume kills
+    # deploys on this box (observed failure mode: disk-full → silent stale-image
+    # deploys). Oldest-mtime .mp3 files are evicted past either bound.
+    tts_cache_max_files: int = field(
+        default_factory=lambda: int(_env("TTS_CACHE_MAX_FILES", "4000")))
+    tts_cache_max_bytes: int = field(
+        default_factory=lambda: int(_env("TTS_CACHE_MAX_BYTES", str(500 * 1024 * 1024))))
+
+    # Failed end-of-call reports spool here and a background sweeper retries them.
+    # Lives UNDER the tts-cache dir on purpose: that's the one mounted volume, so
+    # spooled reports survive container restarts. A lost report strands the paused
+    # CALL_AI workflow until its safety timeout and lies to the retry engine.
+    @property
+    def report_spool_dir(self) -> str:
+        return os.path.join(self.tts_cache_dir, "_report_spool")
 
     def wss_url(self, query: str) -> str:
         base = self.public_base.replace("https://", "wss://").replace("http://", "ws://")

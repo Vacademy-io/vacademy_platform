@@ -3699,26 +3699,41 @@ const LogoCloudEditor = ({ component, pageId, updateComponent }: any) => {
                     </div>
                 </div>
             )}
-            <div>
-                <div className="flex items-center justify-between mb-2">
-                    <Label className="text-xs font-medium">Logos ({logos.length})</Label>
-                    <Button variant="ghost" size="sm" onClick={addLogo} className="h-6 text-xs"><Plus className="size-3 mr-1" /> Add</Button>
+            {props.display === 'label-pill' ? (
+                // Text ticker (no images) — fast add/edit of sliding points.
+                <div>
+                    <Label className="text-xs font-medium">Ticker items ({logos.length})</Label>
+                    <p className="mb-1 text-caption text-gray-400">One announcement per line — these scroll across the band.</p>
+                    <ListField
+                        value={logos.map((l: any) => l.label).filter((s: any) => s != null)}
+                        onCommit={(items) => updateProp('logos', items.map((label: string) => ({ label })))}
+                        separator="newline"
+                        placeholder={'e.g.\nGATE 2026 batches open\nISRO/BARC post-GATE batches\n30,000+ students trained'}
+                        rows={5}
+                    />
                 </div>
-                <div className="space-y-2">
-                    {logos.map((logo: any, i: number) => (
-                        <div key={i} className="rounded border bg-gray-50 p-2 space-y-2">
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs font-medium">Logo {i + 1}</span>
-                                <Button variant="ghost" size="sm" onClick={() => deleteLogo(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
+            ) : (
+                <div>
+                    <div className="flex items-center justify-between mb-2">
+                        <Label className="text-xs font-medium">Logos ({logos.length})</Label>
+                        <Button variant="ghost" size="sm" onClick={addLogo} className="h-6 text-xs"><Plus className="size-3 mr-1" /> Add</Button>
+                    </div>
+                    <div className="space-y-2">
+                        {logos.map((logo: any, i: number) => (
+                            <div key={i} className="rounded border bg-gray-50 p-2 space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-xs font-medium">Logo {i + 1}</span>
+                                    <Button variant="ghost" size="sm" onClick={() => deleteLogo(i)} className="size-6 p-0 text-red-600"><Trash2 className="size-3" /></Button>
+                                </div>
+                                <ImageUploadField label="Image" value={logo.image || ''} onChange={(url) => updateLogo(i, 'image', url)} aiKind="logo" />
+                                <Input placeholder="Alt text" value={logo.alt || ''} onChange={(e) => updateLogo(i, 'alt', e.target.value)} />
+                                <Input placeholder="Label (company name, shown in labeled modes)" value={logo.label || ''} onChange={(e) => updateLogo(i, 'label', e.target.value)} />
+                                <Input placeholder="Link URL (optional)" value={logo.url || ''} onChange={(e) => updateLogo(i, 'url', e.target.value)} />
                             </div>
-                            <ImageUploadField label="Image" value={logo.image || ''} onChange={(url) => updateLogo(i, 'image', url)} aiKind="logo" />
-                            <Input placeholder="Alt text" value={logo.alt || ''} onChange={(e) => updateLogo(i, 'alt', e.target.value)} />
-                            <Input placeholder="Label (company name, shown in labeled modes)" value={logo.label || ''} onChange={(e) => updateLogo(i, 'label', e.target.value)} />
-                            <Input placeholder="Link URL (optional)" value={logo.url || ''} onChange={(e) => updateLogo(i, 'url', e.target.value)} />
-                        </div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
-            </div>
+            )}
         </div>
     );
 };
@@ -3902,11 +3917,17 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
             <div>
                 <Label className="text-xs">Style</Label>
                 <div className="flex flex-wrap gap-1 mt-1">
-                    {['cards', 'minimal', 'bordered', 'glass', 'gradient-border', 'tinted'].map((s) => (
+                    {['cards', 'minimal', 'bordered', 'glass', 'gradient-border', 'tinted', 'panel'].map((s) => (
                         <button key={s} onClick={() => updateProp('style', s)}
                             className={`rounded px-3 py-1 text-caption font-medium capitalize ${props.style === s ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{s.replace('-', ' ')}</button>
                     ))}
                 </div>
+                {props.style === 'panel' && (
+                    <p className="mt-1 text-caption text-gray-400">
+                        Panel = tinted-header division cards. Per card, set a Badge and a Header
+                        color/style below.
+                    </p>
+                )}
             </div>
             <div>
                 <Label className="text-xs">Text Alignment</Label>
@@ -3956,6 +3977,19 @@ const FeatureGridEditor = ({ component, pageId, updateComponent }: any) => {
                                     </select>
                                     <Input value={f.title || ''} onChange={(e) => updateFeature(i, 'title', e.target.value)} placeholder="Title" />
                                     <Textarea value={f.description || ''} onChange={(e) => updateFeature(i, 'description', e.target.value)} placeholder="Description" rows={2} />
+                                    {props.style === 'panel' && (
+                                        <div className="space-y-2 rounded border border-dashed border-gray-200 p-2">
+                                            <p className="text-caption font-medium text-gray-500">Panel header</p>
+                                            <Input value={f.badge || ''} onChange={(e) => updateFeature(i, 'badge', e.target.value)} placeholder="Badge (e.g. Training Division)" />
+                                            <div className="flex gap-1">
+                                                {['tint', 'solid'].map((v) => (
+                                                    <button key={v} onClick={() => updateFeature(i, 'headerVariant', v)}
+                                                        className={`rounded px-3 py-1 text-caption font-medium capitalize ${(f.headerVariant || 'tint') === v && !f.headerColor ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>{v}</button>
+                                                ))}
+                                            </div>
+                                            <ColorPickerField label="Header color (optional override)" value={f.headerColor || ''} onChange={(c) => updateFeature(i, 'headerColor', c || undefined)} />
+                                        </div>
+                                    )}
                                     <ListField
                                         value={f.chips}
                                         onCommit={(items) => updateFeature(i, 'chips', items)}

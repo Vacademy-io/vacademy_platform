@@ -265,7 +265,10 @@ export const AiPageWizard = ({
 
     return (
         <Dialog open={open} onOpenChange={handleClose}>
-            <DialogContent className="max-w-xl">
+            {/* overflow-x-hidden: DialogContent is a grid; a wide child (the
+                scaled preview's marquee) would otherwise expand the implicit
+                column and shove the footer buttons off-screen. */}
+            <DialogContent className={step === 'chat' ? 'max-w-2xl overflow-x-hidden' : 'max-w-xl overflow-x-hidden'}>
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Sparkle className="size-4 text-primary-500" weight="duotone" />
@@ -563,7 +566,7 @@ export const AiPageWizard = ({
                 )}
 
                 {step === 'review' && result && !siteResult && (
-                    <div className="space-y-3">
+                    <div className="min-w-0 max-w-full space-y-3">
                         {/* Variant tabs — every regeneration is kept for comparison */}
                         {variants.length > 1 && (
                             <div className="flex gap-1.5">
@@ -588,7 +591,7 @@ export const AiPageWizard = ({
                         </p>
                         {/* LIVE mini-preview: the actual component previews rendered
                             with the proposed theme, scaled to fit the dialog. */}
-                        <div className="max-h-80 overflow-y-auto rounded-lg border bg-gray-100 p-2">
+                        <div className="max-h-80 overflow-auto overflow-x-hidden rounded-lg border bg-gray-100 p-2">
                             <div className="origin-top-left" style={{ transform: 'scale(0.5)', width: '200%' /* design-lint-ignore: preview scaling */ }}>
                                 <div
                                     className="bg-white shadow"

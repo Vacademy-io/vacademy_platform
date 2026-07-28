@@ -12,7 +12,7 @@ import vacademy.io.admin_core_service.features.learner_tracking.dto.LearnerActiv
 import vacademy.io.admin_core_service.features.learner_tracking.entity.ActivityLog;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.ActivityLogRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.exceptions.ResourceNotFoundException;
 
 import java.sql.Timestamp;
 import java.util.List;
@@ -41,7 +41,8 @@ public class ActivityLogService {
 
     public ActivityLog updateActivityLog(ActivityLogDTO activityLogDTO) {
         ActivityLog activityLog = activityLogRepository.findById(activityLogDTO.getId())
-                .orElseThrow(() -> new VacademyException("Activity Log not found"));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Activity log " + activityLogDTO.getId() + " not found"));
         updateActivityFields(activityLog, activityLogDTO);
         return activityLogRepository.save(activityLog);
     }

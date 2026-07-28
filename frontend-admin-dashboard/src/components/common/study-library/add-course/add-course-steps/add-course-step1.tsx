@@ -1094,7 +1094,10 @@ export const AddCourseStep1 = ({
                                                     <DashboardLoader />
                                                 </div>
                                             ) : form.watch('courseMedia')?.id &&
-                                              form.watch('courseMedia')?.type !== 'youtube' ? (
+                                              form.watch('courseMedia')?.type !== 'youtube' &&
+                                              !extractYouTubeVideoId(
+                                                  form.watch('courseMedia')?.id || ''
+                                              ) ? (
                                                 form.watch('courseMedia')?.type === 'video' ? (
                                                     <div className="h-[200px] w-full rounded-lg bg-neutral-100">
                                                         <video
@@ -1118,8 +1121,11 @@ export const AddCourseStep1 = ({
                                                         />
                                                     </div>
                                                 )
-                                            ) : form.watch('courseMedia')?.type === 'youtube' &&
-                                              form.watch('courseMedia')?.id ? (
+                                            ) : form.watch('courseMedia')?.id &&
+                                              (form.watch('courseMedia')?.type === 'youtube' ||
+                                                  extractYouTubeVideoId(
+                                                      form.watch('courseMedia')?.id || ''
+                                                  )) ? (
                                                 <div className="mt-2 flex h-[200px] w-full items-center justify-center rounded-lg bg-neutral-100">
                                                     <iframe
                                                         width="100%"
@@ -1191,9 +1197,22 @@ export const AddCourseStep1 = ({
                                                             Upload Image/Video
                                                         </DropdownMenuItem>
                                                         <DropdownMenuItem
-                                                            onSelect={() =>
-                                                                setShowYoutubeInput(true)
-                                                            }
+                                                            onSelect={() => {
+                                                                // Pre-fill with the existing link so
+                                                                // an already-saved YouTube URL can be
+                                                                // edited in place instead of retyped.
+                                                                const cm =
+                                                                    form.getValues('courseMedia');
+                                                                const existing =
+                                                                    cm?.id &&
+                                                                    (cm?.type === 'youtube' ||
+                                                                        extractYouTubeVideoId(cm.id))
+                                                                        ? cm.id
+                                                                        : '';
+                                                                setYoutubeUrl(existing);
+                                                                setYoutubeError('');
+                                                                setShowYoutubeInput(true);
+                                                            }}
                                                         >
                                                             YouTube Link
                                                         </DropdownMenuItem>

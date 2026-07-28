@@ -40,6 +40,20 @@ jobs:
         with:
           ref: ${{ github.event.inputs.branch || github.ref }}
 
+      # HARNESS GATE: the call-behavior + timeline suites encode every production
+      # incident (docs/crm/VOICE_BOT_DEEP_REVIEW_2026-07-27.md). A red suite
+      # blocks the build — no voice-bot image ships untested again.
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run call-behavior test harness
+        run: |
+          cd voice_bot_service
+          pip install -q -r requirements.txt pytest pytest-asyncio
+          python -m pytest tests/ -q
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:

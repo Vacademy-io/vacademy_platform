@@ -461,11 +461,14 @@ const PackageSelector: React.FC<PackageSelectorProps> = ({
                 {/* 1. Package Autocomplete (First entry point) */}
                 <div className="relative flex items-center gap-2">
                     <Label className="text-xs font-medium text-gray-700 uppercase tracking-wider whitespace-nowrap">
-                        1. Search Package
+                        1. Search {getTerminology(ContentTerms.Package, SystemTerms.Package)}
                     </Label>
                     <div className="relative group">
                         <Input
-                            placeholder="Type to search packages..."
+                            placeholder={`Type to search ${getTerminology(
+                                ContentTerms.Package,
+                                SystemTerms.Package
+                            ).toLowerCase()}...`}
                             value={searchTerm}
                             onChange={(e) => {
                                 setSearchTerm(e.target.value);

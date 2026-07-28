@@ -529,12 +529,19 @@ export const componentTemplates: Record<string, Omit<Component, 'id'>> = {
             subheading: 'Everything you need to succeed',
             columns: 3,
             features: [
-                { icon: '🎓', title: 'Expert Instructors', description: 'Learn from industry professionals with years of experience.' },
-                { icon: '📚', title: 'Rich Content', description: 'Access comprehensive course materials and resources.' },
-                { icon: '🏆', title: 'Certified Courses', description: 'Earn recognized certificates upon completion.' },
-                { icon: '💡', title: 'Interactive Learning', description: 'Engage with hands-on projects and exercises.' },
-                { icon: '🕐', title: 'Flexible Schedule', description: 'Learn at your own pace, anytime, anywhere.' },
-                { icon: '🤝', title: 'Community Support', description: 'Join a thriving community of learners.' },
+                // style 'cards'/'glass'/'tinted': icon + title + description (+ optional chips/bullets).
+                { iconName: 'GraduationCap', title: 'Expert Instructors', description: 'Learn from industry professionals with years of experience.', chips: ['IIT/NIT faculty'] },
+                { iconName: 'BookOpen', title: 'Rich Content', description: 'Access comprehensive course materials and resources.' },
+                { iconName: 'Trophy', title: 'Certified Courses', description: 'Earn recognized certificates upon completion.' },
+                // style 'panel' (divisions/comparison): a card = tinted header
+                // {badge, iconName, title, description, headerVariant 'solid'|'tint'
+                // or headerColor '#rrggbb'} over a body of `bullets`. Make one
+                // pillar headerVariant 'solid' to stand out.
+                {
+                    badge: 'Training Division', iconName: 'GraduationCap', headerVariant: 'solid',
+                    title: 'CGP Career Avenues', description: 'Comprehensive coaching across every engineering branch.',
+                    bullets: ['GATE — CS, ECE, EEE, ME, CE, CH', 'Post-GATE ISRO/BARC/DRDO batches', 'Kerala PSC & campus placement'],
+                },
             ],
             style: 'cards',
             iconSize: 'large',

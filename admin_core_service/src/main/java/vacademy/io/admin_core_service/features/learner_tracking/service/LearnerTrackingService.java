@@ -1,10 +1,12 @@
 package vacademy.io.admin_core_service.features.learner_tracking.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import vacademy.io.admin_core_service.features.learner_operation.service.LearnerOperationService;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.ActivityLogDTO;
 import vacademy.io.admin_core_service.features.learner_tracking.dto.DocumentActivityLogDTO;
@@ -16,12 +18,15 @@ import vacademy.io.admin_core_service.features.learner_tracking.repository.Docum
 import vacademy.io.admin_core_service.features.learner_tracking.repository.VideoTrackedRepository;
 import vacademy.io.admin_core_service.features.learner_tracking.repository.AudioTrackedRepository;
 import vacademy.io.common.auth.model.CustomUserDetails;
-import vacademy.io.common.exceptions.VacademyException;
+import vacademy.io.common.exceptions.ActivityLogAccessDeniedException;
+import vacademy.io.common.exceptions.InvalidRequestException;
+import vacademy.io.common.exceptions.ResourceNotFoundException;
 
 import java.sql.Timestamp;
 import java.util.List;
 import java.util.Objects;
 
+@Slf4j
 @Service
 public class LearnerTrackingService {
 
@@ -58,7 +63,12 @@ public class LearnerTrackingService {
         validateActivityLogDTO(activityLogDTO, true); // Validate for documents
         ActivityLog activityLog = activityLogDTO.isNewActivity()
                 ? saveActivityLog(activityLogDTO, slideId, user.getUserId())
-                : updateActivityLog(activityLogDTO, activityLogDTO.getUserId());
+                // getId(), not getUserId() — the latter looked up an activity by
+                // the user's id, which never matches, so every non-new document
+                // update threw "Activity Log not found". Latent only because the
+                // web viewer always sends new_activity=true; any client that
+                // doesn't would lose its page tracking entirely.
+                : updateActivityLog(activityLogDTO, activityLogDTO.getId(), user.getUserId());
         saveDocumentTracking(activityLogDTO, activityLog);
         recomputeEngagedMsFromBreadcrumbs(activityLog);
         learnerTrackingAsyncService.updateLearnerOperationsForDocument(user.getUserId(), slideId, chapterId, moduleId,
@@ -73,7 +83,7 @@ public class LearnerTrackingService {
         validateActivityLogDTO(activityLogDTO, false); // Validate for videos
         ActivityLog activityLog = activityLogDTO.isNewActivity()
                 ? saveActivityLog(activityLogDTO, slideId, user.getUserId())
-                : updateActivityLog(activityLogDTO, activityLogDTO.getId());
+                : updateActivityLog(activityLogDTO, activityLogDTO.getId(), user.getUserId());
 
         saveVideoTracking(activityLogDTO, activityLog);
         recomputeEngagedMsFromBreadcrumbs(activityLog);
@@ -89,7 +99,7 @@ public class LearnerTrackingService {
         validateActivityLogDTO(activityLogDTO, false); // Reuse validation for videos
         ActivityLog activityLog = activityLogDTO.isNewActivity()
                 ? saveActivityLog(activityLogDTO, slideId, user.getUserId())
-                : updateActivityLog(activityLogDTO, activityLogDTO.getId());
+                : updateActivityLog(activityLogDTO, activityLogDTO.getId(), user.getUserId());
 
         saveVideoTracking(activityLogDTO, activityLog); // Reuse VideoTracking entity
         recomputeEngagedMsFromBreadcrumbs(activityLog);
@@ -99,13 +109,56 @@ public class LearnerTrackingService {
         return activityLog.toActivityLogDTO();
     }
 
+    // Clients send new_activity=true with an id they generated, so this save()
+    // is an upsert: an id that already exists is merged, not inserted. That is
+    // intended (it lets a viewer extend one activity as the learner reads), but
+    // it also means a request carrying the wrong slideId would silently move an
+    // existing row to another slide — taking its document_tracked page views
+    // with it, since those hang off activity_id. The victim slide is then left
+    // with no evidence to recompute from while the receiving slide is credited
+    // with pages it never had.
+    //
+    // An activity belongs to the slide it was opened on. If a later request
+    // disagrees, keep the original binding rather than re-parenting the row.
     private ActivityLog saveActivityLog(ActivityLogDTO activityLogDTO, String slideId, String userId) {
+        if (StringUtils.hasText(activityLogDTO.getId())) {
+            ActivityLog existing = activityLogRepository.findById(activityLogDTO.getId()).orElse(null);
+            // Same reasoning as updateActivityLog: because this save() merges on a
+            // client-supplied id, an id belonging to another learner would be
+            // rewritten here — and the merge would set user_id to the caller,
+            // silently transferring ownership of the row.
+            if (existing != null && !Objects.equals(existing.getUserId(), userId)) {
+                log.warn("User {} attempted to write activity {} owned by {}", userId, existing.getId(),
+                        existing.getUserId());
+                throw new ActivityLogAccessDeniedException(existing.getId());
+            }
+            if (existing != null && StringUtils.hasText(existing.getSlideId())
+                    && !existing.getSlideId().equals(slideId)) {
+                log.warn("Refusing to re-parent activity {} from slide {} to slide {} (user {}). "
+                        + "Keeping the original slide; the client sent a stale slideId.",
+                        existing.getId(), existing.getSlideId(), slideId, userId);
+                updateActivityFields(existing, activityLogDTO);
+                return activityLogRepository.save(existing);
+            }
+        }
         return activityLogRepository.save(new ActivityLog(activityLogDTO, userId, slideId));
     }
 
-    private ActivityLog updateActivityLog(ActivityLogDTO activityLogDTO, String activityId) {
+    // activityId is client-supplied, so the row it resolves to must be checked
+    // against the caller before it is mutated — otherwise any authenticated
+    // learner can rewrite another learner's start/end time and percentage
+    // watched (which feed engaged time and the leaderboard) just by sending
+    // their activity id. The document path could not reach this before because
+    // it passed the user id as the activity id and always threw; the video and
+    // audio paths always could.
+    private ActivityLog updateActivityLog(ActivityLogDTO activityLogDTO, String activityId, String userId) {
         ActivityLog activityLog = activityLogRepository.findById(activityId)
-                .orElseThrow(() -> new VacademyException("Activity Log not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Activity log " + activityId + " not found"));
+        if (!Objects.equals(activityLog.getUserId(), userId)) {
+            log.warn("User {} attempted to update activity {} owned by {}", userId, activityId,
+                    activityLog.getUserId());
+            throw new ActivityLogAccessDeniedException(activityId);
+        }
         updateActivityFields(activityLog, activityLogDTO);
         return activityLogRepository.save(activityLog);
     }
@@ -167,13 +220,13 @@ public class LearnerTrackingService {
 
     private void validateActivityLogDTO(ActivityLogDTO dto, boolean isDocument) {
         if (Objects.isNull(dto)) {
-            throw new VacademyException("Invalid request. Activity Log cannot be null.");
+            throw new InvalidRequestException("Activity log payload cannot be null.");
         }
         if (isDocument && Objects.isNull(dto.getDocuments())) {
-            throw new VacademyException("Invalid request. Documents cannot be null.");
+            throw new InvalidRequestException("Documents cannot be null for a document activity.");
         }
         if (!isDocument && Objects.isNull(dto.getVideos())) {
-            throw new VacademyException("Invalid request. Videos cannot be null.");
+            throw new InvalidRequestException("Videos cannot be null for a video activity.");
         }
     }
 
@@ -196,7 +249,7 @@ public class LearnerTrackingService {
         validateAudioActivityLogDTO(activityLogDTO);
         ActivityLog activityLog = activityLogDTO.isNewActivity()
                 ? saveActivityLog(activityLogDTO, slideId, user.getUserId())
-                : updateActivityLog(activityLogDTO, activityLogDTO.getId());
+                : updateActivityLog(activityLogDTO, activityLogDTO.getId(), user.getUserId());
 
         saveAudioTracking(activityLogDTO, activityLog);
         recomputeEngagedMsFromBreadcrumbs(activityLog);
@@ -218,10 +271,10 @@ public class LearnerTrackingService {
 
     private void validateAudioActivityLogDTO(ActivityLogDTO dto) {
         if (Objects.isNull(dto)) {
-            throw new VacademyException("Invalid request. Activity Log cannot be null.");
+            throw new InvalidRequestException("Activity log payload cannot be null.");
         }
         if (Objects.isNull(dto.getAudios())) {
-            throw new VacademyException("Invalid request. Audios cannot be null.");
+            throw new InvalidRequestException("Audios cannot be null for an audio activity.");
         }
     }
 

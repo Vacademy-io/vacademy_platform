@@ -11,7 +11,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CircleNotch, PaperPlaneTilt, Image as ImageIcon, Sparkle, X } from '@phosphor-icons/react';
 import { useToast } from '@/hooks/use-toast';
-import { ImageUploadField } from './ImageUploadField';
+import { useFileUpload } from '@/hooks/use-file-upload';
+import { getPublicUrl } from '@/services/upload_file';
+import { getUserId } from '@/utils/userDetails';
 import {
     intakeAiTurn, IntakeTurn, IntakeResponse, AiPageImage, AiCourseSnapshotItem,
 } from '../-services/ai-page-service';
@@ -28,6 +30,48 @@ const UPLOAD_LABELS: Record<string, string> = {
     logo: 'Upload your logo',
     photo: 'Upload a photo',
     inspiration: 'Upload a screenshot of a site you like',
+};
+
+/** One chat bubble; long pasted briefs collapse so they don't wall the chat. */
+const Bubble = ({ turn }: { turn: IntakeTurn }) => {
+    const [expanded, setExpanded] = useState(false);
+    const isUser = turn.role === 'user';
+    const long = turn.content.length > 360;
+    return (
+        <div className={`flex items-end gap-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+            {!isUser && (
+                <div className="mb-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-50">
+                    <Sparkle className="size-4 text-primary-500" weight="duotone" />
+                </div>
+            )}
+            <div
+                className={`max-w-md rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                    isUser
+                        ? 'rounded-br-sm bg-primary-500 text-white'
+                        : 'rounded-bl-sm border border-gray-100 bg-gray-50 text-gray-800'
+                }`}
+            >
+                <p className={`whitespace-pre-wrap ${long && !expanded ? 'line-clamp-6' : ''}`}>
+                    {turn.content}
+                </p>
+                {long && (
+                    <button
+                        onClick={() => setExpanded((e) => !e)}
+                        className={`mt-1 text-xs font-medium underline ${isUser ? 'text-white' : 'text-primary-500'}`}
+                    >
+                        {expanded ? 'Show less' : 'Show more'}
+                    </button>
+                )}
+                {turn.image_urls && turn.image_urls.length > 0 && (
+                    <div className="mt-2 flex gap-2">
+                        {turn.image_urls.map((u, j) => (
+                            <img key={j} src={u} alt="" className="size-16 rounded-md border border-white/30 object-cover" />
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
 };
 
 export const AiIntakeChat = ({
@@ -66,11 +110,18 @@ export const AiIntakeChat = ({
     const [input, setInput] = useState('');
     // Images staged on the composer bar (sent with the next message).
     const [pendingImages, setPendingImages] = useState<string[]>([]);
-    const [uploaderOpen, setUploaderOpen] = useState(false);
-    const [uploaderValue, setUploaderValue] = useState('');
+    const [uploadBusy, setUploadBusy] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const { uploadFile } = useFileUpload();
     // Everything collected across the conversation, handed to the generator.
     const collectedImages = useRef<AiPageImage[]>([]);
     const collectedInspiration = useRef<string[]>([]);
+    // Images from the message in flight — classified once the assistant
+    // replies (it SEES them): a website screenshot must land in inspiration,
+    // not as a content photo the composer could place on the page.
+    const inFlightImages = useRef<string[]>([]);
+    const inFlightKindHint = useRef<string | null>(null);
+    const inFlightText = useRef('');
     const scrollRef = useRef<HTMLDivElement>(null);
 
     const turnMutation = useMutation({
@@ -84,14 +135,34 @@ export const AiIntakeChat = ({
         onSuccess: (res) => {
             setLast(res);
             setMessages((m) => [...m, { role: 'assistant', content: res.reply }]);
+            // Route the just-sent images using the assistant's classification,
+            // falling back to whatever it had asked for.
+            const kind = res.received_image_kind || inFlightKindHint.current || 'photo';
+            for (const url of inFlightImages.current) {
+                if (kind === 'inspiration') {
+                    if (!collectedInspiration.current.includes(url)) collectedInspiration.current.push(url);
+                } else if (!collectedImages.current.some((i) => i.url === url)) {
+                    collectedImages.current.push({ url, kind: kind as AiPageImage['kind'] });
+                }
+            }
+            inFlightImages.current = [];
+            inFlightKindHint.current = null;
         },
         onError: (err: any) => {
             const detail = err?.response?.data?.detail;
             toast({
-                title: 'Assistant unavailable',
-                description: typeof detail === 'string' ? detail : 'Please try again.',
+                title: 'That message didn’t go through',
+                description: typeof detail === 'string' ? detail : 'Your message is back in the box — just send it again.',
                 variant: 'destructive',
             });
+            // Put the failed turn back in the composer so one tap retries it —
+            // otherwise a long pasted brief + image would strand the chat.
+            setMessages((m) => (m[m.length - 1]?.role === 'user' ? m.slice(0, -1) : m));
+            setInput(inFlightText.current);
+            setPendingImages(inFlightImages.current);
+            inFlightImages.current = [];
+            inFlightKindHint.current = null;
+            inFlightText.current = '';
         },
     });
 
@@ -102,15 +173,11 @@ export const AiIntakeChat = ({
     const send = (text: string) => {
         const content = text.trim();
         if ((!content && pendingImages.length === 0) || turnMutation.isPending) return;
-        // Uploads are classified by what the assistant asked for this turn.
-        const kind = last?.request_upload || 'photo';
-        for (const url of pendingImages) {
-            if (kind === 'inspiration') {
-                if (!collectedInspiration.current.includes(url)) collectedInspiration.current.push(url);
-            } else if (!collectedImages.current.some((i) => i.url === url)) {
-                collectedImages.current.push({ url, kind: kind as AiPageImage['kind'] });
-            }
-        }
+        // Hold uploads unclassified until the assistant (which sees them)
+        // tells us what they are in its reply.
+        inFlightImages.current = pendingImages;
+        inFlightKindHint.current = last?.request_upload || null;
+        inFlightText.current = content;
         const turn: IntakeTurn = {
             role: 'user',
             content: content || '(uploaded an image)',
@@ -120,8 +187,35 @@ export const AiIntakeChat = ({
         setMessages(history);
         setInput('');
         setPendingImages([]);
-        setUploaderOpen(false);
         turnMutation.mutate(history);
+    };
+
+    // One-tap upload from the composer — stages the image for the next send.
+    const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const userId = getUserId();
+        if (!userId) return;
+        try {
+            setUploadBusy(true);
+            const fileId = await uploadFile({
+                file,
+                setIsUploading: setUploadBusy,
+                userId,
+                source: 'CATALOGUE_IMAGES',
+                sourceId: 'ADMIN',
+                publicUrl: true,
+            });
+            if (fileId) {
+                const url = (await getPublicUrl(fileId)) || fileId;
+                setPendingImages((p) => (p.includes(url) ? p : [...p, url]));
+            }
+        } catch {
+            toast({ title: 'Upload failed', description: 'Please try again.', variant: 'destructive' });
+        } finally {
+            setUploadBusy(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
     };
 
     const finish = () => {
@@ -140,30 +234,16 @@ export const AiIntakeChat = ({
     return (
         <div className="flex h-96 flex-col">
             {/* Transcript */}
-            <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto pr-1">
+            <div ref={scrollRef} className="min-h-40 flex-1 space-y-3 overflow-y-auto border-y border-gray-100 py-3 pr-1">
                 {messages.map((m, i) => (
-                    <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div
-                            className={`max-w-sm rounded-lg px-3 py-2 text-sm ${
-                                m.role === 'user'
-                                    ? 'bg-primary-500 text-white'
-                                    : 'border border-gray-200 bg-gray-50 text-gray-800'
-                            }`}
-                        >
-                            <p className="whitespace-pre-wrap">{m.content}</p>
-                            {m.image_urls && m.image_urls.length > 0 && (
-                                <div className="mt-2 flex gap-1.5">
-                                    {m.image_urls.map((u, j) => (
-                                        <img key={j} src={u} alt="" className="size-12 rounded object-cover" />
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
+                    <Bubble key={i} turn={m} />
                 ))}
                 {turnMutation.isPending && (
-                    <div className="flex justify-start">
-                        <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-400">
+                    <div className="flex items-end gap-2">
+                        <div className="mb-1 flex size-7 shrink-0 items-center justify-center rounded-full bg-primary-50">
+                            <Sparkle className="size-4 text-primary-500" weight="duotone" />
+                        </div>
+                        <div className="flex items-center gap-2 rounded-2xl rounded-bl-sm border border-gray-100 bg-gray-50 px-4 py-2.5 text-sm text-gray-400">
                             <CircleNotch className="size-4 animate-spin" /> thinking…
                         </div>
                     </div>
@@ -185,20 +265,16 @@ export const AiIntakeChat = ({
                 </div>
             )}
 
-            {/* Upload affordance — highlighted when the assistant asked for one */}
-            {(uploaderOpen || askingUpload) && (
-                <div className="mt-2 rounded-lg border border-primary-100 bg-primary-50 p-2">
-                    <ImageUploadField
-                        label={UPLOAD_LABELS[last?.request_upload || 'photo'] || 'Add an image'}
-                        value={uploaderValue}
-                        onChange={(url) => {
-                            if (url) {
-                                setPendingImages((p) => (p.includes(url) ? p : [...p, url]));
-                                setUploaderValue('');
-                            }
-                        }}
-                    />
-                </div>
+            {/* Slim upload prompt — one tap opens the file picker */}
+            {askingUpload && (
+                <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="mt-2 flex items-center gap-2 rounded-lg border border-dashed border-primary-200 bg-primary-50 px-3 py-2 text-xs font-medium text-primary-500 hover:bg-primary-100"
+                >
+                    <ImageIcon className="size-4" />
+                    {UPLOAD_LABELS[last?.request_upload || 'photo']}
+                </button>
             )}
 
             {/* Staged images going out with the next message */}
@@ -219,16 +295,24 @@ export const AiIntakeChat = ({
             )}
 
             {/* Composer */}
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFile}
+            />
             <div className="mt-2 flex items-center gap-1.5">
                 <Button
                     type="button"
                     variant="outline"
                     size="sm"
-                    className="size-9 shrink-0 p-0"
+                    className={`size-9 shrink-0 p-0 ${askingUpload ? 'border-primary-300 text-primary-500 ring-2 ring-primary-100' : ''}`}
                     title="Attach an image"
-                    onClick={() => setUploaderOpen((o) => !o)}
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadBusy}
                 >
-                    <ImageIcon className="size-4" />
+                    {uploadBusy ? <CircleNotch className="size-4 animate-spin" /> : <ImageIcon className="size-4" />}
                 </Button>
                 <Input
                     value={input}
@@ -240,7 +324,7 @@ export const AiIntakeChat = ({
                         }
                     }}
                     placeholder={askingUpload ? 'Upload above, or reply here…' : 'Type your answer…'}
-                    disabled={turnMutation.isPending && messages.length === 0}
+                    autoFocus
                 />
                 <Button
                     type="button"

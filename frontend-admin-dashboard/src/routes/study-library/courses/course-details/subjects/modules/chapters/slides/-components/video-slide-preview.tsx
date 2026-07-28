@@ -11,6 +11,7 @@ import authenticatedAxiosInstance from '@/lib/auth/axiosInstance';
 import { AIContentPlayer } from '@/components/ai-video-player/AIContentPlayer';
 import { SplitScreenSlide } from './split-screen-slide';
 import { FileVideoPlayer } from './file-video-player';
+import { FileVideoQuestionsEditor } from './file-video-questions-editor';
 import { useSlideDownloadAccess } from '@/hooks/useSlideDownloadAccess';
 
 const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedUrl?: string }) => {
@@ -381,12 +382,17 @@ const VideoSlidePreview = ({ activeItem, embedUrl }: { activeItem: Slide; embedU
                         <div className="size-8 animate-spin rounded-full border-y-2 border-primary-500"></div>
                     </div>
                 ) : (
-                    <FileVideoPlayer
-                        src={videoUrl}
-                        videoRef={videoRef}
-                        allowDownload={allowVideoDownload}
-                        onError={handleVideoError}
-                    />
+                    <>
+                        <FileVideoPlayer
+                            src={videoUrl}
+                            videoRef={videoRef}
+                            allowDownload={allowVideoDownload}
+                            onError={handleVideoError}
+                        />
+                        {/* In-video question authoring + Convert to Split Screen,
+                            same as the YouTube editor — driven by the shared videoRef. */}
+                        <FileVideoQuestionsEditor videoRef={videoRef} />
+                    </>
                 )}
             </div>
         );

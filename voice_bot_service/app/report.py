@@ -13,11 +13,15 @@ the workflow until its safety timeout.
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import datetime as dt
 import json
 from zoneinfo import ZoneInfo
 import logging
+import os
 import re
+import time
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -135,8 +139,136 @@ async def _analyze(outcome: CallOutcome) -> Dict[str, Any]:
 def _status(outcome: CallOutcome) -> str:
     # The lead answered (the WS only opens on answer); "completed" iff they
     # actually spoke — a dead-air pickup classifies as no-answer downstream.
-    said_something = any(t["role"] == "user" and t.get("text") for t in outcome.transcript)
-    return "completed" if said_something else "no-answer"
+    # Bracketed turns are SYNTHETIC (the "[unclear sound from the caller]"
+    # backchannel cue) — counting them marked dead-air pickups "completed",
+    # which admin_core's classifier treats as a real connect (workflow resumes,
+    # no retry). Only real transcribed words count.
+    said_something = any(
+        t["role"] == "user" and t.get("text") and not t["text"].lstrip().startswith("[")
+        for t in outcome.transcript
+    )
+    if said_something:
+        return "completed"
+    # A pipeline crash before anyone spoke is OUR failure, not the lead not
+    # answering: "failed" keeps the call log honest (mapStatus: failed→FAILED,
+    # while an unknown status would stamp COMPLETED) and still lands in the
+    # classifier's not-connected → retry path, which is right for a crash.
+    if outcome.crashed:
+        return "failed"
+    return "no-answer"
+
+
+# ── failed-report spool ──────────────────────────────────────────────────────
+# The report is the linchpin binding a call to its lead (disposition, workflow
+# resume, retry accounting, billing). Two inline POST attempts already exist;
+# when both fail (admin_core deploy window, network blip) the report used to be
+# LOST — the paused CALL_AI workflow then sat until its safety timeout. Failed
+# reports now spool to disk (on the tts-cache volume, so they survive restarts)
+# and a background sweeper re-posts them every minute for up to 24h.
+
+# Deliberately SHORT (default 20 min, env-overridable). A report re-posted late
+# is processed FRESH by admin_core (it dedupes per call_uuid, not per lead), and
+# applyDecision writes lead status with NO recency guard — so a stale no-answer/
+# failed report delivered AFTER a newer call already advanced the lead would
+# regress it (e.g. QUALIFIED → Retry-Pending). The CALL_AI redial cadence is
+# ~120 min by default; capping the spool well under that keeps a spooled report
+# landing before the next dial completes, so it can't clobber a newer outcome.
+# Covers ordinary transient failures (deploy windows ~6-10 min, LB blips); a
+# longer admin_core outage parks reports as .dead (logged CRITICAL) — a rare,
+# loud, manually-recoverable case, still strictly better than the pre-spool loss.
+_SPOOL_MAX_AGE_SECS = float(os.environ.get("REPORT_SPOOL_MAX_AGE_SECS", "").strip() or 20 * 60)
+_SPOOL_SWEEP_INTERVAL_SECS = 60.0
+
+
+def _spool_path(corr: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_-]", "_", corr or "unknown")[:80]
+    return os.path.join(get_settings().report_spool_dir, f"{safe}.json")
+
+
+def spool_report(institute_id: Optional[str], token: Optional[str],
+                 payload: Dict[str, Any]) -> Optional[str]:
+    """Persist a failed report for the sweeper. Returns the path or None."""
+    try:
+        d = get_settings().report_spool_dir
+        os.makedirs(d, exist_ok=True)
+        path = _spool_path(str(payload.get("correlationId") or ""))
+        rec = {"instituteId": institute_id, "token": token,
+               "payload": payload, "spooledAt": time.time()}
+        tmp = f"{path}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(rec, f)
+        os.replace(tmp, path)
+        logger.error("report spooled for retry corr=%s -> %s",
+                     payload.get("correlationId"), path)
+        return path
+    except Exception:
+        logger.exception("report spool write failed corr=%s", payload.get("correlationId"))
+        return None
+
+
+async def sweep_report_spool() -> tuple:
+    """One pass over the spool: re-POST each report, delete on success, park as
+    .dead past 24h. Returns (posted, remaining) for logging/tests."""
+    d = get_settings().report_spool_dir
+    try:
+        names = [n for n in os.listdir(d) if n.endswith(".json")]
+    except FileNotFoundError:
+        return (0, 0)
+    # Load then order by spooledAt (= call-end time), NOT filename (= corr, which
+    # is random): if several reports are queued, the OLDEST call's outcome must
+    # deliver first so a newer call's status can't be overwritten by a stale one.
+    loaded = []
+    posted = remaining = 0
+    for name in names:
+        path = os.path.join(d, name)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                loaded.append((path, json.load(f)))
+        except Exception:
+            logger.exception("spool: unreadable %s — parking as .dead", name)
+            with contextlib.suppress(Exception):
+                os.replace(path, path + ".dead")
+    def _spooled_at(rec: Dict[str, Any]) -> float:
+        # Defensive: a corrupt non-numeric spooledAt must not raise inside sort()
+        # and stall the ENTIRE sweep every minute (spool_report only ever writes a
+        # float, so this is belt-and-suspenders). Unknown → 0.0 = deliver first.
+        try:
+            return float(rec.get("spooledAt") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    for path, rec in sorted(loaded, key=lambda pr: _spooled_at(pr[1])):
+        ok = await admin_core.post_report(
+            rec.get("instituteId"), rec.get("token"), rec.get("payload") or {})
+        if ok:
+            posted += 1
+            with contextlib.suppress(Exception):
+                os.remove(path)
+            logger.info("spool: report delivered corr=%s",
+                        (rec.get("payload") or {}).get("correlationId"))
+        elif time.time() - float(rec.get("spooledAt") or 0) > _SPOOL_MAX_AGE_SECS:
+            logger.critical("spool: report UNDELIVERABLE past max age (%.0fs) corr=%s — parking "
+                            "as .dead (lead outcome lost; investigate admin_core webhook)",
+                            _SPOOL_MAX_AGE_SECS, (rec.get("payload") or {}).get("correlationId"))
+            with contextlib.suppress(Exception):
+                os.replace(path, path + ".dead")
+        else:
+            remaining += 1
+    return (posted, remaining)
+
+
+async def report_spool_sweeper() -> None:
+    """Lifespan background task: retry spooled reports forever."""
+    while True:
+        await asyncio.sleep(_SPOOL_SWEEP_INTERVAL_SECS)
+        try:
+            posted, remaining = await sweep_report_spool()
+            if posted or remaining:
+                logger.info("spool sweep: posted=%d remaining=%d", posted, remaining)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("spool sweep failed")
 
 
 async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) -> bool:
@@ -169,6 +301,9 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
         "transferAttempted": outcome.transfer_requested,
         "transferStatus": "registered" if outcome.transfer_registered
                           else ("failed" if outcome.transfer_requested else None),
+        # True when the pipeline crashed mid-call — observability for "completed"
+        # calls whose conversation was cut short by US rather than the caller.
+        "systemError": bool(outcome.crashed),
         "transcript": _transcript_text(outcome.transcript) or None,
         "phoneNumber": ctx.get("leadPhone"),
         "customerName": ctx.get("leadName"),
@@ -181,9 +316,18 @@ async def build_and_post_report(outcome: CallOutcome, call_uuid: Optional[str]) 
             "correlationId": outcome.corr,
             "subjectType": "LEAD",
             "subjectId": ctx.get("responseId"),
+            # When the call actually ended (UTC ISO). Rides along even if the
+            # report is delivered late by the spool sweeper, so admin_core CAN
+            # (future) discount a stale report before it overwrites a newer
+            # outcome's lead status — the out-of-order-clobber guard (deep-review W3).
+            "reportGeneratedAt": dt.datetime.fromtimestamp(
+                outcome.ended_at or time.time(), tz=dt.timezone.utc
+            ).isoformat().replace("+00:00", "Z"),
         },
     }
     ok = await admin_core.post_report(ctx.get("instituteId"), ctx.get("webhookToken"), payload)
+    if not ok:
+        spool_report(ctx.get("instituteId"), ctx.get("webhookToken"), payload)
     logger.info("report posted corr=%s ok=%s disposition=%s status=%s",
                 outcome.corr, ok, payload["disposition"], payload["status"])
     return ok

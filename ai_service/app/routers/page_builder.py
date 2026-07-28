@@ -302,6 +302,64 @@ async def _autogen_images(page: Any, db, institute_id: Optional[str], user_id: O
     return generated
 
 
+def _is_public_http_host(target: str) -> bool:
+    """SSRF guard shared by site-import and image-inlining: only public
+    http(s) hosts — blocks localhost / .local / private / link-local ranges."""
+    try:
+        import ipaddress
+        import socket
+        from urllib.parse import urlparse
+        if not target.startswith(("http://", "https://")):
+            return False
+        host = (urlparse(target).hostname or "").lower()
+        if not host or host == "localhost" or host.endswith(".local") or host.endswith(".internal"):
+            return False
+        for info in socket.getaddrinfo(host, None):
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+                return False
+        return True
+    except Exception:  # noqa: BLE001 — guard failure = treat as non-public
+        return False
+
+
+_MAX_INLINE_IMAGE_BYTES = 6_000_000
+
+
+async def _inline_image_data_url(url: str) -> tuple[Optional[str], Optional[str]]:
+    """Fetch an admin-uploaded image OURSELVES and inline it as a data: URL,
+    so the LLM provider never has to fetch it — media-service links can be
+    presigned/short-lived or served with non-image content types, which
+    providers reject. SSRF-guarded. Returns (data_url, None) on success or
+    (None, reason) on failure."""
+    if not isinstance(url, str) or not _is_public_http_host(url):
+        return None, "blocked non-public host"
+    try:
+        async with httpx.AsyncClient(timeout=12.0, follow_redirects=False) as client:
+            resp = await client.get(url)
+        if resp.status_code != 200:
+            return None, f"http {resp.status_code}"
+        if not resp.content or len(resp.content) > _MAX_INLINE_IMAGE_BYTES:
+            return None, f"bad size {len(resp.content)}"
+        ctype = (resp.headers.get("content-type") or "").split(";")[0].strip().lower()
+        if not ctype.startswith("image/"):
+            head = resp.content[:12]
+            if head.startswith(b"\x89PNG"):
+                ctype = "image/png"
+            elif head.startswith(b"\xff\xd8"):
+                ctype = "image/jpeg"
+            elif head[:6] in (b"GIF87a", b"GIF89a"):
+                ctype = "image/gif"
+            elif head[:4] == b"RIFF" and resp.content[8:12] == b"WEBP":
+                ctype = "image/webp"
+            else:
+                return None, f"not an image ({ctype or 'no content-type'})"
+        return f"data:{ctype};base64,{base64.b64encode(resp.content).decode()}", None
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[page-builder] image inline failed for %s: %s", url[:120], e)
+        return None, f"fetch error: {type(e).__name__}"
+
+
 async def _import_site(url: str) -> str:
     """Best-effort fetch of the institute's own site → a compact text corpus
     (title, headings, paragraphs) so the rebuilt page keeps their REAL copy.
@@ -356,6 +414,59 @@ async def _import_site(url: str) -> str:
         return corpus[:6000]
     except Exception as e:  # noqa: BLE001
         logger.warning("[page-builder] site import failed: %s", e)
+        return ""
+
+
+async def _describe_attachments(
+    image_urls: List[str], db, institute_id: Optional[str], user_id: Optional[str]
+) -> str:
+    """Vision pass over images the admin attached to a COPILOT instruction.
+
+    The copilot's prompt previously listed attachments as bare URLs, so the
+    model literally could not see them and answered "I couldn't see an actual
+    section attached" when an admin pasted a screenshot of a section they
+    wanted built (real field report). Images are inlined as data URLs because
+    provider-side fetching of our media URLs is unreliable.
+
+    Unlike _analyze_inspiration (mood only, never content), this transcribes
+    UI screenshots — the admin is asking us to REBUILD what they attached, so
+    the structure and copy are the point. Best-effort: returns '' on failure.
+    """
+    from ..services.chat_llm_client import ChatLLMClient
+    from ..services.api_key_resolver import ApiKeyResolver
+
+    urls = [u for u in image_urls if isinstance(u, str) and u.startswith("https://")][:3]
+    if not urls:
+        return ""
+    inlined = await asyncio.gather(*(_inline_image_data_url(u) for u in urls))
+    attachments = [{"type": "image", "url": d} for d, _ in inlined if d]
+    if not attachments:
+        # Fall back to the raw URLs — the provider may still fetch them.
+        attachments = [{"type": "image", "url": u} for u in urls]
+
+    client = ChatLLMClient(ApiKeyResolver(db))
+    messages = [{
+        "role": "user",
+        "content": (
+            "An education-institute admin attached these image(s) to a request to edit their "
+            "website. For EACH image, first classify it as either A) a SCREENSHOT/MOCKUP of a web "
+            "section or page, or B) a PHOTO / logo / graphic meant to be placed on the page.\n"
+            "If A: describe the section precisely enough to rebuild it — layout (columns, order), "
+            "every piece of visible TEXT verbatim (headings, subheadings, body, badges/chips, "
+            "button labels, stats and their labels), and the visual treatment (card style, dark or "
+            "light band, icon usage, alignment).\n"
+            "If B: one line on what it depicts and where it would fit.\n"
+            "Be concise but complete. No preamble."
+        ),
+        "attachments": attachments,
+    }]
+    try:
+        resp = await client.chat_completion(
+            messages, temperature=0.2, max_tokens=1400, institute_id=institute_id, user_id=user_id
+        )
+        return _clean_string((resp.get("content") or "").strip())
+    except Exception as e:  # noqa: BLE001 — never block the edit on the vision pass
+        logger.warning("[page-copilot] attachment vision pass failed: %s", e)
         return ""
 
 
@@ -539,6 +650,10 @@ _PREMIUM_DOCTRINE = [
     "OPEN with a rich heroSection: an eyebrow BADGE, a bold specific headline, 2 CTA buttons (primary+secondary), and 3 statChips "
     "for proof numbers. Put it on a section shell (style.layout.width 'wide') with minHeight '80vh' + contentAlign 'center' so it fills the fold.",
     "Use a sectionHeading with a highlight (style 'gradient' or 'underline') on ONE key phrase before each dense section — this accent is what makes pages feel designed.",
+    "For a DIVISIONS / two-pillars / plan-comparison / 'what you get' section, use featureGrid with style 'panel' (columns 2 or 3): each feature is a card with a "
+    "tinted HEADER band (props: badge, iconName, title, description) over a body of `bullets`. Make ONE pillar stand out by setting its headerVariant 'solid' "
+    "(brand-colored header, white text) while the others stay headerVariant 'tint' — this is the single most 'designed' section pattern. Do NOT use plain 'cards' "
+    "for divisions/comparisons.",
     "Prefer rich components over plain ones: featureGrid with style 'glass'/'gradient-border'/'tinted' and chips, stepsProcess ALWAYS with variant 'timeline-cards' or "
     "'alternating' plus nodeStyle 'icon' (plain numbered steps look dated), logoCloud in 'marquee' layout as a ticker of announcements, testimonialSection with ratings, "
     "trustChip. NEVER use the plain 'banner' component for a hero.",
@@ -779,6 +894,18 @@ def sanitize_component(
     }
     if isinstance(comp.get("style"), dict) and comp["style"]:
         cleaned["style"] = clean_urls(comp["style"], allowed_urls, warnings)
+    # Surface color belongs on the STYLE layer when a section shell is used:
+    # props.backgroundColor only paints the inner content column, so a shell
+    # section would render as an inset card with page-color gutters. Copy it
+    # up so the full-bleed canvas owns the color (field bug, Edzumo hero).
+    style = cleaned.get("style")
+    if isinstance(style, dict) and isinstance(style.get("layout"), dict):
+        prop_bg = cleaned_props.get("backgroundColor")
+        if (
+            isinstance(prop_bg, str) and prop_bg
+            and not any(style.get(k) for k in ("backgroundColor", "background", "backgroundImage", "backgroundLayers"))
+        ):
+            style["backgroundColor"] = prop_bg
     return cleaned
 
 
@@ -1029,7 +1156,7 @@ class EditPageResponse(BaseModel):
     warnings: List[str] = Field(default_factory=list)
 
 
-def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any]) -> str:
+def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any], attachment_brief: str = "") -> str:
     parts: List[str] = []
     parts.append(
         "You are the copilot for Vacademy's catalogue website builder. The admin has an existing "
@@ -1049,6 +1176,22 @@ def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any]) -> str:
         parts.append(
             "## PROVIDED IMAGES (the ONLY image URLs you may use)\n"
             + json.dumps([i.model_dump(exclude_none=True) for i in req.images], ensure_ascii=False)
+        )
+    if attachment_brief:
+        parts.append(
+            "## WHAT THE ADMIN ATTACHED (read by a vision pass — you cannot see the raw image)\n"
+            + attachment_brief
+            + "\n\nHOW TO USE IT: if the attachment is a SCREENSHOT/MOCKUP of a section, BUILD that "
+              "section with our components (match its structure, copy and treatment as closely as the "
+              "vocabulary allows) and insert it where the instruction asks — never say you cannot see "
+              "the image, and never place the screenshot itself as a page image. If it is a PHOTO/logo, "
+              "place it using its URL from PROVIDED IMAGES.\n"
+              "MAPPING HINTS for a transcribed card grid: a small category label above each card title "
+              "is the card's `chips` (do NOT drop it — it is what makes the grid scannable); a per-card "
+              "link like 'View details' is the card's `link` {text,url}; leave `icon`/`iconName` UNSET "
+              "when the reference shows no icon (an unset icon renders nothing, which is correct — do "
+              "not substitute a decorative emoji); a tinted header band above each card's body means "
+              "featureGrid style 'panel' with headerVariant."
         )
     if req.history:
         convo = "\n".join(f"{t.role}: {t.content}" for t in req.history[-6:])
@@ -1223,7 +1366,18 @@ async def edit_page(
         )
 
     catalog = _load_catalog()
-    prompt = _build_edit_prompt(body, catalog)
+    # Vision pass first: without it the model receives attachments as bare URLs
+    # and cannot see them (field report: "I couldn't see an actual section
+    # attached" when an admin pasted a screenshot of the section they wanted).
+    attachment_brief = ""
+    if body.images:
+        try:
+            attachment_brief = await _describe_attachments(
+                [i.url for i in body.images], db, institute_id, actor_user_id
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("[page-copilot] attachment description skipped: %s", e)
+    prompt = _build_edit_prompt(body, catalog, attachment_brief)
     run_id = uuid.uuid4().hex
 
     primary, fallbacks = resolve_models(
@@ -1619,6 +1773,10 @@ class IntakeResponse(BaseModel):
     chips: List[str] = Field(default_factory=list)
     # When set, the FE opens the matching uploader inline: logo|photo|inspiration
     request_upload: Optional[str] = None
+    # How the assistant classified images in the admin's LATEST message —
+    # the FE routes them into content images vs inspiration accordingly
+    # (an unprompted website screenshot must land in inspiration, not on the page).
+    received_image_kind: Optional[str] = None
     ready: bool = False
     # Composer-ready brief — final when ready=true, best-effort draft before.
     brief: Optional[str] = None
@@ -1626,6 +1784,7 @@ class IntakeResponse(BaseModel):
     whole_site: bool = False
     run_id: str
     model: str
+    warnings: List[str] = Field(default_factory=list)
 
 
 def _build_intake_prompt(req: IntakeRequest) -> str:
@@ -1645,13 +1804,17 @@ def _build_intake_prompt(req: IntakeRequest) -> str:
         "UPLOAD REQUESTS: set request_upload to logo|photo|inspiration ONLY when that is what you are "
         "asking for this turn; the admin sees an upload button. If they upload, the images appear as "
         "attachments — react to them specifically (e.g. comment on the logo's colors) and use them to "
-        "sharpen the design direction. Never demand uploads; offering to skip is fine.\n"
+        "sharpen the design direction. Never demand uploads; offering to skip is fine. Whenever the "
+        "admin's LATEST message includes an image, ALSO set received_image_kind: a screenshot of a "
+        "website/app they want to look like = 'inspiration'; their brand mark = 'logo'; a real "
+        "campus/class/people photo = 'photo'.\n"
         "PACE: aim to be ready within 5–8 of your turns. The admin can say 'just build it' at any time — "
         "then set ready=true immediately with the best brief you can.\n"
         "WHEN READY (ready=true): write `brief` as a RICH composer brief in the admin's language: "
         "identity + differentiators, every real number/proof point gathered, the section plan, tone, "
         "color/style direction (including anything learned from uploaded logo/inspiration), and which "
-        "uploaded photos exist. Be specific — the composer only knows what the brief says.\n"
+        "uploaded photos exist. Be specific — the composer only knows what the brief says. Keep the "
+        "brief under 350 words — dense, no filler.\n"
         "ALWAYS return `brief` as your best current draft even before ready (the admin can jump ahead)."
     )
     if req.institute_name:
@@ -1666,7 +1829,8 @@ def _build_intake_prompt(req: IntakeRequest) -> str:
     parts.append(
         "## OUTPUT CONTRACT\nReturn ONLY a JSON object (no markdown fences):\n"
         '{"reply": "<your next message>", "chips": ["<2-4 short tap-to-answer suggestions>"], '
-        '"request_upload": "logo"|"photo"|"inspiration"|null, "ready": true|false, '
+        '"request_upload": "logo"|"photo"|"inspiration"|null, '
+        '"received_image_kind": "logo"|"photo"|"inspiration"|null, "ready": true|false, '
         '"brief": "<current composer brief draft>", "page_type": "homepage"|"course-landing"|"about"|'
         '"admissions"|"contact", "whole_site": true|false}'
     )
@@ -1709,9 +1873,11 @@ async def intake_turn(
             detail=f"Insufficient credits (balance {estimate.get('current_balance')}).",
         )
 
-    # Conversation → chat messages. Uploaded images ride as vision attachments
-    # on their own turn (capped: last 4 image-bearing references).
+    # Conversation → chat messages. Uploaded images are fetched by US and
+    # inlined as data: URLs (capped: last 4 image-bearing references) — the
+    # provider never fetches admin URLs itself.
     messages: List[Dict[str, Any]] = [{"role": "system", "content": _build_intake_prompt(body)}]
+    pending_attach: List[tuple] = []  # (msg, urls)
     attach_budget = 4
     for turn in body.history[-16:]:
         role = "assistant" if turn.role == "assistant" else "user"
@@ -1720,9 +1886,27 @@ async def intake_turn(
             urls = [u for u in turn.image_urls if isinstance(u, str) and u.startswith("https://")][:attach_budget]
             if urls:
                 attach_budget -= len(urls)
-                msg["attachments"] = [{"type": "image", "url": u} for u in urls]
-                msg["content"] = (msg["content"] + f"\n[uploaded {len(urls)} image(s)]").strip()
+                pending_attach.append((msg, urls))
         messages.append(msg)
+    intake_warnings: List[str] = []
+    if pending_attach:
+        flat_urls = [u for _, urls in pending_attach for u in urls]
+        inlined = await asyncio.gather(*(_inline_image_data_url(u) for u in flat_urls))
+        pos = 0
+        for msg, urls in pending_attach:
+            chunk = inlined[pos:pos + len(urls)]
+            pos += len(urls)
+            atts = []
+            for u, (data_url, err) in zip(urls, chunk):
+                if data_url:
+                    atts.append({"type": "image", "url": data_url})
+                else:
+                    # Fall back to the raw URL — the provider may still be able
+                    # to fetch it; the no-attachment retry covers it if not.
+                    intake_warnings.append(f"image inline failed ({err}) — passed URL through")
+                    atts.append({"type": "image", "url": u})
+            msg["attachments"] = atts
+            msg["content"] = (str(msg["content"]) + f"\n[uploaded {len(atts)} image(s)]").strip()
     if len(messages) == 1:
         messages.append({"role": "user", "content": "Hi — I want to build a website for my institute."})
     # Vision turns pull chat models into prose mode ("Nice logo! …") — restate
@@ -1745,13 +1929,32 @@ async def intake_turn(
         nonlocal last_err
         for model in [primary, *fallbacks][:2]:
             try:
+                # NOTE: no assistant-prefill here — OpenRouter 400s on a
+                # trailing assistant message for these models (live-tested).
+                # max_tokens must fit reply+chips+the FULL draft brief the
+                # model echoes each turn — 1200 truncated big-brief turns into
+                # unparseable JSON (field bug).
                 resp = await client.chat_completion(
-                    msgs, temperature=0.5, max_tokens=1200,
+                    msgs, temperature=0.5, max_tokens=3000,
                     institute_id=institute_id, user_id=actor_user_id, model=model,
                 )
-                return _parse_intake_json(resp.get("content") or ""), (resp.get("model") or model), (resp.get("usage") or {})
+                content = resp.get("content") or ""
+                try:
+                    parsed = _parse_intake_json(content)
+                except Exception:
+                    # Contract break but a real reply — salvage the prose so
+                    # the turn (and anything the model SAW) isn't lost.
+                    text = re.sub(r"^```[a-zA-Z]*\s*|\s*```$", "", content.strip()).strip("{} \n")
+                    if len(text) < 10:
+                        raise
+                    intake_warnings.append(f"{model} broke the JSON contract — salvaged prose reply")
+                    parsed = {"reply": text[:1500]}
+                return parsed, (resp.get("model") or model), (resp.get("usage") or {})
             except Exception as e:  # noqa: BLE001
                 last_err = e
+                # Surfaced in response warnings — pod logs are hard to reach
+                # in the field and this class of failure is content-dependent.
+                intake_warnings.append(f"attempt failed on {model}: {str(e)[:220]}")
                 logger.warning("[page-intake] turn failed on %s: %s", model, e)
         return None
 
@@ -1776,6 +1979,9 @@ async def intake_turn(
     req_upload = data.get("request_upload")
     if req_upload not in _INTAKE_UPLOAD_KINDS:
         req_upload = None
+    recv_kind = data.get("received_image_kind")
+    if recv_kind not in _INTAKE_UPLOAD_KINDS:
+        recv_kind = None
     page_type = data.get("page_type")
     if page_type not in {"homepage", "course-landing", "about", "admissions", "contact"}:
         page_type = "homepage"
@@ -1801,10 +2007,12 @@ async def intake_turn(
         reply=_clean_string(str(data.get("reply") or "")).strip()[:2000] or "Tell me about your institute!",
         chips=chips,
         request_upload=req_upload,
+        received_image_kind=recv_kind,
         ready=bool(data.get("ready")),
         brief=(_clean_string(str(data.get("brief"))) if data.get("brief") else None),
         page_type=page_type,
         whole_site=bool(data.get("whole_site")),
         run_id=run_id,
         model=model_used,
+        warnings=intake_warnings,
     )

@@ -18,6 +18,7 @@ import { refreshProgressAfterSubmit } from "@/utils/study-library/tracking/refre
 import { MyInput } from "@/components/design-system/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
+import { useResolvedPackageSessionId } from "@/hooks/study-library/useResolvedPackageSessionId";
 import { getTerminology } from "@/components/common/layout-container/sidebar/utils";
 import { RoleTerms, SystemTerms } from "@/types/naming-settings";
 import { useSlideDownloadPermission } from "@/hooks/useSlideDownloadPermission";
@@ -523,6 +524,9 @@ const HtmlWithKatex = ({
 }) => {
   const ref = useRef<HTMLDivElement>(null);
   const previewRef = useRef(onPreviewPdf);
+  // Real time the learner has had this slide open (mount → submit) so the
+  // reported "Time Spent" reflects actual engagement, not a fake 1 minute.
+  const activityStartRef = useRef<number>(Date.now());
   useEffect(() => {
     previewRef.current = onPreviewPdf;
   }, [onPreviewPdf]);
@@ -776,6 +780,7 @@ const AssignmentSlide = ({
   isUploading,
 }: AssignmentSlideProps) => {
   const { activeItem } = useContentStore();
+  const resolvePackageSessionId = useResolvedPackageSessionId();
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [uploadedFileIds, setUploadedFileIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -1006,7 +1011,7 @@ const AssignmentSlide = ({
         source_type: activeItem.source_type || "",
         user_id: "current-user-id",
         slide_id: activeItem.id || "",
-        start_time_in_millis: Date.now() - 60000,
+        start_time_in_millis: activityStartRef.current,
         end_time_in_millis: Date.now(),
         percentage_watched: 100,
         videos: [],
@@ -1040,12 +1045,27 @@ const AssignmentSlide = ({
       // a drifted DOCUMENT id makes it 404 "Assignment slide not found".
       const slideId = activeItem?.id || urlParams.get("slideId") || "";
       const userId = await getUserId();
+      // The backend cascades slide -> chapter -> module -> subject -> course
+      // progress from these ids. Omitting them (as this call used to) still set
+      // the slide to 100% but rolled nothing up, so submitting an assignment as
+      // the last action in a chapter left the course percentage untouched until
+      // the learner happened to open some other slide. `sessionId` is the URL's
+      // name for packageSessionId.
+      const chapterId = urlParams.get("chapterId") || "";
+      const moduleId = urlParams.get("moduleId") || "";
+      const subjectId = urlParams.get("subjectId") || "";
+      const packageSessionId =
+        urlParams.get("sessionId") || (await resolvePackageSessionId());
       return authenticatedAxiosInstance.post(
         SUBMIT_ASSIGNMENT_SLIDE_ANSWERS,
         payload,
         {
           params: {
             slideId,
+            chapterId,
+            moduleId,
+            subjectId,
+            packageSessionId,
             userId,
           },
         }

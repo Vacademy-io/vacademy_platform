@@ -11,9 +11,12 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import {
     Sparkle, CircleNotch, PaperPlaneRight, Plus, PencilSimple,
-    Trash, ArrowsDownUp, Palette, Check, X, Target,
+    Trash, ArrowsDownUp, Palette, Check, X, Target, Image as ImageIcon,
 } from '@phosphor-icons/react';
 import { useToast } from '@/hooks/use-toast';
+import { useFileUpload } from '@/hooks/use-file-upload';
+import { getPublicUrl } from '@/services/upload_file';
+import { getUserId } from '@/utils/userDetails';
 import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
 import { ContentTerms, RoleTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
@@ -34,6 +37,8 @@ const PRESET_SWATCH: Record<string, string> = {
 interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
+    /** Images the admin attached to this instruction (already on our S3). */
+    images?: string[];
 }
 
 interface PendingEdit {
@@ -70,6 +75,12 @@ export const AiCopilotPanel = () => {
     const [input, setInput] = useState('');
     const [pending, setPending] = useState<PendingEdit | null>(null);
     const [brandKits, setBrandKits] = useState<BrandKit[] | null>(null);
+    // Images staged on the composer — sent with the next instruction so the
+    // copilot can place them on the page ("use this photo in the hero").
+    const [pendingImages, setPendingImages] = useState<string[]>([]);
+    const [uploadBusy, setUploadBusy] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const { uploadFile } = useFileUpload();
     const scrollRef = useRef<HTMLDivElement>(null);
 
     const terminology = useMemo(
@@ -93,7 +104,7 @@ export const AiCopilotPanel = () => {
     };
 
     const editMutation = useMutation({
-        mutationFn: (instruction: string) => {
+        mutationFn: ({ instruction, images }: { instruction: string; images: string[] }) => {
             const page = config!.pages.find((p) => p.id === selectedPageId)!;
             const history: EditChatTurn[] = messages.slice(-6).map((m) => ({ role: m.role, content: m.content }));
             return editAiPage({
@@ -103,6 +114,7 @@ export const AiCopilotPanel = () => {
                 institute_name: (instituteDetails as any)?.institute_name || undefined,
                 terminology,
                 history,
+                images: images.map((url) => ({ url, kind: 'photo' as const })),
             });
         },
         onSuccess: (res) => {
@@ -122,14 +134,44 @@ export const AiCopilotPanel = () => {
     });
 
     const send = () => {
-        const text = input.trim();
+        const text = input.trim() || (pendingImages.length ? 'Place the attached image(s) where they fit best on this page.' : '');
         if (!text || !config || !selectedPageId || editMutation.isPending) return;
-        setMessages((m) => [...m, { role: 'user', content: text }]);
+        const images = pendingImages;
+        setMessages((m) => [...m, { role: 'user', content: text, ...(images.length ? { images } : {}) }]);
         setInput('');
+        setPendingImages([]);
         setPending(null);
         setBrandKits(null);
-        editMutation.mutate(text);
+        editMutation.mutate({ instruction: text, images });
         scrollToEnd();
+    };
+
+    // One-tap upload from the composer — stages the image for the next send.
+    const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const userId = getUserId();
+        if (!userId) return;
+        try {
+            setUploadBusy(true);
+            const fileId = await uploadFile({
+                file,
+                setIsUploading: setUploadBusy,
+                userId,
+                source: 'CATALOGUE_IMAGES',
+                sourceId: 'ADMIN',
+                publicUrl: true,
+            });
+            if (fileId) {
+                const url = (await getPublicUrl(fileId)) || fileId;
+                setPendingImages((p) => (p.includes(url) ? p : [...p, url]));
+            }
+        } catch {
+            toast({ title: 'Upload failed', description: 'Please try again.', variant: 'destructive' });
+        } finally {
+            setUploadBusy(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
     };
 
     const brandMutation = useMutation({
@@ -190,6 +232,13 @@ export const AiCopilotPanel = () => {
                             }`}
                         >
                             {m.content}
+                            {m.images && m.images.length > 0 && (
+                                <span className="mt-1.5 flex gap-1.5">
+                                    {m.images.map((u, j) => (
+                                        <img key={j} src={u} alt="" className="size-12 rounded object-cover" />
+                                    ))}
+                                </span>
+                            )}
                         </span>
                     </div>
                 ))}
@@ -272,7 +321,40 @@ export const AiCopilotPanel = () => {
                         <Palette className="size-3" /> Theme ideas
                     </button>
                 </div>
+                {pendingImages.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                        {pendingImages.map((u, i) => (
+                            <div key={i} className="relative">
+                                <img src={u} alt="" className="size-12 rounded border border-gray-200 object-cover" />
+                                <button
+                                    onClick={() => setPendingImages((p) => p.filter((x) => x !== u))}
+                                    className="absolute -right-1.5 -top-1.5 rounded-full bg-danger-500 p-0.5 text-white"
+                                >
+                                    <X className="size-3" />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleFile}
+                />
                 <div className="flex items-end gap-2">
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-9 shrink-0 px-2.5"
+                        title="Attach an image to use on the page"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadBusy}
+                    >
+                        {uploadBusy ? <CircleNotch className="size-4 animate-spin" /> : <ImageIcon className="size-4" />}
+                    </Button>
                     <Textarea
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
@@ -283,10 +365,10 @@ export const AiCopilotPanel = () => {
                             }
                         }}
                         rows={2}
-                        placeholder="Describe a change…"
+                        placeholder={pendingImages.length ? 'Where should these images go?' : 'Describe a change…'}
                         className="resize-none text-xs"
                     />
-                    <Button size="sm" onClick={send} disabled={!input.trim() || editMutation.isPending} className="h-9 shrink-0 px-3">
+                    <Button size="sm" onClick={send} disabled={(!input.trim() && pendingImages.length === 0) || editMutation.isPending} className="h-9 shrink-0 px-3">
                         <PaperPlaneRight className="size-4" />
                     </Button>
                 </div>

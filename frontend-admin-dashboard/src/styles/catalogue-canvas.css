@@ -1,0 +1,55 @@
+/**
+ * CATALOGUE EDITOR CANVAS — admin-only preview corrections.
+ * =========================================================
+ * ComponentPreviews.tsx is a canvas-side re-implementation of the learner
+ * renderers, and it is SHARED with the product-pages editor (whose live
+ * PageRenderer has different prop semantics and its own blue accent). It
+ * hardcodes Tailwind blue for accents, so the catalogue editor showed a blue
+ * page while the published page rendered in the institute's theme — the
+ * WYSIWYG canvas was lying about the single most visible property.
+ *
+ * Everything here is scoped to [data-catalogue-theme], which ONLY the two
+ * catalogue surfaces set (CanvasRenderer + the AI wizard's mini-preview).
+ * The product-pages editor never sets it (verified), so its previews are
+ * untouched — this is the same isolation a `surface` prop would give, without
+ * threading a parameter through every call site and every nested preview.
+ *
+ * NOT byte-synced: this file is admin-only and has no learner counterpart
+ * (the learner renders the real components, not previews).
+ *
+ * !important is required because these override Tailwind utility classes of
+ * equal specificity that sit in the same cascade layer.
+ */
+
+/* ── Accent fills → the active catalogue primary ─────────────────────────── */
+[data-catalogue-theme] .bg-blue-600,
+[data-catalogue-theme] .bg-blue-500 {
+  background-color: hsl(var(--primary-500)) !important;
+}
+
+[data-catalogue-theme] .bg-blue-100 {
+  background-color: hsl(var(--primary-100)) !important;
+}
+
+[data-catalogue-theme] .bg-blue-50 {
+  background-color: hsl(var(--primary-50)) !important;
+}
+
+/* ── Accent text → brand INK (AA-legible), not the fill stop ─────────────── */
+[data-catalogue-theme] .text-blue-600,
+[data-catalogue-theme] .text-blue-700 {
+  color: hsl(var(--catalogue-brand-ink)) !important;
+}
+
+/* ── Accent borders/rings ────────────────────────────────────────────────── */
+[data-catalogue-theme] .border-blue-500 {
+  border-color: hsl(var(--primary-500)) !important;
+}
+
+[data-catalogue-theme] .border-blue-100 {
+  border-color: hsl(var(--primary-100)) !important;
+}
+
+/* Selection chrome (outline-blue-500 / ring-blue-*) is deliberately NOT
+   remapped: it is editor UI, not page content, and must stay distinguishable
+   from whatever colour the page itself uses. */

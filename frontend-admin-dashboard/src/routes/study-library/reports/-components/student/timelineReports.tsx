@@ -272,7 +272,14 @@ export default function TimelineReports() {
                     ).format('DD MMM YYYY')}`,
                     learnerName: studentList.find((s) => s.user_id === selectedStudent)?.full_name,
                 },
-                reportData
+                reportData,
+                {
+                    slides: slideData ?? [],
+                    hideModule: isSlideColumnAllDefault('module_name'),
+                    hideChapter: isSlideColumnAllDefault('chapter_name'),
+                    moduleTerm: getTerminology(ContentTerms.Module, SystemTerms.Module),
+                    chapterTerm: getTerminology(ContentTerms.Chapter, SystemTerms.Chapter),
+                }
             );
             toast.success('Learner report exported');
         } catch {
@@ -293,6 +300,27 @@ export default function TimelineReports() {
     const generateReportMutation = useMutation({ mutationFn: fetchLearnersReport });
     const generateSlideMutation = useMutation({ mutationFn: fetchSlideWiseProgress });
     const { isPending, error } = generateReportMutation;
+
+    // Courses shallower than the full Subject → Module → Chapter structure come
+    // back with the literal "DEFAULT" placeholder for the missing level(s).
+    // Rather than showing a whole column of "DEFAULT" in the per-date slide
+    // tables below, hide any structural column whose every slide (across all
+    // dates) is that placeholder, and apply the same visibility to each table.
+    const allSlideDetails = (slideData ?? []).flatMap((day) => day.slide_details ?? []);
+    const isSlideColumnAllDefault = (
+        key: 'subject_name' | 'module_name' | 'chapter_name'
+    ) =>
+        allSlideDetails.length > 0 &&
+        allSlideDetails.every(
+            (detail) => (detail[key] ?? '').toString().trim().toUpperCase() === 'DEFAULT'
+        );
+    const slidesTableState = {
+        columnVisibility: {
+            subject: !isSlideColumnAllDefault('subject_name'),
+            module: !isSlideColumnAllDefault('module_name'),
+            chapter: !isSlideColumnAllDefault('chapter_name'),
+        },
+    };
 
     return (
         <div className="space-y-6">
@@ -394,7 +422,10 @@ export default function TimelineReports() {
                         <Select
                             onValueChange={(value) => setValue('student', value)}
                             {...register('student')}
-                            defaultValue=""
+                            // Controlled like the course/session/level selects above so
+                            // the ?studentReport= prefill (setValue('student', userId))
+                            // is reflected in the trigger, not just in form state.
+                            value={selectedStudent || ''}
                             disabled={!studentList.length}
                         >
                             <SelectTrigger className="h-9 text-sm">
@@ -624,6 +655,7 @@ export default function TimelineReports() {
                                             isLoading={isPending}
                                             error={error}
                                             currentPage={0}
+                                            tableState={slidesTableState}
                                         // className="!h-full"
                                         ></MyTable>
                                     </div>

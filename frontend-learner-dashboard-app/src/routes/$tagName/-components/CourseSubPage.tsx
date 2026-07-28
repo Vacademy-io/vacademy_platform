@@ -5,6 +5,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
+import { buildPrimaryScaleVars } from "../-utils/style-utils";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
@@ -107,6 +108,7 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     if (!fonts?.enabled || !fonts?.family) {
       document.body.style.fontFamily =
         "'Figtree', system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      document.documentElement.style.removeProperty("--catalogue-heading-font");
       return;
     }
 
@@ -130,6 +132,26 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
     const resolvedFontFamily = withArabicFallback(fontFamily);
     document.body.style.fontFamily = resolvedFontFamily;
     document.documentElement.style.setProperty("--app-font-family", resolvedFontFamily);
+
+    // Optional separate heading font (serif display over sans body) — same
+    // contract as CourseCataloguePage: load it and expose the CSS var the
+    // catalogue heading rule reads; unset → headings inherit the body font.
+    const headingFamily = (fonts as { headingFamily?: string })?.headingFamily?.trim();
+    if (headingFamily) {
+      const primaryHeading = headingFamily.split(",")[0].replace(/['"]/g, "").trim();
+      const headingHref = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(
+        primaryHeading
+      )}:wght@300;400;500;600;700&display=swap`;
+      if (!document.querySelector(`link[href="${headingHref}"]`)) {
+        const headingLink = document.createElement("link");
+        headingLink.rel = "stylesheet";
+        headingLink.href = headingHref;
+        document.head.appendChild(headingLink);
+      }
+      document.documentElement.style.setProperty("--catalogue-heading-font", headingFamily);
+    } else {
+      document.documentElement.style.removeProperty("--catalogue-heading-font");
+    }
 
     console.log("[CourseSubPage] Applied font:", fontFamily, "Primary font:", primaryFont);
   }, [catalogueData]);
@@ -272,8 +294,25 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
   }
 
 
+  // The page brings its own hero → the generic blue title band is redundant
+  // chrome on top of a designed page (AI marketing pages open with a hero).
+  const hasOwnHero = (currentPage.components || []).some(
+    (c: any) => c?.type === "heroSection" && c?.enabled !== false
+  );
+  const themeSettings = catalogueData?.globalSettings?.theme as any;
+
   return (
-    <div className="min-h-screen bg-white w-full pb-20 md:pb-0 pt-20">
+    <div
+      className="min-h-screen bg-catalogue-bg w-full pb-20 md:pb-0 pt-20"
+      data-catalogue-theme={themeSettings?.preset || "default"}
+      data-catalogue-radius={themeSettings?.borderRadius || "rounded"}
+      data-heading-scale={themeSettings?.headingScale || "default"}
+      data-catalogue-atmosphere={themeSettings?.atmosphere?.canvas || "flat"}
+      data-catalogue-motion={(catalogueData?.globalSettings as any)?.motion?.personality}
+      data-catalogue-intensity={themeSettings?.atmosphere?.intensity || "subtle"}
+      data-catalogue-density={(catalogueData?.globalSettings as any)?.compactness || "medium"}
+      style={buildPrimaryScaleVars(themeSettings?.primaryColor) as React.CSSProperties}
+    >
       {/* Intro Page - Show first if enabled and not completed */}
       {showIntroPage && catalogueData?.introPage && (
         <IntroPageComponent
@@ -306,8 +345,9 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
             />
           )}
 
-          {/* Page Title Header - Professional styling */}
-          {currentPage?.title && (
+          {/* Page Title Header - Professional styling (suppressed when the
+              page opens with its own hero section) */}
+          {currentPage?.title && !hasOwnHero && (
             <div
               className="w-full py-5 sm:py-6 lg:py-8"
               style={{

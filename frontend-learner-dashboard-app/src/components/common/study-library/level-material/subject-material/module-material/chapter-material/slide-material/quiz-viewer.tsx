@@ -190,6 +190,9 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
   const [showIncorrectNotice, setShowIncorrectNotice] = useState(false);
   const [showWarning, setShowWarning] = useState(false);
   const timerExpiredRef = useRef(false);
+  // Real time the learner has had this quiz open (mount → submit) so the
+  // reported "Time Spent" reflects actual engagement, not a fake 1 minute.
+  const activityStartRef = useRef<number>(Date.now());
   // Keep a ref to always-current answers so the timer's stale closure gets the latest values
   const answersRef = useRef(answers);
   useEffect(() => { answersRef.current = answers; }, [answers]);
@@ -400,7 +403,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
       source_type: "QUIZ",
       user_id: userId,
       slide_id: slideId,
-      start_time_in_millis: now - 60000, // Example: started 1 min ago
+      start_time_in_millis: activityStartRef.current,
       end_time_in_millis: now,
       percentage_watched: 100,
       videos: [],
@@ -687,7 +690,7 @@ export const QuizViewer: React.FC<QuizViewerProps> = ({
         source_type: "QUIZ",
         user_id: userId,
         slide_id: slideId,
-        start_time_in_millis: now - 60000,
+        start_time_in_millis: activityStartRef.current,
         end_time_in_millis: now,
         percentage_watched: 100,
         videos: [],

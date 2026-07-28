@@ -3,12 +3,12 @@ import { ActivitySchema } from "@/schemas/study-library/youtube-video-tracking-s
 import { useAddVideoActivity } from "@/services/study-library/tracking-api/add-video-activity";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { TrackingDataType } from "@/types/tracking-data-type";
-import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/getPackageSessionId";
 import { calculateAndUpdateTimestamps } from "@/utils/study-library/tracking/calculateAndUpdateTimestamps";
 import { Preferences } from "@capacitor/preferences";
 import { useRouter } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { z } from "zod";
+import { useResolvedPackageSessionId } from "./useResolvedPackageSessionId";
 import { useSlidesRefresh } from "./useSlidesRefresh";
 import { ADD_UPDATE_VIDEO_ACTIVITY } from "@/constants/urls";
 
@@ -27,16 +27,8 @@ export const useVideoSync = () => {
   const { activeItem } = useContentStore();
   const router = useRouter();
   const { chapterId, moduleId, subjectId } = router.state.location.search;
-  const [packageSessionId, setPackageSessionId] = useState<string | null>(null);
+  const resolvePackageSessionId = useResolvedPackageSessionId();
   const { refreshSlides } = useSlidesRefresh();
-
-  useEffect(() => {
-    const fetchPackageSessionId = async () => {
-      const id = await getPackageSessionId();
-      setPackageSessionId(id);
-    };
-    fetchPackageSessionId();
-  }, []);
 
   // Tab-close safety net. The periodic 60s sync covers the "user keeps the
   // tab open" case; this covers "user pauses then closes the tab". We use
@@ -212,6 +204,8 @@ export const useVideoSync = () => {
       if (!userId) {
         throw new Error("User ID not found in storage");
       }
+
+      const packageSessionId = await resolvePackageSessionId();
 
       const { value } = await Preferences.get({ key: STORAGE_KEY });
       if (!value) return;

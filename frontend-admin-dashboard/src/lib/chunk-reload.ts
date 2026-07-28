@@ -7,6 +7,10 @@
  *
  * A sessionStorage-backed budget prevents infinite reload loops in the rare
  * case that a deploy ships genuinely broken chunks.
+ *
+ * NOTE: index.html carries an inline pre-boot guard for the case this module
+ * can never see — an entry-graph chunk failing before the app boots. It uses
+ * the same sessionStorage key and limits; keep the two in sync.
  */
 
 const RELOAD_KEY = 'vacademy:chunk-reload-attempts';

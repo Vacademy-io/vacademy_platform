@@ -6,6 +6,7 @@ import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
+import { buildPrimaryScaleVars } from "../-utils/style-utils";
 import { CourseCatalogueService } from "../-services/course-catalogue-service";
 import { CourseCatalogueData } from "../-types/course-catalogue-types";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
@@ -389,6 +390,8 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       data-catalogue-atmosphere={themeSettings?.atmosphere?.canvas || 'flat'}
       data-catalogue-motion={(catalogueData?.globalSettings as any)?.motion?.personality}
       data-catalogue-intensity={themeSettings?.atmosphere?.intensity || 'subtle'}
+      data-catalogue-density={(catalogueData?.globalSettings as any)?.compactness || 'medium'}
+      style={buildPrimaryScaleVars(themeSettings?.primaryColor) as React.CSSProperties}
     >
       <Helmet>
         <title>{seoTitle}</title>
@@ -413,6 +416,11 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
       {/* Main Content - Only show after intro is completed or if no intro page */}
       {(!showIntroPage || introCompleted) && catalogueData && (
         <>
+          {/* Keyboard users land on the header nav; this lets them jump the
+              whole global chrome straight to the page content. */}
+          <a href="#catalogue-main" className="catalogue-skip-link">
+            Skip to main content
+          </a>
           {/* Header from JSON globalSettings */}
           {(catalogueData.globalSettings as any).layout?.header && (catalogueData.globalSettings as any).layout?.header?.enabled !== false && (
             <div className={(catalogueData.globalSettings as any).stickyHeader !== false ? 'sticky top-0 z-50' : ''}>
@@ -446,7 +454,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
               return page.id === "home" || page.route === "homepage" || page.route === "/" || page.route === "";
             })
             .map((page) => (
-              <div key={page.id} className="pt-16 md:pt-20" style={{ backgroundColor: (page as any).backgroundColor || undefined }}>
+              <main id="catalogue-main" tabIndex={-1} key={page.id} className="pt-16 md:pt-20" style={{ backgroundColor: (page as any).backgroundColor || undefined }}>
                 <JsonRenderer
                   page={page}
                   globalSettings={catalogueData.globalSettings}
@@ -456,7 +464,7 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
                   selectedComponentId={selectedComponentId}
                   onComponentClick={handlePreviewComponentClick}
                 />
-              </div>
+              </main>
             ))}
 
           {/* Footer from JSON globalSettings */}

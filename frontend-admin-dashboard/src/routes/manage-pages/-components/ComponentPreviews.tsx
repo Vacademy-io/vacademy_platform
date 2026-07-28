@@ -278,7 +278,15 @@ const FooterPreview: React.FC<P> = ({ props }) => {
 
 const StatsPreview: React.FC<P> = ({ props }) => {
     const bg = props.backgroundColor || props.styles?.backgroundColor || '#FFFFFF';
-    const fg = props.textColor || props.styles?.textColor || '#111827';
+    // Heading/description default to white on a dark section bg (matches the
+    // learner StatsHighlightsComponent) unless an explicit textColor is set.
+    const darkBg = (() => {
+        const raw = String(bg).trim().replace(/^#/, '');
+        if (!/^[0-9a-fA-F]{6}$/.test(raw)) return false;
+        const r = parseInt(raw.slice(0, 2), 16), g = parseInt(raw.slice(2, 4), 16), b = parseInt(raw.slice(4, 6), 16);
+        return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.55;
+    })();
+    const fg = props.textColor || props.styles?.textColor || (darkBg ? '#FFFFFF' : '#111827'); // design-lint-ignore: page-builder default colors
     // Support both formats: flat stats[] and grouped groups[].stats[]
     const useGroups = props.groups && props.groups.length > 0;
     const displayStats: any[] = useGroups
@@ -901,17 +909,82 @@ export const renderComponentPreview = (
             const features = props.features || [];
             const cols = props.columns || 3;
             const fg = props.textColor || '#111827';
+            // "panel" — tinted-header division cards (mirrors the learner
+            // FeatureGridRenderer panel branch).
+            if ((props.style || 'cards') === 'panel') {
+                const hexDark = (hex?: string) => {
+                    const raw = (hex || '').trim().replace(/^#/, '');
+                    if (!/^[0-9a-fA-F]{6}$/.test(raw)) return false;
+                    const r = parseInt(raw.slice(0, 2), 16), g = parseInt(raw.slice(2, 4), 16), b = parseInt(raw.slice(4, 6), 16);
+                    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 < 0.55;
+                };
+                const pCols = Math.min(Math.max(cols, 1), 3);
+                return (
+                    <section className="py-10 px-8" style={{ backgroundColor: props.backgroundColor || '#FFFFFF' /* design-lint-ignore: page-builder default color */ }}>
+                        {props.headerText && <h2 className="mb-1 text-center catalogue-h2" style={{ color: fg }}>{props.headerText}</h2>}
+                        {props.subheading && <p className="mb-8 text-center text-sm" style={{ color: fg, opacity: 0.65 }}>{props.subheading}</p>}
+                        <div className="mx-auto max-w-5xl" style={{ display: 'grid', gridTemplateColumns: `repeat(${pCols}, 1fr)`, gap: 20 }}>
+                            {features.map((f: any, i: number) => {
+                                const IconComp = f.iconName ? FEATURE_ICON_MAP[f.iconName] : undefined;
+                                const bullets: string[] = (f.bullets || []).filter(Boolean);
+                                const badge: string = f.badge || (f.chips || []).filter(Boolean)[0] || '';
+                                const solid = f.headerColor ? hexDark(f.headerColor) : f.headerVariant === 'solid';
+                                const headerStyle = f.headerColor
+                                    ? { backgroundColor: f.headerColor }
+                                    : solid ? { backgroundColor: 'hsl(var(--primary-500))' } : { backgroundColor: 'hsl(var(--primary-50))' };
+                                return (
+                                    <div key={i} className="catalogue-card-elevated overflow-hidden !p-0 text-left">
+                                        <div className="p-5" style={headerStyle}>
+                                            {(badge || IconComp) && (
+                                                <div className="mb-2 flex items-center justify-between gap-2">
+                                                    {badge ? (
+                                                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-caption font-semibold uppercase tracking-wider ${solid ? 'bg-white/15 text-white' : 'bg-primary-100 text-primary-600'}`}>{badge}</span>
+                                                    ) : <span />}
+                                                    {IconComp && (
+                                                        <span className={`inline-flex items-center justify-center rounded-lg p-2 ${solid ? 'bg-white/15 text-white' : 'bg-primary-100 text-primary-500'}`}>
+                                                            <IconComp size={22} weight="duotone" aria-hidden="true" />
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+                                            <h3 className={`catalogue-h3 text-lg font-bold ${solid ? 'text-white' : 'text-catalogue-text-primary'}`}>{f.title}</h3>
+                                            {f.description && <p className={`mt-1 text-xs leading-relaxed ${solid ? 'text-white/75' : 'text-catalogue-text-secondary'}`}>{f.description}</p>}
+                                        </div>
+                                        {(bullets.length > 0 || f.link?.text) && (
+                                            <div className="p-5">
+                                                {bullets.length > 0 && (
+                                                    <ul className="space-y-1.5 text-xs text-catalogue-text-secondary">
+                                                        {bullets.map((b: string, j: number) => (
+                                                            <li key={j} className="flex items-start gap-1.5">
+                                                                <Check size={13} weight="bold" className="mt-0.5 shrink-0 text-primary-500" aria-hidden="true" />
+                                                                <span>{b}</span>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                )}
+                                                {f.link?.text && <div className="mt-3 text-xs font-semibold text-primary-500">{f.link.text} →</div>}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </section>
+                );
+            }
             // Card skins mirror the learner FeatureGridRenderer so the new
             // Style buttons (glass / gradient-border / tinted) show on canvas
             const fgStyle = props.style || 'cards';
             const cardClass =
-                fgStyle === 'cards' ? 'rounded-xl border border-gray-100 bg-white p-5 shadow-sm' :
+                fgStyle === 'cards' ? 'catalogue-card-elevated group p-6' :
                 fgStyle === 'bordered' ? 'rounded-xl border-2 border-gray-200 p-5' :
                 fgStyle === 'glass' ? 'catalogue-card-glass p-5' :
                 fgStyle === 'gradient-border' ? 'catalogue-card-gradient-border p-5' :
                 fgStyle === 'tinted' ? 'catalogue-card-tinted p-5' :
                 'p-4';
-            const fgLeft = props.align === 'left';
+            // Mirrors the learner default: prose cards left-align, icon tiles centre.
+            const fgHasProse = features.some((f: any) => String(f.description || '').length > 60 || (f.bullets?.length ?? 0) > 0);
+            const fgLeft = (props.align ?? (fgHasProse ? 'left' : 'center')) === 'left';
             return (
                 <section className="py-10 px-8" style={{ backgroundColor: props.backgroundColor || '#FFFFFF' }}>
                     {props.headerText && <h2 className="mb-1 text-center catalogue-h2" style={{ color: fg }}>{props.headerText}</h2>}
@@ -923,19 +996,19 @@ export const renderComponentPreview = (
                             const bullets: string[] = (f.bullets || []).filter(Boolean);
                             return (
                                 <div key={i} className={`${fgLeft ? 'text-left' : 'text-center'} ${cardClass}`}>
-                                    <div className="mb-3">
+                                    <div className={`mb-3 flex ${fgLeft ? '' : 'justify-center'}`}>
                                         {IconComp ? (
-                                            <span className="inline-flex items-center justify-center rounded-xl bg-primary-50 p-2.5 text-primary-500">
+                                            <span className="inline-flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-50 to-primary-100 p-3 text-primary-500 ring-1 ring-primary-100 transition-transform duration-300 group-hover:scale-105">
                                                 <IconComp size={props.iconSize === 'small' ? 18 : props.iconSize === 'medium' ? 24 : 28} weight="duotone" aria-hidden="true" />
                                             </span>
-                                        ) : (
-                                            <span className={props.iconSize === 'large' ? 'text-3xl' : 'text-2xl'}>{f.icon || '⭐'}</span>
-                                        )}
+                                        ) : f.icon ? (
+                                            <span className={props.iconSize === 'large' ? 'text-3xl' : 'text-2xl'}>{f.icon}</span>
+                                        ) : null}
                                     </div>
                                     {chips.length > 0 && (
                                         <div className={`mb-2 flex flex-wrap gap-1.5 ${fgLeft ? '' : 'justify-center'}`}>
                                             {chips.map((c, j) => (
-                                                <span key={j} className="catalogue-badge catalogue-badge-primary rounded-full">{c}</span>
+                                                <span key={j} className="inline-flex items-center rounded-full bg-primary-50 px-3 py-1 text-xs font-medium text-primary-500 ring-1 ring-primary-100">{c}</span>
                                             ))}
                                         </div>
                                     )}

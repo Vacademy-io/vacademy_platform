@@ -60,7 +60,12 @@ public class WebSecurityConfig {
             "/notification-service/v1/sse/**",
             "/notification-service/public/**",
             "/notification-service/health/**",
-            "/notification-service/webhook/v1/wati/**"
+            "/notification-service/webhook/v1/wati/**",
+            // Meta (WhatsApp Cloud API) webhook — Meta calls these UNAUTHENTICATED
+            // (GET verification handshake + POST events), so they must be public or
+            // Meta's webhook verification fails with 403.
+            "/notification-service/webhook/v1/meta",
+            "/notification-service/webhook/v1/meta/**"
     };
 
     @Autowired

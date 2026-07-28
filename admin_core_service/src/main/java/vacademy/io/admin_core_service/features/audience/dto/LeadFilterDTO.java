@@ -55,8 +55,10 @@ public class LeadFilterDTO {
     // 'ONLY_CONVERTED' shows only converted leads. 'ALL' shows everything.
     private String conversionStatusFilter;
     /** Call-attempt history: '' | NOT_CALLED | CALLED | CALLED_ONCE | CALLED_TWICE_PLUS
-     *  | AI_CALLED | MANUAL_CALLED. Matched via telephony_call_log (response_id or
-     *  LEAD subject_id). AI = VACADEMY_AI/AAVTAAR; manual = everything else bar MOCK. */
+     *  | AI_CALLED | MANUAL_CALLED. Matched via telephony_call_log by response_id,
+     *  LEAD subject_id, OR institute-scoped user_id (CDR-imported calls often carry
+     *  only the user link — same lookup the lead side-panel's call history uses).
+     *  AI = VACADEMY_AI/AAVTAAR; manual = everything else bar MOCK. */
     private String callHistoryFilter;
 
     /**

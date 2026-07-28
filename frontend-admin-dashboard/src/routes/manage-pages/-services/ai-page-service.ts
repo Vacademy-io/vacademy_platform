@@ -197,6 +197,8 @@ export interface IntakeResponse {
     reply: string;
     chips: string[];
     request_upload: 'logo' | 'photo' | 'inspiration' | null;
+    /** Assistant's classification of images in the admin's latest message. */
+    received_image_kind?: 'logo' | 'photo' | 'inspiration' | null;
     ready: boolean;
     brief: string | null;
     page_type: string;
@@ -214,7 +216,7 @@ export const intakeAiTurn = async (payload: {
     const response = await authenticatedAxiosInstance.post<IntakeResponse>(
         AI_PAGE_BUILDER_INTAKE(),
         payload,
-        { timeout: 90000 }
+        { timeout: 180000 } // vision turns with big screenshots can run long
     );
     return response.data;
 };

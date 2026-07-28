@@ -480,7 +480,7 @@ const FaqSectionRenderer: React.FC<any> = ({ headerText, subheading, faqs = [], 
   const [openIndex, setOpenIndex] = React.useState<number | null>(null);
   const txt = sectionText(backgroundColor);
   return (
-    <section style={sectionBg(backgroundColor)} className="py-16 px-4 bg-catalogue-bg-subtle">
+    <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 bg-catalogue-bg-subtle">
       <div className="mx-auto max-w-3xl">
         {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
         {subheading && <p className={`mb-10 text-center ${txt.muted}`}>{subheading}</p>}
@@ -519,7 +519,7 @@ const VideoEmbedRenderer: React.FC<any> = ({ url = '', title, caption, aspectRat
   const padMap: Record<string, string> = { '16:9': '56.25%', '4:3': '75%', '1:1': '100%', '9:16': '177.78%' };
   const embedUrl = getEmbedUrl(url);
   return (
-    <section className="py-12 px-4">
+    <section className="catalogue-section-tight px-4">
       <div className="mx-auto max-w-4xl">
         {title && <h2 className="mb-6 text-center text-2xl font-bold text-catalogue-text-primary">{title}</h2>}
         {embedUrl ? (
@@ -543,7 +543,7 @@ const CtaBannerRenderer: React.FC<any> = ({ heading, subheading, backgroundColor
   // so it must stay white in every theme/mode (not a token surface).
   const ctaButtonClass = 'mt-4 inline-block rounded-lg bg-white px-8 py-3 font-semibold shadow-md transition hover:opacity-90'; // design-lint-ignore: intentional white over author-colored surface
   return (
-    <section style={{ backgroundColor }} className="py-14 px-4">
+    <section style={{ backgroundColor }} className="catalogue-section px-4">
       <div className={`mx-auto max-w-5xl flex ${isSplit ? 'items-center justify-between gap-8 flex-wrap' : 'flex-col items-center text-center'}`}>
         <div className={isSplit ? 'flex-1' : ''}>
           {heading && <h2 style={{ color: textColor }} className="catalogue-h2">{heading}</h2>}
@@ -560,7 +560,7 @@ const CtaBannerRenderer: React.FC<any> = ({ heading, subheading, backgroundColor
 };
 
 const PricingTableRenderer: React.FC<any> = ({ headerText, subheading, plans = [] }) => (
-  <section className="py-16 px-4 bg-catalogue-bg">
+  <section className="catalogue-section px-4 bg-catalogue-bg">
     <div className="mx-auto max-w-5xl">
       {headerText && <h2 className="mb-2 text-center catalogue-h2 text-catalogue-text-primary">{headerText}</h2>}
       {subheading && <p className="mb-12 text-center text-catalogue-text-muted">{subheading}</p>}
@@ -599,7 +599,7 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
   const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); setSubmitted(true); };
   const txt = sectionText(backgroundColor);
   return (
-    <section style={sectionBg(backgroundColor)} className="py-16 px-4 bg-catalogue-bg">
+    <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 bg-catalogue-bg">
       <div className="mx-auto max-w-2xl">
         {heading && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{heading}</h2>}
         {subheading && <p className={`mb-10 text-center ${txt.muted}`}>{subheading}</p>}
@@ -630,7 +630,7 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
 };
 
 const TeamSectionRenderer: React.FC<any> = ({ headerText, subheading, members = [], columns = 3 }) => (
-  <section className="py-16 px-4 bg-catalogue-bg">
+  <section className="catalogue-section px-4 bg-catalogue-bg">
     <div className="mx-auto max-w-6xl">
       {headerText && <h2 className="mb-2 text-center catalogue-h2 text-catalogue-text-primary">{headerText}</h2>}
       {subheading && <p className="mb-12 text-center text-catalogue-text-muted">{subheading}</p>}
@@ -655,7 +655,7 @@ const TeamSectionRenderer: React.FC<any> = ({ headerText, subheading, members = 
 );
 
 const AnnouncementFeedRenderer: React.FC<any> = ({ headerText, subheading, announcements = [], layout = 'list', showDate = true, showTag = true, backgroundColor }) => (
-  <section style={sectionBg(backgroundColor)} className="py-16 px-4 bg-catalogue-bg">
+  <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 bg-catalogue-bg">
     <div className="mx-auto max-w-4xl">
       {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${sectionText(backgroundColor).heading}`}>{headerText}</h2>}
       {subheading && <p className={`mb-10 text-center ${sectionText(backgroundColor).muted}`}>{subheading}</p>}
@@ -678,7 +678,7 @@ const AnnouncementFeedRenderer: React.FC<any> = ({ headerText, subheading, annou
 );
 
 const ImageGalleryRenderer: React.FC<any> = ({ headerText, images = [], columns = 3, showCaptions = false }) => (
-  <section className="py-12 px-4 bg-catalogue-bg">
+  <section className="catalogue-section-tight px-4 bg-catalogue-bg">
     <div className="mx-auto max-w-6xl">
       {headerText && <h2 className="mb-8 text-center catalogue-h2 text-catalogue-text-primary">{headerText}</h2>}
       <div className={`grid gap-4 ${columns === 2 ? 'sm:grid-cols-2' : columns === 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-3'}`}>
@@ -766,7 +766,7 @@ const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defau
     const activeIndex = [...openIndices][0] ?? 0;
     const active = items[activeIndex];
     return (
-      <section style={sectionBg(backgroundColor)} className="py-12 px-4 bg-catalogue-bg">
+      <section style={sectionBg(backgroundColor)} className="catalogue-section-tight px-4 bg-catalogue-bg">
         <div className="mx-auto max-w-6xl lg:grid lg:grid-cols-5 lg:gap-8">
           <div className="space-y-2 lg:col-span-2">
             {items.map((item: any, i: number) => (
@@ -794,7 +794,7 @@ const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defau
   if (mode === 'accordion') {
     const boxed = variant === 'boxed';
     return (
-      <section style={sectionBg(backgroundColor)} className="py-12 px-4 bg-catalogue-bg">
+      <section style={sectionBg(backgroundColor)} className="catalogue-section-tight px-4 bg-catalogue-bg">
         <div className={`mx-auto max-w-3xl ${boxed ? 'divide-y divide-catalogue-border-subtle rounded-xl border border-catalogue-border overflow-hidden' : 'space-y-2'}`}>
           {items.map((item: any, i: number) => (
             <div key={i} className={boxed ? 'bg-catalogue-bg' : 'rounded-lg border border-catalogue-border bg-catalogue-bg overflow-hidden'}>
@@ -812,7 +812,7 @@ const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defau
   }
 
   return (
-    <section style={sectionBg(backgroundColor)} className="py-12 px-4 bg-catalogue-bg">
+    <section style={sectionBg(backgroundColor)} className="catalogue-section-tight px-4 bg-catalogue-bg">
       <div className="mx-auto max-w-3xl">
         <div className="flex border-b border-catalogue-border">
           {items.map((item: any, i: number) => (
@@ -846,7 +846,7 @@ const logoWillRender = (logo: any, display: string) =>
 const LogoCloudRenderer: React.FC<any> = ({ headerText, subheading, logos = [], layout = 'grid', grayscale = true, columns = 5, display = 'logo', tile = 'none', marqueeSpeed = 'medium', logoHeight = 'md' }) => {
   const visible = logos.filter((logo: any) => logoWillRender(logo, display));
   return (
-  <section className="py-12 px-4">
+  <section className="catalogue-section-tight px-4">
     <div className="mx-auto max-w-5xl text-center">
       {headerText && <h3 className="mb-2 text-lg font-semibold uppercase tracking-wider text-catalogue-text-muted">{headerText}</h3>}
       {subheading && <p className="mb-8 text-sm text-catalogue-text-muted">{subheading}</p>}
@@ -1048,7 +1048,7 @@ const CountdownTimerRenderer: React.FC<any> = ({ targetDate, heading, expiredMes
 
   if (expired) {
     return (
-      <section style={{ backgroundColor }} className="py-12 px-4 text-center">
+      <section style={{ backgroundColor }} className="catalogue-section-tight px-4 text-center">
         <p className="text-xl font-semibold" style={{ color: textColor }}>{expiredMessage || 'The event has started!'}</p>
       </section>
     );
@@ -1062,7 +1062,7 @@ const CountdownTimerRenderer: React.FC<any> = ({ targetDate, heading, expiredMes
   ];
 
   return (
-    <section style={{ backgroundColor }} className="py-12 px-4 text-center">
+    <section style={{ backgroundColor }} className="catalogue-section-tight px-4 text-center">
       {heading && <h3 className="mb-8 text-xl font-bold" style={{ color: textColor }}>{heading}</h3>}
       <div className="flex justify-center gap-4">
         {units.map(({ label, value }) => (
@@ -1121,7 +1121,7 @@ const FeatureGridRenderer: React.FC<any> = ({
   if (style === 'panel') {
     const panelCols = Math.min(Math.max(Number(columns) || 2, 1), 3);
     return (
-      <section style={sectionBg(backgroundColor)} className="py-16 px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
+      <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
         <div className="mx-auto max-w-6xl">
           {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
           {subheading && <p className={`catalogue-lead catalogue-measure mb-10 text-center ${txt.muted}`}>{subheading}</p>}
@@ -1206,7 +1206,7 @@ const FeatureGridRenderer: React.FC<any> = ({
   }
 
   return (
-    <section style={sectionBg(backgroundColor)} className="py-16 px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
+    <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
       <div className="mx-auto max-w-6xl">
         {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
         {subheading && <p className={`catalogue-lead catalogue-measure mb-10 text-center ${txt.muted}`}>{subheading}</p>}
@@ -1326,7 +1326,7 @@ const NewsletterSignupRenderer: React.FC<any> = ({ heading, subheading, placehol
   };
 
   return (
-    <section style={sectionBg(backgroundColor)} className="py-14 px-4 sm:px-6 lg:px-8 bg-catalogue-bg-subtle">
+    <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 sm:px-6 lg:px-8 bg-catalogue-bg-subtle">
       <div className="mx-auto max-w-lg text-center">
         {heading && <h3 className={`mb-2 text-2xl font-bold ${txt.heading}`}>{heading}</h3>}
         {subheading && <p className={`mb-6 ${txt.muted}`}>{subheading}</p>}
@@ -1415,7 +1415,7 @@ const StepsProcessRenderer: React.FC<any> = ({ headerText, subheading, layout = 
   if (variant === 'timeline-cards' || variant === 'alternating') {
     const isAlt = variant === 'alternating';
     return (
-      <section style={sectionBg(backgroundColor)} className="py-16 px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
+      <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
         <div className="mx-auto max-w-4xl">
           {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
           {subheading && <p className={`catalogue-lead catalogue-measure mb-10 text-center ${txt.muted}`}>{subheading}</p>}
@@ -1479,7 +1479,7 @@ const StepsProcessRenderer: React.FC<any> = ({ headerText, subheading, layout = 
   };
 
   return (
-    <section style={sectionBg(backgroundColor)} className="py-16 px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
+    <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
       <div className="mx-auto max-w-5xl">
         {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
         {subheading && <p className={`catalogue-lead catalogue-measure mb-10 text-center ${txt.muted}`}>{subheading}</p>}
@@ -1526,6 +1526,18 @@ const usePrefersReducedMotion = (): boolean => {
   }, []);
   return reduced;
 };
+
+/** When the admin authored explicit section padding, zero the rhythm vars so
+ *  their value is authoritative instead of stacking on top of the renderer's
+ *  .catalogue-section padding. */
+const authoredPaddingVars = (style?: { paddingTop?: string; paddingBottom?: string }) =>
+  style?.paddingTop || style?.paddingBottom
+    ? ({
+        ['--catalogue-section-py' as string]: '0px',
+        ['--catalogue-section-py-tight' as string]: '0px',
+        ['--catalogue-section-py-loose' as string]: '0px',
+      } as React.CSSProperties)
+    : undefined;
 
 const ComponentStyleWrapper: React.FC<{
   component: any;
@@ -1622,7 +1634,7 @@ const ComponentStyleWrapper: React.FC<{
         id={component.anchorId || undefined}
         data-cid={component.id}
         className={`${component.style?.customClass || ''} ${hoverClass} ${staggerClass}`}
-        style={{ ...canvasStyle, ...animationStyle, ...decorClip }}
+        style={{ ...canvasStyle, ...animationStyle, ...decorClip, ...authoredPaddingVars(component.style) }}
       >
         {responsiveCSS && <style dangerouslySetInnerHTML={{ __html: responsiveCSS }} />}
         {staggerCSS && <style dangerouslySetInnerHTML={{ __html: staggerCSS }} />}
@@ -1658,6 +1670,7 @@ const ComponentStyleWrapper: React.FC<{
         // positioned when overlay/decoration children need an anchor.
         position: (componentStyle.position as React.CSSProperties['position']) ?? (hasOverlay || decor ? 'relative' : undefined),
         ...decorClip,
+        ...authoredPaddingVars(component.style),
       }}
     >
       {responsiveCSS && <style dangerouslySetInnerHTML={{ __html: responsiveCSS }} />}

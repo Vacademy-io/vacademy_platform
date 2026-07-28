@@ -773,6 +773,17 @@
     padding-inline: calc(max((100% - var(--catalogue-content-max)) / 2, 0px) + var(--space-4));
   }
 
+  /* Hide the scroll track on swipe rails — the overflowing card and the
+     arrows are the affordance; a full-width scrollbar under a card rail
+     reads as a broken layout. Scrolling itself is untouched. */
+  .catalogue-no-scrollbar {
+    scrollbar-width: none;
+  }
+
+  .catalogue-no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   /* =============================================
      ANCHOR OFFSET
      Deep links (#gate) must not land under the sticky site header.

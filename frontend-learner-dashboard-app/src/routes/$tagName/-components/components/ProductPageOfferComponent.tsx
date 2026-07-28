@@ -122,9 +122,14 @@ const formatValidity = (days?: number): string => {
  * brand-tinted tile reads as designed.
  */
 const CoursePlaceholder: React.FC<{ title: string }> = ({ title }) => (
-  <div className="flex aspect-[16/9] w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-catalogue-lg bg-gradient-to-br from-primary-100 via-primary-50 to-transparent px-3">
-    <BookOpen size={30} className="text-catalogue-brand-ink opacity-50" aria-hidden="true" />
-    <span className="line-clamp-1 text-center text-xs font-medium text-catalogue-brand-ink opacity-80">
+  // Committed brand tint, not a wash: a rail of imageless courses is the COMMON
+  // case (163-course book stores), and pale near-white tiles in a row read as
+  // broken images rather than designed tiles.
+  <div className="flex aspect-[16/9] w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-catalogue-lg bg-gradient-to-br from-primary-200 via-primary-100 to-primary-50 px-4">
+    <span className="inline-flex size-9 items-center justify-center rounded-full bg-catalogue-bg/70">
+      <BookOpen size={20} weight="duotone" className="text-catalogue-brand-ink" aria-hidden="true" />
+    </span>
+    <span className="line-clamp-2 text-center text-xs font-semibold leading-snug text-catalogue-brand-ink">
       {title}
     </span>
   </div>
@@ -185,10 +190,10 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   productPageCode,
   title,
   subtitle,
-  columns = 3,
+  columns,
   layout = "grid",
-  align = "center",
-  headerScale = "lg",
+  align,
+  headerScale,
   showViewAll = false,
   viewAllLabel,
   ctaLabel,
@@ -217,7 +222,9 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
   const [canNext, setCanNext] = useState(false);
 
   const isCarousel = layout === "carousel";
-  const cols = Math.min(Math.max(Number(columns) || 3, 1), 4);
+  // A rail wants denser cards than a grid: default 4-up so a fifth card peeks
+  // in from the edge (the browse cue), 3-up for the grid. Explicit props win.
+  const cols = Math.min(Math.max(Number(columns) || (isCarousel ? 4 : 3), 1), 4);
   const gridCols =
     `grid gap-6 grid-cols-1 sm:grid-cols-2 ${cols >= 3 ? "lg:grid-cols-3" : ""} ${cols >= 4 ? "xl:grid-cols-4" : ""}`;
 
@@ -281,8 +288,11 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCarousel, visible.length, cols]);
 
-  const isLeft = align === "left";
-  const compact = headerScale === "md";
+  // A horizontal rail IS the app pattern, so unless the admin chose otherwise
+  // it gets the app-style header (left, compact) — a big centered heading over
+  // an edge-bleeding rail is two design languages in one section.
+  const isLeft = align ? align === "left" : isCarousel;
+  const compact = headerScale ? headerScale === "md" : isCarousel;
 
   // Straight to the product page itself — the "there's more here" affordance
   // an app-style rail heading is expected to carry.
@@ -400,10 +410,11 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
             style={{
               ["--stagger-i" as string]: i,
               // Carousel cards size to show exactly `columns` per view (minus
-              // the gaps); the min-width below takes over on narrow screens so
-              // the row overflows into a swipe instead of crushing the cards.
+              // the gap-5 gaps); the min-width below takes over on narrow
+              // screens so the row overflows into a swipe instead of crushing
+              // the cards.
               ...(isCarousel
-                ? { flexBasis: `calc((100% - ${(cols - 1) * 1.5}rem) / ${cols})` }
+                ? { flexBasis: `calc((100% - ${(cols - 1) * 1.25}rem) / ${cols})` }
                 : {}),
             } as React.CSSProperties}
             className={
@@ -476,7 +487,7 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
       <div
         ref={trackRef}
         onScroll={syncArrows}
-        className="catalogue-carousel-bleed flex snap-x snap-mandatory gap-6 overflow-x-auto pb-3"
+        className="catalogue-carousel-bleed catalogue-no-scrollbar flex snap-x snap-mandatory gap-5 overflow-x-auto py-2"
         role="group"
         aria-label={title || "Courses"}
       >
@@ -490,9 +501,9 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
           type="button"
           onClick={() => scrollByPage(-1)}
           aria-label="Scroll to previous courses"
-          className="catalogue-btn catalogue-btn-secondary absolute left-1 top-1/2 hidden size-9 -translate-y-1/2 justify-center rounded-full bg-catalogue-bg p-0 shadow-lg md:inline-flex"
+          className="catalogue-btn catalogue-btn-secondary absolute left-3 top-1/2 hidden size-10 -translate-y-1/2 justify-center rounded-full border-catalogue-border bg-catalogue-bg p-0 shadow-lg md:inline-flex"
         >
-          <CaretLeft size={16} weight="bold" aria-hidden="true" />
+          <CaretLeft size={18} weight="bold" aria-hidden="true" />
         </button>
       )}
       {canNext && (
@@ -500,9 +511,9 @@ export const ProductPageOfferComponent: React.FC<ProductPageOfferProps> = ({
           type="button"
           onClick={() => scrollByPage(1)}
           aria-label="Scroll to more courses"
-          className="catalogue-btn catalogue-btn-secondary absolute right-1 top-1/2 hidden size-9 -translate-y-1/2 justify-center rounded-full bg-catalogue-bg p-0 shadow-lg md:inline-flex"
+          className="catalogue-btn catalogue-btn-secondary absolute right-3 top-1/2 hidden size-10 -translate-y-1/2 justify-center rounded-full border-catalogue-border bg-catalogue-bg p-0 shadow-lg md:inline-flex"
         >
-          <CaretRight size={16} weight="bold" aria-hidden="true" />
+          <CaretRight size={18} weight="bold" aria-hidden="true" />
         </button>
       )}
     </div>

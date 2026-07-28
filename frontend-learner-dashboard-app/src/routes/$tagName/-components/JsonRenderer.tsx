@@ -1113,6 +1113,19 @@ const FeatureGridRenderer: React.FC<any> = ({
   // their text follows the section pairing; skinned cards (cards/glass/
   // gradient-border/tinted) have their own token surface.
   const cardOnSection = style === 'plain' || style === 'minimal' || style === 'bordered';
+  // Short label-style cards (e.g. six engineering-branch tiles) waste a whole
+  // row each at 1-col, which is what makes phone pages enormous. Only pair
+  // them up when every card is genuinely compact — cards with bullets or real
+  // description copy still get the full width.
+  const compactCards =
+    features.length >= 3 &&
+    features.every(
+      (f: any) =>
+        !(f.bullets?.length) &&
+        !(f.chips?.length) &&
+        !f.image &&
+        String(f.description || '').length <= 60
+    );
   const isLeft = align === 'left';
 
   // "panel" — a tinted-header division/comparison card: a colored header band
@@ -1211,7 +1224,7 @@ const FeatureGridRenderer: React.FC<any> = ({
         {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
         {subheading && <p className={`catalogue-lead catalogue-measure mb-10 text-center ${txt.muted}`}>{subheading}</p>}
         <div
-          className={`grid gap-6 grid-cols-1 sm:grid-cols-2 ${columns >= 3 ? 'lg:grid-cols-3' : ''} ${columns >= 4 ? 'xl:grid-cols-4' : ''} ${columns >= 5 ? '2xl:grid-cols-5' : ''}`}
+          className={`grid gap-6 ${compactCards ? 'grid-cols-2' : 'grid-cols-1'} sm:grid-cols-2 ${columns >= 3 ? 'lg:grid-cols-3' : ''} ${columns >= 4 ? 'xl:grid-cols-4' : ''} ${columns >= 5 ? '2xl:grid-cols-5' : ''}`}
         >
           {features.map((f: any, i: number) => {
             const IconComp = f.iconName ? FEATURE_ICON_MAP[f.iconName] : undefined;

@@ -225,6 +225,10 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
             onChange={(v: string) => setValues((prev) => ({ ...prev, [f.key]: v }))}
             config={f.config}
             required={f.mandatory}
+            // Without this the renderer falls back to `Enter ${name}` where
+            // name is the raw field KEY — visitors saw "Enter full_name" and
+            // "Enter details_inst_<uuid>". Use the human label.
+            placeholder={`Enter ${f.name.toLowerCase()}`}
           />
         </div>
       ))}

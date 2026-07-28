@@ -10,6 +10,7 @@ import React, { useEffect } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Monitor, DeviceTablet, DeviceMobile, ArrowSquareOut } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/button';
+import { componentLabel } from '../-utils/component-labels';
 import { useEditorStore } from '../-stores/editor-store';
 import { renderComponentPreview } from './ComponentPreviews';
 import { CATALOGUE_EDITOR_CONFIG } from '@/constants/catalogue-editor';
@@ -396,7 +397,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                                             : 'hover:outline hover:outline-1 hover:outline-blue-300 hover:outline-offset-[-1px]'
                                     }`}
                                     style={{ ...componentStyle, ...(component.style?.ornaments?.length ? { overflow: 'hidden' } : {}) }}
-                                    title={isDisabled ? `${component.type} (hidden)` : component.type}
+                                    title={isDisabled ? `${componentLabel(component.type)} (hidden)` : componentLabel(component.type)}
                                 >
                                     {/* Background overlay */}
                                     {hasOverlay && (
@@ -420,7 +421,7 @@ export const CanvasRenderer = ({ tagName }: { tagName: string }) => {
                                     {/* Selection label */}
                                     {isSelected && (
                                         <div className="absolute left-0 top-0 z-50 select-none rounded-br-md bg-blue-500 px-2 py-0.5 text-xs font-medium text-white">
-                                            {component.type}
+                                            {componentLabel(component.type)}
                                         </div>
                                     )}
                                     {/* Disabled overlay badge */}

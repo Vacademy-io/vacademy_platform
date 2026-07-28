@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { getComponentTemplate, componentTemplates } from '../-utils/component-templates';
+import { componentLabel } from '../-utils/component-labels';
 import { useEditorStore } from '../-stores/editor-store';
 import { useDraggable } from '@dnd-kit/core';
 import { Columns2, Columns3, Columns4, GripVertical, LayoutGrid, Plus } from 'lucide-react';
@@ -108,19 +109,6 @@ export const ComponentLibrary = () => {
 
     const contentTypes = Object.keys(componentTemplates).filter((k) => !LAYOUT_KEYS.has(k));
 
-    // Labels are derived from the camelCase type, which alone yields "detail
-    // Blocks" / "cta Banner". Capitalise the first word, and override the few
-    // whose type name is not what an admin would look for.
-    const LABEL_OVERRIDES: Record<string, string> = {
-        detailBlocks: 'Program Blocks',
-        ctaBanner: 'CTA Banner',
-        htmlBlock: 'Custom HTML',
-        productPageOffer: 'Product Page Offer',
-        faqSection: 'FAQ Section',
-    };
-    const labelFor = (type: string) =>
-        LABEL_OVERRIDES[type] ??
-        type.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase()).trim();
 
     return (
         <div className="flex flex-col gap-1.5 overflow-y-auto p-3">
@@ -148,7 +136,7 @@ export const ComponentLibrary = () => {
                 <DraggableComponentItem
                     key={type}
                     templateKey={type}
-                    label={labelFor(type)}
+                    label={componentLabel(type)}
                     description="Click or drag"
                     onAdd={handleAdd}
                     disabled={!selectedPageId}

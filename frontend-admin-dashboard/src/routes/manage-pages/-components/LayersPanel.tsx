@@ -6,37 +6,11 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Eye, EyeOff, LayoutGrid } from 'lucide-react';
 import { useEditorStore } from '../-stores/editor-store';
+import { componentLabel } from '../-utils/component-labels';
 import { Component } from '../-types/editor-types';
 
 // Component type → short human-readable label
-const TYPE_LABEL: Record<string, string> = {
-    header: 'Header',
-    detailBlocks: 'Program Blocks',
-    heroSection: 'Hero Section',
-    courseCatalog: 'Course Catalog',
-    bookCatalogue: 'Book Catalogue',
-    footer: 'Footer',
-    mediaShowcase: 'Media Showcase',
-    statsHighlights: 'Stats',
-    testimonialSection: 'Testimonials',
-    cartComponent: 'Cart',
-    buyRentSection: 'Buy / Rent',
-    policyRenderer: 'Policy',
-    courseDetails: 'Course Details',
-    bookDetails: 'Book Details',
-    faqSection: 'FAQ',
-    videoEmbed: 'Video Embed',
-    ctaBanner: 'CTA Banner',
-    pricingTable: 'Pricing Table',
-    contactForm: 'Contact Form',
-    teamSection: 'Team',
-    announcementFeed: 'Announcements',
-    imageGallery: 'Image Gallery',
-    columnLayout: 'Column Layout',
-};
-
-const getLabel = (component: Component) =>
-    TYPE_LABEL[component.type] || component.type.replace(/([A-Z])/g, ' $1').trim();
+const getLabel = (component: Component) => componentLabel(component.type);
 
 /** Renders a single layer row (used for both top-level and nested components) */
 const LayerRow = ({

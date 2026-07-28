@@ -15,20 +15,21 @@ import { convertMinutesToTimeFormat, formatToTwoDecimalPlaces } from '../-servic
 import { SubjectProgressResponse } from '../-types/types';
 
 /**
- * Branded client-side PDF for the learner "Learning Progress" (subject/module-wise)
- * report — same institute chrome (logo, theme colour, watermark, footer) as the
- * Learning Timeline export, so both reports read as one professional set.
+ * Branded client-side PDF for the "Learning Progress" (subject/module-wise) report —
+ * same institute chrome (logo, theme colour, watermark, footer) as the other report
+ * exports. Two variants: 'learner' (per-learner, learner vs batch columns) and
+ * 'batch' (batch-level, batch columns only).
  *
- * Built from the data already on screen (no extra network round-trip). Courses
- * shallower than the full Subject → Module structure come back with a single
- * "DEFAULT" subject; those render under a plain "Module-wise Progress" heading
- * instead of "Subject: DEFAULT".
+ * Courses shallower than the full Subject → Module structure come back with the
+ * literal "DEFAULT" placeholder for the missing level(s). A DEFAULT subject renders
+ * under a plain "Module-wise Progress" heading instead of "Subject: DEFAULT", and a
+ * table whose modules are all DEFAULT drops the Module column entirely.
  */
 
 export interface SubjectProgressPdfMeta {
     instituteName: string;
     logoUrl: string | null;
-    learnerName: string;
+    learnerName?: string;
     courseName: string;
     sessionName: string;
     levelName: string;
@@ -39,6 +40,8 @@ export interface SubjectProgressPdfMeta {
     moduleTerm: string;
     subjectTerm: string;
     batchTerm: string;
+    // 'learner' (default) shows learner + batch columns; 'batch' shows batch-only.
+    variant?: 'learner' | 'batch';
 }
 
 const isDefaultLevel = (value: string | null | undefined) =>
@@ -48,21 +51,29 @@ export async function exportSubjectProgressPdf(
     meta: SubjectProgressPdfMeta,
     data: SubjectProgressResponse
 ) {
+    const isBatch = meta.variant === 'batch';
     const doc = createReportDoc();
     const logo = await loadLogo(meta.logoUrl);
     const theme = resolveTheme();
     const pageH = doc.internal.pageSize.getHeight();
 
-    let y = drawTitleAndInfo(doc, 'Learner Progress Report', [
-        { label: 'Learner', value: meta.learnerName || '—' },
+    const title = isBatch
+        ? `${meta.batchTerm} ${meta.subjectTerm}-wise Progress`
+        : 'Learner Progress Report';
+    let y = drawTitleAndInfo(doc, title, [
+        ...(isBatch ? [] : [{ label: 'Learner', value: meta.learnerName || '—' }]),
         { label: meta.courseTerm, value: meta.courseName || '—' },
         { label: meta.sessionTerm, value: meta.sessionName || '—' },
         { label: meta.levelTerm, value: meta.levelName || '—' },
     ]);
 
-    // Overall completion = mean over subjects of (mean over that subject's
-    // modules), mirroring the backend course rollup so the headline number lines
-    // up with what the learner sees.
+    // Drop the Module column when every module (across every subject) is the
+    // "DEFAULT" placeholder — mirrors the on-screen DEFAULT-column hiding.
+    const allModules = data.flatMap((s) => s.modules ?? []);
+    const hideModuleColumn =
+        allModules.length > 0 && allModules.every((m) => isDefaultLevel(m.module_name));
+
+    // Overall completion = mean over subjects of (mean over that subject's modules).
     const subjectStats = data
         .map((subject) => {
             const modules = subject.modules ?? [];
@@ -79,7 +90,7 @@ export async function exportSubjectProgressPdf(
         })
         .filter((s): s is { learner: number; batch: number } => s !== null);
 
-    const overallLearner = subjectStats.length
+    const overallCompletion = subjectStats.length
         ? subjectStats.reduce((sum, s) => sum + s.learner, 0) / subjectStats.length
         : 0;
     const overallBatch = subjectStats.length
@@ -90,21 +101,26 @@ export async function exportSubjectProgressPdf(
     y = drawCards(
         doc,
         theme,
-        [
-            {
-                label: `${meta.courseTerm} Completed`,
-                value: `${formatToTwoDecimalPlaces(overallLearner)}%`,
-                sub: `${meta.batchTerm} ${formatToTwoDecimalPlaces(overallBatch)}%`,
-            },
-            {
-                label: `${meta.batchTerm} Completed`,
-                value: `${formatToTwoDecimalPlaces(overallBatch)}%`,
-            },
-            {
-                label: `${meta.moduleTerm}s Tracked`,
-                value: String(totalModules),
-            },
-        ],
+        isBatch
+            ? [
+                  {
+                      label: `${meta.courseTerm} Completed`,
+                      value: `${formatToTwoDecimalPlaces(overallCompletion)}%`,
+                  },
+                  { label: `${meta.moduleTerm}s Tracked`, value: String(totalModules) },
+              ]
+            : [
+                  {
+                      label: `${meta.courseTerm} Completed`,
+                      value: `${formatToTwoDecimalPlaces(overallCompletion)}%`,
+                      sub: `${meta.batchTerm} ${formatToTwoDecimalPlaces(overallBatch)}%`,
+                  },
+                  {
+                      label: `${meta.batchTerm} Completed`,
+                      value: `${formatToTwoDecimalPlaces(overallBatch)}%`,
+                  },
+                  { label: `${meta.moduleTerm}s Tracked`, value: String(totalModules) },
+              ],
         y
     );
 
@@ -112,8 +128,6 @@ export async function exportSubjectProgressPdf(
         const modules = subject.modules ?? [];
         if (modules.length === 0) return;
 
-        // Keep a section heading with its table together: start a fresh page
-        // when there isn't room for the heading + a couple of rows.
         if (y > pageH - 45) {
             doc.addPage();
             y = 33;
@@ -124,37 +138,61 @@ export async function exportSubjectProgressPdf(
             : `${meta.subjectTerm}: ${subject.subject_name}`;
         y = sectionTitle(doc, heading, y, theme);
 
+        const head = isBatch
+            ? [...(hideModuleColumn ? [] : [meta.moduleTerm]), 'Completed', 'Daily Time (Avg)']
+            : [
+                  ...(hideModuleColumn ? [] : [meta.moduleTerm]),
+                  'Completed',
+                  `${meta.batchTerm} Completed`,
+                  'Daily Time (Avg)',
+                  `${meta.batchTerm} Daily Time (Avg)`,
+              ];
+
+        // Right-align every column except the leading Module label (when shown).
+        const firstNumericIdx = hideModuleColumn ? 0 : 1;
+        const columnStyles: Record<number, { halign: 'right' }> = {};
+        for (let i = firstNumericIdx; i < head.length; i++) {
+            columnStyles[i] = { halign: 'right' };
+        }
+
         autoTable(doc, {
             ...tableBase(theme),
             startY: y,
-            head: [
-                [
-                    meta.moduleTerm,
-                    'Completed',
-                    `${meta.batchTerm} Completed`,
-                    'Daily Time (Avg)',
-                    `${meta.batchTerm} Daily Time (Avg)`,
-                ],
-            ],
-            columnStyles: {
-                1: { halign: 'right' },
-                2: { halign: 'right' },
-                3: { halign: 'right' },
-                4: { halign: 'right' },
-            },
-            body: modules.map((m) => [
-                m.module_name,
-                `${formatToTwoDecimalPlaces(m.module_completion_percentage)}%`,
-                `${formatToTwoDecimalPlaces(m.module_completion_percentage_by_batch)}%`,
-                convertMinutesToTimeFormat(m.avg_time_spent_minutes ?? 0),
-                convertMinutesToTimeFormat(m.avg_time_spent_minutes_by_batch ?? 0),
-            ]),
+            head: [head],
+            columnStyles,
+            body: modules.map((m) =>
+                isBatch
+                    ? [
+                          ...(hideModuleColumn ? [] : [m.module_name]),
+                          `${formatToTwoDecimalPlaces(m.module_completion_percentage)}%`,
+                          convertMinutesToTimeFormat(m.avg_time_spent_minutes ?? 0),
+                      ]
+                    : [
+                          ...(hideModuleColumn ? [] : [m.module_name]),
+                          `${formatToTwoDecimalPlaces(m.module_completion_percentage)}%`,
+                          `${formatToTwoDecimalPlaces(m.module_completion_percentage_by_batch)}%`,
+                          convertMinutesToTimeFormat(m.avg_time_spent_minutes ?? 0),
+                          convertMinutesToTimeFormat(m.avg_time_spent_minutes_by_batch ?? 0),
+                      ]
+            ),
         });
         y = lastY(doc) + 11;
     });
 
-    stampAllPages(doc, meta.instituteName, logo, theme, 'Learning Progress Report');
+    stampAllPages(
+        doc,
+        meta.instituteName,
+        logo,
+        theme,
+        isBatch ? `${meta.subjectTerm}-wise Progress Report` : 'Learning Progress Report'
+    );
 
-    const safeName = (meta.learnerName || 'learner').replace(/\s+/g, '-');
-    doc.save(`learning-progress-${safeName}-${dayjs().format('YYYYMMDD')}.pdf`);
+    const safeName = isBatch
+        ? (meta.courseName || 'batch').replace(/\s+/g, '-')
+        : (meta.learnerName || 'learner').replace(/\s+/g, '-');
+    doc.save(
+        `${isBatch ? 'batch-subject-progress' : 'learning-progress'}-${safeName}-${dayjs().format(
+            'YYYYMMDD'
+        )}.pdf`
+    );
 }

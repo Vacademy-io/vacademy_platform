@@ -340,14 +340,11 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
                     ) : (
                         <div className="flex flex-col gap-2.5">
                             {currentSubjectDetails.modules.map((mod) => {
-                                const modTotal = mod.chapters.length;
-                                const modCompleted = mod.chapters.filter(
-                                    (ch) => ch.percentage_completed >= 100
-                                ).length;
-                                const modPct =
-                                    modTotal === 0
-                                        ? 0
-                                        : (modCompleted / modTotal) * 100;
+                                // Use the module's actual completion (backend
+                                // PERCENTAGE_MODULE_COMPLETED), not the count of fully-100%
+                                // chapters — otherwise a module whose chapters are all
+                                // partial (e.g. 66%) shows 0% despite being in progress.
+                                const modPct = mod.percentage_completed ?? 0;
                                 const isOpen = openModuleId === mod.module.id.toString();
 
                                 return (

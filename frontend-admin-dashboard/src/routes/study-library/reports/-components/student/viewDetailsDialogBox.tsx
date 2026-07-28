@@ -6,7 +6,6 @@ import {
     SubjectOverviewColumnType,
     ChapterReport,
     ChapterOverviewStudentColumns,
-    CHAPTER_OVERVIEW_STUDENT_WIDTH,
 } from '../../-types/types';
 import { useMutation } from '@tanstack/react-query';
 import { DashboardLoader } from '@/components/core/dashboard-loader';
@@ -14,19 +13,31 @@ import { MyTable } from '@/components/design-system/table';
 import {
     fetchChapterWiseProgress,
     fetchLearnersChapterWiseProgress,
-    exportChapterWiseLearnersReport,
 } from '../../-services/utils';
 import { usePacageDetails } from '../../-store/usePacageDetails';
+import { useInstituteDetailsStore } from '@/stores/students/students-list/useInstituteDetailsStore';
+import { resolveInstituteLogoUrl } from '../live/-utils/instituteLogo';
+import { exportModuleDetailPdf } from '../../-utils/exportModuleDetailPdf';
 import dayjs from 'dayjs';
 import { formatToTwoDecimalPlaces, convertMinutesToTimeFormat } from '../../-services/helper';
 import { toast } from 'sonner';
 import { ContentTerms, SystemTerms } from '@/routes/settings/-components/NamingSettings';
 import { getTerminology } from '@/components/common/layout-container/sidebar/utils';
+import { Export } from '@phosphor-icons/react';
+
+/** Small labelled pill for the report's course/session/level/date metadata. */
+const MetaChip = ({ label, value }: { label: string; value: string }) => (
+    <span className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 py-1 text-caption">
+        <span className="font-medium uppercase tracking-wide text-neutral-400">{label}</span>
+        <span className="font-semibold text-neutral-700">{value || '—'}</span>
+    </span>
+);
 
 export const ViewDetails = ({ row }: { row: Row<SubjectOverviewColumnType> }) => {
     const [viewDetailsState, setViewDetailsState] = useState(false);
     const [chapterReportData, setChapterReportData] = useState<ChapterReport>();
-    const { pacageSessionId, course, session, level } = usePacageDetails();
+    const { pacageSessionId, course, session, level, learnerName } = usePacageDetails();
+    const instituteDetails = useInstituteDetailsStore((s) => s.instituteDetails);
     const ChapterWiseMutation = useMutation({
         mutationFn: fetchChapterWiseProgress,
     });
@@ -74,35 +85,42 @@ export const ViewDetails = ({ row }: { row: Row<SubjectOverviewColumnType> }) =>
         }
     }, [viewDetailsState]);
 
-    const getLearnersReportDataPDF = useMutation({
-        mutationFn: () =>
-            exportChapterWiseLearnersReport({
-                startDate: '',
-                endDate: '',
-                packageSessionId: pacageSessionId,
-                moduleId: row.getValue('module_id'),
-                userId: row.getValue('user_id'),
-            }),
-        onSuccess: async (response) => {
-            const url = window.URL.createObjectURL(new Blob([response]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `student_chapter_wise_progress_report.pdf`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
-            toast.success('Student Chapter-wise Progress Report PDF exported successfully');
-        },
-        onError: (error: unknown) => {
-            throw error;
-        },
-    });
-
-    const handleExportPDF = () => {
-        getLearnersReportDataPDF.mutate();
+    const [isExporting, setIsExporting] = useState(false);
+    const handleExportPDF = async () => {
+        if (!chapterReportData?.length) {
+            toast.error('No data to export yet');
+            return;
+        }
+        setIsExporting(true);
+        try {
+            const logoUrl = await resolveInstituteLogoUrl(instituteDetails?.institute_logo_file_id);
+            await exportModuleDetailPdf(
+                {
+                    instituteName: instituteDetails?.institute_name || 'Vacademy',
+                    logoUrl,
+                    learnerName,
+                    courseName: course,
+                    sessionName: session,
+                    levelName: level,
+                    subjectName: (row.getValue('subject') as string) || '',
+                    moduleName: (row.getValue('module') as string) || '',
+                    courseTerm: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                    sessionTerm: getTerminology(ContentTerms.Session, SystemTerms.Session),
+                    levelTerm: getTerminology(ContentTerms.Level, SystemTerms.Level),
+                    subjectTerm: getTerminology(ContentTerms.Subjects, SystemTerms.Subjects),
+                    moduleTerm: getTerminology(ContentTerms.Modules, SystemTerms.Modules),
+                    chapterTerm: getTerminology(ContentTerms.Chapters, SystemTerms.Chapters),
+                    batchTerm: getTerminology(ContentTerms.Batch, SystemTerms.Batch),
+                },
+                chapterReportData
+            );
+            toast.success('Report exported');
+        } catch {
+            toast.error('Failed to export PDF');
+        } finally {
+            setIsExporting(false);
+        }
     };
-    const isExporting = getLearnersReportDataPDF.isPending;
 
     // Courses shallower than the full Subject → Module → Chapter structure come
     // back with the literal "DEFAULT" placeholder for the missing level(s).
@@ -130,117 +148,141 @@ export const ViewDetails = ({ row }: { row: Row<SubjectOverviewColumnType> }) =>
                 heading="Module Details Report"
                 open={viewDetailsState}
                 onOpenChange={setViewDetailsState}
-                dialogWidth="w-[800px]"
+                dialogWidth="max-w-4xl"
             >
-                <div className="flex flex-col gap-4">
-                    <div className="flex flex-row items-center justify-between">
-                        <div>Date: {currDate}</div>
-                        <MyButton
-                            type="button"
-                            buttonType="secondary"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleExportPDF();
-                            }}
-                            disabled={isExporting}
-                        >
-                            {isExporting ? (
-                                <div className="flex items-center gap-2">
-                                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-neutral-300 border-t-primary-500"></div>
-                                    <span>Exporting...</span>
-                                </div>
-                            ) : (
-                                'Export'
-                            )}
-                        </MyButton>
-                    </div>
-                    <div className="grid grid-cols-3 items-center justify-between gap-4">
-                        <div>
-                            {getTerminology(ContentTerms.Course, SystemTerms.Course)}: {course}
-                        </div>
-                        <div>
-                            {getTerminology(ContentTerms.Session, SystemTerms.Session)}: {session}
-                        </div>
-                        <div>
-                            {getTerminology(ContentTerms.Level, SystemTerms.Level)}: {level}
-                        </div>
-                        {!isDefaultLevel(row.getValue('subject')) && (
-                            <div>
-                                {getTerminology(ContentTerms.Subjects, SystemTerms.Subjects)}:{' '}
-                                {row.getValue('subject')}
-                            </div>
-                        )}
-                        {!isDefaultLevel(row.getValue('module')) && (
-                            <div>
-                                {nameHasTermPrefix(
-                                    row.getValue('module'),
-                                    getTerminology(ContentTerms.Module, SystemTerms.Module)
-                                )
-                                    ? (row.getValue('module') as string)
-                                    : `${getTerminology(
-                                          ContentTerms.Modules,
-                                          SystemTerms.Modules
-                                      )}: ${row.getValue('module')}`}
-                            </div>
-                        )}
-                    </div>
-                    {(isChapterPending || isLearnerPending) && <DashboardLoader />}
-                    {chapterReportData &&
-                        chapterReportData.map((chapter) => (
-                            <div key={chapter.chapter_id} className="flex flex-col gap-6">
-                                {!isDefaultLevel(chapter.chapter_name) && (
-                                    <div className="flex flex-row gap-4">
-                                        {!nameHasTermPrefix(
-                                            chapter.chapter_name,
-                                            getTerminology(
-                                                ContentTerms.Chapter,
-                                                SystemTerms.Chapter
-                                            )
-                                        ) && (
-                                            <div className="text-h3 font-[600]">
-                                                {getTerminology(
-                                                    ContentTerms.Chapters,
-                                                    SystemTerms.Chapters
-                                                )}
-                                            </div>
+                <div className="flex flex-col gap-5">
+                    {/* Header card: module title + metadata chips + export */}
+                    <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0 space-y-2.5">
+                                {!isDefaultLevel(row.getValue('module')) && (
+                                    <h3 className="break-words text-h3 font-semibold text-primary-500">
+                                        {row.getValue('module') as string}
+                                    </h3>
+                                )}
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <MetaChip
+                                        label={getTerminology(
+                                            ContentTerms.Course,
+                                            SystemTerms.Course
                                         )}
-                                        <div className="text-h3 text-primary-500">
-                                            {chapter.chapter_name}
-                                        </div>
+                                        value={course}
+                                    />
+                                    <MetaChip
+                                        label={getTerminology(
+                                            ContentTerms.Session,
+                                            SystemTerms.Session
+                                        )}
+                                        value={session}
+                                    />
+                                    <MetaChip
+                                        label={getTerminology(ContentTerms.Level, SystemTerms.Level)}
+                                        value={level}
+                                    />
+                                    {!isDefaultLevel(row.getValue('subject')) && (
+                                        <MetaChip
+                                            label={getTerminology(
+                                                ContentTerms.Subjects,
+                                                SystemTerms.Subjects
+                                            )}
+                                            value={row.getValue('subject') as string}
+                                        />
+                                    )}
+                                    <MetaChip label="Date" value={currDate} />
+                                </div>
+                            </div>
+                            <MyButton
+                                type="button"
+                                buttonType="secondary"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleExportPDF();
+                                }}
+                                disabled={isExporting}
+                                className="shrink-0"
+                            >
+                                {isExporting ? (
+                                    <div className="flex items-center gap-2">
+                                        <div className="size-4 animate-spin rounded-full border-2 border-neutral-300 border-t-primary-500"></div>
+                                        <span>Exporting…</span>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-1.5">
+                                        <Export className="size-4" />
+                                        <span>Export PDF</span>
                                     </div>
                                 )}
-                                <MyTable
-                                    key={chapter.chapter_id} // Unique key for React list rendering
-                                    data={{
-                                        content:
-                                            chapter.slides?.map((slide) => ({
-                                                study_slide: slide.slide_title,
-                                                slide_type: slide.slide_source_type,
-                                                concentration_score: `${formatToTwoDecimalPlaces(
-                                                    slide.avg_concentration_score
-                                                )} %`,
-                                                batch_concentration_score: `${formatToTwoDecimalPlaces(
-                                                    slide.avg_concentration_score
-                                                )} %`,
-                                                average_time_spent: `${convertMinutesToTimeFormat(
-                                                    slide.avg_time_spent
-                                                )}`,
-                                                last_active: slide.last_active_date || 'N/A',
-                                            })) || [],
-                                        total_pages: 0,
-                                        page_no: 0,
-                                        page_size: 10,
-                                        total_elements: 0,
-                                        last: false,
-                                    }}
-                                    columns={ChapterOverviewStudentColumns} // Use correct column config
-                                    isLoading={isChapterPending || isLearnerPending}
-                                    error={chapterError || learnerError}
-                                    columnWidths={CHAPTER_OVERVIEW_STUDENT_WIDTH} // Ensure this width config matches
-                                    currentPage={0}
-                                />
+                            </MyButton>
+                        </div>
+                    </div>
+
+                    {(isChapterPending || isLearnerPending) && <DashboardLoader />}
+
+                    {chapterReportData &&
+                        chapterReportData.length === 0 &&
+                        !(isChapterPending || isLearnerPending) && (
+                            <div className="rounded-lg border border-dashed border-neutral-200 p-8 text-center text-body text-neutral-400">
+                                No activity found for this{' '}
+                                {getTerminology(
+                                    ContentTerms.Module,
+                                    SystemTerms.Module
+                                ).toLowerCase()}
+                                .
                             </div>
-                        ))}
+                        )}
+
+                    {chapterReportData?.map((chapter) => (
+                        <div
+                            key={chapter.chapter_id}
+                            className="overflow-hidden rounded-lg border border-neutral-200 shadow-sm [&_table]:!w-full [&_table]:!min-w-full"
+                        >
+                            {!isDefaultLevel(chapter.chapter_name) && (
+                                <div className="flex items-center gap-2 border-b border-neutral-200 bg-primary-50 px-4 py-2.5">
+                                    <span className="h-4 w-1 rounded-full bg-primary-500" />
+                                    <span className="text-body font-semibold text-primary-600">
+                                        {nameHasTermPrefix(
+                                            chapter.chapter_name,
+                                            getTerminology(ContentTerms.Chapter, SystemTerms.Chapter)
+                                        )
+                                            ? chapter.chapter_name
+                                            : `${getTerminology(
+                                                  ContentTerms.Chapters,
+                                                  SystemTerms.Chapters
+                                              )}: ${chapter.chapter_name}`}
+                                    </span>
+                                </div>
+                            )}
+                            <MyTable
+                                key={chapter.chapter_id}
+                                data={{
+                                    content:
+                                        chapter.slides?.map((slide) => ({
+                                            study_slide: slide.slide_title,
+                                            slide_type: slide.slide_source_type,
+                                            concentration_score: `${formatToTwoDecimalPlaces(
+                                                slide.avg_concentration_score
+                                            )} %`,
+                                            batch_concentration_score: `${formatToTwoDecimalPlaces(
+                                                slide.avg_concentration_score
+                                            )} %`,
+                                            average_time_spent: `${convertMinutesToTimeFormat(
+                                                slide.avg_time_spent
+                                            )}`,
+                                            last_active: slide.last_active_date || 'N/A',
+                                        })) || [],
+                                    total_pages: 0,
+                                    page_no: 0,
+                                    page_size: 10,
+                                    total_elements: 0,
+                                    last: false,
+                                }}
+                                columns={ChapterOverviewStudentColumns}
+                                isLoading={isChapterPending || isLearnerPending}
+                                error={chapterError || learnerError}
+                                currentPage={0}
+                            />
+                        </div>
+                    ))}
                 </div>
             </MyDialog>
         </div>

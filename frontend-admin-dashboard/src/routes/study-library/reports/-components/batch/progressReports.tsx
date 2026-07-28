@@ -13,7 +13,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { MyButton } from '@/components/design-system/button';
 import { SearchableSelect } from '@/components/design-system/searchable-select';
-import { fetchSubjectWiseProgress, exportBatchSubjectWiseReport } from '../../-services/utils';
+import { fetchSubjectWiseProgress } from '../../-services/utils';
+import { resolveInstituteLogoUrl } from '../live/-utils/instituteLogo';
+import { exportSubjectProgressPdf } from '../../-utils/exportSubjectProgressPdf';
 import {
     SubjectProgressResponse,
     SubjectOverviewBatchColumns,
@@ -60,6 +62,7 @@ export default function ProgressReports({
         getLevelsFromPackage2,
         getPackageSessionId,
     } = useInstituteDetailsStore();
+    const instituteDetails = useInstituteDetailsStore((s) => s.instituteDetails);
     const { setPacageSessionId, setCourse, setSession, setLevel, pacageSessionId } = usePacageDetails();
     const courseList = getCourseFromPackage();
     const [sessionList, setSessionList] = useState<{ id: string; name: string }[]>([]);
@@ -126,34 +129,41 @@ export default function ProgressReports({
     });
     const { isPending, error } = SubjectWiseMutation;
 
-    const getBatchProgressReportPDF = useMutation({
-        mutationFn: () =>
-            exportBatchSubjectWiseReport({
-                startDate: '',
-                endDate: '',
-                packageSessionId: fixedPackageSessionId || pacageSessionId || '',
-            }),
-        onSuccess: async (response) => {
-            const url = window.URL.createObjectURL(new Blob([response]));
-            const link = document.createElement('a');
-            link.href = url;
-            link.setAttribute('download', `subject-wise-batch-progress-report.pdf`);
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            window.URL.revokeObjectURL(url);
-            toast.success('Subject-wise Batch Progress Report PDF exported successfully');
-        },
-        onError: (error: unknown) => {
-            throw error;
-        },
-    });
-
-    const handleExportPDF = () => {
-        getBatchProgressReportPDF.mutate();
+    const [isExporting, setIsExporting] = useState(false);
+    const handleExportPDF = async () => {
+        if (!subjectReportData?.length) {
+            toast.error('No data to export yet');
+            return;
+        }
+        setIsExporting(true);
+        try {
+            const logoUrl = await resolveInstituteLogoUrl(instituteDetails?.institute_logo_file_id);
+            await exportSubjectProgressPdf(
+                {
+                    instituteName: instituteDetails?.institute_name || 'Vacademy',
+                    logoUrl,
+                    courseName:
+                        courseList.find((c) => c.id === (fixedCourseId || selectedCourse))?.name ||
+                        '',
+                    sessionName: sessionList.find((s) => s.id === selectedSession)?.name || '',
+                    levelName: levelList.find((l) => l.id === selectedLevel)?.level_name || '',
+                    courseTerm: getTerminology(ContentTerms.Course, SystemTerms.Course),
+                    sessionTerm: getTerminology(ContentTerms.Session, SystemTerms.Session),
+                    levelTerm: getTerminology(ContentTerms.Level, SystemTerms.Level),
+                    moduleTerm: getTerminology(ContentTerms.Modules, SystemTerms.Modules),
+                    subjectTerm: getTerminology(ContentTerms.Subjects, SystemTerms.Subjects),
+                    batchTerm: getTerminology(ContentTerms.Batch, SystemTerms.Batch),
+                    variant: 'batch',
+                },
+                subjectReportData
+            );
+            toast.success('Report exported');
+        } catch {
+            toast.error('Failed to export PDF');
+        } finally {
+            setIsExporting(false);
+        }
     };
-
-    const isExporting = getBatchProgressReportPDF.isPending;
 
     useEffect(() => {
         if (selectedCourse) {
@@ -182,6 +192,20 @@ export default function ProgressReports({
             }
         }
     }, [selectedSession]);
+
+    // Fallbacks: auto-select the session/level as soon as its list resolves to a
+    // single option and nothing is chosen yet — so picking a course reliably
+    // fills the whole form even if the cascade above misses on the first resolve.
+    useEffect(() => {
+        if (!selectedSession && sessionList.length === 1 && sessionList[0]) {
+            setValue('session', sessionList[0].id);
+        }
+    }, [sessionList, selectedSession]);
+    useEffect(() => {
+        if (!selectedLevel && levelList.length === 1 && levelList[0]) {
+            setValue('level', levelList[0].id);
+        }
+    }, [levelList, selectedLevel]);
 
     const runReport = (packageSessionId: string) => {
         if (!packageSessionId) return;

@@ -95,9 +95,25 @@ export default function TimelineReports() {
     const [isExporting, setIsExporting] = useState(false);
     const instituteDetails = useInstituteDetailsStore((s) => s.instituteDetails);
     const [searchTerm, setSearchTerm] = useState('');
-    const filteredStudents = studentList.filter((student) =>
-        student.full_name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    // Match by name-start or any word-start (so "mo" finds "Dipti Mohile"),
+    // ranking whole-name prefixes first. Far more precise than a raw substring
+    // match, which surfaced everyone sharing a common letter.
+    const studentQuery = searchTerm.trim().toLowerCase();
+    const filteredStudents = studentList
+        .filter((student) => {
+            if (!studentQuery) return true;
+            const name = student.full_name.toLowerCase();
+            return (
+                name.startsWith(studentQuery) ||
+                name.split(/\s+/).some((word) => word.startsWith(studentQuery))
+            );
+        })
+        .sort((a, b) => {
+            if (!studentQuery) return 0;
+            const ap = a.full_name.toLowerCase().startsWith(studentQuery) ? 0 : 1;
+            const bp = b.full_name.toLowerCase().startsWith(studentQuery) ? 0 : 1;
+            return ap - bp || a.full_name.localeCompare(b.full_name);
+        });
     const search = useSearch({ from: Route.id });
 
     const {
@@ -155,6 +171,20 @@ export default function TimelineReports() {
             }
         }
     }, [selectedSession]);
+
+    // Fallbacks: auto-select the session/level as soon as its list resolves to a
+    // single option and nothing is chosen yet — so picking a course reliably
+    // prefills the whole form even if the cascade above misses on the first resolve.
+    useEffect(() => {
+        if (!selectedSession && sessionList.length === 1 && sessionList[0]) {
+            setValue('session', sessionList[0].id);
+        }
+    }, [sessionList, selectedSession]);
+    useEffect(() => {
+        if (!selectedLevel && levelList.length === 1 && levelList[0]) {
+            setValue('level', levelList[0].id);
+        }
+    }, [levelList, selectedLevel]);
 
     const { data } = useLearnerDetails(
         // const { data, isLoading, error } = useLearnerDetails(

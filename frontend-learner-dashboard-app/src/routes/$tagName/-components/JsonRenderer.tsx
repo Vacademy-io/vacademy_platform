@@ -481,8 +481,8 @@ const FaqSectionRenderer: React.FC<any> = ({ headerText, subheading, faqs = [], 
   const sectionUid = React.useId();
   const txt = sectionText(backgroundColor);
   return (
-    <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 bg-catalogue-bg-subtle">
-      <div className="mx-auto max-w-3xl">
+    <section style={sectionBg(backgroundColor)} className="catalogue-section bg-catalogue-bg-subtle">
+      <div className="catalogue-shell-prose">
         {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
         {subheading && <p className={`mb-10 text-center ${txt.muted}`}>{subheading}</p>}
         <div className="space-y-3">
@@ -529,8 +529,8 @@ const VideoEmbedRenderer: React.FC<any> = ({ url = '', title, caption, aspectRat
   const padMap: Record<string, string> = { '16:9': '56.25%', '4:3': '75%', '1:1': '100%', '9:16': '177.78%' };
   const embedUrl = getEmbedUrl(url);
   return (
-    <section className="catalogue-section-tight px-4">
-      <div className="mx-auto max-w-4xl">
+    <section className="catalogue-section-tight">
+      <div className="catalogue-shell-narrow">
         {title && <h2 className="mb-6 text-center text-2xl font-bold text-catalogue-text-primary">{title}</h2>}
         {embedUrl ? (
           <div className="relative w-full overflow-hidden rounded-xl shadow-lg" style={{ paddingBottom: padMap[aspectRatio] || '56.25%' }}>
@@ -553,8 +553,8 @@ const CtaBannerRenderer: React.FC<any> = ({ heading, subheading, backgroundColor
   // so it must stay white in every theme/mode (not a token surface).
   const ctaButtonClass = 'mt-4 inline-block rounded-lg bg-white px-8 py-3 font-semibold shadow-md transition hover:opacity-90'; // design-lint-ignore: intentional white over author-colored surface
   return (
-    <section style={{ backgroundColor }} className="catalogue-section px-4">
-      <div className={`mx-auto max-w-5xl flex ${isSplit ? 'items-center justify-between gap-8 flex-wrap' : 'flex-col items-center text-center'}`}>
+    <section style={{ backgroundColor }} className="catalogue-section">
+      <div className={`catalogue-shell flex ${isSplit ? 'items-center justify-between gap-8 flex-wrap' : 'flex-col items-center text-center'}`}>
         <div className={isSplit ? 'flex-1' : ''}>
           {heading && <h2 style={{ color: textColor }} className="catalogue-h2">{heading}</h2>}
           {subheading && <p style={{ color: textColor, opacity: 0.85 }} className="mt-2 text-lg">{subheading}</p>}
@@ -570,8 +570,8 @@ const CtaBannerRenderer: React.FC<any> = ({ heading, subheading, backgroundColor
 };
 
 const PricingTableRenderer: React.FC<any> = ({ headerText, subheading, plans = [] }) => (
-  <section className="catalogue-section px-4 bg-catalogue-bg">
-    <div className="mx-auto max-w-5xl">
+  <section className="catalogue-section bg-catalogue-bg">
+    <div className="catalogue-shell">
       {headerText && <h2 className="mb-2 text-center catalogue-h2 text-catalogue-text-primary">{headerText}</h2>}
       {subheading && <p className="mb-12 text-center text-catalogue-text-muted">{subheading}</p>}
       <div className={`grid gap-6 ${plans.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
@@ -640,8 +640,8 @@ const ContactFormRenderer: React.FC<any> = ({ heading, subheading, fields = [], 
 };
 
 const TeamSectionRenderer: React.FC<any> = ({ headerText, subheading, members = [], columns = 3 }) => (
-  <section className="catalogue-section px-4 bg-catalogue-bg">
-    <div className="mx-auto max-w-6xl">
+  <section className="catalogue-section bg-catalogue-bg">
+    <div className="catalogue-shell">
       {headerText && <h2 className="mb-2 text-center catalogue-h2 text-catalogue-text-primary">{headerText}</h2>}
       {subheading && <p className="mb-12 text-center text-catalogue-text-muted">{subheading}</p>}
       <div className={`grid gap-8 ${columns === 2 ? 'sm:grid-cols-2' : columns === 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-3'}`}>
@@ -665,8 +665,8 @@ const TeamSectionRenderer: React.FC<any> = ({ headerText, subheading, members = 
 );
 
 const AnnouncementFeedRenderer: React.FC<any> = ({ headerText, subheading, announcements = [], layout = 'list', showDate = true, showTag = true, backgroundColor }) => (
-  <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 bg-catalogue-bg">
-    <div className="mx-auto max-w-4xl">
+  <section style={sectionBg(backgroundColor)} className="catalogue-section bg-catalogue-bg">
+    <div className="catalogue-shell-narrow">
       {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${sectionText(backgroundColor).heading}`}>{headerText}</h2>}
       {subheading && <p className={`mb-10 text-center ${sectionText(backgroundColor).muted}`}>{subheading}</p>}
       <div className={layout === 'grid' ? 'grid gap-6 sm:grid-cols-2' : 'space-y-4'}>
@@ -688,8 +688,8 @@ const AnnouncementFeedRenderer: React.FC<any> = ({ headerText, subheading, annou
 );
 
 const ImageGalleryRenderer: React.FC<any> = ({ headerText, images = [], columns = 3, showCaptions = false }) => (
-  <section className="catalogue-section-tight px-4 bg-catalogue-bg">
-    <div className="mx-auto max-w-6xl">
+  <section className="catalogue-section-tight bg-catalogue-bg">
+    <div className="catalogue-shell">
       {headerText && <h2 className="mb-8 text-center catalogue-h2 text-catalogue-text-primary">{headerText}</h2>}
       <div className={`grid gap-4 ${columns === 2 ? 'sm:grid-cols-2' : columns === 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-3'}`}>
         {images.map((img: any, i: number) => (
@@ -777,8 +777,8 @@ const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defau
     const activeIndex = [...openIndices][0] ?? 0;
     const active = items[activeIndex];
     return (
-      <section style={sectionBg(backgroundColor)} className="catalogue-section-tight px-4 bg-catalogue-bg">
-        <div className="mx-auto max-w-6xl lg:grid lg:grid-cols-5 lg:gap-8">
+      <section style={sectionBg(backgroundColor)} className="catalogue-section-tight bg-catalogue-bg">
+        <div className="catalogue-shell lg:grid lg:grid-cols-5 lg:gap-8">
           <div className="space-y-2 lg:col-span-2">
             {items.map((item: any, i: number) => (
               <div key={i} className={`rounded-lg border overflow-hidden ${openIndices.has(i) ? 'border-primary-200 bg-primary-50' : 'border-catalogue-border bg-catalogue-bg'}`}>
@@ -805,8 +805,8 @@ const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defau
   if (mode === 'accordion') {
     const boxed = variant === 'boxed';
     return (
-      <section style={sectionBg(backgroundColor)} className="catalogue-section-tight px-4 bg-catalogue-bg">
-        <div className={`mx-auto max-w-3xl ${boxed ? 'divide-y divide-catalogue-border-subtle rounded-xl border border-catalogue-border overflow-hidden' : 'space-y-2'}`}>
+      <section style={sectionBg(backgroundColor)} className="catalogue-section-tight bg-catalogue-bg">
+        <div className={`catalogue-shell-prose ${boxed ? 'divide-y divide-catalogue-border-subtle rounded-xl border border-catalogue-border overflow-hidden' : 'space-y-2'}`}>
           {items.map((item: any, i: number) => (
             <div key={i} className={boxed ? 'bg-catalogue-bg' : 'rounded-lg border border-catalogue-border bg-catalogue-bg overflow-hidden'}>
               <button onClick={() => toggleAccordion(i)} className="flex w-full items-center justify-between px-5 py-4 text-start font-medium text-catalogue-text-primary hover:bg-catalogue-interactive-hover">
@@ -823,8 +823,8 @@ const TabsAccordionRenderer: React.FC<any> = ({ mode = 'tabs', items = [], defau
   }
 
   return (
-    <section style={sectionBg(backgroundColor)} className="catalogue-section-tight px-4 bg-catalogue-bg">
-      <div className="mx-auto max-w-3xl">
+    <section style={sectionBg(backgroundColor)} className="catalogue-section-tight bg-catalogue-bg">
+      <div className="catalogue-shell-prose">
         <div role="tablist" className="flex border-b border-catalogue-border">
           {items.map((item: any, i: number) => (
             <button key={i} onClick={() => setActiveTab(i)}
@@ -870,8 +870,8 @@ const logoWillRender = (logo: any, display: string) =>
 const LogoCloudRenderer: React.FC<any> = ({ headerText, subheading, logos = [], layout = 'grid', grayscale = true, columns = 5, display = 'logo', tile = 'none', marqueeSpeed = 'medium', logoHeight = 'md' }) => {
   const visible = logos.filter((logo: any) => logoWillRender(logo, display));
   return (
-  <section className="catalogue-section-tight px-4">
-    <div className="mx-auto max-w-5xl text-center">
+  <section className="catalogue-section-tight">
+    <div className="catalogue-shell text-center">
       {headerText && <h3 className="mb-2 text-lg font-semibold uppercase tracking-wider text-catalogue-text-muted">{headerText}</h3>}
       {subheading && <p className="mb-8 text-sm text-catalogue-text-muted">{subheading}</p>}
       {layout === 'marquee' ? (
@@ -1158,8 +1158,8 @@ const FeatureGridRenderer: React.FC<any> = ({
   if (style === 'panel') {
     const panelCols = Math.min(Math.max(Number(columns) || 2, 1), 3);
     return (
-      <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
-        <div className="mx-auto max-w-6xl">
+      <section style={sectionBg(backgroundColor)} className="catalogue-section bg-catalogue-bg">
+        <div className="catalogue-shell">
           {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
           {subheading && <p className={`catalogue-lead catalogue-measure mb-10 text-center ${txt.muted}`}>{subheading}</p>}
           <div className={`grid gap-6 grid-cols-1 ${panelCols >= 2 ? 'md:grid-cols-2' : ''} ${panelCols >= 3 ? 'lg:grid-cols-3' : ''}`}>
@@ -1243,8 +1243,8 @@ const FeatureGridRenderer: React.FC<any> = ({
   }
 
   return (
-    <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
-      <div className="mx-auto max-w-6xl">
+    <section style={sectionBg(backgroundColor)} className="catalogue-section bg-catalogue-bg">
+      <div className="catalogue-shell">
         {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
         {subheading && <p className={`catalogue-lead catalogue-measure mb-10 text-center ${txt.muted}`}>{subheading}</p>}
         <div
@@ -1452,8 +1452,8 @@ const StepsProcessRenderer: React.FC<any> = ({ headerText, subheading, layout = 
   if (variant === 'timeline-cards' || variant === 'alternating') {
     const isAlt = variant === 'alternating';
     return (
-      <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
-        <div className="mx-auto max-w-4xl">
+      <section style={sectionBg(backgroundColor)} className="catalogue-section bg-catalogue-bg">
+        <div className="catalogue-shell-narrow">
           {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
           {subheading && <p className={`catalogue-lead catalogue-measure mb-10 text-center ${txt.muted}`}>{subheading}</p>}
           <div className="relative">
@@ -1516,8 +1516,8 @@ const StepsProcessRenderer: React.FC<any> = ({ headerText, subheading, layout = 
   };
 
   return (
-    <section style={sectionBg(backgroundColor)} className="catalogue-section px-4 sm:px-6 lg:px-8 bg-catalogue-bg">
-      <div className="mx-auto max-w-5xl">
+    <section style={sectionBg(backgroundColor)} className="catalogue-section bg-catalogue-bg">
+      <div className="catalogue-shell">
         {headerText && <h2 className={`mb-2 text-center catalogue-h2 ${txt.heading}`}>{headerText}</h2>}
         {subheading && <p className={`catalogue-lead catalogue-measure mb-10 text-center ${txt.muted}`}>{subheading}</p>}
         <div className={isHorizontal ? 'flex flex-col sm:flex-row items-start justify-center' : 'flex flex-col'}>

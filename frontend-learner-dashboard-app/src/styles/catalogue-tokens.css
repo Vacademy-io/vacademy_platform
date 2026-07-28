@@ -40,6 +40,7 @@
     --catalogue-section-header-mb: var(--space-10);
     /* Content column: matches today's max-w-6xl so no published page reflows. */
     --catalogue-content-max: 72rem;
+    --catalogue-content-narrow: 56rem;
     --catalogue-content-prose: 48rem;
     --catalogue-measure: 68ch;
 
@@ -1245,6 +1246,14 @@
     padding-inline: var(--space-4);
   }
 
+  /* Mid width — timeline/feed content that reads badly at full width. */
+  .catalogue-shell-narrow {
+    width: 100%;
+    margin-inline: auto;
+    max-width: var(--catalogue-content-narrow);
+    padding-inline: var(--space-4);
+  }
+
   .catalogue-shell-prose {
     width: 100%;
     margin-inline: auto;
@@ -1254,6 +1263,7 @@
 
   @media (min-width: 640px) {
     .catalogue-shell,
+    .catalogue-shell-narrow,
     .catalogue-shell-prose {
       padding-inline: var(--space-6);
     }
@@ -1261,6 +1271,7 @@
 
   @media (min-width: 1024px) {
     .catalogue-shell,
+    .catalogue-shell-narrow,
     .catalogue-shell-prose {
       padding-inline: var(--space-8);
     }

@@ -1185,7 +1185,13 @@ def _build_edit_prompt(req: EditPageRequest, catalog: Dict[str, Any], attachment
               "section with our components (match its structure, copy and treatment as closely as the "
               "vocabulary allows) and insert it where the instruction asks — never say you cannot see "
               "the image, and never place the screenshot itself as a page image. If it is a PHOTO/logo, "
-              "place it using its URL from PROVIDED IMAGES."
+              "place it using its URL from PROVIDED IMAGES.\n"
+              "MAPPING HINTS for a transcribed card grid: a small category label above each card title "
+              "is the card's `chips` (do NOT drop it — it is what makes the grid scannable); a per-card "
+              "link like 'View details' is the card's `link` {text,url}; leave `icon`/`iconName` UNSET "
+              "when the reference shows no icon (an unset icon renders nothing, which is correct — do "
+              "not substitute a decorative emoji); a tinted header band above each card's body means "
+              "featureGrid style 'panel' with headerVariant."
         )
     if req.history:
         convo = "\n".join(f"{t.role}: {t.content}" for t in req.history[-6:])

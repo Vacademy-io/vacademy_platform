@@ -24,7 +24,51 @@ import java.util.concurrent.TimeUnit;
 @Slf4j
 @Configuration
 @EnableCaching
-public class CacheConfig {
+public class CacheConfig implements org.springframework.cache.annotation.CachingConfigurer {
+
+    /**
+     * Degrade cache failures to cache MISSES instead of propagating them to the caller.
+     *
+     * <p>Spring's default {@code SimpleCacheErrorHandler} rethrows, so an unreadable Redis entry
+     * escaped the {@code @Cacheable} method. In prod that took down
+     * {@code GET /auth-service/v1/users/by-role}: the controller's catch-all mapped the exception to
+     * HTTP 400, admin_core_service's role lookup treated the non-2xx as "no users", and doubts were
+     * created with zero recipients — no email, no push, no bell. Whether a cache can be read is never
+     * a good reason to fail a request: on a read error we log and return null, and Spring then just
+     * invokes the underlying method and re-populates the entry.</p>
+     */
+    @Override
+    public org.springframework.cache.interceptor.CacheErrorHandler errorHandler() {
+        return new org.springframework.cache.interceptor.CacheErrorHandler() {
+            @Override
+            public void handleCacheGetError(RuntimeException exception,
+                                            org.springframework.cache.Cache cache, Object key) {
+                // Null return ⇒ treated as a miss ⇒ the real method runs. Never fail the request.
+                log.warn("Cache GET failed for cache '{}' key '{}' — falling back to the source: {}",
+                        cache.getName(), key, exception.getMessage());
+            }
+
+            @Override
+            public void handleCachePutError(RuntimeException exception,
+                                            org.springframework.cache.Cache cache, Object key, Object value) {
+                log.warn("Cache PUT failed for cache '{}' key '{}' — value not cached: {}",
+                        cache.getName(), key, exception.getMessage());
+            }
+
+            @Override
+            public void handleCacheEvictError(RuntimeException exception,
+                                              org.springframework.cache.Cache cache, Object key) {
+                log.warn("Cache EVICT failed for cache '{}' key '{}': {}",
+                        cache.getName(), key, exception.getMessage());
+            }
+
+            @Override
+            public void handleCacheClearError(RuntimeException exception,
+                                              org.springframework.cache.Cache cache) {
+                log.warn("Cache CLEAR failed for cache '{}': {}", cache.getName(), exception.getMessage());
+            }
+        };
+    }
 
     @Value("${spring.cache.type:redis}")
     private String cacheType;
@@ -40,6 +84,40 @@ public class CacheConfig {
     public static final String ANALYTICS_REALTIME_CACHE = "analytics:realtime";
 
     /**
+     * ObjectMapper backing the Redis cache serializer.
+     *
+     * <p>Exposed (package-visible, static) so tests exercise the REAL production configuration
+     * rather than a hand-copied duplicate that can silently drift out of sync.</p>
+     *
+     * <p><b>FAIL_ON_UNKNOWN_PROPERTIES is disabled deliberately.</b> Cached entities may expose
+     * derived, read-only getters — {@code User.getUserTopLevelDto()} is one: Jackson happily writes
+     * a {@code userTopLevelDto} property but there is no field or setter to read it back into. With
+     * the default strict setting, every read of such an entry threw
+     * {@code UnrecognizedPropertyException}, the {@code @Cacheable} call propagated it, and the
+     * controller's catch-all turned it into an HTTP 400. Tolerating unknown properties lets the
+     * cache drop computed fields on the way back in, which is exactly what we want — they are
+     * recomputed from the real fields by the getter anyway.</p>
+     */
+    static com.fasterxml.jackson.databind.ObjectMapper cacheObjectMapper() {
+        com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        objectMapper.registerModule(new org.springframework.security.jackson2.CoreJackson2Module());
+        objectMapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+        objectMapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        objectMapper.disable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+
+        // Default typing so polymorphic values survive the round trip. NOTE: NON_FINAL means Jackson
+        // writes NO type id for final runtime types — including java.util.ImmutableCollections$ListN,
+        // what Stream.toList() returns. Such a value serializes fine and then fails to deserialize.
+        // Cached methods must therefore return a non-final collection (see UserResolutionService).
+        objectMapper.activateDefaultTyping(
+                objectMapper.getPolymorphicTypeValidator(),
+                com.fasterxml.jackson.databind.ObjectMapper.DefaultTyping.NON_FINAL,
+                com.fasterxml.jackson.annotation.JsonTypeInfo.As.PROPERTY
+        );
+        return objectMapper;
+    }
+
+    /**
      * Primary cache manager using Redis for distributed caching
      */
     @Primary
@@ -47,22 +125,8 @@ public class CacheConfig {
     public CacheManager redisCacheManager(RedisConnectionFactory connectionFactory) {
         log.info("Initializing Redis cache manager for analytics");
 
-        // Create ObjectMapper with required modules and configuration
-        com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
-        objectMapper.registerModule(new org.springframework.security.jackson2.CoreJackson2Module());
-        objectMapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
-        objectMapper.disable(com.fasterxml.jackson.databind.SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-        
-        // Enable default typing
-
-        
-        objectMapper.activateDefaultTyping(
-                objectMapper.getPolymorphicTypeValidator(), 
-                com.fasterxml.jackson.databind.ObjectMapper.DefaultTyping.NON_FINAL, 
-                com.fasterxml.jackson.annotation.JsonTypeInfo.As.PROPERTY
-        );
-
-        GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer(objectMapper);
+        GenericJackson2JsonRedisSerializer serializer =
+                new GenericJackson2JsonRedisSerializer(cacheObjectMapper());
 
         // Default cache configuration
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()

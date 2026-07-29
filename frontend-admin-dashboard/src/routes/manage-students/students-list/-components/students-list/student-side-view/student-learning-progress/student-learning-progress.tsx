@@ -36,6 +36,8 @@ import {
     ProfileActionBar,
     ProfileMiniBar,
 } from '../profile-ui';
+import { InlineProgress } from './inline-progress';
+import { ChapterSlideList } from './chapter-slide-list';
 
 // ── Per-subject completion helper ─────────────────────────────────────────────
 // Mirrors calculateLearningPercentage (the backend subject rollup) scoped to a
@@ -58,6 +60,8 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
     );
     // Only one module accordion can be open at a time per handoff.
     const [openModuleId, setOpenModuleId] = useState<string>('');
+    // Chapter drill-down: expanding a chapter loads its slide-level breakdown.
+    const [openChapterId, setOpenChapterId] = useState<string>('');
 
     const { selectedStudent } = useStudentSidebar();
     const { getDetailsFromPackageSessionId } = useInstituteDetailsStore();
@@ -252,6 +256,12 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
 
     const subjectTermLabel = getTerminology(ContentTerms.Subjects, SystemTerms.Subjects);
     const moduleTermLabel = getTerminology(ContentTerms.Modules, SystemTerms.Modules);
+    // The learner id the slide-progress endpoint expects (submission tab keys off
+    // the row id; the normal progress view keys off user_id) — same rule as the
+    // subjects query above.
+    const learnerUserId = isSubmissionTab
+        ? selectedStudent.id || ''
+        : selectedStudent.user_id || '';
 
     return (
         <FormProvider {...formMethods}>
@@ -400,8 +410,9 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
                                                     </p>
                                                 ) : (
                                                     mod.chapters.map((chapter, idx) => {
-                                                        const isDone =
-                                                            chapter.percentage_completed >= 100;
+                                                        const chapterPct =
+                                                            chapter.percentage_completed ?? 0;
+                                                        const isDone = chapterPct >= 100;
                                                         // Treat the chapter as a video if any of
                                                         // its slides are videos, otherwise show
                                                         // the document icon.
@@ -410,45 +421,67 @@ export const StudentLearningProgress = ({ isSubmissionTab }: { isSubmissionTab?:
                                                         const TypeIcon = isVideo
                                                             ? VideoCamera
                                                             : FileText;
+                                                        const isChapterOpen =
+                                                            openChapterId === chapter.id;
                                                         return (
                                                             <div
                                                                 key={chapter.id}
                                                                 className={cn(
-                                                                    'flex items-center gap-3 py-2',
                                                                     idx > 0 &&
                                                                         'border-t border-neutral-100'
                                                                 )}
                                                             >
-                                                                <span
-                                                                    className={cn(
-                                                                        'flex size-7 shrink-0 items-center justify-center rounded-md',
-                                                                        isDone
-                                                                            ? 'bg-success-50 text-success-600'
-                                                                            : 'bg-warning-50 text-warning-600'
-                                                                    )}
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        setOpenChapterId(
+                                                                            isChapterOpen
+                                                                                ? ''
+                                                                                : chapter.id
+                                                                        )
+                                                                    }
+                                                                    aria-expanded={isChapterOpen}
+                                                                    className="flex w-full items-center gap-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
                                                                 >
-                                                                    <TypeIcon
-                                                                        className="size-4"
-                                                                        weight="duotone"
+                                                                    <span className="shrink-0 text-muted-foreground">
+                                                                        {isChapterOpen ? (
+                                                                            <CaretDown
+                                                                                className="size-3.5"
+                                                                                weight="bold"
+                                                                            />
+                                                                        ) : (
+                                                                            <CaretRight
+                                                                                className="size-3.5"
+                                                                                weight="bold"
+                                                                            />
+                                                                        )}
+                                                                    </span>
+                                                                    <span
+                                                                        className={cn(
+                                                                            'flex size-7 shrink-0 items-center justify-center rounded-md',
+                                                                            isDone
+                                                                                ? 'bg-success-50 text-success-600'
+                                                                                : 'bg-warning-50 text-warning-600'
+                                                                        )}
+                                                                    >
+                                                                        <TypeIcon
+                                                                            className="size-4"
+                                                                            weight="duotone"
+                                                                        />
+                                                                    </span>
+                                                                    <span className="min-w-0 flex-1 truncate text-body text-card-foreground">
+                                                                        {chapter.chapter_name}
+                                                                    </span>
+                                                                    <InlineProgress
+                                                                        percentage={chapterPct}
                                                                     />
-                                                                </span>
-                                                                <span className="min-w-0 flex-1 truncate text-body text-card-foreground">
-                                                                    {chapter.chapter_name}
-                                                                </span>
-                                                                <StatusChip
-                                                                    status={
-                                                                        isDone
-                                                                            ? 'SUCCESS'
-                                                                            : 'WARNING'
-                                                                    }
-                                                                    textSize="text-caption"
-                                                                    text={
-                                                                        isDone
-                                                                            ? 'Done'
-                                                                            : 'Behind'
-                                                                    }
-                                                                    showIcon={false}
-                                                                />
+                                                                </button>
+                                                                {isChapterOpen && (
+                                                                    <ChapterSlideList
+                                                                        userId={learnerUserId}
+                                                                        chapterId={chapter.id}
+                                                                    />
+                                                                )}
                                                             </div>
                                                         );
                                                     })

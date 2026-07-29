@@ -21,6 +21,12 @@ interface TabItem {
 
 const optionalTab: TabItem[] = [
     {
+        name: 'Institute Pulse',
+        tabId: 'institute-pulse',
+        module: 'ENGAGE',
+        isVisible: true,
+    },
+    {
         name: getTerminology(ContentTerms.LiveSession, SystemTerms.LiveSession),
         tabId: 'live-session',
         module: 'ENGAGE',

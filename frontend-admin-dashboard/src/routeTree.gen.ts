@@ -36,6 +36,7 @@ import { Route as ManageBookingsIndexRouteImport } from "./routes/manage-booking
 import { Route as LoginIndexRouteImport } from "./routes/login/index"
 import { Route as LearnerInsightsIndexRouteImport } from "./routes/learner-insights/index"
 import { Route as InstructorCopilotIndexRouteImport } from "./routes/instructor-copilot/index"
+import { Route as InstitutePulseIndexRouteImport } from "./routes/institute-pulse/index"
 import { Route as EvaluatorAiIndexRouteImport } from "./routes/evaluator-ai/index"
 import { Route as EvaluationIndexRouteImport } from "./routes/evaluation/index"
 import { Route as EngagementEnginesIndexRouteImport } from "./routes/engagement-engines/index"
@@ -383,6 +384,13 @@ const InstructorCopilotIndexRoute = InstructorCopilotIndexRouteImport.update({
   getParentRoute: () => rootRouteImport,
 } as any).lazy(() =>
   import("./routes/instructor-copilot/index.lazy").then((d) => d.Route),
+)
+const InstitutePulseIndexRoute = InstitutePulseIndexRouteImport.update({
+  id: "/institute-pulse/",
+  path: "/institute-pulse/",
+  getParentRoute: () => rootRouteImport,
+} as any).lazy(() =>
+  import("./routes/institute-pulse/index.lazy").then((d) => d.Route),
 )
 const EvaluatorAiIndexRoute = EvaluatorAiIndexRouteImport.update({
   id: "/evaluator-ai/",
@@ -1733,6 +1741,7 @@ export interface FileRoutesByFullPath {
   "/engagement-engines/": typeof EngagementEnginesIndexRoute
   "/evaluation/": typeof EvaluationIndexRoute
   "/evaluator-ai/": typeof EvaluatorAiIndexRoute
+  "/institute-pulse/": typeof InstitutePulseIndexRoute
   "/instructor-copilot/": typeof InstructorCopilotIndexRoute
   "/learner-insights/": typeof LearnerInsightsIndexRoute
   "/login/": typeof LoginIndexRoute
@@ -1926,6 +1935,7 @@ export interface FileRoutesByTo {
   "/engagement-engines": typeof EngagementEnginesIndexRoute
   "/evaluation": typeof EvaluationIndexRoute
   "/evaluator-ai": typeof EvaluatorAiIndexRoute
+  "/institute-pulse": typeof InstitutePulseIndexRoute
   "/instructor-copilot": typeof InstructorCopilotIndexRoute
   "/learner-insights": typeof LearnerInsightsIndexRoute
   "/login": typeof LoginIndexRoute
@@ -2121,6 +2131,7 @@ export interface FileRoutesById {
   "/engagement-engines/": typeof EngagementEnginesIndexRoute
   "/evaluation/": typeof EvaluationIndexRoute
   "/evaluator-ai/": typeof EvaluatorAiIndexRoute
+  "/institute-pulse/": typeof InstitutePulseIndexRoute
   "/instructor-copilot/": typeof InstructorCopilotIndexRoute
   "/learner-insights/": typeof LearnerInsightsIndexRoute
   "/login/": typeof LoginIndexRoute
@@ -2317,6 +2328,7 @@ export interface FileRouteTypes {
     | "/engagement-engines/"
     | "/evaluation/"
     | "/evaluator-ai/"
+    | "/institute-pulse/"
     | "/instructor-copilot/"
     | "/learner-insights/"
     | "/login/"
@@ -2510,6 +2522,7 @@ export interface FileRouteTypes {
     | "/engagement-engines"
     | "/evaluation"
     | "/evaluator-ai"
+    | "/institute-pulse"
     | "/instructor-copilot"
     | "/learner-insights"
     | "/login"
@@ -2704,6 +2717,7 @@ export interface FileRouteTypes {
     | "/engagement-engines/"
     | "/evaluation/"
     | "/evaluator-ai/"
+    | "/institute-pulse/"
     | "/instructor-copilot/"
     | "/learner-insights/"
     | "/login/"
@@ -2899,6 +2913,7 @@ export interface RootRouteChildren {
   EngagementEnginesIndexRoute: typeof EngagementEnginesIndexRoute
   EvaluationIndexRoute: typeof EvaluationIndexRoute
   EvaluatorAiIndexRoute: typeof EvaluatorAiIndexRoute
+  InstitutePulseIndexRoute: typeof InstitutePulseIndexRoute
   InstructorCopilotIndexRoute: typeof InstructorCopilotIndexRoute
   LoginIndexRoute: typeof LoginIndexRoute
   ManageBookingsIndexRoute: typeof ManageBookingsIndexRoute
@@ -3267,6 +3282,13 @@ declare module "@tanstack/react-router" {
       path: "/instructor-copilot"
       fullPath: "/instructor-copilot/"
       preLoaderRoute: typeof InstructorCopilotIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    "/institute-pulse/": {
+      id: "/institute-pulse/"
+      path: "/institute-pulse"
+      fullPath: "/institute-pulse/"
+      preLoaderRoute: typeof InstitutePulseIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     "/evaluator-ai/": {
@@ -4453,6 +4475,7 @@ const rootRouteChildren: RootRouteChildren = {
   EngagementEnginesIndexRoute: EngagementEnginesIndexRoute,
   EvaluationIndexRoute: EvaluationIndexRoute,
   EvaluatorAiIndexRoute: EvaluatorAiIndexRoute,
+  InstitutePulseIndexRoute: InstitutePulseIndexRoute,
   InstructorCopilotIndexRoute: InstructorCopilotIndexRoute,
   LoginIndexRoute: LoginIndexRoute,
   ManageBookingsIndexRoute: ManageBookingsIndexRoute,

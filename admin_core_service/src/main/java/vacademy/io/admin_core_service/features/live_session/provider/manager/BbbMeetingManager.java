@@ -24,6 +24,7 @@ import vacademy.io.common.meeting.dto.*;
 import vacademy.io.common.meeting.enums.MeetingProvider;
 
 import javax.xml.parsers.DocumentBuilderFactory;
+import vacademy.io.admin_core_service.features.institute_pulse.dto.BbbRunningMeetingDTO;
 import java.io.ByteArrayInputStream;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -765,6 +766,100 @@ public class BbbMeetingManager implements LiveSessionProviderStrategy {
                     .build());
         }
         return attendees;
+    }
+
+    /**
+     * Every meeting currently RUNNING on one BBB server, in a single API call.
+     *
+     * <p>Deliberately server-scoped rather than meeting-scoped: {@code isMeetingRunning} costs one
+     * HTTP round trip per meeting, which does not scale to polling a whole institute. BBB's
+     * {@code getMeetings} returns the entire running set — with live participant counts and the
+     * attendee list — for the same single call, so cost is O(servers) not O(meetings).
+     *
+     * <p>Takes apiUrl/secret directly so a caller iterating {@code bbb_server_pool} does not pay a
+     * config lookup per server.
+     *
+     * @return running meetings keyed by provider meeting id; empty on any failure (never throws —
+     *         a polling caller must not be broken by one unreachable server)
+     */
+    public Map<String, BbbRunningMeetingDTO> getRunningMeetings(String apiUrl, String secret) {
+        try {
+            String queryString = "";
+            String checksum = sha256("getMeetings" + queryString + secret);
+            String url = apiUrl + "/getMeetings?checksum=" + checksum;
+
+            String xmlResponse = webClientBuilder.build()
+                    .get().uri(URI.create(url))
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            Document doc = parseXml(xmlResponse);
+            if (!"SUCCESS".equals(getXmlText(doc, "returncode"))) {
+                log.warn("[BBB] getMeetings returned non-SUCCESS for {}", apiUrl);
+                return Map.of();
+            }
+
+            Map<String, BbbRunningMeetingDTO> running = new LinkedHashMap<>();
+            NodeList meetingNodes = doc.getElementsByTagName("meeting");
+            for (int i = 0; i < meetingNodes.getLength(); i++) {
+                Element m = (Element) meetingNodes.item(i);
+                if (!"true".equalsIgnoreCase(getChildText(m, "running", "false"))) {
+                    continue;
+                }
+                String meetingId = getChildText(m, "meetingID", "");
+                if (meetingId.isBlank()) {
+                    continue;
+                }
+
+                Set<String> attendeeIds = new LinkedHashSet<>();
+                Map<String, String> attendeeNames = new LinkedHashMap<>();
+                Set<String> moderatorIds = new LinkedHashSet<>();
+                int moderators = 0;
+                NodeList attendeeNodes = m.getElementsByTagName("attendee");
+                for (int a = 0; a < attendeeNodes.getLength(); a++) {
+                    Element att = (Element) attendeeNodes.item(a);
+                    String userId = getChildText(att, "userID", "");
+                    if (!userId.isBlank()) {
+                        attendeeIds.add(userId);
+                        String fullName = getChildText(att, "fullName", "");
+                        if (!fullName.isBlank()) {
+                            attendeeNames.put(userId, fullName);
+                        }
+                    }
+                    if ("MODERATOR".equalsIgnoreCase(getChildText(att, "role", ""))) {
+                        moderators++;
+                        if (!userId.isBlank()) {
+                            moderatorIds.add(userId);
+                        }
+                    }
+                }
+
+                running.put(meetingId, BbbRunningMeetingDTO.builder()
+                        .meetingId(meetingId)
+                        .participantCount(parseIntSafe(getChildText(m, "participantCount", "0")))
+                        .moderatorCount(moderators)
+                        .videoCount(parseIntSafe(getChildText(m, "videoCount", "0")))
+                        .voiceCount(parseIntSafe(getChildText(m, "voiceParticipantCount", "0")))
+                        .attendeeIds(attendeeIds)
+                        .attendeeNames(attendeeNames)
+                        .moderatorIds(moderatorIds)
+                        .build());
+            }
+            return running;
+
+        } catch (Exception e) {
+            log.warn("[BBB] getMeetings failed for {}: {}", apiUrl, e.getMessage());
+            return Map.of();
+        }
+    }
+
+    private static int parseIntSafe(String v) {
+        try {
+            return Integer.parseInt(v.trim());
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     @Override

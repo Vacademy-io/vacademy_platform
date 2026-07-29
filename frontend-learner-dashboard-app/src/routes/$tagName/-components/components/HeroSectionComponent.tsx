@@ -594,6 +594,13 @@ const HeroVideo: React.FC<{ src: string; poster?: string; title?: string }> = ({
           controls
           playsInline
           preload="metadata"
+          // Marketing video on a public page: strip the overflow menu's
+          // Download / Picture-in-Picture / playback-speed entries, and block
+          // the right-click "Save video as…" shortcut. Play/pause, seek and
+          // volume stay.
+          controlsList="nodownload noplaybackrate noremoteplayback"
+          disablePictureInPicture
+          onContextMenu={(e) => e.preventDefault()}
           className="h-auto max-h-96 w-full bg-black object-contain" // design-lint-ignore: video letterbox fill
         />
       ) : null}

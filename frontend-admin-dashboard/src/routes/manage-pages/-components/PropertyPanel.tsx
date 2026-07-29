@@ -1639,6 +1639,30 @@ const BookCatalogueEditor = ({ component, pageId, updateComponent }: any) => {
                 />
             </div>
 
+            {/* How a preview image sits in the card's image band. `cover` fills
+                it but crops the edges — which eats the logo/headline on wide
+                marketing banners. `contain` shows the whole artwork. */}
+            <div className="space-y-2">
+                <Label>Course Image Fit</Label>
+                <select
+                    className="w-full rounded border px-3 py-1.5 text-sm"
+                    value={props.render?.styles?.imageFit || 'cover'}
+                    onChange={(e) =>
+                        updateProp('render', {
+                            ...(props.render || {}),
+                            styles: { ...(props.render?.styles || {}), imageFit: e.target.value },
+                        })
+                    }
+                >
+                    <option value="cover">Fill (crops edges)</option>
+                    <option value="contain">Fit whole image</option>
+                </select>
+                <p className="text-xs text-gray-500">
+                    Use &quot;Fit whole image&quot; when covers are wide banners
+                    with text near the edges.
+                </p>
+            </div>
+
             {component.type === 'courseCatalog' && (
                 <div className="space-y-2">
                     <Label>Default Sort</Label>

@@ -1,5 +1,6 @@
-import { OPEN_BOOKING_BASE } from "@/constants/urls";
+import { AUTHENTICATED_BOOKING_BASE, OPEN_BOOKING_BASE } from "@/constants/urls";
 import axios from "axios";
+import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { getBackendErrorMessage } from "@/utils/error-message";
 import type { InstituteCustomField } from "@/routes/audience-response/-services/audience-campaign-services";
 
@@ -138,11 +139,24 @@ export const bookSlot = async ({
   instituteId,
   slug,
   payload,
+  authenticated,
 }: {
   instituteId: string;
   slug: string;
   payload: BookRequest;
+  // When true, book via the authenticated endpoint so invitee_user_id is tied to
+  // the logged-in learner. Only set by flows where the caller is guaranteed to be
+  // a member of the institute (e.g. My Mentors) — public links must stay guest.
+  authenticated?: boolean;
 }): Promise<BookingView> => {
+  if (authenticated) {
+    const res = await authenticatedAxiosInstance({
+      method: "POST",
+      url: `${AUTHENTICATED_BOOKING_BASE}/book/${instituteId}/${slug}`,
+      data: payload,
+    });
+    return res?.data;
+  }
   const response = await axios({
     method: "POST",
     url: `${OPEN_BOOKING_BASE}/page/${instituteId}/${slug}/book`,

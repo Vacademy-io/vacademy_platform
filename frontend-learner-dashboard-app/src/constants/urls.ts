@@ -275,6 +275,11 @@ export const SUBMIT_ENQUIRY_WITH_LEAD = `${BASE_URL}/admin-core-service/open/v1/
 // GET  {OPEN_BOOKING_BASE}/manage/{token}                       → booking by manage token
 // POST {OPEN_BOOKING_BASE}/manage/{token}/cancel|reschedule
 export const OPEN_BOOKING_BASE = `${BASE_URL}/admin-core-service/open/v1/booking`;
+// Authenticated booking-by-slug (ties invitee_user_id to the logged-in learner).
+export const AUTHENTICATED_BOOKING_BASE = `${BASE_URL}/admin-core-service/v1/booking`;
+
+// Mentorship — a learner's assigned mentors
+export const MENTORSHIP_MY_MENTORS = `${BASE_URL}/admin-core-service/mentorship/v1/my-mentors`;
 
 // Sub-Organization Learner Management API endpoints
 export const SUB_ORG_MEMBER_ADMIN_DETAILS = `${BASE_URL}/admin-core-service/sub-org/v1/member-admin-details`;

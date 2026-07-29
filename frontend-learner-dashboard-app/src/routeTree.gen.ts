@@ -23,6 +23,7 @@ import { Route as PlanningIndexRouteImport } from './routes/planning/index'
 import { Route as PaymentResultIndexRouteImport } from './routes/payment-result/index'
 import { Route as ParentIndexRouteImport } from './routes/parent/index'
 import { Route as MyReportsIndexRouteImport } from './routes/my-reports/index'
+import { Route as MyMentorsIndexRouteImport } from './routes/my-mentors/index'
 import { Route as MyFilesIndexRouteImport } from './routes/my-files/index'
 import { Route as LogoutIndexRouteImport } from './routes/logout/index'
 import { Route as LoginIndexRouteImport } from './routes/login/index'
@@ -180,6 +181,11 @@ const ParentIndexRoute = ParentIndexRouteImport.update({
 const MyReportsIndexRoute = MyReportsIndexRouteImport.update({
   id: '/my-reports/',
   path: '/my-reports/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MyMentorsIndexRoute = MyMentorsIndexRouteImport.update({
+  id: '/my-mentors/',
+  path: '/my-mentors/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MyFilesIndexRoute = MyFilesIndexRouteImport.update({
@@ -695,6 +701,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
   '/my-files': typeof MyFilesIndexRoute
+  '/my-mentors': typeof MyMentorsIndexRoute
   '/my-reports': typeof MyReportsIndexRoute
   '/parent': typeof ParentIndexRoute
   '/payment-result': typeof PaymentResultIndexRoute
@@ -798,6 +805,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginIndexRoute
   '/logout': typeof LogoutIndexRoute
   '/my-files': typeof MyFilesIndexRoute
+  '/my-mentors': typeof MyMentorsIndexRoute
   '/my-reports': typeof MyReportsIndexRoute
   '/parent': typeof ParentIndexRoute
   '/payment-result': typeof PaymentResultIndexRoute
@@ -902,6 +910,7 @@ export interface FileRoutesById {
   '/login/': typeof LoginIndexRoute
   '/logout/': typeof LogoutIndexRoute
   '/my-files/': typeof MyFilesIndexRoute
+  '/my-mentors/': typeof MyMentorsIndexRoute
   '/my-reports/': typeof MyReportsIndexRoute
   '/parent/': typeof ParentIndexRoute
   '/payment-result/': typeof PaymentResultIndexRoute
@@ -1008,6 +1017,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/logout'
     | '/my-files'
+    | '/my-mentors'
     | '/my-reports'
     | '/parent'
     | '/payment-result'
@@ -1111,6 +1121,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/logout'
     | '/my-files'
+    | '/my-mentors'
     | '/my-reports'
     | '/parent'
     | '/payment-result'
@@ -1214,6 +1225,7 @@ export interface FileRouteTypes {
     | '/login/'
     | '/logout/'
     | '/my-files/'
+    | '/my-mentors/'
     | '/my-reports/'
     | '/parent/'
     | '/payment-result/'
@@ -1319,6 +1331,7 @@ export interface RootRouteChildren {
   LoginIndexRoute: typeof LoginIndexRoute
   LogoutIndexRoute: typeof LogoutIndexRoute
   MyFilesIndexRoute: typeof MyFilesIndexRoute
+  MyMentorsIndexRoute: typeof MyMentorsIndexRoute
   MyReportsIndexRoute: typeof MyReportsIndexRoute
   ParentIndexRoute: typeof ParentIndexRoute
   PaymentResultIndexRoute: typeof PaymentResultIndexRoute
@@ -1487,6 +1500,13 @@ declare module '@tanstack/react-router' {
       path: '/my-reports'
       fullPath: '/my-reports'
       preLoaderRoute: typeof MyReportsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/my-mentors/': {
+      id: '/my-mentors/'
+      path: '/my-mentors'
+      fullPath: '/my-mentors'
+      preLoaderRoute: typeof MyMentorsIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/my-files/': {
@@ -2175,6 +2195,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginIndexRoute: LoginIndexRoute,
   LogoutIndexRoute: LogoutIndexRoute,
   MyFilesIndexRoute: MyFilesIndexRoute,
+  MyMentorsIndexRoute: MyMentorsIndexRoute,
   MyReportsIndexRoute: MyReportsIndexRoute,
   ParentIndexRoute: ParentIndexRoute,
   PaymentResultIndexRoute: PaymentResultIndexRoute,

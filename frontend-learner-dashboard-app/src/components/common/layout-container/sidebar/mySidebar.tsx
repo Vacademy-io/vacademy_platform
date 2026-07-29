@@ -53,6 +53,7 @@ import {
   NavChatIcon,
   NavGiftIcon,
   NavCalendarCheckIcon,
+  NavUsersIcon,
 } from "./nav-icons";
 import type {
   SidebarItemsType,
@@ -172,6 +173,7 @@ export const MySidebar = ({
       chat: NavChatIcon,
       referral: NavGiftIcon,
       attendance: NavCalendarCheckIcon,
+      "my-mentors": NavUsersIcon,
     }),
     []
   );
@@ -182,6 +184,7 @@ export const MySidebar = ({
       referral: "/referral",
       attendance: "/learning-centre/attendance",
       chat: "/chat",
+      "my-mentors": "/my-mentors",
     }),
     []
   );
@@ -195,6 +198,7 @@ export const MySidebar = ({
       referral: "Referral",
       attendance: "Attendance",
       chat: "In-App Messages",
+      "my-mentors": "My Mentors",
     }),
     []
   );

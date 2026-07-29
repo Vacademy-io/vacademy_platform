@@ -60,7 +60,19 @@ public class OnboardingSubmissionService {
         if (req.getAnswers() != null) answers.putAll(req.getAnswers());
 
         String instituteType = resolveInstituteType(link, answers, req.getInstituteType());
-        DemoHandoffDto handoff = demoAccountService.buildHandoff(instituteType);
+
+        // Resolve the demo *before* saving only to record which institute they were sent to — a
+        // handoff failure must never cost us the lead, so it is best-effort from here on.
+        DemoHandoffDto handoff = null;
+        try {
+            handoff = demoAccountService.buildHandoff(instituteType);
+            if (handoff.getInstituteType() != null) {
+                instituteType = handoff.getInstituteType();
+                answers.put("institute_type", instituteType);
+            }
+        } catch (Exception e) {
+            log.error("Demo handoff failed for slug {} (type {}): {}", slug, instituteType, e.getMessage());
+        }
 
         OnboardingSubmission submission = OnboardingSubmission.builder()
                 .linkId(link.getId())
@@ -75,7 +87,7 @@ public class OnboardingSubmissionService {
                 .source(str(answers.get("referral_source")))
                 .featuresOfInterest(json.write(computeFeatures(answers)))
                 .answers(json.write(answers))
-                .demoInstituteId(handoff.getInstituteId())
+                .demoInstituteId(handoff == null ? null : handoff.getInstituteId())
                 .status(SubmissionStatus.NEW.name())
                 .referrer(req.getReferrer())
                 .build();
@@ -87,7 +99,7 @@ public class OnboardingSubmissionService {
 
         // notify the team (best-effort)
         boolean emailed = alertService.onNewSubmission(submission, answers,
-                handoff.getDisplayName(), recipientService.activeEmails());
+                handoff == null ? null : handoff.getDisplayName(), recipientService.activeEmails());
         if (emailed) {
             submission.setEmailSent(true);
             repository.save(submission);
@@ -102,8 +114,9 @@ public class OnboardingSubmissionService {
     private String resolveInstituteType(OnboardingLink link, Map<String, Object> answers, String fromRequest) {
         String type = StringUtils.hasText(link.getForcedInstituteType()) ? link.getForcedInstituteType()
                 : firstNonBlank(str(answers.get("institute_type")), fromRequest);
+        // The short demo form no longer asks for a type — null means "give them the default demo".
         if (!StringUtils.hasText(type)) {
-            throw new VacademyException(HttpStatus.BAD_REQUEST, "Institute type is required to pick a demo");
+            return null;
         }
         type = type.toUpperCase();
         try {
@@ -116,16 +129,27 @@ public class OnboardingSubmissionService {
         return type;
     }
 
-    /** A feature is "of interest" when its flagged question has a truthy / non-empty answer. */
+    /**
+     * A feature is "of interest" when its flagged question has a truthy / non-empty answer, or when
+     * it was ticked in the short form's "requirements" multi-select (whose option values are the
+     * feature codes themselves).
+     */
     private List<String> computeFeatures(Map<String, Object> answers) {
-        List<String> features = new ArrayList<>();
+        LinkedHashSet<String> features = new LinkedHashSet<>();
+        if (answers.get("requirements") instanceof Collection<?> picked) {
+            picked.forEach(v -> {
+                if (v != null && StringUtils.hasText(String.valueOf(v))) {
+                    features.add(String.valueOf(v).trim().toUpperCase());
+                }
+            });
+        }
         catalog.all().forEach(q -> {
             if (q.getFeatureFlag() == null) return;
             if (isTruthy(answers.get(q.getKey()))) {
                 features.add(q.getFeatureFlag());
             }
         });
-        return features;
+        return new ArrayList<>(features);
     }
 
     private boolean isTruthy(Object v) {

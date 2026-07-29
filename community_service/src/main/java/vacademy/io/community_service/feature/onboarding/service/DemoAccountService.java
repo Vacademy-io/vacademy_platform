@@ -44,12 +44,31 @@ public class DemoAccountService {
             throw new VacademyException(HttpStatus.BAD_REQUEST, "Institute type is required");
         }
         return repository.findByInstituteType(instituteType.toUpperCase())
+                .filter(OnboardingDemoAccount::isActive)
                 .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND,
                         "No demo configured for type " + instituteType));
     }
 
+    /**
+     * The demo a submission is routed to. The short demo form doesn't ask for an institute type,
+     * so a blank type (or one whose demo has been deactivated) falls back to the first active
+     * account by sort order rather than failing the request.
+     */
+    public OnboardingDemoAccount resolveForHandoff(String instituteType) {
+        if (StringUtils.hasText(instituteType)) {
+            var match = repository.findByInstituteType(instituteType.toUpperCase())
+                    .filter(OnboardingDemoAccount::isActive);
+            if (match.isPresent()) {
+                return match.get();
+            }
+            log.warn("No active demo for type {} — falling back to the default demo", instituteType);
+        }
+        return repository.findByActiveTrueOrderBySortOrderAsc().stream().findFirst()
+                .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND, "No active demo account configured"));
+    }
+
     public DemoHandoffDto buildHandoff(String instituteType) {
-        return toHandoff(requireByType(instituteType));
+        return toHandoff(resolveForHandoff(instituteType));
     }
 
     public DemoAccountDto update(String id, UpdateDemoAccountRequest req) {

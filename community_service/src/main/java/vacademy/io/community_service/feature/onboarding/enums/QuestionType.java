@@ -10,5 +10,7 @@ public enum QuestionType {
     SELECT,
     MULTISELECT,
     BOOLEAN,
-    COLOR
+    COLOR,
+    /** Icon cards the prospect expands to tick individual features. Answer is a flat list of codes. */
+    FEATURE_GROUPS
 }

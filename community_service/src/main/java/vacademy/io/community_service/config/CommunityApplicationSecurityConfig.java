@@ -38,6 +38,8 @@ public class CommunityApplicationSecurityConfig {
             "/community-service/public/v1/status/**",
             // Public onboarding form (intake + demo handoff) - open for the onboarding pages
             "/community-service/public/v1/onboarding/**",
+            // Public plan builder (rate card + quote) - open for the pricing page
+            "/community-service/public/v1/pricing/**",
             // BBB server health check & management
             "/community-service/bbb/**" };
 

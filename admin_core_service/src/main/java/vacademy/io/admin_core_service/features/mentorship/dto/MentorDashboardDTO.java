@@ -24,5 +24,7 @@ public class MentorDashboardDTO {
     private Integer totalMentors;
     private Integer totalActiveAssignments;
     private Integer distinctMentees;
+    private Integer todaySessions;      // mentor bookings scheduled today (UTC day)
+    private Integer upcomingSessions;   // mentor bookings in the next 7 days
     private List<MentorDTO> mentors;
 }

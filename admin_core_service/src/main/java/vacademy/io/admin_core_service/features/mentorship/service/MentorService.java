@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vacademy.io.admin_core_service.features.auth_service.service.AuthService;
 import vacademy.io.admin_core_service.features.booking.dto.BookingAvailabilityDTO;
 import vacademy.io.admin_core_service.features.booking.dto.BookingPageDTO;
+import vacademy.io.admin_core_service.features.booking.repository.BookingInstanceRepository;
 import vacademy.io.admin_core_service.features.booking.repository.BookingPageRepository;
 import vacademy.io.admin_core_service.features.booking.service.BookingPageService;
 import vacademy.io.admin_core_service.features.mentorship.dto.CreateMentorRequest;
@@ -41,6 +42,7 @@ public class MentorService {
     private final MentorRepository mentorRepository;
     private final MentorStudentAssignmentRepository assignmentRepository;
     private final BookingPageRepository bookingPageRepository;
+    private final BookingInstanceRepository bookingInstanceRepository;
     private final BookingPageService bookingPageService;
     private final AuthService authService;
 
@@ -170,10 +172,34 @@ public class MentorService {
         List<MentorStudentAssignment> active =
                 assignmentRepository.findByInstituteIdAndStatus(instituteId, MentorStatus.ACTIVE.name());
         int distinctMentees = (int) active.stream().map(MentorStudentAssignment::getStudentUserId).distinct().count();
+
+        // Booking counts across all of this institute's mentors (as hosts).
+        List<String> mentorUserIds = mentors.stream()
+                .map(MentorDTO::getUserId)
+                .filter(id -> id != null && !id.isBlank())
+                .distinct()
+                .toList();
+        int todaySessions = 0;
+        int upcomingSessions = 0;
+        if (!mentorUserIds.isEmpty()) {
+            java.time.LocalDate todayUtc = java.time.LocalDate.now(java.time.ZoneOffset.UTC);
+            java.sql.Timestamp startToday =
+                    java.sql.Timestamp.from(todayUtc.atStartOfDay(java.time.ZoneOffset.UTC).toInstant());
+            java.sql.Timestamp endToday =
+                    java.sql.Timestamp.from(todayUtc.plusDays(1).atStartOfDay(java.time.ZoneOffset.UTC).toInstant());
+            java.time.Instant now = java.time.Instant.now();
+            todaySessions = (int) bookingInstanceRepository.countActiveForHostsBetween(mentorUserIds, startToday, endToday);
+            upcomingSessions = (int) bookingInstanceRepository.countActiveForHostsBetween(
+                    mentorUserIds, java.sql.Timestamp.from(now),
+                    java.sql.Timestamp.from(now.plus(java.time.Duration.ofDays(7))));
+        }
+
         return MentorDashboardDTO.builder()
                 .totalMentors(mentors.size())
                 .totalActiveAssignments(active.size())
                 .distinctMentees(distinctMentees)
+                .todaySessions(todaySessions)
+                .upcomingSessions(upcomingSessions)
                 .mentors(mentors)
                 .build();
     }

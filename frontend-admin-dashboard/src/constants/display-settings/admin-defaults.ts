@@ -95,6 +95,7 @@ function defaultDashboardWidgetsAdmin(): DashboardWidgetConfig[] {
         'learningCenter',
         'assessmentCenter',
         'myCourses',
+        'mentorshipStats',
         // 7. Reference data
         'roleTypeUsers',
         'instituteOverview',

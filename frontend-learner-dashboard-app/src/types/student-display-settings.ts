@@ -35,6 +35,7 @@ export type StudentDashboardWidgetId =
   | "myMembership"
   | "myBooks"
   | "upcomingLiveClasses"
+  | "myMentors"
   | "myOrders"
   | "custom";
 

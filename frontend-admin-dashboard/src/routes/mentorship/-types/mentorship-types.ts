@@ -72,6 +72,8 @@ export interface MentorDashboard {
     total_mentors: number;
     total_active_assignments: number;
     distinct_mentees: number;
+    today_sessions?: number;
+    upcoming_sessions?: number;
     mentors: MentorDTO[];
 }
 

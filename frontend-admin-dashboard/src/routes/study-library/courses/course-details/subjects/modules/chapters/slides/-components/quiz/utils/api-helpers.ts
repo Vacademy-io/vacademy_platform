@@ -142,7 +142,7 @@ const calculateQuestionTimeInMillis = (question: any): number => {
 // Helper function to create question structure
 const createQuestionStructure = (
     question: any,
-    index: number,
+    questionOrder: number,
     options: any[],
     questionResponseType: string,
     evaluationType: string
@@ -222,7 +222,7 @@ const createQuestionStructure = (
         auto_evaluation_json: createAutoEvaluationJson(question, options) || (question as any).auto_evaluation_json || '',
         evaluation_type: evaluationType,
         question_time_in_millis: calculateQuestionTimeInMillis(question),
-        question_order: index + 1,
+        question_order: questionOrder,
         quiz_slide_id: '', // This will be set by the caller
         can_skip: question.canSkip || (question as any).can_skip || false,
         new_question: true, // Added for backend compatibility
@@ -248,7 +248,13 @@ const createQuestionStructure = (
 export const transformFormQuestionsToBackend = (
     questions: UploadQuestionPaperFormType['questions']
 ): QuizSlideQuestion[] => {
-    return questions.map((question, index) => {
+    // Deleting a question is a soft delete: the row stays in the array with status DELETED.
+    // Only live questions may consume an order slot, otherwise the stored orders develop gaps
+    // (delete the 3rd of 5 → 1,2,4,5). Deleted rows reuse the current counter; their order is
+    // irrelevant to the backend since they are removed.
+    let liveCount = 0;
+
+    return questions.map((question) => {
         // Normalize: backend questions use snake_case question_type
         const questionType =
             question.questionType || (question as any).question_type || 'MCQS';
@@ -257,9 +263,12 @@ export const transformFormQuestionsToBackend = (
         const { questionResponseType, evaluationType } = getQuestionResponseConfig(questionType);
         const options = transformOptionsByType(normalizedQuestion);
 
+        const isDeleted = question.status === 'DELETED';
+        const questionOrder = isDeleted ? liveCount + 1 : ++liveCount;
+
         return createQuestionStructure(
             normalizedQuestion,
-            index,
+            questionOrder,
             options,
             questionResponseType,
             evaluationType

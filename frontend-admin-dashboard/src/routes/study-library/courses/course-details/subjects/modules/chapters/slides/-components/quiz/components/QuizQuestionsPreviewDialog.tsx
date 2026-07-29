@@ -110,6 +110,7 @@ const QuizQuestionsPreviewDialog = ({
                                 key={item.key}
                                 question={toTransformedQuestion(item.question, index)}
                                 questionIndex={index}
+                                displayNumber={index + 1}
                                 onEdit={() => {}}
                                 onDelete={handleDelete}
                             />

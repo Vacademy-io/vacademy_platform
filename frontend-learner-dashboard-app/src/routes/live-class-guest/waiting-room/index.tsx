@@ -5,7 +5,9 @@ import { useSessionDetails } from "../-hooks/useSessionDetails";
 import { useGuestAccessRecovery } from "../-hooks/useGuestAccessRecovery";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { CountdownTimer } from "@/routes/study-library/live-class/waiting-room/-components/CountdownTimer";
-import { getPublicUrl } from "@/services/upload_file";
+// No-login variant: guests have no auth token, so the authenticated
+// getPublicUrl silently 401s and the thumbnail/hero never render.
+import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { BackgroundMusic } from "@/routes/study-library/live-class/waiting-room/-components/BackgroundMusic";
 import { SessionStreamingServiceType } from "@/routes/register/live-class/-types/enum";
 import { useMarkAttendance } from "../-hooks/useMarkAttendance";
@@ -44,7 +46,7 @@ function GuestWaitingRoomComponent() {
   useEffect(() => {
     const fetchThumbnail = async () => {
       if (sessionDetails?.thumbnailFileId) {
-        const thumbnailUrl = await getPublicUrl(sessionDetails.thumbnailFileId);
+        const thumbnailUrl = await getPublicUrlWithoutLogin(sessionDetails.thumbnailFileId);
         setThumbnail(thumbnailUrl);
       }
     };
@@ -56,7 +58,7 @@ function GuestWaitingRoomComponent() {
     const heroFileId =
       sessionDetails?.customWaitingRoomMediaId || sessionDetails?.coverFileId;
     if (heroFileId) {
-      getPublicUrl(heroFileId)
+      getPublicUrlWithoutLogin(heroFileId)
         .then((url) => setHeroUrl(url))
         .catch(() => setHeroUrl(null));
     }

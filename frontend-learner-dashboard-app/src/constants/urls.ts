@@ -280,6 +280,8 @@ export const AUTHENTICATED_BOOKING_BASE = `${BASE_URL}/admin-core-service/v1/boo
 
 // Mentorship — a learner's assigned mentors
 export const MENTORSHIP_MY_MENTORS = `${BASE_URL}/admin-core-service/mentorship/v1/my-mentors`;
+// A learner's own bookings (by invitee user id) — membership-scoped, self only.
+export const MEETINGS_BY_LEAD = `${BASE_URL}/admin-core-service/v1/meetings/by-lead`;
 
 // Sub-Organization Learner Management API endpoints
 export const SUB_ORG_MEMBER_ADMIN_DETAILS = `${BASE_URL}/admin-core-service/sub-org/v1/member-admin-details`;

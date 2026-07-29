@@ -35,6 +35,7 @@ export const DASHBOARD_WIDGET_LABELS: Record<DashboardWidgetId, string> = {
     topVles: 'Top sub-orgs (by seats used)',
     subOrgSeatCourses: 'My learners & courses (sub-org admin)',
     subOrgActivityDues: 'My plan & dues (sub-org admin)',
+    mentorshipStats: 'Mentorship stats',
 };
 
 export const widgetLabel = (id: DashboardWidgetId): string =>

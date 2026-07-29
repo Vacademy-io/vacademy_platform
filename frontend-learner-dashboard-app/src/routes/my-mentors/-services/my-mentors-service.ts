@@ -1,5 +1,5 @@
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
-import { MENTORSHIP_MY_MENTORS } from "@/constants/urls";
+import { MEETINGS_BY_LEAD, MENTORSHIP_MY_MENTORS } from "@/constants/urls";
 
 // snake_case — mirrors admin-core-service MentorDTO.
 export interface MyMentor {
@@ -36,4 +36,42 @@ export const handleGetMyMentors = (instituteId: string | undefined) => ({
     queryFn: () => getMyMentors({ instituteId: instituteId ?? "" }),
     staleTime: 60 * 1000,
     enabled: !!instituteId,
+});
+
+// A learner's own bookings (mentor sessions). snake_case — mirrors BookingInstanceDTO.
+export interface MyBooking {
+    id: string;
+    booking_page_title?: string | null;
+    host_user_id?: string | null;
+    host_name?: string | null;
+    invitee_user_id?: string | null;
+    scheduled_start_utc?: string | number | null;
+    scheduled_end_utc?: string | number | null;
+    status: string;
+    meet_link?: string | null;
+}
+
+export const getMyBookings = async ({
+    instituteId,
+    userId,
+}: {
+    instituteId: string;
+    userId: string;
+}): Promise<MyBooking[]> => {
+    const response = await authenticatedAxiosInstance({
+        method: "GET",
+        url: MEETINGS_BY_LEAD,
+        params: { instituteId, inviteeUserId: userId },
+    });
+    return (response.data ?? []) as MyBooking[];
+};
+
+export const handleGetMyBookings = (
+    instituteId: string | undefined,
+    userId: string | undefined
+) => ({
+    queryKey: ["GET_MY_BOOKINGS", instituteId, userId],
+    queryFn: () => getMyBookings({ instituteId: instituteId ?? "", userId: userId ?? "" }),
+    staleTime: 60 * 1000,
+    enabled: !!instituteId && !!userId,
 });

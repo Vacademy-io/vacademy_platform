@@ -102,6 +102,7 @@ function defaultDashboardWidgets(): StudentDashboardWidgetConfig[] {
     // Rail column: announcements pin panel renders first (not configurable),
     // then live classes and attendance.
     "upcomingLiveClasses",
+    "myMentors",
     "thisWeekAttendance",
     "referAFriend",
   ];

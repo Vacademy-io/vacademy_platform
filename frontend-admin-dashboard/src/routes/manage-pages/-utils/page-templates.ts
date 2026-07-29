@@ -151,6 +151,112 @@ export const PAGE_TEMPLATES: PageTemplate[] = [
             makeComponent('mediaShowcase'),
         ],
     },
+    // ── Niche kits ──────────────────────────────────────────────────────
+    // These wire up the components a coaching/tuition site actually converts
+    // with — dense programme blocks, a campaign-backed enquiry form, an
+    // urgency ticker — rather than leaving an admin to discover them one by
+    // one. Data-bound pieces (leadForm/productPageOffer) ship unset ON
+    // PURPOSE: the admin picks their campaign / product page, and the
+    // pre-publish check now tells them if they forget.
+    {
+        id: 'coaching-institute-home',
+        name: 'Coaching Institute — Home',
+        description: 'Announcement ticker + hero + why-us + programme blocks + enquiry form + FAQ + CTA',
+        category: 'page',
+        getComponents: () => [
+            makeComponent('marquee'),
+            makeComponent('heroSection', {
+                props: {
+                    ...componentTemplates['heroSection']?.props,
+                    layout: 'split',
+                    left: {
+                        eyebrow: 'Admissions open',
+                        title: 'Coaching that gets results',
+                        description: 'Live, exam-focused classes taught by faculty who have taken the exam themselves.',
+                        buttons: [
+                            { text: 'Book a free demo', variant: 'primary', action: 'openForm', audienceId: '' },
+                            { text: 'See our programs', variant: 'secondary', action: 'navigate', target: 'programs' },
+                        ],
+                    },
+                },
+            }),
+            makeComponent('statsHighlights'),
+            makeComponent('sectionHeading', {
+                props: { ...componentTemplates['sectionHeading']?.props, eyebrow: 'Why us', title: 'Built around how students actually learn' },
+            }),
+            makeComponent('featureGrid'),
+            makeComponent('sectionHeading', {
+                props: { ...componentTemplates['sectionHeading']?.props, eyebrow: 'Our programs', title: 'Every batch, in detail' },
+            }),
+            makeComponent('detailBlocks'),
+            makeComponent('testimonialSection'),
+            makeComponent('leadForm', {
+                props: {
+                    ...componentTemplates['leadForm']?.props,
+                    title: 'Book your free demo class',
+                    subtitle: 'Tell us your class and we will call you back today.',
+                },
+            }),
+            makeComponent('faqSection'),
+            makeComponent('ctaBanner'),
+        ],
+    },
+    {
+        id: 'programs-directory',
+        name: 'Programs Directory',
+        description: 'Compact header + one detailed block per programme + CTA (no prices)',
+        category: 'page',
+        getComponents: () => [
+            makeComponent('sectionHeading', {
+                props: {
+                    ...componentTemplates['sectionHeading']?.props,
+                    eyebrow: 'Everything we teach',
+                    title: 'All our programs, in full detail',
+                    lead: 'What each program covers, who it is for, and how it runs.',
+                },
+            }),
+            makeComponent('detailBlocks'),
+            makeComponent('ctaBanner'),
+        ],
+    },
+    {
+        id: 'enquiry-page',
+        name: 'Enquiry / Contact',
+        description: 'Campaign enquiry form + contact details + map',
+        category: 'page',
+        getComponents: () => [
+            makeComponent('sectionHeading', {
+                props: {
+                    ...componentTemplates['sectionHeading']?.props,
+                    eyebrow: 'Talk to us',
+                    title: 'Ask us anything',
+                    lead: 'Fill this in and our counsellors will get back to you.',
+                },
+            }),
+            makeComponent('leadForm'),
+            makeComponent('contactForm'),
+            makeComponent('mapEmbed'),
+        ],
+    },
+    {
+        id: 'programs-section',
+        name: 'Programme Blocks',
+        description: 'Heading + one detailed block per programme',
+        category: 'section',
+        getComponents: () => [
+            makeComponent('sectionHeading', {
+                props: { ...componentTemplates['sectionHeading']?.props, eyebrow: 'Our programs', title: 'What we offer' },
+            }),
+            makeComponent('detailBlocks'),
+        ],
+    },
+    {
+        id: 'enquiry-section',
+        name: 'Enquiry Form',
+        description: 'A campaign-backed lead form section',
+        category: 'section',
+        getComponents: () => [makeComponent('leadForm')],
+    },
     {
         id: 'lead-hero',
         name: 'Lead Hero',

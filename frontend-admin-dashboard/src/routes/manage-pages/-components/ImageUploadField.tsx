@@ -6,6 +6,7 @@ import { UploadSimple as Upload, CircleNotch as Loader2, Image as ImageIcon, Spa
 import { useFileUpload } from '@/hooks/use-file-upload';
 import { getPublicUrl } from '@/services/upload_file';
 import { getUserId } from '@/utils/userDetails';
+import { MediaLibraryDialog } from './MediaLibraryDialog';
 import { useToast } from '@/hooks/use-toast';
 import { generateAiImage, AiImageKind } from '../-services/ai-page-service';
 
@@ -24,6 +25,7 @@ export const ImageUploadField = ({ label, value, onChange, placeholder, aiKind }
     const [aiOpen, setAiOpen] = useState(false);
     const [aiPrompt, setAiPrompt] = useState('');
     const [aiBusy, setAiBusy] = useState(false);
+    const [libraryOpen, setLibraryOpen] = useState(false);
     const { uploadFile } = useFileUpload();
     const { toast } = useToast();
 
@@ -140,6 +142,17 @@ export const ImageUploadField = ({ label, value, onChange, placeholder, aiKind }
                         </>
                     )}
                 </Button>
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setLibraryOpen(true)}
+                    title="Pick an image you already uploaded"
+                >
+                    <ImageIcon className="mr-2 size-4" />
+                    Library
+                </Button>
                 {aiKind && (
                     <Button
                         type="button"
@@ -153,6 +166,8 @@ export const ImageUploadField = ({ label, value, onChange, placeholder, aiKind }
                     </Button>
                 )}
             </div>
+
+            <MediaLibraryDialog open={libraryOpen} onOpenChange={setLibraryOpen} onPick={onChange} />
 
             {/* AI generate prompt row */}
             {aiKind && aiOpen && (

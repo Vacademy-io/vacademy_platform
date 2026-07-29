@@ -1,7 +1,9 @@
 package vacademy.io.admin_core_service.features.audience.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.admin_core_service.features.audience.dto.AudienceDTO;
@@ -16,6 +18,7 @@ import vacademy.io.admin_core_service.features.audience.dto.SubmitLeadWithEnquir
 import vacademy.io.admin_core_service.features.audience.dto.UpdateLeadWithEnquiryRequestDTO;
 import vacademy.io.admin_core_service.features.audience.dto.UpdateLeadWithEnquiryResponseDTO;
 import vacademy.io.admin_core_service.features.audience.service.AudienceService;
+import vacademy.io.admin_core_service.features.audience.service.PublicLeadRateLimiter;
 import vacademy.io.admin_core_service.features.common.service.InstituteCustomFiledService;
 
 /**
@@ -32,12 +35,33 @@ public class PublicAudienceController {
     @Autowired
     private InstituteCustomFiledService instituteCustomFiledService;
 
+    @Autowired
+    private PublicLeadRateLimiter rateLimiter;
+
+    /**
+     * Real client IP behind the ingress/CDN. X-Forwarded-For is a chain; the
+     * left-most entry is the original caller.
+     */
+    private String clientIp(HttpServletRequest request) {
+        String xff = request.getHeader("X-Forwarded-For");
+        if (xff != null && !xff.isBlank()) {
+            return xff.split(",")[0].trim();
+        }
+        String real = request.getHeader("X-Real-IP");
+        return (real != null && !real.isBlank()) ? real.trim() : request.getRemoteAddr();
+    }
+
     /**
      * Submit a lead from website form (public endpoint)
      * POST /open/v1/audience/lead/submit
      */
     @PostMapping("/lead/submit")
-    public ResponseEntity<String> submitLead(@RequestBody SubmitLeadRequestDTO requestDTO) {
+    public ResponseEntity<String> submitLead(@RequestBody SubmitLeadRequestDTO requestDTO,
+            HttpServletRequest request) {
+        if (!rateLimiter.tryAcquire(clientIp(request), null)) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body("Too many submissions — please try again in a few minutes.");
+        }
         String responseId = audienceService.submitLead(requestDTO);
         return ResponseEntity.ok(responseId);
     }
@@ -48,7 +72,12 @@ public class PublicAudienceController {
      * Email sending is handled by workflow engine
      */
     @PostMapping("/lead/submit/v2")
-    public ResponseEntity<String> submitLeadV2(@RequestBody SubmitLeadRequestDTO requestDTO) {
+    public ResponseEntity<String> submitLeadV2(@RequestBody SubmitLeadRequestDTO requestDTO,
+            HttpServletRequest request) {
+        if (!rateLimiter.tryAcquire(clientIp(request), null)) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body("Too many submissions — please try again in a few minutes.");
+        }
         String responseId = audienceService.submitLeadV2(requestDTO);
         return ResponseEntity.ok(responseId);
     }
@@ -62,7 +91,14 @@ public class PublicAudienceController {
      * POST /open/v1/audience/lead/submit-catalogue
      */
     @PostMapping("/lead/submit-catalogue")
-    public ResponseEntity<String> submitCatalogueLead(@RequestBody CatalogueLeadRequestDTO requestDTO) {
+    public ResponseEntity<String> submitCatalogueLead(@RequestBody CatalogueLeadRequestDTO requestDTO,
+            HttpServletRequest request) {
+        // Anonymous endpoint: cap abuse before any user/lead row is created.
+        if (!rateLimiter.tryAcquire(clientIp(request),
+                requestDTO != null ? requestDTO.getInstituteId() : null)) {
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                    .body("Too many submissions — please try again in a few minutes.");
+        }
         String responseId = audienceService.submitCatalogueLead(requestDTO);
         return ResponseEntity.ok(responseId);
     }

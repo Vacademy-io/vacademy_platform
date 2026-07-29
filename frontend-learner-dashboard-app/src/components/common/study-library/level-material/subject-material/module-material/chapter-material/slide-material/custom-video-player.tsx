@@ -621,7 +621,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
             const loadSavedData = async () => {
                 try {
                     const { value } = await Preferences.get({
-                        key: "video_concentration_metrics",
+                        key: `video_concentration_metrics_${activeItem?.id ?? "global"}`,
                     });
                     if (value) {
                         const savedMetrics = JSON.parse(value);
@@ -662,7 +662,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                 };
 
                 await Preferences.set({
-                    key: "video_concentration_metrics",
+                    key: `video_concentration_metrics_${activeItem?.id ?? "global"}`,
                     value: JSON.stringify(metrics),
                 });
             } catch (error) {
@@ -1018,7 +1018,7 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
                     id: concentrationScoreId.current,
                     concentration_score: concentrationScore,
                     tab_switch_count: tabSwitchCount,
-                    pause_count: missedAnswerCount,
+                    pause_count: pauseCount,
                     wrong_answer_count: wrongAnswerCount,
                     missed_answer_count: missedAnswerCount,
                     answer_times_in_seconds: answerTimesInSeconds,
@@ -1142,100 +1142,18 @@ const CustomVideoPlayer = forwardRef<any, CustomVideoPlayerProps>(
         }, []);
 
         const togglePlay = () => {
-            if (videoRef.current) {
-                if (isPlayed) {
-                    videoRef.current.pause();
-                    setIsPlayed(false);
-                    stopTimer();
-                    stopProgressTracking();
-
-                    // Record timestamp for pausing
-                    const now = getEpochTimeInMillis();
-                    videoEndTime.current = now;
-
-                    const currentStartTimeInSeconds = convertTimeToSeconds(
-                        currentStartTimeRef.current
-                    );
-                    const endTimeInSeconds =
-                        currentStartTimeInSeconds +
-                        timestampDurationRef.current;
-                    const endTimeStamp = formatVideoTime(endTimeInSeconds);
-
-                    // Only create timestamp if we have a valid start time
-                    // This prevents creating timestamps when pause event fires before any play event
-                    const startTimeInMillis = convertTimeToSeconds(currentStartTimeRef.current) * 1000;
-                    const endTimeInMillis = convertTimeToSeconds(endTimeStamp) * 1000;
-                    
-                    if (
-                        currentStartTimeRef.current !== "" &&
-                        !isNaN(startTimeInMillis) &&
-                        !isNaN(endTimeInMillis) &&
-                        endTimeInMillis >= startTimeInMillis &&
-                        timestampDurationRef.current > 0 // Only add if there was actual playback duration
-                    ) {
-                        currentTimestamps.current.push({
-                            id: uuidv4(),
-                            start_time: currentStartTimeRef.current,
-                            end_time: endTimeStamp,
-                            start: startTimeInMillis,
-                            end: endTimeInMillis,
-                        });
-                    } else {
-                        console.warn('⚠️ [CustomVideoPlayer] Skipped creating invalid timestamp:', {
-                            startTime: currentStartTimeRef.current,
-                            endTime: endTimeStamp,
-                            startTimeInMillis,
-                            endTimeInMillis,
-                            timestampDuration: timestampDurationRef.current,
-                        });
-                    }
-
-                    currentStartTimeRef.current = formatVideoTime(currentTime);
-                    timestampDurationRef.current = 0;
-                    setPauseCount((prev) => prev + 1);
-                } else {
-                    videoRef.current.play();
-                    setIsPlayed(true);
-                    startTimer();
-                    startProgressTracking();
-
-                    // Record timestamp for playing
-                    const now = getEpochTimeInMillis();
-                    if (!videoStartTime.current) {
-                        videoStartTime.current = now;
-                    }
-
-                    if (isFirstPlay) {
-                        console.log("integrate add video activity api now");
-                        syncVideoTrackingData();
-                        setIsFirstPlay(false);
-
-                        if (!updateIntervalRef.current) {
-                            // Periodic sync cadence = min(video duration, 60s).
-                            // Short videos sync at their own length, so a 6s
-                            // clip never has more than ~6s of unsynced data
-                            // sitting in storage if the user closes the tab.
-                            const durSec = videoRef.current?.duration;
-                            const periodMs = Math.max(
-                                1000,
-                                Math.min(
-                                    Number.isFinite(durSec) && (durSec as number) > 0
-                                        ? Math.round((durSec as number) * 1000)
-                                        : 60000,
-                                    60000
-                                )
-                            );
-                            updateIntervalRef.current = setInterval(() => {
-                                syncVideoTrackingData();
-                            }, periodMs);
-                        }
-                    }
-
-                    currentStartTimeRef.current = formatVideoTime(currentTime);
-                    currentStartTimeInEpochRef.current =
-                        convertTimeToSeconds(currentStartTimeRef.current) *
-                        1000;
-                }
+            // Bookkeeping (segment timestamps, pause counts, first-play sync)
+            // lives in handleVideoPlay/handleVideoPause, driven by the media
+            // element's own events. Doing it here too ran BOTH paths for a
+            // click on the video surface: every pause was counted twice, the
+            // first play fired syncVideoTrackingData twice in one tick, and
+            // the two paths computed segments with different math (wall-clock
+            // ticks here vs the real playhead in handleVideoPause).
+            if (!videoRef.current) return;
+            if (isPlayed) {
+                videoRef.current.pause();
+            } else {
+                videoRef.current.play();
             }
         };
 

@@ -1,4 +1,5 @@
 import type React from "react";
+import { getLearnerTrackingSettings } from "@/services/learner-tracking-settings";
 import { useEffect, useState, useRef, useCallback, lazy, Suspense } from "react";
 import { FileX } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
@@ -89,12 +90,13 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
       clearTimeout(inactivityTimeoutRef.current);
     }
 
-    // Set new inactivity timeout for 60 seconds
+    // Institute-configurable idle threshold (Settings -> Learner Activity)
+    const trackingSettings = getLearnerTrackingSettings();
     inactivityTimeoutRef.current = setTimeout(() => {
-      if (!showVerification) {
+      if (trackingSettings.focus.idlePopupEnabled && !showVerification) {
         triggerVerification();
       }
-    }, 60000);
+    }, trackingSettings.focus.idlePopupDelaySeconds * 1000);
   }, [showVerification]);
 
   // Trigger verification popup
@@ -192,7 +194,7 @@ const PresentationViewer: React.FC<PresentationViewerProps> = ({ slide }) => {
         const now = getEpochTimeInMillis();
         const duration = Math.round((now - sessionStartTime.current.getTime()) / 1000);
 
-        if (duration >= 10) { // Only record sessions longer than 10 seconds
+        if (duration >= getLearnerTrackingSettings().documents.pageDwellSeconds) {
           viewSessions.current.push({
             id: uuidv4(),
             start_time: new Date(sessionStartTime.current).toISOString(),

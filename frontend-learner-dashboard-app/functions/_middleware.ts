@@ -73,6 +73,67 @@ async function fetchBranding(
   return null;
 }
 
+interface PageSeo {
+  title?: string;
+  description?: string;
+  ogImage?: string;
+}
+
+/**
+ * Per-page SEO. The page editor collects seo.metaTitle / metaDescription /
+ * ogImage on every catalogue page — but until now crawlers only ever saw
+ * institute-level branding, so every page shared and ranked as the same
+ * generic card. Resolve the catalogue JSON for /{tag} and /{tag}/{page}
+ * routes and let the page speak for itself; anything missing falls back to
+ * branding exactly as before.
+ */
+async function fetchPageSeo(
+  backendBase: string,
+  instituteId: string,
+  tagName: string,
+  pageSlug: string | undefined
+): Promise<PageSeo | null> {
+  try {
+    const url =
+      `${backendBase}/admin-core-service/public/course-catalogue/v1/institute/get/by-tag` +
+      `?instituteId=${encodeURIComponent(instituteId)}&tagName=${encodeURIComponent(tagName)}`;
+    const res = await fetch(url, {
+      headers: { accept: "application/json" },
+      // Edge-cache the catalogue JSON briefly: crawlers arrive in bursts
+      // (WhatsApp fetches per recipient) and the JSON changes rarely.
+      cf: { cacheTtl: 300, cacheEverything: true },
+    } as RequestInit);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { catalogue_json?: string };
+    if (!data?.catalogue_json) return null;
+    const cfg = JSON.parse(data.catalogue_json) as {
+      pages?: Array<{
+        id?: string;
+        route?: string;
+        title?: string;
+        seo?: { metaTitle?: string; metaDescription?: string; ogImage?: string };
+      }>;
+    };
+    const pages = cfg?.pages || [];
+    const norm = (r?: string) => (r || "").replace(/^\//, "").toLowerCase();
+    const page = pageSlug
+      ? pages.find((p) => norm(p.route) === norm(pageSlug))
+      : pages.find(
+          (p) =>
+            p.id === "home" ||
+            ["", "/", "home", "homepage"].includes(norm(p.route))
+        ) || pages[0];
+    if (!page) return null;
+    return {
+      title: page.seo?.metaTitle || page.title || undefined,
+      description: page.seo?.metaDescription || undefined,
+      ogImage: page.seo?.ogImage || undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function parseDomainParts(hostname: string): {
   domain: string;
   subdomain: string;
@@ -133,9 +194,22 @@ export const onRequest: PagesFunction = async (context) => {
     return response;
   }
 
-  const title = escapeHtml(branding.tabText || branding.instituteName || "");
+  // Try page-level SEO for catalogue routes (/{tag} or /{tag}/{page}); every
+  // other route — and any failure — keeps the branding fallback.
+  const segs = url.pathname.split("/").filter(Boolean);
+  const looksLikeCatalogue =
+    segs.length >= 1 &&
+    segs.length <= 2 &&
+    !["login", "signup", "register", "product-pages", "audience-response", "enquiry-response", "study-library", "assessment", "booking-response"].includes(segs[0]);
+  const pageSeo = looksLikeCatalogue
+    ? await fetchPageSeo(backendBase, branding.instituteId, segs[0], segs[1])
+    : null;
+
+  const title = escapeHtml(
+    pageSeo?.title || branding.tabText || branding.instituteName || ""
+  );
   const description = escapeHtml(
-    `${branding.instituteName}`
+    pageSeo?.description || `${branding.instituteName}`
   );
 
   // The big unfurl thumbnail uses the main institute logo; the favicon /
@@ -157,8 +231,11 @@ export const onRequest: PagesFunction = async (context) => {
   // The S3 objects are served with a wrong content-type, which makes crawlers
   // refuse to render them. Route og:image through our same-origin proxy, which
   // re-serves the bytes with a correct image/* content-type.
-  const ogImageProxied = ogImage
-    ? `${url.origin}/branding-image?u=${encodeURIComponent(ogImage)}`
+  // Page-level OG image (stored as a full public URL) wins over the logo;
+  // both go through the same-origin proxy for the content-type fix.
+  const ogImageSource = pageSeo?.ogImage || ogImage;
+  const ogImageProxied = ogImageSource
+    ? `${url.origin}/branding-image?u=${encodeURIComponent(ogImageSource)}`
     : "";
 
   // Build OG meta tags

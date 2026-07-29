@@ -9,6 +9,20 @@ export const TimestampSchema = z.object({
     end: z.number(),
 });
 
+// Real concentration metrics computed by the players. Optional because older
+// stored activities won't carry it; the sync hook forwards it when present
+// instead of fabricating zeros (which silently discarded every tab-switch and
+// pause the players had counted).
+export const VideoConcentrationSchema = z.object({
+    id: z.string(),
+    concentration_score: z.number(),
+    tab_switch_count: z.number(),
+    pause_count: z.number(),
+    wrong_answer_count: z.number().optional(),
+    missed_answer_count: z.number().optional(),
+    answer_times_in_seconds: z.array(z.number()),
+});
+
 export const ActivitySchema = z.object({
     id: z.string(),
     activity_id: z.string(),
@@ -22,6 +36,7 @@ export const ActivitySchema = z.object({
     sync_status: z.enum(['SYNCED', 'STALE']),
     current_start_time: z.string().optional(),
     current_start_time_in_epoch: z.number(),
+    concentration_score: VideoConcentrationSchema.optional(),
     new_activity: z.boolean()
 });
 

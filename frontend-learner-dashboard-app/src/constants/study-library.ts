@@ -11,3 +11,9 @@
  * the chapter sidebar. Always import this constant instead of hardcoding.
  */
 export const SLIDE_COMPLETION_THRESHOLD = 80;
+
+// Institute-configurable variant (Settings -> Learner Activity in the admin
+// dashboard). Reads the cached LEARNER_TRACKING_SETTING; falls back to the
+// constant above. Prefer this in UI code so an institute's threshold change
+// actually moves the green ticks.
+export { getSlideCompletionThreshold } from "@/services/learner-tracking-settings";

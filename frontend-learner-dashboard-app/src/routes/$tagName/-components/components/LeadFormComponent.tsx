@@ -9,6 +9,7 @@ import {
   submitAudienceLead,
 } from "@/routes/audience-response/-services/audience-campaign-services";
 import { isSpamSubmission } from "../../-utils/website-lead";
+import { emitLeadCaptured } from "../../-utils/catalogue-tracking";
 
 /**
  * Lead Form — an Audience campaign's form rendered natively on a catalogue
@@ -188,6 +189,7 @@ export const LeadFormComponent: React.FC<LeadFormProps> = ({
         fields.map((f) => ({ id: f.id, field_key: f.key }))
       );
       await submitAudienceLead(payload);
+      emitLeadCaptured({ audienceId, sourceType: "AUDIENCE_CAMPAIGN", sourceId: audienceId });
       setDone(true);
     } catch {
       setError("Something went wrong — please try again.");

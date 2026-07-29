@@ -15,9 +15,9 @@ export function SmartErrorPage({ error }: Props) {
 
     useEffect(() => {
         if (chunkError) {
-            reloadForChunkError();
+            reloadForChunkError(error);
         }
-    }, [chunkError]);
+    }, [chunkError, error]);
 
     if (chunkError) {
         return (

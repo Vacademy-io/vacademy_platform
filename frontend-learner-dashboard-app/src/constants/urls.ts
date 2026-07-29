@@ -99,7 +99,10 @@ export const EXPORT_AI_REPORT = `${BASE_URL}/assessment-service/assessment/learn
 export const ASSESSMENT_SUBMIT_MANUAL = `${BASE_URL}/assessment-service/assessment/learner/manual-status/submit`;
 
 export const ADD_UPDATE_VIDEO_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-video-activity`;
-export const ADD_UPDATE_AUDIO_ACTIVITY = `${BASE_URL}/admin-core-service/learner/activity/add-activity`;
+// NOTE: this used to point at /learner/activity/add-activity — a route that
+// does not exist on any backend service, so every audio sync 404ed and audio
+// progress never reached the server. The real endpoint mirrors video/document.
+export const ADD_UPDATE_AUDIO_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-audio-activity`;
 export const ADD_UPDATE_DOCUMENT_ACTIVITY = `${BASE_URL}/admin-core-service/learner-tracking/v1/add-or-update-document-activity`;
 // Per-learner interaction state for a document slide's interactive blocks
 // (checklist ticks, fill-in-the-blank answers, inline MCQ choices). GET lists

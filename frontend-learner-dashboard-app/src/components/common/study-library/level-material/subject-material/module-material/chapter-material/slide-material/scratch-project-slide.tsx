@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { getLearnerTrackingSettings } from "@/services/learner-tracking-settings";
 import { GameController, ArrowSquareOut } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
@@ -90,7 +91,9 @@ export const ScratchProjectSlide: React.FC<ScratchProjectSlideProps> = ({
   const [missedAnswerCount, setMissedAnswerCount] = useState(0);
   const [wrongAnswerCount, setWrongAnswerCount] = useState(0);
   const verificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const inactivityThreshold = 60000;
+  // Institute-configurable (Settings -> Learner Activity); defaults preserve the old constants.
+  const trackingSettings = getLearnerTrackingSettings();
+  const inactivityThreshold = trackingSettings.focus.idlePopupDelaySeconds * 1000;
 
   // Generate a unique document ID for tracking
   // const documentId = `scratch-project-${activeItem?.id || "unknown"}`;
@@ -196,7 +199,7 @@ export const ScratchProjectSlide: React.FC<ScratchProjectSlideProps> = ({
     if (verificationTimeoutRef.current)
       clearTimeout(verificationTimeoutRef.current);
     verificationTimeoutRef.current = setTimeout(() => {
-      if (!showVerification && !isPaused) {
+      if (trackingSettings.focus.idlePopupEnabled && !showVerification && !isPaused) {
         setShowVerification(true);
         generateVerificationNumbers();
         startVerificationTimer();
@@ -223,7 +226,7 @@ export const ScratchProjectSlide: React.FC<ScratchProjectSlideProps> = ({
 
     inactivityTimeoutRef.current = setTimeout(() => {
       setIsPaused(true);
-    }, 5 * 60 * 1000);
+    }, trackingSettings.focus.hardPauseMinutes * 60 * 1000);
 
     if (verificationTimeoutRef.current) {
       clearTimeout(verificationTimeoutRef.current);
@@ -330,7 +333,7 @@ export const ScratchProjectSlide: React.FC<ScratchProjectSlideProps> = ({
 
     inactivityTimeoutRef.current = setTimeout(() => {
       setIsPaused(true);
-    }, 5 * 60 * 1000);
+    }, trackingSettings.focus.hardPauseMinutes * 60 * 1000);
 
     startInactivityVerification();
 
@@ -382,7 +385,7 @@ export const ScratchProjectSlide: React.FC<ScratchProjectSlideProps> = ({
         (now - actionStartTime.current.getTime()) / 1000
       );
 
-      if (duration >= 5) {
+      if (duration >= trackingSettings.documents.actionDwellSeconds) {
         // Only track actions longer than 5 seconds
         actionViews.current.push({
           id: uuidv4(),

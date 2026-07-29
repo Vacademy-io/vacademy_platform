@@ -125,7 +125,7 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
   const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   // One-shot guard: fire the completion POST on the FIRST user-initiated
   // edit of this slide visit, then never again until the component unmounts.
-  // Without this guard every keystroke would re-fire the sync — B9's
+  // Without this guard every keystroke would re-fire the sync â B9's
   // slide-level monotonic guard makes the extra writes no-ops at the DB
   // level, but the network traffic would be wasteful and noisy.
   const hasFiredCompletionRef = useRef(false);
@@ -164,7 +164,9 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
   const [missedAnswerCount, setMissedAnswerCount] = useState(0);
   const [wrongAnswerCount, setWrongAnswerCount] = useState(0);
   const verificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const inactivityThreshold = 60000;
+  // Institute-configurable (Settings -> Learner Activity); defaults preserve the old constants.
+  const trackingSettings = getLearnerTrackingSettings();
+  const inactivityThreshold = trackingSettings.focus.idlePopupDelaySeconds * 1000;
 
   // state for output panel
   const [isOutputExpanded, setIsOutputExpanded] = useState(false);
@@ -281,7 +283,7 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
     if (verificationTimeoutRef.current)
       clearTimeout(verificationTimeoutRef.current);
     verificationTimeoutRef.current = setTimeout(() => {
-      if (!showVerification && !isPaused) {
+      if (trackingSettings.focus.idlePopupEnabled && !showVerification && !isPaused) {
         setShowVerification(true);
         generateVerificationNumbers();
         startVerificationTimer();
@@ -308,7 +310,7 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
 
     inactivityTimeoutRef.current = setTimeout(() => {
       setIsPaused(true);
-    }, 5 * 60 * 1000);
+    }, trackingSettings.focus.hardPauseMinutes * 60 * 1000);
 
     if (verificationTimeoutRef.current) {
       clearTimeout(verificationTimeoutRef.current);
@@ -415,7 +417,7 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
 
     inactivityTimeoutRef.current = setTimeout(() => {
       setIsPaused(true);
-    }, 5 * 60 * 1000);
+    }, trackingSettings.focus.hardPauseMinutes * 60 * 1000);
 
     startInactivityVerification();
 
@@ -467,7 +469,7 @@ const PracticeModeView: React.FC<CodeEditorSlideProps> = ({
         (now - actionStartTime.current.getTime()) / 1000
       );
 
-      if (duration >= 5) {
+      if (duration >= trackingSettings.documents.actionDwellSeconds) {
         // Only track actions longer than 5 seconds
         actionViews.current.push({
           id: uuidv4(),

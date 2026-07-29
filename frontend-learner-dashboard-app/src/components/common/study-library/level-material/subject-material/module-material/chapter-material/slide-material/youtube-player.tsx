@@ -457,7 +457,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
     const loadSavedData = async () => {
       try {
         const { value } = await Preferences.get({
-          key: "video_concentration_metrics",
+          key: `video_concentration_metrics_${activeItem?.id ?? "global"}`,
         });
         if (value) {
           const savedMetrics = JSON.parse(value);
@@ -498,7 +498,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
       };
 
       await Preferences.set({
-        key: "video_concentration_metrics",
+        key: `video_concentration_metrics_${activeItem?.id ?? "global"}`,
         value: JSON.stringify(metrics),
       });
     } catch (error) {
@@ -930,7 +930,7 @@ export const YouTubePlayerComp: React.FC<YouTubePlayerProps> = ({
           id: concentrationScoreId.current,
           concentration_score: concentrationScore,
           tab_switch_count: tabSwitchCount,
-          pause_count: missedAnswerCount,
+          pause_count: pauseCount,
           wrong_answer_count: wrongAnswerCount,
           missed_answer_count: missedAnswerCount,
           answer_times_in_seconds: answerTimesInSeconds,

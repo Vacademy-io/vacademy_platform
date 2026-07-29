@@ -29,11 +29,13 @@ export interface TrackingDataType {
     }[]
     | null,
   new_activity: boolean,
-  concentration_score: {
+  // Optional: when absent the backend keeps the activity's previous score
+  // instead of overwriting it with fabricated values.
+  concentration_score?: {
     id: string,
     concentration_score: number,
     tab_switch_count: number,
     pause_count: number,
     answer_times_in_seconds: number[]
-  }
+  } | null
 }

@@ -33,6 +33,7 @@ import { TokenKey } from "@/constants/auth/tokens";
 import { isNullOrEmptyOrUndefined } from "@/lib/utils";
 import { getSubdomain } from "@/helpers/helper";
 import { getStudentDisplaySettings } from "@/services/student-display-settings";
+import { loadLearnerTrackingSettings } from "@/services/learner-tracking-settings";
 import { resolvePostLoginRoute } from "@/lib/auth/post-login-redirect";
 import type { StudentUIType } from "@/types/student-display-settings";
 import {
@@ -405,6 +406,10 @@ const RootComponent = () => {
             /* ignore */
           });
       }
+      // Warm the learner-activity tracking config cache (dwell times, idle
+      // popup timers, completion threshold) so the slide viewers can read it
+      // synchronously. Fire-and-forget; defaults apply until it lands.
+      void loadLearnerTrackingSettings().catch(() => {});
     } catch (e) {
       console.warn("Failed to read DEBUG_UI_TYPE", e);
     }

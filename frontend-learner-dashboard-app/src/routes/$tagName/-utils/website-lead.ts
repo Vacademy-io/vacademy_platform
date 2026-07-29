@@ -1,5 +1,6 @@
 import axios from "axios";
 import { CATALOGUE_LEAD_SUBMIT_URL } from "@/constants/urls";
+import { emitLeadCaptured, getStoredUtm } from "./catalogue-tracking";
 
 /**
  * Website lead capture — the one funnel every catalogue capture point
@@ -42,6 +43,9 @@ export interface WebsiteLeadResult {
 export const submitWebsiteLead = async (
   payload: WebsiteLeadPayload
 ): Promise<WebsiteLeadResult> => {
+  // First-touch UTM rides along as name-keyed custom fields, so ad attribution
+  // shows up on the lead in the CRM with zero backend changes.
+  const utm = getStoredUtm();
   const { data } = await axios.post(CATALOGUE_LEAD_SUBMIT_URL, {
     institute_id: payload.instituteId,
     audience_id: payload.audienceId || undefined,
@@ -50,7 +54,12 @@ export const submitWebsiteLead = async (
     mobile_number: payload.mobileNumber || "",
     source_type: payload.sourceType,
     source_id: payload.sourceId,
-    custom_field_values: payload.customFieldValues || undefined,
+    custom_field_values: { ...utm, ...(payload.customFieldValues || {}) },
+  });
+  emitLeadCaptured({
+    audienceId: payload.audienceId,
+    sourceType: payload.sourceType,
+    sourceId: payload.sourceId,
   });
   // The endpoint returns 200 with either the new response id or a friendly
   // "already submitted" sentence. A repeat submission is a SUCCESS to the

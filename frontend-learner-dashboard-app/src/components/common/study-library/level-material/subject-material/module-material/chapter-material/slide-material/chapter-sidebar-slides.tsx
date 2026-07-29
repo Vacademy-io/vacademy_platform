@@ -33,7 +33,7 @@ import { getPackageSessionId } from "@/utils/study-library/get-list-from-stores/
 import { isItemLocked } from "@/components/drip-conditions/helpers";
 import { LockedBadge } from "@/components/drip-conditions";
 import { playIllustrations } from "@/assets/play-illustrations";
-import { SLIDE_COMPLETION_THRESHOLD } from "@/constants/study-library";
+import { getSlideCompletionThreshold } from "@/constants/study-library";
 import { useTranslation } from "react-i18next";
 import i18n from "@/i18n";
 
@@ -68,7 +68,7 @@ export const getSlideStatus = (percentage: number | null | undefined) => {
   if (percentage === null || percentage === undefined || percentage === 0) {
     return "not-started";
   }
-  if (percentage >= SLIDE_COMPLETION_THRESHOLD) {
+  if (percentage >= getSlideCompletionThreshold()) {
     return "completed";
   }
   return "in-progress";
@@ -414,7 +414,7 @@ const SlideItem = ({
   const typeColors = getTypeColorClasses(slide, mediaKind || undefined);
   const statusDetails = getStatusDetails(slide.percentage_completed);
   const StatusIcon = statusDetails.icon;
-  const isCompleted = slide.percentage_completed >= SLIDE_COMPLETION_THRESHOLD;
+  const isCompleted = slide.percentage_completed >= getSlideCompletionThreshold();
 
   const getSlideTitle = () => {
     return (

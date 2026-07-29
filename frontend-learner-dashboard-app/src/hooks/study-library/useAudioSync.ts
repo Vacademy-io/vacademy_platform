@@ -1,22 +1,58 @@
 // useAudioSync.ts
 import { AudioActivitySchema } from "@/schemas/study-library/audio-tracking-schema";
-import { useAddAudioActivity, AudioActivityPayload } from "@/services/study-library/tracking-api/add-audio-activity";
+import { useAddAudioActivity } from "@/services/study-library/tracking-api/add-audio-activity";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
+import { TrackingDataType } from "@/types/tracking-data-type";
+import { App } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
+import { useRouter } from "@tanstack/react-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
+import { useResolvedPackageSessionId } from "./useResolvedPackageSessionId";
 import { useSlidesRefresh } from "./useSlidesRefresh";
 import { ADD_UPDATE_AUDIO_ACTIVITY } from "@/constants/urls";
 
 const STORAGE_KEY = "audio_tracking_data";
 const USER_ID_KEY = "StudentDetails";
 
+const toActivityPayload = (
+    activity: z.infer<typeof AudioActivitySchema>,
+    userId: string,
+    slideId: string
+): TrackingDataType => ({
+    id: activity.activity_id,
+    source_id: activity.source_id || "",
+    source_type: "AUDIO",
+    user_id: userId,
+    slide_id: slideId,
+    start_time_in_millis: activity.start_time,
+    end_time_in_millis: activity.end_time,
+    percentage_watched: activity.percentage_watched,
+    audios: activity.timestamps.map((t) => ({
+        id: t.id,
+        start_time_in_millis: t.start,
+        end_time_in_millis: t.end,
+        playback_speed: t.speed,
+    })),
+    videos: null,
+    documents: null,
+    new_activity: activity.new_activity,
+});
+
 export const useAudioSync = () => {
     const addUpdateAudioActivity = useAddAudioActivity();
     const { activeItem } = useContentStore();
     const [userId, setUserId] = useState<string | null>(null);
     const { refreshSlides } = useSlidesRefresh();
-    
+    const router = useRouter();
+    const { chapterId, moduleId, subjectId } = router.state.location.search as {
+        chapterId?: string;
+        moduleId?: string;
+        subjectId?: string;
+    };
+    const resolvePackageSessionId = useResolvedPackageSessionId();
+
     // Use refs for values that shouldn't trigger re-renders
     const activeItemIdRef = useRef<string | null>(null);
     const isSyncingRef = useRef<boolean>(false);
@@ -73,6 +109,37 @@ export const useAudioSync = () => {
                     student?.user_id || student?.userId;
                 if (!userIdSync) return;
 
+                // Route context comes from the URL — synchronous and reliable
+                // during pagehide. The audio endpoint needs all four cascade
+                // ids or the rollup above the slide silently keeps old values.
+                const params = new URLSearchParams(window.location.search);
+                const slideIdInUrl = params.get("slideId") || "";
+                const chapterIdInUrl = params.get("chapterId") || "";
+                const moduleIdInUrl = params.get("moduleId") || "";
+                const subjectIdInUrl = params.get("subjectId") || "";
+                const packageSessionIdInUrl = (
+                    params.get("sessionId") ||
+                    params.get("courseId") ||
+                    ""
+                ).trim();
+                if (
+                    !slideIdInUrl ||
+                    !chapterIdInUrl ||
+                    !moduleIdInUrl ||
+                    !subjectIdInUrl ||
+                    !packageSessionIdInUrl
+                ) {
+                    return;
+                }
+
+                const url =
+                    ADD_UPDATE_AUDIO_ACTIVITY +
+                    `?slideId=${slideIdInUrl}` +
+                    `&chapterId=${chapterIdInUrl}` +
+                    `&packageSessionId=${packageSessionIdInUrl}` +
+                    `&moduleId=${moduleIdInUrl}` +
+                    `&subjectId=${subjectIdInUrl}`;
+
                 const instituteId =
                     localStorage.getItem("CapacitorStorage.InstituteId") ||
                     localStorage.getItem("CapacitorStorage.instituteId") ||
@@ -81,6 +148,7 @@ export const useAudioSync = () => {
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${accessToken}`,
                     "X-User-Id": String(userIdSync),
+                    "X-Package-Session-Id": packageSessionIdInUrl,
                 };
                 if (instituteId) {
                     headers["clientId"] = instituteId;
@@ -88,6 +156,8 @@ export const useAudioSync = () => {
                 }
 
                 for (const activity of pending) {
+                    if (activity.id !== slideIdInUrl) continue;
+
                     const validTimestamps = activity.timestamps.filter(
                         (t) =>
                             t.start != null &&
@@ -100,20 +170,14 @@ export const useAudioSync = () => {
                     );
                     if (validTimestamps.length === 0) continue;
 
-                    const payload: AudioActivityPayload = {
-                        slide_id: activity.id,
-                        user_id: userIdSync,
-                        is_new_activity: activity.new_activity,
-                        learner_operation: "AUDIO_LAST_TIMESTAMP",
-                        audios: validTimestamps.map((t) => ({
-                            start_time_in_millis: t.start,
-                            end_time_in_millis: t.end,
-                            playback_speed: t.speed,
-                        })),
-                    };
+                    const payload = toActivityPayload(
+                        { ...activity, timestamps: validTimestamps },
+                        userIdSync,
+                        slideIdInUrl
+                    );
 
                     try {
-                        fetch(ADD_UPDATE_AUDIO_ACTIVITY, {
+                        fetch(url, {
                             method: "POST",
                             keepalive: true,
                             headers,
@@ -132,6 +196,21 @@ export const useAudioSync = () => {
 
         window.addEventListener("pagehide", handlePageHide);
         return () => window.removeEventListener("pagehide", handlePageHide);
+    }, []);
+
+    // Native lifecycle safety net (Android/iOS): pagehide never fires there,
+    // so flush through the normal sync path when the app is backgrounded.
+    const syncFnRef = useRef<() => Promise<void>>();
+    useEffect(() => {
+        if (!Capacitor.isNativePlatform()) return;
+        const listener = App.addListener("appStateChange", ({ isActive }) => {
+            if (!isActive) {
+                syncFnRef.current?.().catch(() => {});
+            }
+        });
+        return () => {
+            listener.then((handle) => handle.remove()).catch(() => {});
+        };
     }, []);
 
     const syncAudioTrackingData = useCallback(async () => {
@@ -157,23 +236,31 @@ export const useAudioSync = () => {
             const activities = trackingData.data as Array<
                 z.infer<typeof AudioActivitySchema>
             >;
-            
+
             if (activities.length === 0) {
                 console.log("[useAudioSync] No activities to sync");
                 return;
             }
 
             // Find activities that need syncing
-            const staleActivities = activities.filter(a => a.sync_status === "STALE");
+            const staleActivities = activities.filter(
+                (a) => a.sync_status === "STALE"
+            );
             if (staleActivities.length === 0) {
                 console.log("[useAudioSync] No stale activities to sync");
                 return;
             }
 
             isSyncingRef.current = true;
-            console.log(`[useAudioSync] Starting sync for ${staleActivities.length} activity(ies)`);
+            console.log(
+                `[useAudioSync] Starting sync for ${staleActivities.length} activity(ies)`
+            );
 
-            const updatedActivities: Array<z.infer<typeof AudioActivitySchema>> = [];
+            const packageSessionId = await resolvePackageSessionId();
+
+            const updatedActivities: Array<z.infer<typeof AudioActivitySchema>> =
+                [];
+            let didSync = false;
 
             for (let i = 0; i < activities.length; i++) {
                 const activity = activities[i];
@@ -186,28 +273,28 @@ export const useAudioSync = () => {
                     continue;
                 }
 
-                // Skip if no timestamps to sync
+                // Keep activities with no timestamps yet — segments may still
+                // be accumulating; dropping them would lose the open session.
                 if (!activity.timestamps || activity.timestamps.length === 0) {
-                    console.log("[useAudioSync] Skipping activity with no timestamps");
+                    updatedActivities.push(activity);
                     continue;
                 }
 
-                // Prepare simplified payload per backend spec
-                const apiPayload: AudioActivityPayload = {
-                    slide_id: activeItemIdRef.current || activity.id,
-                    user_id: userId,
-                    is_new_activity: activity.new_activity,
-                    learner_operation: "AUDIO_LAST_TIMESTAMP",
-                    audios: activity.timestamps.map((timestamp) => ({
-                        start_time_in_millis: timestamp.start,
-                        end_time_in_millis: timestamp.end,
-                        playback_speed: timestamp.speed,
-                    })),
-                };
+                const slideId = activeItemIdRef.current || activity.id;
+                const apiPayload = toActivityPayload(activity, userId, slideId);
 
                 try {
-                    console.log(`📡 [useAudioSync] Syncing audio activity: ${activity.activity_id}`);
-                    await addUpdateAudioActivity.mutateAsync(apiPayload);
+                    console.log(
+                        `📡 [useAudioSync] Syncing audio activity: ${activity.activity_id}`
+                    );
+                    await addUpdateAudioActivity.mutateAsync({
+                        slideId,
+                        chapterId: chapterId || "",
+                        moduleId: moduleId || "",
+                        subjectId: subjectId || "",
+                        packageSessionId: packageSessionId || "",
+                        requestPayload: apiPayload,
+                    });
                     console.log(`✅ [useAudioSync] Audio activity synced successfully`);
 
                     // Mark as synced
@@ -216,6 +303,7 @@ export const useAudioSync = () => {
                         sync_status: "SYNCED",
                         new_activity: false,
                     });
+                    didSync = true;
                 } catch (error) {
                     console.error("[useAudioSync] API call failed:", error);
                     // Keep as STALE for retry
@@ -237,13 +325,28 @@ export const useAudioSync = () => {
             // delay and invalidates without an explicit refetch — combined
             // with isSyncingRef guarding concurrent syncs above, no loop is
             // reachable.
-            void refreshSlides();
+            if (didSync) {
+                void refreshSlides();
+            }
         } catch (error) {
-            console.error("[useAudioSync] Failed to sync audio tracking data:", error);
+            console.error(
+                "[useAudioSync] Failed to sync audio tracking data:",
+                error
+            );
         } finally {
             isSyncingRef.current = false;
         }
-    }, [userId, addUpdateAudioActivity, refreshSlides]);
+    }, [
+        userId,
+        addUpdateAudioActivity,
+        refreshSlides,
+        resolvePackageSessionId,
+        chapterId,
+        moduleId,
+        subjectId,
+    ]);
+
+    syncFnRef.current = syncAudioTrackingData;
 
     return { syncAudioTrackingData };
 };

@@ -186,7 +186,7 @@ const queryClient = new QueryClient({
 const LazyNotificationInitializer = lazy(() =>
   import("./components/lazy/NotificationInitializer").catch((err) => {
     if (!isChunkLoadError(err)) throw err;
-    reloadForChunkError();
+    reloadForChunkError(err);
     return { default: () => null };
   })
 );

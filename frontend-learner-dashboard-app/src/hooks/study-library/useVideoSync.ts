@@ -4,9 +4,11 @@ import { useAddVideoActivity } from "@/services/study-library/tracking-api/add-v
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { TrackingDataType } from "@/types/tracking-data-type";
 import { calculateAndUpdateTimestamps } from "@/utils/study-library/tracking/calculateAndUpdateTimestamps";
+import { App } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 import { useRouter } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { z } from "zod";
 import { useResolvedPackageSessionId } from "./useResolvedPackageSessionId";
 import { useSlidesRefresh } from "./useSlidesRefresh";
@@ -21,6 +23,21 @@ const USER_ID_KEY = "StudentDetails";
 // before either has written SYNCED back, which would race the backend's
 // video_tracked delete+insert path and surface as a 511.
 const inFlight = new Set<string>();
+
+// Forward the metrics the player actually computed. Returning undefined (not a
+// zeroed object) lets the backend keep the activity's previous score — the old
+// hardcoded zeros silently discarded every tab-switch and pause count.
+const concentrationPayload = (activity: z.infer<typeof ActivitySchema>) =>
+  activity.concentration_score
+    ? {
+        id: activity.concentration_score.id,
+        concentration_score: activity.concentration_score.concentration_score,
+        tab_switch_count: activity.concentration_score.tab_switch_count,
+        pause_count: activity.concentration_score.pause_count,
+        answer_times_in_seconds:
+          activity.concentration_score.answer_times_in_seconds,
+      }
+    : undefined;
 
 export const useVideoSync = () => {
   const addUpdateVideoActivity = useAddVideoActivity();
@@ -158,15 +175,7 @@ export const useVideoSync = () => {
             })),
             documents: null,
             new_activity: activity.new_activity,
-            concentration_score: {
-              id:
-                crypto.randomUUID?.() ??
-                Math.random().toString(36).substring(2, 15),
-              concentration_score: 0,
-              tab_switch_count: 0,
-              pause_count: 0,
-              answer_times_in_seconds: [],
-            },
+            concentration_score: concentrationPayload(activity),
           };
 
           // Fire-and-forget. keepalive:true lets the browser complete the
@@ -191,6 +200,24 @@ export const useVideoSync = () => {
 
     window.addEventListener("pagehide", handlePageHide);
     return () => window.removeEventListener("pagehide", handlePageHide);
+  }, []);
+
+  // Native lifecycle safety net: on Android/iOS `pagehide` never fires, so
+  // home button / app switch / screen lock lost everything since the last 60s
+  // tick. Flush through the normal sync path whenever the app is backgrounded.
+  const syncFnRef = useRef<() => Promise<void>>();
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    const listener = App.addListener("appStateChange", ({ isActive }) => {
+      if (!isActive) {
+        syncFnRef.current?.().catch(() => {
+          /* backgrounding must never throw */
+        });
+      }
+    });
+    return () => {
+      listener.then((handle) => handle.remove()).catch(() => {});
+    };
   }, []);
 
   const syncVideoTrackingData = async () => {
@@ -307,16 +334,7 @@ export const useVideoSync = () => {
           })),
           documents: null,
           new_activity: activity.new_activity,
-          concentration_score: {
-            id: crypto.randomUUID
-              ? crypto.randomUUID()
-              : Math.random().toString(36).substring(2, 15) +
-                Math.random().toString(36).substring(2, 15),
-            concentration_score: 0,
-            tab_switch_count: 0,
-            pause_count: 0,
-            answer_times_in_seconds: [],
-          },
+          concentration_score: concentrationPayload(activity),
         };
 
         try {
@@ -347,6 +365,10 @@ export const useVideoSync = () => {
               didSync = true;
             } catch (err) {
               console.log("add api call failed: ", err);
+              // Keep the activity so the next tick retries it. Dropping it
+              // here erased the whole un-synced segment buffer on a single
+              // failed POST.
+              updatedActivities.push(activity);
             } finally {
               inFlight.delete(activity.activity_id);
             }
@@ -369,9 +391,15 @@ export const useVideoSync = () => {
                 didSync = true;
               } catch (err) {
                 console.log("update api call failed: ", err);
+                // Keep for retry on the next tick (see NEW-activity catch).
+                updatedActivities.push(activity);
               } finally {
                 inFlight.delete(activity.activity_id);
               }
+            } else {
+              // No syncable timestamps yet — keep the activity so segments can
+              // keep accumulating instead of silently discarding it.
+              updatedActivities.push(activity);
             }
           }
         } catch (error) {
@@ -401,6 +429,8 @@ export const useVideoSync = () => {
       throw error;
     }
   };
+
+  syncFnRef.current = syncVideoTrackingData;
 
   return { syncVideoTrackingData };
 };

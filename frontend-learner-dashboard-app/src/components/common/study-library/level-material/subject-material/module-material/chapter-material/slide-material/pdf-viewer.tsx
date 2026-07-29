@@ -63,7 +63,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
   // buffer's slide_id to the new slide while keeping the *previous* slide's
   // page views. The sync then POSTed them under the new slide, and because the
   // backend merges an activity row by its client-supplied id, the whole row was
-  // re-parented — the previous slide lost its tracking outright and the new one
+  // re-parented â the previous slide lost its tracking outright and the new one
   // absorbed page numbers it never had. That is how a 2-page reading note ended
   // up with 14 tracked pages (capped to 100%) while the 14-page PDF next to it
   // sat below 100% with no evidence left to recompute from.
@@ -101,7 +101,9 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
 
   // Track user activity
   const verificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const inactivityThreshold = 60000;
+  // Institute-configurable (Settings -> Learner Activity); defaults preserve the old constants.
+  const trackingSettings = getLearnerTrackingSettings();
+  const inactivityThreshold = trackingSettings.focus.idlePopupDelaySeconds * 1000;
   const {setCurrentPdfPage, navigationTrigger} = useMediaRefsStore();
 
   // Add ref for PDF viewer component
@@ -114,7 +116,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
 
   useEffect(() => {
     if (typeof window === "undefined" || !("matchMedia" in window)) return;
-    // Phone + tablet screens — Tailwind's `lg` breakpoint is 1024px.
+    // Phone + tablet screens â Tailwind's `lg` breakpoint is 1024px.
     const mq = window.matchMedia("(max-width: 1023px)");
     const update = () => {
       setIsTouchViewport(mq.matches);
@@ -277,7 +279,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
 
     // Set timeout to show verification after inactivity threshold
     verificationTimeoutRef.current = setTimeout(() => {
-      if (!showVerification && !isPaused) {
+      if (trackingSettings.focus.idlePopupEnabled && !showVerification && !isPaused) {
         setShowVerification(true);
         generateVerificationNumbers();
         startVerificationTimer();
@@ -365,7 +367,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
       () => {
         setIsPaused(true);
       },
-      5 * 60 * 1000
+      trackingSettings.focus.hardPauseMinutes * 60 * 1000
     );
 
     // Reset verification timeout
@@ -392,7 +394,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
       () => {
         setIsPaused(true);
       },
-      5 * 60 * 1000
+      trackingSettings.focus.hardPauseMinutes * 60 * 1000
     );
 
     // Start initial verification timeout
@@ -467,7 +469,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
   useEffect(() => {
     // Only track the slide this buffer belongs to. Without this the viewer
     // would attribute the buffered page views to whatever slide happens to be
-    // active at flush time — see trackedSlideIdRef above.
+    // active at flush time â see trackedSlideIdRef above.
     const trackedSlideId = trackedSlideIdRef.current;
     if (!trackedSlideId || trackedSlideId !== activeItem?.id) return;
 
@@ -553,7 +555,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
     const now = getEpochTimeInMillis();
     const duration = Math.round((now - pageStartTime.current.getTime()) / 1000);
 
-    if (duration >= 10) {
+    if (duration >= trackingSettings.documents.pageDwellSeconds) {
       pageViews.current.push({
         id: uuidv4(),
         page: currentPage,
@@ -696,7 +698,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
         initialPage={activeItem?.progress_marker}
       />
 
-      {/* Tap-to-interact overlay — keeps the outer page scrollable on phones
+      {/* Tap-to-interact overlay â keeps the outer page scrollable on phones
           and tablets until the user explicitly taps to engage with the PDF. */}
       {isTouchViewport && !pdfActive && (
         <div
@@ -716,7 +718,7 @@ const PDFViewer: React.FC<PDFViewerProps> = ({ documentId, pdfUrl }) => {
         </div>
       )}
 
-      {/* Floating exit chip at the viewport's bottom-left — always in view
+      {/* Floating exit chip at the viewport's bottom-left â always in view
           regardless of where the user has scrolled. */}
       {isTouchViewport && pdfActive && (
         <button

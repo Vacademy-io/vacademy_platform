@@ -4,8 +4,11 @@ import { useAddDocumentActivity } from "@/services/study-library/tracking-api/ad
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { TrackingDataType } from "@/types/tracking-data-type";
 import { calculateAndUpdatePageViews } from "@/utils/study-library/tracking/calculateAndUpdatePageViews";
+import { App } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 import { useRouter } from "@tanstack/react-router";
+import { useEffect, useRef } from "react";
 import { z } from "zod";
 import { useResolvedPackageSessionId } from "./useResolvedPackageSessionId";
 import { useSlidesRefresh } from "./useSlidesRefresh";
@@ -28,6 +31,22 @@ export const usePDFSync = () => {
     const resolvePackageSessionId = useResolvedPackageSessionId();
 
     const { refreshSlides } = useSlidesRefresh();
+
+    // Native lifecycle safety net (Android/iOS): home button / app switch /
+    // screen lock never fire pagehide, so everything since the last 60s tick
+    // was lost. Flush through the normal sync path on backgrounding.
+    const syncFnRef = useRef<() => Promise<void>>();
+    useEffect(() => {
+        if (!Capacitor.isNativePlatform()) return;
+        const listener = App.addListener("appStateChange", ({ isActive }) => {
+            if (!isActive) {
+                syncFnRef.current?.().catch(() => {});
+            }
+        });
+        return () => {
+            listener.then((handle) => handle.remove()).catch(() => {});
+        };
+    }, []);
 
     const syncPDFTrackingData = async () => {
         try {
@@ -107,6 +126,12 @@ export const usePDFSync = () => {
                         } finally {
                             inFlight.delete(activity.activity_id);
                         }
+                    } else {
+                        // Not syncable this tick (no page views yet, or not
+                        // re-registered). Keep it — dropping it here erased
+                        // accumulated page views that hadn't reached the
+                        // backend yet.
+                        updatedActivities.push(activity);
                     }
                 } catch (error) {
                     console.error("API call failed:", error);
@@ -131,6 +156,8 @@ export const usePDFSync = () => {
             throw error;
         }
     };
+
+    syncFnRef.current = syncPDFTrackingData;
 
     return { syncPDFTrackingData };
 };

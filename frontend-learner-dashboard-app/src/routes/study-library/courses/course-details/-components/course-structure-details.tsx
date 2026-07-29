@@ -53,7 +53,7 @@ import {
   TabType,
   tabs,
 } from "@/components/common/study-library/level-material/subject-material/-constants/constant";
-import { SLIDE_COMPLETION_THRESHOLD } from "@/constants/study-library";
+import { getSlideCompletionThreshold } from "@/constants/study-library";
 import {
   getIcon,
   getSlideTypeDisplay,
@@ -284,7 +284,7 @@ export const CourseStructureDetails = ({
     if (options?.locked) {
       return <Lock size={size} className="shrink-0 text-neutral-400" />;
     }
-    if (percentage >= SLIDE_COMPLETION_THRESHOLD) {
+    if (percentage >= getSlideCompletionThreshold()) {
       return (
         <CheckCircle
           size={size}
@@ -1013,7 +1013,7 @@ export const CourseStructureDetails = ({
     (slides: Slide[]): Slide[] => {
       const q = searchQuery.trim().toLowerCase();
       return (slides || []).filter((sl) => {
-        if (onlyIncomplete && (sl.percentage_completed || 0) >= SLIDE_COMPLETION_THRESHOLD)
+        if (onlyIncomplete && (sl.percentage_completed || 0) >= getSlideCompletionThreshold())
           return false;
         if (!q) return true;
         const title = (sl.title || "").toLowerCase();
@@ -1479,7 +1479,7 @@ export const CourseStructureDetails = ({
                                                     (slide) =>
                                                       (slide.percentage_completed ||
                                                         0) >=
-                                                      SLIDE_COMPLETION_THRESHOLD
+                                                      getSlideCompletionThreshold()
                                                   ).length;
                                                 const totalSlides =
                                                   slidesForChapter.length;
@@ -1812,7 +1812,7 @@ export const CourseStructureDetails = ({
                                     {(() => {
                                       const progress = calculateChapterProgress(ch.id);
                                       const slidesForChapter = slidesMap[ch.id] || [];
-                                      const completedSlides = slidesForChapter.filter((slide) => (slide.percentage_completed || 0) >= SLIDE_COMPLETION_THRESHOLD).length;
+                                      const completedSlides = slidesForChapter.filter((slide) => (slide.percentage_completed || 0) >= getSlideCompletionThreshold()).length;
                                       const totalSlides = slidesForChapter.length;
                                       return (
                                         <>
@@ -2012,7 +2012,7 @@ export const CourseStructureDetails = ({
                                                   (slide) =>
                                                     (slide.percentage_completed ||
                                                       0) >=
-                                                    SLIDE_COMPLETION_THRESHOLD
+                                                    getSlideCompletionThreshold()
                                                 ).length;
                                               const totalSlides =
                                                 slidesForChapter.length;

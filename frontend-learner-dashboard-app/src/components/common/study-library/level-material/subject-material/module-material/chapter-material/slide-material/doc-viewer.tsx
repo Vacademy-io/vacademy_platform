@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { getLearnerTrackingSettings, getRequiredReadSeconds } from "@/services/learner-tracking-settings";
 import { v4 as uuidv4 } from "uuid";
 import { useTrackingStore } from "@/stores/study-library/pdf-tracking-store";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
@@ -36,7 +37,7 @@ interface DocViewerProps {
     docUrl: string;
     documentId: string;
     isHtml?: boolean;
-    // Creative HTML (type 'HTML') → rendered in a sandboxed iframe.
+    // Creative HTML (type 'HTML') â rendered in a sandboxed iframe.
     creativeHtml?: boolean;
 }
 
@@ -96,7 +97,9 @@ export const DocViewer: React.FC<DocViewerProps> = ({
     const [missedAnswerCount, setMissedAnswerCount] = useState(0);
     const [wrongAnswerCount, setWrongAnswerCount] = useState(0);
     const verificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-    const inactivityThreshold = 60000;
+    // Institute-configurable (Settings -> Learner Activity); defaults preserve the old constants.
+  const trackingSettings = getLearnerTrackingSettings();
+  const inactivityThreshold = trackingSettings.focus.idlePopupDelaySeconds * 1000;
 
     // Add ref for DOC viewer component
     const docViewerRef = useRef<DocViewerComponentRef>(null);
@@ -105,6 +108,26 @@ export const DocViewer: React.FC<DocViewerProps> = ({
     const [isTabHidden, setIsTabHidden] = useState(document.hidden);
     // Sanitize incoming docUrl once per change (handles both raw HTML and plain URLs)
     const sanitizedDocUrl = useMemo(() => stripAwsQueryParamsFromUrls(docUrl || ""), [docUrl]);
+
+    // Content-aware completion gate. A one-viewport HTML/DOC slide counted as
+    // fully read after a single dwell window regardless of how much text it
+    // held. Estimate the read time from the visible word count (institute-
+    // configurable wpm + clamps); the synthetic "current page" view that
+    // drives completion is withheld until the learner has that much focused
+    // time on the slide.
+    const requiredReadSeconds = useMemo(() => {
+        const html = (sanitizedDocUrl || "").trim();
+        let wordCount = 0;
+        if (html && !/^https?:\/\//.test(html)) {
+            wordCount = html
+                .replace(/<style[\s\S]*?<\/style>/gi, " ")
+                .replace(/<script[\s\S]*?<\/script>/gi, " ")
+                .replace(/<[^>]*>/g, " ")
+                .split(/\s+/)
+                .filter(Boolean).length;
+        }
+        return getRequiredReadSeconds(wordCount, 1);
+    }, [sanitizedDocUrl]);
 
     //const lastVisibilityState = useRef(document.hidden);
 
@@ -217,7 +240,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({
         if (verificationTimeoutRef.current)
             clearTimeout(verificationTimeoutRef.current);
         verificationTimeoutRef.current = setTimeout(() => {
-            if (!showVerification && !isPaused) {
+            if (trackingSettings.focus.idlePopupEnabled && !showVerification && !isPaused) {
                 setShowVerification(true);
                 generateVerificationNumbers();
                 startVerificationTimer();
@@ -246,7 +269,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({
             () => {
                 setIsPaused(true);
             },
-            5 * 60 * 1000
+            trackingSettings.focus.hardPauseMinutes * 60 * 1000
         );
 
         if (verificationTimeoutRef.current) {
@@ -412,7 +435,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({
             () => {
                 setIsPaused(true);
             },
-            5 * 60 * 1000
+            trackingSettings.focus.hardPauseMinutes * 60 * 1000
         );
 
         startInactivityVerification();
@@ -459,7 +482,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({
 
     // Interactive creative-HTML slides (quiz/game) report their outcome via
     // postMessage; fold it into the SAME document activity the wrapper already
-    // syncs — completion + quiz stats land in percentage_watched /
+    // syncs â completion + quiz stats land in percentage_watched /
     // concentration_score with no separate pipeline.
     const interactionPctRef = useRef(0);
 
@@ -515,7 +538,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({
                 (now - pageStartTime.current.getTime()) / 1000
             );
 
-            if (duration >= 10) {
+            if (duration >= trackingSettings.documents.pageDwellSeconds) {
                 pageViews.current.push({
                     id: uuidv4(),
                     page: currentPage,
@@ -557,8 +580,17 @@ export const DocViewer: React.FC<DocViewerProps> = ({
             page_views: pageViews.current,
             total_pages_read: totalPagesReadRef.current,
             sync_status: "STALE",
-            current_page: currentPage,
-            current_page_start_time_in_millis: pageStartTime.current.getTime(),
+            // The sync layer manufactures a page view for the current page
+            // from these two fields — the mechanism that completes a
+            // single-page document. Withhold them until the learner has spent
+            // the estimated read time (focused, pause-aware) on the slide.
+            ...(elapsedTime >= requiredReadSeconds
+                ? {
+                      current_page: currentPage,
+                      current_page_start_time_in_millis:
+                          pageStartTime.current.getTime(),
+                  }
+                : {}),
             new_activity: true,
             concentration_score: {
                 id: activityId.current,

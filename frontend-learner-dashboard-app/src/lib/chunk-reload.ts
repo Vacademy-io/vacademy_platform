@@ -79,6 +79,52 @@ function writeRecord(record: ReloadRecord): void {
   }
 }
 
+/** Matches an absolute asset URL embedded in a chunk-error message. */
+const ASSET_URL_RE = /https?:\/\/[^\s'")]+?\.(?:js|mjs|css)(?:\?[^\s'")]*)?/gi;
+
+/**
+ * Pull the failing asset URL(s) out of a chunk error. Browsers put the URL in
+ * the message for dynamic-import failures ("Failed to fetch dynamically
+ * imported module: https://host/assets/foo-hash.js").
+ */
+function extractAssetUrls(err: unknown): string[] {
+  const message =
+    typeof err === "string"
+      ? err
+      : ((err as { message?: string } | null)?.message ?? "");
+  if (!message) return [];
+  const matches = message.match(ASSET_URL_RE);
+  if (!matches) return [];
+  return Array.from(new Set(matches)).filter((u) => {
+    try {
+      return new URL(u).origin === window.location.origin;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
+ * Re-request the failed assets with `cache: "reload"`, which bypasses the HTTP
+ * cache and overwrites the stored entry with the real response.
+ *
+ * This is what makes the reload below actually work. When Pages cannot resolve
+ * a chunk it answers with index.html under the .js URL, and public/_headers
+ * matches the request path — so that HTML body lands in cache under a long
+ * max-age. A plain location.reload() re-reads it and fails identically. See
+ * functions/assets/[[path]].ts for the server-side half of this fix.
+ */
+function forceRevalidate(urls: string[]): Promise<unknown> {
+  if (!urls.length || typeof fetch !== "function") return Promise.resolve();
+  return Promise.all(
+    urls.map((u) =>
+      fetch(u, { cache: "reload", credentials: "same-origin" }).catch(
+        () => undefined,
+      ),
+    ),
+  );
+}
+
 /**
  * Reload the page, subject to a retry budget. Returns true if a reload was
  * triggered; false when the budget is exhausted and the caller should fall
@@ -88,7 +134,7 @@ function writeRecord(record: ReloadRecord): void {
  * during reconnect/visibilitychange that look like chunk errors but aren't;
  * reloading mid-meeting is a worse UX than letting the SDK self-recover.
  */
-export function reloadForChunkError(): boolean {
+export function reloadForChunkError(err?: unknown): boolean {
   if (typeof window === "undefined") return false;
   if ((window as unknown as { __zoomMeetingActive?: boolean }).__zoomMeetingActive) {
     return false;
@@ -105,7 +151,17 @@ export function reloadForChunkError(): boolean {
     count: record.count + 1,
     firstAt: record.firstAt || Date.now(),
   });
-  window.location.reload();
+
+  const urls = extractAssetUrls(err);
+  if (!urls.length) {
+    window.location.reload();
+    return true;
+  }
+
+  // Purge first, then reload — with a ceiling so a hung request cannot leave
+  // the user staring at a dead page.
+  void forceRevalidate(urls).then(() => window.location.reload());
+  window.setTimeout(() => window.location.reload(), 8000);
   return true;
 }
 
@@ -117,14 +173,17 @@ export function installChunkErrorHandler(): void {
   if (typeof window === "undefined") return;
 
   window.addEventListener("vite:preloadError", (event) => {
-    if (reloadForChunkError()) {
+    // Vite attaches the underlying error (which carries the failing URL) as
+    // `payload`; pass it through so the purge knows what to re-fetch.
+    const payload = (event as unknown as { payload?: unknown }).payload;
+    if (reloadForChunkError(payload ?? event)) {
       event.preventDefault();
     }
   });
 
   window.addEventListener("unhandledrejection", (event) => {
     if (isChunkLoadError(event.reason) || isLazyResolverError(event.reason)) {
-      if (reloadForChunkError()) {
+      if (reloadForChunkError(event.reason)) {
         event.preventDefault();
       }
     }
@@ -136,7 +195,7 @@ export function installChunkErrorHandler(): void {
       isChunkLoadError(event.message) ||
       isLazyResolverError(event.error)
     ) {
-      if (reloadForChunkError()) {
+      if (reloadForChunkError(event.error ?? event.message)) {
         event.preventDefault();
       }
     }

@@ -1,27 +1,44 @@
 import { useMutation } from "@tanstack/react-query";
 import authenticatedAxiosInstance from "@/lib/auth/axiosInstance";
 import { ADD_UPDATE_AUDIO_ACTIVITY } from "@/constants/urls";
+import { TrackingDataType } from "@/types/tracking-data-type";
 
-// Simplified payload matching the backend spec
-export interface AudioActivityPayload {
-    slide_id: string;
-    user_id: string;
-    is_new_activity: boolean;
-    learner_operation: string;
-    audios: {
-        start_time_in_millis: number;
-        end_time_in_millis: number;
-        playback_speed: number;
-    }[];
+// The audio endpoint has the same contract as video/document: an
+// ActivityLogDTO body plus the four cascade ids as query params. Without the
+// cascade ids the backend can only update the slide row — chapter, module,
+// subject and course percentages would silently keep their previous values.
+export interface AddAudioActivityRequest {
+    slideId: string;
+    chapterId: string;
+    moduleId: string;
+    subjectId: string;
+    packageSessionId: string;
+    requestPayload: TrackingDataType;
 }
 
 export const useAddAudioActivity = () => {
     return useMutation({
-        mutationFn: async (payload: AudioActivityPayload) => {
+        mutationFn: async ({
+            slideId,
+            chapterId,
+            moduleId,
+            subjectId,
+            packageSessionId,
+            requestPayload,
+        }: AddAudioActivityRequest) => {
             return authenticatedAxiosInstance.post(
                 ADD_UPDATE_AUDIO_ACTIVITY,
-                payload,
+                requestPayload,
+                {
+                    params: {
+                        slideId,
+                        chapterId,
+                        packageSessionId,
+                        moduleId,
+                        subjectId,
+                    },
+                }
             );
-        }
+        },
     });
 };

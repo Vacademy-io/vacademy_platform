@@ -5,6 +5,8 @@ import { useNavigate } from "@tanstack/react-router";
 import { DashboardLoader } from "@/components/core/dashboard-loader";
 import { LeadCollectionModal } from "./LeadCollectionModal";
 import { AudienceFormModal } from "./AudienceFormModal";
+import { MobileActionBar } from "./MobileActionBar";
+import { useCatalogueTracking, captureUtmOnce } from "../-utils/catalogue-tracking";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
 import { MobileActionBar } from "./MobileActionBar";
@@ -40,6 +42,11 @@ export const CourseCataloguePage: React.FC<CourseCataloguePageProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showLeadCollection, setShowLeadCollection] = useState(false);
   const [audienceForm, setAudienceForm] = useState<{ audienceId: string; title?: string } | null>(null);
+
+  // Site-configured GA4 / Meta Pixel / GTM (Global Settings → Tracking) +
+  // first-touch UTM capture for lead attribution.
+  useCatalogueTracking((catalogueData?.globalSettings as any)?.tracking);
+  useEffect(() => { captureUtmOnce(); }, []);
   // Non-mandatory lead collection is "armed" rather than shown immediately, then
   // surfaced on a scroll/dwell signal (see effect below) to avoid t=0 friction.
   const [leadArmed, setLeadArmed] = useState(false);

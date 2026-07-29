@@ -16,7 +16,7 @@ import {
 } from "@phosphor-icons/react";
 import { cn, toTitleCase } from "@/lib/utils";
 import { playIllustrations } from "@/assets/play-illustrations";
-import { SLIDE_COMPLETION_THRESHOLD } from "@/constants/study-library";
+import { getSlideCompletionThreshold } from "@/constants/study-library";
 import {
   isItemLocked,
   shouldFilterItem,
@@ -154,7 +154,7 @@ export function ChapterPathView({
       (e.mod.chapters ?? []).some((ch) => {
         const evaluation = chapterEvaluations[ch.id];
         if (evaluation && shouldFilterItem(evaluation)) return false;
-        return getChapterProgress(ch.id) < SLIDE_COMPLETION_THRESHOLD;
+        return getChapterProgress(ch.id) < getSlideCompletionThreshold();
       })
     );
     return firstIncomplete >= 0 ? firstIncomplete : 0;
@@ -197,7 +197,7 @@ export function ChapterPathView({
       const chapterEval = chapterEvaluations[ch.id];
       const chapterLocked = !!(chapterEval && isItemLocked(chapterEval));
       const chapterComplete =
-        getChapterProgress(ch.id) >= SLIDE_COMPLETION_THRESHOLD;
+        getChapterProgress(ch.id) >= getSlideCompletionThreshold();
       built.push({ kind: "chapter", chapter: ch, complete: chapterComplete });
 
       const status = slidesLoadingStatus[ch.id] ?? "idle";
@@ -218,7 +218,7 @@ export function ChapterPathView({
         const slideLocked =
           chapterLocked || !!(slideEval && isItemLocked(slideEval));
         const completed =
-          (slide.percentage_completed || 0) >= SLIDE_COMPLETION_THRESHOLD;
+          (slide.percentage_completed || 0) >= getSlideCompletionThreshold();
         if (!completed) allComplete = false;
 
         let state: SlideNodeState;

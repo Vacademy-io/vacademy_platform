@@ -55,6 +55,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
     const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const lastSyncTimeRef = useRef<number>(0);
     const isSyncingRef = useRef<boolean>(false);
+    // Latest-callback refs so interval/unmount closures (declared before the
+    // callbacks) can close the open segment and sync without TDZ issues.
+    const saveSegmentRef = useRef<((endTime: number) => void) | null>(null);
+    const syncOnUnmountRef = useRef<(() => Promise<void>) | null>(null);
     
     // State
     const [isPlaying, setIsPlaying] = useState(false);
@@ -142,6 +146,15 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
         );
         syncIntervalRef.current = setInterval(() => {
             if (isPlaying) {
+                // Close the currently-open segment first: segments were only
+                // created on pause/seek/skip/end, so an uninterrupted listen
+                // accumulated nothing and the periodic sync was a no-op — a
+                // learner who played a lecture straight through and closed the
+                // tab was credited 0%. (Via ref: saveCurrentSegment is defined
+                // later in the component.)
+                if (audioRef.current) {
+                    saveSegmentRef.current?.(audioRef.current.currentTime);
+                }
                 debouncedSync();
             }
         }, periodMs);
@@ -151,11 +164,20 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
         };
     }, [debouncedSync, isPlaying, duration]);
 
-    // Sync on unmount
+    // Sync on unmount — close the open segment first, or the time since the
+    // last pause/seek is silently discarded. Refs keep the latest callbacks
+    // reachable from the empty-dep cleanup.
     useEffect(() => {
         return () => {
+            try {
+                if (audioRef.current) {
+                    saveSegmentRef.current?.(audioRef.current.currentTime);
+                }
+            } catch {
+                /* never block unmount */
+            }
             if (accumulatedTimestamps.current.length > 0) {
-                syncAudioTrackingData().catch(console.error);
+                syncOnUnmountRef.current?.().catch(console.error);
             }
         };
     }, []);
@@ -194,6 +216,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
         
         currentSegmentStart.current = endTime;
     }, [activeItem, audioSlide, duration, playbackRate, addActivity]);
+
+    // Keep the unmount cleanup pointed at the latest callbacks.
+    saveSegmentRef.current = saveCurrentSegment;
+    syncOnUnmountRef.current = syncAudioTrackingData;
 
     const handleTimeUpdate = () => {
         if (!audioRef.current) return;

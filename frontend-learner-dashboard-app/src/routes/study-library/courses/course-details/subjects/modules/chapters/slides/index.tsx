@@ -58,7 +58,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { SLIDE_COMPLETION_THRESHOLD } from "@/constants/study-library";
+import { getSlideCompletionThreshold } from "@/constants/study-library";
 import { recordSlideVisit } from "@/services/resume-thread";
 import { usePlayTheme } from "@/hooks/use-play-theme";
 import {
@@ -145,7 +145,7 @@ const ModuleAccordionItem = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(isInitiallyExpanded);
   const completedChapters = modData.chapters.filter(
-    (c) => c.percentage_completed >= SLIDE_COMPLETION_THRESHOLD
+    (c) => c.percentage_completed >= getSlideCompletionThreshold()
   ).length;
 
   return (
@@ -183,7 +183,7 @@ const ModuleAccordionItem = ({
         <div className="pb-1">
           {modData.chapters.map((chapter) => {
             const isCurrent = chapter.id === currentChapterId;
-            const isDone = chapter.percentage_completed >= SLIDE_COMPLETION_THRESHOLD;
+            const isDone = chapter.percentage_completed >= getSlideCompletionThreshold();
             return (
               <button
                 key={chapter.id}
@@ -873,12 +873,12 @@ function Slides() {
       const before = prevPercents.get(slide.id);
       if (
         before !== undefined &&
-        before < SLIDE_COMPLETION_THRESHOLD &&
-        pct >= SLIDE_COMPLETION_THRESHOLD
+        before < getSlideCompletionThreshold() &&
+        pct >= getSlideCompletionThreshold()
       ) {
         crossedNow.push(slide.id);
       }
-      if (pct < SLIDE_COMPLETION_THRESHOLD) allCompleteNow = false;
+      if (pct < getSlideCompletionThreshold()) allCompleteNow = false;
       prevPercents.set(slide.id, pct);
     }
 

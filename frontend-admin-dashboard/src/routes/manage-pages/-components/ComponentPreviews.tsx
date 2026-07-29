@@ -265,7 +265,7 @@ const DetailBlocksPreview: React.FC<P> = ({ props }) => {
                                     style={b.headerColor ? { backgroundColor: b.headerColor } : undefined}
                                 >
                                     {b.tag && (
-                                        <span className={`mb-2 inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide-08 ${isSolid ? 'bg-white/15 text-white' : 'bg-primary-50 text-catalogue-brand-ink ring-1 ring-primary-100'}`}>
+                                        <span className={`mb-2 inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide-08 ${isSolid ? 'bg-catalogue-bg-elevated/15 text-white' : 'bg-primary-50 text-catalogue-brand-ink ring-1 ring-primary-100'}`}>
                                             {b.tag}
                                         </span>
                                     )}
@@ -361,12 +361,12 @@ const HeaderPreview: React.FC<P> = ({ props }) => {
             </nav>
             <div className="flex items-center gap-2">
                 {props.ctaButton?.enabled && (
-                    <span className="rounded-lg bg-white px-4 py-1.5 text-xs font-semibold shadow-sm" style={{ color: bg }}>
+                    <span className="rounded-lg bg-catalogue-bg-elevated px-4 py-1.5 text-xs font-semibold shadow-sm" style={{ color: bg }}>
                         {props.ctaButton.text || 'Get Started'}
                     </span>
                 )}
                 {!props.ctaButton?.enabled && (props.authLinks || []).slice(0, 1).map((link: any, i: number) => (
-                    <span key={i} className="rounded-lg bg-white px-4 py-1.5 text-xs font-semibold" style={{ color: bg }}>
+                    <span key={i} className="rounded-lg bg-catalogue-bg-elevated px-4 py-1.5 text-xs font-semibold" style={{ color: bg }}>
                         {link.label}
                     </span>
                 ))}
@@ -394,7 +394,7 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
                         {props.eyebrow.text}
                     </span>
                 ) : (
-                    <span className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-caption font-semibold uppercase tracking-wider text-gray-600">
+                    <span className="inline-flex items-center gap-2 rounded-full border border-catalogue-border bg-catalogue-bg-subtle px-3 py-1 text-caption font-semibold uppercase tracking-wider text-catalogue-text-secondary">
                         <span className="size-1.5 rounded-full bg-blue-500" />
                         {props.eyebrow.text}
                     </span>
@@ -409,15 +409,15 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
                     ))}
                 </div>
             )}
-            <h1 className="catalogue-h1 leading-tight text-gray-900">
+            <h1 className="catalogue-h1 leading-tight text-catalogue-text-primary">
                 {props.left?.title || 'Hero Title'}
             </h1>
             {props.left?.subheading && (
-                <p className="text-base font-medium text-gray-600">{props.left.subheading}</p>
+                <p className="text-base font-medium text-catalogue-text-secondary">{props.left.subheading}</p>
             )}
             {props.left?.description && (
                 <div
-                    className="text-sm text-gray-500 leading-relaxed [&_p]:mb-1"
+                    className="text-sm text-catalogue-text-secondary leading-relaxed [&_p]:mb-1"
                     dangerouslySetInnerHTML={{ __html: props.left.description }}
                 />
             )}
@@ -430,7 +430,7 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
                             className={
                                 (b.variant ?? (i === 0 ? 'primary' : 'secondary')) === 'primary'
                                     ? 'inline-block rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm'
-                                    : 'inline-block rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-semibold text-gray-700'
+                                    : 'inline-block rounded-lg border border-catalogue-border-strong px-5 py-2.5 text-sm font-semibold text-catalogue-text-primary'
                             }
                         >
                             {b.text}
@@ -447,15 +447,15 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
             {visibleChips.length > 0 && (
                 <div className="flex flex-wrap gap-2 pt-1">
                     {visibleChips.slice(0, 4).map((c: any, i: number) => (
-                        <span key={i} className="rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-center shadow-sm">
-                            <span className="block text-sm font-bold text-gray-900">{c.value}</span>
-                            <span className="block text-caption text-gray-500">{c.label}</span>
+                        <span key={i} className="rounded-xl border border-catalogue-border bg-catalogue-bg-elevated px-3 py-1.5 text-center shadow-sm">
+                            <span className="block text-sm font-bold text-catalogue-text-primary">{c.value}</span>
+                            <span className="block text-caption text-catalogue-text-secondary">{c.label}</span>
                         </span>
                     ))}
                 </div>
             )}
             {(props.trust?.text || props.trust?.rating) && (
-                <div className="pt-1 text-caption text-gray-500">
+                <div className="pt-1 text-caption text-catalogue-text-secondary">
                     {props.trust?.rating ? `★ ${Number(props.trust.rating).toFixed(1)} · ` : ''}
                     {props.trust?.text || ''}
                 </div>
@@ -486,7 +486,7 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
                         {(['a', 'b', 'c', 'd', 'e'] as const).map((area, idx) => (
                             <div
                                 key={area}
-                                className="overflow-hidden rounded-lg bg-gray-100"
+                                className="overflow-hidden rounded-lg bg-catalogue-bg-muted"
                                 style={{ gridArea: area }}
                             >
                                 {imgs[idx] ? (
@@ -512,7 +512,7 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
             <div className={`mx-auto max-w-6xl ${isSplit ? 'grid grid-cols-2 gap-8 items-center' : 'flex flex-col items-center gap-4'}`}>
                 {textBlock}
                 {isSplit && (
-                    <div className="flex h-56 items-center justify-center overflow-hidden rounded-xl bg-gray-100 shadow-sm">
+                    <div className="flex h-56 items-center justify-center overflow-hidden rounded-xl bg-catalogue-bg-muted shadow-sm">
                         {props.right?.image ? (
                             <img
                                 src={props.right.image}
@@ -520,7 +520,7 @@ const HeroSectionPreview: React.FC<P> = ({ props }) => {
                                 className="h-full w-full object-cover"
                             />
                         ) : (
-                            <span className="text-sm text-gray-400">Image area</span>
+                            <span className="text-sm text-catalogue-text-muted">Image area</span>
                         )}
                     </div>
                 )}
@@ -602,7 +602,7 @@ const StatsPreview: React.FC<P> = ({ props }) => {
             {useGroups ? (
                 <div className="mx-auto max-w-4xl space-y-4">
                     {(props.groups || []).map((group: any, gi: number) => (
-                        <div key={gi} className="rounded-lg border border-gray-200 bg-white p-4">
+                        <div key={gi} className="rounded-lg border border-catalogue-border bg-catalogue-bg-elevated p-4">
                             {group.description && (
                                 <p className="mb-3 text-center text-xs font-semibold text-blue-600">{group.description}</p>
                             )}
@@ -625,7 +625,7 @@ const StatsPreview: React.FC<P> = ({ props }) => {
                             <div className="mt-1 text-sm" style={{ color: fg, opacity: 0.65 }}>{s.label}</div>
                         </div>
                     )) : (
-                        <p className="text-sm text-gray-400">No stats added yet</p>
+                        <p className="text-sm text-catalogue-text-muted">No stats added yet</p>
                     )}
                 </div>
             )}
@@ -644,16 +644,16 @@ const TestimonialPreview: React.FC<P> = ({ props }) => {
             <div className="mx-auto grid max-w-4xl grid-cols-2 gap-4">
                 {(props.testimonials || []).length > 0 ? (
                     (props.testimonials || []).slice(0, 2).map((t: any, i: number) => (
-                        <div key={i} className="rounded-xl bg-white p-5 shadow-sm">
-                            <p className="line-clamp-3 text-sm italic text-gray-600">
+                        <div key={i} className="rounded-xl bg-catalogue-bg-elevated p-5 shadow-sm">
+                            <p className="line-clamp-3 text-sm italic text-catalogue-text-secondary">
                                 &ldquo;{t.content || t.feedback || t.text || t.quote || 'Testimonial text…'}&rdquo;
                             </p>
-                            <p className="mt-3 text-xs font-semibold text-gray-900">{t.author || t.name || 'Student'}</p>
-                            {t.role && <p className="text-[11px] text-gray-400">{t.role}</p>}
+                            <p className="mt-3 text-xs font-semibold text-catalogue-text-primary">{t.author || t.name || 'Student'}</p>
+                            {t.role && <p className="text-[11px] text-catalogue-text-muted">{t.role}</p>}
                         </div>
                     ))
                 ) : (
-                    <div className="col-span-2 rounded-xl border-2 border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
+                    <div className="col-span-2 rounded-xl border-2 border-dashed border-catalogue-border py-10 text-center text-sm text-catalogue-text-muted">
                         Add testimonials in the properties panel
                     </div>
                 )}
@@ -674,10 +674,10 @@ const MediaShowcasePreview: React.FC<P> = ({ props }) => {
             style={{ backgroundColor: props.styles?.backgroundColor || '#F0F9FF' }}
         >
             {props.headerText && (
-                <h2 className="mb-2 text-center catalogue-h2 text-gray-900">{props.headerText}</h2>
+                <h2 className="mb-2 text-center catalogue-h2 text-catalogue-text-primary">{props.headerText}</h2>
             )}
             {props.description && (
-                <p className="mb-6 text-center text-sm text-gray-500">{props.description}</p>
+                <p className="mb-6 text-center text-sm text-catalogue-text-secondary">{props.description}</p>
             )}
 
             {isSlider ? (
@@ -698,7 +698,7 @@ const MediaShowcasePreview: React.FC<P> = ({ props }) => {
                                     />
                                 ) : (
                                     <div className="flex h-40 w-full items-center justify-center bg-gray-800">
-                                        <span className="text-xs text-gray-400">Slide {i + 1}</span>
+                                        <span className="text-xs text-catalogue-text-muted">Slide {i + 1}</span>
                                     </div>
                                 )}
                                 {slide.heading && (
@@ -709,12 +709,12 @@ const MediaShowcasePreview: React.FC<P> = ({ props }) => {
                             </div>
                         ))}
                         {slides.length > 3 && (
-                            <div className="flex flex-1 items-center justify-center rounded-xl bg-gray-100 text-xs text-gray-400">
+                            <div className="flex flex-1 items-center justify-center rounded-xl bg-catalogue-bg-muted text-xs text-catalogue-text-muted">
                                 +{slides.length - 3} more
                             </div>
                         )}
                     </div>
-                    <p className="mt-2 text-center text-xs text-gray-400">
+                    <p className="mt-2 text-center text-xs text-catalogue-text-muted">
                         {slides.length} slide{slides.length !== 1 ? 's' : ''} · slider layout
                     </p>
                 </div>
@@ -722,7 +722,7 @@ const MediaShowcasePreview: React.FC<P> = ({ props }) => {
                 // Media carousel format
                 <div className="mx-auto flex max-w-4xl gap-4">
                     {media.slice(0, 3).map((m: any, i: number) => (
-                        <div key={i} className="flex-1 overflow-hidden rounded-xl bg-white shadow-sm">
+                        <div key={i} className="flex-1 overflow-hidden rounded-xl bg-catalogue-bg-elevated shadow-sm">
                             {m.thumbnail ? (
                                 <img src={m.thumbnail} alt="" className="h-24 w-full object-cover" />
                             ) : m.type === 'video' ? (
@@ -730,17 +730,17 @@ const MediaShowcasePreview: React.FC<P> = ({ props }) => {
                                     <span className="text-2xl">▶</span>
                                 </div>
                             ) : (
-                                <div className="flex h-24 w-full items-center justify-center bg-gray-100 text-gray-300 text-2xl">🖼</div>
+                                <div className="flex h-24 w-full items-center justify-center bg-catalogue-bg-muted text-gray-300 text-2xl">🖼</div>
                             )}
                             <div className="p-2 text-center">
-                                <p className="text-xs font-medium text-gray-700 truncate">{m.caption || m.title || 'Media item'}</p>
-                                <p className="text-[10px] capitalize text-gray-400">{m.type || 'image'}</p>
+                                <p className="text-xs font-medium text-catalogue-text-primary truncate">{m.caption || m.title || 'Media item'}</p>
+                                <p className="text-[10px] capitalize text-catalogue-text-muted">{m.type || 'image'}</p>
                             </div>
                         </div>
                     ))}
                 </div>
             ) : (
-                <div className="mx-auto max-w-4xl rounded-xl border-2 border-dashed border-gray-200 py-10 text-center text-sm text-gray-400">
+                <div className="mx-auto max-w-4xl rounded-xl border-2 border-dashed border-catalogue-border py-10 text-center text-sm text-catalogue-text-muted">
                     Add slides or media items in the properties panel
                 </div>
             )}
@@ -763,9 +763,9 @@ const FaqPreview: React.FC<P> = ({ props }) => {
             )}
             <div className="mx-auto max-w-3xl space-y-2">
                 {(props.faqs || []).slice(0, 4).map((faq: any, i: number) => (
-                    <div key={i} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-5 py-3">
+                    <div key={i} className="flex items-center justify-between rounded-lg border border-catalogue-border bg-catalogue-bg-elevated px-5 py-3">
                         <span className="text-sm font-medium" style={{ color: fg }}>{faq.question}</span>
-                        <span className="text-gray-400">+</span>
+                        <span className="text-catalogue-text-muted">+</span>
                     </div>
                 ))}
             </div>
@@ -776,7 +776,7 @@ const FaqPreview: React.FC<P> = ({ props }) => {
 const VideoPreview: React.FC<P> = ({ props }) => (
     <section className="py-10 px-8">
         {props.title && (
-            <h2 className="mb-4 text-center catalogue-h2 text-gray-900">{props.title}</h2>
+            <h2 className="mb-4 text-center catalogue-h2 text-catalogue-text-primary">{props.title}</h2>
         )}
         <div className="mx-auto max-w-3xl">
             <div
@@ -793,7 +793,7 @@ const VideoPreview: React.FC<P> = ({ props }) => (
                 )}
             </div>
             {props.caption && (
-                <p className="mt-2 text-center text-sm text-gray-500">{props.caption}</p>
+                <p className="mt-2 text-center text-sm text-catalogue-text-secondary">{props.caption}</p>
             )}
         </div>
     </section>
@@ -814,7 +814,7 @@ const CtaBannerPreview: React.FC<P> = ({ props }) => (
         )}
         {props.button?.enabled && (
             <span
-                className="mt-5 inline-block rounded-lg bg-white px-7 py-2.5 text-sm font-semibold shadow"
+                className="mt-5 inline-block rounded-lg bg-catalogue-bg-elevated px-7 py-2.5 text-sm font-semibold shadow"
                 style={{ color: props.backgroundColor || '#3B82F6' }}
             >
                 {props.button.text}
@@ -824,24 +824,24 @@ const CtaBannerPreview: React.FC<P> = ({ props }) => (
 );
 
 const PricingPreview: React.FC<P> = ({ props }) => (
-    <section className="bg-white py-12 px-8">
+    <section className="bg-catalogue-bg-elevated py-12 px-8">
         {props.headerText && (
-            <h2 className="mb-2 text-center catalogue-h2 text-gray-900">{props.headerText}</h2>
+            <h2 className="mb-2 text-center catalogue-h2 text-catalogue-text-primary">{props.headerText}</h2>
         )}
         {props.subheading && (
-            <p className="mb-8 text-center text-sm text-gray-500">{props.subheading}</p>
+            <p className="mb-8 text-center text-sm text-catalogue-text-secondary">{props.subheading}</p>
         )}
         <div className="mx-auto flex max-w-3xl flex-wrap justify-center gap-4">
             {(props.plans || []).slice(0, 3).map((plan: any, i: number) => (
                 <div
                     key={i}
-                    className={`min-w-[160px] flex-1 rounded-xl border-2 p-5 ${plan.highlighted ? 'border-blue-500 shadow-lg' : 'border-gray-200'}`}
+                    className={`min-w-[160px] flex-1 rounded-xl border-2 p-5 ${plan.highlighted ? 'border-blue-500 shadow-lg' : 'border-catalogue-border'}`}
                 >
-                    <h3 className="font-bold text-gray-900">{plan.name}</h3>
-                    <div className="my-2 text-2xl font-bold text-gray-900">{plan.price}</div>
+                    <h3 className="font-bold text-catalogue-text-primary">{plan.name}</h3>
+                    <div className="my-2 text-2xl font-bold text-catalogue-text-primary">{plan.price}</div>
                     <ul className="space-y-1">
                         {(plan.features || []).slice(0, 3).map((f: string, j: number) => (
-                            <li key={j} className="flex items-center gap-1 text-xs text-gray-600">
+                            <li key={j} className="flex items-center gap-1 text-xs text-catalogue-text-secondary">
                                 <span className="text-green-500">✓</span>{f}
                             </li>
                         ))}
@@ -855,19 +855,19 @@ const PricingPreview: React.FC<P> = ({ props }) => (
 const ContactFormPreview: React.FC<P> = ({ props }) => (
     <section className="py-12 px-8" style={{ backgroundColor: props.backgroundColor || '#fff' }}>
         {props.heading && (
-            <h2 className="mb-2 text-center catalogue-h2 text-gray-900">{props.heading}</h2>
+            <h2 className="mb-2 text-center catalogue-h2 text-catalogue-text-primary">{props.heading}</h2>
         )}
         {props.subheading && (
-            <p className="mb-6 text-center text-sm text-gray-500">{props.subheading}</p>
+            <p className="mb-6 text-center text-sm text-catalogue-text-secondary">{props.subheading}</p>
         )}
-        <div className="mx-auto max-w-lg rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+        <div className="mx-auto max-w-lg rounded-xl border border-catalogue-border bg-catalogue-bg-elevated p-6 shadow-sm">
             <div className="space-y-3">
                 {(props.fields || []).slice(0, 4).map((field: any, i: number) => (
                     <div key={i}>
-                        <div className="mb-1 text-xs font-medium text-gray-600">
+                        <div className="mb-1 text-xs font-medium text-catalogue-text-secondary">
                             {field.label}{field.required && <span className="ml-0.5 text-red-500">*</span>}
                         </div>
-                        <div className={`rounded border border-gray-200 bg-gray-50 ${field.type === 'textarea' ? 'h-16' : 'h-8'}`} />
+                        <div className={`rounded border border-catalogue-border bg-catalogue-bg-subtle ${field.type === 'textarea' ? 'h-16' : 'h-8'}`} />
                     </div>
                 ))}
                 <div className="mt-2 h-9 rounded bg-blue-500" />
@@ -877,12 +877,12 @@ const ContactFormPreview: React.FC<P> = ({ props }) => (
 );
 
 const TeamPreview: React.FC<P> = ({ props }) => (
-    <section className="bg-white py-12 px-8">
+    <section className="bg-catalogue-bg-elevated py-12 px-8">
         {props.headerText && (
-            <h2 className="mb-2 text-center catalogue-h2 text-gray-900">{props.headerText}</h2>
+            <h2 className="mb-2 text-center catalogue-h2 text-catalogue-text-primary">{props.headerText}</h2>
         )}
         {props.subheading && (
-            <p className="mb-8 text-center text-sm text-gray-500">{props.subheading}</p>
+            <p className="mb-8 text-center text-sm text-catalogue-text-secondary">{props.subheading}</p>
         )}
         <div className="mx-auto grid max-w-4xl grid-cols-3 gap-6">
             {(props.members || []).slice(0, 3).map((m: any, i: number) => (
@@ -894,7 +894,7 @@ const TeamPreview: React.FC<P> = ({ props }) => (
                             {m.name?.[0] || '?'}
                         </div>
                     )}
-                    <p className="text-sm font-semibold text-gray-900">{m.name}</p>
+                    <p className="text-sm font-semibold text-catalogue-text-primary">{m.name}</p>
                     <p className="text-xs text-blue-600">{m.role}</p>
                 </div>
             ))}
@@ -905,20 +905,20 @@ const TeamPreview: React.FC<P> = ({ props }) => (
 const AnnouncementPreview: React.FC<P> = ({ props }) => (
     <section className="py-10 px-8" style={{ backgroundColor: props.backgroundColor || '#fff' }}>
         {props.headerText && (
-            <h2 className="mb-6 text-center catalogue-h2 text-gray-900">{props.headerText}</h2>
+            <h2 className="mb-6 text-center catalogue-h2 text-catalogue-text-primary">{props.headerText}</h2>
         )}
         <div className="mx-auto max-w-3xl space-y-3">
             {(props.announcements || []).slice(0, 3).map((a: any, i: number) => (
-                <div key={i} className="rounded-xl border border-gray-200 bg-white px-5 py-4">
+                <div key={i} className="rounded-xl border border-catalogue-border bg-catalogue-bg-elevated px-5 py-4">
                     <div className="mb-1 flex items-center gap-2">
                         {a.tag && (
                             <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
                                 {a.tag}
                             </span>
                         )}
-                        {a.date && <span className="text-xs text-gray-400">{a.date}</span>}
+                        {a.date && <span className="text-xs text-catalogue-text-muted">{a.date}</span>}
                     </div>
-                    <p className="text-sm font-semibold text-gray-900">{a.title}</p>
+                    <p className="text-sm font-semibold text-catalogue-text-primary">{a.title}</p>
                 </div>
             ))}
         </div>
@@ -926,9 +926,9 @@ const AnnouncementPreview: React.FC<P> = ({ props }) => (
 );
 
 const GalleryPreview: React.FC<P> = ({ props }) => (
-    <section className="bg-white py-10 px-8">
+    <section className="bg-catalogue-bg-elevated py-10 px-8">
         {props.headerText && (
-            <h2 className="mb-6 text-center catalogue-h2 text-gray-900">{props.headerText}</h2>
+            <h2 className="mb-6 text-center catalogue-h2 text-catalogue-text-primary">{props.headerText}</h2>
         )}
         <div className="mx-auto grid max-w-4xl grid-cols-3 gap-3">
             {(props.images || []).slice(0, 6).map((img: any, i: number) => (
@@ -936,7 +936,7 @@ const GalleryPreview: React.FC<P> = ({ props }) => (
                     {img.src ? (
                         <img src={img.src} alt={img.alt || ''} className="h-full w-full object-cover" />
                     ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-gray-100 text-xs text-gray-300">
+                        <div className="flex h-full w-full items-center justify-center bg-catalogue-bg-muted text-xs text-gray-300">
                             Image {i + 1}
                         </div>
                     )}
@@ -949,10 +949,10 @@ const GalleryPreview: React.FC<P> = ({ props }) => (
 // ─── Data-driven placeholder ──────────────────────────────────────────────────
 
 const DataPlaceholder: React.FC<{ label: string; description?: string }> = ({ label, description }) => (
-    <div className="flex items-center justify-center border border-dashed border-gray-200 bg-gray-50 px-6 py-10">
+    <div className="flex items-center justify-center border border-dashed border-catalogue-border bg-catalogue-bg-subtle px-6 py-10">
         <div className="text-center">
-            <div className="mb-1 text-sm font-semibold text-gray-500">{label}</div>
-            <div className="text-xs text-gray-400">
+            <div className="mb-1 text-sm font-semibold text-catalogue-text-secondary">{label}</div>
+            <div className="text-xs text-catalogue-text-muted">
                 {description || 'Renders live data on the published page'}
             </div>
         </div>
@@ -1024,14 +1024,14 @@ export const renderComponentPreview = (
         case 'buyRentSection':
             return (
                 <section className="py-10 px-8 text-center">
-                    <h2 className="mb-5 catalogue-h2 text-gray-900">
+                    <h2 className="mb-5 catalogue-h2 text-catalogue-text-primary">
                         {props.heading || 'Choose Your Path'}
                     </h2>
                     <div className="flex justify-center gap-4">
-                        <span className="rounded-lg border px-7 py-3 font-medium text-gray-700">
+                        <span className="rounded-lg border px-7 py-3 font-medium text-catalogue-text-primary">
                             {props.buy?.buttonLabel || 'Buy'}
                         </span>
-                        <span className="rounded-lg border px-7 py-3 font-medium text-gray-700">
+                        <span className="rounded-lg border px-7 py-3 font-medium text-catalogue-text-primary">
                             {props.rent?.buttonLabel || 'Rent'}
                         </span>
                     </div>
@@ -1062,7 +1062,7 @@ export const renderComponentPreview = (
                     hl.style === 'underline'
                         ? 'underline decoration-primary-400 decoration-4 underline-offset-8'
                         : hl.style === 'mark'
-                          ? 'rounded-md bg-primary-100 px-2 text-gray-900'
+                          ? 'rounded-md bg-primary-100 px-2 text-catalogue-text-primary'
                           : 'catalogue-text-gradient';
                 shTitleNode = (
                     <>
@@ -1076,8 +1076,8 @@ export const renderComponentPreview = (
                 <section className="px-4 pt-12 pb-4" style={{ backgroundColor: props.backgroundColor || undefined }}>
                     <div className={`mx-auto max-w-3xl ${props.align === 'left' ? 'text-left' : 'text-center'}`}>
                         {props.eyebrow && <span className="catalogue-eyebrow">{props.eyebrow}</span>}
-                        <h2 className={`${props.eyebrow ? 'mt-3' : ''} font-bold text-gray-900 ${shSize}`}>{shTitleNode}</h2>
-                        {props.lead && <p className="mt-4 catalogue-lead text-gray-500">{props.lead}</p>}
+                        <h2 className={`${props.eyebrow ? 'mt-3' : ''} font-bold text-catalogue-text-primary ${shSize}`}>{shTitleNode}</h2>
+                        {props.lead && <p className="mt-4 catalogue-lead text-catalogue-text-secondary">{props.lead}</p>}
                     </div>
                 </section>
             );
@@ -1087,7 +1087,7 @@ export const renderComponentPreview = (
             const trustAlign = props.alignment === 'left' ? 'justify-start' : props.alignment === 'right' ? 'justify-end' : 'justify-center';
             return (
                 <div className={`flex px-4 py-6 ${trustAlign}`}>
-                    <span className="inline-flex items-center gap-3 rounded-full border border-gray-200 bg-gray-50 py-2 pl-2.5 pr-5">
+                    <span className="inline-flex items-center gap-3 rounded-full border border-catalogue-border bg-catalogue-bg-subtle py-2 pl-2.5 pr-5">
                         {trustAvatars.length > 0 && (
                             <span className="flex -space-x-2">
                                 {trustAvatars.slice(0, 4).map((src, i) => (
@@ -1097,9 +1097,9 @@ export const renderComponentPreview = (
                         )}
                         {props.rating ? (
                             // Clamp like the live renderer so canvas and page agree on stored out-of-range values
-                            <span className="text-sm font-semibold text-gray-900">★ {Math.min(5, Math.max(0, Number(props.rating))).toFixed(1)}</span>
+                            <span className="text-sm font-semibold text-catalogue-text-primary">★ {Math.min(5, Math.max(0, Number(props.rating))).toFixed(1)}</span>
                         ) : null}
-                        {props.text && <span className="text-sm text-gray-600">{props.text}</span>}
+                        {props.text && <span className="text-sm text-catalogue-text-secondary">{props.text}</span>}
                     </span>
                 </div>
             );
@@ -1123,21 +1123,21 @@ export const renderComponentPreview = (
                     {props.mode === 'accordion' ? (
                         <div className="mx-auto max-w-2xl space-y-2">
                             {items.map((item: any, i: number) => (
-                                <div key={i} className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-                                    <div className="font-medium text-gray-800">{item.title || `Item ${i + 1}`}</div>
+                                <div key={i} className="rounded-lg border border-catalogue-border bg-catalogue-bg-elevated px-4 py-3">
+                                    <div className="font-medium text-catalogue-text-primary">{item.title || `Item ${i + 1}`}</div>
                                 </div>
                             ))}
                         </div>
                     ) : (
                         <div className="mx-auto max-w-2xl">
-                            <div className="flex border-b border-gray-200">
+                            <div className="flex border-b border-catalogue-border">
                                 {items.map((item: any, i: number) => (
-                                    <div key={i} className={`px-4 py-2 text-sm font-medium ${i === 0 ? 'border-b-2 border-blue-500 text-blue-600' : 'text-gray-500'}`}>
+                                    <div key={i} className={`px-4 py-2 text-sm font-medium ${i === 0 ? 'border-b-2 border-blue-500 text-blue-600' : 'text-catalogue-text-secondary'}`}>
                                         {item.title || `Tab ${i + 1}`}
                                     </div>
                                 ))}
                             </div>
-                            <div className="p-4 text-sm text-gray-600" dangerouslySetInnerHTML={{ __html: items[0]?.content || 'Tab content' }} />
+                            <div className="p-4 text-sm text-catalogue-text-secondary" dangerouslySetInnerHTML={{ __html: items[0]?.content || 'Tab content' }} />
                         </div>
                     )}
                 </section>
@@ -1156,7 +1156,7 @@ export const renderComponentPreview = (
             const isTicker = props.layout === 'marquee';
             return (
                 <section className="py-10 text-center">
-                    {props.headerText && <h3 className="mb-6 text-lg font-semibold text-gray-400 uppercase tracking-wider">{props.headerText}</h3>}
+                    {props.headerText && <h3 className="mb-6 text-lg font-semibold text-catalogue-text-muted uppercase tracking-wider">{props.headerText}</h3>}
                     <div className={`flex items-center gap-6 ${isTicker ? 'overflow-hidden px-0' : 'flex-wrap justify-center px-8'}`}>
                         {logos.length === 0 ? (
                             <div className="w-full text-sm text-gray-300">
@@ -1173,7 +1173,7 @@ export const renderComponentPreview = (
                             }
                             return (
                                 <div key={i} className={`flex shrink-0 flex-col items-center gap-1 ${props.grayscale ? 'grayscale' : ''}`}>
-                                    <div className="h-10 w-24 rounded bg-gray-100">
+                                    <div className="h-10 w-24 rounded bg-catalogue-bg-muted">
                                         {logo.image && <img src={logo.image} alt={logo.alt || ''} className="h-full w-full object-contain" />}
                                     </div>
                                     {lcDisplay === 'logo+label' && label && (
@@ -1189,10 +1189,10 @@ export const renderComponentPreview = (
         case 'mapEmbed':
             return (
                 <section className="py-6 px-6">
-                    {props.title && <h3 className="mb-3 text-lg font-semibold text-gray-800">{props.title}</h3>}
-                    <div className="flex items-center justify-center rounded bg-gray-100" style={{ height: props.height || '400px', borderRadius: props.borderRadius || '8px' }}>
+                    {props.title && <h3 className="mb-3 text-lg font-semibold text-catalogue-text-primary">{props.title}</h3>}
+                    <div className="flex items-center justify-center rounded bg-catalogue-bg-muted" style={{ height: props.height || '400px', borderRadius: props.borderRadius || '8px' }}>
                         {props.embedUrl ? (
-                            <div className="text-sm text-gray-500">Map embed preview</div>
+                            <div className="text-sm text-catalogue-text-secondary">Map embed preview</div>
                         ) : (
                             <div className="text-sm text-gray-300">Add a Google Maps embed URL</div>
                         )}
@@ -1207,7 +1207,7 @@ export const renderComponentPreview = (
                     </h3>
                     <div className="flex justify-center gap-4">
                         {['Days', 'Hours', 'Mins', 'Secs'].map((unit) => (
-                            <div key={unit} className="rounded-lg bg-white/10 px-5 py-3">
+                            <div key={unit} className="rounded-lg bg-catalogue-bg-elevated/10 px-5 py-3">
                                 <div className="text-3xl font-bold" style={{ color: props.textColor || '#FFFFFF' }}>00</div>
                                 <div className="mt-1 text-xs uppercase tracking-wider" style={{ color: props.textColor ? `${props.textColor}99` : '#FFFFFF99' }}>{unit}</div>
                             </div>
@@ -1220,7 +1220,7 @@ export const renderComponentPreview = (
                 <section className="py-8 px-6">
                     <div
                         style={{ maxWidth: props.maxWidth || '800px', margin: props.alignment === 'center' ? '0 auto' : props.alignment === 'right' ? '0 0 0 auto' : undefined }}
-                        className="max-w-none text-gray-700 [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mb-1 [&_p]:mb-3 [&_a]:text-blue-600 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1"
+                        className="max-w-none text-catalogue-text-primary [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mb-2 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:mb-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mb-1 [&_p]:mb-3 [&_a]:text-blue-600 [&_a]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1"
                         dangerouslySetInnerHTML={{ __html: props.content || '<p>Text block — click to edit content</p>' }}
                     />
                 </section>
@@ -1258,10 +1258,10 @@ export const renderComponentPreview = (
                                             {(badge || IconComp) && (
                                                 <div className="mb-2 flex items-center justify-between gap-2">
                                                     {badge ? (
-                                                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-caption font-semibold uppercase tracking-wider ${solid ? 'bg-white/15 text-white' : 'bg-primary-100 text-primary-600'}`}>{badge}</span>
+                                                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-caption font-semibold uppercase tracking-wider ${solid ? 'bg-catalogue-bg-elevated/15 text-white' : 'bg-primary-100 text-primary-600'}`}>{badge}</span>
                                                     ) : <span />}
                                                     {IconComp && (
-                                                        <span className={`inline-flex items-center justify-center rounded-lg p-2 ${solid ? 'bg-white/15 text-white' : 'bg-primary-100 text-primary-500'}`}>
+                                                        <span className={`inline-flex items-center justify-center rounded-lg p-2 ${solid ? 'bg-catalogue-bg-elevated/15 text-white' : 'bg-primary-100 text-primary-500'}`}>
                                                             <IconComp size={22} weight="duotone" aria-hidden="true" />
                                                         </span>
                                                     )}
@@ -1297,7 +1297,7 @@ export const renderComponentPreview = (
             const fgStyle = props.style || 'cards';
             const cardClass =
                 fgStyle === 'cards' ? 'catalogue-card-elevated group p-6' :
-                fgStyle === 'bordered' ? 'rounded-xl border-2 border-gray-200 p-5' :
+                fgStyle === 'bordered' ? 'rounded-xl border-2 border-catalogue-border p-5' :
                 fgStyle === 'glass' ? 'catalogue-card-glass p-5' :
                 fgStyle === 'gradient-border' ? 'catalogue-card-gradient-border p-5' :
                 fgStyle === 'tinted' ? 'catalogue-card-tinted p-5' :
@@ -1365,11 +1365,11 @@ export const renderComponentPreview = (
                             className="h-auto"
                         />
                     ) : (
-                        <div className="mx-auto flex h-48 w-80 items-center justify-center rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 text-sm text-gray-300">
+                        <div className="mx-auto flex h-48 w-80 items-center justify-center rounded-lg border-2 border-dashed border-catalogue-border bg-catalogue-bg-subtle text-sm text-gray-300">
                             Upload an image
                         </div>
                     )}
-                    {props.caption && <p className="mt-2 text-xs text-gray-400">{props.caption}</p>}
+                    {props.caption && <p className="mt-2 text-xs text-catalogue-text-muted">{props.caption}</p>}
                 </section>
             );
         case 'buttonBlock': {
@@ -1398,10 +1398,10 @@ export const renderComponentPreview = (
             return (
                 <section className="py-10 px-8" style={{ backgroundColor: props.backgroundColor || '#F8FAFC' }}>
                     <div className="mx-auto max-w-lg text-center">
-                        {props.heading && <h3 className="mb-1 text-xl font-bold text-gray-900">{props.heading}</h3>}
-                        {props.subheading && <p className="mb-5 text-sm text-gray-500">{props.subheading}</p>}
+                        {props.heading && <h3 className="mb-1 text-xl font-bold text-catalogue-text-primary">{props.heading}</h3>}
+                        {props.subheading && <p className="mb-5 text-sm text-catalogue-text-secondary">{props.subheading}</p>}
                         <div className={`flex ${props.layout === 'stacked' ? 'flex-col' : ''} gap-2`}>
-                            <div className="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-left text-sm text-gray-400">
+                            <div className="flex-1 rounded-lg border border-catalogue-border bg-catalogue-bg-elevated px-4 py-2.5 text-left text-sm text-catalogue-text-muted">
                                 {props.placeholder || 'Enter your email'}
                             </div>
                             <span className="rounded-lg bg-blue-500 px-5 py-2.5 text-sm font-medium text-white">
@@ -1461,7 +1461,7 @@ export const renderComponentPreview = (
                             <div
                                 key={i}
                                 style={{ minHeight: 48, borderRadius: 4 }}
-                                className="border border-dashed border-teal-300 bg-white overflow-hidden"
+                                className="border border-dashed border-teal-300 bg-catalogue-bg-elevated overflow-hidden"
                             >
                                 {slotComps.length === 0 ? (
                                     <div className="flex h-12 items-center justify-center text-[10px] text-gray-300">
@@ -1491,13 +1491,13 @@ export const renderComponentPreview = (
                     {props.showFilters !== false && (
                         <div className="mb-4 flex flex-wrap gap-2">
                             {['Category', 'Level', 'Price'].map((f) => (
-                                <span key={f} className="rounded-full border border-neutral-200 bg-white px-3 py-1 text-xs text-neutral-600">{f}</span>
+                                <span key={f} className="rounded-full border border-neutral-200 bg-catalogue-bg-elevated px-3 py-1 text-xs text-neutral-600">{f}</span>
                             ))}
                         </div>
                     )}
                     <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
                         {Array.from({ length: cols }).map((_, i) => (
-                            <div key={i} className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
+                            <div key={i} className="overflow-hidden rounded-xl border border-neutral-200 bg-catalogue-bg-elevated">
                                 <div className="flex h-28 items-center justify-center bg-neutral-100 text-neutral-300 text-xs">
                                     Course Image
                                 </div>
@@ -1524,7 +1524,7 @@ export const renderComponentPreview = (
                 return (
                     <div className="bg-gray-900 px-4 py-3">
                         <div className="mb-1 font-mono text-[10px] text-green-400">{'</>'} HTML Block</div>
-                        <span className="font-mono text-[10px] text-gray-500">Empty HTML block</span>
+                        <span className="font-mono text-[10px] text-catalogue-text-secondary">Empty HTML block</span>
                     </div>
                 );
             }
@@ -1534,7 +1534,7 @@ export const renderComponentPreview = (
             return <MarqueePreview props={props} />;
         default:
             return (
-                <div className="flex items-center justify-center bg-gray-50 py-8 text-sm text-gray-400">
+                <div className="flex items-center justify-center bg-catalogue-bg-subtle py-8 text-sm text-catalogue-text-muted">
                     Unknown component: {type}
                 </div>
             );

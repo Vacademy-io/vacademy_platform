@@ -2,6 +2,13 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { CaretLeft, CaretRight, Clock, ChalkboardTeacher, Star } from "@phosphor-icons/react";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
+import {
+  isYouTubeUrl,
+  isVimeoUrl,
+  convertToYouTubeEmbedUrl,
+  convertToVimeoEmbedUrl,
+  isValidVideoUrl,
+} from "../../-utils/video-url";
 import { cn } from "@/lib/utils";
 
 interface HeroSectionProps {
@@ -42,6 +49,14 @@ interface HeroSectionProps {
   right?: {
     image?: string;
     alt?: string;
+    /** Video for the hero media slot. Accepts a YouTube or Vimeo link (any of
+     *  the usual shapes — watch?v=, youtu.be, /embed/), a direct file URL, or
+     *  a media_service fileId for an uploaded video. When set and valid it
+     *  takes precedence over `image`/`images`. */
+    video?: string;
+    /** Poster frame for an uploaded video (fileId or URL). Ignored for
+     *  YouTube/Vimeo, which supply their own thumbnail. */
+    videoPoster?: string;
     /** Optional extra images. When 2+ are provided, the hero media area
      *  renders an auto-advancing carousel instead of a single image.
      *  (1 image → single image; 0 → nothing.) Backward compatible: if this
@@ -517,6 +532,75 @@ const HeroSectionPlaceholder: React.FC<{
 
 // Hero media — renders a single image, or an auto-advancing carousel when 2+
 // images are configured. Resolves media IDs (non-http strings) to public URLs.
+/**
+ * Hero media slot rendered as a video. YouTube/Vimeo links become a 16:9
+ * iframe; anything else (an uploaded fileId or a direct .mp4/.webm URL) is
+ * resolved through media-service and played with native controls.
+ */
+const HeroVideo: React.FC<{ src: string; poster?: string; title?: string }> = ({
+  src,
+  poster,
+  title,
+}) => {
+  const [resolved, setResolved] = useState<string>("");
+  const [resolvedPoster, setResolvedPoster] = useState<string>("");
+
+  useEffect(() => {
+    let active = true;
+    // Same resolution rule as the image path: pass http(s) through, otherwise
+    // treat the value as a media_service fileId.
+    const resolveOne = async (value: string) => {
+      if (!value || value.startsWith("http")) return value;
+      try {
+        return await getPublicUrlWithoutLogin(value);
+      } catch {
+        return value;
+      }
+    };
+    resolveOne(src).then((u) => active && setResolved(u));
+    if (poster) resolveOne(poster).then((u) => active && setResolvedPoster(u));
+    return () => {
+      active = false;
+    };
+  }, [src, poster]);
+
+  if (!isValidVideoUrl(src)) return null;
+
+  // Embeds keep the original (unresolved) value: a YouTube/Vimeo link is
+  // already a URL and must not be sent through media-service.
+  const embedUrl = isYouTubeUrl(src)
+    ? convertToYouTubeEmbedUrl(src)
+    : isVimeoUrl(src)
+      ? convertToVimeoEmbedUrl(src)
+      : null;
+
+  return (
+    <div className="relative w-full overflow-hidden rounded-xl shadow-md">
+      {embedUrl ? (
+        <div className="relative w-full aspect-video">
+          <iframe
+            src={embedUrl}
+            title={title || "Hero video"}
+            className="absolute inset-0 h-full w-full border-0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+            allowFullScreen
+            loading="lazy"
+          />
+        </div>
+      ) : resolved ? (
+        <video
+          src={resolved}
+          poster={resolvedPoster || undefined}
+          controls
+          playsInline
+          preload="metadata"
+          className="h-auto max-h-96 w-full bg-black object-contain" // design-lint-ignore: video letterbox fill
+        />
+      ) : null}
+    </div>
+  );
+};
+
 const HeroCarousel: React.FC<{
   images: Array<{ src: string; alt: string }>;
 }> = ({ images }) => {
@@ -730,6 +814,10 @@ const HeroSectionWithState: React.FC<{
         ? [{ src: resolvedImageUrl || heroImage, alt: heroImageAlt }]
         : [];
 
+  // A configured video wins the media slot over image/carousel.
+  const heroVideo = right?.video && isValidVideoUrl(right.video) ? right.video : "";
+  const hasHeroMedia = !!heroVideo || heroMedia.length > 0;
+
   // Course-details hero (gets courseData) uses the new wider 5/7 split + bigger
   // title + meta. The homepage / landing hero (no courseData) keeps the
   // original 50/50 split and title.
@@ -764,7 +852,7 @@ const HeroSectionWithState: React.FC<{
           >
             {/* Left Content — 5/12 on desktop */}
             {(left || courseData) && (
-              <div className={cn("space-y-4", isCourseDetail ? (heroMedia.length > 0 ? "lg:col-span-5" : "lg:col-span-12") : "")}>
+              <div className={cn("space-y-4", isCourseDetail ? (hasHeroMedia ? "lg:col-span-5" : "lg:col-span-12") : "")}>
                 <HeroEyebrow eyebrow={eyebrow} textAlign={textAlign} />
                 <HeroTags tags={courseData?.tags} textAlign={textAlign} />
                 {heroTitle && (
@@ -793,9 +881,13 @@ const HeroSectionWithState: React.FC<{
             )}
 
             {/* Right Content — 7/12 on desktop: wider column gives the banner more room */}
-            {heroMedia.length > 0 && (
+            {hasHeroMedia && (
               <div className={cn("flex w-full items-center justify-center lg:justify-end", isCourseDetail && "lg:col-span-7")}>
-                <HeroCarousel images={heroMedia} />
+                {heroVideo ? (
+                  <HeroVideo src={heroVideo} poster={right?.videoPoster} title={heroImageAlt} />
+                ) : (
+                  <HeroCarousel images={heroMedia} />
+                )}
               </div>
             )}
           </div>
@@ -831,9 +923,13 @@ const HeroSectionWithState: React.FC<{
               </>
             )}
             {/* Centered media — image or carousel below the text */}
-            {heroMedia.length > 0 && (
+            {hasHeroMedia && (
               <div className="mx-auto mt-8 w-full max-w-2xl">
-                <HeroCarousel images={heroMedia} />
+                {heroVideo ? (
+                  <HeroVideo src={heroVideo} poster={right?.videoPoster} title={heroImageAlt} />
+                ) : (
+                  <HeroCarousel images={heroMedia} />
+                )}
               </div>
             )}
           </div>

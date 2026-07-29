@@ -1216,6 +1216,10 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             <Button
               variant="outline"
               size="sm"
+              // The shadcn `outline` variant sets bg-background but no text
+              // color, so the label inherited the app default (dark) and went
+              // invisible on the dark catalogue surface. Pin catalogue tokens.
+              className="border-catalogue-border bg-catalogue-bg-elevated text-catalogue-text-primary hover:bg-catalogue-bg-subtle hover:text-catalogue-text-primary"
               onClick={isAllExpanded ? collapseAll : expandAll}
             >
               {isAllExpanded ? "Collapse All" : "Expand All"}

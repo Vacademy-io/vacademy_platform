@@ -3,6 +3,13 @@ import { useNavigate } from "@tanstack/react-router";
 import { getPublicUrlWithoutLogin } from "@/services/upload_file";
 import { useDomainRouting } from "@/hooks/use-domain-routing";
 import { Play, Pause } from "@phosphor-icons/react";
+import {
+  isYouTubeUrl,
+  isVimeoUrl,
+  convertToVimeoEmbedUrl,
+  convertToYouTubeEmbedUrl,
+  isValidVideoUrl,
+} from "../../-utils/video-url";
 
 interface MediaItem {
   type: "image" | "video";
@@ -27,66 +34,6 @@ interface MediaItemComponentProps {
   item: MediaItem;
   roundedEdges: boolean;
 }
-
-// Utility function to check if URL is a YouTube URL
-const isYouTubeUrl = (url: string): boolean => {
-  if (!url) return false;
-  return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/.test(url);
-};
-
-// Utility function to check if URL is a Vimeo URL
-const isVimeoUrl = (url: string): boolean => {
-  if (!url) return false;
-  return /^(https?:\/\/)?(www\.)?(player\.)?vimeo\.com\/.+/.test(url);
-};
-
-// Utility function to extract Vimeo video ID
-const extractVimeoVideoId = (url: string): string | null => {
-  if (!url) return null;
-  const match = url.match(/(?:vimeo\.com\/(?:video\/)?|player\.vimeo\.com\/video\/)(\d+)/);
-  return match ? match[1] : null;
-};
-
-// Utility function to convert Vimeo URL to embed URL
-const convertToVimeoEmbedUrl = (url: string): string => {
-  const videoId = extractVimeoVideoId(url);
-  if (!videoId) return url;
-  return `https://player.vimeo.com/video/${videoId}?badge=0&autopause=0&player_id=0`;
-};
-
-// Utility function to extract YouTube video ID
-const extractYouTubeVideoId = (url: string): string | null => {
-  if (!url) return null;
-  const regExp =
-    /(?:youtu\.be\/|youtube\.com\/(?:watch\?(?:.*&)?v=|embed\/|v\/|live\/))([a-zA-Z0-9_-]{11})/;
-  const match = url.match(regExp);
-  return match ? match[1] : null;
-};
-
-// Utility function to convert YouTube URL to embed URL
-const convertToYouTubeEmbedUrl = (url: string): string => {
-  const videoId = extractYouTubeVideoId(url);
-  if (!videoId) return url;
-
-  // YouTube embed parameters
-  const params = new URLSearchParams({
-    modestbranding: '1',
-    rel: '0',
-    fs: '1',
-    playsinline: '1',
-  });
-
-  return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
-};
-
-// Check if URL is a valid video URL (not a placeholder)
-const isValidVideoUrl = (url: string): boolean => {
-  if (!url) return false;
-  if (url.includes('/api/placeholder/')) return false;
-  if (url.trim() === '') return false;
-  if (url === 'null' || url === 'undefined') return false;
-  return true;
-};
 
 const MediaItemComponent: React.FC<MediaItemComponentProps> = ({ item, roundedEdges }) => {
   const [resolvedUrl, setResolvedUrl] = useState<string>("");

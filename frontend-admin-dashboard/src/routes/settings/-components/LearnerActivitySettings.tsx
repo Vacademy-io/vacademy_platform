@@ -171,7 +171,9 @@ export default function LearnerActivitySettings() {
         }
     }, [data]);
 
-    const update = (updater: (prev: LearnerActivitySettingsData) => LearnerActivitySettingsData) => {
+    const update = (
+        updater: (prev: LearnerActivitySettingsData) => LearnerActivitySettingsData
+    ) => {
         setSettings(updater);
         setHasChanges(true);
     };
@@ -247,8 +249,8 @@ export default function LearnerActivitySettings() {
                     <CardTitle>Completion Threshold</CardTitle>
                     <CardDescription>
                         Controls when a {slideLabel.toLowerCase()} or chapter shows as completed
-                        (green tick) in the {learnerLabel.toLowerCase()} app. Progress
-                        percentages themselves are unaffected — this is the display cutoff.
+                        (green tick) in the {learnerLabel.toLowerCase()} app. Progress percentages
+                        themselves are unaffected — this is the display cutoff.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -331,8 +333,8 @@ export default function LearnerActivitySettings() {
                                 </Label>
                                 <p className="text-xs text-muted-foreground">
                                     Long single-page documents require time proportional to their
-                                    length before counting as read — a 3,000-word page is no
-                                    longer &quot;done&quot; in 10 seconds. Recommended on.
+                                    length before counting as read — a 3,000-word page is no longer
+                                    &quot;done&quot; in 10 seconds. Recommended on.
                                 </p>
                             </div>
                         </div>

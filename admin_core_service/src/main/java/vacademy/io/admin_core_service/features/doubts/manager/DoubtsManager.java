@@ -81,6 +81,12 @@ public class DoubtsManager {
     /** Default query type key for legacy/untyped doubts (academic, slide-anchored). */
     private static final String DEFAULT_TYPE = "DOUBT";
 
+    /** Attempts for the role lookup that backs the admin fallback (see {@link #resolveUsersByRole}). */
+    private static final int ROLE_LOOKUP_ATTEMPTS = 2;
+
+    /** Backoff between role-lookup attempts — long enough to clear a blip, short enough to not stall creation. */
+    private static final long ROLE_LOOKUP_RETRY_DELAY_MS = 150L;
+
     public ResponseEntity<String> updateOrCreateDoubt(CustomUserDetails userDetails, String doubtId, DoubtsDto request) {
         if(StringUtils.hasText(doubtId)){
             return ResponseEntity.ok(updateDoubt(doubtId, request));
@@ -342,6 +348,16 @@ public class DoubtsManager {
         // failures are swallowed inside the service and must not affect the doubt creation response.
         if (savedDoubt.getParentId() == null && !finalAssigneeIds.isEmpty() && instituteId != null) {
             doubtNotificationService.notifyDoubtRaised(savedDoubt, finalAssigneeIds, instituteId);
+        } else if (savedDoubt.getParentId() == null && finalAssigneeIds.isEmpty()
+                && !isDeliberatelyUnassigned(savedDoubt, instituteId)) {
+            // Nobody was notified — no email, no push, no bell — and the doubt only surfaces if
+            // someone happens to open the Doubt Management inbox. Anything that lands here is a
+            // routing failure rather than a configured choice (per-type NONE is filtered out above),
+            // so make it greppable: previously this dropped in complete silence, which is why the
+            // loss went unnoticed across many institutes.
+            log.error("Doubt {} (institute {}, type {}, batch {}) resolved 0 recipients — "
+                    + "raise notification skipped entirely (no email/push/bell)",
+                    savedDoubt.getId(), instituteId, savedDoubt.getType(), savedDoubt.getPackageSessionId());
         }
 
         // A staff reply on a GUEST doubt (no user account) is emailed to the guest's address —
@@ -399,6 +415,33 @@ public class DoubtsManager {
         // No per-type routing for this type → institute-wide default cascade.
         return resolveImplicitAssignees(parseAssigneeSource(setting), doubt.getPackageSessionId(),
                 subjectId, instituteId, setting);
+    }
+
+    /**
+     * True when this doubt's type is configured with per-type {@code assignee.source = NONE} — the
+     * institute deliberately chose manual triage from the inbox, so zero recipients is the intended
+     * outcome and must not be reported as a routing failure.
+     *
+     * <p>The global {@code defaultAssigneeSource = NONE} is deliberately NOT this case: that one
+     * routes to the institute's admins (see {@link #resolveImplicitAssignees}), so ending up with
+     * nobody there IS a failure worth logging.</p>
+     *
+     * <p>Only consulted on the zero-recipient path, so the extra setting read stays off the hot path.</p>
+     */
+    private boolean isDeliberatelyUnassigned(Doubts doubt, String instituteId) {
+        try {
+            DoubtManagementSettingDataDto setting = loadDoubtManagementSettingByInstitute(instituteId);
+            String typeKey = StringUtils.hasText(doubt.getType()) ? doubt.getType() : DEFAULT_TYPE;
+            DoubtManagementSettingDataDto.QueryTypeConfig typeConfig = findTypeConfig(setting, typeKey);
+            if (typeConfig == null || typeConfig.getAssignee() == null
+                    || !StringUtils.hasText(typeConfig.getAssignee().getSource())) {
+                return false;
+            }
+            return parseSource(typeConfig.getAssignee().getSource()) == DoubtDefaultAssigneeSourceEnum.NONE;
+        } catch (Exception e) {
+            // Can't confirm the empty result was intentional → treat it as a real drop and log it.
+            return false;
+        }
     }
 
     /**
@@ -512,7 +555,11 @@ public class DoubtsManager {
             case ROLE: {
                 String role = StringUtils.hasText(assignee.getRole()) ? assignee.getRole() : ADMIN_ROLE;
                 List<String> ids = resolveUsersByRole(instituteId, role);
-                return ids.isEmpty() ? resolveAdminFallback(instituteId) : ids;
+                // When the configured role IS admin, resolveAdminFallback would repeat the identical
+                // lookup — which now carries its own retries — for a guaranteed-identical result.
+                // Skip it so an empty admin role costs the same attempts as any other empty role.
+                if (!ids.isEmpty() || ADMIN_ROLE.equalsIgnoreCase(role)) return ids;
+                return resolveAdminFallback(instituteId);
             }
             case NONE:
                 return List.of();
@@ -584,14 +631,40 @@ public class DoubtsManager {
         return resolveUsersByRole(instituteId, ADMIN_ROLE);
     }
 
-    /** Returns the user ids holding {@code role} in the institute, or empty on any failure/blank input. */
+    /**
+     * Returns the user ids holding {@code role} in the institute, or empty on any failure/blank input.
+     *
+     * <p>Retried once on an empty result. This lookup is the cascade's last line of defense — for an
+     * institute on {@code defaultAssigneeSource=NONE} it is the ONLY source of recipients — and
+     * {@link AuthService#getUserIdsByRole} collapses a transport failure and a genuinely-empty role
+     * into the same empty list. A transient blip therefore costs the doubt every recipient, with no
+     * way to tell the two apart here. One cheap retry converts most blips into a normal delivery; a
+     * genuinely empty role just pays one extra call on a rare path.</p>
+     */
     private List<String> resolveUsersByRole(String instituteId, String role) {
         if (instituteId == null || instituteId.isEmpty() || !StringUtils.hasText(role)) return List.of();
+        for (int attempt = 1; attempt <= ROLE_LOOKUP_ATTEMPTS; attempt++) {
+            try {
+                List<String> ids = authService.getUserIdsByRole(instituteId, role);
+                if (!ids.isEmpty()) return ids;
+            } catch (Exception e) {
+                log.warn("Role lookup attempt {} failed for institute {} role {}: {}",
+                        attempt, instituteId, role, e.getMessage());
+            }
+            if (attempt < ROLE_LOOKUP_ATTEMPTS) sleepQuietly(ROLE_LOOKUP_RETRY_DELAY_MS);
+        }
+        log.warn("Role lookup resolved 0 users for institute {} role {} after {} attempts — "
+                + "either the role is genuinely unassigned or auth_service is failing",
+                instituteId, role, ROLE_LOOKUP_ATTEMPTS);
+        return List.of();
+    }
+
+    /** Sleeps without propagating interruption as an exception, preserving the interrupt flag. */
+    private void sleepQuietly(long millis) {
         try {
-            return authService.getUserIdsByRole(instituteId, role);
-        } catch (Exception e) {
-            log.warn("Role lookup failed for institute {} role {}: {}", instituteId, role, e.getMessage());
-            return List.of();
+            Thread.sleep(millis);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
         }
     }
 

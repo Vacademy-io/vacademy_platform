@@ -18,7 +18,9 @@ import java.util.List;
  *     <li>SUBJECT_TEACHER — only FSPSSM-linked faculty whose subject_id matches the doubt's subject</li>
  *     <li>BATCH_TEACHER  — all FSPSSM-linked faculty for the doubt's batch (current/legacy behavior)</li>
  *     <li>BOTH           — union of the above (effectively same as BATCH_TEACHER in practice)</li>
- *     <li>NONE           — no auto-assign; admin assigns manually</li>
+ *     <li>NONE           — skip teachers; auto-assign to the institute's ADMIN users, who ARE
+ *         notified and triage onward. Note this differs from a per-type
+ *         {@code queryTypes[].assignee.source=NONE}, which assigns nobody and notifies nobody.</li>
  *   </ul>
  */
 @Data

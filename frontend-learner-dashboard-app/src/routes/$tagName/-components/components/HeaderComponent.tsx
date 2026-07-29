@@ -402,7 +402,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
     return (
       <header
-        className={`fixed top-0 start-0 end-0 z-catalogue-fixed bg-white border-b border-catalogue-border-subtle w-full ${headerTopOffset}`}
+        className={`fixed top-0 start-0 end-0 z-catalogue-fixed bg-catalogue-bg-elevated border-b border-catalogue-border-subtle w-full ${headerTopOffset}`}
         style={{
           '--header-height': 'var(--catalogue-header-height)',
           '--header-height-mobile': 'var(--catalogue-header-height-mobile)'
@@ -650,7 +650,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
           {isCourseCatalogeTypeEnabled ? (
             <div
               ref={setMobileMenuRef}
-              className={`md:hidden  fixed start-0 end-0 z-catalogue-dropdown bg-white border-b border-catalogue-border transition-all duration-300 ease-out ${isMobileMenuOpen
+              className={`md:hidden  fixed start-0 end-0 z-catalogue-dropdown bg-catalogue-bg-elevated border-b border-catalogue-border transition-all duration-300 ease-out ${isMobileMenuOpen
                 ? 'opacity-100 visible'
                 : 'opacity-0 invisible pointer-events-none'
                 }`}
@@ -770,7 +770,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                   {/* <div className="relative">
                   <button
                     onClick={() => setIsGenreDropdownOpen(!isGenreDropdownOpen)}
-                    className="group w-full flex items-center justify-between px-5 py-3.5 rounded-xl text-base font-medium text-gray-700 bg-gray-50 hover:bg-gray-100 border border-gray-200 hover:border-gray-300 transition-all duration-300 ease-in-out transform hover:scale-[1.01] active:scale-[0.99]"
+                    className="group w-full flex items-center justify-between px-5 py-3.5 rounded-xl text-base font-medium text-catalogue-text-primary bg-catalogue-bg-subtle hover:bg-catalogue-bg-muted border border-catalogue-border hover:border-catalogue-border-strong transition-all duration-300 ease-in-out transform hover:scale-[1.01] active:scale-[0.99]"
                   >
                     <span className="flex items-center gap-2">
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -810,7 +810,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
                             const currentTagName = pathSegments[0] || tagName;
                             navigate({ to: `/${currentTagName}` });
                           }}
-                          className="group w-full text-left px-6 py-3 text-sm font-medium text-gray-700 hover:text-gray-900 hover:bg-white border-b border-gray-100 last:border-b-0 transition-all duration-200 ease-in-out transform hover:translate-x-1"
+                          className="group w-full text-left px-6 py-3 text-sm font-medium text-catalogue-text-secondary hover:text-catalogue-text-primary hover:bg-catalogue-bg-subtle border-b border-catalogue-border-subtle last:border-b-0 transition-all duration-200 ease-in-out transform hover:translate-x-1"
                         >
                           <span className="flex items-center gap-2">
                             <span className="w-1.5 h-1.5 rounded-full bg-gray-400 group-hover:bg-blue-500 transition-colors duration-200" />
@@ -829,7 +829,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
             isMobileMenuOpen && (navigation.length > 0 || authLinks.length > 0) && (
               <div
                 ref={setMobileMenuRef}
-                className={`md:hidden fixed start-0 end-0 z-catalogue-dropdown border-t border-catalogue-border-subtle bg-white ${isAndroid || isIOS ? 'mt-8' : ''}`}
+                className={`md:hidden fixed start-0 end-0 z-catalogue-dropdown border-t border-catalogue-border-subtle bg-catalogue-bg-elevated ${isAndroid || isIOS ? 'mt-8' : ''}`}
                 style={{ top: isIOS ? 'calc(56px + 32px)' : '56px' }}
               >
                 <div className="px-4 py-3 space-y-1">

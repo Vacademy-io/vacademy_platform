@@ -1012,6 +1012,9 @@ export const CourseDetailsPage: React.FC<CourseDetailsPageProps> = ({
   return (
     <div
       ref={themeRootRef}
+      data-catalogue-theme={
+        (catalogueData?.globalSettings as any)?.theme?.preset || "default"
+      }
       className={`min-h-screen bg-catalogue-bg w-full${isDarkMode ? " dark" : ""}`}
     >
       {/* Render header and footer - add them if not in JSON */}

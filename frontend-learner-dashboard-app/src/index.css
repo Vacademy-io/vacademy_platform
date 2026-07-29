@@ -1298,6 +1298,24 @@ html, body {
    — e.g. an assignment Task Description spaced into sections. */
 .richtext-content p:empty { min-height: 0.9em; }
 
+/* Rich-text inside a DARK catalogue. The base .richtext-content rule above
+   hardcodes color:#374151 (and #111827 for headings) because it is shared with
+   the study-library / assignment surfaces, which are always light. On a dark
+   catalogue that renders body copy as dim grey on near-black. Scope the
+   override to the catalogue wrapper ([data-catalogue-theme] + .dark) so ONLY a
+   dark catalogue is affected and every other .richtext-content consumer keeps
+   its existing colors. */
+[data-catalogue-theme].dark .richtext-content,
+.dark [data-catalogue-theme] .richtext-content {
+  color: hsl(var(--catalogue-text-secondary));
+}
+[data-catalogue-theme].dark .richtext-content :is(h1, h2, h3, h4, h5, h6),
+.dark [data-catalogue-theme] .richtext-content :is(h1, h2, h3, h4, h5, h6),
+[data-catalogue-theme].dark .richtext-content :is(strong, b),
+.dark [data-catalogue-theme] .richtext-content :is(strong, b) {
+  color: hsl(var(--catalogue-text-primary));
+}
+
 /* Card-style each column in a document "Columns Layout" block so columns read as
    distinct regions. Applied via CSS (not just the editor's serialized output) so
    ALREADY-SAVED slides get it too — the stored column divs only set padding/text

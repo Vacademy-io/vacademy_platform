@@ -144,7 +144,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     }
 
     // Default fallback
-    return { Icon: PresentationChart, color: "text-gray-500", label: getTerminology(ContentTerms.Slides, SystemTerms.Slides) };
+    return { Icon: PresentationChart, color: "text-catalogue-text-muted", label: getTerminology(ContentTerms.Slides, SystemTerms.Slides) };
   };
 
   // Step 1: Fetch subjects from init-details API
@@ -489,7 +489,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
     if (filteredChapters.length === 0) {
       return (
-        <div className="text-sm text-gray-500 italic">
+        <div className="text-sm text-catalogue-text-muted italic">
           No chapters available for this module.
         </div>
       );
@@ -506,7 +506,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
-                className="w-full justify-start p-2 h-auto text-start border border-gray-200 rounded-lg overflow-hidden"
+                className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
               >
                 <FileText
                   size={16}
@@ -539,13 +539,13 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
     // If slides haven't been fetched yet, show loading state
     if (!slidesMap[chapterId]) {
       return (
-        <div className="text-sm text-gray-500 italic">Loading slides...</div>
+        <div className="text-sm text-catalogue-text-muted italic">Loading slides...</div>
       );
     }
 
     if (slides.length === 0) {
       return (
-        <div className="text-sm text-gray-500 italic">
+        <div className="text-sm text-catalogue-text-muted italic">
           No slides available for this chapter.
         </div>
       );
@@ -558,7 +558,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
           return (
             <div
               key={`${slide.id}-${index}`}
-              className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg hover:bg-gray-50 overflow-hidden"
+              className="flex items-center gap-2 p-2 border border-catalogue-border rounded-lg hover:bg-catalogue-bg-subtle overflow-hidden"
             >
               <Icon size={16} className={`flex-shrink-0 ${color}`} />
               <div className="flex-1 min-w-0 overflow-hidden">
@@ -566,7 +566,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                   <span className="text-sm font-medium break-words truncate">
                     {slide.title}
                   </span>
-                  <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">
+                  <span className="text-xs text-catalogue-text-muted whitespace-nowrap flex-shrink-0">
                     ({label})
                   </span>
                 </div>
@@ -602,7 +602,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
-                className="w-full justify-start p-2 h-auto text-start border border-gray-200 rounded-lg overflow-hidden"
+                className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
               >
                 <Folder
                   size={16}
@@ -623,7 +623,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             <CollapsibleContent className="ms-4 mt-2">
               {moduleWithChapters.module?.description &&
                 moduleWithChapters.module.description.trim() !== "" && (
-                  <div className="p-2 bg-gray-50 rounded text-sm text-gray-600 mb-2">
+                  <div className="p-2 bg-catalogue-bg-subtle rounded text-sm text-catalogue-text-secondary mb-2">
                     {moduleWithChapters.module.description}
                   </div>
                 )}
@@ -655,7 +655,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                 <CollapsibleTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="w-full justify-start p-2 h-auto text-start border border-gray-200 rounded-lg overflow-hidden"
+                    className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
                   >
                     <FileText
                       size={16}
@@ -693,7 +693,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
               result.push(
                 <div
                   key={`${slide.id}-${slideIndex}`}
-                  className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg hover:bg-gray-50 overflow-hidden"
+                  className="flex items-center gap-2 p-2 border border-catalogue-border rounded-lg hover:bg-catalogue-bg-subtle overflow-hidden"
                 >
                   <Icon size={16} className={`flex-shrink-0 ${color}`} />
                   <div className="flex-1 min-w-0 overflow-hidden">
@@ -701,7 +701,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                       <span className="text-sm font-medium break-words truncate">
                         {slide.title}
                       </span>
-                      <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">
+                      <span className="text-xs text-catalogue-text-muted whitespace-nowrap flex-shrink-0">
                         ({label})
                       </span>
                     </div>
@@ -716,7 +716,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
     if (result.length === 0) {
       return (
-        <div className="text-sm text-gray-500 italic">
+        <div className="text-sm text-catalogue-text-muted italic">
           Loading course content...
         </div>
       );
@@ -747,7 +747,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                 <CollapsibleTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="w-full justify-start p-2 h-auto text-start border border-gray-200 rounded-lg overflow-hidden"
+                    className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
                   >
                     <FileText
                       size={16}
@@ -779,7 +779,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
               result.push(
                 <div
                   key={`${slide.id}-${slideIndex}`}
-                  className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg hover:bg-gray-50 overflow-hidden"
+                  className="flex items-center gap-2 p-2 border border-catalogue-border rounded-lg hover:bg-catalogue-bg-subtle overflow-hidden"
                 >
                   <Icon size={16} className={`flex-shrink-0 ${color}`} />
                   <div className="flex-1 min-w-0 overflow-hidden">
@@ -787,7 +787,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                       <span className="text-sm font-medium break-words truncate">
                         {slide.title}
                       </span>
-                      <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">
+                      <span className="text-xs text-catalogue-text-muted whitespace-nowrap flex-shrink-0">
                         ({label})
                       </span>
                     </div>
@@ -802,7 +802,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
     if (result.length === 0) {
       return (
-        <div className="text-sm text-gray-500 italic">
+        <div className="text-sm text-catalogue-text-muted italic">
           No content available for this course.
         </div>
       );
@@ -832,7 +832,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
               <CollapsibleTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="w-full justify-start p-2 h-auto text-start border border-gray-200 rounded-lg overflow-hidden"
+                  className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
                 >
                   <Folder
                     size={16}
@@ -853,7 +853,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
               <CollapsibleContent className="ms-4 mt-2">
                 {moduleWithChapters.module?.description &&
                   moduleWithChapters.module.description.trim() !== "" && (
-                    <div className="p-2 bg-gray-50 rounded text-sm text-gray-600 mb-2">
+                    <div className="p-2 bg-catalogue-bg-subtle rounded text-sm text-catalogue-text-secondary mb-2">
                       {moduleWithChapters.module.description}
                     </div>
                   )}
@@ -864,7 +864,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                   );
                   if (filteredChapters.length === 0) {
                     return (
-                      <div className="text-sm text-gray-500 italic">
+                      <div className="text-sm text-catalogue-text-muted italic">
                         No chapters available for this module.
                       </div>
                     );
@@ -880,7 +880,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                           <CollapsibleTrigger asChild>
                             <Button
                               variant="ghost"
-                              className="w-full justify-start p-2 h-auto text-start border border-gray-200 rounded-lg overflow-hidden"
+                              className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
                             >
                               <FileText
                                 size={16}
@@ -926,7 +926,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                   <CollapsibleTrigger asChild>
                     <Button
                       variant="ghost"
-                      className="w-full justify-start p-2 h-auto text-start border border-gray-200 rounded-lg overflow-hidden"
+                      className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
                     >
                       <FileText
                         size={16}
@@ -958,7 +958,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                 result.push(
                   <div
                     key={`${slide.id}-${slideIndex}`}
-                    className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg hover:bg-gray-50 overflow-hidden"
+                    className="flex items-center gap-2 p-2 border border-catalogue-border rounded-lg hover:bg-catalogue-bg-subtle overflow-hidden"
                   >
                     <Icon size={16} className={`flex-shrink-0 ${color}`} />
                     <div className="flex-1 min-w-0 overflow-hidden">
@@ -966,7 +966,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                         <span className="text-sm font-medium break-words truncate">
                           {slide.title}
                         </span>
-                        <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">
+                        <span className="text-xs text-catalogue-text-muted whitespace-nowrap flex-shrink-0">
                           ({label})
                         </span>
                       </div>
@@ -982,7 +982,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
     if (result.length === 0) {
       return (
-        <div className="text-sm text-gray-500 italic">
+        <div className="text-sm text-catalogue-text-muted italic">
           No content available for this course.
         </div>
       );
@@ -1010,17 +1010,17 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
             <CollapsibleTrigger asChild>
               <Button
                 variant="ghost"
-                className="w-full justify-start p-3 h-auto text-start border border-gray-200 rounded-lg overflow-hidden"
+                className="w-full justify-start p-3 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
               >
                 <FolderOpen
                   size={18}
                   className="me-3 text-purple-500 flex-shrink-0"
                 />
                 <div className="flex-1 min-w-0 overflow-hidden">
-                  <div className="font-medium text-gray-900 break-words truncate">
+                  <div className="font-medium text-catalogue-text-primary break-words truncate">
                     {subject.subject_name}
                   </div>
-                  <div className="text-sm text-gray-500 break-words truncate">
+                  <div className="text-sm text-catalogue-text-muted break-words truncate">
                     {subject.description}
                   </div>
                 </div>
@@ -1058,7 +1058,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                 <CollapsibleTrigger asChild>
                   <Button
                     variant="ghost"
-                    className="w-full justify-start p-2 h-auto text-start border border-gray-200 rounded-lg overflow-hidden"
+                    className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
                   >
                     <Folder
                       size={16}
@@ -1080,7 +1080,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                 <CollapsibleContent className="ms-4 mt-2">
                   {moduleWithChapters.module?.description &&
                     moduleWithChapters.module.description.trim() !== "" && (
-                      <div className="p-2 bg-gray-50 rounded text-sm text-gray-600 mb-2">
+                      <div className="p-2 bg-catalogue-bg-subtle rounded text-sm text-catalogue-text-secondary mb-2">
                         {moduleWithChapters.module.description}
                       </div>
                     )}
@@ -1105,7 +1105,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                     <CollapsibleTrigger asChild>
                       <Button
                         variant="ghost"
-                        className="w-full justify-start p-2 h-auto text-start border border-gray-200 rounded-lg overflow-hidden"
+                        className="w-full justify-start p-2 h-auto text-start border border-catalogue-border rounded-lg overflow-hidden"
                       >
                         <FileText
                           size={16}
@@ -1137,7 +1137,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                   result.push(
                     <div
                       key={`${slide.id}-${slideIndex}`}
-                      className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg hover:bg-gray-50 overflow-hidden"
+                      className="flex items-center gap-2 p-2 border border-catalogue-border rounded-lg hover:bg-catalogue-bg-subtle overflow-hidden"
                     >
                       <Icon size={16} className={`flex-shrink-0 ${color}`} />
                       <div className="flex-1 min-w-0 overflow-hidden">
@@ -1145,7 +1145,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
                           <span className="text-sm font-medium break-words truncate">
                             {slide.title}
                           </span>
-                          <span className="text-xs text-gray-500 whitespace-nowrap flex-shrink-0">
+                          <span className="text-xs text-catalogue-text-muted whitespace-nowrap flex-shrink-0">
                             ({label})
                           </span>
                         </div>
@@ -1162,7 +1162,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
     if (result.length === 0) {
       return (
-        <div className="text-sm text-gray-500 italic">
+        <div className="text-sm text-catalogue-text-muted italic">
           No content available for this course.
         </div>
       );
@@ -1173,13 +1173,13 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="bg-catalogue-bg-elevated rounded-lg shadow-sm border border-catalogue-border p-6">
         <div className="animate-pulse">
-          <div className="h-4 bg-gray-200 rounded w-1/4 mb-4"></div>
+          <div className="h-4 bg-catalogue-bg-muted rounded w-1/4 mb-4"></div>
           <div className="space-y-2">
-            <div className="h-3 bg-gray-200 rounded"></div>
-            <div className="h-3 bg-gray-200 rounded w-5/6"></div>
-            <div className="h-3 bg-gray-200 rounded w-4/6"></div>
+            <div className="h-3 bg-catalogue-bg-muted rounded"></div>
+            <div className="h-3 bg-catalogue-bg-muted rounded w-5/6"></div>
+            <div className="h-3 bg-catalogue-bg-muted rounded w-4/6"></div>
           </div>
         </div>
       </div>
@@ -1188,12 +1188,12 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
   if (studyLibraryData.length === 0) {
     return (
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="bg-catalogue-bg-elevated rounded-lg shadow-sm border border-catalogue-border p-6">
         <div className="text-center">
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
+          <h3 className="text-lg font-medium text-catalogue-text-primary mb-2">
             Course Structure
           </h3>
-          <p className="text-gray-500 mb-4">
+          <p className="text-catalogue-text-muted mb-4">
             No course structure data available
           </p>
         </div>
@@ -1202,13 +1202,13 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
   }
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+    <div className="bg-catalogue-bg-elevated rounded-lg shadow-sm border border-catalogue-border p-6">
       <div className="space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 pb-3">
+        <div className="flex items-center justify-between border-b border-catalogue-border pb-3">
           <div className="flex items-center gap-2">
             <TreeStructure size={18} className="text-primary-600" />
-            <span className="text-sm font-medium text-gray-700">
+            <span className="text-sm font-medium text-catalogue-text-primary">
               Course Structure
             </span>
           </div>
@@ -1227,7 +1227,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
         <div className="space-y-2">
           {courseDepth === 2 && (
             <div className="space-y-2">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
+              <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
                 Course Content (Slides Only)
               </h3>
               {renderSlidesForDepth2()}
@@ -1236,7 +1236,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
           {courseDepth === 3 && (
             <div className="space-y-2">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
+              <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
                 Course Content (Chapters & Slides)
               </h3>
               {renderAllChaptersForDepth3()}
@@ -1245,7 +1245,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
           {courseDepth === 4 && (
             <div className="space-y-2">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
+              <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
                 Course Content (Modules, Chapters & Slides)
               </h3>
               {renderModulesForDepth4()}
@@ -1254,7 +1254,7 @@ export const CourseStructureDetails: React.FC<CourseStructureDetailsProps> = ({
 
           {courseDepth === 5 && (
             <div className="space-y-2">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
+              <h3 className="text-lg font-medium text-catalogue-text-primary mb-4">
                 Course Content (Full Structure)
               </h3>
               {renderSubjectsForDepth5()}

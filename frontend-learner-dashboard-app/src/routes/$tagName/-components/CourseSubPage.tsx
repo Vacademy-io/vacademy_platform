@@ -6,6 +6,7 @@ import { LeadCollectionModal } from "./LeadCollectionModal";
 import { AudienceFormModal } from "./AudienceFormModal";
 import { MobileActionBar } from "./MobileActionBar";
 import { useCatalogueTracking, captureUtmOnce } from "../-utils/catalogue-tracking";
+import { WhatsAppFloatingButton } from "./WhatsAppFloatingButton";
 import { IntroPageComponent } from "./IntroPageComponent";
 import { JsonRenderer } from "./JsonRenderer";
 import { buildPrimaryScaleVars } from "../-utils/style-utils";
@@ -463,6 +464,11 @@ export const CourseSubPage: React.FC<CourseSubPageProps> = ({
       {/* Mobile action bar — mirrors the header's Auth/CTA buttons (see
           MobileActionBar): admins control it from Global Header, including
           campaign-form popup buttons; removing every header button hides it. */}
+            <WhatsAppFloatingButton
+        settings={(catalogueData?.globalSettings as any)?.whatsapp}
+        hasMobileBar
+      />
+
       {(!showIntroPage || introCompleted) && catalogueData && (
         <MobileActionBar
           catalogueData={catalogueData}

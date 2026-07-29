@@ -30,8 +30,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getAllProductPages } from '../product-pages/-services/product-pages-service';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
 import { fetchCampaignLeads } from '@/routes/audience-manager/list/-services/get-campaign-users';
-import { SUBMIT_CATALOGUE_LEAD_URL } from '@/constants/urls';
+import { SUBMIT_CATALOGUE_LEAD_URL, AUDIENCE_CAMPAIGN } from '@/constants/urls';
 import axios from 'axios';
+import { getTokenFromCookie } from '@/lib/auth/sessionUtility';
+import { TokenKey } from '@/constants/auth/tokens';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { LinkPicker } from './LinkPicker';
 import type { ComponentStyle } from '../-types/editor-types';
@@ -836,6 +838,47 @@ const GlobalSettingsEditor = ({
                             <option value="paypal">PayPal</option>
                         </select>
                     </div>
+                )}
+            </div>
+
+            {/* WhatsApp — the highest-intent contact channel in this market;
+                a floating button on every page, tracked as a conversion. */}
+            <div className="space-y-3 border-b pb-4">
+                <div className="flex items-center justify-between">
+                    <h4 className="font-medium text-gray-700">WhatsApp button</h4>
+                    <Switch
+                        checked={gs.whatsapp?.enabled || false}
+                        onCheckedChange={(c) => updateField('whatsapp.enabled', c)}
+                    />
+                </div>
+                <p className="text-caption text-gray-400">
+                    Shows a floating WhatsApp button on every page of your website. Taps are counted
+                    as enquiries in your analytics.
+                </p>
+                {gs.whatsapp?.enabled && (
+                    <>
+                        <div>
+                            <Label className="text-xs">WhatsApp number (with country code)</Label>
+                            <Input className="mt-1" placeholder="919895603342" value={gs.whatsapp?.phone || ''} onChange={(e) => updateField('whatsapp.phone', e.target.value)} />
+                        </div>
+                        <div>
+                            <Label className="text-xs">Prefilled message</Label>
+                            <Input className="mt-1" placeholder="Hi! I'd like to know about your batches." value={gs.whatsapp?.message || ''} onChange={(e) => updateField('whatsapp.message', e.target.value)} />
+                        </div>
+                        <div>
+                            <Label className="text-xs">Button label (optional)</Label>
+                            <Input className="mt-1" placeholder="Chat with us" value={gs.whatsapp?.label || ''} onChange={(e) => updateField('whatsapp.label', e.target.value)} />
+                        </div>
+                        <div>
+                            <Label className="text-xs">Position</Label>
+                            <div className="mt-1 flex gap-1">
+                                {(['right', 'left'] as const).map((pos) => (
+                                    <button key={pos} onClick={() => updateField('whatsapp.position', pos)}
+                                        className={`rounded px-2.5 py-1 text-caption font-medium capitalize ${(gs.whatsapp?.position || 'right') === pos ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{pos}</button>
+                                ))}
+                            </div>
+                        </div>
+                    </>
                 )}
             </div>
 
@@ -3453,6 +3496,7 @@ const CampaignPicker = ({ value, onChange, label = 'Send responses to', allowEmp
     allowEmpty?: boolean;
 }) => {
     const instituteId = getCurrentInstituteId();
+    const queryClient = useQueryClient();
     const { data, isLoading } = useQuery({
         ...handleFetchCampaignsList({ institute_id: instituteId || '', status: 'ACTIVE', page: 0, size: 100 }),
         enabled: !!instituteId,
@@ -3460,6 +3504,53 @@ const CampaignPicker = ({ value, onChange, label = 'Send responses to', allowEmp
     const campaigns = ((data?.content || []) as any[])
         .map((c) => ({ id: c.id || c.audience_id || c.campaign_id, name: c.campaign_name }))
         .filter((c) => c.id);
+
+    // Inline creation: without it, "connect a form" meant leaving the editor
+    // for Audience Manager, building a campaign + its fields, and finding the
+    // way back — the single most common place a non-technical admin lost the
+    // thread. A new campaign here starts with Name / Email / Phone, which is
+    // what a website enquiry form needs; richer fields stay in Audience Manager.
+    const [creating, setCreating] = useState(false);
+    const [newName, setNewName] = useState('');
+    const createMutation = useMutation({
+        mutationFn: async (campaignName: string) => {
+            const mkField = (fieldName: string, fieldType: string, isMandatory: boolean, order: number) => ({
+                instituteId,
+                type: 'AUDIENCE_FORM',
+                groupName: '',
+                individualOrder: order,
+                groupInternalOrder: 0,
+                isMandatory,
+                status: 'ACTIVE',
+                customField: { fieldName, fieldType, defaultValue: '', config: '{}', formOrder: order, isMandatory, status: 'ACTIVE' },
+            });
+            const { data: newId } = await axios.post(
+                AUDIENCE_CAMPAIGN,
+                {
+                    institute_id: instituteId,
+                    campaign_name: campaignName,
+                    campaign_type: 'WEBSITE',
+                    campaign_objective: 'LEAD_GENERATION',
+                    description: 'Created from the website builder',
+                    status: 'ACTIVE',
+                    institute_custom_fields: [
+                        mkField('Full Name', 'TEXT', true, 1),
+                        mkField('Email', 'TEXT', true, 2),
+                        mkField('Phone Number', 'TEXT', false, 3),
+                    ],
+                },
+                { headers: { Authorization: `Bearer ${getTokenFromCookie(TokenKey.accessToken)}` } },
+            );
+            return { id: String(newId).replace(/^"|"$/g, ''), name: campaignName };
+        },
+        onSuccess: (created) => {
+            queryClient.invalidateQueries({ queryKey: ['campaignsList'] });
+            onChange(created.id, created.name);
+            setCreating(false);
+            setNewName('');
+        },
+    });
+
     return (
         <div>
             <Label className="text-xs">{label}</Label>
@@ -3478,6 +3569,43 @@ const CampaignPicker = ({ value, onChange, label = 'Send responses to', allowEmp
                     <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
             </select>
+            {creating ? (
+                <div className="mt-2 space-y-2 rounded border border-primary-200 bg-primary-50 p-2">
+                    <Label className="text-xs">New campaign name</Label>
+                    <Input
+                        autoFocus
+                        className="mt-1"
+                        placeholder="e.g. Website Enquiries"
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && newName.trim()) createMutation.mutate(newName.trim());
+                            if (e.key === 'Escape') setCreating(false);
+                        }}
+                    />
+                    <p className="text-caption text-gray-500">
+                        Starts with Full Name, Email and Phone Number. Add more fields any time in
+                        Audience Manager.
+                    </p>
+                    <div className="flex gap-1">
+                        <Button size="sm" className="h-7 text-caption" disabled={!newName.trim() || createMutation.isPending} onClick={() => createMutation.mutate(newName.trim())}>
+                            {createMutation.isPending ? 'Creating…' : 'Create & use'}
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 text-caption" onClick={() => setCreating(false)}>Cancel</Button>
+                    </div>
+                    {createMutation.isError && (
+                        <p className="text-caption text-danger-600">Could not create it — please try again.</p>
+                    )}
+                </div>
+            ) : (
+                <button
+                    type="button"
+                    onClick={() => setCreating(true)}
+                    className="mt-1 text-caption font-medium text-primary-500 hover:underline"
+                >
+                    + New campaign
+                </button>
+            )}
             <p className="mt-1 text-caption text-gray-400">
                 Campaigns come from Audience Manager — edit their form fields there.
             </p>
@@ -4931,13 +5059,25 @@ const ButtonBlockEditor = ({ component, pageId, updateComponent }: any) => {
             <div>
                 <Label className="text-xs">On click</Label>
                 <div className="mt-1 flex gap-1">
-                    {([['link', 'Open a link'], ['openForm', 'Open form popup']] as const).map(([v, l]) => (
+                    {([['link', 'Open a link'], ['openForm', 'Open form popup'], ['whatsapp', 'WhatsApp chat']] as const).map(([v, l]) => (
                         <button key={v} onClick={() => updateProp('action', v)}
                             className={`rounded px-2.5 py-1 text-caption font-medium ${(props.action || 'link') === v ? 'bg-primary-100 text-primary-500' : 'bg-gray-100 text-gray-600'}`}>{l}</button>
                     ))}
                 </div>
             </div>
-            {(props.action || 'link') === 'openForm' ? (
+            {(props.action || 'link') === 'whatsapp' ? (
+                <>
+                    <div>
+                        <Label className="text-xs">WhatsApp number (with country code)</Label>
+                        <Input className="mt-1" value={props.whatsappPhone || ''} onChange={(e) => updateProp('whatsappPhone', e.target.value)} placeholder="919895603342" />
+                        <p className="mt-1 text-caption text-gray-400">Leave blank to use the site-wide number from Global Settings.</p>
+                    </div>
+                    <div>
+                        <Label className="text-xs">Prefilled message</Label>
+                        <Input className="mt-1" value={props.whatsappMessage || ''} onChange={(e) => updateProp('whatsappMessage', e.target.value)} placeholder="Hi! I'd like to know about…" />
+                    </div>
+                </>
+            ) : (props.action || 'link') === 'openForm' ? (
                 <>
                     <CampaignPicker
                         label="Form to open (campaign)"

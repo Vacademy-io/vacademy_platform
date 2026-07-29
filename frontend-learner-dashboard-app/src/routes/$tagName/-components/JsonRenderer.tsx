@@ -39,6 +39,7 @@ import { ProductPageOfferComponent } from "./components/ProductPageOfferComponen
 import { DetailBlocksComponent } from "./components/DetailBlocksComponent";
 import { LeadFormComponent } from "./components/LeadFormComponent";
 import { submitWebsiteLead, isSpamSubmission } from "../-utils/website-lead";
+import { emitLeadCaptured } from "../-utils/catalogue-tracking";
 import { BannerComponent } from "./components/BannerComponent";
 import { CourseCatalogComponent } from "./components/CourseCatalogComponent";
 // Removed CourseRecommendationsComponent import as it's not used
@@ -1499,7 +1500,20 @@ const ImageBlockRenderer: React.FC<any> = ({ src, alt = '', caption, linkUrl, li
 const dispatchOpenAudienceForm = (audienceId: string, title?: string) =>
   window.dispatchEvent(new CustomEvent('openAudienceForm', { detail: { audienceId, title } }));
 
-const ButtonBlockRenderer: React.FC<any> = ({ text = 'Button', url = '#', target = '_self', variant = 'filled', size = 'large', alignment = 'center', backgroundColor = '', textColor = '', borderRadius = '8px', fullWidth = false, action = 'link', audienceId = '', formTitle = '' }) => {
+/** Open a WhatsApp chat from any button. Tracked like a form submission so
+ *  ad platforms count WhatsApp enquiries as conversions. */
+const openWhatsApp = (phone?: string, message?: string) => {
+  const digits = (phone || '').replace(/\D/g, '');
+  if (!digits) return;
+  emitLeadCaptured({ sourceType: 'WHATSAPP_CLICK', sourceId: 'button' });
+  window.open(
+    `https://wa.me/${digits}${message ? `?text=${encodeURIComponent(message)}` : ''}`,
+    '_blank',
+    'noopener,noreferrer',
+  );
+};
+
+const ButtonBlockRenderer: React.FC<any> = ({ text = 'Button', url = '#', target = '_self', variant = 'filled', size = 'large', alignment = 'center', backgroundColor = '', textColor = '', borderRadius = '8px', fullWidth = false, action = 'link', audienceId = '', formTitle = '', whatsappPhone = '', whatsappMessage = '' }) => {
   const bg = backgroundColor || 'hsl(var(--primary-500, 217 91% 60%))';
   const fg = textColor || (variant === 'filled' ? 'white' : bg);
   const padding = size === 'small' ? '10px 24px' : size === 'large' ? '16px 40px' : '12px 32px';
@@ -1517,7 +1531,11 @@ const ButtonBlockRenderer: React.FC<any> = ({ text = 'Button', url = '#', target
 
   return (
     <section className="py-8 px-4 sm:px-6 lg:px-8" style={{ textAlign: alignment as any }}>
-      {action === 'openForm' && audienceId ? (
+      {action === 'whatsapp' ? (
+        <button type="button" onClick={() => openWhatsApp(whatsappPhone, whatsappMessage)} className={className} style={styleProps}>
+          {text}
+        </button>
+      ) : action === 'openForm' && audienceId ? (
         // Any button can be a registration point: opens the campaign's form as
         // a popup instead of navigating.
         <button type="button" onClick={() => dispatchOpenAudienceForm(audienceId, formTitle || text)} className={className} style={styleProps}>

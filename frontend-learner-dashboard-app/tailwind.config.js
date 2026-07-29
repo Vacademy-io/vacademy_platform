@@ -268,11 +268,16 @@ module.exports = {
           "text-secondary": "hsl(var(--catalogue-text-secondary))",
           "text-muted": "hsl(var(--catalogue-text-muted))",
           bg: "hsl(var(--catalogue-bg))",
+          // Raised surface (cards, header, dialogs) — sits above --catalogue-bg.
+          // The CSS var always existed but was never exposed here, so
+          // `bg-catalogue-bg-elevated` silently produced no class at all.
+          "bg-elevated": "hsl(var(--catalogue-bg-elevated))",
           "bg-subtle": "hsl(var(--catalogue-bg-subtle))",
           "bg-muted": "hsl(var(--catalogue-bg-muted))",
           "interactive-hover": "hsl(var(--catalogue-interactive-hover))",
           border: "hsl(var(--catalogue-border))",
           "border-subtle": "hsl(var(--catalogue-border-subtle))",
+          "border-strong": "hsl(var(--catalogue-border-strong))",
           // Brand-colored TEXT (primary-500 is tuned as a fill and fails AA
           // as ink on white for most presets).
           "brand-ink": "hsl(var(--catalogue-brand-ink))",

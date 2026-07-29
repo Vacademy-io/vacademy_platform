@@ -195,7 +195,7 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
             "group relative flex h-full flex-col items-center text-center",
             minimal
               ? "px-4 py-6"
-              : "rounded-2xl border border-gray-100 bg-white p-7 sm:p-8 shadow-sm transition-transform duration-300 ease-out will-change-transform hover:-translate-y-1",
+              : "rounded-2xl border border-catalogue-border-subtle bg-catalogue-bg-elevated p-7 sm:p-8 shadow-sm transition-transform duration-300 ease-out will-change-transform hover:-translate-y-1",
           )}
         >
           {/* Soft brand-green glow — animates via OPACITY only (GPU-smooth),
@@ -219,7 +219,7 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
 
           {/* Label */}
           {bigValue && (
-            <span className="mt-3 text-xs font-semibold uppercase tracking-wider text-gray-600 sm:text-sm">
+            <span className="mt-3 text-xs font-semibold uppercase tracking-wider text-catalogue-text-secondary sm:text-sm">
               {labelText}
             </span>
           )}
@@ -271,7 +271,7 @@ export const StatsHighlightsComponent: React.FC<StatsHighlightsProps> = ({
             {groups!.map((group, groupIndex) => (
               <div
                 key={groupIndex}
-                className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:p-8"
+                className="rounded-2xl border border-catalogue-border-subtle bg-catalogue-bg-elevated p-5 shadow-sm sm:p-8"
               >
                 <div className="text-center mb-6">
                   <h3 className="text-base sm:text-lg font-semibold text-primary-500">

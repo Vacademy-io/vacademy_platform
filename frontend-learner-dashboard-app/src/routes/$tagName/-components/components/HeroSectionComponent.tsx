@@ -113,7 +113,7 @@ const HeroDescription: React.FC<{ html: string }> = ({ html }) => {
     <div>
       <div
         ref={ref}
-        className={`text-lg sm:text-xl text-gray-600 leading-relaxed ${
+        className={`text-lg sm:text-xl text-catalogue-text-secondary leading-relaxed ${
           expanded ? "" : "line-clamp-4"
         }`}
         dangerouslySetInnerHTML={{ __html: html }}

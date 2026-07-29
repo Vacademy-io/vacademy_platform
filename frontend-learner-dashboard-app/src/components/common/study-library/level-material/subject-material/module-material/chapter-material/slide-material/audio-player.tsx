@@ -6,6 +6,7 @@ import { useAudioTrackingStore } from "@/stores/study-library/audio-tracking-sto
 import { useAudioSync } from "@/hooks/study-library/useAudioSync";
 import { useContentStore } from "@/stores/study-library/chapter-sidebar-store";
 import { getPublicUrl } from "@/services/upload_file";
+import { safePlay } from "./utils";
 import {
     Play,
     Pause,
@@ -237,7 +238,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ audioSlide }) => {
             debouncedSync();
         } else {
             currentSegmentStart.current = audioRef.current.currentTime;
-            audioRef.current.play();
+            safePlay(audioRef.current);
         }
         setIsPlaying(!isPlaying);
     };

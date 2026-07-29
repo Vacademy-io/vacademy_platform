@@ -358,7 +358,7 @@ const CartControls: React.FC<{
 
   if (cartItem && showQuantitySelector) {
     return (
-      <div className="flex items-center gap-1 border border-catalogue-border rounded-md px-1 py-0.5 bg-white">
+      <div className="flex items-center gap-1 border border-catalogue-border rounded-md px-1 py-0.5 bg-catalogue-bg-elevated">
         <Button
           variant="ghost"
           size="sm"
@@ -1380,7 +1380,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                       `${course.id}-${course.packageSessionId ?? ""}-${index}`
                     }
                     className={cn(
-                      "bg-white flex flex-col cursor-pointer border border-gray-100",
+                      "bg-catalogue-bg-elevated flex flex-col cursor-pointer border border-catalogue-border-subtle",
                       "transition-all duration-300 hover:-translate-y-1 hover:shadow-lg",
                       render?.styles?.roundedEdges !== false
                         ? "rounded-xl overflow-hidden"
@@ -1592,7 +1592,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     }
                     disabled={currentPage === 1}
                     aria-label="Previous page"
-                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-catalogue-border bg-catalogue-bg-elevated px-3 text-sm font-medium text-catalogue-text-secondary transition-colors hover:border-catalogue-border-strong hover:bg-catalogue-bg-subtle disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <CaretLeft size={15} weight="bold" />
                     <span className="hidden sm:inline">Previous</span>
@@ -1616,7 +1616,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                           "inline-flex h-9 min-w-9 items-center justify-center rounded-lg border px-2.5 text-sm font-medium transition-colors",
                           currentPage === p
                             ? "border-primary-500 bg-primary-500 text-white shadow-sm"
-                            : "border-gray-200 bg-white text-gray-700 hover:border-gray-300 hover:bg-gray-50",
+                            : "border-catalogue-border bg-catalogue-bg-elevated text-catalogue-text-primary hover:border-catalogue-border-strong hover:bg-catalogue-bg-subtle",
                         )}
                       >
                         {p}
@@ -1631,7 +1631,7 @@ export const CourseCatalogComponent: React.FC<CourseCatalogComponentProps> = ({
                     }
                     disabled={currentPage === totalPages}
                     aria-label="Next page"
-                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-600 transition-colors hover:border-gray-300 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex h-9 items-center gap-1 rounded-lg border border-catalogue-border bg-catalogue-bg-elevated px-3 text-sm font-medium text-catalogue-text-secondary transition-colors hover:border-catalogue-border-strong hover:bg-catalogue-bg-subtle disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <span className="hidden sm:inline">Next</span>
                     <CaretRight size={15} weight="bold" />

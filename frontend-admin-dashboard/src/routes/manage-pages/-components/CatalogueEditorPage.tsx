@@ -97,6 +97,9 @@ export const CatalogueEditorPage = () => {
     const [sidebarTab, setSidebarTab] = useState<'components' | 'layers' | 'templates'>('components');
     const [rightTab, setRightTab] = useState<'properties' | 'ai'>('properties');
     const [savedConfigJSON, setSavedConfigJSON] = useState('');
+    // Autosave bookkeeping — a layman doesn't press Save.
+    const [autosaving, setAutosaving] = useState(false);
+    const [lastAutosaveAt, setLastAutosaveAt] = useState<Date | null>(null);
     const isDirty = config ? JSON.stringify(config) !== savedConfigJSON : false;
 
     const queryClient = useQueryClient();
@@ -198,6 +201,37 @@ export const CatalogueEditorPage = () => {
         return () => window.removeEventListener('beforeunload', handler);
     }, [isDirty]);
 
+    // Autosave: debounce 45s after the last edit, then persist the draft
+    // silently (no toast — the status chip tells the story). The server draft
+    // doubles as crash recovery; before this, closing the tab past the browser
+    // prompt ate everything since the last manual save.
+    useEffect(() => {
+        if (!isDirty || !catalogueId || !canWrite || jsonError) return;
+        if (saveMutation.isPending || publishMutation.isPending) return;
+        const t = window.setTimeout(async () => {
+            try {
+                setAutosaving(true);
+                const snapshot = config!;
+                const savedRevision = await saveDraftRevision(catalogueId, snapshot);
+                setSavedConfigJSON(JSON.stringify(snapshot));
+                setHasDraft(true);
+                setLastAutosaveAt(new Date());
+                queryClient.setQueryData(['catalogueDraft', catalogueId], {
+                    ...savedRevision,
+                    catalogue_json: JSON.stringify(snapshot),
+                });
+            } catch (e) {
+                // Non-fatal by design: the next edit re-arms the timer, and the
+                // manual Save button still surfaces real errors loudly.
+                console.error('[autosave] failed', e);
+            } finally {
+                setAutosaving(false);
+            }
+        }, 45_000);
+        return () => window.clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [config, isDirty, catalogueId, canWrite, jsonError, saveMutation.isPending, publishMutation.isPending]);
+
     // Sync JSON text when switching to JSON mode
     useEffect(() => {
         if (activeTab === 'json' && config) {
@@ -286,10 +320,16 @@ export const CatalogueEditorPage = () => {
 
                 <div className="flex items-center gap-2">
                     {/* Draft / live status */}
-                    {hasDraft || isDirty ? (
+                    {hasDraft || isDirty || autosaving ? (
                         <span className="flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-600">
                             <span className="size-2 rounded-full bg-amber-500" />
-                            {isDirty ? 'Unsaved changes' : 'Draft — not published'}
+                            {autosaving
+                                ? 'Saving…'
+                                : isDirty
+                                  ? 'Unsaved changes'
+                                  : lastAutosaveAt
+                                    ? `Draft · autosaved ${lastAutosaveAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                                    : 'Draft — not published'}
                         </span>
                     ) : (
                         <span className="flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-600">

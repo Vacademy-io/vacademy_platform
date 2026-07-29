@@ -38,6 +38,7 @@ import AssistantToolsSettings from '../-components/AssistantToolsSettings';
 import BadgesRewardsSettings from '../-components/BadgesRewards/BadgesRewardsSettings';
 import LanguageSettings from '../-components/LanguageSettings';
 import AppearanceSettings from '../-components/Appearance/AppearanceSettings';
+import LearnerActivitySettings from '../-components/LearnerActivitySettings';
 
 /** Top-level settings navigation categories — order here is display order. */
 export type SettingsDomain =
@@ -225,6 +226,13 @@ export const getAvailableSettingsTabs = (): SettingsTabEntry[] => {
             tab: SettingsTabs.StudentDisplay,
             value: 'Student Display',
             component: StudentDisplaySettings,
+            domain: 'LMS',
+            group: 'Learner Experience',
+        },
+        {
+            tab: SettingsTabs.LearnerActivity,
+            value: 'Learner Activity',
+            component: LearnerActivitySettings,
             domain: 'LMS',
             group: 'Learner Experience',
         },

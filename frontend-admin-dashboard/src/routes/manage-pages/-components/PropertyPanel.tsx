@@ -26,9 +26,12 @@ import { ImageUploadField } from './ImageUploadField';
 import { VariantSwitcher } from './VariantSwitcher';
 import { RichTextField } from './RichTextField';
 import { StyleEditor } from './StyleEditor';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getAllProductPages } from '../product-pages/-services/product-pages-service';
 import { handleFetchCampaignsList } from '@/routes/audience-manager/list/-services/get-campaigns-list';
+import { fetchCampaignLeads } from '@/routes/audience-manager/list/-services/get-campaign-users';
+import { SUBMIT_CATALOGUE_LEAD_URL } from '@/constants/urls';
+import axios from 'axios';
 import { getCurrentInstituteId } from '@/lib/auth/instituteUtils';
 import { LinkPicker } from './LinkPicker';
 import type { ComponentStyle } from '../-types/editor-types';
@@ -834,6 +837,31 @@ const GlobalSettingsEditor = ({
                         </select>
                     </div>
                 )}
+            </div>
+
+            {/* Tracking & Analytics — the measurement layer for the whole site.
+                Stored in the catalogue JSON, injected on learner catalogue
+                routes only; lead submissions fire a standard Lead event. */}
+            <div className="space-y-3 border-b pb-4">
+                <h4 className="font-medium text-gray-700">Tracking &amp; Analytics</h4>
+                <p className="text-caption text-gray-400">
+                    Paste IDs from Google Analytics / Meta Events Manager. They load only on your
+                    public website pages, and every form submission fires a Lead conversion event
+                    automatically — so ad campaigns can optimise on real enquiries.
+                </p>
+                <div>
+                    <Label className="text-xs">Google Analytics 4 — Measurement ID</Label>
+                    <Input className="mt-1" placeholder="G-XXXXXXXXXX" value={gs.tracking?.ga4MeasurementId || ''} onChange={(e) => updateField('tracking.ga4MeasurementId', e.target.value.trim())} />
+                </div>
+                <div>
+                    <Label className="text-xs">Meta (Facebook) Pixel ID</Label>
+                    <Input className="mt-1" placeholder="1234567890" value={gs.tracking?.metaPixelId || ''} onChange={(e) => updateField('tracking.metaPixelId', e.target.value.trim())} />
+                </div>
+                <div>
+                    <Label className="text-xs">Google Tag Manager — Container ID</Label>
+                    <Input className="mt-1" placeholder="GTM-XXXXXXX" value={gs.tracking?.gtmId || ''} onChange={(e) => updateField('tracking.gtmId', e.target.value.trim())} />
+                    <p className="mt-1 text-caption text-gray-400">Use GTM alone, or GA4/Pixel directly — both work.</p>
+                </div>
             </div>
 
             {/* Lead Collection */}
@@ -3453,6 +3481,88 @@ const CampaignPicker = ({ value, onChange, label = 'Send responses to', allowEmp
             <p className="mt-1 text-caption text-gray-400">
                 Campaigns come from Audience Manager — edit their form fields there.
             </p>
+            {value && <CampaignHealth audienceId={value} />}
+        </div>
+    );
+};
+
+/**
+ * Proof-of-life under every campaign picker: how many leads this campaign has
+ * ever received, when the last one arrived, and a one-click test submission
+ * that exercises the REAL public pipeline end-to-end.
+ *
+ * WHY: capture failures here have historically been silent — the contact form
+ * discarded every submission for months while looking perfectly healthy. An
+ * admin placing a form must be able to see “it works” without leaving the
+ * editor or waiting for a real visitor.
+ */
+const CampaignHealth = ({ audienceId }: { audienceId: string }) => {
+    const instituteId = getCurrentInstituteId();
+    const queryClient = useQueryClient();
+    const { data, isLoading } = useQuery({
+        queryKey: ['CAMPAIGN_HEALTH', audienceId],
+        queryFn: async () => {
+            const res = await fetchCampaignLeads({
+                audience_id: audienceId,
+                conversion_status_filter: 'ALL',
+                page: 0,
+                size: 1,
+                sort_by: 'submittedAt',
+                sort_direction: 'DESC',
+            } as any);
+            const rows = (res as any)?.content || [];
+            return {
+                total: (res as any)?.totalElements ?? 0,
+                lastAt: rows[0]?.submitted_at_local as string | undefined,
+            };
+        },
+        enabled: !!audienceId,
+        staleTime: 30_000,
+    });
+
+    const testMutation = useMutation({
+        mutationFn: async () => {
+            // The exact endpoint + shape the live site submits through — if this
+            // round-trips, a visitor's submission will too.
+            const stamp = Date.now();
+            await axios.post(SUBMIT_CATALOGUE_LEAD_URL, {
+                institute_id: instituteId,
+                audience_id: audienceId,
+                full_name: 'TEST LEAD — sent from the page builder',
+                email: `test-lead-${stamp}@test.vacademy.io`,
+                mobile_number: '',
+                source_type: 'TEST_SUBMISSION',
+                source_id: 'builder-test-lead',
+            });
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['CAMPAIGN_HEALTH', audienceId] });
+        },
+    });
+
+    return (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1.5">
+            <span className="text-caption text-gray-500">
+                {isLoading
+                    ? 'Checking submissions…'
+                    : `${data?.total ?? 0} lead${(data?.total ?? 0) === 1 ? '' : 's'} received${
+                          data?.lastAt ? ` · last ${new Date(data.lastAt).toLocaleDateString()}` : ''
+                      }`}
+            </span>
+            <button
+                type="button"
+                onClick={() => testMutation.mutate()}
+                disabled={testMutation.isPending}
+                className="rounded px-2 py-0.5 text-caption font-medium text-primary-500 hover:bg-primary-50 disabled:opacity-50"
+            >
+                {testMutation.isPending
+                    ? 'Sending…'
+                    : testMutation.isSuccess
+                      ? '✓ Test lead delivered'
+                      : testMutation.isError
+                        ? 'Failed — retry?'
+                        : 'Send test lead'}
+            </button>
         </div>
     );
 };

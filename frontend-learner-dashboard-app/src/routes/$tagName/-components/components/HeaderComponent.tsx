@@ -402,7 +402,7 @@ export const HeaderComponent: React.FC<HeaderProps & {
 
     return (
       <header
-        className={`fixed top-0 start-0 end-0 z-catalogue-fixed bg-catalogue-bg-elevated border-b border-catalogue-border-subtle w-full ${headerTopOffset}`}
+        className={`fixed top-0 start-0 end-0 z-catalogue-fixed bg-catalogue-bg border-b border-catalogue-border-subtle w-full ${headerTopOffset}`}
         style={{
           '--header-height': 'var(--catalogue-header-height)',
           '--header-height-mobile': 'var(--catalogue-header-height-mobile)'

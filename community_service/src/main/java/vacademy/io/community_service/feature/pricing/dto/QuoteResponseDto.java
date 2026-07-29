@@ -21,10 +21,6 @@ public class QuoteResponseDto {
     private String currencySymbol;
     private String billingCycle;
 
-    private String bracketCode;
-    private String bracketName;
-    private int studentCount;
-
     private List<LineItemDto> recurringLines;
     private List<LineItemDto> oneTimeLines;
 
@@ -33,17 +29,27 @@ public class QuoteResponseDto {
     /** Negative for the annual discount, positive for the monthly uplift. */
     private BigDecimal cycleAdjustment;
     private String cycleAdjustmentLabel;
+    /** Recurring annual after the cycle adjustment, ex-tax. */
+    private BigDecimal recurringAnnualAdjusted;
 
     private BigDecimal oneTimeTotal;
-    private BigDecimal subtotal;      // ex-tax
+    private BigDecimal subtotal;      // ex-tax, first year (recurring + one-time)
     private BigDecimal taxRate;
     private BigDecimal taxAmount;
     private String taxLabel;
-    private BigDecimal total;         // inc-tax
+    /** Everything owed across the first year, inc-tax — NOT what a single payment looks like. */
+    private BigDecimal total;
 
-    /** What they actually hand over each payment, given the cycle. */
+    /**
+     * What they actually hand over each payment: the recurring amount for one billing period,
+     * inc-tax. One-time fees are deliberately excluded — they are due once, not every period.
+     */
     private BigDecimal perPaymentAmount;
     private String perPaymentLabel;
+    /** How many payments make up the first year (12, 2 or 1). */
+    private int paymentsPerYear;
+    /** One-time fees inc-tax, payable with the first invoice. */
+    private BigDecimal oneTimeTotalWithTax;
 
     /** Bullets for the "included at this level, at no extra cost" panel. */
     private List<String> included;

@@ -80,8 +80,9 @@ public class PricingQuoteService {
                 .contactPhone(phone)
                 .organizationName(org)
                 .currency(priced.getCurrency())
-                .bracketCode(priced.getBracketCode())
-                .studentCount(priced.getStudentCount())
+                // The plan mix lives in `selections`; these two only carry the LMS tier, when there is one.
+                .bracketCode(lmsPlanCode(req))
+                .studentCount(0)
                 .billingCycle(priced.getBillingCycle())
                 .selections(json.write(req))
                 .breakdown(json.write(priced))
@@ -114,6 +115,19 @@ public class PricingQuoteService {
                 .orElseThrow(() -> new VacademyException(HttpStatus.NOT_FOUND, "Quote not found"));
         q.setStatus(status == null ? "DRAFT" : status.toUpperCase());
         return repository.save(q);
+    }
+
+    /** The LMS tier, promoted onto its own column so the sales list can sort and filter on size. */
+    private static String lmsPlanCode(QuoteRequestDto req) {
+        if (req.getSelections() == null) {
+            return null;
+        }
+        return req.getSelections().stream()
+                .filter(s -> "LMS".equalsIgnoreCase(s.getProductCode()))
+                .map(QuoteRequestDto.SelectionDto::getPlanCode)
+                .filter(StringUtils::hasText)
+                .findFirst()
+                .orElse(null);
     }
 
     private static String firstNonBlank(String a, String b) {

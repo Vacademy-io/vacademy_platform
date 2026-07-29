@@ -6,7 +6,12 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import vacademy.io.community_service.feature.pricing.dto.QuoteRequestDto;
 import vacademy.io.community_service.feature.pricing.dto.QuoteResponseDto;
+import vacademy.io.community_service.feature.pricing.entity.PricingPlan;
+import vacademy.io.community_service.feature.pricing.entity.PricingPlanFeature;
+import vacademy.io.community_service.feature.pricing.entity.PricingProduct;
 import vacademy.io.community_service.feature.pricing.entity.PricingQuote;
+import vacademy.io.community_service.feature.pricing.entity.PricingSetting;
+import vacademy.io.community_service.feature.pricing.repository.*;
 import vacademy.io.community_service.feature.pricing.service.PricingQuoteService;
 
 import java.util.List;
@@ -47,5 +52,77 @@ public class SuperAdminPricingController {
     public ResponseEntity<PricingQuote> updateStatus(@PathVariable String id,
                                                      @RequestParam String status) {
         return ResponseEntity.ok(quoteService.updateStatus(id, status));
+    }
+
+    // ---- rate-card administration ------------------------------------------------
+    // Editing pricing is a database write, not a deploy. Everything below is authenticated.
+
+    @Autowired
+    private PricingProductRepository productRepository;
+    @Autowired
+    private PricingPlanRepository planRepository;
+    @Autowired
+    private PricingPlanFeatureRepository featureRepository;
+    @Autowired
+    private PricingSettingRepository settingRepository;
+
+    /** Every product, including deactivated ones (the public catalogue hides those). */
+    @GetMapping("/products")
+    public ResponseEntity<List<PricingProduct>> products() {
+        return ResponseEntity.ok(productRepository.findAllByOrderBySortOrderAsc());
+    }
+
+    @PostMapping("/products")
+    public ResponseEntity<PricingProduct> upsertProduct(@RequestBody PricingProduct product) {
+        return ResponseEntity.ok(productRepository.save(product));
+    }
+
+    @DeleteMapping("/products/{id}")
+    public ResponseEntity<Void> deleteProduct(@PathVariable String id) {
+        productRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/products/{productCode}/plans")
+    public ResponseEntity<List<PricingPlan>> plans(@PathVariable String productCode) {
+        return ResponseEntity.ok(planRepository.findByProductCodeOrderBySortOrderAsc(productCode));
+    }
+
+    @PostMapping("/plans")
+    public ResponseEntity<PricingPlan> upsertPlan(@RequestBody PricingPlan plan) {
+        return ResponseEntity.ok(planRepository.save(plan));
+    }
+
+    @DeleteMapping("/plans/{id}")
+    public ResponseEntity<Void> deletePlan(@PathVariable String id) {
+        planRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/plans/{planId}/features")
+    public ResponseEntity<List<PricingPlanFeature>> features(@PathVariable String planId) {
+        return ResponseEntity.ok(featureRepository.findByPlanIdOrderBySortOrderAsc(planId));
+    }
+
+    @PostMapping("/features")
+    public ResponseEntity<PricingPlanFeature> upsertFeature(@RequestBody PricingPlanFeature feature) {
+        return ResponseEntity.ok(featureRepository.save(feature));
+    }
+
+    @DeleteMapping("/features/{id}")
+    public ResponseEntity<Void> deleteFeature(@PathVariable String id) {
+        featureRepository.deleteById(id);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** GST, FX and the billing-cycle multipliers. */
+    @GetMapping("/settings")
+    public ResponseEntity<List<PricingSetting>> settings() {
+        return ResponseEntity.ok(settingRepository.findAll());
+    }
+
+    @PostMapping("/settings")
+    public ResponseEntity<PricingSetting> upsertSetting(@RequestBody PricingSetting setting) {
+        return ResponseEntity.ok(settingRepository.save(setting));
     }
 }

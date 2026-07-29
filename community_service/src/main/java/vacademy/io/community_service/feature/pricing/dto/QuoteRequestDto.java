@@ -2,9 +2,13 @@ package vacademy.io.community_service.feature.pricing.dto;
 
 import lombok.Data;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
+
 /**
- * What the plan builder sends to price a configuration. Everything is optional except the
- * student count — an empty request prices an empty plan rather than erroring.
+ * A plan configuration to price. Products are selected independently, each carrying its own
+ * chosen plan and (where the model needs one) a quantity.
  */
 @Data
 public class QuoteRequestDto {
@@ -21,34 +25,20 @@ public class QuoteRequestDto {
     private String currency = "INR";          // INR | USD
     private String billingCycle = "ANNUAL";   // MONTHLY | HALF_YEARLY | ANNUAL
 
-    /** Headcount drives the bracket; bracketCode overrides it when the user picks manually. */
-    private Integer studentCount;
-    private String bracketCode;
+    private List<SelectionDto> selections = new ArrayList<>();
 
-    // ---- modules (each independently purchasable) --------------------------------
-    private boolean lms;
-    private boolean crm;
-    private boolean payments;
-    private boolean whatsapp;
-    private boolean android;
-    private boolean ios;
-    private boolean parentApp;
-    private boolean website;
-    private boolean subOrgs;
-    private boolean vacademyMeet;
-
-    // ---- module configuration ----------------------------------------------------
-    private Integer crmSeats;             // total seats, first 10 included in the base
-    private Integer subOrgCount;          // total sub-orgs wanted
-    private Integer meetSessionsPerMonth; // billed per session-hour
-
-    /** BASIC | PREMIUM | DEDICATED — dedicated replaces premium rather than stacking. */
-    private String supportTier = "BASIC";
-
-    /** Internal mode only: a custom development line item agreed with the prospect. */
+    /** Internal mode only: a custom development line agreed with the prospect. */
     private String customFeatureLabel;
-    private java.math.BigDecimal customFeatureAmount;
+    private BigDecimal customFeatureAmount;
 
-    /** Internal mode only: overrides the bracket's per-student rate. */
-    private java.math.BigDecimal perStudentOverride;
+    @Data
+    public static class SelectionDto {
+        private String productCode;
+        /** Omit for single-plan products — the first active plan is used. */
+        private String planCode;
+        /** Seats, sub-orgs, or sessions per month, depending on the product's model. */
+        private Integer quantity;
+        /** Internal mode only: replaces the plan's unit price. */
+        private BigDecimal priceOverride;
+    }
 }

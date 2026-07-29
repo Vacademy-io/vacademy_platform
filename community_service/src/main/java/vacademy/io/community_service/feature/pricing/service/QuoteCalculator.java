@@ -1,204 +1,148 @@
 package vacademy.io.community_service.feature.pricing.service;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import vacademy.io.community_service.feature.pricing.dto.BracketDto;
+import vacademy.io.common.exceptions.VacademyException;
 import vacademy.io.community_service.feature.pricing.dto.QuoteRequestDto;
+import vacademy.io.community_service.feature.pricing.dto.QuoteRequestDto.SelectionDto;
 import vacademy.io.community_service.feature.pricing.dto.QuoteResponseDto;
 import vacademy.io.community_service.feature.pricing.dto.QuoteResponseDto.LineItemDto;
+import vacademy.io.community_service.feature.pricing.entity.PricingPlan;
+import vacademy.io.community_service.feature.pricing.entity.PricingProduct;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import static vacademy.io.community_service.feature.pricing.service.PricingCatalogService.*;
 
 /**
- * Turns a plan configuration into a priced quote.
+ * Prices a selection of products against the database catalogue.
  *
- * Order of operations: price every recurring line at list → apply the billing-cycle adjustment to
+ * Products are standalone: nothing is waived because of what was bought elsewhere. The only
+ * cross-product rule is a declared dependency — a product with requires_product_code is dropped
+ * unless its parent is also selected, and one with mirrors_product_code follows the parent's tier.
+ *
+ * Order of operations: price every recurring line at list → apply the billing-cycle multiplier to
  * that subtotal only → add one-time fees (never discounted) → add GST on the lot (INR only).
  */
 @Service
+@Slf4j
 public class QuoteCalculator {
 
     @Autowired
-    private RateCard rateCard;
+    private PricingCatalogService catalog;
 
     public QuoteResponseDto price(QuoteRequestDto req) {
-        BracketDto bracket = resolveBracket(req);
-        int students = bracket.getMaxStudents();
-
-        // Internal mode can override the per-student rate; everything derived follows the override.
-        BigDecimal perStudent = req.getPerStudentOverride() != null
-                && req.getPerStudentOverride().signum() > 0
-                ? req.getPerStudentOverride()
-                : bracket.getPerStudentPerYear();
-
         boolean inr = !"USD".equalsIgnoreCase(req.getCurrency());
+        BigDecimal gstRate = inr ? catalog.setting("gst_rate", "0.18") : BigDecimal.ZERO;
+        BigDecimal usdPerInr = catalog.setting("usd_per_inr", "0.01");
+
         List<LineItemDto> recurring = new ArrayList<>();
         List<LineItemDto> oneTime = new ArrayList<>();
+        List<String> included = new ArrayList<>();
 
-        // ---- LMS -----------------------------------------------------------------
-        if (req.isLms()) {
-            recurring.add(line("LMS", "LMS — courses, batches, exams & live classes",
-                    students + " learners × " + money(perStudent, inr),
-                    perStudent.multiply(BigDecimal.valueOf(students)), false, false));
-        }
-
-        // ---- Parent app: a fifth of the per-student rate, across the same learners --
-        if (req.isParentApp()) {
-            BigDecimal rate = perStudent.divide(BigDecimal.valueOf(RateCard.PARENT_APP_DIVISOR),
-                    2, RoundingMode.HALF_UP);
-            recurring.add(line("PARENT_APP", "Parent app",
-                    students + " learners × " + money(rate, inr),
-                    rate.multiply(BigDecimal.valueOf(students)), false, false));
-        }
-
-        // ---- Mobile apps: one-time, waived once the bracket covers them -------------
-        if (req.isAndroid()) {
-            boolean free = bracket.isAndroidIncluded();
-            oneTime.add(line("ANDROID", "Android app", free ? "Included in " + bracket.getName() : "One-time",
-                    free ? BigDecimal.ZERO : RateCard.ANDROID_ONE_TIME, true, free));
-        }
-        if (req.isIos()) {
-            boolean free = bracket.isIosIncluded();
-            oneTime.add(line("IOS", "iOS app", free ? "Included in " + bracket.getName() : "One-time",
-                    free ? BigDecimal.ZERO : RateCard.IOS_ONE_TIME, true, free));
-        }
-
-        // ---- Website builder + course catalogue ------------------------------------
-        // Free from the Scale bracket up; below that it is a yearly development-and-maintenance fee.
-        if (req.isWebsite()) {
-            boolean free = bracket.isWebsiteIncluded();
-            recurring.add(line("WEBSITE", "Website builder & course catalogue",
-                    free ? "Included in " + bracket.getName() : "Development & maintenance, per year",
-                    free ? BigDecimal.ZERO : RateCard.WEBSITE_ANNUAL, false, free));
-        }
-
-        // ---- WhatsApp + payments: one combined line, free from Pro up ---------------
-        if (req.isWhatsapp() || req.isPayments()) {
-            boolean free = bracket.isCommsIncluded();
-            String label = req.isWhatsapp() && req.isPayments()
-                    ? "WhatsApp & payment integration"
-                    : req.isWhatsapp() ? "WhatsApp integration" : "Payment integration";
-            recurring.add(line("COMMS", label,
-                    free ? "Included in " + bracket.getName() : "Per year",
-                    free ? BigDecimal.ZERO : RateCard.WHATSAPP_AND_PAYMENTS, false, free));
-        }
-
-        // ---- CRM: flat base with 10 seats, then per extra seat ----------------------
-        if (req.isCrm()) {
-            recurring.add(line("CRM", "CRM",
-                    "Includes " + RateCard.CRM_INCLUDED_SEATS + " team members",
-                    RateCard.CRM_BASE, false, false));
-            int seats = req.getCrmSeats() == null ? RateCard.CRM_INCLUDED_SEATS : req.getCrmSeats();
-            int extra = Math.max(0, seats - RateCard.CRM_INCLUDED_SEATS);
-            if (extra > 0) {
-                recurring.add(line("CRM_SEATS", "Additional CRM team members",
-                        extra + " × " + money(RateCard.CRM_EXTRA_SEAT, inr),
-                        RateCard.CRM_EXTRA_SEAT.multiply(BigDecimal.valueOf(extra)), false, false));
+        Map<String, SelectionDto> byProduct = new LinkedHashMap<>();
+        for (SelectionDto s : safe(req.getSelections())) {
+            if (StringUtils.hasText(s.getProductCode())) {
+                byProduct.put(s.getProductCode().toUpperCase(), s);
             }
         }
 
-        // ---- Sub-organizations: bracket allowance, then per extra ------------------
-        if (req.isSubOrgs()) {
-            int wanted = req.getSubOrgCount() == null ? bracket.getIncludedSubOrgs() : req.getSubOrgCount();
-            int included = Math.min(wanted, bracket.getIncludedSubOrgs());
-            int extra = Math.max(0, wanted - bracket.getIncludedSubOrgs());
-            if (included > 0) {
-                recurring.add(line("SUB_ORGS_INCLUDED", "Sub-organizations",
-                        included + " included in " + bracket.getName(), BigDecimal.ZERO, false, true));
+        for (SelectionDto sel : byProduct.values()) {
+            PricingProduct product = catalog.product(sel.getProductCode()).orElse(null);
+            if (product == null || !product.isActive()) {
+                log.warn("Quote referenced unknown product {}", sel.getProductCode());
+                continue;
             }
-            if (extra > 0) {
-                recurring.add(line("SUB_ORGS_EXTRA", "Additional sub-organizations",
-                        extra + " × " + money(RateCard.EXTRA_SUB_ORG, inr),
-                        RateCard.EXTRA_SUB_ORG.multiply(BigDecimal.valueOf(extra)), false, false));
+            // A dependent product is silently dropped when its parent isn't in the basket.
+            if (StringUtils.hasText(product.getRequiresProductCode())
+                    && !byProduct.containsKey(product.getRequiresProductCode())) {
+                continue;
             }
+
+            PricingPlan plan = resolvePlan(product, sel, byProduct);
+            if (plan == null) {
+                continue;
+            }
+
+            BigDecimal unit = sel.getPriceOverride() != null && sel.getPriceOverride().signum() >= 0
+                    ? sel.getPriceOverride()
+                    : plan.getPrice();
+            LineItemDto item = priceOne(product, plan, unit, sel, inr, usdPerInr);
+            if (item == null) {
+                continue;
+            }
+            (item.isOneTime() ? oneTime : recurring).add(item);
+            catalog.includedFeatures(plan.getId()).forEach(included::add);
         }
 
-        // ---- Vacademy Meet: usage-based, own Zoom/Meet costs nothing ---------------
-        if (req.isVacademyMeet()) {
-            int perMonth = req.getMeetSessionsPerMonth() == null ? 0 : Math.max(0, req.getMeetSessionsPerMonth());
-            BigDecimal annual = RateCard.MEET_PER_SESSION_HOUR
-                    .multiply(BigDecimal.valueOf((long) perMonth * 12));
-            recurring.add(line("MEET", "Vacademy Meet (live classes)",
-                    perMonth + " session-hours/month × " + money(RateCard.MEET_PER_SESSION_HOUR, inr),
-                    annual, false, false));
-        }
-
-        // ---- Support --------------------------------------------------------------
-        String tier = StringUtils.hasText(req.getSupportTier()) ? req.getSupportTier().toUpperCase() : "BASIC";
-        if ("DEDICATED".equals(tier)) {
-            // Dedicated replaces premium rather than stacking on top of it.
-            recurring.add(line("SUPPORT_DEDICATED", "Dedicated support",
-                    money(RateCard.DEDICATED_SUPPORT_MONTHLY, inr) + " × 12 months",
-                    RateCard.DEDICATED_SUPPORT_MONTHLY.multiply(BigDecimal.valueOf(12)), false, false));
-        } else if ("PREMIUM".equals(tier)) {
-            boolean free = bracket.isPremiumSupportIncluded();
-            recurring.add(line("SUPPORT_PREMIUM", "Premium support",
-                    free ? "Included in " + bracket.getName() : "Upgrade from basic",
-                    free ? BigDecimal.ZERO : RateCard.PREMIUM_SUPPORT_UPGRADE, false, free));
-        } else {
-            recurring.add(line("SUPPORT_BASIC", "Basic support", "Included", BigDecimal.ZERO, false, true));
-        }
-
-        // ---- Custom development (internal mode) ------------------------------------
         if (req.getCustomFeatureAmount() != null && req.getCustomFeatureAmount().signum() > 0) {
             oneTime.add(line("CUSTOM", StringUtils.hasText(req.getCustomFeatureLabel())
-                            ? req.getCustomFeatureLabel() : "Custom feature development",
-                    "One-time", req.getCustomFeatureAmount(), true, false));
+                    ? req.getCustomFeatureLabel() : "Custom feature development",
+                    "One-time", req.getCustomFeatureAmount(), true));
         }
 
-        // ---- Totals ---------------------------------------------------------------
+        // ---- totals ---------------------------------------------------------------
         BigDecimal recurringAnnual = sum(recurring);
         BigDecimal oneTimeTotal = sum(oneTime);
 
-        String cycle = StringUtils.hasText(req.getBillingCycle()) ? req.getBillingCycle().toUpperCase() : "ANNUAL";
+        String cycle = StringUtils.hasText(req.getBillingCycle())
+                ? req.getBillingCycle().toUpperCase() : "ANNUAL";
         BigDecimal multiplier = switch (cycle) {
-            case "MONTHLY" -> RateCard.MONTHLY_UPLIFT;
-            case "HALF_YEARLY" -> RateCard.HALF_YEARLY;
-            default -> RateCard.ANNUAL_DISCOUNT;
+            case "MONTHLY" -> catalog.setting("cycle_monthly", "1.20");
+            case "HALF_YEARLY" -> catalog.setting("cycle_half_yearly", "1.00");
+            default -> catalog.setting("cycle_annual", "0.85");
         };
         BigDecimal adjustedRecurring = scale(recurringAnnual.multiply(multiplier));
         BigDecimal cycleAdjustment = scale(adjustedRecurring.subtract(recurringAnnual));
 
         BigDecimal subtotal = scale(adjustedRecurring.add(oneTimeTotal));
-        BigDecimal taxRate = inr ? RateCard.GST_RATE : BigDecimal.ZERO;
-        BigDecimal taxAmount = scale(subtotal.multiply(taxRate));
+        BigDecimal taxAmount = scale(subtotal.multiply(gstRate));
         BigDecimal total = scale(subtotal.add(taxAmount));
-
-        // Everything above is in INR; convert once, at the end, so rounding happens in one place.
-        if (!inr) {
-            recurring.forEach(l -> l.setAmount(toUsd(l.getAmount())));
-            oneTime.forEach(l -> l.setAmount(toUsd(l.getAmount())));
-            recurringAnnual = toUsd(recurringAnnual);
-            adjustedRecurring = toUsd(adjustedRecurring);
-            cycleAdjustment = toUsd(cycleAdjustment);
-            oneTimeTotal = toUsd(oneTimeTotal);
-            subtotal = toUsd(subtotal);
-            taxAmount = toUsd(taxAmount);
-            total = toUsd(total);
-        }
 
         int payments = switch (cycle) {
             case "MONTHLY" -> 12;
             case "HALF_YEARLY" -> 2;
             default -> 1;
         };
-        BigDecimal perPayment = scale(adjustedRecurring.divide(BigDecimal.valueOf(payments), 2, RoundingMode.HALF_UP));
+        // One payment's recurring cost, inc-tax. One-time fees fall due once, so they stay out.
+        BigDecimal perPayment = scale(adjustedRecurring
+                .divide(BigDecimal.valueOf(payments), 2, RoundingMode.HALF_UP)
+                .multiply(BigDecimal.ONE.add(gstRate)));
+        BigDecimal oneTimeWithTax = scale(oneTimeTotal.multiply(BigDecimal.ONE.add(gstRate)));
+
+        // Everything above is in INR; convert once, at the end, so rounding happens in one place.
+        if (!inr) {
+            recurring.forEach(l -> l.setAmount(toUsd(l.getAmount(), usdPerInr)));
+            oneTime.forEach(l -> l.setAmount(toUsd(l.getAmount(), usdPerInr)));
+            recurringAnnual = toUsd(recurringAnnual, usdPerInr);
+            adjustedRecurring = toUsd(adjustedRecurring, usdPerInr);
+            cycleAdjustment = toUsd(cycleAdjustment, usdPerInr);
+            oneTimeTotal = toUsd(oneTimeTotal, usdPerInr);
+            subtotal = toUsd(subtotal, usdPerInr);
+            taxAmount = toUsd(taxAmount, usdPerInr);
+            total = toUsd(total, usdPerInr);
+            perPayment = toUsd(perPayment, usdPerInr);
+            oneTimeWithTax = toUsd(oneTimeWithTax, usdPerInr);
+        }
 
         return QuoteResponseDto.builder()
-                .rateCardVersion(RateCard.VERSION)
+                .rateCardVersion(catalog.settingText("rate_card_version", "unversioned"))
                 .currency(inr ? "INR" : "USD")
                 .currencySymbol(inr ? "₹" : "$")
                 .billingCycle(cycle)
-                .bracketCode(bracket.getCode())
-                .bracketName(bracket.getName())
-                .studentCount(students)
                 .recurringLines(recurring)
                 .oneTimeLines(oneTime)
                 .recurringAnnual(recurringAnnual)
+                .recurringAnnualAdjusted(adjustedRecurring)
                 .cycleAdjustment(cycleAdjustment)
                 .cycleAdjustmentLabel(switch (cycle) {
                     case "MONTHLY" -> "Monthly billing (+20%)";
@@ -207,7 +151,7 @@ public class QuoteCalculator {
                 })
                 .oneTimeTotal(oneTimeTotal)
                 .subtotal(subtotal)
-                .taxRate(taxRate)
+                .taxRate(gstRate)
                 .taxAmount(taxAmount)
                 .taxLabel(inr ? "GST (18%)" : "No GST (export)")
                 .total(total)
@@ -215,25 +159,112 @@ public class QuoteCalculator {
                 .perPaymentLabel(switch (cycle) {
                     case "MONTHLY" -> "per month";
                     case "HALF_YEARLY" -> "every 6 months";
-                    default -> "once a year";
+                    default -> "per year";
                 })
-                .included(bracket.getIncludes())
+                .paymentsPerYear(payments)
+                .oneTimeTotalWithTax(oneTimeWithTax)
+                .included(included)
                 .build();
     }
 
-    private BracketDto resolveBracket(QuoteRequestDto req) {
-        if (StringUtils.hasText(req.getBracketCode())) {
-            BracketDto b = rateCard.bracket(req.getBracketCode());
-            if (b != null) return b;
+    /**
+     * The plan a selection resolves to: an explicit choice, the tier mirrored from a parent
+     * product, or the product's first active plan for single-plan products.
+     */
+    private PricingPlan resolvePlan(PricingProduct product, SelectionDto sel,
+                                    Map<String, SelectionDto> basket) {
+        if (StringUtils.hasText(product.getMirrorsProductCode())) {
+            SelectionDto parent = basket.get(product.getMirrorsProductCode());
+            if (parent != null && StringUtils.hasText(parent.getPlanCode())) {
+                Optional<PricingPlan> mirrored = catalog.plan(product.getCode(), parent.getPlanCode());
+                if (mirrored.isPresent()) {
+                    return mirrored.get();
+                }
+            }
         }
-        return rateCard.bracketFor(req.getStudentCount() == null ? 0 : req.getStudentCount());
+        if (StringUtils.hasText(sel.getPlanCode())) {
+            return catalog.plan(product.getCode(), sel.getPlanCode())
+                    .orElseThrow(() -> new VacademyException(HttpStatus.BAD_REQUEST,
+                            "Unknown plan " + sel.getPlanCode() + " for " + product.getCode()));
+        }
+        return catalog.defaultPlan(product.getCode()).orElse(null);
+    }
+
+    /** Applies the product's pricing model to produce one line. */
+    private LineItemDto priceOne(PricingProduct product, PricingPlan plan, BigDecimal unit,
+                                 SelectionDto sel, boolean inr, BigDecimal usdPerInr) {
+        String model = product.getPricingModel();
+        String symbol = inr ? "₹" : "$";
+        int qty = sel.getQuantity() == null
+                ? Math.max(1, product.getMinQuantity())
+                : Math.max(0, sel.getQuantity());
+
+        switch (model == null ? "" : model) {
+            case PER_LEARNER_TIER -> {
+                int learners = plan.getUnitCount() == null ? 0 : plan.getUnitCount();
+                return line(product.getCode(), product.getName() + " — " + plan.getName(),
+                        learners + " learners × " + money(unit, inr, usdPerInr, symbol),
+                        unit.multiply(BigDecimal.valueOf(learners)), false);
+            }
+            case FLAT_ANNUAL -> {
+                if (unit.signum() == 0) {
+                    return line(product.getCode(), product.getName() + " — " + plan.getName(),
+                            "Included", BigDecimal.ZERO, false);
+                }
+                return line(product.getCode(), product.getName() + " — " + plan.getName(),
+                        "Per year", unit, false);
+            }
+            case ONE_TIME -> {
+                return line(product.getCode(), product.getName(), "One-time", unit, true);
+            }
+            case SEAT_BASED -> {
+                BigDecimal base = product.getBasePrice() == null ? unit : product.getBasePrice();
+                int included = product.getIncludedUnits() == null ? 0 : product.getIncludedUnits();
+                int seats = Math.max(included, qty);
+                int extra = Math.max(0, seats - included);
+                BigDecimal extraPrice = product.getUnitPrice() == null ? BigDecimal.ZERO : product.getUnitPrice();
+                BigDecimal amount = base.add(extraPrice.multiply(BigDecimal.valueOf(extra)));
+                String detail = extra > 0
+                        ? seats + " " + label(product) + " (" + included + " included, " + extra
+                            + " × " + money(extraPrice, inr, usdPerInr, symbol) + ")"
+                        : included + " " + label(product) + " included";
+                return line(product.getCode(), product.getName(), detail, amount, false);
+            }
+            case COUNT_BASED -> {
+                if (qty <= 0) return null;
+                BigDecimal each = product.getUnitPrice() == null ? unit : product.getUnitPrice();
+                return line(product.getCode(), product.getName(),
+                        qty + " × " + money(each, inr, usdPerInr, symbol) + " per year",
+                        each.multiply(BigDecimal.valueOf(qty)), false);
+            }
+            case USAGE -> {
+                BigDecimal each = product.getUnitPrice() == null ? unit : product.getUnitPrice();
+                BigDecimal annual = each.multiply(BigDecimal.valueOf((long) qty * 12));
+                return line(product.getCode(), product.getName(),
+                        qty + " " + label(product) + " × " + money(each, inr, usdPerInr, symbol),
+                        annual, false);
+            }
+            default -> {
+                log.warn("Unknown pricing model {} on product {}", model, product.getCode());
+                return null;
+            }
+        }
+    }
+
+    private static String label(PricingProduct p) {
+        return StringUtils.hasText(p.getUnitLabel()) ? p.getUnitLabel() : "units";
+    }
+
+    private static List<SelectionDto> safe(List<SelectionDto> in) {
+        return in == null ? List.of() : in;
     }
 
     private static LineItemDto line(String code, String label, String detail, BigDecimal amount,
-                                    boolean oneTime, boolean includedFree) {
+                                    boolean oneTime) {
         return LineItemDto.builder()
                 .code(code).label(label).detail(detail)
-                .amount(scale(amount)).oneTime(oneTime).includedFree(includedFree)
+                .amount(scale(amount)).oneTime(oneTime)
+                .includedFree(amount.signum() == 0)
                 .build();
     }
 
@@ -242,16 +273,16 @@ public class QuoteCalculator {
                 .reduce(BigDecimal.ZERO, BigDecimal::add));
     }
 
-    private static BigDecimal toUsd(BigDecimal inr) {
-        return scale(inr.multiply(RateCard.USD_PER_INR));
+    private static BigDecimal toUsd(BigDecimal inr, BigDecimal rate) {
+        return scale(inr.multiply(rate));
     }
 
     private static BigDecimal scale(BigDecimal v) {
         return v.setScale(2, RoundingMode.HALF_UP);
     }
 
-    private static String money(BigDecimal v, boolean inr) {
-        BigDecimal shown = inr ? v : toUsd(v);
-        return (inr ? "₹" : "$") + shown.stripTrailingZeros().toPlainString();
+    private static String money(BigDecimal v, boolean inr, BigDecimal usdPerInr, String symbol) {
+        BigDecimal shown = inr ? v : scale(v.multiply(usdPerInr));
+        return symbol + shown.stripTrailingZeros().toPlainString();
     }
 }
